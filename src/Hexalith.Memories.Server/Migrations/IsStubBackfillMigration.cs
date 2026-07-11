@@ -46,8 +46,7 @@ public sealed partial class IsStubBackfillMigration
         FalkorDB falkor = new(_falkorDb.GetDatabase());
 
         // Gate: check whether the migration ran previously for this graph.
-        ResultSet gateCheck = await falkor.QueryAsync(
-            tenantId,
+        ResultSet gateCheck = await falkor.SelectGraph(tenantId).QueryAsync(
             "MATCH (s:SchemaMigration {id: $id}) RETURN s.id AS id",
             new Dictionary<string, object> { ["id"] = MigrationId }).ConfigureAwait(false);
 
@@ -58,16 +57,14 @@ public sealed partial class IsStubBackfillMigration
         }
 
         // Backfill: for every MemoryUnit lacking an isStub flag but WITH content, set isStub = false.
-        ResultSet backfill = await falkor.QueryAsync(
-            tenantId,
+        ResultSet backfill = await falkor.SelectGraph(tenantId).QueryAsync(
             "MATCH (m:MemoryUnit) WHERE m.isStub IS NULL AND m.content IS NOT NULL SET m.isStub = false RETURN count(m) AS backfilled",
             new Dictionary<string, object>()).ConfigureAwait(false);
 
         long backfilled = TryGetCount(backfill);
 
         // Record the migration run.
-        await falkor.QueryAsync(
-            tenantId,
+        await falkor.SelectGraph(tenantId).QueryAsync(
             "MERGE (s:SchemaMigration {id: $id}) SET s.ranAt = $ranAt",
             new Dictionary<string, object>
             {

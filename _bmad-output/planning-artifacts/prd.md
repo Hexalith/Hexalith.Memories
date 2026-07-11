@@ -600,22 +600,23 @@ Hexalith.Memories is a hybrid Developer Tool + API Backend delivered as NuGet pa
 
 **Package Distribution:**
 
-Current release inventory: 7 published NuGet packages + 3 non-packable service/orchestration projects. `tools/release-packages.json` is the authoritative package source of truth for release tooling.
+Current release inventory: 9 published NuGet packages + 3 non-packable service/orchestration projects. `tools/release-packages.json` is the authoritative package source of truth for release tooling.
 
 | Package | Purpose | Dependencies |
 |---|---|---|
 | `Hexalith.Memories.Contracts` | Domain types, memory unit model, envelopes | Hexalith.Commons |
 | `Hexalith.Memories.Client.Rest` | Phase 1.5 typed HTTP client for external consumers via ingress REST API, with resilience (retry, circuit breaker) | Contracts, HttpClient, `Microsoft.Extensions.Http.Resilience` |
-| `Hexalith.Memories.Server` | DAPR service, actors, ingestion pipeline, REST controllers for ingress (non-packable) | Contracts only (backend registered at composition root) |
-| `Hexalith.Memories.Redis` | Redis/RediSearch/Vector/FalkorDB implementation | Contracts |
+| `Hexalith.Memories.Server` | DAPR service, actors, ingestion pipeline, REST controllers for ingress (non-packable) | Contracts, EventStore, ServiceDefaults, Telemetry, and direct Redis/FalkorDB client packages |
+| `Hexalith.Memories.Redis` | Compatibility-only Redis/FalkorDB API retained for existing package consumers | NFalkorDB, NRedisStack, StackExchange.Redis |
 | `Hexalith.Memories.Cli` | CLI tool (dotnet global tool). MVP readiness did not require the reusable REST client, but the current package may use `Client.Rest` after Phase 1.5 extraction. | Client.Rest, Contracts, Telemetry |
 | `Hexalith.Memories.Mcp` | MCP server (DAPR service with sidecar) | Client.Rest, Contracts, ServiceDefaults, Telemetry |
+| `Hexalith.Memories.Aspire` | Reusable Aspire resource-model integration for consuming AppHosts | Aspire hosting and DAPR integration packages |
 | `Hexalith.Memories.EventStore` | Auto-registration, dual embedding, causal chain indexing | Contracts, DAPR, Hexalith.EventStore |
 | `Hexalith.Memories.Telemetry` | Shared telemetry constants, collectors, and test-support abstractions | OpenTelemetry |
 | `Hexalith.Memories.AppHost` | .NET Aspire orchestration (internal project, not published) | Server, Redis, Aspire |
-| `Hexalith.Memories.ServiceDefaults` | Aspire service defaults — telemetry, health checks (internal project, not published) | Aspire |
+| `Hexalith.Memories.ServiceDefaults` | Shared packaged service defaults — telemetry, health checks, discovery, and resilience | Contracts, Telemetry, OpenTelemetry, Microsoft.Extensions hosting packages |
 
-**Package dependency design principle:** `Server` depends on `Contracts` only — not on `Redis` directly. The Redis implementation is registered at the composition root (AppHost). This avoids a breaking NuGet version bump when extracting `IMemoryIndex`/`IMemoryGraph` interfaces in Phase 2/3.
+**Package dependency design principle:** `Server` declares the backend client packages it directly uses and does not depend on the compatibility-only `Hexalith.Memories.Redis` package. Backend implementations remain registered at the composition root, preserving the future extraction path for `IMemoryIndex`/`IMemoryGraph` interfaces without using a placeholder package as a transitive dependency facade.
 
 **Deployment Topology:**
 

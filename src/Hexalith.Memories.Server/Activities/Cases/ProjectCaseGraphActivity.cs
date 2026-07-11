@@ -26,7 +26,7 @@ internal sealed class ProjectCaseGraphActivity(
             input.Name,
             input.TenantId,
             input.CreatedAt);
-        await falkor.QueryAsync(input.TenantId, query, parameters).ConfigureAwait(false);
+        await falkor.SelectGraph(input.TenantId).QueryAsync(query, parameters).ConfigureAwait(false);
         return true;
     }
 }

@@ -110,7 +110,7 @@ public sealed class VerifyConsistencyActivity : WorkflowTraceLinkedActivity<Cons
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildCheckMemoryUnitExists(memoryUnitId);
 
         ResultSet result = await falkor
-            .QueryAsync(tenantId, query, parameters)
+            .SelectGraph(tenantId).QueryAsync(query, parameters)
             .WaitAsync(GraphOperationTimeout)
             .ConfigureAwait(false);
 

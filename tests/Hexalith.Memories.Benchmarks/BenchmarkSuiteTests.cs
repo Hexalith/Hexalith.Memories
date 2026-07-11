@@ -301,7 +301,7 @@ public class BenchmarkSuiteTests
         ResultSet resultSet;
         try
         {
-            resultSet = await falkor.QueryAsync(tenantId, cypherQuery, parameters).ConfigureAwait(false);
+            resultSet = await falkor.SelectGraph(tenantId).QueryAsync(cypherQuery, parameters).ConfigureAwait(false);
         }
         catch (RedisServerException ex)
         {

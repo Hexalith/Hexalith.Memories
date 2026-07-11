@@ -1006,8 +1006,7 @@ public sealed partial class CaseEndpointIntegrationTests
     private async Task<string> GetFirstMemoryUnitIdAsync(string tenantId, string caseId)
     {
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
-        ResultSet result = await falkor.QueryAsync(
-            tenantId,
+        ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(
             "MATCH (:Case {id: $caseId})-[:CONTAINS]->(m:MemoryUnit) RETURN m.id AS muId",
             new Dictionary<string, object> { ["caseId"] = caseId });
 
@@ -1020,7 +1019,7 @@ public sealed partial class CaseEndpointIntegrationTests
     private async Task<long> QueryGraphCountAsync(string tenantId, string query, IDictionary<string, object> parameters)
     {
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
-        ResultSet result = await falkor.QueryAsync(tenantId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
         return ReadCount(result);
     }
 
@@ -1106,8 +1105,7 @@ public sealed partial class CaseEndpointIntegrationTests
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            ResultSet result = await falkor.QueryAsync(
-                tenantId,
+            ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(
                 "MATCH (:Case {id: $caseId})-[r:CONTAINS]->(:MemoryUnit) RETURN count(r) as cnt",
                 new Dictionary<string, object>
                 {

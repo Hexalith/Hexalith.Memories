@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Cli.Tests.Ci;
 
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.RegularExpressions;
 
@@ -20,6 +21,7 @@ public sealed partial class CiTestInventoryTests
         "tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj",
         "tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj",
         "tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj",
+        "tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj",
     ];
 
     private static readonly string[] AllowedDeferredStatuses = ["open", "resolved", "accepted", "carried-forward"];
@@ -34,10 +36,65 @@ public sealed partial class CiTestInventoryTests
 
         string[] projects = ReadInventory(inventoryPath);
 
+        projects.Distinct(StringComparer.Ordinal).Count().ShouldBe(
+            projects.Length,
+            "Docker-free project inventory must not contain duplicate runnable-project entries.");
+        projects.ShouldAllBe(
+            project => File.Exists(Path.Combine(repoRoot, project)),
+            "Docker-free project inventory must not contain stale or nonexistent runnable-project entries.");
         projects.ShouldBe(ExpectedDockerFreeProjects);
         projects.ShouldNotContain(static p => p.Contains("Benchmarks", StringComparison.Ordinal));
         projects.ShouldNotContain(static p => p.Contains("IntegrationTests", StringComparison.Ordinal));
         projects.ShouldNotContain(static p => p.Contains("TestHelpers", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SourceControl_ShouldNotTrackGeneratedProjectCaches()
+    {
+        string repoRoot = GetRepoRoot();
+        ProcessStartInfo startInfo = new("git")
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("-C");
+        startInfo.ArgumentList.Add(repoRoot);
+        startInfo.ArgumentList.Add("ls-files");
+        startInfo.ArgumentList.Add("--");
+        startInfo.ArgumentList.Add("*.csproj.lscache");
+
+        using Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start git for the generated-cache source-control guard.");
+        string trackedCaches = process.StandardOutput.ReadToEnd();
+        string standardError = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        process.ExitCode.ShouldBe(0, standardError);
+        string[] trackedCachesPresentInWorktree = trackedCaches
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(relativePath => File.Exists(Path.Combine(repoRoot, relativePath)))
+            .ToArray();
+        trackedCachesPresentInWorktree.ShouldBeEmpty("Generated *.csproj.lscache files must never be tracked.");
+    }
+
+    [Fact]
+    public void BackendProjects_ShouldNotUseRedisCompatibilityPackageAsDependencyFacade()
+    {
+        string repoRoot = GetRepoRoot();
+        string[] projectPaths =
+        [
+            "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
+            "tests/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.csproj",
+        ];
+
+        foreach (string projectPath in projectPaths)
+        {
+            string project = File.ReadAllText(Path.Combine(repoRoot, projectPath));
+            project.ShouldNotContain(
+                "Hexalith.Memories.Redis.csproj",
+                Case.Sensitive);
+        }
     }
 
     [Fact]

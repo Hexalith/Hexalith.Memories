@@ -51,7 +51,7 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
 
         // 1. Merge case node
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeCaseNode(input.CaseId);
-        await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
         // Activities are non-deterministic code and may read wall clock directly (unlike workflows).
         // The MERGE query's ON CREATE SET is idempotent so replays re-apply the same timestamp to the
@@ -76,7 +76,7 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
             JsonSerializer.Serialize(
                 PersistenceModelMapper.ToStored(input.Metadata),
                 MemoriesPersistenceJsonContext.Options));
-        NFalkorDB.ResultSet mergeResult = await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        NFalkorDB.ResultSet mergeResult = await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
         TryEmitStubResolvedTelemetry(mergeResult, input, nowUtc);
 
         // 3. Contains edge: case → memory unit
@@ -86,7 +86,7 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
             EdgeType.Contains,
             EdgeTypeDefaults.Contains,
             EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
         // 4. Optional CausedBy edge. Symmetric to the CorrelationId guard below: a self-edge is
         //    skipped when CausationId == MemoryUnitId (malformed publisher where `causationid ==
@@ -95,7 +95,7 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
             && !string.Equals(input.CausationId, input.MemoryUnitId, StringComparison.Ordinal))
         {
             (query, parameters) = _graphQueryBuilder.BuildMergeStubNode(input.CausationId, nowUtc);
-            await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
             (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
                 input.CausationId,
@@ -103,7 +103,7 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
                 EdgeType.CausedBy,
                 EdgeTypeDefaults.CausedBy,
                 EdgeOrigin.Explicit);
-            await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
         }
         else if (string.Equals(input.CausationId, input.MemoryUnitId, StringComparison.Ordinal))
         {
@@ -120,7 +120,7 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
             && !string.Equals(input.CorrelationId, input.MemoryUnitId, StringComparison.Ordinal))
         {
             (query, parameters) = _graphQueryBuilder.BuildMergeStubNode(input.CorrelationId, nowUtc);
-            await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
             (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
                 input.CorrelationId,
@@ -128,7 +128,7 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
                 EdgeType.CorrelatedWith,
                 EdgeTypeDefaults.CorrelatedWith,
                 EdgeOrigin.Explicit);
-            await falkor.QueryAsync(graphId, query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
         }
         else if (string.Equals(input.CorrelationId, input.MemoryUnitId, StringComparison.Ordinal))
         {

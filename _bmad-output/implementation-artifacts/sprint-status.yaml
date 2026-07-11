@@ -384,7 +384,7 @@ development_status:
   25-5-cli-consolidation: done
   25-6-mcp-tool-executor: done
   25-7-evidence-cockpit-ux-conformance: done
-  25-8-dead-code-and-topology-cleanup: backlog
+  25-8-dead-code-and-topology-cleanup: done
   epic-25-retrospective: optional
 
   # Epic 26: Test, Deployment & Operational Readiness

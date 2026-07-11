@@ -42,7 +42,7 @@ public sealed class CleanupGraphActivity : WorkflowTraceLinkedActivity<CleanupIn
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(input.MemoryUnitId);
 
-        await falkor.QueryAsync(input.TenantId, query, parameters).ConfigureAwait(false);
+        await falkor.SelectGraph(input.TenantId).QueryAsync(query, parameters).ConfigureAwait(false);
 
         _logger.LogWarning(
             "Compensation: cleaned up FalkorDB node for {MemoryUnitId} in tenant {TenantId}",

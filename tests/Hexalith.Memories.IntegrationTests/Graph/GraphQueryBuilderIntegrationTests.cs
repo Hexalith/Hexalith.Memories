@@ -32,11 +32,10 @@ public class GraphQueryBuilderIntegrationTests
 
         // Act
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeCaseNode("case-001");
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert — node was created
-        ResultSet countResult = await falkor.QueryAsync(
-            graphId,
+        ResultSet countResult = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (c:Case {id: $id}) RETURN count(c) as cnt",
             new Dictionary<string, object> { ["id"] = "case-001" });
 
@@ -56,12 +55,11 @@ public class GraphQueryBuilderIntegrationTests
             768, "integration@example.com", DateTimeOffset.UtcNow, "{}");
 
         // Act — execute twice (MERGE should be idempotent)
-        await falkor.QueryAsync(graphId, query, parameters);
-        await falkor.QueryAsync(graphId, query, parameters);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert — only one node exists
-        ResultSet countResult = await falkor.QueryAsync(
-            graphId,
+        ResultSet countResult = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (m:MemoryUnit {id: $id}) RETURN count(m) as cnt",
             new Dictionary<string, object> { ["id"] = "mu-idem-001" });
 
@@ -77,21 +75,20 @@ public class GraphQueryBuilderIntegrationTests
 
         // Create case and memory unit nodes first
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode("case-edge-001");
-        await falkor.QueryAsync(graphId, caseQuery, caseParams);
+        await falkor.SelectGraph(graphId).QueryAsync(caseQuery, caseParams);
 
         (string muQuery, IDictionary<string, object> muParams) = _builder.BuildMergeMemoryUnitNode(
             "mu-edge-001", "case-edge-001", "content", "hash",
             "file:///t.txt", SourceType.File, "provider", 768, "integration@example.com", DateTimeOffset.UtcNow, "{}");
-        await falkor.QueryAsync(graphId, muQuery, muParams);
+        await falkor.SelectGraph(graphId).QueryAsync(muQuery, muParams);
 
         // Act — create Contains edge
         (string edgeQuery, IDictionary<string, object> edgeParams) = _builder.BuildMergeEdge(
             "case-edge-001", "mu-edge-001", EdgeType.Contains, EdgeTypeDefaults.Contains, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, edgeQuery, edgeParams);
+        await falkor.SelectGraph(graphId).QueryAsync(edgeQuery, edgeParams);
 
         // Assert — edge exists
-        ResultSet edgeResult = await falkor.QueryAsync(
-            graphId,
+        ResultSet edgeResult = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (:Case {id: $caseId})-[r:CONTAINS]->(:MemoryUnit {id: $muId}) RETURN count(r) as cnt",
             new Dictionary<string, object> { ["caseId"] = "case-edge-001", ["muId"] = "mu-edge-001" });
 
@@ -108,31 +105,29 @@ public class GraphQueryBuilderIntegrationTests
         const string targetId = "target-id-001";
 
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode(sharedId);
-        await falkor.QueryAsync(graphId, caseQuery, caseParams);
+        await falkor.SelectGraph(graphId).QueryAsync(caseQuery, caseParams);
 
         (string sourceMuQuery, IDictionary<string, object> sourceMuParams) = _builder.BuildMergeMemoryUnitNode(
             sharedId, "case-collision-001", "source content", "hash-source",
             "file:///source.txt", SourceType.File, "provider", 3, "integration@example.com", DateTimeOffset.UtcNow, "{}");
-        await falkor.QueryAsync(graphId, sourceMuQuery, sourceMuParams);
+        await falkor.SelectGraph(graphId).QueryAsync(sourceMuQuery, sourceMuParams);
 
         (string targetMuQuery, IDictionary<string, object> targetMuParams) = _builder.BuildMergeMemoryUnitNode(
             targetId, "case-collision-001", "target content", "hash-target",
             "file:///target.txt", SourceType.File, "provider", 3, "integration@example.com", DateTimeOffset.UtcNow, "{}");
-        await falkor.QueryAsync(graphId, targetMuQuery, targetMuParams);
+        await falkor.SelectGraph(graphId).QueryAsync(targetMuQuery, targetMuParams);
 
         // Act
         (string edgeQuery, IDictionary<string, object> edgeParams) = _builder.BuildMergeEdge(
             sharedId, targetId, EdgeType.Contains, EdgeTypeDefaults.Contains, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, edgeQuery, edgeParams);
+        await falkor.SelectGraph(graphId).QueryAsync(edgeQuery, edgeParams);
 
         // Assert
-        ResultSet caseEdgeCount = await falkor.QueryAsync(
-            graphId,
+        ResultSet caseEdgeCount = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (:Case {id: $sourceId})-[r:CONTAINS]->(:MemoryUnit {id: $targetId}) RETURN count(r) as cnt",
             new Dictionary<string, object> { ["sourceId"] = sharedId, ["targetId"] = targetId });
 
-        ResultSet memoryUnitEdgeCount = await falkor.QueryAsync(
-            graphId,
+        ResultSet memoryUnitEdgeCount = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (:MemoryUnit {id: $sourceId})-[r:CONTAINS]->(:MemoryUnit {id: $targetId}) RETURN count(r) as cnt",
             new Dictionary<string, object> { ["sourceId"] = sharedId, ["targetId"] = targetId });
 
@@ -150,11 +145,10 @@ public class GraphQueryBuilderIntegrationTests
 
         // Act — create node in tenant A only
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeCaseNode("secret-case");
-        await falkor.QueryAsync(tenantA, query, parameters);
+        await falkor.SelectGraph(tenantA).QueryAsync(query, parameters);
 
         // Assert — tenant B's graph has no nodes
-        ResultSet resultB = await falkor.QueryAsync(
-            tenantB,
+        ResultSet resultB = await falkor.SelectGraph(tenantB).QueryAsync(
             "MATCH (n) RETURN count(n) as cnt",
             new Dictionary<string, object>());
 

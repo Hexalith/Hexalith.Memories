@@ -78,26 +78,6 @@ internal static partial class NaturalLanguageIntegrationLog
         int attempts);
 
     [LoggerMessage(
-        EventId = 9154,
-        Level = LogLevel.Information,
-        Message = "Stub node resolved for tenant {TenantId}, memoryUnit {MemoryUnitId} (causing event {CausingEventId}); stubCreatedAt={StubCreatedAt}, resolvedAt={ResolvedAt}.")]
-    public static partial void StubNodeResolved(
-        ILogger logger,
-        string tenantId,
-        string memoryUnitId,
-        string causingEventId,
-        string stubCreatedAt,
-        string resolvedAt);
-
-    [LoggerMessage(
-        EventId = 9155,
-        Level = LogLevel.Debug,
-        Message = "CorrelationId self-edge skipped for memoryUnit {MemoryUnitId} (event IS the correlation root).")]
-    public static partial void CorrelationIdSelfEdgeSkipped(
-        ILogger logger,
-        string memoryUnitId);
-
-    [LoggerMessage(
         EventId = 9162,
         Level = LogLevel.Warning,
         Message = "DAPR Conversation resolved to the echo component ({LlmProvider}); NL embeddings will be degenerate (equal to raw payload). Development only — production rejects this via the options validator.")]

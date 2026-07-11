@@ -26,6 +26,10 @@
       "project": "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj"
     },
     {
+      "packageId": "Hexalith.Memories.ServiceDefaults",
+      "project": "src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj"
+    },
+    {
       "packageId": "Hexalith.Memories.EventStore",
       "project": "src/Hexalith.Memories.EventStore/Hexalith.Memories.EventStore.csproj"
     },
@@ -37,7 +41,6 @@
   "nonPackableProjects": [
     "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
     "src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj",
-    "src/Hexalith.Memories.ServiceDefaults/Hexalith.Memories.ServiceDefaults.csproj",
     "src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj"
   ]
 }

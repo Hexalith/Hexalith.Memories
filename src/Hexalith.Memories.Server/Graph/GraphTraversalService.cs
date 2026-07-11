@@ -68,7 +68,7 @@ public sealed partial class GraphTraversalService
         List<TraversalGapMarker> gapMarkers;
         try
         {
-            ResultSet resultSet = await falkor.QueryAsync(graphId, query, parameters, timeout: GraphOperationTimeoutMilliseconds)
+            ResultSet resultSet = await falkor.SelectGraph(graphId).QueryAsync(query, parameters, timeout: GraphOperationTimeoutMilliseconds)
                 .WaitAsync(GraphOperationTimeout, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -181,7 +181,7 @@ public sealed partial class GraphTraversalService
         ResultSet resultSet;
         try
         {
-            resultSet = await falkor.QueryAsync(graphId, query, parameters)
+            resultSet = await falkor.SelectGraph(graphId).QueryAsync(query, parameters)
                 .WaitAsync(GraphOperationTimeout, cancellationToken)
                 .ConfigureAwait(false);
         }

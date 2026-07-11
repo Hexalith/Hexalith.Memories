@@ -1,7 +1,5 @@
 namespace Hexalith.Memories.Server.Tests.Graph;
 
-#pragma warning disable CS0618 // these tests intentionally exercise the 1-arg BuildMergeStubNode obsolete overload to pin its forward-to-2-arg behavior.
-
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -218,7 +216,8 @@ public class GraphQueryBuilderTests
     {
         // Story 9.2 Task 7.1: stub node MERGE must set isStub=true and stubCreatedAt via ON CREATE
         // SET so existing real nodes are not regressed (Risk #12 — coalesce unreliability).
-        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode("mu-stub-001");
+        DateTimeOffset stubCreatedAt = new(2026, 4, 23, 10, 0, 0, TimeSpan.Zero);
+        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode("mu-stub-001", stubCreatedAt);
 
         query.ShouldContain("MERGE");
         query.ShouldContain("MemoryUnit");
@@ -274,7 +273,7 @@ public class GraphQueryBuilderTests
 
         totalInvocationCount.ShouldBe(
             3,
-            "Story 9.2 currently has exactly three production BuildMergeStubNode call sites (CaseService plus two IndexGraphActivity branches). Update this assertion if a new legitimate caller is introduced.");
+            "Story 9.2 currently has exactly three production BuildMergeStubNode call sites (ProjectAnnotationGraphActivity plus two IndexGraphActivity branches). Update this assertion if a new legitimate caller is introduced.");
         oneArgumentCallSites.ShouldBeEmpty(
             "Production callers must use the 2-arg overload and pass a replay-safe stubCreatedAt timestamp.");
     }
@@ -338,7 +337,7 @@ public class GraphQueryBuilderTests
     [InlineData("  ")]
     public void BuildMergeStubNode_NullOrEmptyId_ShouldThrow(string? memoryUnitId)
     {
-        Should.Throw<ArgumentException>(() => _builder.BuildMergeStubNode(memoryUnitId!));
+        Should.Throw<ArgumentException>(() => _builder.BuildMergeStubNode(memoryUnitId!, DateTimeOffset.UnixEpoch));
     }
 
     [Fact]
@@ -480,7 +479,7 @@ public class GraphQueryBuilderTests
     {
         const string adversarialId = "INJECT_STUB_12345";
 
-        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(adversarialId);
+        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(adversarialId, DateTimeOffset.UnixEpoch);
 
         query.ShouldNotContain(adversarialId);
         parameters["id"].ShouldBe(adversarialId);

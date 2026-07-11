@@ -1,7 +1,5 @@
 namespace Hexalith.Memories.IntegrationTests.Graph;
 
-#pragma warning disable CS0618 // these tests intentionally exercise the 1-arg BuildMergeStubNode obsolete overload to pin its forward-to-2-arg behavior.
-
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Graph;
@@ -21,6 +19,8 @@ using StackExchange.Redis;
 [Trait("Category", "Integration")]
 public class BuildMergeStubNodeIntegrationTests
 {
+    private static readonly DateTimeOffset StubCreatedAt = new(2026, 7, 11, 0, 0, 0, TimeSpan.Zero);
+
     private readonly FalkorDbFixture _falkorDb;
     private readonly GraphQueryBuilder _builder = new();
 
@@ -35,12 +35,11 @@ public class BuildMergeStubNodeIntegrationTests
         string stubId = "mu-stub-001";
 
         // Act
-        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(stubId);
-        await falkor.QueryAsync(graphId, query, parameters);
+        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(stubId, StubCreatedAt);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert — stub node exists with only id property
-        ResultSet result = await falkor.QueryAsync(
-            graphId,
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (m:MemoryUnit {id: $id}) RETURN m.id as nodeId",
             new Dictionary<string, object> { ["id"] = stubId });
 
@@ -55,15 +54,14 @@ public class BuildMergeStubNodeIntegrationTests
         FalkorDB falkor = new(_falkorDb.Connection.GetDatabase());
         string stubId = "mu-stub-idem-001";
 
-        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(stubId);
+        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(stubId, StubCreatedAt);
 
         // Act — execute twice
-        await falkor.QueryAsync(graphId, query, parameters);
-        await falkor.QueryAsync(graphId, query, parameters);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert — only one node
-        ResultSet countResult = await falkor.QueryAsync(
-            graphId,
+        ResultSet countResult = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (m:MemoryUnit {id: $id}) RETURN count(m) as cnt",
             new Dictionary<string, object> { ["id"] = stubId });
 
@@ -79,26 +77,24 @@ public class BuildMergeStubNodeIntegrationTests
         string memoryUnitId = "mu-stub-then-full-001";
 
         // Act — create stub
-        (string stubQuery, IDictionary<string, object> stubParams) = _builder.BuildMergeStubNode(memoryUnitId);
-        await falkor.QueryAsync(graphId, stubQuery, stubParams);
+        (string stubQuery, IDictionary<string, object> stubParams) = _builder.BuildMergeStubNode(memoryUnitId, StubCreatedAt);
+        await falkor.SelectGraph(graphId).QueryAsync(stubQuery, stubParams);
 
         // Act — enrich with full node
         (string fullQuery, IDictionary<string, object> fullParams) = _builder.BuildMergeMemoryUnitNode(
             memoryUnitId, "case-001", "enriched content", "hash-full",
             "file:///enriched.txt", SourceType.File, "google:text-embedding-004",
             768, "integration@example.com", DateTimeOffset.UtcNow, "{}");
-        await falkor.QueryAsync(graphId, fullQuery, fullParams);
+        await falkor.SelectGraph(graphId).QueryAsync(fullQuery, fullParams);
 
         // Assert — still one node, now with full properties
-        ResultSet countResult = await falkor.QueryAsync(
-            graphId,
+        ResultSet countResult = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (m:MemoryUnit {id: $id}) RETURN count(m) as cnt",
             new Dictionary<string, object> { ["id"] = memoryUnitId });
         ReadCount(countResult).ShouldBe(1);
 
         // Assert — node has enriched content
-        ResultSet contentResult = await falkor.QueryAsync(
-            graphId,
+        ResultSet contentResult = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (m:MemoryUnit {id: $id}) RETURN m.content as content",
             new Dictionary<string, object> { ["id"] = memoryUnitId });
         ReadString(contentResult, "content").ShouldBe("enriched content");
@@ -117,20 +113,19 @@ public class BuildMergeStubNodeIntegrationTests
         (string fullQuery, IDictionary<string, object> fullParams) = _builder.BuildMergeMemoryUnitNode(
             fullNodeId, "case-001", "full content", "hash",
             "file:///full.txt", SourceType.File, "provider", 768, "integration@example.com", DateTimeOffset.UtcNow, "{}");
-        await falkor.QueryAsync(graphId, fullQuery, fullParams);
+        await falkor.SelectGraph(graphId).QueryAsync(fullQuery, fullParams);
 
         // Create stub node
-        (string stubQuery, IDictionary<string, object> stubParams) = _builder.BuildMergeStubNode(stubNodeId);
-        await falkor.QueryAsync(graphId, stubQuery, stubParams);
+        (string stubQuery, IDictionary<string, object> stubParams) = _builder.BuildMergeStubNode(stubNodeId, StubCreatedAt);
+        await falkor.SelectGraph(graphId).QueryAsync(stubQuery, stubParams);
 
         // Act — create CausedBy edge from full node to stub
         (string edgeQuery, IDictionary<string, object> edgeParams) = _builder.BuildMergeEdge(
             fullNodeId, stubNodeId, EdgeType.CausedBy, EdgeTypeDefaults.CausedBy, EdgeOrigin.Inferred);
-        await falkor.QueryAsync(graphId, edgeQuery, edgeParams);
+        await falkor.SelectGraph(graphId).QueryAsync(edgeQuery, edgeParams);
 
         // Assert — edge exists
-        ResultSet edgeResult = await falkor.QueryAsync(
-            graphId,
+        ResultSet edgeResult = await falkor.SelectGraph(graphId).QueryAsync(
             "MATCH (:MemoryUnit {id: $sourceId})-[r:CAUSED_BY]->(:MemoryUnit {id: $targetId}) RETURN count(r) as cnt",
             new Dictionary<string, object> { ["sourceId"] = fullNodeId, ["targetId"] = stubNodeId });
 

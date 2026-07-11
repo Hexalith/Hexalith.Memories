@@ -43,7 +43,7 @@ public class TraversalEdgeTypeFilterIntegrationTests
         // Act: Traverse from A with only causedBy — C should be unreachable
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildTraverseWithEdges("mu-a", 3, null, [EdgeType.CausedBy]);
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert: Only A (start, hop 0) and B (hop 1) returned
         List<string> nodeIds = ReadNodeIds(result);
@@ -68,7 +68,7 @@ public class TraversalEdgeTypeFilterIntegrationTests
         // Act: Traverse from A with causedBy + references — all 3 nodes reachable
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildTraverseWithEdges("mu-a", 3, null, [EdgeType.CausedBy, EdgeType.References]);
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert: All 3 nodes returned
         List<string> nodeIds = ReadNodeIds(result);
@@ -90,15 +90,15 @@ public class TraversalEdgeTypeFilterIntegrationTests
 
         // Create Case node and CONTAINS edge
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode("case-1");
-        await falkor.QueryAsync(graphId, caseQuery, caseParams);
+        await falkor.SelectGraph(graphId).QueryAsync(caseQuery, caseParams);
         (string containsQuery, IDictionary<string, object> containsParams) =
             _builder.BuildMergeEdge("case-1", "mu-a", EdgeType.Contains, EdgeTypeDefaults.Contains, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, containsQuery, containsParams);
+        await falkor.SelectGraph(graphId).QueryAsync(containsQuery, containsParams);
 
         // Act: Default traversal (semantic only) from A
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildTraverseWithEdges("mu-a", 3, null);
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert: B reached via CAUSED_BY, Case node NOT in results (MemoryUnit label filter)
         List<string> nodeIds = ReadNodeIds(result);
@@ -118,18 +118,18 @@ public class TraversalEdgeTypeFilterIntegrationTests
         await CreateMemoryUnit(falkor, graphId, "mu-b", "case-1");
 
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode("case-1");
-        await falkor.QueryAsync(graphId, caseQuery, caseParams);
+        await falkor.SelectGraph(graphId).QueryAsync(caseQuery, caseParams);
         (string e1Q, IDictionary<string, object> e1P) =
             _builder.BuildMergeEdge("case-1", "mu-a", EdgeType.Contains, 1.0f, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, e1Q, e1P);
+        await falkor.SelectGraph(graphId).QueryAsync(e1Q, e1P);
         (string e2Q, IDictionary<string, object> e2P) =
             _builder.BuildMergeEdge("case-1", "mu-b", EdgeType.Contains, 1.0f, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, e2Q, e2P);
+        await falkor.SelectGraph(graphId).QueryAsync(e2Q, e2P);
 
         // Act: Traverse from MU-A with edgeTypes=contains
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildTraverseWithEdges("mu-a", 3, null, [EdgeType.Contains]);
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert: Explicit contains traversal can reach sibling memory units through the case hub.
         List<string> nodeIds = ReadNodeIds(result);
@@ -152,18 +152,18 @@ public class TraversalEdgeTypeFilterIntegrationTests
         await CreateMemoryUnit(falkor, graphId, "mu-b", "case-1");
 
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode("case-1");
-        await falkor.QueryAsync(graphId, caseQuery, caseParams);
+        await falkor.SelectGraph(graphId).QueryAsync(caseQuery, caseParams);
         (string e1Q, IDictionary<string, object> e1P) =
             _builder.BuildMergeEdge("case-1", "mu-a", EdgeType.Contains, 1.0f, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, e1Q, e1P);
+        await falkor.SelectGraph(graphId).QueryAsync(e1Q, e1P);
         (string e2Q, IDictionary<string, object> e2P) =
             _builder.BuildMergeEdge("case-1", "mu-b", EdgeType.Contains, 1.0f, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, e2Q, e2P);
+        await falkor.SelectGraph(graphId).QueryAsync(e2Q, e2P);
 
         // Act: case-scoped traversal should still be able to cross the Case node boundary.
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildTraverseWithEdges("mu-a", 3, "case-1", [EdgeType.Contains]);
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert
         List<string> nodeIds = ReadNodeIds(result);
@@ -227,7 +227,7 @@ public class TraversalEdgeTypeFilterIntegrationTests
         // Act: Traverse with only causedBy
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildTraverseWithEdges("mu-a", 3, null, [EdgeType.CausedBy]);
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert: MU-A's edges should only contain CAUSED_BY, not REFERENCES
         List<(string nodeId, List<string> edgeTypes)> nodesWithEdges = ReadNodesWithEdgeTypes(result);
@@ -253,13 +253,13 @@ public class TraversalEdgeTypeFilterIntegrationTests
         // Act 1: Traverse with causedBy only
         (string q1, IDictionary<string, object> p1) =
             _builder.BuildTraverseWithEdges("mu-a", 3, null, [EdgeType.CausedBy]);
-        ResultSet r1 = await falkor.QueryAsync(graphId, q1, p1);
+        ResultSet r1 = await falkor.SelectGraph(graphId).QueryAsync(q1, p1);
         List<string> causedByNodes = ReadNodeIds(r1);
 
         // Act 2: Traverse with correlatedWith only
         (string q2, IDictionary<string, object> p2) =
             _builder.BuildTraverseWithEdges("mu-a", 3, null, [EdgeType.CorrelatedWith]);
-        ResultSet r2 = await falkor.QueryAsync(graphId, q2, p2);
+        ResultSet r2 = await falkor.SelectGraph(graphId).QueryAsync(q2, p2);
         List<string> correlatedNodes = ReadNodeIds(r2);
 
         // Assert: B only via causedBy, C only via correlatedWith — never collapsed
@@ -283,7 +283,7 @@ public class TraversalEdgeTypeFilterIntegrationTests
         await CreateMemoryUnit(falkor, graphId, "mu-sibling-3", "case-1");
 
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode("case-1");
-        await falkor.QueryAsync(graphId, caseQuery, caseParams);
+        await falkor.SelectGraph(graphId).QueryAsync(caseQuery, caseParams);
         await CreateEdge(falkor, graphId, "case-1", "mu-a", EdgeType.Contains);
         await CreateEdge(falkor, graphId, "case-1", "mu-sibling-1", EdgeType.Contains);
         await CreateEdge(falkor, graphId, "case-1", "mu-sibling-2", EdgeType.Contains);
@@ -293,7 +293,7 @@ public class TraversalEdgeTypeFilterIntegrationTests
         // Act
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildTraverseFromNode("mu-a", 2);
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert: semantic chain is reachable, structural siblings are not.
         List<string> nodeIds = ReadNodeIds(result);
@@ -322,7 +322,7 @@ public class TraversalEdgeTypeFilterIntegrationTests
         // Act
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildTraverseFromNode("mu-a", 1, null, 2);
-        ResultSet result = await falkor.QueryAsync(graphId, query, parameters);
+        ResultSet result = await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
 
         // Assert: hop distance then node id ordering gives start node, then mu-b.
         ReadNodeIds(result).ShouldBe(["mu-a", "mu-b"]);
@@ -336,7 +336,7 @@ public class TraversalEdgeTypeFilterIntegrationTests
             id, caseId ?? "default-case", $"content for {id}", $"hash-{id}",
             $"file:///{id}.txt", SourceType.File, "provider", 3,
             "integration@example.com", DateTimeOffset.UtcNow, "{}");
-        await falkor.QueryAsync(graphId, query, parameters);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
     }
 
     private async Task CreateEdge(FalkorDB falkor, string graphId, string sourceId, string targetId, EdgeType edgeType)
@@ -352,7 +352,7 @@ public class TraversalEdgeTypeFilterIntegrationTests
         };
         (string query, IDictionary<string, object> parameters) =
             _builder.BuildMergeEdge(sourceId, targetId, edgeType, confidence, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(graphId, query, parameters);
+        await falkor.SelectGraph(graphId).QueryAsync(query, parameters);
     }
 
     private static List<string> ReadNodeIds(ResultSet result)

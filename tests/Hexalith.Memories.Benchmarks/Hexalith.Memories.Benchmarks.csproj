@@ -7,7 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.Server\Hexalith.Memories.Server.csproj" />
-    <ProjectReference Include="..\..\src\Hexalith.Memories.Redis\Hexalith.Memories.Redis.csproj" />
     <ProjectReference Include="..\Hexalith.Memories.TestHelpers\Hexalith.Memories.TestHelpers.csproj" />
   </ItemGroup>
 
@@ -20,7 +19,10 @@
     </PackageReference>
     <PackageReference Include="Shouldly" />
     <PackageReference Include="NSubstitute" />
+    <PackageReference Include="NFalkorDB" />
+    <PackageReference Include="NRedisStack" />
     <PackageReference Include="Testcontainers" />
+    <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="coverlet.collector">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

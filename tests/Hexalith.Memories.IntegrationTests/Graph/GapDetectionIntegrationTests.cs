@@ -176,8 +176,7 @@ public sealed class GapDetectionIntegrationTests
         await CreateMemoryUnitAsync(falkor, tenantId, "MU-B", caseId);
         await CreateEdgeAsync(falkor, tenantId, "MU-B", "MU-A", EdgeType.CausedBy);
         await SeedMemoryUnitHashAsync(redisDb, tenantId, "MU-B", "Redis fallback content for MU-B");
-        await falkor.QueryAsync(
-            tenantId,
+        await falkor.SelectGraph(tenantId).QueryAsync(
             "MATCH (m:MemoryUnit {id: $id}) REMOVE m.content",
             new Dictionary<string, object> { ["id"] = "MU-B" });
 
@@ -253,7 +252,7 @@ public sealed class GapDetectionIntegrationTests
     private async Task CreateCaseAsync(FalkorDB falkor, string tenantId, string caseId)
     {
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 
     private async Task CreateMemoryUnitAsync(FalkorDB falkor, string tenantId, string memoryUnitId, string caseId)
@@ -271,13 +270,13 @@ public sealed class GapDetectionIntegrationTests
             DateTimeOffset.UtcNow,
             "{}");
 
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 
     private async Task CreateStubNodeAsync(FalkorDB falkor, string tenantId, string memoryUnitId)
     {
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeStubNode(memoryUnitId, DateTimeOffset.UtcNow);
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 
     private static Task SeedMemoryUnitHashAsync(IDatabase db, string tenantId, string memoryUnitId, string content)
@@ -316,6 +315,6 @@ public sealed class GapDetectionIntegrationTests
             edgeConfidence,
             origin);
 
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 }

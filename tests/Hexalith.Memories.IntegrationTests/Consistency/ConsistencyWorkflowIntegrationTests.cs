@@ -226,8 +226,7 @@ public sealed class ConsistencyWorkflowIntegrationTests
         string content)
     {
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
-        await falkor.QueryAsync(
-            tenantId,
+        await falkor.SelectGraph(tenantId).QueryAsync(
             """
             MERGE (c:Case {id: $caseId})
             MERGE (m:MemoryUnit {id: $id})

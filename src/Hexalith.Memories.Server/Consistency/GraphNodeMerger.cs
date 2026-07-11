@@ -104,7 +104,7 @@ public partial class GraphNodeMerger : IGraphNodeMerger
 
         // 1. Merge case node
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, query, parameters).WaitAsync(GraphOperationTimeout, ct).ConfigureAwait(false);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout, ct).ConfigureAwait(false);
 
         // 2. Merge memory unit node
         // embeddingDimensions is not stored on the syntactic hash; use 0 as a placeholder so the
@@ -123,7 +123,7 @@ public partial class GraphNodeMerger : IGraphNodeMerger
             ingestedBy,
             ingestedAt,
             metadataJson);
-        await falkor.QueryAsync(tenantId, query, parameters).WaitAsync(GraphOperationTimeout, ct).ConfigureAwait(false);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout, ct).ConfigureAwait(false);
 
         // 3. Contains edge case → memory unit
         (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
@@ -132,7 +132,7 @@ public partial class GraphNodeMerger : IGraphNodeMerger
             EdgeType.Contains,
             EdgeTypeDefaults.Contains,
             EdgeOrigin.Explicit);
-        await falkor.QueryAsync(tenantId, query, parameters).WaitAsync(GraphOperationTimeout, ct).ConfigureAwait(false);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout, ct).ConfigureAwait(false);
 
         LogReMergeCompleted(_logger, tenantId, memoryUnitId);
     }

@@ -164,8 +164,7 @@ public sealed class IngestionPipelineTests
         string caseId,
         string sourceUri)
     {
-        ResultSet result = await falkor.QueryAsync(
-            tenantId,
+        ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(
             "MATCH (m:MemoryUnit {caseId: $caseId, sourceUri: $sourceUri}) RETURN count(m) as cnt",
             new Dictionary<string, object>
             {

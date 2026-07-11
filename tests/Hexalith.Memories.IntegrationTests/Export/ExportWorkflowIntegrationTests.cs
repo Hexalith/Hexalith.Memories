@@ -151,8 +151,7 @@ public sealed class ExportWorkflowIntegrationTests
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            ResultSet result = await falkor.QueryAsync(
-                tenantId,
+            ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(
                 "MATCH (:Case {id: $caseId})-[r:CONTAINS]->(:MemoryUnit) RETURN count(r) AS cnt",
                 new Dictionary<string, object> { ["caseId"] = caseId });
 
@@ -170,8 +169,7 @@ public sealed class ExportWorkflowIntegrationTests
     private async Task<IReadOnlyList<string>> GetCaseMemoryUnitIdsAsync(string tenantId, string caseId)
     {
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
-        ResultSet result = await falkor.QueryAsync(
-            tenantId,
+        ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(
             "MATCH (:Case {id: $caseId})-[:CONTAINS]->(m:MemoryUnit) RETURN m.id AS muId",
             new Dictionary<string, object> { ["caseId"] = caseId });
 

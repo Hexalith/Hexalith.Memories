@@ -3,23 +3,15 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>Hexalith.Memories.Redis</PackageId>
-    <Description>Redis, RediSearch, and FalkorDB storage adapters for Hexalith.Memories indexing, search, graph traversal, and tenant provisioning.</Description>
+    <Description>Compatibility-only Redis and FalkorDB API surface retained for existing Hexalith.Memories consumers. New code should reference NFalkorDB, NRedisStack, and StackExchange.Redis directly.</Description>
     <Authors>ITANEO</Authors>
     <Company>ITANEO</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/Hexalith/Hexalith.Memories</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Hexalith/Hexalith.Memories</RepositoryUrl>
-    <PackageTags>hexalith;memories;redis;redisearch;falkordb;graph;vector-search</PackageTags>
+    <PackageTags>hexalith;memories;redis;falkordb;compatibility;deprecated</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
-
-  <ItemGroup>
-    <InternalsVisibleTo Include="Hexalith.Memories.Benchmarks" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="NRedisStack" />

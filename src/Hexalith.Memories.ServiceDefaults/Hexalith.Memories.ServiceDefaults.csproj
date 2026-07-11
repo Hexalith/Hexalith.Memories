@@ -1,8 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <IsPackable>false</IsPackable>
+    <IsPackable>true</IsPackable>
     <IsAspireSharedProject>true</IsAspireSharedProject>
+    <PackageId>Hexalith.Memories.ServiceDefaults</PackageId>
+    <Description>Shared health, resilience, service discovery, and OpenTelemetry defaults for Hexalith.Memories services.</Description>
+    <Authors>ITANEO</Authors>
+    <Company>ITANEO</Company>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Hexalith/Hexalith.Memories</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Hexalith/Hexalith.Memories</RepositoryUrl>
+    <PackageTags>hexalith;memories;aspire;service-defaults;opentelemetry;health-checks</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- OpenTelemetry.Instrumentation.StackExchangeRedis is intentionally pinned to a prerelease
+         version in Directory.Packages.props. Keep NU5104 scoped to this package and remove the
+         suppression when a compatible stable instrumentation release is selected centrally. -->
+    <NoWarn>$(NoWarn);NU5104</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,6 +43,10 @@
     <!-- Story 8.5: Redis client instrumentation — registered in ConfigureOpenTelemetry for
          both keyed IConnectionMultiplexer instances ('redis' + 'falkordb'). -->
     <PackageReference Include="OpenTelemetry.Instrumentation.StackExchangeRedis" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

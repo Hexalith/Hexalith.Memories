@@ -100,7 +100,7 @@ public sealed class HybridSearchApiIntegrationTests
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
 
         (string caseQuery, IDictionary<string, object> caseParams) = _graphQueryBuilder.BuildMergeCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, caseQuery, caseParams);
+        await falkor.SelectGraph(tenantId).QueryAsync(caseQuery, caseParams);
 
         for (int i = 0; i < nodeIds.Length; i++)
         {
@@ -112,7 +112,7 @@ public sealed class HybridSearchApiIntegrationTests
                 EdgeType.Contains,
                 EdgeTypeDefaults.Contains,
                 EdgeOrigin.Explicit);
-            await falkor.QueryAsync(tenantId, containsQuery, containsParams);
+            await falkor.SelectGraph(tenantId).QueryAsync(containsQuery, containsParams);
 
             if (i > 0)
             {
@@ -122,7 +122,7 @@ public sealed class HybridSearchApiIntegrationTests
                     EdgeType.CausedBy,
                     EdgeTypeDefaults.CausedBy,
                     EdgeOrigin.Explicit);
-                await falkor.QueryAsync(tenantId, edgeQuery, edgeParams);
+                await falkor.SelectGraph(tenantId).QueryAsync(edgeQuery, edgeParams);
             }
         }
     }
@@ -141,7 +141,7 @@ public sealed class HybridSearchApiIntegrationTests
             "test@example.com",
             DateTimeOffset.UtcNow,
             "{}");
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 
     private async Task SeedIndexedDocumentAsync(string tenantId, string memoryUnitId, string content)

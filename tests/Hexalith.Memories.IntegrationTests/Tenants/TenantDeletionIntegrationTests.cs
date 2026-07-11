@@ -144,7 +144,7 @@ public sealed class TenantDeletionIntegrationTests
         FalkorDB falkorDb = new(_fixture.FalkorDbConnection.GetDatabase());
         try
         {
-            ResultSet graphResult = await falkorDb.QueryAsync(tenantId, "MATCH (n) RETURN count(n) AS cnt");
+            ResultSet graphResult = await falkorDb.SelectGraph(tenantId).QueryAsync("MATCH (n) RETURN count(n) AS cnt");
             ReadCount(graphResult).ShouldBe(0);
         }
         catch (RedisServerException)
@@ -163,8 +163,7 @@ public sealed class TenantDeletionIntegrationTests
         const int nodeCount = 600;
         for (int i = 0; i < nodeCount; i++)
         {
-            await falkorDb.QueryAsync(
-                tenantId,
+            await falkorDb.SelectGraph(tenantId).QueryAsync(
                 "CREATE (n:TestNode {id: $id, data: $data})",
                 new Dictionary<string, object>
                 {
@@ -174,7 +173,7 @@ public sealed class TenantDeletionIntegrationTests
         }
 
         // Verify nodes were created
-        ResultSet countResult = await falkorDb.QueryAsync(tenantId, "MATCH (n) RETURN count(n) AS cnt");
+        ResultSet countResult = await falkorDb.SelectGraph(tenantId).QueryAsync("MATCH (n) RETURN count(n) AS cnt");
         long preDeleteCount = ReadCount(countResult);
         preDeleteCount.ShouldBeGreaterThanOrEqualTo(nodeCount);
 
@@ -187,7 +186,7 @@ public sealed class TenantDeletionIntegrationTests
         // Verify tenant is gone and graph has no data
         try
         {
-            ResultSet postDeleteResult = await falkorDb.QueryAsync(tenantId, "MATCH (n) RETURN count(n) AS cnt");
+            ResultSet postDeleteResult = await falkorDb.SelectGraph(tenantId).QueryAsync("MATCH (n) RETURN count(n) AS cnt");
             ReadCount(postDeleteResult).ShouldBe(0);
         }
         catch (RedisServerException)
@@ -418,8 +417,7 @@ public sealed class TenantDeletionIntegrationTests
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            ResultSet result = await falkorDb.QueryAsync(
-                tenantId,
+            ResultSet result = await falkorDb.SelectGraph(tenantId).QueryAsync(
                 "MATCH (:Case {id: $caseId})-[r:CONTAINS]->(:MemoryUnit) RETURN count(r) AS cnt",
                 new Dictionary<string, object> { ["caseId"] = caseId });
 
@@ -437,8 +435,7 @@ public sealed class TenantDeletionIntegrationTests
     private async Task<string> GetFirstMemoryUnitIdAsync(string tenantId, string caseId)
     {
         FalkorDB falkorDb = new(_fixture.FalkorDbConnection.GetDatabase());
-        ResultSet result = await falkorDb.QueryAsync(
-            tenantId,
+        ResultSet result = await falkorDb.SelectGraph(tenantId).QueryAsync(
             "MATCH (:Case {id: $caseId})-[:CONTAINS]->(m:MemoryUnit) RETURN m.id AS muId",
             new Dictionary<string, object> { ["caseId"] = caseId });
 

@@ -46,7 +46,7 @@ internal sealed class DeleteMemoryUnitProjectionActivity(
         await Task.WhenAll(
             db.KeyDeleteAsync(semanticKeys),
             db.KeyDeleteAsync(nlVecKey),
-            falkor.QueryAsync(tenantId, graphQuery, graphParams)).ConfigureAwait(false);
+            falkor.SelectGraph(tenantId).QueryAsync(graphQuery, graphParams)).ConfigureAwait(false);
         await db.KeyDeleteAsync(muKey).ConfigureAwait(false);
     }
 

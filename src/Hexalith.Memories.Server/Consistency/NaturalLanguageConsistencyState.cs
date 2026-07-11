@@ -42,11 +42,6 @@ internal static class NaturalLanguageConsistencyState
         return NaturalLanguageEmbeddingStatus.NotApplicable;
     }
 
-    public static bool HasIndexedNaturalLanguageGap(
-        NaturalLanguageEmbeddingStatus status,
-        bool naturalLanguageSemanticPresent)
-        => status == NaturalLanguageEmbeddingStatus.Indexed && !naturalLanguageSemanticPresent;
-
     public static string? BuildConsistencyNote(
         NaturalLanguageEmbeddingStatus status,
         bool naturalLanguageSemanticPresent)

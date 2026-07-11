@@ -37,11 +37,11 @@ internal sealed class DeleteCaseProjectionActivity(
                 db.KeyDeleteAsync(muKey),
                 db.KeyDeleteAsync(semanticKeys),
                 db.KeyDeleteAsync(nlVecKey)).ConfigureAwait(false);
-            await falkor.QueryAsync(input.TenantId, graphQuery, graphParams).ConfigureAwait(false);
+            await falkor.SelectGraph(input.TenantId).QueryAsync(graphQuery, graphParams).ConfigureAwait(false);
         }
 
         (string caseDelQuery, IDictionary<string, object> caseDelParams) = graphQueryBuilder.BuildDeleteCaseNode(input.CaseId);
-        await falkor.QueryAsync(input.TenantId, caseDelQuery, caseDelParams).ConfigureAwait(false);
+        await falkor.SelectGraph(input.TenantId).QueryAsync(caseDelQuery, caseDelParams).ConfigureAwait(false);
         await Task.WhenAll(
             db.KeyDeleteAsync($"{input.TenantId}:case:{input.CaseId}:members"),
             db.KeyDeleteAsync($"{input.TenantId}:case:{input.CaseId}:activity"),

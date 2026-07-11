@@ -605,49 +605,6 @@ internal static class IndexSchemaDefinitions
         return prefixes;
     }
 
-    /// <summary>Attempts a safe in-place index upgrade for a single missing TAG field.
-    /// Returns <see langword="true"/> only when the requested field is the sole schema difference and the
-    /// alter command was issued successfully.</summary>
-    /// <param name="db">The Redis database connection.</param>
-    /// <param name="indexName">The index to alter.</param>
-    /// <param name="actualFields">The fields currently present on the index.</param>
-    /// <param name="expectedFields">The fields the index should expose.</param>
-    /// <param name="fieldName">The TAG field to add.</param>
-    /// <returns><see langword="true"/> when the in-place upgrade ran.</returns>
-    public static bool TryUpgradeMissingTagField(
-        IDatabase db,
-        string indexName,
-        IReadOnlySet<string> actualFields,
-        IReadOnlyCollection<string> expectedFields,
-        string fieldName)
-    {
-        ArgumentNullException.ThrowIfNull(db);
-        ArgumentException.ThrowIfNullOrWhiteSpace(indexName);
-        ArgumentNullException.ThrowIfNull(actualFields);
-        ArgumentNullException.ThrowIfNull(expectedFields);
-        ArgumentException.ThrowIfNullOrWhiteSpace(fieldName);
-
-        HashSet<string> expected = new(expectedFields, StringComparer.OrdinalIgnoreCase);
-        if (!expected.Contains(fieldName) || actualFields.Contains(fieldName))
-        {
-            return false;
-        }
-
-        if (actualFields.Any(field => !expected.Contains(field)))
-        {
-            return false;
-        }
-
-        List<string> missing = expected.Where(field => !actualFields.Contains(field)).ToList();
-        if (missing.Count != 1 || !string.Equals(missing[0], fieldName, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        db.Execute("FT.ALTER", indexName, "SCHEMA", "ADD", fieldName, "TAG");
-        return true;
-    }
-
     /// <summary>Attempts a safe in-place index upgrade for known missing TAG fields.</summary>
     /// <param name="db">The Redis database connection.</param>
     /// <param name="indexName">The index to alter.</param>

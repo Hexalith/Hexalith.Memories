@@ -28,14 +28,6 @@ namespace Hexalith.Memories.Aspire;
 internal static class RepositoryProjectPaths
 {
     /// <summary>
-    /// Builds an absolute path to a file located under the consuming repository root.
-    /// </summary>
-    /// <param name="path">Path segments, relative to the repository root, ending in the target file.</param>
-    /// <returns>The combined path rooted at the repository root.</returns>
-    public static string GetProjectPath(params string[] path)
-        => Path.Combine(GetRepositoryRoot(), Path.Combine(path));
-
-    /// <summary>
     /// Resolves the on-disk path to a project file inside a sibling Hexalith platform module, probing every
     /// checkout layout in the same order as the <c>$(Hexalith*Root)</c> auto-detection in
     /// <c>Directory.Build.props</c>, so the launched project path matches the build-time

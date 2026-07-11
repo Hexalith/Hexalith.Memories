@@ -43,7 +43,7 @@ public sealed partial class ProvisionFalkorDbActivity : WorkflowActivity<TenantP
 
         // Write+delete forces graph persistence while leaving it empty.
         // A read-only query like RETURN 1 may not persist the graph in FalkorDB.
-        await falkor.QueryAsync(graphId, "CREATE (n:_SystemInit {ts: timestamp()}) WITH n DELETE n RETURN 1")
+        await falkor.SelectGraph(graphId).QueryAsync("CREATE (n:_SystemInit {ts: timestamp()}) WITH n DELETE n RETURN 1")
             .ConfigureAwait(false);
 
         LogGraphCreated(_logger, graphId, input.TenantId);

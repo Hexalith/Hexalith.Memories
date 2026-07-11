@@ -211,11 +211,6 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     }
 
     /// <inheritdoc/>
-    [Obsolete("Use the 2-arg overload and pass WorkflowContext.CurrentUtcDateTime. The 1-arg form samples wall-clock time internally and is non-deterministic under workflow replay.")]
-    public (string Query, IDictionary<string, object> Parameters) BuildMergeStubNode(string memoryUnitId)
-        => BuildMergeStubNode(memoryUnitId, DateTimeOffset.UtcNow);
-
-    /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildMergeStubNode(
         string memoryUnitId,
         DateTimeOffset stubCreatedAt)

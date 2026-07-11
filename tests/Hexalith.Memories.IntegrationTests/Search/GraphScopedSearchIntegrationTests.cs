@@ -99,7 +99,7 @@ public class GraphScopedSearchIntegrationTests
         (string muQuery, IDictionary<string, object> muParams) = _builder.BuildMergeMemoryUnitNode(
             "mu-isolated", "case-iso", "isolated content", "hash-iso",
             "file:///isolated.txt", SourceType.File, "provider", 3, "test@example.com", DateTimeOffset.UtcNow, "{}");
-        await falkor.QueryAsync(tenantId, muQuery, muParams);
+        await falkor.SelectGraph(tenantId).QueryAsync(muQuery, muParams);
         await SeedSyntacticHashAsync(tenantId, "mu-isolated", "isolated content");
 
         GraphScopedSearch service = CreateService();
@@ -220,7 +220,7 @@ public class GraphScopedSearchIntegrationTests
 
         // Create case node
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, caseQuery, caseParams);
+        await falkor.SelectGraph(tenantId).QueryAsync(caseQuery, caseParams);
 
         // Create 3 MUs and connect to case via CONTAINS
         foreach (string muId in new[] { "mu-sibling-1", "mu-sibling-2", "mu-sibling-3" })
@@ -228,7 +228,7 @@ public class GraphScopedSearchIntegrationTests
             await CreateMemoryUnitNodeAsync(falkor, tenantId, muId, caseId);
             (string edgeQuery, IDictionary<string, object> edgeParams) = _builder.BuildMergeEdge(
                 caseId, muId, EdgeType.Contains, EdgeTypeDefaults.Contains, EdgeOrigin.Explicit);
-            await falkor.QueryAsync(tenantId, edgeQuery, edgeParams);
+            await falkor.SelectGraph(tenantId).QueryAsync(edgeQuery, edgeParams);
             await SeedSyntacticHashAsync(tenantId, muId, $"Content for {muId}");
         }
 
@@ -748,7 +748,7 @@ public class GraphScopedSearchIntegrationTests
 
         // Create case node
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, caseQuery, caseParams);
+        await falkor.SelectGraph(tenantId).QueryAsync(caseQuery, caseParams);
 
         for (int i = 0; i < nodeIds.Length; i++)
         {
@@ -757,14 +757,14 @@ public class GraphScopedSearchIntegrationTests
             // CONTAINS edge: case → MU
             (string containsQ, IDictionary<string, object> containsP) = _builder.BuildMergeEdge(
                 caseId, nodeIds[i], EdgeType.Contains, EdgeTypeDefaults.Contains, EdgeOrigin.Explicit);
-            await falkor.QueryAsync(tenantId, containsQ, containsP);
+            await falkor.SelectGraph(tenantId).QueryAsync(containsQ, containsP);
 
             // CAUSED_BY edge to previous node
             if (i > 0)
             {
                 (string edgeQ, IDictionary<string, object> edgeP) = _builder.BuildMergeEdge(
                     nodeIds[i - 1], nodeIds[i], EdgeType.CausedBy, EdgeTypeDefaults.CausedBy, EdgeOrigin.Explicit);
-                await falkor.QueryAsync(tenantId, edgeQ, edgeP);
+                await falkor.SelectGraph(tenantId).QueryAsync(edgeQ, edgeP);
             }
         }
     }
@@ -775,14 +775,14 @@ public class GraphScopedSearchIntegrationTests
             muId, caseId, $"Content for {muId}", $"hash-{muId}",
             $"file:///{muId}.txt", SourceType.File, "provider", 3,
             "test@example.com", DateTimeOffset.UtcNow, "{}");
-        await falkor.QueryAsync(tenantId, q, p);
+        await falkor.SelectGraph(tenantId).QueryAsync(q, p);
     }
 
     private async Task CreateCausedByEdgeAsync(FalkorDB falkor, string tenantId, string sourceId, string targetId)
     {
         (string q, IDictionary<string, object> p) = _builder.BuildMergeEdge(
             sourceId, targetId, EdgeType.CausedBy, EdgeTypeDefaults.CausedBy, EdgeOrigin.Explicit);
-        await falkor.QueryAsync(tenantId, q, p);
+        await falkor.SelectGraph(tenantId).QueryAsync(q, p);
     }
 
     private async Task SeedSyntacticHashAsync(

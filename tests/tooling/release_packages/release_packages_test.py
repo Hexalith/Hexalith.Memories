@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Optional
@@ -82,6 +83,69 @@ def run_validator(
     )
 
 
+def create_package_set(
+    directory: Path,
+    *,
+    version: str = "1.2.3",
+    mcp_dependency_id: Optional[str] = "Hexalith.Memories.ServiceDefaults",
+    mcp_dependency_version: Optional[str] = None,
+    mcp_dependency_range: Optional[str] = None,
+    redis_dependency_id: Optional[str] = None,
+    service_defaults_prerelease_dependency_id: Optional[str] = None,
+) -> None:
+    inventory = load_canonical_inventory()
+    package_ids = [item["packageId"] for item in inventory["packages"]]
+
+    for package_id in package_ids:
+        dependency_rows: list[str] = []
+        if package_id == "Hexalith.Memories.Mcp" and mcp_dependency_id is not None:
+            dependency_version = mcp_dependency_version or version
+            dependency_range = mcp_dependency_range or f"[{dependency_version}, )"
+            dependency_rows.append(
+                f'        <dependency id="{mcp_dependency_id}" version="{dependency_range}" />'
+            )
+        if package_id == "Hexalith.Memories.Redis" and redis_dependency_id is not None:
+            dependency_rows.append(
+                f'        <dependency id="{redis_dependency_id}" version="[{version}, )" />'
+            )
+        if (
+            package_id == "Hexalith.Memories.ServiceDefaults"
+            and service_defaults_prerelease_dependency_id is not None
+        ):
+            dependency_rows.append(
+                f'        <dependency id="{service_defaults_prerelease_dependency_id}" version="[1.0.0-preview.1, )" />'
+            )
+
+        dependencies = ""
+        if dependency_rows:
+            dependencies = f"""
+    <dependencies>
+      <group targetFramework="net10.0">
+{chr(10).join(dependency_rows)}
+      </group>
+    </dependencies>"""
+
+        nuspec = f"""<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>{package_id}</id>
+    <version>{version}</version>
+    <authors>ITANEO</authors>
+    <license type="expression">MIT</license>
+    <projectUrl>https://github.com/Hexalith/Hexalith.Memories</projectUrl>
+    <description>Test package</description>
+    <tags>hexalith memories test</tags>
+    <repository type="git" url="https://github.com/Hexalith/Hexalith.Memories" />
+    <readme>README.md</readme>{dependencies}
+  </metadata>
+</package>
+"""
+        package_path = directory / f"{package_id}.{version}.nupkg"
+        with zipfile.ZipFile(package_path, "w") as archive:
+            archive.writestr(f"{package_id}.nuspec", nuspec)
+            archive.writestr("README.md", "# Test package\n")
+
+
 @unittest.skipUnless(has_pwsh(), "pwsh (PowerShell 7+) is required to exercise validate-release-packages.ps1")
 class ValidateReleasePackagesTests(unittest.TestCase):
     def assertValidatorFailsWith(
@@ -105,6 +169,201 @@ class ValidateReleasePackagesTests(unittest.TestCase):
         result = run_validator()
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("Release package validation passed.", result.stdout)
+
+    def test_mcp_service_defaults_dependency_at_release_version_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(package_directory)
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_mcp_service_defaults_dependency_must_match_release_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(package_directory, mcp_dependency_version="1.2.2")
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertValidatorFailsWith(
+                result,
+                "Hexalith.Memories.Mcp",
+                "Hexalith.Memories.ServiceDefaults",
+                "expected",
+                "exact version '1.2.3'",
+                "release range '[1.2.3, )'",
+            )
+
+    def test_internal_dependency_range_must_not_have_an_upper_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(
+                package_directory,
+                mcp_dependency_range="[1.2.3, 9.0.0)",
+            )
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertValidatorFailsWith(
+                result,
+                "Hexalith.Memories.Mcp",
+                "Hexalith.Memories.ServiceDefaults",
+                "expected",
+                "exact version '1.2.3'",
+                "release range '[1.2.3, )'",
+            )
+
+    def test_mcp_package_must_reference_service_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(package_directory, mcp_dependency_id=None)
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertValidatorFailsWith(
+                result,
+                "Hexalith.Memories.Mcp",
+                "must reference",
+                "Hexalith.Memories.ServiceDefaults",
+            )
+
+    def test_unapproved_internal_dependency_fails_loudly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(
+                package_directory,
+                mcp_dependency_id="Hexalith.Memories.Unpublished",
+            )
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertValidatorFailsWith(
+                result,
+                "Hexalith.Memories.Mcp",
+                "unexpected internal",
+                "dependency",
+                "Hexalith.Memories.Unpublished",
+            )
+
+    def test_generated_package_directory_rejects_duplicate_package_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(package_directory)
+            source = package_directory / "Hexalith.Memories.Contracts.1.2.3.nupkg"
+            shutil.copyfile(source, package_directory / "duplicate-contracts.1.2.3.nupkg")
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertValidatorFailsWith(
+                result,
+                "duplicate package IDs",
+                "Hexalith.Memories.Contracts",
+            )
+
+    def test_redis_compatibility_package_rejects_internal_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(
+                package_directory,
+                redis_dependency_id="Hexalith.Memories.Contracts",
+            )
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertValidatorFailsWith(
+                result,
+                "Hexalith.Memories.Redis",
+                "must not reference",
+                "internal Hexalith.Memories packages",
+                "Hexalith.Memories.Contracts",
+            )
+
+    def test_service_defaults_rejects_unexpected_prerelease_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(
+                package_directory,
+                service_defaults_prerelease_dependency_id="Example.Unexpected.Prerelease",
+            )
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertValidatorFailsWith(
+                result,
+                "Hexalith.Memories.ServiceDefaults",
+                "contains unexpected",
+                "prerelease dependencies",
+                "Example.Unexpected.Prerelease",
+            )
+
+    def test_service_defaults_allows_whitelisted_prerelease_dependency(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            package_directory = Path(temp)
+            create_package_set(
+                package_directory,
+                service_defaults_prerelease_dependency_id="OpenTelemetry.Instrumentation.StackExchangeRedis",
+            )
+
+            result = run_validator(package_directory=package_directory, version="1.2.3")
+
+            self.assertEqual(0, result.returncode, result.stderr)
+
+    @unittest.skipUnless(shutil.which("dotnet"), "dotnet is required to compile the Redis compatibility consumer")
+    def test_redis_compatibility_surface_compiles_with_warnings_as_errors(self) -> None:
+        redis_project = REPO_ROOT / "src" / "Hexalith.Memories.Redis" / "Hexalith.Memories.Redis.csproj"
+        with tempfile.TemporaryDirectory() as temp:
+            consumer_dir = Path(temp)
+            (consumer_dir / "CompatibilityConsumer.csproj").write_text(
+                f"""<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="{redis_project.as_posix()}" />
+  </ItemGroup>
+</Project>
+""",
+                encoding="utf-8",
+            )
+            (consumer_dir / "CompatibilityConsumer.cs").write_text(
+                """using System.Threading.Tasks;
+
+using Hexalith.Memories.Redis;
+using NFalkorDB;
+
+public static class CompatibilityConsumer
+{
+    public static Task<ResultSet> QueryAsync(FalkorDB client)
+        => client.QueryAsync("consumer-graph", "RETURN 1");
+
+    public static string Ports
+        => RedisPlaceholder.DefaultRedisPort + ":" + RedisPlaceholder.DefaultFalkorDbPort;
+}
+""",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    "dotnet",
+                    "build",
+                    str(consumer_dir / "CompatibilityConsumer.csproj"),
+                    "--configuration",
+                    "Release",
+                    "-m:1",
+                    "/nr:false",
+                    "-p:NuGetAudit=false",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stdout + "\n" + result.stderr)
 
     def test_misspelled_top_level_field_is_rejected_by_schema(self) -> None:
         canonical = load_canonical_inventory()

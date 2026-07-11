@@ -25,7 +25,7 @@ internal sealed class ProjectAnnotationGraphActivity(
         (string stubQuery, IDictionary<string, object> stubParams) = graphQueryBuilder.BuildMergeStubNode(
             input.AnnotationMemoryUnitId,
             DateTimeOffset.UtcNow);
-        await falkor.QueryAsync(input.TenantId, stubQuery, stubParams).ConfigureAwait(false);
+        await falkor.SelectGraph(input.TenantId).QueryAsync(stubQuery, stubParams).ConfigureAwait(false);
 
         (string edgeQuery, IDictionary<string, object> edgeParams) = graphQueryBuilder.BuildMergeEdge(
             input.AnnotationMemoryUnitId,
@@ -33,7 +33,7 @@ internal sealed class ProjectAnnotationGraphActivity(
             EdgeType.Annotates,
             EdgeTypeDefaults.Annotates,
             EdgeOrigin.Explicit);
-        await falkor.QueryAsync(input.TenantId, edgeQuery, edgeParams).ConfigureAwait(false);
+        await falkor.SelectGraph(input.TenantId).QueryAsync(edgeQuery, edgeParams).ConfigureAwait(false);
         return true;
     }
 }

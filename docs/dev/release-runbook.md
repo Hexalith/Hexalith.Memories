@@ -33,6 +33,9 @@ a workstation.
 - `tools/validate-release-packages.ps1` is the canonical package verifier (used both before
   semantic-release runs and inside `pack-release.ps1` after pack).
 - `tools/release-packages.json` is the approved package inventory.
+- The current inventory contains nine approved packages: Aspire, Contracts, Client.Rest, Redis,
+  Cli, Mcp, ServiceDefaults, EventStore, and Telemetry. The historical `v1.2.0` evidence below
+  remains a record of the seven packages published by that release.
 - `NUGET_API_KEY` is provided only through `secrets.NUGET_API_KEY` in GitHub Actions and is forwarded
   to the release job as an environment variable; it is never written to a file in the repo.
 

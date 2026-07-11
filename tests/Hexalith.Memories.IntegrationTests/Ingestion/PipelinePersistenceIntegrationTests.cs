@@ -808,8 +808,7 @@ public sealed class PipelinePersistenceIntegrationTests
     private async Task<long> CountGraphNodesAsync(string tenantId, string caseId, string sourceUri)
     {
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
-        ResultSet result = await falkor.QueryAsync(
-            tenantId,
+        ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(
             "MATCH (m:MemoryUnit {caseId: $caseId, sourceUri: $sourceUri}) RETURN count(m) as cnt",
             new Dictionary<string, object>
             {

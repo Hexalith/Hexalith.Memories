@@ -188,7 +188,7 @@ internal sealed class BenchmarkSeeder
 
         // Create case node (all memory units share one case)
         (string caseQuery, IDictionary<string, object> caseParams) = builder.BuildMergeCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, caseQuery, caseParams).ConfigureAwait(false);
+        await falkor.SelectGraph(tenantId).QueryAsync(caseQuery, caseParams).ConfigureAwait(false);
 
         // Create memory unit nodes
         foreach (BenchmarkMemoryUnit mu in corpus.MemoryUnits)
@@ -205,12 +205,12 @@ internal sealed class BenchmarkSeeder
                 "benchmark-seeder",
                 SeedTimestamp,
                 "{}");
-            await falkor.QueryAsync(tenantId, nodeQuery, nodeParams).ConfigureAwait(false);
+            await falkor.SelectGraph(tenantId).QueryAsync(nodeQuery, nodeParams).ConfigureAwait(false);
 
             // Contains edge: Case → MemoryUnit
             (string containsQuery, IDictionary<string, object> containsParams) = builder.BuildMergeEdge(
                 caseId, mu.Id, EdgeType.Contains, EdgeTypeDefaults.Contains, EdgeOrigin.Explicit);
-            await falkor.QueryAsync(tenantId, containsQuery, containsParams).ConfigureAwait(false);
+            await falkor.SelectGraph(tenantId).QueryAsync(containsQuery, containsParams).ConfigureAwait(false);
         }
 
         // Create relationship edges
@@ -218,7 +218,7 @@ internal sealed class BenchmarkSeeder
         {
             (string edgeQuery, IDictionary<string, object> edgeParams) = builder.BuildMergeEdge(
                 edge.SourceId, edge.TargetId, edge.EdgeType, edge.Confidence, edge.Origin);
-            await falkor.QueryAsync(tenantId, edgeQuery, edgeParams).ConfigureAwait(false);
+            await falkor.SelectGraph(tenantId).QueryAsync(edgeQuery, edgeParams).ConfigureAwait(false);
         }
     }
 
@@ -256,7 +256,7 @@ internal sealed class BenchmarkSeeder
         FalkorDB falkor = new(falkorDb.GetDatabase());
         GraphQueryBuilder builder = new();
         (string countQuery, IDictionary<string, object> countParams) = builder.BuildCountMemoryUnits();
-        ResultSet result = await falkor.QueryAsync(tenantId, countQuery, countParams).ConfigureAwait(false);
+        ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(countQuery, countParams).ConfigureAwait(false);
 
         long graphCount = 0;
         foreach (Record record in result)

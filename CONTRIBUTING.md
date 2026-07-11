@@ -349,22 +349,25 @@ The approved NuGet package inventory is checked in at `tools/release-packages.js
 
 | Package | Publish approved | Notes |
 | --- | --- | --- |
+| `Hexalith.Memories.Aspire` | Yes | Aspire hosting extensions |
 | `Hexalith.Memories.Contracts` | Yes | Shared API contracts |
 | `Hexalith.Memories.Client.Rest` | Yes | Typed REST client |
-| `Hexalith.Memories.Redis` | Yes | Redis, RediSearch, and FalkorDB adapters |
+| `Hexalith.Memories.Redis` | Yes | Compatibility-only Redis and FalkorDB surface |
 | `Hexalith.Memories.Cli` | Yes | Global .NET tool |
 | `Hexalith.Memories.Mcp` | Yes | MCP server package |
+| `Hexalith.Memories.ServiceDefaults` | Yes | Shared health, resilience, discovery, and telemetry defaults |
 | `Hexalith.Memories.EventStore` | Yes | EventStore integration package |
 | `Hexalith.Memories.Telemetry` | Yes | Shared telemetry constants |
 | `Hexalith.Memories.Server` | No | Runtime service |
 | `Hexalith.Memories.AppHost` | No | Aspire host |
-| `Hexalith.Memories.ServiceDefaults` | No | Aspire service defaults |
+| `Hexalith.Memories.Web` | No | Web application host |
 
 Do not add a project to the release package set by changing only `<IsPackable>true</IsPackable>`.
 Update `tools/release-packages.json`, package metadata, README packaging, and validation evidence in
 the same change.
 
-Every approved package must declare package ID, description, authors, company, license, project URL,
+The inventory currently contains nine approved packages. Every approved package must declare package
+ID, description, authors, company, license, project URL,
 repository URL, tags, and `PackageReadmeFile`. Package dependency versions stay in
 `Directory.Packages.props`; do not add dependency versions to individual project files.
 

@@ -14,9 +14,6 @@ using Microsoft.AspNetCore.Http;
 /// <summary>Creates common endpoint error envelopes and HTTP results without changing the public wire shape.</summary>
 internal static class ErrorResults
 {
-    /// <summary>The stable retry-after value used by search backend degradation responses.</summary>
-    public const int SearchBackendRetryAfterSeconds = 5;
-
     /// <summary>Creates the common invalid tenant identifier envelope.</summary>
     /// <param name="message">Optional message to preserve a caller-specific validation reason.</param>
     /// <returns>The error response.</returns>
@@ -78,17 +75,6 @@ internal static class ErrorResults
         string code = "INVALID_INPUT")
         => new(code, message, suggestion);
 
-    /// <summary>Creates an invalid input HTTP result.</summary>
-    /// <param name="message">The validation message.</param>
-    /// <param name="suggestion">The recovery suggestion.</param>
-    /// <param name="code">The error code.</param>
-    /// <returns>A <c>400 Bad Request</c> result.</returns>
-    public static IResult InvalidInputResult(
-        string message,
-        string suggestion,
-        string code = "INVALID_INPUT")
-        => Results.BadRequest(InvalidInput(message, suggestion, code));
-
     /// <summary>Creates a not-found envelope.</summary>
     /// <param name="code">The error code.</param>
     /// <param name="message">The error message.</param>
@@ -97,14 +83,6 @@ internal static class ErrorResults
     public static ErrorResponse NotFound(string code, string message, string suggestion)
         => new(code, message, suggestion);
 
-    /// <summary>Creates a not-found HTTP result.</summary>
-    /// <param name="code">The error code.</param>
-    /// <param name="message">The error message.</param>
-    /// <param name="suggestion">The recovery suggestion.</param>
-    /// <returns>A <c>404 Not Found</c> result.</returns>
-    public static IResult NotFoundResult(string code, string message, string suggestion)
-        => Results.NotFound(NotFound(code, message, suggestion));
-
     /// <summary>Creates a conflict envelope.</summary>
     /// <param name="code">The error code.</param>
     /// <param name="message">The error message.</param>
@@ -112,14 +90,6 @@ internal static class ErrorResults
     /// <returns>The error response.</returns>
     public static ErrorResponse Conflict(string code, string message, string suggestion)
         => new(code, message, suggestion);
-
-    /// <summary>Creates a conflict HTTP result.</summary>
-    /// <param name="code">The error code.</param>
-    /// <param name="message">The error message.</param>
-    /// <param name="suggestion">The recovery suggestion.</param>
-    /// <returns>A <c>409 Conflict</c> result.</returns>
-    public static IResult ConflictResult(string code, string message, string suggestion)
-        => Results.Conflict(Conflict(code, message, suggestion));
 
     /// <summary>Creates the common DAPR unavailable envelope.</summary>
     /// <param name="message">Optional message to preserve an endpoint-specific dependency description.</param>

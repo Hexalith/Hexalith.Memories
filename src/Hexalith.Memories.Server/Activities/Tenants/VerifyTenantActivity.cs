@@ -87,7 +87,7 @@ public sealed partial class VerifyTenantActivity : WorkflowActivity<TenantProvis
         try
         {
             NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
-            NFalkorDB.ResultSet result = await falkor.QueryAsync(input.TenantId, "MATCH (n) RETURN count(n)")
+            NFalkorDB.ResultSet result = await falkor.SelectGraph(input.TenantId).QueryAsync("MATCH (n) RETURN count(n)")
                 .ConfigureAwait(false);
 
             // Graph exists and is accessible -- verify it's empty

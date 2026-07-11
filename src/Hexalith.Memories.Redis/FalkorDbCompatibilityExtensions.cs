@@ -5,21 +5,9 @@
 
 // Intentionally declared in the global namespace.
 //
-// Story 15.6 code review flagged "global-namespace pollution" as a smell, and the standard fix is to
-// declare `namespace Hexalith.Memories.Redis;` here. That would break ~15 call sites in
-// `Hexalith.Memories.Server.Activities.*` that invoke `falkor.QueryAsync(graphId, …)` without an
-// explicit `using Hexalith.Memories.Redis;` and rely on global-namespace extension resolution to bridge
-// the pre-`NFalkorDB` 1.0.6 graph-id-bound API shape.
-//
-// Touching those 15 caller files would breach Story 15.6's File Scope (only `Hexalith.Memories.Redis/`,
-// `Hexalith.Memories.Server/Ingestion/ContentExtractionClient.cs`, `Hexalith.Memories.AppHost/`,
-// `Hexalith.Memories.ServiceDefaults/`, and the test trees are allowed). The compatibility shim's
-// class name (`FalkorDbCompatibilityExtensions`) is sufficiently distinctive that the practical
-// collision risk against downstream `Hexalith.Memories.Redis` consumers is near-zero.
-//
-// Re-open trigger for re-scoping: a downstream consumer reports a name collision against this class
-// in the global namespace, OR server code migrates to the post-1.0.6 `SelectGraph().QueryAsync()`
-// shape and this shim becomes unused (delete the file rather than rehome it).
+// This type remains in the global namespace solely to preserve source compatibility for published
+// package consumers. In-repo callers use NFalkorDB's native SelectGraph().QueryAsync() API. Removal
+// requires an owned breaking major release after downstream consumers have migrated.
 using NFalkorDB;
 
 using StackExchange.Redis;

@@ -394,6 +394,11 @@ if (-not [string]::IsNullOrWhiteSpace($PackageDirectory)) {
 
     $metadata = @($packages | ForEach-Object { Get-NuspecMetadata -Package $_ })
     $actualPackageIds = @($metadata | ForEach-Object { $_.Id })
+    $duplicateActualPackageIds = @($actualPackageIds | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    if ($duplicateActualPackageIds.Count -gt 0) {
+        throw "Generated package directory contains duplicate package IDs: $($duplicateActualPackageIds -join ', ')"
+    }
+
     Assert-EqualSet -Expected $expectedIds -Actual $actualPackageIds -Label "Generated NuGet package inventory"
 
     foreach ($item in $metadata) {
@@ -407,22 +412,63 @@ if (-not [string]::IsNullOrWhiteSpace($PackageDirectory)) {
             }
         }
 
-        foreach ($dependency in @($item.Dependencies | Where-Object { $_.Id -in $expectedIds })) {
-            if ([string]::IsNullOrWhiteSpace($normalizedVersion)) {
-                continue
+        foreach ($dependency in @($item.Dependencies | Where-Object {
+            $_.Id.StartsWith('Hexalith.Memories.', [System.StringComparison]::OrdinalIgnoreCase)
+        })) {
+            if ($dependency.Id -cnotin $expectedIds) {
+                throw "Package '$($item.Id)' references unexpected internal dependency '$($dependency.Id)'; every Hexalith.Memories.* dependency must be present in the approved release inventory."
             }
 
-            # Internal cross-package dependency versions must equal the release version exactly.
-            # NuGet emits a dependency like '[1.0.0, )' (lower-bound inclusive range) by default;
-            # parse that explicitly so '1.0.0' is not treated as matching '1.0.10' by substring.
+            # Internal cross-package dependencies must use exactly the lower-bound range emitted by
+            # MSBuild for the current release. Reject wider upper bounds and bare versions so the
+            # validator cannot mistake an arbitrary compatible range for the repository's pinned shape.
             $dependencyVersion = $dependency.Version
-            $rangeMatch = [regex]::Match($dependencyVersion, '^\s*\[\s*([^,\s\]]+)')
-            $exactVersion = if ($rangeMatch.Success) { $rangeMatch.Groups[1].Value } else { $dependencyVersion.Trim() }
+            $expectedDependencyVersion = if ([string]::IsNullOrWhiteSpace($normalizedVersion)) { $item.Version } else { $normalizedVersion }
+            $expectedRangePattern = '^\s*\[\s*' + [regex]::Escape($expectedDependencyVersion) + '\s*,\s*\)\s*$'
+            $isExactVersion = $dependencyVersion.Trim() -ceq $expectedDependencyVersion
+            $isReleaseLowerBound = $dependencyVersion -cmatch $expectedRangePattern
 
-            if ($exactVersion -ne $normalizedVersion) {
-                throw "Package '$($item.Id)' references internal dependency '$($dependency.Id)' with version '$dependencyVersion' (resolved exact='$exactVersion'), expected '$normalizedVersion'."
+            if (-not $isExactVersion -and -not $isReleaseLowerBound) {
+                throw "Package '$($item.Id)' references internal dependency '$($dependency.Id)' with version '$dependencyVersion'; expected exact version '$expectedDependencyVersion' or release range '[$expectedDependencyVersion, )'."
             }
         }
+    }
+
+    $redisMetadata = @($metadata | Where-Object { $_.Id -ceq 'Hexalith.Memories.Redis' })
+    if ($redisMetadata.Count -ne 1) {
+        throw "Generated package inventory must contain exactly one Hexalith.Memories.Redis package."
+    }
+
+    $redisInternalDependencies = @($redisMetadata[0].Dependencies | Where-Object {
+        $_.Id.StartsWith('Hexalith.Memories.', [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($redisInternalDependencies.Count -gt 0) {
+        throw "Compatibility package 'Hexalith.Memories.Redis' must not reference internal Hexalith.Memories packages: $($redisInternalDependencies.Id -join ', ')"
+    }
+
+    $serviceDefaultsMetadata = @($metadata | Where-Object { $_.Id -ceq 'Hexalith.Memories.ServiceDefaults' })
+    if ($serviceDefaultsMetadata.Count -ne 1) {
+        throw "Generated package inventory must contain exactly one Hexalith.Memories.ServiceDefaults package."
+    }
+
+    $unexpectedPrereleaseDependencies = @($serviceDefaultsMetadata[0].Dependencies | Where-Object {
+        $_.Version.Contains('-', [System.StringComparison]::Ordinal) -and
+        $_.Id -cne 'OpenTelemetry.Instrumentation.StackExchangeRedis'
+    })
+    if ($unexpectedPrereleaseDependencies.Count -gt 0) {
+        throw "Package 'Hexalith.Memories.ServiceDefaults' contains unexpected prerelease dependencies hidden by its scoped NU5104 suppression: $($unexpectedPrereleaseDependencies.Id -join ', ')"
+    }
+
+    $mcpMetadata = @($metadata | Where-Object { $_.Id -ceq 'Hexalith.Memories.Mcp' })
+    if ($mcpMetadata.Count -ne 1) {
+        throw "Generated package inventory must contain exactly one Hexalith.Memories.Mcp package."
+    }
+
+    $serviceDefaultsDependencies = @($mcpMetadata[0].Dependencies | Where-Object {
+        $_.Id -ceq 'Hexalith.Memories.ServiceDefaults'
+    })
+    if ($serviceDefaultsDependencies.Count -ne 1) {
+        throw "Package 'Hexalith.Memories.Mcp' must reference approved internal dependency 'Hexalith.Memories.ServiceDefaults' exactly once."
     }
 }
 

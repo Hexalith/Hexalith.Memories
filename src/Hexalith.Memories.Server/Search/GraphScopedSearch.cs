@@ -89,7 +89,7 @@ public sealed partial class GraphScopedSearch
         try
         {
             long traversalStart = Stopwatch.GetTimestamp();
-            ResultSet resultSet = await falkor.QueryAsync(graphId, cypherQuery, parameters, timeout: GraphOperationTimeoutMilliseconds)
+            ResultSet resultSet = await falkor.SelectGraph(graphId).QueryAsync(cypherQuery, parameters, timeout: GraphOperationTimeoutMilliseconds)
                 .WaitAsync(GraphOperationTimeout, cancellationToken)
                 .ConfigureAwait(false);
             traversalElapsedMs = (long)Stopwatch.GetElapsedTime(traversalStart).TotalMilliseconds;
@@ -205,7 +205,7 @@ public sealed partial class GraphScopedSearch
         CancellationToken cancellationToken)
     {
         (string countQuery, IDictionary<string, object> countParameters) = _graphQueryBuilder.BuildCountMemoryUnits();
-        ResultSet resultSet = await falkor.QueryAsync(graphId, countQuery, countParameters, timeout: GraphOperationTimeoutMilliseconds)
+        ResultSet resultSet = await falkor.SelectGraph(graphId).QueryAsync(countQuery, countParameters, timeout: GraphOperationTimeoutMilliseconds)
             .WaitAsync(GraphOperationTimeout, cancellationToken)
             .ConfigureAwait(false);
 

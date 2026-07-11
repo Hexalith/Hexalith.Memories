@@ -1,7 +1,5 @@
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
-#pragma warning disable CS0618 // `DidNotReceive().BuildMergeStubNode(string)` intentionally asserts the obsolete 1-arg overload was not invoked.
-
 using System.Text.Json;
 
 using Dapr.Workflow;
@@ -125,7 +123,7 @@ public class IndexGraphActivityTests
             Arg.Any<string>(), Arg.Any<string>(), EdgeType.CorrelatedWith,
             Arg.Any<float>(), Arg.Any<EdgeOrigin>());
 
-        builder.DidNotReceive().BuildMergeStubNode(Arg.Any<string>());
+        builder.DidNotReceive().BuildMergeStubNode(Arg.Any<string>(), Arg.Any<DateTimeOffset>());
     }
 
     [Fact]
@@ -245,7 +243,6 @@ public class IndexGraphActivityTests
             "correlation-root-1", "correlation-root-1", EdgeType.CorrelatedWith,
             Arg.Any<float>(), Arg.Any<EdgeOrigin>());
 
-        builder.DidNotReceive().BuildMergeStubNode("correlation-root-1");
         builder.DidNotReceive().BuildMergeStubNode("correlation-root-1", Arg.Any<DateTimeOffset>());
     }
 
@@ -352,8 +349,6 @@ public class IndexGraphActivityTests
                 Arg.Any<float>(), Arg.Any<EdgeOrigin>())
             .Returns(("MATCH (s), (t) MERGE (s)-[:EDGE]->(t)", new Dictionary<string, object> { ["sourceId"] = "mock" }));
 
-        builder.BuildMergeStubNode(Arg.Any<string>())
-            .Returns(("MERGE (m:MemoryUnit {id: $id})", new Dictionary<string, object> { ["id"] = "mock" }));
         builder.BuildMergeStubNode(Arg.Any<string>(), Arg.Any<DateTimeOffset>())
             .Returns(("MERGE (m:MemoryUnit {id: $id}) ON CREATE SET m.isStub = true, m.stubCreatedAt = $stubCreatedAt",
                 new Dictionary<string, object> { ["id"] = "mock", ["stubCreatedAt"] = "2026-04-23T10:00:00Z" }));

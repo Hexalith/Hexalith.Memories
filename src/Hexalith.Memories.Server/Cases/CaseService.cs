@@ -267,7 +267,7 @@ internal sealed class CaseService
     {
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildListAnnotationIds(memoryUnitId);
-        NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+        NFalkorDB.ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).ConfigureAwait(false);
 
         List<string> annotationIds = result
             .Select(record => record.Values[0].ToString())
@@ -659,7 +659,7 @@ internal sealed class CaseService
 
         // Cascade: delete annotations before deleting the target MU
         (string listQuery, IDictionary<string, object> listParams) = _graphQueryBuilder.BuildListAnnotationIds(memoryUnitId);
-        NFalkorDB.ResultSet annotationResult = await falkor.QueryAsync(tenantId, listQuery, listParams).ConfigureAwait(false);
+        NFalkorDB.ResultSet annotationResult = await falkor.SelectGraph(tenantId).QueryAsync(listQuery, listParams).ConfigureAwait(false);
         List<string> annotationIds = annotationResult
             .Select(record => record.Values[0].ToString())
             .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -706,7 +706,7 @@ internal sealed class CaseService
         // Find all memory unit IDs from graph
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
         (string listQuery, IDictionary<string, object> listParams) = _graphQueryBuilder.BuildListCaseMemoryUnitIds(caseId);
-        NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, listQuery, listParams).ConfigureAwait(false);
+        NFalkorDB.ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(listQuery, listParams).ConfigureAwait(false);
         List<string> memoryUnitIds = result
             .Select(record => record.Values[0].ToString())
             .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -840,7 +840,7 @@ internal sealed class CaseService
         try
         {
             (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildCountCaseMemoryUnits(caseId);
-            NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+            NFalkorDB.ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).ConfigureAwait(false);
             if (result.Count > 0)
             {
                 NFalkorDB.Record record = result.First();
@@ -906,7 +906,7 @@ internal sealed class CaseService
 
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildCheckMemoryUnitExists(memoryUnitId);
-        NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+        NFalkorDB.ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).ConfigureAwait(false);
         return result.Count > 0;
     }
 

@@ -244,7 +244,7 @@ public sealed class ConfidencePromotionIntegrationTests
     private async Task CreateCaseAsync(FalkorDB falkor, string tenantId, string caseId)
     {
         (string query, IDictionary<string, object> parameters) = _builder.BuildMergeCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 
     private async Task CreateMemoryUnitAsync(FalkorDB falkor, string tenantId, string memoryUnitId, string caseId)
@@ -262,7 +262,7 @@ public sealed class ConfidencePromotionIntegrationTests
             DateTimeOffset.UtcNow,
             "{}");
 
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 
     private async Task CreateEdgeAsync(
@@ -281,6 +281,6 @@ public sealed class ConfidencePromotionIntegrationTests
             confidence,
             origin);
 
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 }

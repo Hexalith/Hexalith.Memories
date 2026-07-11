@@ -165,7 +165,7 @@ public sealed partial class EnumerateMemoryUnitIdsActivity
             (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildEnumerateMemoryUnitIds();
 
             ResultSet result = await falkor
-                .QueryAsync(tenantId, query, parameters)
+                .SelectGraph(tenantId).QueryAsync(query, parameters)
                 .WaitAsync(GraphOperationTimeout, ct)
                 .ConfigureAwait(false);
 

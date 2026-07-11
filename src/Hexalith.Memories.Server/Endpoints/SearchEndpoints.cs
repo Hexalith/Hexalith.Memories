@@ -1204,7 +1204,7 @@ internal static class SearchEndpoints
         {
             (string query, IDictionary<string, object> parameters) = graphQueryBuilder.BuildBatchCountAnnotations(memoryUnitIds);
             NFalkorDB.FalkorDB falkor = new(falkorDb.GetDatabase());
-            NFalkorDB.ResultSet countResult = await falkor.QueryAsync(tenantId, query, parameters)
+            NFalkorDB.ResultSet countResult = await falkor.SelectGraph(tenantId).QueryAsync(query, parameters)
                 .WaitAsync(TimeSpan.FromSeconds(10), cancellationToken)
                 .ConfigureAwait(false);
 

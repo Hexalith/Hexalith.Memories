@@ -206,7 +206,7 @@ public sealed partial class TenantMetricsService
         {
             NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
             NFalkorDB.ResultSet result = await falkor
-                .QueryAsync(tenantId, "MATCH (n) RETURN count(n)")
+                .SelectGraph(tenantId).QueryAsync("MATCH (n) RETURN count(n)")
                 .ConfigureAwait(false);
 
             NFalkorDB.Record? firstRecord = result.FirstOrDefault();

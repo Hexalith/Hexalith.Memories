@@ -19,6 +19,7 @@ PACKAGE_IDS = [
     "Hexalith.Memories.Redis",
     "Hexalith.Memories.Cli",
     "Hexalith.Memories.Mcp",
+    "Hexalith.Memories.ServiceDefaults",
     "Hexalith.Memories.EventStore",
     "Hexalith.Memories.Telemetry",
 ]
@@ -26,6 +27,14 @@ PACKAGE_IDS = [
 
 def create_package(directory: Path, package_id: str, version: str) -> Path:
     package = directory / f"{package_id}.{version}.nupkg"
+    dependencies = ""
+    if package_id == "Hexalith.Memories.Mcp":
+        dependencies = f"""
+    <dependencies>
+      <group targetFramework="net10.0">
+        <dependency id="Hexalith.Memories.ServiceDefaults" version="[{version}, )" />
+      </group>
+    </dependencies>"""
     nuspec = f"""<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
   <metadata>
@@ -37,7 +46,7 @@ def create_package(directory: Path, package_id: str, version: str) -> Path:
     <projectUrl>https://github.com/Hexalith/Hexalith.Memories</projectUrl>
     <repository type="git" url="https://github.com/Hexalith/Hexalith.Memories" />
     <tags>hexalith memories test</tags>
-    <readme>README.md</readme>
+    <readme>README.md</readme>{dependencies}
   </metadata>
 </package>
 """

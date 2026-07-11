@@ -227,7 +227,7 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
             _graphQueryBuilder.BuildCheckMemoryUnitExists(memoryUnitId);
 
         ResultSet existsResult = await falkor
-            .QueryAsync(tenantId, existsQuery, existsParams)
+            .SelectGraph(tenantId).QueryAsync(existsQuery, existsParams)
             .WaitAsync(GraphOperationTimeout, ct)
             .ConfigureAwait(false);
 
@@ -240,7 +240,7 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
             _graphQueryBuilder.BuildCountMemoryUnitEdges(memoryUnitId);
 
         ResultSet countResult = await falkor
-            .QueryAsync(tenantId, countQuery, countParams)
+            .SelectGraph(tenantId).QueryAsync(countQuery, countParams)
             .WaitAsync(GraphOperationTimeout, ct)
             .ConfigureAwait(false);
 

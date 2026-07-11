@@ -29,7 +29,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **System.CommandLine 2.0.9 backs the CLI** - command composition follows the existing recursive/global option and async handler patterns.
 - **Web UI uses FrontComposer + Fluent UI Blazor V5** - Fluent UI is pinned to `5.0.0-rc.3-26138.1`; bUnit is `2.8.4-preview`.
 - **Tests use xUnit v3 + Shouldly + NSubstitute** - package pins are `xunit.v3` `3.2.2`, `Shouldly` `4.3.0`, `NSubstitute` `5.3.0`, and `Microsoft.NET.Test.Sdk` `18.6.0`.
-- **Release packages are explicit** - `tools/release-packages.json` is the source of truth for the eight packable projects.
+- **Release packages are explicit** - `tools/release-packages.json` is the source of truth for the nine packable projects.
 - **Root-declared submodules are required under `references/`** - follow the submodule policy from `AGENTS.md`; never initialize nested submodules recursively.
 
 ## Critical Implementation Rules

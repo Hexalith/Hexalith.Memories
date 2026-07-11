@@ -28,7 +28,7 @@ internal sealed class CleanupCaseProjectionActivity(
             db.KeyDeleteAsync($"{input.TenantId}:case:{input.CaseId}:members"),
             db.KeyDeleteAsync($"{input.TenantId}:case:{input.CaseId}:activity"),
             db.KeyDeleteAsync($"{input.TenantId}:case:{input.CaseId}"),
-            falkor.QueryAsync(input.TenantId, query, parameters)).ConfigureAwait(false);
+            falkor.SelectGraph(input.TenantId).QueryAsync(query, parameters)).ConfigureAwait(false);
         return true;
     }
 }

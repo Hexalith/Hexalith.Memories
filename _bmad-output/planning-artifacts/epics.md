@@ -2413,8 +2413,8 @@ So that releases are predictable, traceable, and publishing is zero-friction.
 **Given** a version tag is pushed (e.g., `v1.2.0`)
 **When** the release pipeline triggers
 **Then** all packages listed in `tools/release-packages.json` are built and published
-**And** as of 2026-05-17 the published package set is Contracts, Client.Rest, Redis, Cli, Mcp, EventStore, and Telemetry
-**And** Server, AppHost, and ServiceDefaults are explicitly non-packable
+**And** the current published package set is Contracts, Client.Rest, Redis, Cli, Mcp, Aspire, ServiceDefaults, EventStore, and Telemetry
+**And** Server, AppHost, and Web are explicitly non-packable
 **And** all packages share the same version number
 
 **Given** the release completes

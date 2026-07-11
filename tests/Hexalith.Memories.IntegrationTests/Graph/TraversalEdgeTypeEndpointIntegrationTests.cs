@@ -160,7 +160,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
 
         (string caseQuery, IDictionary<string, object> caseParams) = _builder.BuildMergeCaseNode(caseId);
-        await falkor.QueryAsync(tenantId, caseQuery, caseParams);
+        await falkor.SelectGraph(tenantId).QueryAsync(caseQuery, caseParams);
 
         await CreateMemoryUnitAsync(falkor, tenantId, "mu-001", caseId);
         await CreateMemoryUnitAsync(falkor, tenantId, "mu-002", caseId);
@@ -190,7 +190,7 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
             DateTimeOffset.UtcNow,
             "{}");
 
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 
     private async Task CreateEdgeAsync(FalkorDB falkor, string tenantId, string sourceNodeId, string targetNodeId, EdgeType edgeType)
@@ -212,6 +212,6 @@ public sealed class TraversalEdgeTypeEndpointIntegrationTests
             confidence,
             EdgeOrigin.Explicit);
 
-        await falkor.QueryAsync(tenantId, query, parameters);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters);
     }
 }

@@ -38,7 +38,7 @@ public sealed partial class DeleteFalkorDbGraphActivity : WorkflowActivity<Tenan
         try
         {
             NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
-            await falkor.QueryAsync(input.TenantId, "MATCH (n) DETACH DELETE n").ConfigureAwait(false);
+            await falkor.SelectGraph(input.TenantId).QueryAsync("MATCH (n) DETACH DELETE n").ConfigureAwait(false);
             LogGraphDeleted(_logger, input.TenantId);
         }
         catch (RedisServerException ex) when (IsGraphNotFoundError(ex))

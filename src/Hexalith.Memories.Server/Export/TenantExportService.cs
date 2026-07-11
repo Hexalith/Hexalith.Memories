@@ -391,7 +391,7 @@ internal partial class TenantExportService
     {
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildListCaseMemoryUnitIds(caseId);
-        NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+        NFalkorDB.ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).ConfigureAwait(false);
 
         List<string> ids = new(result.Count);
         foreach (NFalkorDB.Record record in result)
@@ -493,7 +493,7 @@ internal partial class TenantExportService
             HashSet<string> seenEdgeIds = [];
 
             (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildListEdgesForMemoryUnits(batch);
-            NFalkorDB.ResultSet result = await falkor.QueryAsync(tenantId, query, parameters).ConfigureAwait(false);
+            NFalkorDB.ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).ConfigureAwait(false);
 
             foreach (NFalkorDB.Record record in result)
             {

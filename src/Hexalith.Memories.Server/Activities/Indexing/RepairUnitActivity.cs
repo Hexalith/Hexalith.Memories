@@ -345,7 +345,7 @@ public sealed partial class RepairUnitActivity : WorkflowActivity<RepairUnitInpu
     {
         FalkorDB falkor = new(_falkorDb.GetDatabase());
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
-        await falkor.QueryAsync(tenantId, query, parameters).WaitAsync(GraphOperationTimeout, ct).ConfigureAwait(false);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout, ct).ConfigureAwait(false);
     }
 
     private static IReadOnlyDictionary<string, string> PresenceMap(bool syntactic, bool semantic, bool graph)

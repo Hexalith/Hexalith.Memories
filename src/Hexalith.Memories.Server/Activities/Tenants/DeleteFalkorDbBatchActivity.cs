@@ -46,7 +46,7 @@ public sealed partial class DeleteFalkorDbBatchActivity : WorkflowActivity<Batch
 
             // Count remaining nodes
             (string countQuery, IDictionary<string, object> countParams) = _queryBuilder.BuildCountAllNodes();
-            NFalkorDB.ResultSet countResult = await falkor.QueryAsync(input.TenantId, countQuery, countParams).ConfigureAwait(false);
+            NFalkorDB.ResultSet countResult = await falkor.SelectGraph(input.TenantId).QueryAsync(countQuery, countParams).ConfigureAwait(false);
 
             long remainingNodes = ReadRequiredLongResult(countResult, "count");
 
@@ -58,7 +58,7 @@ public sealed partial class DeleteFalkorDbBatchActivity : WorkflowActivity<Batch
 
             // Delete a batch
             (string deleteQuery, IDictionary<string, object> deleteParams) = _queryBuilder.BuildBatchDeleteNodes(input.BatchSize);
-            NFalkorDB.ResultSet deleteResult = await falkor.QueryAsync(input.TenantId, deleteQuery, deleteParams).ConfigureAwait(false);
+            NFalkorDB.ResultSet deleteResult = await falkor.SelectGraph(input.TenantId).QueryAsync(deleteQuery, deleteParams).ConfigureAwait(false);
 
             int deletedInBatch = checked((int)ReadRequiredLongResult(deleteResult, "delete"));
 
