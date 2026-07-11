@@ -2,7 +2,7 @@
 title: 'Handle stale release checkouts in release preflight'
 type: 'bugfix'
 created: '2026-07-11'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 4
 baseline_commit: 'c5a999e19531e6b73eba3f059a55c099c200ef17'
 context: []
@@ -74,3 +74,32 @@ The branch-behind line is a deliberate semantic-release early-return condition, 
 - `python3 -m unittest discover -s tests/tooling/release_preflight -p "*_test.py"` -- expected: all release-preflight parser and tag-collision fixtures pass.
 - `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --configuration Release` -- expected: release workflow inventory and the remaining CLI test project pass.
 - `git diff --check` -- expected: the scoped CI/tooling patch has no whitespace errors.
+
+## Suggested Review Order
+
+**Terminal classification**
+
+- Provenance-aware parsing separates semantic-release outcomes from payload text.
+  [`release-preflight.ps1:95`](../../tools/release-preflight.ps1#L95)
+
+- Live execution disables bare fixture records before tag checks.
+  [`release-preflight.ps1:245`](../../tools/release-preflight.ps1#L245)
+
+**Release gate**
+
+- Release jobs run parser fixtures before live or publish-capable work.
+  [`release.yml:81`](../../.github/workflows/release.yml#L81)
+
+- Workflow contracts require one unconditional, failure-blocking fixture step.
+  [`CiTestInventoryTests.cs:194`](../../tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs#L194)
+
+**Regression evidence**
+
+- Stale checkout succeeds without probing remote tags.
+  [`release_preflight_test.py:116`](../../tests/tooling/release_preflight/release_preflight_test.py#L116)
+
+- Fake npm exercises live provenance rather than permissive fixture mode.
+  [`release_preflight_test.py:400`](../../tests/tooling/release_preflight/release_preflight_test.py#L400)
+
+- First-release parsing remains explicitly deferred outside this incident.
+  [`deferred-work.md:2020`](./deferred-work.md#L2020)
