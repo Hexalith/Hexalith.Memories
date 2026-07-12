@@ -47,7 +47,9 @@ internal sealed class InboundRequestRateLimiter : IAsyncDisposable
     public RateLimitPartition<string> CreatePartition(string partitionKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(partitionKey);
-        return RateLimitPartition.Get(partitionKey, GetLimiter);
+        return RateLimitPartition.Get(
+            partitionKey,
+            key => new NonDisposingRateLimiter(GetLimiter(key)));
     }
 
     /// <inheritdoc />

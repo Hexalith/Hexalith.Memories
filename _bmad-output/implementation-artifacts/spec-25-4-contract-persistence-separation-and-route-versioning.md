@@ -2,7 +2,7 @@
 title: 'Story 25.4: Contract/Persistence Separation & Route Versioning'
 type: 'refactor'
 created: '2026-07-11T00:00:00+02:00'
-status: 'blocked'
+status: 'review'
 baseline_revision: 'ad7cb31f66238bfa2107288886e2924044274bcb'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -91,3 +91,40 @@ Status: blocked
 Blocking condition: implementation verification failed
 
 The full `Hexalith.Memories.IntegrationTests` assembly completed with 122 tests: 119 passed and 3 failed. The failures were outside the Story 25.4 behavior: `SyntacticSearchIntegrationTests.SearchAsync_OffsetPagination_ShouldSkipResults` observed unstable result ordering, `SemanticSearchIntegrationTests.SearchAsync_LatencySmokeTest_10ConcurrentQueries_ShouldBeFast` seeded without provisioning its required semantic index, and `PipelinePersistencePerformanceTests.RunPipelinePersistenceBenchmarks_ShouldMeetWarmRestartAndThroughputTargets` lost its Aspire server connection during teardown. Story-focused contract, persistence, route-surface, legacy-route, actor, registry, and case lanes passed; Contracts (568), CLI (424), MCP (90), and Server (2555 passed, 1 existing skip) broad assemblies passed; the Release solution and all required test projects built with 0 warnings/errors.
+
+## Dev Agent Record
+
+### Debug Log
+
+- Reproduced the three original integration blockers independently. Syntactic pagination and the Aspire persistence benchmark passed in isolation; semantic performance seeding failed deterministically because its tenant indexes were not provisioned.
+- Added explicit tenant-scoped server bearers to every integration workflow-status poller for `/api/v1/ingest/{instanceId}`, whose route contains no tenant segment for the fixture path parser to infer.
+- Replaced a stale semantic-key `Split(':').Last()` assertion with `IndexSchemaDefinitions.TryParseSemanticMemoryUnitId`, preserving chunked-key compatibility.
+- Fixed topology-restart failures by preventing ASP.NET partition disposal from disposing the shared endpoint-filter `FixedWindowRateLimiter`; both restart/recovery lanes now pass.
+- Fixed EventStore ingestion persistence by atomically promoting its transient `reserved` dedup sentinel to the permanent memory-unit ID instead of compensating a successfully indexed unit as a race loser.
+- Hardened shared-topology EventStore search assertions to identify the exact source URI and added an explicit tenant bearer to the raw REST client used by the CLI integration lane.
+
+### Completion Notes
+
+- Release solution build: 0 warnings, 0 errors.
+- Story-focused contract/persistence/route lanes: 33 passed.
+- Broad non-Aspire assemblies: 4,300 passed, 1 existing skip; final Server regression: 2,558 passed, 1 existing skip.
+- Full shared-topology integration assembly: 277 passed, 0 failed, 0 skipped in 10m36s.
+- Semantic performance, syntactic pagination, persistence benchmark, case endpoints, both restart/recovery paths, EventStore ingestion, and CLI search all pass after the fixes. Story is ready for review.
+
+## File List
+
+- `_bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `src/Hexalith.Memories.Server/Activities/Ingestion/SaveDedupKeyActivity.cs`
+- `src/Hexalith.Memories.Server/RateLimiting/InboundRequestRateLimiter.cs`
+- `src/Hexalith.Memories.Server/RateLimiting/NonDisposingRateLimiter.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Cli/CliSearchIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Search/SemanticSearchIntegrationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/SaveDedupKeyActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/RateLimiting/InboundRequestRateLimiterTests.cs`
+
+## Change Log
+
+- 2026-07-11: Completed verification fixes for V1 ingestion authentication, semantic index provisioning, chunk-aware persistence, rate-limiter ownership across restarts, and EventStore preflight-dedup promotion; all completion gates pass and the story moved to review.

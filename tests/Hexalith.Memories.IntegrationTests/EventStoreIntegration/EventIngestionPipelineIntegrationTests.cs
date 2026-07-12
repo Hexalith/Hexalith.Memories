@@ -43,7 +43,8 @@ public sealed class EventIngestionPipelineIntegrationTests
         await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
 
         string eventId = $"evt-{Guid.NewGuid():N}";
-        const string indexedText = "claim event content";
+        string marker = $"eventmark{Guid.NewGuid().ToString("N")[..8]}";
+        string indexedText = $"claim event content {marker}";
         const string searchQuery = "claim event";
         const string subject = "claim-42";
         string envelope = $$"""
@@ -75,7 +76,7 @@ public sealed class EventIngestionPipelineIntegrationTests
         accepted.InstanceId.ShouldNotBeNullOrWhiteSpace();
 
         string instanceId = accepted.InstanceId!;
-        await WaitForWorkflowCompletionAsync(instanceId);
+        await WaitForWorkflowCompletionAsync(tenantId, instanceId);
 
         string caseId = ExtractCaseId(instanceId);
         string memoryUnitId = await WaitForDedupResolutionAsync(instanceId);
@@ -89,9 +90,9 @@ public sealed class EventIngestionPipelineIntegrationTests
             .HashGetAsync($"{tenantId}:mu:{memoryUnitId}", "cloudeventSubject");
         indexedSubject.ToString().ShouldBe(subject);
 
-        SearchResult matching = await WaitForSearchAsync(tenantId, searchQuery, subject, memoryUnitId);
+        SearchResult matching = await WaitForSearchAsync(tenantId, searchQuery, subject, eventId, memoryUnitId);
         matching.Results.ShouldNotBeEmpty();
-        matching.Results.ShouldContain(r => r.ContentSnippet.Contains(indexedText, StringComparison.Ordinal));
+        matching.Results.ShouldContain(r => string.Equals(r.SourceUri, eventId, StringComparison.Ordinal));
 
         using HttpResponseMessage wrongSubjectResponse = await _fixture.MemoriesClient.GetAsync(
             $"/api/v1/search?tenantId={Uri.EscapeDataString(tenantId)}&axis=syntactic&query={Uri.EscapeDataString(searchQuery)}&subject=claim-999");
@@ -110,10 +111,11 @@ public sealed class EventIngestionPipelineIntegrationTests
         await EnsureTenantActiveAsync(tenantId, $"Tenant {tenantId}");
 
         string eventId = $"evt-dapr-{Guid.NewGuid():N}";
-        const string firstText = "dapr claim content";
+        string marker = $"daprmark{Guid.NewGuid().ToString("N")[..8]}";
+        string firstText = $"dapr claim content {marker}";
         const string firstQuery = "dapr claim";
-        const string duplicateText = "duplicate claim content";
-        const string duplicateQuery = "duplicate claim";
+        string duplicateText = $"duplicate claim content {marker}";
+        string duplicateQuery = $"duplicate claim {marker}";
         const string subject = "claim-42";
 
         using HttpClient daprClient = new() { BaseAddress = _fixture.DaprSidecarHttpEndpoint };
@@ -121,14 +123,14 @@ public sealed class EventIngestionPipelineIntegrationTests
         Stopwatch freshness = Stopwatch.StartNew();
         await PublishEventViaDaprAsync(daprClient, eventId, subject, firstText);
 
-        SearchResult firstMatch = await WaitForSearchAsync(tenantId, firstQuery, subject);
+        SearchResult firstMatch = await WaitForSearchAsync(tenantId, firstQuery, subject, eventId);
         freshness.Stop();
 
         freshness.Elapsed.ShouldBeLessThanOrEqualTo(
             FreshnessTimeout,
             $"Dapr pub/sub publish path should surface searchable results within {FreshnessTimeout}.");
         firstMatch.TotalCount.ShouldBeGreaterThan(0);
-        firstMatch.Results.ShouldContain(result => result.ContentSnippet.Contains(firstText, StringComparison.Ordinal));
+        firstMatch.Results.ShouldContain(result => string.Equals(result.SourceUri, eventId, StringComparison.Ordinal));
 
         await PublishEventViaDaprAsync(daprClient, eventId, subject, duplicateText);
         await AssertNoSearchMatchWithinAsync(tenantId, duplicateQuery, subject, FreshnessTimeout);
@@ -163,13 +165,17 @@ public sealed class EventIngestionPipelineIntegrationTests
         false.ShouldBeTrue($"Tenant '{tenantId}' did not reach Active within {ActivationTimeout}.");
     }
 
-    private async Task WaitForWorkflowCompletionAsync(string instanceId)
+    private async Task WaitForWorkflowCompletionAsync(string tenantId, string instanceId)
     {
         Stopwatch timeout = Stopwatch.StartNew();
         string lastPayload = string.Empty;
         while (timeout.Elapsed < WorkflowTimeout)
         {
-            using HttpResponseMessage statusResponse = await _fixture.MemoriesClient.GetAsync($"/api/v1/ingest/{instanceId}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/ingest/{instanceId}");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer",
+                AspireIngestionPipelineFixture.MintServerBearer(tenantId));
+            using HttpResponseMessage statusResponse = await _fixture.MemoriesClient.SendAsync(request);
             if (statusResponse.StatusCode == HttpStatusCode.OK)
             {
                 lastPayload = await statusResponse.Content.ReadAsStringAsync();
@@ -301,7 +307,12 @@ public sealed class EventIngestionPipelineIntegrationTests
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
     }
 
-    private async Task<SearchResult> WaitForSearchAsync(string tenantId, string query, string subject, string? memoryUnitId = null)
+    private async Task<SearchResult> WaitForSearchAsync(
+        string tenantId,
+        string query,
+        string subject,
+        string expectedSourceUri,
+        string? memoryUnitId = null)
     {
         Stopwatch timeout = Stopwatch.StartNew();
         HttpStatusCode? lastStatusCode = null;
@@ -316,7 +327,10 @@ public sealed class EventIngestionPipelineIntegrationTests
             if (response.StatusCode == HttpStatusCode.OK)
             {
                 SearchResult? result = JsonSerializer.Deserialize<SearchResult>(lastBody, MemoriesJsonContext.Options);
-                if (result is not null && result.Results.Count > 0)
+                if (result is not null
+                    && result.Results.Any(candidate =>
+                        (memoryUnitId is null || candidate.MemoryUnitId == memoryUnitId)
+                        && string.Equals(candidate.SourceUri, expectedSourceUri, StringComparison.Ordinal)))
                 {
                     return result;
                 }

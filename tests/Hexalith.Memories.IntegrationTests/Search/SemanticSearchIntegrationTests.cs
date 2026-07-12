@@ -642,6 +642,7 @@ public class SemanticSearchIntegrationTests
         IDatabase db = _redis.Connection.GetDatabase();
         float[] sharedVector = CreateVector(1.0f, 0.0f, 0.0f);
         byte[] vectorBytes = MemoryMarshal.AsBytes(sharedVector.AsSpan()).ToArray();
+        ProvisionTenantIndexes(db, tenantId, TestDimensions);
 
         var context = Substitute.For<Dapr.Workflow.WorkflowActivityContext>();
         IndexSemanticActivity semanticActivity = new(

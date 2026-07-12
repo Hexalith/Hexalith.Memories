@@ -15,6 +15,7 @@ using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.Server.Infrastructure;
 
 using NFalkorDB;
 
@@ -157,7 +158,7 @@ public sealed class PipelinePersistenceIntegrationTests
         (statusAfterRestart.QueuedCount + statusAfterRestart.ExtractingCount + statusAfterRestart.EmbeddingCount + statusAfterRestart.IndexingCount)
             .ShouldBeGreaterThan(0);
 
-        await WaitForWorkflowRuntimeStatusAsync(accepted.InstanceId, "Completed", DefaultTimeout).ConfigureAwait(false);
+        await WaitForWorkflowRuntimeStatusAsync(tenantId, accepted.InstanceId, "Completed", DefaultTimeout).ConfigureAwait(false);
 
         CaseStatusDetail drained = await WaitForCaseStatusAsync(
             tenantId,
@@ -316,7 +317,7 @@ public sealed class PipelinePersistenceIntegrationTests
         string reingestionWorkflowId = await ReingestFailedUnitAsync(tenantId, caseId, failedUnit.MemoryUnitId).ConfigureAwait(false);
         reingestionWorkflowId.ShouldNotBeNullOrWhiteSpace();
 
-        await WaitForWorkflowRuntimeStatusAsync(reingestionWorkflowId, "Completed", DefaultTimeout).ConfigureAwait(false);
+        await WaitForWorkflowRuntimeStatusAsync(tenantId, reingestionWorkflowId, "Completed", DefaultTimeout).ConfigureAwait(false);
 
         (string recoveredSyntacticKey, string recoveredSemanticKey) = await WaitForBackendWritesAsync(
             tenantId,
@@ -325,7 +326,11 @@ public sealed class PipelinePersistenceIntegrationTests
 
         string recoveredMemoryUnitId = recoveredSyntacticKey.Split(':').Last();
         recoveredMemoryUnitId.ShouldBe(failedUnit.MemoryUnitId);
-        recoveredSemanticKey.Split(':').Last().ShouldBe(failedUnit.MemoryUnitId);
+        IndexSchemaDefinitions.TryParseSemanticMemoryUnitId(
+            tenantId,
+            recoveredSemanticKey,
+            out string recoveredSemanticMemoryUnitId).ShouldBeTrue();
+        recoveredSemanticMemoryUnitId.ShouldBe(failedUnit.MemoryUnitId);
 
         _ = await WaitForSingleDedupValueAsync(tenantId, caseId, failedUnit.MemoryUnitId, DefaultTimeout).ConfigureAwait(false);
 
@@ -495,14 +500,22 @@ public sealed class PipelinePersistenceIntegrationTests
         return workflowInstanceId;
     }
 
-    private async Task WaitForWorkflowRuntimeStatusAsync(string instanceId, string expectedRuntimeStatus, TimeSpan timeout)
+    private async Task WaitForWorkflowRuntimeStatusAsync(
+        string tenantId,
+        string instanceId,
+        string expectedRuntimeStatus,
+        TimeSpan timeout)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
         string lastPayload = string.Empty;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
-            using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync($"/api/v1/ingest/{instanceId}").ConfigureAwait(false);
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/ingest/{instanceId}");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer",
+                AspireIngestionPipelineFixture.MintServerBearer(tenantId));
+            using HttpResponseMessage response = await _fixture.MemoriesClient.SendAsync(request).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.OK)
             {
                 lastPayload = await response.Content.ReadAsStringAsync().ConfigureAwait(false);

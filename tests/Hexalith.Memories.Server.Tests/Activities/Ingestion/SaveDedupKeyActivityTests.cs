@@ -9,6 +9,7 @@ using System.Linq;
 
 using Dapr.Workflow;
 
+using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Activities.Ingestion;
 
 using NSubstitute;
@@ -86,6 +87,33 @@ public class SaveDedupKeyActivityTests
         var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.StringSetAsync));
         call.GetArguments()[1].ShouldBe((RedisValue)"mu-loser");
         call.GetArguments()[3].ShouldBe(When.NotExists);
+    }
+
+    [Fact]
+    public async Task RunAsync_PreflightReservation_ShouldAtomicallyPromoteToPermanentMemoryUnitId()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringSetAsync(default, default, default, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(false));
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)PreflightDedupReservation.ReservedValue);
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create((RedisValue)1L));
+        SaveDedupKeyActivity activity = new(redis);
+
+        DedupKeySaveResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-001"));
+
+        result.Status.ShouldBe(DedupKeySaveStatus.Saved);
+        result.MemoryUnitId.ShouldBe("mu-001");
+        var call = db.ReceivedCalls().Single(x => x.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync));
+        ((string)call.GetArguments()[0]!).ShouldContain("redis.call('SET'");
+        ((RedisKey[])call.GetArguments()[1]!)[0].ShouldBe((RedisKey)"dedup:tenant-1:case-1:abc123");
+        RedisValue[] values = (RedisValue[])call.GetArguments()[2]!;
+        values[0].ShouldBe((RedisValue)PreflightDedupReservation.ReservedValue);
+        values[1].ShouldBe((RedisValue)"mu-001");
     }
 
     [Fact]

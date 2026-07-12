@@ -70,13 +70,16 @@ public sealed class CliSearchIntegrationTests
         accepted.ShouldNotBeNull();
         accepted.InstanceId.ShouldNotBeNullOrWhiteSpace();
 
-        await WaitForIngestionCompletionAsync(accepted.InstanceId);
+        await WaitForIngestionCompletionAsync(tenantId, accepted.InstanceId);
 
         using var http = new HttpClient
         {
             BaseAddress = _fixture.MemoriesClient.BaseAddress,
             Timeout = TimeSpan.FromSeconds(60),
         };
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer",
+            AspireIngestionPipelineFixture.MintServerBearer(tenantId));
         IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions
         {
             Endpoint = _fixture.MemoriesClient.BaseAddress,
@@ -134,14 +137,17 @@ public sealed class CliSearchIntegrationTests
         false.ShouldBeTrue($"Tenant '{tenantId}' did not reach Active within {ActivationTimeout}.");
     }
 
-    private async Task WaitForIngestionCompletionAsync(string instanceId)
+    private async Task WaitForIngestionCompletionAsync(string tenantId, string instanceId)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(IngestionTimeout);
         string lastPayload = string.Empty;
         while (DateTimeOffset.UtcNow < deadline)
         {
-            using HttpResponseMessage statusResponse = await _fixture.MemoriesClient
-                .GetAsync($"/api/v1/ingest/{instanceId}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v1/ingest/{instanceId}");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer",
+                AspireIngestionPipelineFixture.MintServerBearer(tenantId));
+            using HttpResponseMessage statusResponse = await _fixture.MemoriesClient.SendAsync(request);
 
             if (statusResponse.StatusCode == HttpStatusCode.OK)
             {
