@@ -2,8 +2,9 @@
 title: 'Story 26.1: Production Deployment Artifacts'
 type: 'feature'
 created: '2026-07-11'
-status: ready-for-dev
-review_loop_iteration: 0
+status: in-progress
+baseline_revision: bb47d3007935d263eee663cd9e0a4705b33b4929
+review_loop_iteration: 1
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/project-context.md'
@@ -39,6 +40,8 @@ warnings: []
 6. **Readiness semantics:** An isolated RediSearch, Redis Vector, or FalkorDB capability failure remains `Degraded` with HTTP 200 so available search axes continue serving. Redis connectivity, DAPR sidecar or state-store failure, MCP upstream failure, missing required secrets, and invalid production configuration remain `Unhealthy`, fail closed, and return HTTP 503 where the host is running. Startup/rollout validation must parse `/ready` and observe aggregate JSON `status: Healthy` for both Server and MCP within 60 seconds after their containers are running; HTTP 200 alone is insufficient because it may mean `Degraded`.
 
 ## Boundaries & Constraints
+
+**Implementation baseline:** Re-drive this story from parent-repository commit `bb47d3007935d263eee663cd9e0a4705b33b4929` or its re-arm descendant. The committed gitlinks at that baseline for `references/Hexalith.Commons`, `references/Hexalith.EventStore`, `references/Hexalith.FrontComposer`, and `references/Hexalith.PolymorphicSerializations` are approved dependency inputs, not story changes; do not revert or modify them for this story.
 
 **Always:** Publish containers through the .NET SDK without Dockerfiles; deploy Server, MCP, Redis Stack, FalkorDB, DAPR sidecars, actor-enabled state store, pub/sub, secret store, health probes, persistent volumes, and explicit CPU/memory requests and limits; use pinned backend images and secret references rather than committed credentials; preserve tenant isolation and DAPR authentication; keep ingress infrastructure-owned; require Server and MCP to become ready within 60 seconds after their containers are running, excluding image pulls.
 
@@ -80,6 +83,15 @@ warnings: []
 - `tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs` -- validate container metadata and rendered deployment invariants, including forbidden-value scans.
 - `docs/operations/deployment-configuration.md` and `docs/dev/health-checks.md` -- document required values, render/apply/verify/rollback flow, port 8080 probes, and deployment evidence.
 
+**Review-derived hardening tasks:**
+- `Directory.Build.targets`, `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj`, `src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj`, and executable deployment tests -- publish both images with a numeric non-root UID accepted by Kubernetes, inspect the produced OCI configuration, and start the images rather than proving publication through source-string assertions alone.
+- `tools/publish-containers.ps1`, release configuration, and release-contract tests -- make Server/MCP publication retry-safe and observable as a two-image release unit; record per-image outcomes, surface partial publication to the existing failure alert, and render a release deployment artifact whose two image tags equal the semantic-release version instead of pinning an unreleased repository version.
+- `deploy/kubernetes/base/` and deployment tests -- add namespace-local least-privilege ServiceAccounts/RBAC for the exact DAPR-managed Secrets, an external registry pull-secret reference, secret-store scope for both `memories` and `eventstore`, and every runtime embedding/conversation secret name required by production configuration. Structurally associate each scope, permission, resource bound, probe, and Service target with its owning object; do not rely only on global substring presence.
+- Server and MCP composition roots plus focused tests -- enforce `APP_API_TOKEN`/`dapr-api-token` validation on sidecar-to-app traffic. Publish an anonymous application health operation under `/api/v1/health` whose exposure is constrained by DAPR workload identity, point MCP upstream health at that operation, keep the production ACL limited to `/api/v1/**`, and treat an unavailable MCP upstream as immediately `Unhealthy` rather than tolerating initial failures as `Degraded`.
+- Server publication/deployment composition and cache-safety tests -- include or mount the canonical production Conversation component material at the exact runtime path consumed by cache-safety validation so the published image cannot silently bypass the nonzero shared-cache guard.
+- `tests/Hexalith.Memories.Server.Tests/Deployment/`, a checked-in deployment verification tool, and CI/release wiring -- automate Kubernetes schema validation and a disposable DAPR-enabled cluster rollout. Load the two locally published images, provision non-literal test Secrets/ConfigMaps, validate Secret RBAC and production ACL behavior, prove both aggregate `/ready` documents become `Healthy` within 60 seconds measured after application containers are running, and exercise optional-axis degradation plus Redis/DAPR/MCP-upstream fail-closed behavior at their public surfaces. The test must run, pass, and have zero skips; operator documentation is not a substitute.
+- Backend StatefulSets and deployment tests -- give Redis Stack and FalkorDB startup probes long enough for persistent-data recovery and make configuration changes trigger a controlled rollout while preserving the frozen resource/PVC defaults.
+
 **Acceptance Criteria:**
 - Given a Release build, when Server and MCP are published through the SDK, then both OCI artifacts run as non-root on port 8080 and carry the same explicit release version.
 - Given production deployment inputs containing only external secret references, when `deploy/kubernetes/overlays/production` is rendered and client-side validated, then it contains the complete topology, persistence, probes, exact DAPR provider/topic/app-id restrictions, and bootstrap resource bounds above without forbidden development values.
@@ -90,8 +102,24 @@ warnings: []
 ## Spec Change Log
 
 - 2026-07-12: Human selected the repository-aligned Kustomize production baseline. Frozen intent now fixes the OpenAI component and secret contract, `eventstore`-only publication, shared-OIDC bearer forwarding with a deny-by-default DAPR ACL, bootstrap resource/PVC values, and capability-aware readiness semantics.
+- 2026-07-12: Human confirmed current parent `HEAD` as the implementation baseline after a re-arm race; its four committed dependency gitlinks are approved inputs and are outside this story's change set.
+- 2026-07-12: Review found the first implementation plan could pass through source/render substring checks while shipping an unrunnable or security-incomplete topology. Amended the executable tasks and verification to require numeric non-root OCI evidence, release-version manifest coupling and partial-publish recovery, exact Secret RBAC/scopes/token enforcement, an ACL-compatible `/api/v1/health` path with immediate critical failure semantics, cache-safety material in the published runtime, and a no-skip disposable-cluster rollout proving aggregate `Healthy` within 60 seconds. Known-bad state avoided: stale/nonexistent image tags, named-user admission failure, denied MCP health, unresolved DAPR secrets, fail-open app-token/cache guards, and declarative-only readiness evidence. KEEP: the Kustomize base/production-overlay format; SDK container publication; exact OpenAI/pub-sub/app-id/resource/PVC decisions; ingress-free application ports; shared-OIDC bearer forwarding; local/production DAPR separation; aggregate-JSON startup probes; and operator render/apply/rollback documentation.
 
 ## Review Triage Log
+
+### 2026-07-12 — Review pass
+- intent_gap: 0
+- bad_spec: 6: (high 6, medium 0, low 0)
+- patch: 0
+- defer: 0
+- reject: 14: (high 0, medium 4, low 10)
+- addressed_findings:
+  - `[high]` `[bad_spec]` Added executable OCI publication/startup evidence and numeric Kubernetes-compatible non-root identity instead of source-only metadata checks.
+  - `[high]` `[bad_spec]` Added release-version manifest coupling, retry-safe two-image publication accounting, and partial-publish alert evidence.
+  - `[high]` `[bad_spec]` Added exact production Secret RBAC, secret-store scopes/names, registry seam, and sidecar-to-app API-token enforcement.
+  - `[high]` `[bad_spec]` Resolved the deny-by-default ACL/readiness mismatch through `/api/v1/health` and immediate MCP-upstream `Unhealthy` semantics.
+  - `[high]` `[bad_spec]` Required the cache-safety validator's production component material to exist in the published runtime.
+  - `[high]` `[bad_spec]` Replaced declarative-only readiness evidence with automated schema validation and a no-skip DAPR-enabled rollout proving live aggregate health and failure semantics.
 
 ## Design Notes
 
@@ -105,4 +133,4 @@ The selected Kustomize artifact aligns with the existing downstream-overlay cont
 - `dotnet publish src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj -c Release -t:PublishContainer -p:ContainerArchiveOutputPath=/tmp/memories-mcp.tar.gz` -- expected: MCP OCI archive is created.
 - `kubectl kustomize deploy/kubernetes/overlays/production > /tmp/hexalith-memories-production.yaml && kubectl apply --dry-run=client -f /tmp/hexalith-memories-production.yaml` -- expected: deterministic valid resources and no forbidden development values.
 - Build the focused test project and invoke its xUnit v3 assembly directly -- expected: deployment and release contract tests pass.
-
+- Invoke the checked-in disposable-cluster deployment verifier with the two locally published images -- expected: schema validation, RBAC/ACL checks, live aggregate `Healthy` within 60 seconds after both application containers are running, optional-axis HTTP 200 `Degraded`, and critical-dependency HTTP 503 `Unhealthy`; zero skips are permitted.
