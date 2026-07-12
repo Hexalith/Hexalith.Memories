@@ -192,19 +192,21 @@ Diff reviewed: `82b4219..HEAD` (60 files, ~+2300/−420). Triage: 0 decision-nee
 
 ### Review Findings — 2026-07-12 (chunk 1: container publication and CI/release)
 
-- [ ] [Review][Patch] `[HIGH]` Two-image retries can oscillate forever against an immutable registry because every rerun republishes both tags and treats an already-existing matching tag as failure. [tools/publish-containers.ps1:65]
-- [ ] [Review][Patch] `[HIGH]` Release publication has no aggregate state, so cross-family partial releases can be missed while dual partial summaries can race into duplicate or incomplete reconciliation issues. [tools/publish-release.ps1:10]
-- [ ] [Review][Patch] `[HIGH]` Published Server and MCP images are not inspected to prove `appsettings.Development.json` and its development signing keys are absent. [src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj:15]
-- [ ] [Review][Patch] `[HIGH]` Container fixtures record arguments but never assert distinct Server/MCP registry repositories, release tags, or `PublishContainer` targets. [tests/tooling/publish_containers/publish_containers_test.py:215]
-- [ ] [Review][Patch] `[HIGH]` The two-publisher release orchestrator is only text-checked, so a regression can stop after NuGet failure without attempting containers or aggregating both failures. [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:279]
-- [ ] [Review][Patch] `[MEDIUM]` A post-push deployment-render failure can leave no current container summary, or expose a stale local summary, after irreversible image side effects. [tools/publish-containers.ps1:108]
-- [ ] [Review][Patch] `[MEDIUM]` Container artifacts are first built during the publish phase after NuGet side effects, allowing container build/base-image failures to create an avoidable cross-family partial release. [tools/publish-release.ps1:10]
-- [ ] [Review][Patch] `[MEDIUM]` Captured container failure output is persisted and issue-posted without redacting the inherited `NUGET_API_KEY`. [tools/publish-containers.ps1:47]
-- [ ] [Review][Patch] `[MEDIUM]` Total container publication failures retain per-image diagnostics only in an unuploaded summary and emit a generic terminal error. [tools/publish-containers.ps1:85]
-- [ ] [Review][Patch] `[MEDIUM]` The deterministic render and disposable rollout gates install floating kubectl, kind, and Kubernetes tool versions. [.github/workflows/ci.yml:357]
-- [ ] [Review][Patch] `[MEDIUM]` Successful `kubectl kustomize` warnings are merged into stdout and written into the released deployment YAML. [tools/render-production-deployment.ps1:33]
-- [ ] [Review][Patch] `[MEDIUM]` Deployment-asset generation through `pack-release.ps1` is not executed or verified at the exact path consumed by semantic-release. [tools/pack-release.ps1:62]
-- [ ] [Review][Patch] `[LOW]` A zero-image `publish-failed` result is mislabeled as `PARTIAL CONTAINER PUBLISH` in the Actions annotation. [tools/publish-containers.ps1:142]
+- [x] [Review][Patch] `[HIGH]` Two-image retries can oscillate forever against an immutable registry because every rerun republishes both tags and treats an already-existing matching tag as failure. [tools/publish-containers.ps1:65]
+- [x] [Review][Patch] `[HIGH]` Release publication has no aggregate state, so cross-family partial releases can be missed while dual partial summaries can race into duplicate or incomplete reconciliation issues. [tools/publish-release.ps1:10]
+- [x] [Review][Patch] `[HIGH]` Published Server and MCP images are not inspected to prove `appsettings.Development.json` and its development signing keys are absent. [src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj:15]
+- [x] [Review][Patch] `[HIGH]` Container fixtures record arguments but never assert distinct Server/MCP registry repositories, release tags, or `PublishContainer` targets. [tests/tooling/publish_containers/publish_containers_test.py:215]
+- [x] [Review][Patch] `[HIGH]` The two-publisher release orchestrator is only text-checked, so a regression can stop after NuGet failure without attempting containers or aggregating both failures. [tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs:279]
+- [x] [Review][Patch] `[MEDIUM]` A post-push deployment-render failure can leave no current container summary, or expose a stale local summary, after irreversible image side effects. [tools/publish-containers.ps1:108]
+- [x] [Review][Patch] `[MEDIUM]` Container artifacts are first built during the publish phase after NuGet side effects, allowing container build/base-image failures to create an avoidable cross-family partial release. [tools/publish-release.ps1:10]
+- [x] [Review][Patch] `[MEDIUM]` Captured container failure output is persisted and issue-posted without redacting the inherited `NUGET_API_KEY`. [tools/publish-containers.ps1:47]
+- [x] [Review][Patch] `[MEDIUM]` Total container publication failures retain per-image diagnostics only in an unuploaded summary and emit a generic terminal error. [tools/publish-containers.ps1:85]
+- [x] [Review][Patch] `[MEDIUM]` The deterministic render and disposable rollout gates install floating kubectl, kind, and Kubernetes tool versions. [.github/workflows/ci.yml:357]
+- [x] [Review][Patch] `[MEDIUM]` Successful `kubectl kustomize` warnings are merged into stdout and written into the released deployment YAML. [tools/render-production-deployment.ps1:33]
+- [x] [Review][Patch] `[MEDIUM]` Deployment-asset generation through `pack-release.ps1` is not executed or verified at the exact path consumed by semantic-release. [tools/pack-release.ps1:62]
+- [x] [Review][Patch] `[LOW]` A zero-image `publish-failed` result is mislabeled as `PARTIAL CONTAINER PUBLISH` in the Actions annotation. [tools/publish-containers.ps1:142]
+
+**Chunk 1 remediation evidence:** Nine executable container/release orchestration fixtures pass; the established NuGet, release-package, preflight, and story-scope tooling suites pass; 54 CLI workflow inventory tests and 5 Server deployment-contract tests pass with zero skips. A real SDK prepare run produced non-empty Server and MCP archives plus the versioned deployment, and direct layer inspection proved both archives exclude `appsettings.Development.json`. The immutable-registry reconciliation branch is exercised with a stateful fake registry because this sandbox has no authenticated production-registry write path.
 
 ## Dev Agent Record
 
@@ -246,4 +248,4 @@ Diff reviewed: `82b4219..HEAD` (60 files, ~+2300/−420). Triage: 0 decision-nee
 
 ## Status
 
-review
+done

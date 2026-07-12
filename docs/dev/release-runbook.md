@@ -1,8 +1,8 @@
 # Release Runbook
 
 This runbook records the observed first release path (`v1.2.0`, 2026-04-30) and the repeatable
-path for the next release. Package publishing remains CI-only. Do not run `dotnet nuget push` from
-a workstation.
+path for the next release. Package and container publishing remains CI-only. Do not publish release
+artifacts from a workstation.
 
 ## Current Release Contract
 
@@ -13,7 +13,7 @@ a workstation.
   package inventory, runs the release preflight, and runs `npx semantic-release`. Semantic-release
   then drives the prepare, publish, and post-publish phases through its plugin chain —
   `pack-release.ps1` and
-  `publish-nuget.ps1` are not invoked as separate workflow steps; they are invoked by
+  `publish-release.ps1` are not invoked as separate workflow steps; they are invoked by
   `@semantic-release/exec` during the corresponding semantic-release lifecycle phase.
 - Semantic-release uses `.releaserc.json`.
 - Release tooling restore uses `npm ci` from the tracked root `package-lock.json`. `npm ci` is the
@@ -26,7 +26,10 @@ a workstation.
   `refs/tags/v1.2.3`. It intentionally does not treat similarly prefixed tags such as
   `v1.2.30` as collisions.
 - `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`.
-- `tools/publish-nuget.ps1` is the `publishCmd` for `@semantic-release/exec`.
+- `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It always attempts
+  both NuGet and container publication and writes one aggregate release summary.
+- `tools/pack-release.ps1` prebuilds the Server and MCP OCI archives and the versioned production
+  deployment before any publish-side effects occur.
 - Semantic-release does not commit generated files back to `main`. It creates the release tag,
   GitHub Release, and package assets without using `@semantic-release/git`, so the release path is
   compatible with the protected-branch rule that requires pull requests for repository changes.
@@ -73,7 +76,7 @@ Before relying on the release path:
 4. Required checks are exactly `build`, `test-unit-contract`, and `integration-fast`.
 5. Direct pushes are blocked by the protected-branch policy; the only path to producing a `push`
    event on `main` is merging a PR.
-6. A scoped `NUGET_API_KEY` repository secret exists.
+6. A scoped `NUGET_API_KEY` repository secret and container-registry credentials exist.
 7. The merge to `main` uses a conventional commit that semantic-release can classify.
 8. The local working tree is clean before opening the release PR — no uncommitted edits, no
    in-flight tag drift, no orphan packages in `artifacts/`. The release job builds from the merged
@@ -346,6 +349,13 @@ those actions can move the published state away from the CI-recorded audit ancho
 - Recovery remains the same: rerun the Release workflow after investigating the failure. Do not
   delete packages from nuget.org. `--skip-duplicate` skips already-published packages while the
   rerun retries the failed or not-attempted packages.
+- Container release members are prebuilt during prepare. On a rerun, an existing immutable image
+  tag is accepted only when its remote config digest matches the prebuilt archive; a conflicting
+  digest fails closed and requires release-owner reconciliation.
+- `tools/publish-release.ps1` writes the cross-family audit record to
+  `artifacts/release/publish-summary.json`. The release workflow uploads that aggregate summary and
+  its child summaries even on failure, and creates one reconciliation issue for an aggregate
+  `partial-publish` state.
 - If `tools/test-release.ps1` reports an unexpected test failure, check whether the failure name
   is on the project's tracked-baseline list before treating it as a release blocker. The script
   filters `EmbeddingInputContentKindTests.ContentKind_PropagatesToEmbeddingApiCallsMetricTag`

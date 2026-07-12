@@ -12,6 +12,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "tools" / "publish-containers.ps1"
 VERSION = "1.2.3-test.1"
+SERVER_IMAGE = f"registry.test/hexalith/memories-server:{VERSION}"
+MCP_IMAGE = f"registry.test/hexalith/memories-mcp:{VERSION}"
+
+
+def write_executable(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+    os.chmod(path, 0o755)
 
 
 def write_fake_dotnet(directory: Path) -> None:
@@ -22,6 +29,7 @@ def write_fake_dotnet(directory: Path) -> None:
             import json
             import os
             import sys
+            from pathlib import Path
 
             args = sys.argv[1:]
             if args and args[0].endswith("pwsh.dll"):
@@ -37,183 +45,341 @@ def write_fake_dotnet(directory: Path) -> None:
                 print(f"unexpected dotnet arguments: {args}", file=sys.stderr)
                 sys.exit(97)
 
-            plan_path = os.environ["FAKE_DOTNET_PLAN"]
-            state_path = os.environ["FAKE_DOTNET_STATE"]
-            log_path = os.environ["FAKE_DOTNET_LOG"]
-            with open(plan_path, "r", encoding="utf-8") as plan_file:
-                plan = json.load(plan_file)
+            with open(os.environ["FAKE_COMMAND_LOG"], "a", encoding="utf-8") as log:
+                log.write(json.dumps({"command": "dotnet", "image": image, "args": args}) + "\\n")
 
-            if os.path.exists(state_path):
-                with open(state_path, "r", encoding="utf-8") as state_file:
-                    state = json.load(state_file)
-            else:
-                state = {}
-
-            attempt = int(state.get(image, 0))
-            state[image] = attempt + 1
-            with open(state_path, "w", encoding="utf-8") as state_file:
-                json.dump(state, state_file)
-
-            outcomes = plan[image]
-            outcome = outcomes[min(attempt, len(outcomes) - 1)]
-            with open(log_path, "a", encoding="utf-8") as log:
-                log.write(json.dumps({"image": image, "attempt": attempt + 1, "args": args}) + "\\n")
-
-            if outcome.get("stdout"):
-                print(outcome["stdout"])
-            if outcome.get("stderr"):
-                print(outcome["stderr"], file=sys.stderr)
-            sys.exit(int(outcome.get("exitCode", 0)))
+            archive_argument = next(
+                (arg for arg in args if arg.startswith("-p:ContainerArchiveOutputPath=")),
+                None,
+            )
+            if archive_argument is None:
+                print("missing ContainerArchiveOutputPath", file=sys.stderr)
+                sys.exit(96)
+            archive = Path(archive_argument.split("=", 1)[1])
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            archive.write_bytes((image + "-archive").encode("utf-8"))
+            sys.exit(0)
             """
         ).strip()
         + "\n",
         encoding="utf-8",
     )
-
+    write_executable(
+        directory / "dotnet",
+        f'#!/usr/bin/env sh\nexec "{sys.executable}" "{script}" "$@"\n',
+    )
     (directory / "dotnet.cmd").write_text(
         f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n',
         encoding="utf-8",
     )
-    (directory / "dotnet").write_text(
-        f'#!/usr/bin/env sh\nexec "{sys.executable}" "{script}" "$@"\n',
-        encoding="utf-8",
-    )
-    os.chmod(directory / "dotnet", 0o755)
 
 
 def write_fake_kubectl(directory: Path) -> None:
-    rendered = directory / "rendered.yaml"
-    rendered.write_text(
+    script = directory / "fake_kubectl.py"
+    script.write_text(
         textwrap.dedent(
+            f"""
+            import os
+            import sys
+
+            warning = os.environ.get("FAKE_KUBECTL_WARNING", "")
+            if warning:
+                print(warning, file=sys.stderr)
+            exit_code = int(os.environ.get("FAKE_KUBECTL_EXIT", "0"))
+            if exit_code:
+                print("synthetic kustomize failure", file=sys.stderr)
+                sys.exit(exit_code)
+
+            print("apiVersion: v1")
+            print("kind: List")
+            print("items:")
+            print("  - image: registry.hexalith.com/hexalith/memories-server:0.0.0")
+            print("  - image: registry.hexalith.com/hexalith/memories-mcp:0.0.0")
             """
-            apiVersion: v1
-            kind: List
-            items:
-              - image: registry.hexalith.com/hexalith/memories-server:0.0.0
-              - image: registry.hexalith.com/hexalith/memories-mcp:0.0.0
-            """
-        ).lstrip(),
+        ).strip()
+        + "\n",
         encoding="utf-8",
+    )
+    write_executable(
+        directory / "kubectl",
+        f'#!/usr/bin/env sh\nexec "{sys.executable}" "{script}" "$@"\n',
     )
     (directory / "kubectl.cmd").write_text(
-        f'@echo off\r\ntype "{rendered}"\r\n',
+        f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n',
         encoding="utf-8",
     )
-    (directory / "kubectl").write_text(
-        f'#!/usr/bin/env sh\ncat "{rendered}"\n',
+
+
+def write_fake_docker(directory: Path) -> None:
+    script = directory / "fake_docker.py"
+    script.write_text(
+        textwrap.dedent(
+            f"""
+            import json
+            import os
+            import sys
+            from pathlib import Path
+
+            args = sys.argv[1:]
+            state_path = Path(os.environ["FAKE_DOCKER_STATE"])
+            plan_path = Path(os.environ["FAKE_DOCKER_PLAN"])
+            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {{"remote": {{}}, "attempts": {{}}}}
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            local = {{
+                "{SERVER_IMAGE}": "sha256:server-config",
+                "{MCP_IMAGE}": "sha256:mcp-config",
+            }}
+
+            with open(os.environ["FAKE_COMMAND_LOG"], "a", encoding="utf-8") as log:
+                log.write(json.dumps({{"command": "docker", "args": args}}) + "\\n")
+
+            if args[:2] == ["load", "--input"]:
+                image = "server" if Path(args[2]).name.startswith("server") else "mcp"
+                reference = "{SERVER_IMAGE}" if image == "server" else "{MCP_IMAGE}"
+                print(f"Loaded image: {{reference}}")
+            elif args[:2] == ["image", "inspect"]:
+                reference = args[2]
+                if reference not in local:
+                    print("unknown local image", file=sys.stderr)
+                    sys.exit(4)
+                print(local[reference])
+            elif args[:2] == ["manifest", "inspect"]:
+                reference = args[2]
+                digest = state["remote"].get(reference)
+                if digest is None:
+                    print("no such manifest", file=sys.stderr)
+                    sys.exit(1)
+                print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digest}}}}))
+            elif args and args[0] == "push":
+                reference = args[1]
+                image = "server" if "memories-server" in reference else "mcp"
+                attempt = int(state["attempts"].get(image, 0))
+                state["attempts"][image] = attempt + 1
+                outcomes = plan.get(image, [{{"exitCode": 0}}])
+                outcome = outcomes[min(attempt, len(outcomes) - 1)]
+                if outcome.get("stdout"):
+                    print(outcome["stdout"])
+                if outcome.get("stderr"):
+                    print(outcome["stderr"], file=sys.stderr)
+                if int(outcome.get("exitCode", 0)) == 0:
+                    state["remote"][reference] = local[reference]
+                state_path.write_text(json.dumps(state), encoding="utf-8")
+                sys.exit(int(outcome.get("exitCode", 0)))
+            else:
+                print(f"unexpected docker arguments: {{args}}", file=sys.stderr)
+                sys.exit(98)
+
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            sys.exit(0)
+            """
+        ).strip()
+        + "\n",
         encoding="utf-8",
     )
-    os.chmod(directory / "kubectl", 0o755)
+    write_executable(
+        directory / "docker",
+        f'#!/usr/bin/env sh\nexec "{sys.executable}" "{script}" "$@"\n',
+    )
+    (directory / "docker.cmd").write_text(
+        f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n',
+        encoding="utf-8",
+    )
 
 
-def run_publish(output_directory: Path, fake_bin: Path, plan: dict[str, list[dict[str, object]]]) -> tuple[subprocess.CompletedProcess[str], Path]:
-    plan_path = output_directory.parent / "dotnet-plan.json"
-    state_path = output_directory.parent / "dotnet-state.json"
-    log_path = output_directory.parent / "dotnet-calls.jsonl"
-    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+def prepare_environment(root: Path, plan: dict[str, list[dict[str, object]]] | None = None) -> tuple[Path, dict[str, str]]:
+    fake_bin = root / "bin"
+    fake_bin.mkdir()
+    write_fake_dotnet(fake_bin)
+    write_fake_kubectl(fake_bin)
+    write_fake_docker(fake_bin)
 
+    plan_path = root / "docker-plan.json"
+    plan_path.write_text(json.dumps(plan or {}), encoding="utf-8")
     env = os.environ.copy()
     env["REAL_DOTNET"] = shutil.which("dotnet") or "dotnet"
     env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
-    env["FAKE_DOTNET_PLAN"] = str(plan_path)
-    env["FAKE_DOTNET_STATE"] = str(state_path)
-    env["FAKE_DOTNET_LOG"] = str(log_path)
+    env["FAKE_DOCKER_PLAN"] = str(plan_path)
+    env["FAKE_DOCKER_STATE"] = str(root / "docker-state.json")
+    env["FAKE_COMMAND_LOG"] = str(root / "commands.jsonl")
     env["GITHUB_ACTIONS"] = "true"
-    env["GH_TOKEN"] = "SECRET_CONTAINER_TOKEN_SHOULD_NOT_LEAK"
+    env["GH_TOKEN"] = "SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK"
+    env["NUGET_API_KEY"] = "SECRET_NUGET_TOKEN_SHOULD_NOT_LEAK"
+    return fake_bin, env
 
-    result = subprocess.run(
-        [
-            "pwsh",
-            "-NoLogo",
-            "-NoProfile",
-            "-File",
-            str(SCRIPT),
-            "-Version",
-            VERSION,
-            "-Registry",
-            "registry.test",
-            "-OutputDirectory",
-            str(output_directory),
-            "-Push",
-        ],
+
+def prepare_archives(output: Path) -> None:
+    output.mkdir(parents=True, exist_ok=True)
+    (output / "server.tar.gz").write_bytes(b"server-archive")
+    (output / "mcp.tar.gz").write_bytes(b"mcp-archive")
+
+
+def run_publish(output: Path, env: dict[str, str], *, push: bool, kubectl_exit: int = 0, kubectl_warning: str = "") -> subprocess.CompletedProcess[str]:
+    invocation = [
+        "pwsh",
+        "-NoLogo",
+        "-NoProfile",
+        "-File",
+        str(SCRIPT),
+        "-Version",
+        VERSION,
+        "-Registry",
+        "registry.test",
+        "-OutputDirectory",
+        str(output),
+    ]
+    if push:
+        invocation.append("-Push")
+    run_env = env.copy()
+    run_env["FAKE_KUBECTL_EXIT"] = str(kubectl_exit)
+    run_env["FAKE_KUBECTL_WARNING"] = kubectl_warning
+    return subprocess.run(
+        invocation,
         cwd=REPO_ROOT,
-        env=env,
+        env=run_env,
         capture_output=True,
         text=True,
         check=False,
     )
-    return result, log_path
+
+
+def command_log(root: Path) -> list[dict[str, object]]:
+    path = root / "commands.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
 class PublishContainersTests(unittest.TestCase):
-    def test_partial_publish_writes_summary_and_returns_nonzero(self) -> None:
+    def test_build_creates_both_archives_with_exact_publish_arguments(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            fake_bin = root / "bin"
-            fake_bin.mkdir()
-            write_fake_dotnet(fake_bin)
-            write_fake_kubectl(fake_bin)
+            _, env = prepare_environment(root)
             output = root / "artifacts"
+
+            result = run_publish(output, env, push=False)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertGreater((output / "server.tar.gz").stat().st_size, 0)
+            self.assertGreater((output / "mcp.tar.gz").stat().st_size, 0)
+            summary = json.loads((output / "build-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("succeeded", summary["status"])
+
+            calls = [entry for entry in command_log(root) if entry["command"] == "dotnet"]
+            self.assertEqual(["server", "mcp"], [entry["image"] for entry in calls])
+            expected_repositories = ["hexalith/memories-server", "hexalith/memories-mcp"]
+            for call, repository in zip(calls, expected_repositories, strict=True):
+                args = call["args"]
+                self.assertIn("-t:PublishContainer", args)
+                self.assertIn("-p:ContainerRegistry=registry.test", args)
+                self.assertIn(f"-p:ContainerRepository={repository}", args)
+                self.assertIn(f"-p:ContainerImageTag={VERSION}", args)
+                self.assertTrue(any(arg.startswith("-p:ContainerArchiveOutputPath=") for arg in args))
+
+    def test_partial_publish_writes_redacted_summary_and_returns_nonzero(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
             plan = {
                 "server": [{"exitCode": 0, "stdout": "server published"}],
                 "mcp": [
                     {
                         "exitCode": 42,
-                        "stderr": "registry rejected SECRET_CONTAINER_TOKEN_SHOULD_NOT_LEAK",
+                        "stderr": "registry rejected SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK SECRET_NUGET_TOKEN_SHOULD_NOT_LEAK",
                     }
                 ],
             }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
 
-            result, _ = run_publish(output, fake_bin, plan)
+            result = run_publish(output, env, push=True)
 
             self.assertNotEqual(0, result.returncode)
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual("partial-publish", summary["status"])
-            self.assertTrue(summary["push"])
-            self.assertEqual(
-                ["registry.test/hexalith/memories-server:1.2.3-test.1"],
-                summary["pushed"],
-            )
+            self.assertEqual([SERVER_IMAGE], summary["pushed"])
             self.assertEqual(42, summary["failed"][0]["exitCode"])
-            self.assertNotIn("SECRET_CONTAINER_TOKEN_SHOULD_NOT_LEAK", json.dumps(summary))
+            serialized = json.dumps(summary)
+            self.assertNotIn("SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK", serialized)
+            self.assertNotIn("SECRET_NUGET_TOKEN_SHOULD_NOT_LEAK", serialized)
             self.assertIn("PARTIAL CONTAINER PUBLISH", result.stdout + result.stderr)
 
-    def test_rerun_retries_both_members_and_replaces_partial_summary(self) -> None:
+    def test_rerun_skips_matching_remote_digest_and_retries_only_missing_member(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            fake_bin = root / "bin"
-            fake_bin.mkdir()
-            write_fake_dotnet(fake_bin)
-            write_fake_kubectl(fake_bin)
-            output = root / "artifacts"
             plan = {
-                "server": [
-                    {"exitCode": 0, "stdout": "server first publish"},
-                    {"exitCode": 0, "stdout": "server retry publish"},
-                ],
-                "mcp": [
-                    {"exitCode": 42, "stderr": "transient registry failure"},
-                    {"exitCode": 0, "stdout": "mcp retry publish"},
-                ],
+                "server": [{"exitCode": 0}],
+                "mcp": [{"exitCode": 42, "stderr": "transient"}, {"exitCode": 0}],
             }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
 
-            first, log_path = run_publish(output, fake_bin, plan)
-            second, _ = run_publish(output, fake_bin, plan)
+            first = run_publish(output, env, push=True)
+            second = run_publish(output, env, push=True)
 
             self.assertNotEqual(0, first.returncode)
             self.assertEqual(0, second.returncode, second.stdout + second.stderr)
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual("succeeded", summary["status"])
-            self.assertEqual([], summary["failed"])
-            self.assertEqual(
-                [
-                    "registry.test/hexalith/memories-server:1.2.3-test.1",
-                    "registry.test/hexalith/memories-mcp:1.2.3-test.1",
-                ],
-                summary["pushed"],
-            )
-            calls = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
-            self.assertEqual(["server", "mcp", "server", "mcp"], [call["image"] for call in calls])
+            dispositions = {image["name"]: image["disposition"] for image in summary["images"]}
+            self.assertEqual("already-present", dispositions["server"])
+            self.assertEqual("pushed", dispositions["mcp"])
+            pushes = [
+                entry["args"][1]
+                for entry in command_log(root)
+                if entry["command"] == "docker" and entry["args"][0] == "push"
+            ]
+            self.assertEqual([SERVER_IMAGE, MCP_IMAGE, MCP_IMAGE], pushes)
+
+    def test_render_failure_happens_before_push_and_writes_current_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            output = root / "artifacts"
+            prepare_archives(output)
+            (output / "publish-summary.json").write_text('{"status":"stale"}', encoding="utf-8")
+
+            result = run_publish(output, env, push=True, kubectl_exit=42)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertEqual(2, len(summary["notAttempted"]))
+            pushes = [
+                entry for entry in command_log(root)
+                if entry["command"] == "docker" and entry["args"][0] == "push"
+            ]
+            self.assertEqual([], pushes)
+
+    def test_successful_kubectl_warning_is_not_written_to_deployment(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            output = root / "artifacts"
+
+            result = run_publish(output, env, push=False, kubectl_warning="synthetic warning")
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            deployment = (output / "production-deployment.yaml").read_text(encoding="utf-8-sig")
+            self.assertNotIn("synthetic warning", deployment)
+
+    def test_total_push_failure_uses_non_partial_annotation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "server": [{"exitCode": 11, "stderr": "server failed"}],
+                "mcp": [{"exitCode": 12, "stderr": "mcp failed"}],
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            combined = result.stdout + result.stderr
+            self.assertIn("CONTAINER PUBLISH FAILED", combined)
+            self.assertNotIn("PARTIAL CONTAINER PUBLISH", combined)
 
 
 if __name__ == "__main__":

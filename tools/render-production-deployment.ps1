@@ -30,9 +30,27 @@ else {
     Join-Path $repoRoot $OutputPath
 }
 
-$rendered = (& kubectl kustomize $overlay 2>&1) -join [Environment]::NewLine
-if ($LASTEXITCODE -ne 0) {
-    throw "kubectl kustomize failed: $rendered"
+$stderrPath = [System.IO.Path]::GetTempFileName()
+try {
+    $rendered = (& kubectl kustomize $overlay 2> $stderrPath) -join [Environment]::NewLine
+    $exitCode = $LASTEXITCODE
+    $stderr = if ((Get-Item -LiteralPath $stderrPath).Length -gt 0) {
+        Get-Content -LiteralPath $stderrPath -Raw
+    }
+    else {
+        ''
+    }
+}
+finally {
+    Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+}
+
+if ($exitCode -ne 0) {
+    throw "kubectl kustomize failed: $stderr"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+    Write-Warning "kubectl kustomize emitted warnings: $($stderr.Trim())"
 }
 
 $defaultServerImage = 'registry.hexalith.com/hexalith/memories-server:0.0.0'

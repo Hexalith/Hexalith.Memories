@@ -13,6 +13,8 @@ param(
 
     [string]$DaprRuntimeVersion = "1.18.1",
 
+    [string]$KindNodeImage = "kindest/node:v1.35.0",
+
     [switch]$KeepCluster
 )
 
@@ -164,6 +166,13 @@ function Assert-ImageContract {
     if ($labelVersion -ne $Version) {
         throw "$Image OCI version label '$labelVersion' does not match release version '$Version'."
     }
+
+    # A production image must not retain the development settings file because it contains the
+    # repository's symmetric development signing key. Inspect the built filesystem, not only the
+    # project declaration that requests CopyToPublishDirectory=Never.
+    Invoke-Checked docker @(
+        'run', '--rm', '--entrypoint', '/bin/sh', $Image,
+        '-c', 'test ! -e /app/appsettings.Development.json') | Out-Null
 }
 
 foreach ($command in @('docker', 'kind', 'kubectl', 'dapr', 'pwsh')) {
@@ -183,7 +192,12 @@ try {
         throw "Disposable cluster '$ClusterName' already exists; remove it or choose another ClusterName."
     }
 
-    Invoke-Checked kind @('create', 'cluster', '--name', $ClusterName, '--wait', '120s', '--kubeconfig', $kubeconfigPath) | Out-Host
+    Invoke-Checked kind @(
+        'create', 'cluster',
+        '--name', $ClusterName,
+        '--image', $KindNodeImage,
+        '--wait', '120s',
+        '--kubeconfig', $kubeconfigPath) | Out-Host
     $clusterCreated = $true
     $env:KUBECONFIG = $kubeconfigPath
     Invoke-Checked dapr @('init', '-k', '--runtime-version', $DaprRuntimeVersion, '--wait') | Out-Host

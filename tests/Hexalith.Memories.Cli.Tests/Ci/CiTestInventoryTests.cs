@@ -271,8 +271,9 @@ public sealed partial class CiTestInventoryTests
         step.If.ShouldBe("failure()");
         step.Shell.ShouldBe("pwsh");
         step.RunBlock.ShouldContain("./tools/create-partial-publish-issue.ps1");
-        step.RunBlock.ShouldContain("artifacts/packages/release/publish-summary.json");
-        step.RunBlock.ShouldContain("artifacts/containers/release/publish-summary.json");
+        step.RunBlock.ShouldContain("artifacts/release/publish-summary.json");
+        step.RunBlock.ShouldNotContain("artifacts/packages/release/publish-summary.json");
+        step.RunBlock.ShouldNotContain("artifacts/containers/release/publish-summary.json");
     }
 
     [Fact]
@@ -280,18 +281,27 @@ public sealed partial class CiTestInventoryTests
     {
         string repoRoot = GetRepoRoot();
         string releaseConfig = File.ReadAllText(Path.Combine(repoRoot, ".releaserc.json"));
+        string packRelease = File.ReadAllText(Path.Combine(repoRoot, "tools", "pack-release.ps1"));
         string publishRelease = File.ReadAllText(Path.Combine(repoRoot, "tools", "publish-release.ps1"));
         string publishContainers = File.ReadAllText(Path.Combine(repoRoot, "tools", "publish-containers.ps1"));
         string renderDeployment = File.ReadAllText(Path.Combine(repoRoot, "tools", "render-production-deployment.ps1"));
 
         releaseConfig.ShouldContain("./tools/publish-release.ps1 -Version ${nextRelease.version}");
         releaseConfig.ShouldContain("artifacts/deployment/hexalith-memories-production.yaml");
-        publishRelease.ShouldContain("./tools/publish-containers.ps1 -Version $Version -Push");
-        publishContainers.ShouldContain("hexalith/memories-server");
-        publishContainers.ShouldContain("hexalith/memories-mcp");
+        packRelease.ShouldContain("./tools/publish-containers.ps1");
+        packRelease.ShouldContain("artifacts/deployment/hexalith-memories-production.yaml");
+        publishRelease.ShouldContain("-Script './tools/publish-containers.ps1'");
+        publishRelease.ShouldContain("'-Push'");
+        publishRelease.ShouldContain("artifactKind = 'release-artifacts'");
+        publishRelease.ShouldContain("artifacts/release");
+        publishContainers.ShouldContain("[string]$RepositoryPrefix = 'hexalith/memories'");
+        publishContainers.ShouldContain("repository = \"$RepositoryPrefix-server\"");
+        publishContainers.ShouldContain("repository = \"$RepositoryPrefix-mcp\"");
         publishContainers.ShouldContain("partial-publish");
         publishContainers.ShouldContain("publish-summary.json");
         publishContainers.ShouldContain("render-production-deployment.ps1");
+        publishContainers.ShouldContain("docker' -Arguments @('manifest', 'inspect'");
+        publishContainers.ShouldContain("disposition = $Disposition");
         renderDeployment.ShouldContain("Both release image references must end with the semantic-release version");
     }
 
@@ -300,6 +310,7 @@ public sealed partial class CiTestInventoryTests
     {
         string repoRoot = GetRepoRoot();
         string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
+        string verifier = File.ReadAllText(Path.Combine(repoRoot, "tools", "verify-production-deployment.ps1"));
 
         // The disposable-cluster rollout is the only executed proof of the runtime, OCI, Secret-RBAC,
         // deny-by-default ACL, and readiness contracts. Pin its job and both script invocations so it
@@ -309,6 +320,12 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("./tools/verify-production-deployment.ps1");
         workflow.ShouldContain("-ServerArchive ./artifacts/containers/release/server.tar.gz");
         workflow.ShouldContain("-McpArchive ./artifacts/containers/release/mcp.tar.gz");
+        workflow.ShouldContain("KUBECTL_VERSION: 'v1.35.0'");
+        workflow.ShouldContain("KIND_VERSION: 'v0.31.0'");
+        workflow.ShouldContain("KIND_NODE_IMAGE: 'kindest/node:v1.35.0'");
+        workflow.ShouldContain("-KindNodeImage $env:KIND_NODE_IMAGE");
+        verifier.ShouldContain("--image', $KindNodeImage");
+        verifier.ShouldContain("test ! -e /app/appsettings.Development.json");
     }
 
     [Fact]

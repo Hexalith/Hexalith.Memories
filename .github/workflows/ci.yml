@@ -12,6 +12,9 @@ permissions:
 env:
   DAPR_CLI_VERSION: '1.18.0'
   DAPR_RUNTIME_VERSION: '1.18.1'
+  KUBECTL_VERSION: 'v1.35.0'
+  KIND_VERSION: 'v0.31.0'
+  KIND_NODE_IMAGE: 'kindest/node:v1.35.0'
   MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS: '127.0.0.1:50005'
   MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS: '127.0.0.1:50006'
 
@@ -201,6 +204,8 @@ jobs:
         # ProductionDeploymentArtifactsTests shells out to `kubectl kustomize` and fails (does not skip)
         # when kubectl is absent; install it explicitly rather than relying on the runner's ambient binary.
         uses: azure/setup-kubectl@v4
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
 
       - name: Run Docker-free unit and contract tests
         run: bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract
@@ -356,11 +361,15 @@ jobs:
 
       - name: Initialize kubectl
         uses: azure/setup-kubectl@v4
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
 
       - name: Install kind
         uses: helm/kind-action@v1
         with:
           install_only: true
+          version: ${{ env.KIND_VERSION }}
+          node_image: ${{ env.KIND_NODE_IMAGE }}
 
       - name: Install Dapr CLI
         uses: dapr/setup-dapr@v2
@@ -378,7 +387,8 @@ jobs:
             -ServerArchive ./artifacts/containers/release/server.tar.gz `
             -McpArchive ./artifacts/containers/release/mcp.tar.gz `
             -Version "0.0.0-ci.${{ github.run_number }}" `
-            -DaprRuntimeVersion $env:DAPR_RUNTIME_VERSION
+            -DaprRuntimeVersion $env:DAPR_RUNTIME_VERSION `
+            -KindNodeImage $env:KIND_NODE_IMAGE
 
       - name: Upload production deployment evidence
         if: always()

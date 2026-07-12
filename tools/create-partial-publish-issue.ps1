@@ -81,19 +81,19 @@ $bodyParts = @(
     "",
     "- Run: $RunUrl",
     "- Version: $($summary.version)",
-    "- Package directory: $($summary.packageDirectory)",
+    "- Evidence directory: $($summary.packageDirectory)",
     "- Source: $($summary.source)",
     "- Artifact kind: $artifactKind",
     "",
-    (Format-ListSection -Title "Pushed packages" -Items @($summary.pushed)),
+    (Format-ListSection -Title "Published artifacts" -Items @($summary.pushed)),
     "",
-    (Format-ListSection -Title "Failed packages" -Items @($summary.failed)),
+    (Format-ListSection -Title "Failed artifacts" -Items @($summary.failed)),
     "",
-    (Format-ListSection -Title "Not-attempted packages" -Items @($summary.notAttempted)),
+    (Format-ListSection -Title "Not-attempted artifacts" -Items @($summary.notAttempted)),
     "",
     "### Recovery",
     "",
-    "See `docs/dev/release-runbook.md`. Rerun the Release workflow; NuGet uses `--skip-duplicate` and versioned container publication is idempotent."
+    "See `docs/dev/release-runbook.md`. Rerun the Release workflow; NuGet uses `--skip-duplicate` and matching immutable container tags are reconciled by digest."
 )
 $body = $bodyParts -join [Environment]::NewLine
 

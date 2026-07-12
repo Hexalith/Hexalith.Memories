@@ -25,8 +25,10 @@ public sealed class ProductionDeploymentArtifactsTests
         targets.ShouldContain("<ContainerEnvironmentVariable Include=\"ASPNETCORE_HTTP_PORTS\" Value=\"8080\" />");
         server.ShouldContain("<EnableContainer>true</EnableContainer>");
         server.ShouldContain("<ContainerRepository>hexalith/memories-server</ContainerRepository>");
+        server.ShouldContain("<Content Update=\"appsettings.Development.json\" CopyToPublishDirectory=\"Never\" />");
         mcp.ShouldContain("<EnableContainer>true</EnableContainer>");
         mcp.ShouldContain("<ContainerRepository>hexalith/memories-mcp</ContainerRepository>");
+        mcp.ShouldContain("<Content Update=\"appsettings.Development.json\" CopyToPublishDirectory=\"Never\" />");
     }
 
     [Fact]

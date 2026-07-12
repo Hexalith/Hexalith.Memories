@@ -5,7 +5,13 @@ param(
 
     [string]$OutputDirectory = "artifacts/packages/release",
 
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+
+    [string]$ContainerOutputDirectory = "artifacts/containers/release",
+
+    [string]$DeploymentOutputPath = "artifacts/deployment/hexalith-memories-production.yaml",
+
+    [string]$PowerShellExecutable = "pwsh"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,7 +31,7 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$') {
 
 Push-Location $repoRoot
 try {
-    & pwsh -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1
+    & $PowerShellExecutable -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1
     if ($LASTEXITCODE -ne 0) {
         throw "Project/package inventory validation failed."
     }
@@ -54,19 +60,35 @@ try {
         }
     }
 
-    & pwsh -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1 -PackageDirectory $outputPath -Version $Version
+    & $PowerShellExecutable -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1 -PackageDirectory $outputPath -Version $Version
     if ($LASTEXITCODE -ne 0) {
         throw "Generated package validation failed."
     }
 
-    & pwsh -NoLogo -NoProfile -File ./tools/render-production-deployment.ps1 `
+    & $PowerShellExecutable -NoLogo -NoProfile -File ./tools/publish-containers.ps1 `
         -Version $Version `
-        -ServerImage "registry.hexalith.com/hexalith/memories-server:$Version" `
-        -McpImage "registry.hexalith.com/hexalith/memories-mcp:$Version" `
-        -OutputPath ./artifacts/deployment/hexalith-memories-production.yaml
+        -OutputDirectory $ContainerOutputDirectory
     if ($LASTEXITCODE -ne 0) {
-        throw "Production deployment rendering failed."
+        throw "Release container preparation failed."
     }
+
+    $containerOutput = if ([System.IO.Path]::IsPathRooted($ContainerOutputDirectory)) {
+        $ContainerOutputDirectory
+    }
+    else {
+        Join-Path $repoRoot $ContainerOutputDirectory
+    }
+    $deploymentOutput = if ([System.IO.Path]::IsPathRooted($DeploymentOutputPath)) {
+        $DeploymentOutputPath
+    }
+    else {
+        Join-Path $repoRoot $DeploymentOutputPath
+    }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $deploymentOutput) -Force | Out-Null
+    Copy-Item `
+        -LiteralPath (Join-Path $containerOutput "production-deployment.yaml") `
+        -Destination $deploymentOutput `
+        -Force
 }
 finally {
     Pop-Location
