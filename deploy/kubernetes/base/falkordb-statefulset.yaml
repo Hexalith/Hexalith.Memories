@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: falkordb
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: falkordb
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: falkordb
+spec:
+  serviceName: falkordb
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: falkordb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: falkordb
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: falkordb
+          image: falkordb/falkordb:v4.12.0@sha256:7927eb194df0fadf70e2deb6c20c8178743ec92aacd739c790f8a35ce5dee613
+          ports:
+            - name: redis
+              containerPort: 6379
+          env:
+            - name: FALKORDB_PERSISTENCE_ARGS
+              valueFrom:
+                configMapKeyRef:
+                  name: falkordb-config
+                  key: FALKORDB_PERSISTENCE_ARGS
+            - name: FALKORDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: falkordb-password
+            - name: REDIS_ARGS
+              value: $(FALKORDB_PERSISTENCE_ARGS) --requirepass $(FALKORDB_PASSWORD)
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "redis-cli -a \"${FALKORDB_PASSWORD}\" --no-auth-warning ping | grep -qx PONG"]
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "redis-cli -a \"${FALKORDB_PASSWORD}\" --no-auth-warning ping | grep -qx PONG"]
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "redis-cli -a \"${FALKORDB_PASSWORD}\" --no-auth-warning ping | grep -qx PONG"]
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/falkordb/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

@@ -327,3 +327,57 @@ jobs:
           path: TestResults/integration-fast/**
           if-no-files-found: error
           retention-days: 14
+
+  production-deployment-verification:
+    name: production-deployment-verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        with:
+          global-json-file: global.json
+
+      - name: Initialize kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Install Dapr CLI
+        uses: dapr/setup-dapr@v2
+        with:
+          version: ${{ env.DAPR_CLI_VERSION }}
+
+      - name: Publish local Server and MCP OCI archives
+        shell: pwsh
+        run: ./tools/publish-containers.ps1 -Version "0.0.0-ci.${{ github.run_number }}"
+
+      - name: Verify disposable production rollout
+        shell: pwsh
+        run: |
+          ./tools/verify-production-deployment.ps1 `
+            -ServerArchive ./artifacts/containers/release/server.tar.gz `
+            -McpArchive ./artifacts/containers/release/mcp.tar.gz `
+            -Version "0.0.0-ci.${{ github.run_number }}" `
+            -DaprRuntimeVersion $env:DAPR_RUNTIME_VERSION
+
+      - name: Upload production deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-deployment-evidence
+          path: |
+            artifacts/containers/release/**
+          if-no-files-found: error
+          retention-days: 14

@@ -58,6 +58,15 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Generated package validation failed."
     }
+
+    & pwsh -NoLogo -NoProfile -File ./tools/render-production-deployment.ps1 `
+        -Version $Version `
+        -ServerImage "registry.hexalith.com/hexalith/memories-server:$Version" `
+        -McpImage "registry.hexalith.com/hexalith/memories-mcp:$Version" `
+        -OutputPath ./artifacts/deployment/hexalith-memories-production.yaml
+    if ($LASTEXITCODE -ne 0) {
+        throw "Production deployment rendering failed."
+    }
 }
 finally {
     Pop-Location

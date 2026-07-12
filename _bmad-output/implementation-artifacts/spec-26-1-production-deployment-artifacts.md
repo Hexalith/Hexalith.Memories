@@ -2,8 +2,8 @@
 title: 'Story 26.1: Production Deployment Artifacts'
 type: 'feature'
 created: '2026-07-11'
-status: in-progress
-baseline_revision: bb47d3007935d263eee663cd9e0a4705b33b4929
+status: in-review
+baseline_revision: 82b421998cd77cf7234ec4ff3f71266e1173105d
 review_loop_iteration: 1
 followup_review_recommended: false
 context:

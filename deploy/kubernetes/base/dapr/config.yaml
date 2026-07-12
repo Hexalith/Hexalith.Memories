@@ -1,0 +1,26 @@
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: memories-config
+spec:
+  secrets:
+    scopes:
+      - storeName: secretstore
+        defaultAccess: deny
+        allowedSecrets:
+          - redis-secret
+          - google-embedding-api-key
+          - memories-embedding-client-secret
+          - llm-secret
+  accessControl:
+    defaultAction: deny
+    trustDomain: public
+    policies:
+      - appId: memories-mcp
+        namespace: hexalith-memories
+        trustDomain: public
+        defaultAction: deny
+        operations:
+          - name: /api/v1/**
+            httpVerb: ["GET", "POST"]
+            action: allow

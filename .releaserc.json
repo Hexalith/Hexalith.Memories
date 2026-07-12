@@ -8,13 +8,13 @@
       "@semantic-release/exec",
       {
         "prepareCmd": "pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release",
-        "publishCmd": "pwsh -NoLogo -NoProfile -File ./tools/publish-nuget.ps1 -Version ${nextRelease.version} -PackageDirectory ./artifacts/packages/release"
+        "publishCmd": "pwsh -NoLogo -NoProfile -File ./tools/publish-release.ps1 -Version ${nextRelease.version}"
       }
     ],
     [
       "@semantic-release/github",
       {
-        "assets": ["artifacts/packages/release/*.nupkg"]
+        "assets": ["artifacts/packages/release/*.nupkg", "artifacts/deployment/hexalith-memories-production.yaml"]
       }
     ]
   ]

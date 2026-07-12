@@ -1,12 +1,58 @@
-<!-- Review cadence: update when a deploy-config variable name, Dapr sidecar port, pub/sub component name, or app-id default changes, or quarterly — whichever comes first. Last reviewed: 2026-06-24. -->
+<!-- Review cadence: update when a deploy-config variable name, Dapr sidecar port, pub/sub component name, or app-id default changes, or quarterly — whichever comes first. Last reviewed: 2026-07-12. -->
 
-# Deployment Configuration Contract (Story 18.2)
+# Deployment Configuration Contract
 
 This document publishes the canonical environment-variable, Dapr sidecar-port, OTLP-exporter, and pub/sub event-intake configuration surface a downstream operator must supply to deploy Memories into a Kubernetes overlay, so placeholder-shaped env literals in consumer kustomizations can be replaced with real, documented values without first running aspirate.
 
-Origin: MEM-2 (Parties consumer integration intake, Sprint Change Proposal 2026-05-27). The values below already exist in code (OTLP is environment-gated, the Dapr ports are set by the AppHost, the pub/sub component is shared with Redis); this contract publishes them in one operator-facing place and guards them against drift. **Full aspirate manifest emission is explicitly deferred** — see [Deferred: aspirate manifest emission](#deferred-aspirate-manifest-emission) below.
+Origin: Story 18.2 published the downstream configuration surface. Story 26.1 adds the authoritative production Kustomize deployment while retaining the AppHost as the local topology reference.
 
 > **Code is the source of truth.** Every literal in this document is mirrored from the authoritative source file named in its row. A drift-guard test (see [Automated enforcement](#automated-enforcement)) fails the build if a documented name diverges from code.
+
+## Production Kustomize deployment (Story 26.1)
+
+The committed production entry point is `deploy/kubernetes/overlays/production`. The deterministic render is:
+
+```bash
+kubectl kustomize deploy/kubernetes/overlays/production > /tmp/hexalith-memories-production.yaml
+kubectl apply --dry-run=client -f /tmp/hexalith-memories-production.yaml
+```
+
+The render includes Server, MCP, Redis Stack, FalkorDB, DAPR sidecars/components, actor-enabled state, pub/sub, secret-store scoping, least-privilege Secret RBAC, probes, fixed bootstrap resources, and the 20 GiB/10 GiB persistent volumes. It contains no Kubernetes `Secret` values. The AppHost is not deployed, and neither Helm nor Aspire-published output is authoritative for this story.
+
+Release automation produces `artifacts/deployment/hexalith-memories-production.yaml`, where both Server and MCP image tags equal the semantic-release version. For a manual non-release render, replace the `0.0.0` image placeholders in a downstream overlay; never deploy those placeholders unchanged.
+
+### Required external inputs
+
+Create the Secret resources below in namespace `hexalith-memories` through the infrastructure secret system. The names and keys are contracts; values must be non-empty and must not be committed. The production overlay itself generates `memories-production-config` with safe example OIDC values; a downstream overlay must replace those literals with the operator's real OIDC contract before deployment.
+
+| Resource | Required keys | Consumers |
+| :------- | :------------ | :-------- |
+| Secret `redis-secret` | `password`, `falkordb-password` | Redis Stack, FalkorDB, Server, DAPR state/pubsub |
+| Secret `llm-secret` | `OPENAI_API_KEY` | `llm-openai` Conversation component |
+| Secret `google-embedding-api-key` | `google-embedding-api-key` | default Google embedding provider |
+| Secret `memories-embedding-client-secret` | `memories-embedding-client-secret` | OIDC embedding provider mode |
+| Secret `app-api-token` | `token` | DAPR sidecar-to-app authentication (`APP_API_TOKEN`) |
+| Secret `dapr-api-token` | `token` | app-to-DAPR authentication (`DAPR_API_TOKEN`) |
+| Secret `registry-credentials` | Kubernetes Docker config JSON | image pulls for Server and MCP |
+| Generated ConfigMap `memories-production-config-*` | `OIDC_AUTHORITY`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_TENANT_CLAIM` | identical Server/MCP OIDC validation contract; patch through Kustomize, not by creating a competing unhashed ConfigMap |
+
+The OIDC authority and issuer must use HTTPS. Server and MCP intentionally consume the same audience and tenant-claim name. MCP forwards the validated inbound bearer unchanged when invoking Server; there is no production `Authentication:ServerUpstream` signing key.
+
+The default DAPR trust domain is `public` and the production namespace is `hexalith-memories`. If the cluster uses another trust domain or namespace, patch both the Server DAPR `Configuration` policy and the workload namespace together. Do not widen the deny-by-default `/api/v1/**` policy or add publisher app-ids: `eventstore` is the sole publisher and `memories` is subscriber-only.
+
+### Apply and verify
+
+1. Install DAPR 1.18 or later and confirm its control plane and injector are healthy.
+2. Create the external resources above and make the two versioned images pullable through `registry-credentials`.
+3. Render and run client-side validation using the commands above, then apply the rendered file.
+4. Wait until the `memories` and `memories-mcp` application containers are running. Within 60 seconds, parse `/ready` and require top-level JSON `status` to equal `Healthy`; HTTP 200 alone is insufficient because `Degraded` also returns 200.
+5. Run `tools/verify-production-deployment.ps1` with the two locally published OCI archives. The verifier creates a disposable DAPR-enabled cluster, checks schema/RBAC/ACL behavior, proves startup timing, and exercises optional-axis degradation plus critical Redis/DAPR/MCP-upstream failures. It has no skip path.
+
+The application port `8080` has no direct Service target. The committed `memories` and `memories-mcp` Services target DAPR port `3500`; any public ingress, TLS issuer, hostname, or network edge remains infrastructure-owned and must terminate at that DAPR seam.
+
+### Rollback
+
+Keep the preceding release's rendered deployment artifact. Reapply that artifact and use `kubectl rollout status` for `deployment/memories`, `deployment/memories-mcp`, `statefulset/redis-stack`, and `statefulset/falkordb`. If only a stateless image rollout is bad, `kubectl rollout undo deployment/<name> -n hexalith-memories` is sufficient. Do not delete Redis/FalkorDB PVCs during rollback; backup/restore is owned by Story 26.2.
 
 ## OTLP telemetry export
 
@@ -32,14 +78,14 @@ These are the **AppHost defaults**. The canonical source is `src/Hexalith.Memori
 | Variable / key | Default | Source-of-truth | Env-only or appsettings? |
 | :------------- | :------ | :-------------- | :----------------------- |
 | `EnableKeycloak` | enabled unless set to `false` | `AppHost/Program.cs` via `HexalithEventStoreSecurityExtensions` | AppHost/local-dev switch. Set to `false` to skip the local `security` resource and use symmetric-key/env-var JWT fallback for MCP. |
-| `PUBSUB_REDIS_HOST` | `redis:6379` | `deploy/dapr/components/pubsub.yaml` (YAML-interpolated) | **Env-only** (no C# constant; substituted into the Dapr component YAML). |
-| `PUBSUB_REDIS_PASSWORD` | _(empty)_ | `deploy/dapr/components/pubsub.yaml` (YAML-interpolated) | **Env-only**; inject from a secret in production. |
+| `PUBSUB_REDIS_HOST` | `redis:6379` | legacy downstream-template contract retained in `deploy/dapr/components/pubsub.yaml` documentation | **Not consumed by the Story 26.1 production artifact.** The canonical component fixes the in-cluster Service name. |
+| `PUBSUB_REDIS_PASSWORD` | _(empty)_ | legacy downstream-template contract retained in `deploy/dapr/components/pubsub.yaml` documentation | **Not consumed by the Story 26.1 production artifact.** It references `redis-secret/password` through DAPR's Kubernetes secret store. |
 | `MEMORIES_EVENTSTORE_TOPIC` | `memories-events` (AppHost-injected convention; **required downstream** — see note) | `EventIngestionController.TopicEnvVar`; value injected by `AppHost/Program.cs` | **Env-only**; **required in a downstream overlay** — there is no runtime fallback (see note below). Mirrors config `EventStoreIntegration:Routing:Topic`. |
 | `ConnectionStrings__redis` | _(injected from the Redis endpoint by the AppHost)_ | `AppHost/Program.cs`; consumed in `Server/Program.cs` | **Env-only**. |
 | `ConnectionStrings__falkordb` | _(injected from the FalkorDB endpoint by the AppHost)_ | `AppHost/Program.cs`; consumed in `Server/Program.cs` | **Env-only**. |
 | `MEMORIES_DAPR_APP_ID` | `memories` (when unset) | `AppHost/Program.cs` (`ResolveDaprAppId`) | **Env-only**, optional override. |
 
-In a downstream Kubernetes overlay the AppHost is not present, so the operator supplies `PUBSUB_REDIS_HOST`, `PUBSUB_REDIS_PASSWORD`, `MEMORIES_EVENTSTORE_TOPIC`, and the `ConnectionStrings__*` values directly (the `ConnectionStrings__*` pair points the Server at the in-cluster Redis and FalkorDB services).
+In a custom downstream Kubernetes overlay the AppHost is not present, so the operator supplies `MEMORIES_EVENTSTORE_TOPIC` and the `ConnectionStrings__*` values directly. The committed Story 26.1 overlay already wires those values, and its DAPR pub/sub component resolves the Redis password from `redis-secret`; `PUBSUB_REDIS_HOST` and `PUBSUB_REDIS_PASSWORD` apply only to older/custom component templates.
 
 For local AppHost runs, the local identity provider appears in the Aspire dashboard as `security`.
 It is Keycloak-backed, but consumers should depend on the `security` resource name rather than a
@@ -97,9 +143,9 @@ A content-asserting drift-guard test protects this contract:
 - **Doc-presence (test-enforced):** the routing key `EventStoreIntegration:Routing:SourceToTenantMap` and the subscription-discovery route `/dapr/subscribe` are asserted present in this document. The delivery route `POST /events/ingest` is additionally source-tied through its controller route attributes above.
 - **Review-enforced (not reflectable):** the backend/dashboard ports `6379`, `6380`, `18888`, `18889` are architecture-projection values; they are asserted present in this document but their authoritative form lives in `architecture.md`, so divergence is caught by review, not by the test. The exact composition of the route surface (`/dapr/subscribe`, `POST /events/ingest`) is additionally guarded by `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/DocumentationCompletenessTests.cs` against `../dev/eventstore-integration.md`.
 
-## Deferred: aspirate manifest emission
+## Production artifact ownership
 
-Full aspirate (or equivalent) manifest generation — emitting ready-to-apply Kubernetes/Dapr manifests from the AppHost topology — is a larger, separable effort and is **explicitly deferred to a future story**. This story delivers the documented contract and its drift guard only. The deferral is recorded against `MEM-2` in [`_bmad-output/implementation-artifacts/deferred-work.md`](../../_bmad-output/implementation-artifacts/deferred-work.md); no follow-up story id is assigned yet.
+Story 26.1 closes the former aspirate-manifest deferral with the Kustomize base and production overlay documented above. Aspirate/Helm output remains non-authoritative; deployment changes must update the Kustomize artifact, its executable tests, and this operator contract together.
 
 ## References
 

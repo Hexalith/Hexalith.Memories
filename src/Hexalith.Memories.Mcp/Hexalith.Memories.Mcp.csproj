@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <IsPackable>true</IsPackable>
+    <EnableContainer>true</EnableContainer>
+    <ContainerRepository>hexalith/memories-mcp</ContainerRepository>
     <PackageId>Hexalith.Memories.Mcp</PackageId>
     <Description>MCP Server surface for Hexalith.Memories (LLM agent interface — Phase 1.5). Exposes
       search_memory / ingest_content / traverse_relations / get_case_info tools over the Streamable
@@ -14,6 +16,10 @@
     <PackageTags>hexalith;memories;mcp;modelcontextprotocol;llm;agent;dapr</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Hexalith.Memories.Mcp.Tests" />

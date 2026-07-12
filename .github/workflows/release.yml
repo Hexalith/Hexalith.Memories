@@ -44,6 +44,16 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Initialize kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Authenticate container registry
+        uses: docker/login-action@v4
+        with:
+          registry: registry.hexalith.com
+          username: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
+          password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -94,16 +104,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
-      - name: Alert partial NuGet publish
+      - name: Alert partial release publish
         if: failure()
         shell: pwsh
         run: |
-          $summaryPath = "artifacts/packages/release/publish-summary.json"
-          if (Test-Path -LiteralPath $summaryPath) {
-            ./tools/create-partial-publish-issue.ps1 -SummaryPath $summaryPath
+          $summaryPaths = @(
+            "artifacts/packages/release/publish-summary.json",
+            "artifacts/containers/release/publish-summary.json"
+          )
+          foreach ($summaryPath in $summaryPaths) {
+            if (Test-Path -LiteralPath $summaryPath) {
+              ./tools/create-partial-publish-issue.ps1 -SummaryPath $summaryPath
+            }
           }
-          else {
-            Write-Host "No NuGet publish summary found; skipping partial-publish issue alert."
+          if (-not ($summaryPaths | Where-Object { Test-Path -LiteralPath $_ })) {
+            Write-Host "No publish summary found; skipping partial-publish issue alert."
           }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -118,3 +133,11 @@ jobs:
           name: release-packages
           path: artifacts/packages/release/*.nupkg
           if-no-files-found: warn
+
+      - name: Upload deployment artifact
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-deployment
+          path: artifacts/deployment/hexalith-memories-production.yaml
+          if-no-files-found: error

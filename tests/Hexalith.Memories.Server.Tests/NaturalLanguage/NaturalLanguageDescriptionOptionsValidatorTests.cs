@@ -39,13 +39,27 @@ public sealed class NaturalLanguageDescriptionOptionsValidatorTests
     [Fact]
     public void ProductionWithRealComponent_ReturnsSuccess()
     {
-        NaturalLanguageDescriptionOptionsValidator sut = BuildValidator("Production", ttl: null);
+        NaturalLanguageDescriptionOptionsValidator sut = BuildValidator("Production", ttl: TimeSpan.Zero);
 
         NaturalLanguageDescriptionOptions options = new() { DaprComponentName = "llm-openai" };
 
         ValidateOptionsResult result = sut.Validate(null, options);
 
         result.Succeeded.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ProductionWithoutComponentMaterial_ReturnsFailure()
+    {
+        NaturalLanguageDescriptionOptionsValidator sut = BuildValidator("Production", ttl: null);
+
+        ValidateOptionsResult result = sut.Validate(
+            null,
+            new NaturalLanguageDescriptionOptions { DaprComponentName = "llm-openai" });
+
+        result.Failed.ShouldBeTrue();
+        result.Failures.ShouldNotBeNull().ShouldContain(
+            failure => failure.Contains("9165 ConversationComponentMaterialUnavailable", StringComparison.Ordinal));
     }
 
     [Fact]

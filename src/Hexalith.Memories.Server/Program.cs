@@ -9,6 +9,7 @@ using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.ServiceDefaults;
+using Hexalith.Memories.ServiceDefaults.Security;
 using Hexalith.Memories.Telemetry;
 
 using Microsoft.Extensions.Options;
@@ -27,6 +28,7 @@ RetryPolicyBuilder.Initialize(app.Services.GetRequiredService<IOptions<Ingestion
 NaturalLanguageDescriptionOptionsSnapshot.Initialize(
     app.Services.GetRequiredService<IOptions<NaturalLanguageDescriptionOptions>>());
 
+app.UseMiddleware<DaprApplicationTokenMiddleware>();
 app.MapDefaultEndpoints();
 // Dapr actor runtime endpoints are sidecar-facing infrastructure routes, not API routes.
 // ServerEndpointAuthorizationTests guards this anonymous exception against broad route drift.

@@ -79,7 +79,15 @@ public sealed partial class NaturalLanguageDescriptionOptionsValidator
         }
 
         TimeSpan? ttl = _yamlReader.TryReadResponseCacheTtl(options.DaprComponentName);
-        if (ttl.HasValue && ttl.Value > TimeSpan.Zero)
+        if (_environment.IsProduction() && !ttl.HasValue)
+        {
+            failures.Add(
+                "9165 ConversationComponentMaterialUnavailable: "
+                + $"Production could not verify responseCacheTTL for DAPR Conversation component "
+                + $"'{options.DaprComponentName}'. The canonical component YAML must be present under "
+                + "deploy/dapr/components beside the published Server application.");
+        }
+        else if (ttl.HasValue && ttl.Value > TimeSpan.Zero)
         {
             string? envAck = Environment.GetEnvironmentVariable(CacheAckEnvVar);
             bool envAcknowledged = string.Equals(envAck, CacheAckEnvVarExpectedValue, StringComparison.Ordinal);

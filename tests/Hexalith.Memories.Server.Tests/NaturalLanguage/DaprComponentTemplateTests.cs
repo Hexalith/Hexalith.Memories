@@ -13,7 +13,7 @@ using Shouldly;
 public sealed class DaprComponentTemplateTests
 {
     [Fact]
-    public void StateStoreTemplate_UsesEnvironmentInterpolatedRedisPassword()
+    public void StateStoreTemplate_UsesKubernetesSecretAndActorStore()
     {
         string content = NormalizeLineEndings(File.ReadAllText(LocateRepoFile(Path.Combine(
             "deploy",
@@ -21,13 +21,18 @@ public sealed class DaprComponentTemplateTests
             "components",
             "statestore.yaml"))));
 
-        content.ShouldStartWith("# Production deployment template.");
-        content.ShouldContain("${STATESTORE_REDIS_PASSWORD:-}", Case.Sensitive);
-        content.ShouldNotContain("redisPassword\n      value: \"\"", Case.Sensitive);
+        content.ShouldContain("name: redisPassword", Case.Sensitive);
+        content.ShouldContain("secretKeyRef:", Case.Sensitive);
+        content.ShouldContain("name: redis-secret", Case.Sensitive);
+        content.ShouldContain("key: password", Case.Sensitive);
+        content.ShouldContain("name: actorStateStore", Case.Sensitive);
+        content.ShouldContain("value: \"true\"", Case.Sensitive);
+        content.ShouldContain("secretStore: secretstore", Case.Sensitive);
+        content.ShouldNotContain("${STATESTORE_REDIS_PASSWORD:-}", Case.Sensitive);
     }
 
     [Fact]
-    public void SecretStoreTemplate_UsesAbsoluteSecretsPathAndDocumentsMount()
+    public void SecretStoreTemplate_UsesKubernetesStoreScopedToRuntimeApps()
     {
         string content = NormalizeLineEndings(File.ReadAllText(LocateRepoFile(Path.Combine(
             "deploy",
@@ -35,9 +40,12 @@ public sealed class DaprComponentTemplateTests
             "components",
             "secretstore.yaml"))));
 
-        content.ShouldContain("/etc/dapr/secrets/secrets.json", Case.Sensitive);
-        content.ShouldContain("volume mount", Case.Insensitive);
-        content.ShouldNotContain("./secrets.json", Case.Sensitive);
+        content.ShouldContain("type: secretstores.kubernetes", Case.Sensitive);
+        content.ShouldContain("scopes:", Case.Sensitive);
+        content.ShouldContain("- eventstore", Case.Sensitive);
+        content.ShouldContain("- memories", Case.Sensitive);
+        content.ShouldNotContain("secretstores.local.file", Case.Sensitive);
+        content.ShouldNotContain("secretsFile", Case.Sensitive);
     }
 
     [Fact]

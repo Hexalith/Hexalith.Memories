@@ -388,8 +388,8 @@ development_status:
   epic-25-retrospective: done
 
   # Epic 26: Test, Deployment & Operational Readiness
-  epic-26: backlog
-  26-1-production-deployment-artifacts: backlog
+  epic-26: in-progress
+  26-1-production-deployment-artifacts: in-progress
   26-2-backup-and-restore: backlog
   26-3-integration-stub-closure: backlog
   26-4-coverage-gating-and-benchmark-lane: backlog

@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup Condition="'$(EnableContainer)' == 'true'">
+    <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:10.0-alpine</ContainerBaseImage>
+    <ContainerRegistry Condition="'$(ContainerRegistry)' == ''">registry.hexalith.com</ContainerRegistry>
+    <ContainerImageTag Condition="'$(ContainerImageTag)' == ''">$(Version)</ContainerImageTag>
+    <ContainerUser>1654</ContainerUser>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(EnableContainer)' == 'true'">
+    <ContainerPort Include="8080" Type="tcp" />
+    <ContainerEnvironmentVariable Include="ASPNETCORE_HTTP_PORTS" Value="8080" />
+    <ContainerLabel Include="org.opencontainers.image.source" Value="https://github.com/Hexalith/Hexalith.Memories" />
+    <ContainerLabel Include="org.opencontainers.image.version" Value="$(ContainerImageTag)" />
+  </ItemGroup>
+</Project>

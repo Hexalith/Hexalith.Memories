@@ -5,6 +5,7 @@
 
 using Hexalith.Memories.Mcp;
 using Hexalith.Memories.ServiceDefaults;
+using Hexalith.Memories.ServiceDefaults.Security;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -14,6 +15,7 @@ McpCompositionRoot.ConfigureServices(builder.Services);
 
 WebApplication app = builder.Build();
 
+app.UseMiddleware<DaprApplicationTokenMiddleware>();
 app.MapDefaultEndpoints();
 app.UseAuthentication();
 app.UseAuthorization();

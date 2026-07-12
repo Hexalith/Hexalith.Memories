@@ -29,6 +29,9 @@ public static class MemoriesRoutes
     /// <summary>The common version-one API path prefix shared by every V1 REST route.</summary>
     public const string ApiPrefix = "/api/v1";
 
+    /// <summary>Anonymous readiness operation intended for DAPR service invocation.</summary>
+    public const string Health = "/api/v1/health";
+
     // ---- Ingestion ----
 
     /// <summary>File ingestion submission route (<c>POST /api/v1/ingest</c>).</summary>
@@ -155,6 +158,10 @@ public static class MemoriesRoutes
     public const string TenantExport = "/api/v1/tenants/{tenantId}/export";
 
     // ---- Client-facing relative path builders (segment values escaped) ----
+
+    /// <summary>Builds the relative DAPR service-invocation health path.</summary>
+    /// <returns>The relative readiness path.</returns>
+    public static string HealthPath() => Relative(Health);
 
     /// <summary>Builds the relative client request path for <c>GET /api/v1/search</c> (query appended by the caller).</summary>
     /// <returns>The relative request path.</returns>

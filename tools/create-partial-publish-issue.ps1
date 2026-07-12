@@ -35,6 +35,13 @@ if ($summary.status -ne "partial-publish") {
     return
 }
 
+$artifactKind = if ([string]::IsNullOrWhiteSpace([string]$summary.artifactKind)) {
+    "NuGet packages"
+}
+else {
+    [string]$summary.artifactKind
+}
+
 $title = "PARTIAL PUBLISH $($summary.version) - manual reconciliation required"
 
 function Format-ListSection {
@@ -70,12 +77,13 @@ function Format-ListSection {
 }
 
 $bodyParts = @(
-    "A NuGet publish run partially succeeded and requires manual reconciliation.",
+    "A release publish run partially succeeded and requires manual reconciliation.",
     "",
     "- Run: $RunUrl",
     "- Version: $($summary.version)",
     "- Package directory: $($summary.packageDirectory)",
     "- Source: $($summary.source)",
+    "- Artifact kind: $artifactKind",
     "",
     (Format-ListSection -Title "Pushed packages" -Items @($summary.pushed)),
     "",
@@ -85,7 +93,7 @@ $bodyParts = @(
     "",
     "### Recovery",
     "",
-    "See `docs/dev/release-runbook.md`. Rerun the Release workflow; `--skip-duplicate` skips already-published packages and retries failed or not-attempted packages."
+    "See `docs/dev/release-runbook.md`. Rerun the Release workflow; NuGet uses `--skip-duplicate` and versioned container publication is idempotent."
 )
 $body = $bodyParts -join [Environment]::NewLine
 

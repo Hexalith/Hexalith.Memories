@@ -1,0 +1,27 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+spec:
+  type: pubsub.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: redis:6379
+    - name: redisPassword
+      secretKeyRef:
+        name: redis-secret
+        key: password
+    - name: allowedTopics
+      value: memories-events
+    - name: protectedTopics
+      value: memories-events
+    - name: publishingScopes
+      value: eventstore=memories-events;memories=
+    - name: subscriptionScopes
+      value: eventstore=;memories=memories-events
+auth:
+  secretStore: secretstore
+scopes:
+  - eventstore
+  - memories

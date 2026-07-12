@@ -13,6 +13,7 @@ using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Tests.EventStoreIntegration;
+using Hexalith.Memories.ServiceDefaults.Health;
 using Hexalith.Memories.Telemetry;
 
 using Microsoft.AspNetCore.Authorization;
@@ -258,7 +259,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     }
 
     [Fact]
-    public void ApiRoutes_DoNotCarryAnonymousMetadata()
+    public void ApiRoutes_OnlyDaprHealthCarriesAnonymousMetadata()
     {
         List<RouteEndpoint> apiRoutes = GetRouteEndpoints()
             .Where(endpoint => endpoint.RoutePattern.RawText?.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase) == true)
@@ -268,7 +269,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
         apiRoutes
             .Where(endpoint => endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)
             .Select(endpoint => endpoint.RoutePattern.RawText)
-            .ShouldBeEmpty();
+            .ShouldBe([HealthEndpointPaths.DaprApiHealth]);
     }
 
     [Fact]
@@ -279,6 +280,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
             "/health",
             "/alive",
             "/ready",
+            HealthEndpointPaths.DaprApiHealth,
             "dapr/subscribe",
             "events/ingest",
         ];
@@ -291,6 +293,7 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
         anonymousRoutes.ShouldContain("/health");
         anonymousRoutes.ShouldContain("/alive");
         anonymousRoutes.ShouldContain("/ready");
+        anonymousRoutes.ShouldContain(HealthEndpointPaths.DaprApiHealth);
         anonymousRoutes.ShouldContain("dapr/subscribe");
         anonymousRoutes.ShouldContain("events/ingest");
         anonymousRoutes.Where(IsDaprActorRuntimeRoute).ShouldNotBeEmpty();

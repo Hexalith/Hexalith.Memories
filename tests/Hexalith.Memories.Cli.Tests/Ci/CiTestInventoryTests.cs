@@ -237,7 +237,7 @@ public sealed partial class CiTestInventoryTests
     [Fact]
     public void ReleaseWorkflow_AlertPartialPublishStep_GuardsOnFailureAndReferencesAuditPaths()
     {
-        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Alert partial NuGet publish");
+        ReleaseWorkflowStep step = GetReleaseWorkflowStep("Alert partial release publish");
 
         // Anchored to step name so a future workflow refactor that moves the alert outside of the
         // failure() guard (or to a different shell) fails this assertion instead of degrading
@@ -246,6 +246,27 @@ public sealed partial class CiTestInventoryTests
         step.Shell.ShouldBe("pwsh");
         step.RunBlock.ShouldContain("./tools/create-partial-publish-issue.ps1");
         step.RunBlock.ShouldContain("artifacts/packages/release/publish-summary.json");
+        step.RunBlock.ShouldContain("artifacts/containers/release/publish-summary.json");
+    }
+
+    [Fact]
+    public void ReleaseConfiguration_PublishesRetrySafeTwoImageUnitAndVersionedDeployment()
+    {
+        string repoRoot = GetRepoRoot();
+        string releaseConfig = File.ReadAllText(Path.Combine(repoRoot, ".releaserc.json"));
+        string publishRelease = File.ReadAllText(Path.Combine(repoRoot, "tools", "publish-release.ps1"));
+        string publishContainers = File.ReadAllText(Path.Combine(repoRoot, "tools", "publish-containers.ps1"));
+        string renderDeployment = File.ReadAllText(Path.Combine(repoRoot, "tools", "render-production-deployment.ps1"));
+
+        releaseConfig.ShouldContain("./tools/publish-release.ps1 -Version ${nextRelease.version}");
+        releaseConfig.ShouldContain("artifacts/deployment/hexalith-memories-production.yaml");
+        publishRelease.ShouldContain("./tools/publish-containers.ps1 -Version $Version -Push");
+        publishContainers.ShouldContain("hexalith/memories-server");
+        publishContainers.ShouldContain("hexalith/memories-mcp");
+        publishContainers.ShouldContain("partial-publish");
+        publishContainers.ShouldContain("publish-summary.json");
+        publishContainers.ShouldContain("render-production-deployment.ps1");
+        renderDeployment.ShouldContain("Both release image references must end with the semantic-release version");
     }
 
     [Fact]

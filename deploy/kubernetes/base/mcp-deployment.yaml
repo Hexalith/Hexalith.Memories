@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memories-mcp
+  labels:
+    app.kubernetes.io/name: memories-mcp
+    app.kubernetes.io/component: mcp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: memories-mcp
+      app.kubernetes.io/component: mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: memories-mcp
+        app.kubernetes.io/component: mcp
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: memories-mcp
+        dapr.io/app-port: "8080"
+        dapr.io/app-protocol: http
+        dapr.io/config: memories-mcp-config
+        dapr.io/app-token-secret: app-api-token
+        dapr.io/api-token-secret: dapr-api-token
+        dapr.io/sidecar-cpu-request: 100m
+        dapr.io/sidecar-memory-request: 128Mi
+        dapr.io/sidecar-cpu-limit: 500m
+        dapr.io/sidecar-memory-limit: 256Mi
+    spec:
+      serviceAccountName: memories-mcp
+      automountServiceAccountToken: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: memories-mcp
+          image: registry.hexalith.com/hexalith/memories-mcp:0.0.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: DOTNET_ENVIRONMENT
+              value: Production
+            - name: APP_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: app-api-token
+                  key: token
+            - name: DAPR_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: dapr-api-token
+                  key: token
+            - name: DAPR_API_TOKEN_MODE
+              value: enabled
+            - name: MEMORIES_MCP_UPSTREAM_APP_ID
+              value: memories
+            - name: Authentication__JwtBearer__Authority
+              valueFrom:
+                configMapKeyRef:
+                  name: memories-production-config
+                  key: OIDC_AUTHORITY
+            - name: Authentication__JwtBearer__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: memories-production-config
+                  key: OIDC_ISSUER
+            - name: Authentication__JwtBearer__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: memories-production-config
+                  key: OIDC_AUDIENCE
+            - name: Authentication__JwtBearer__TenantClaimName
+              valueFrom:
+                configMapKeyRef:
+                  name: memories-production-config
+                  key: OIDC_TENANT_CLAIM
+            - name: Authentication__JwtBearer__RequireHttpsMetadata
+              value: "true"
+            - name: Authentication__JwtBearer__ValidAlgorithms__0
+              value: RS256
+            - name: Authentication__JwtBearer__ValidAlgorithms__1
+              value: ES256
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            runAsGroup: 1654
+          startupProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - >-
+                  body=$(wget -qO- --header="dapr-api-token: ${APP_API_TOKEN}" http://127.0.0.1:8080/ready)
+                  && printf '%s' "$body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"Healthy"'
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 12
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "wget -qO- --header=\"dapr-api-token: ${APP_API_TOKEN}\" http://127.0.0.1:8080/ready >/dev/null"]
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 2
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "wget -qO- --header=\"dapr-api-token: ${APP_API_TOKEN}\" http://127.0.0.1:8080/alive >/dev/null"]
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

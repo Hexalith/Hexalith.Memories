@@ -11,24 +11,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 /// <summary>
-/// Story 10.1 AC #7 — rolling-window 3-strike health check that probes the upstream Memories Server
-/// via the existing <see cref="MemoriesClient.ProbeHealthAsync"/> 5-second timeout. Single transient
-/// failures degrade the row to <see cref="HealthStatus.Degraded"/> so the MCP Aspire Dashboard
-/// indicator does not flap; sustained failure (3 consecutive misses) escalates to
-/// <see cref="HealthStatus.Unhealthy"/> with a diagnostic data entry pointing at the failing
-/// upstream.
+/// Probes the upstream Memories Server through the ACL-compatible DAPR health operation. Any failure is
+/// immediately unhealthy because MCP cannot serve safely without its upstream.
 /// </summary>
 internal sealed class MemoriesServerUpstreamHealthCheck : IHealthCheck
 {
-    /// <summary>Number of consecutive failed probes before the check returns Unhealthy.</summary>
-    internal const int FailureStrikeThreshold = 3;
-
     /// <summary>The upstream service identifier surfaced via <c>data["upstream"]</c>.</summary>
     internal const string UpstreamIdentifier = "memories";
 
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly Lock _lock = new();
-    private int _consecutiveFailures;
 
     /// <summary>Initializes a new instance of the <see cref="MemoriesServerUpstreamHealthCheck"/> class.</summary>
     /// <param name="scopeFactory">The scope factory used to resolve the scoped Memories REST client.</param>
@@ -63,49 +54,13 @@ internal sealed class MemoriesServerUpstreamHealthCheck : IHealthCheck
 
         if (healthy)
         {
-            ResetFailures();
             return HealthCheckResult.Healthy("Memories Server upstream is responsive.");
         }
 
-        int strikes = IncrementFailures();
         var data = new Dictionary<string, object> { ["upstream"] = UpstreamIdentifier };
-
-        return strikes < FailureStrikeThreshold
-            ? new HealthCheckResult(
-                HealthStatus.Degraded,
-                $"Memories Server upstream missed {strikes} consecutive probe(s) (threshold: {FailureStrikeThreshold}).",
-                data: data)
-            : new HealthCheckResult(
-                HealthStatus.Unhealthy,
-                $"Memories Server upstream missed {strikes} consecutive probes (threshold: {FailureStrikeThreshold}).",
-                data: data);
-    }
-
-    /// <summary>Test-only — reports the current consecutive-failure counter.</summary>
-    internal int CurrentFailureCount
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _consecutiveFailures;
-            }
-        }
-    }
-
-    private void ResetFailures()
-    {
-        lock (_lock)
-        {
-            _consecutiveFailures = 0;
-        }
-    }
-
-    private int IncrementFailures()
-    {
-        lock (_lock)
-        {
-            return ++_consecutiveFailures;
-        }
+        return new HealthCheckResult(
+            HealthStatus.Unhealthy,
+            "Memories Server upstream is unavailable.",
+            data: data);
     }
 }

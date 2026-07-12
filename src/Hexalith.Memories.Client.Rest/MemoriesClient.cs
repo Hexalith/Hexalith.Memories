@@ -665,7 +665,7 @@ public class MemoriesClient
     }
 
     /// <summary>
-    /// Probes the <c>/health</c> endpoint with a short 5-second timeout. Returns <see langword="true"/> iff the
+    /// Probes the <c>/api/v1/health</c> DAPR service-invocation endpoint with a short 5-second timeout. Returns <see langword="true"/> iff the
     /// server answered with a 2xx status code.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
@@ -678,7 +678,7 @@ public class MemoriesClient
         try
         {
             using HttpResponseMessage response = await _httpClient
-                .GetAsync("health", linked.Token)
+                .GetAsync(MemoriesRoutes.HealthPath(), linked.Token)
                 .ConfigureAwait(false);
             return response.IsSuccessStatusCode;
         }

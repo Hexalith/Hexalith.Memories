@@ -5,7 +5,7 @@
 
 namespace Hexalith.Memories.ServiceDefaults.Health;
 
-/// <summary>Single source of truth for the three health-probe paths. Both the endpoint
+/// <summary>Single source of truth for the health-probe paths. Both the endpoint
 /// mapping (see <see cref="Extensions.MapDefaultEndpoints"/>) and the trace-exclusion
 /// filter (see <see cref="Extensions.ShouldTraceHttpRequest"/>) MUST reference these
 /// constants — renaming the physical path then becomes a one-line change, and the
@@ -20,4 +20,7 @@ public static class HealthEndpointPaths
 
     /// <summary>Readiness endpoint — runs only checks tagged <c>"ready"</c>.</summary>
     public const string Ready = "/ready";
+
+    /// <summary>Anonymous readiness operation reachable through DAPR service invocation.</summary>
+    public const string DaprApiHealth = "/api/v1/health";
 }

@@ -123,10 +123,23 @@ internal static class MemoriesServerServiceCollectionExtensions
         // acknowledgment gate (9164). The YAML reader discovers responseCacheTTL from deploy/dapr/components/*.yaml.
         builder.Services.AddSingleton<IComponentYamlReader>(_ =>
         {
-            // Component YAML is packaged alongside the deploy/ folder; fall back to a sibling folder at the
-            // content root so Aspire/local runs resolve the same way as container deployments.
-            string candidate = Path.Combine(builder.Environment.ContentRootPath, "..", "..", "deploy", "dapr", "components");
-            string resolved = Path.GetFullPath(candidate);
+            // Published containers carry the canonical component below the content root. Repository runs
+            // fall back to the root deploy directory so the exact same material is validated in both modes.
+            string publishedCandidate = Path.Combine(
+                builder.Environment.ContentRootPath,
+                "deploy",
+                "dapr",
+                "components");
+            string repositoryCandidate = Path.Combine(
+                builder.Environment.ContentRootPath,
+                "..",
+                "..",
+                "deploy",
+                "dapr",
+                "components");
+            string resolved = Directory.Exists(publishedCandidate)
+                ? Path.GetFullPath(publishedCandidate)
+                : Path.GetFullPath(repositoryCandidate);
             return new FileSystemComponentYamlReader(resolved);
         });
         builder.Services.AddSingleton<IValidateOptions<NaturalLanguageDescriptionOptions>,

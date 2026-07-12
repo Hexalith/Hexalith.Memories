@@ -15,6 +15,7 @@ Shipped in Story 8.1.
 | `/health` | `/health` | _(none — union)_         | Dashboards / diagnostics                 | `Degraded` or `Unhealthy` (depends on which check fails)       | `Healthy` → 200, `Degraded` → 200, `Unhealthy` → 503 |
 | `/alive`  | `/alive`  | `Tags.Contains("live")`  | Kubernetes `livenessProbe` → pod restart | `Unhealthy`                                                    | 200 / 503 (no `Degraded` entries by design)          |
 | `/ready`  | `/ready`  | `Tags.Contains("ready")` | Kubernetes `readinessProbe` → LB gate    | `Degraded` for backend failures; `Unhealthy` for Dapr failures | `Healthy` / `Degraded` → 200, `Unhealthy` → 503      |
+| DAPR API health | `/api/v1/health` | `Tags.Contains("ready")` | MCP-to-Server DAPR invocation | Same as `/ready` | `Healthy` / `Degraded` → 200, `Unhealthy` → 503 |
 
 The status-code map lives at [`Extensions.cs`](../../src/Hexalith.Memories.ServiceDefaults/Extensions.cs) — `Healthy` and `Degraded` both resolve to `200 OK`; only `Unhealthy` resolves to `503 Service Unavailable`. This inversion is deliberate (see [Probe tuning guidance](#probe-tuning-guidance)).
 
@@ -30,6 +31,8 @@ The status-code map lives at [`Extensions.cs`](../../src/Hexalith.Memories.Servi
 | `falkordb`        | `ready`         | `GRAPH.LIST` against the keyed `falkordb` multiplexer | `Degraded`     | `graph-traversal`, `graph-scoped-search`                            |
 
 All five registrations share a single 3-second timeout (`Program.cs` — `healthCheckTimeout`). Backend checks fail as `Degraded` so one backend outage does not remove the pod from service rotation — the request pipeline's per-capability routing (Story 5.6) handles the reduced capability mix.
+
+MCP adds `memories-upstream` to readiness. An unavailable Server is immediately `Unhealthy`; there is no initial degraded strike window because MCP cannot serve safely without that dependency. `/api/v1/health` is anonymous at the OIDC layer so the health call cannot deadlock on bearer acquisition, but the DAPR application-token middleware and deny-by-default workload ACL still constrain it to the `memories-mcp` sidecar identity.
 
 ## Response shape
 
@@ -144,25 +147,16 @@ necessary in practice, a future story can add a V1-compatible `probeId` field
 
 ### Kubernetes
 
-```yaml
-livenessProbe:
-    httpGet: { path: /alive, port: 5000 }
-    initialDelaySeconds: 10
-    periodSeconds: 10
-    failureThreshold: 3 # tolerate transient sidecar blips (Risk #2)
-readinessProbe:
-    httpGet: { path: /ready, port: 5000 }
-    initialDelaySeconds: 15 # allow multiplexer warmup (Risk #4)
-    periodSeconds: 5
-    failureThreshold: 2
-```
+The production containers listen on port `8080`. Because `APP_API_TOKEN` is mandatory in Production, probes execute in the application container and send the secret-backed `dapr-api-token` header. The startup probe parses the aggregate JSON and accepts only `"status":"Healthy"` for at most 60 seconds after the application container enters Running. Readiness then accepts either `Healthy` or `Degraded` through the endpoint's HTTP mapping, so losing only RediSearch, Redis Vector, or FalkorDB does not remove otherwise useful search axes from service. Liveness calls `/alive`. See the exact commands and thresholds in `deploy/kubernetes/base/server-deployment.yaml` and `mcp-deployment.yaml`.
+
+Redis Stack and FalkorDB have separate, longer startup probes for persistent-data recovery. Their ConfigMap name hashes are part of the StatefulSet pod templates, so persistence-setting changes trigger controlled rollouts while preserving the frozen resource/PVC defaults.
 
 ### Docker (plain / Podman)
 
 ```dockerfile
 # In the Dockerfile, after EXPOSE:
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl --fail --silent --show-error http://localhost:5000/alive || exit 1
+  CMD wget --header="dapr-api-token: $APP_API_TOKEN" -qO- http://localhost:8080/alive >/dev/null || exit 1
 ```
 
 Notes on the Docker form:
@@ -186,7 +180,7 @@ services:
             test:
                 [
                     "CMD-SHELL",
-                    "curl --fail --silent http://localhost:5000/alive || exit 1",
+                    "wget --header='dapr-api-token: $$APP_API_TOKEN' -qO- http://localhost:8080/alive >/dev/null || exit 1",
                 ]
             interval: 10s
             timeout: 5s

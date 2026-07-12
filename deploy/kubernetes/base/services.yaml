@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: memories
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: memories
+  ports:
+    - name: dapr-http
+      port: 80
+      targetPort: 3500
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memories-mcp
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: memories-mcp
+  ports:
+    - name: dapr-http
+      port: 80
+      targetPort: 3500

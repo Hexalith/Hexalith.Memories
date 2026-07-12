@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - service-accounts-rbac.yaml
+  - services.yaml
+  - server-deployment.yaml
+  - mcp-deployment.yaml
+  - redis-statefulset.yaml
+  - falkordb-statefulset.yaml
+  - dapr/config.yaml
+  - dapr/mcp-config.yaml
+  - dapr/secretstore.yaml
+  - dapr/statestore.yaml
+  - dapr/pubsub.yaml
+  - dapr/conversation-openai.yaml
+configMapGenerator:
+  - name: memories-production-config
+    literals:
+      - OIDC_AUTHORITY=https://identity.example.com
+      - OIDC_ISSUER=https://identity.example.com
+      - OIDC_AUDIENCE=hexalith-memories
+      - OIDC_TENANT_CLAIM=tenant_id
+  - name: redis-stack-config
+    files:
+      - redis-stack.conf=config/redis-stack.conf
+  - name: falkordb-config
+    literals:
+      - FALKORDB_PERSISTENCE_ARGS=--appendonly yes --appendfsync everysec --dir /var/lib/falkordb/data
+generatorOptions:
+  disableNameSuffixHash: false

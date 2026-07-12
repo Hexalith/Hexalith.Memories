@@ -5,6 +5,7 @@ using System.Net;
 using System.Text.Json;
 
 using Hexalith.Memories.ServiceDefaults.Health;
+using Hexalith.Memories.ServiceDefaults.Security;
 using Hexalith.Memories.ServiceDefaults.Telemetry;
 using Hexalith.Memories.Telemetry;
 
@@ -59,6 +60,7 @@ public static class Extensions
         _ = builder.ConfigureOpenTelemetry(configureRedisInstrumentation);
         _ = builder.AddDefaultHealthChecks(configureRedisReadyCheck: configureRedisInstrumentation);
         _ = builder.Services.AddServiceDiscovery();
+        _ = builder.Services.AddHostedService<DaprTokenStartupValidator>();
 
         _ = builder.Services.ConfigureHttpClientDefaults(http =>
         {
@@ -229,7 +231,8 @@ public static class Extensions
 
         return !context.Request.Path.StartsWithSegments(HealthEndpointPaths.Health)
             && !context.Request.Path.StartsWithSegments(HealthEndpointPaths.Alive)
-            && !context.Request.Path.StartsWithSegments(HealthEndpointPaths.Ready);
+            && !context.Request.Path.StartsWithSegments(HealthEndpointPaths.Ready)
+            && !context.Request.Path.StartsWithSegments(HealthEndpointPaths.DaprApiHealth);
     }
 
     private static TBuilder AddOpenTelemetryExporters<TBuilder>(this TBuilder builder)
@@ -612,6 +615,12 @@ public static class Extensions
             ResponseWriter = BackendHealthResponseWriter.WriteAsync,
         }).AllowAnonymous();
         _ = app.MapHealthChecks(HealthEndpointPaths.Ready, new HealthCheckOptions
+        {
+            Predicate = r => r.Tags.Contains("ready"),
+            ResultStatusCodes = statusCodes,
+            ResponseWriter = BackendHealthResponseWriter.WriteAsync,
+        }).AllowAnonymous();
+        _ = app.MapHealthChecks(HealthEndpointPaths.DaprApiHealth, new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains("ready"),
             ResultStatusCodes = statusCodes,

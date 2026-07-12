@@ -1,0 +1,13 @@
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: memories-mcp-config
+spec:
+  secrets:
+    scopes:
+      - storeName: secretstore
+        defaultAccess: deny
+        allowedSecrets: []
+  accessControl:
+    defaultAction: deny
+    trustDomain: public

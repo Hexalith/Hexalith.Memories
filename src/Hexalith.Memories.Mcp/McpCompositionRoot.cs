@@ -6,7 +6,6 @@
 namespace Hexalith.Memories.Mcp;
 
 using System.Net.Http.Headers;
-using System.Security.Claims;
 
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Mcp.Authentication;
@@ -47,12 +46,6 @@ internal static class McpCompositionRoot
         services.AddSingleton<IValidateOptions<MemoriesMcpAuthenticationOptions>, ValidateMcpAuthenticationOptions>();
         services.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureJwtBearerOptions>();
 
-        // Story 20.x — the upstream Memories Server enforces JWT auth + per-tenant authorization. Bind the
-        // server-realm signing material used to mint service-to-service tokens for upstream calls. Optional:
-        // when unset (production without the shared key) the token factory is a no-op.
-        services.AddOptions<MemoriesMcpUpstreamAuthenticationOptions>()
-            .BindConfiguration("Authentication:ServerUpstream");
-        services.AddSingleton<ServerUpstreamTokenFactory>();
         services.AddTransient<IClaimsTransformation, MemoriesMcpClaimsTransformation>();
         services.AddScoped<TenantClaimAuthorizationFilter>();
         services.AddScoped<McpToolExecutor>();
@@ -116,29 +109,25 @@ internal static class McpCompositionRoot
     }
 
     /// <summary>
-    /// Attaches a server-realm bearer token to the service-invocation client so upstream calls satisfy the
-    /// Memories Server's authentication policy and per-tenant authorization filter (Story 20.x). The token
-    /// carries the current caller's already-authorized tenant claim(s). No-op when the upstream realm is not
-    /// configured or when there is no ambient authenticated request (e.g. background health checks).
+    /// Forwards the already-validated caller bearer unchanged so the Server applies the same OIDC authority,
+    /// issuer, audience, and tenant-claim contract. No token is minted by the MCP.
     /// </summary>
     /// <param name="serviceProvider">The request-scoped service provider.</param>
     /// <param name="invokeClient">The DAPR service-invocation client to authorize.</param>
-    private static void ApplyServerUpstreamBearer(IServiceProvider serviceProvider, HttpClient invokeClient)
+    internal static void ApplyServerUpstreamBearer(IServiceProvider serviceProvider, HttpClient invokeClient)
     {
-        ClaimsPrincipal? caller = serviceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext?.User;
-        if (caller?.Identity?.IsAuthenticated != true)
+        HttpContext? context = serviceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext;
+        if (context?.User.Identity?.IsAuthenticated != true)
         {
             return;
         }
 
-        string[] tenants = [.. caller
-            .FindAll(MemoriesMcpClaimsTransformation.TenantClaimType)
-            .Select(claim => claim.Value)];
-
-        string? token = serviceProvider.GetRequiredService<ServerUpstreamTokenFactory>().Mint(tenants);
-        if (!string.IsNullOrWhiteSpace(token))
+        string authorization = context.Request.Headers.Authorization.ToString();
+        if (AuthenticationHeaderValue.TryParse(authorization, out AuthenticationHeaderValue? parsed)
+            && string.Equals(parsed.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(parsed.Parameter))
         {
-            invokeClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            invokeClient.DefaultRequestHeaders.Authorization = parsed;
         }
     }
 }
