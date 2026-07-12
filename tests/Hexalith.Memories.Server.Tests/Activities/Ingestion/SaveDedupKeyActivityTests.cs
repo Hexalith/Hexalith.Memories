@@ -117,6 +117,54 @@ public class SaveDedupKeyActivityTests
     }
 
     [Fact]
+    public async Task RunAsync_PreflightReservationLosesPromotionRace_ShouldReturnWinnerId()
+    {
+        // Story 25.4 review: the promotion CAS can lose to a concurrent writer (ScriptEvaluateAsync returns 0).
+        // The activity must re-read the key and surface the winner's permanent id as DuplicateExisting so the
+        // ingestion workflow treats this unit as a duplicate rather than a fresh save.
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringSetAsync(default, default, default, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(false));
+
+        // First read observes the transient reservation (enters the promotion block); after the CAS loses, the
+        // re-read returns the winner's permanent id.
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)PreflightDedupReservation.ReservedValue, (RedisValue)"mu-winner");
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create((RedisValue)0L));
+        SaveDedupKeyActivity activity = new(redis);
+
+        DedupKeySaveResult result = await activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-loser"));
+
+        result.Status.ShouldBe(DedupKeySaveStatus.DuplicateExisting);
+        result.MemoryUnitId.ShouldBe("mu-winner");
+    }
+
+    [Fact]
+    public async Task RunAsync_PreflightReservationVanishesDuringPromotion_ShouldThrow()
+    {
+        // Story 25.4 review: if the CAS loses AND the re-read finds no value (the key vanished mid-promotion),
+        // the activity must throw rather than fabricate a result for the ingestion workflow.
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        db.StringSetAsync(default, default, default, default, default)
+            .ReturnsForAnyArgs(Task.FromResult(false));
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)PreflightDedupReservation.ReservedValue, RedisValue.Null);
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create((RedisValue)0L));
+        SaveDedupKeyActivity activity = new(redis);
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => activity.RunAsync(
+                Substitute.For<WorkflowActivityContext>(),
+                new DedupKeyInput("dedup:tenant-1:case-1:abc123", "mu-loser")));
+    }
+
+    [Fact]
     public async Task RunAsync_RedisUnavailable_ShouldPropagateException()
     {
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();

@@ -44,7 +44,7 @@ app.UseCloudEvents();
 // must not be mistaken for mapped endpoints merely because fallback authentication would otherwise challenge.
 app.Use(async (context, next) =>
 {
-    if (context.GetEndpoint() is null && context.Request.Path.StartsWithSegments("/api", StringComparison.Ordinal))
+    if (context.GetEndpoint() is null && context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase))
     {
         context.Response.StatusCode = StatusCodes.Status404NotFound;
         return;

@@ -2,7 +2,7 @@
 title: 'Story 25.4: Contract/Persistence Separation & Route Versioning'
 type: 'refactor'
 created: '2026-07-11T00:00:00+02:00'
-status: 'review'
+status: 'done'
 baseline_revision: 'ad7cb31f66238bfa2107288886e2924044274bcb'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -73,6 +73,31 @@ warnings: [oversized, multiple-goals]
 
 ## Review Triage Log
 
+### Review Findings (code review 2026-07-12)
+
+Adversarial review ran four layers (blind-hunter, edge-case-hunter, verification-gap, acceptance-auditor) over the story-25.4-attributable diff (commits `94eb4c8` + `376096d`). 3 decision-needed, 5 patch, 2 defer, 1 dismissed.
+
+**decision-needed:**
+
+- [x] [Review][Decision] Submodule pointers bumped inside the story — Both commits advance `references/Hexalith.EventStore` and `references/Hexalith.FrontComposer` gitlinks. Violates spec **Never: "edit submodules"** and project-context rules 109/129 (submodules need separate, deliberate commits); `Hexalith.FrontComposer` (Web UI) is unrelated to contract/persistence/route work. Recurring pattern — Story 25.3's review logged the same class of deviation (commit `8e92fe7`). **Resolved 2026-07-12: document & accept** — commits already on `main`; the scope deviation is documented in deferred-work.md rather than rewriting published history (same call as Story 25.3). [medium]
+- [x] [Review][Decision] Breaking route/CLR cutover committed as `feat:` with no `BREAKING CHANGE:`/`!` — Design Notes require an intentional breaking release, but `94eb4c8` and `376096d` would make semantic-release cut a **minor**, not a **major** (project-context 104/105). Commits are already on `main`. **Resolved 2026-07-12: add a `BREAKING CHANGE:` footer on the eventual release/squash-merge PR** so the CHANGELOG flags the route/CLR cutover as breaking; landed commit messages left as-is (no history rewrite). Action item for release time — logged to deferred-work.md. [medium]
+- [x] [Review][Decision] Test-only commit `94eb4c8` mislabeled `feat:` and malformed subject (`feat:Add`, missing space) — content is only new/moved tests, so it should be `test:`; commitlint/semantic-release (rule 103) may reject/misclassify. **Resolved 2026-07-12: accept landed label** (no history rewrite); covered by the release-PR breaking-change action above. [low]
+
+**patch:** _(all 5 applied and verified 2026-07-12 — build 0 warnings/0 errors; 287 focused tests green incl. 2 new dedup-branch tests and a null-embedding golden fixture)_
+
+- [x] [Review][Patch] Case member id `.`/`..` passes CaseValidator, is persisted, then the V1 route builder throws → 500 with the member already written (self-heals to 200 on retry) [src/Hexalith.Memories.Server/Cases/CaseValidator.cs:315, src/Hexalith.Memories.Server/Endpoints/CasesEndpoints.cs:465]
+- [x] [Review][Patch] Dedup preflight-promotion race-loss / vanished-key branch is unverified — no test drives `ScriptEvaluateAsync == 0`; a regression there hands the workflow a wrong `DedupKeySaveResult` or throws, with every existing test still green [src/Hexalith.Memories.Server/Activities/Ingestion/SaveDedupKeyActivity.cs:67, tests/Hexalith.Memories.Server.Tests/Activities/Ingestion/SaveDedupKeyActivityTests.cs]
+- [x] [Review][Patch] StoredTenantInfo lacks `[JsonIgnore(WhenWritingNull)]` that TenantInfo carries → null-embedding tenant registry rows rewrite from omitted keys to explicit `null`s (durable shape drift); the `...WithoutShapeDrift` golden fixture only covers populated embedding fields [src/Hexalith.Memories.Server/Serialization/StoredTenantInfo.cs:14]
+- [x] [Review][Patch] Legacy-`/api` 404 guard uses `StringComparison.Ordinal` → an unmatched uppercase `/API/...` path skips the 404 short-circuit and returns 401 from fallback auth instead of the intended 404 [src/Hexalith.Memories.Server/Program.cs:47]
+- [x] [Review][Patch] PersistenceModelMapper NREs on inner nulls (a JSON-null metadata map value; a null `Tenant` inside StoredTenantRegistryEntry) where the old dictionary-copy tolerated them; read paths catch only `JsonException`. Reachable only via corrupt/hand-edited durable state, but the spec's edge matrix requires corrupt-payload handling to remain unchanged [src/Hexalith.Memories.Server/Serialization/PersistenceModelMapper.cs:56, :93]
+
+**defer:**
+
+- [x] [Review][Defer] NonDisposingRateLimiter has no disposed-state guard; at host shutdown `InboundRequestRateLimiter.DisposeAsync` disposes the shared inners while the framework partitioned limiter may still hold wrappers → `ObjectDisposedException` on an in-flight request [src/Hexalith.Memories.Server/RateLimiting/NonDisposingRateLimiter.cs:24] — deferred, low-impact shutdown-only race introduced by the shared-inner rework
+- [x] [Review][Defer] Emitted values of `deletedBackends`/`compensatedBackends` changed vocabulary (`RediSearch→syntactic`, `RedisDataKeys→state`); intended retrieval-axis migration but no test pins the workflow-emitted values, so serialization tests give false comfort (they use arbitrary samples) [src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs, src/Hexalith.Memories.Server/Workflows/TenantProvisioningWorkflow.cs] — deferred, intended change + minor test-pin gap (relates to the breaking-label decision)
+
+**dismissed (1):** tenant-deletion `workflowInstanceId = deletionClaim.WorkflowInstanceId ?? instanceId` — both call sites verified null-safe; a defensible latent-bug fix (the escaped V1 Location builder cannot take a null segment), not a defect.
+
 ## Design Notes
 
 This is an intentional breaking pre-GA route/CLR cutover and must be released as a breaking refactor. V1 payload compatibility means legacy JSON names remain authoritative even when CLR names become neutral; a future V2 may introduce neutral wire names. Legacy `/api/*` aliases are deliberately absent so there is one canonical operation family and downstream Dapr ACLs must update atomically.
@@ -128,3 +153,4 @@ The full `Hexalith.Memories.IntegrationTests` assembly completed with 122 tests:
 ## Change Log
 
 - 2026-07-11: Completed verification fixes for V1 ingestion authentication, semantic index provisioning, chunk-aware persistence, rate-limiter ownership across restarts, and EventStore preflight-dedup promotion; all completion gates pass and the story moved to review.
+- 2026-07-12: Adversarial code review (4 layers). Resolved 3 decision-needed (submodule bumps documented & accepted; breaking-change footer to be added on the release PR) and applied 5 patches: CaseValidator rejects `.`/`..` member ids; two new dedup-promotion race/vanished-key tests; `StoredTenantInfo` null-omission pinned with a golden fixture; legacy-`/api` 404 guard made case-insensitive; `PersistenceModelMapper` tolerates JSON-null metadata values. 2 low findings deferred. Build 0/0; 287 focused tests green. Story moved to done.

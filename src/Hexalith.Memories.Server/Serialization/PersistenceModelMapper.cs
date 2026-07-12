@@ -91,8 +91,22 @@ internal static class PersistenceModelMapper
             StringComparer.Ordinal);
 
     public static Dictionary<string, MetadataField> ToContract(IReadOnlyDictionary<string, StoredMetadataField> value)
-        => value.ToDictionary(
-            static item => item.Key,
-            static item => new MetadataField(item.Value.Value, item.Value.Origin, item.Value.Confidence),
-            StringComparer.Ordinal);
+    {
+        // Story 25.4: a corrupt/hand-edited durable payload can deserialize a metadata field as JSON null. The
+        // previous dictionary-copy tolerated that without throwing; skip the null entry here so a corrupt field
+        // degrades gracefully instead of raising an unhandled NullReferenceException on the persistence read path.
+        Dictionary<string, MetadataField> result = new(StringComparer.Ordinal);
+        foreach (KeyValuePair<string, StoredMetadataField> item in value)
+        {
+            StoredMetadataField? field = item.Value;
+            if (field is null)
+            {
+                continue;
+            }
+
+            result[item.Key] = new MetadataField(field.Value, field.Origin, field.Confidence);
+        }
+
+        return result;
+    }
 }

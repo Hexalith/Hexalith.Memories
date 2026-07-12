@@ -306,6 +306,17 @@ internal static partial class CaseValidator
                 "MemberId must be alphanumeric with hyphens, dots, and underscores only, max 200 characters.");
         }
 
+        // Story 25.4: '.'/'..' pass the charset regex but are rejected by the V1 route-segment builder
+        // (MemoriesRoutes.EscapeSegment), which would throw after the member is already persisted and surface
+        // a 500. Reject dot-segments here so the caller gets a clean 400 before any write occurs.
+        if (memberId is "." or "..")
+        {
+            return new ErrorResponse(
+                "INVALID_MEMBER_ID",
+                "MemberId cannot be '.' or '..'.",
+                "MemberId must be alphanumeric with hyphens, dots, and underscores only, max 200 characters.");
+        }
+
         return null;
     }
 

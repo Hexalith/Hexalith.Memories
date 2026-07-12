@@ -5,11 +5,15 @@
 
 namespace Hexalith.Memories.Server.Serialization;
 
+using System.Text.Json.Serialization;
+
 /// <summary>Durable tenant registry payload independent of the public response contract.</summary>
 internal sealed record StoredTenantInfo(
     string Id,
     string DisplayName,
     TenantStatus Status,
     DateTimeOffset CreatedAt,
-    string? EmbeddingProvider = null,
-    string? EmbeddingModel = null);
+    // Story 25.4: mirror TenantInfo's WhenWritingNull omission so an embedding-unconfigured tenant's durable
+    // registry row keeps the legacy shape (keys absent) instead of rewriting explicit nulls on every save.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EmbeddingProvider = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EmbeddingModel = null);

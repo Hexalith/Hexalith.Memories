@@ -115,6 +115,22 @@ public sealed class PersistenceCompatibilityTests
     }
 
     [Fact]
+    public void TenantRegistry_NullEmbedding_RewritesWithoutAddingExplicitNullKeys()
+    {
+        // Story 25.4: an embedding-unconfigured tenant persisted its registry row with the embedding keys ABSENT.
+        // StoredTenantInfo must keep that legacy shape (WhenWritingNull) rather than emitting explicit nulls.
+        const string Json = """
+            {"tenant":{"id":"tenant-b","displayName":"Tenant B","status":"active","createdAt":"2026-07-01T12:00:00+00:00"},"workflowInstanceId":"provision-tenant-b-1","lastUpdated":"2026-07-02T12:00:00+00:00"}
+            """;
+
+        StoredTenantRegistryEntry stored = Deserialize<StoredTenantRegistryEntry>(Json);
+        TenantRegistryEntry contract = PersistenceModelMapper.ToContract(stored);
+        AssertEquivalentJson(
+            Json,
+            JsonSerializer.Serialize(PersistenceModelMapper.ToStored(contract), MemoriesPersistenceJsonContext.Options));
+    }
+
+    [Fact]
     public void CaseMember_LegacyJson_MapsAndRewritesWithoutShapeDrift()
     {
         const string Json = """
