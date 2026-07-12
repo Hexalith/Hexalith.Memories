@@ -38,6 +38,8 @@ Create the Secret resources below in namespace `hexalith-memories` through the i
 
 The OIDC authority and issuer must use HTTPS. Server and MCP intentionally consume the same audience and tenant-claim name. MCP forwards the validated inbound bearer unchanged when invoking Server; there is no production `Authentication:ServerUpstream` signing key.
 
+> **Redis/FalkorDB password charset.** The `redis-secret` `password` and `falkordb-password` values are consumed inline — inside the `ConnectionStrings__redis` / `ConnectionStrings__falkordb` connection strings and the backends' `--requirepass` argument. Restrict them to characters that are safe in both contexts: avoid spaces, commas (`,`), equals signs (`=`), and `$`, which would otherwise split the connection string into spurious options or truncate the password passed to `--requirepass`. Prefer URL/shell-safe characters such as alphanumerics plus `-` `_` `.` `~`.
+
 The default DAPR trust domain is `public` and the production namespace is `hexalith-memories`. If the cluster uses another trust domain or namespace, patch both the Server DAPR `Configuration` policy and the workload namespace together. Do not widen the deny-by-default `/api/v1/**` policy or add publisher app-ids: `eventstore` is the sole publisher and `memories` is subscriber-only.
 
 ### Apply and verify

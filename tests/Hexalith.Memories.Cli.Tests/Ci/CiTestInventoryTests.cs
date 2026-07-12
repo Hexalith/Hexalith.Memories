@@ -270,6 +270,22 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void CiWorkflow_PinsDisposableClusterDeploymentVerificationJob()
+    {
+        string repoRoot = GetRepoRoot();
+        string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
+
+        // The disposable-cluster rollout is the only executed proof of the runtime, OCI, Secret-RBAC,
+        // deny-by-default ACL, and readiness contracts. Pin its job and both script invocations so it
+        // cannot be deleted, renamed, or unwired while the rest of the suite stays green.
+        workflow.ShouldContain("production-deployment-verification:");
+        workflow.ShouldContain("./tools/publish-containers.ps1");
+        workflow.ShouldContain("./tools/verify-production-deployment.ps1");
+        workflow.ShouldContain("-ServerArchive ./artifacts/containers/release/server.tar.gz");
+        workflow.ShouldContain("-McpArchive ./artifacts/containers/release/mcp.tar.gz");
+    }
+
+    [Fact]
     public void ReleaseWorkflow_TestReleaseStep_DelegatesToSharedScript()
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Test unit and non-Docker suite");

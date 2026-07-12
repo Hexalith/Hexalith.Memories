@@ -22,7 +22,10 @@ using Microsoft.Extensions.Options;
 /// </summary>
 public class MemoriesClient
 {
-    private static readonly TimeSpan HealthProbeTimeout = TimeSpan.FromSeconds(5);
+    // Story 26.1: must stay below the MCP kubelet probe timeoutSeconds (4s) so a slow/unreachable
+    // upstream resolves to an Unhealthy /ready document before the probe exec is killed; 3s also
+    // matches the Server-side backend health-check timeout convention.
+    private static readonly TimeSpan HealthProbeTimeout = TimeSpan.FromSeconds(3);
     private const int TenantListPageLimit = 100;
 
     private readonly HttpClient _httpClient;

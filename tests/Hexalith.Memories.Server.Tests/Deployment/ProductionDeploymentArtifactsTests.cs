@@ -102,9 +102,28 @@ public sealed class ProductionDeploymentArtifactsTests
         secretStore.ShouldContain("- memories");
         secretStore.ShouldContain("- eventstore");
 
+        // Structural ACL contract, not loose substring presence. kustomize re-serializes with sorted keys
+        // and block-style lists, so the single operation renders as
+        //   - action: allow / httpVerb: / - GET / - POST / name: /api/v1/**
+        // Bind allow -> exact GET/POST verbs -> the /api/v1/** path in order, and require memories-mcp to
+        // be the only allowed app-id, so widening the verbs, broadening the path, or adding a second
+        // policy fails this test instead of passing on incidental substring presence.
         configuration.ShouldContain("defaultAction: deny");
         configuration.ShouldContain("appId: memories-mcp");
-        configuration.ShouldContain("name: /api/v1/**");
+        int allowIndex = configuration.IndexOf("action: allow", StringComparison.Ordinal);
+        int getIndex = configuration.IndexOf("- GET", StringComparison.Ordinal);
+        int postIndex = configuration.IndexOf("- POST", StringComparison.Ordinal);
+        int nameIndex = configuration.IndexOf("name: /api/v1/**", StringComparison.Ordinal);
+        allowIndex.ShouldBeGreaterThanOrEqualTo(0);
+        getIndex.ShouldBeGreaterThan(allowIndex);
+        postIndex.ShouldBeGreaterThan(getIndex);
+        nameIndex.ShouldBeGreaterThan(postIndex);
+        (configuration.Split("action: allow").Length - 1).ShouldBe(1);
+        (configuration.Split("appId:").Length - 1).ShouldBe(1);
+        configuration.ShouldNotContain("name: /**");
+        configuration.ShouldNotContain("DELETE");
+        configuration.ShouldNotContain("PUT");
+        configuration.ShouldNotContain("PATCH");
 
         GetDocument(rendered, "ServiceAccount", "memories").ShouldContain("name: registry-credentials");
         GetDocument(rendered, "ServiceAccount", "memories-mcp").ShouldContain("name: registry-credentials");
@@ -113,6 +132,20 @@ public sealed class ProductionDeploymentArtifactsTests
         rendered.ShouldNotContain("Authentication__ServerUpstream", Case.Insensitive);
         rendered.ShouldNotContain("SigningKey", Case.Insensitive);
         rendered.ShouldNotContain("kind: Secret");
+    }
+
+    [Fact]
+    public void ServerAndMcpHosts_RegisterDaprApplicationTokenMiddleware()
+    {
+        // Guards the sidecar-to-app token boundary's pipeline registration. The middleware's accept/reject
+        // logic is unit-tested in DaprApplicationTokenMiddlewareTests, but nothing else fails if the
+        // UseMiddleware call is dropped from a host -- which would silently open the application port.
+        string root = GetRepoRoot();
+        string serverProgram = Read(root, "src/Hexalith.Memories.Server/Program.cs");
+        string mcpProgram = Read(root, "src/Hexalith.Memories.Mcp/Program.cs");
+
+        serverProgram.ShouldContain("UseMiddleware<DaprApplicationTokenMiddleware>");
+        mcpProgram.ShouldContain("UseMiddleware<DaprApplicationTokenMiddleware>");
     }
 
     [Fact]

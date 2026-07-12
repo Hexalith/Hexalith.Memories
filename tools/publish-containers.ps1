@@ -14,8 +14,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$') {
-    throw "Version '$Version' is not a valid semantic version."
+# Build metadata (+meta) is a valid semver suffix but an invalid OCI/Docker image tag character,
+# so it is rejected here rather than flowing into -p:ContainerImageTag / docker tag / kind load.
+if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+    throw "Version '$Version' is not a valid image-taggable semantic version (build metadata '+meta' is not allowed)."
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot

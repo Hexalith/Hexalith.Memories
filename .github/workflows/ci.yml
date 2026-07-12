@@ -194,6 +194,11 @@ jobs:
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
 
+      - name: Initialize kubectl
+        # ProductionDeploymentArtifactsTests shells out to `kubectl kustomize` and fails (does not skip)
+        # when kubectl is absent; install it explicitly rather than relying on the runner's ambient binary.
+        uses: azure/setup-kubectl@v4
+
       - name: Run Docker-free unit and contract tests
         run: bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract
 

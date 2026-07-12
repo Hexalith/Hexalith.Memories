@@ -2047,3 +2047,33 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
 - source_spec: `_bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md`
   summary: [Decision resolved — release-PR action] The intentional breaking route/CLR cutover landed as `feat:` with no `BREAKING CHANGE:` footer (and test-only commit `94eb4c8` is mislabeled `feat:Add`).
   evidence: User decision 2026-07-12: leave landed commit messages as-is (no history rewrite) and add a `BREAKING CHANGE:` footer to the eventual release/squash-merge PR so the generated CHANGELOG flags the `/api/v1` route + public-CLR-rename cutover as breaking for downstream consumers. Pre-GA (0.x) semver impact is limited, but the CHANGELOG breaking flag and Design-Notes intent ("must be released as a breaking refactor") require the footer. Action owner: whoever cuts the Epic 25 release PR.
+
+## Deferred from: code review of spec-26-1-production-deployment-artifacts (2026-07-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md`
+  summary: [HIGH — gating, environment-blocked] The mandatory no-skip disposable-cluster DAPR rollout (`tools/verify-production-deployment.ps1`) has never executed; every runtime AC (AC-3/4/5 aggregate-health/degradation/fail-closed + AC-1 container-start) rests on it.
+  evidence: Dev sandbox lacks `docker`/`kind`; the story is correctly at `review`, not `done`. Must run green with ZERO skips on CI/an operator cluster before `done`. Prerequisite: the verifier's image-tag naming mismatch (patch finding, `verify-production-deployment.ps1:189-190` vs `publish-containers.ps1:64,72`) will likely make the first run fail at `docker tag` — fix it before relying on this gate. Re-open trigger: any change to the deploy topology, health/ACL semantics, or container publication.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md`
+  summary: [MEDIUM — hardening beyond AC] Redis Stack and FalkorDB containers run as root (only `allowPrivilegeEscalation:false` + `drop:[ALL]` + seccomp; no `runAsNonRoot`/`runAsUser`).
+  evidence: `deploy/kubernetes/base/{redis,falkordb}-statefulset.yaml`. AC-1 mandates non-root only for Server/MCP (both UID 1654, satisfied). Making the data stores non-root needs `fsGroup`/PVC-permission handling for `/data`. Re-open trigger: a security-hardening pass on the deployment topology, or a Pod Security Standards enforcement decision.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md`
+  summary: [MEDIUM — hardening beyond AC] No NetworkPolicies or Pod Security Standards in the production deployment.
+  evidence: `deploy/kubernetes/base/**` has zero `NetworkPolicy` and no `pod-security` namespace labels; app port 8080 (no Service) is reachable by pod IP cluster-wide and health endpoints are anonymous. Not required by any AC. Re-open trigger: production network-segmentation / PSS requirement.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md`
+  summary: [LOW — drift seam] The cross-tenant cache-safety guard validates a container-bundled copy of the Conversation component, not the deployed one.
+  evidence: `NaturalLanguageDescriptionOptionsValidator` reads `deploy/dapr/components/conversation-llm.yaml` (baked into the Server image); DAPR loads `deploy/kubernetes/base/dapr/conversation-openai.yaml`. Both `responseCacheTTL: 0s` today and the Production no-TTL branch (event 9165) closes the missing-material hole, but a nonzero TTL set on the deployed component is invisible to the guard. Near-best-achievable (an app cannot read a control-plane component). Re-open trigger: any change to `responseCacheTTL` handling or the component material path.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md`
+  summary: [LOW — cleanup] Two divergent DAPR config sources, plus an orphaned in-namespace `eventstore` identity.
+  evidence: `deploy/dapr/config.yaml` + `deploy/dapr/components/*` were rewritten but are not consumed by the authoritative `kubectl kustomize` render (which uses `deploy/kubernetes/base/dapr/*`); they must be hand-synced (one file is load-bearing only because the Server `.csproj` copies it into the image). `eventstore` gets a namespace-local ServiceAccount/Role/RoleBinding with no workload deployed here (external publisher by design). Re-open trigger: any DAPR component/config edit, to avoid the two copies drifting.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md`
+  summary: [LOW — hardening] Server/MCP images are tag-only with `imagePullPolicy: IfNotPresent` while data stores are digest-pinned (`@sha256:`).
+  evidence: `deploy/kubernetes/base/{server,mcp}-deployment.yaml`. Safe only while semantic-release tags stay immutable; a reused tag lets nodes silently run a stale cached layer with no digest to detect it. Re-open trigger: a supply-chain/image-provenance hardening decision.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md`
+  summary: [LOW — unverified] `readOnlyRootFilesystem: true` with only `/tmp` writable may fault ASP.NET Core Data Protection.
+  evidence: The default Data Protection key ring path (`~/.aspnet/DataProtection-Keys`) is not under the single writable `emptyDir` at `/tmp`; if antiforgery/cookie/ephemeral key material is ever touched, the app faults or warns. Unverified — no gate that ran boots the app under the read-only rootfs. Re-open trigger: the disposable-cluster rollout running, or adding any Data-Protection-dependent feature.

@@ -105,7 +105,7 @@ spec:
                 - -ec
                 - >-
                   body=$(wget -qO- --header="dapr-api-token: ${APP_API_TOKEN}" http://127.0.0.1:8080/ready)
-                  && printf '%s' "$body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"Healthy"'
+                  && printf '%s' "$body" | grep -Eq '^[{]"schemaVersion":[0-9]+,"status":"Healthy"'
             periodSeconds: 5
             timeoutSeconds: 4
             failureThreshold: 12

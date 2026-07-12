@@ -107,12 +107,16 @@ function Wait-AggregateStatus {
 
     $deadline = [DateTime]::UtcNow.AddMinutes(4)
     $runningAt = $null
+    $runningPod = ''
     $lastBody = ''
     while ([DateTime]::UtcNow -lt $deadline) {
         $pod = Get-PodName $AppName
         if (-not [string]::IsNullOrWhiteSpace($pod) -and (Test-ContainerRunning $pod $Container)) {
-            if ($null -eq $runningAt) {
+            if ($null -eq $runningAt -or $pod -ne $runningPod) {
+                # Reset the startup timer when a new pod is observed (e.g. a restart) so the
+                # -TimeoutSeconds budget is measured from the current container, not a torn-down predecessor.
                 $runningAt = [DateTime]::UtcNow
+                $runningPod = $pod
             }
 
             $lastBody = Get-HealthBody $pod $Container
@@ -184,10 +188,21 @@ try {
     $env:KUBECONFIG = $kubeconfigPath
     Invoke-Checked dapr @('init', '-k', '--runtime-version', $DaprRuntimeVersion, '--wait') | Out-Host
 
-    Invoke-Checked docker @('load', '--input', $ServerArchive) | Out-Host
-    Invoke-Checked docker @('load', '--input', $McpArchive) | Out-Host
-    Invoke-Checked docker @('tag', "hexalith/memories-server:$Version", $serverImage) | Out-Null
-    Invoke-Checked docker @('tag', "hexalith/memories-mcp:$Version", $mcpImage) | Out-Null
+    # publish-containers.ps1 sets -p:ContainerRegistry, so the archive's RepoTag is registry-qualified;
+    # parse the reference docker actually loaded instead of assuming a registry-less name, then re-tag it
+    # to the canonical reference that Assert-ImageContract and 'kind load' expect.
+    foreach ($load in @(
+            @{ Archive = $ServerArchive; Target = $serverImage },
+            @{ Archive = $McpArchive; Target = $mcpImage })) {
+        $loadOutput = (Invoke-Checked docker @('load', '--input', $load.Archive)) -join [Environment]::NewLine
+        $loaded = [regex]::Match($loadOutput, 'Loaded image(?: ID)?:\s*(?<ref>\S+)').Groups['ref'].Value
+        if ([string]::IsNullOrWhiteSpace($loaded)) {
+            throw "Could not determine the loaded image reference from: $loadOutput"
+        }
+        if ($loaded -ne $load.Target) {
+            Invoke-Checked docker @('tag', $loaded, $load.Target) | Out-Null
+        }
+    }
     Assert-ImageContract $serverImage
     Assert-ImageContract $mcpImage
     Invoke-Checked kind @('load', 'docker-image', '--name', $ClusterName, $serverImage, $mcpImage) | Out-Host
@@ -212,14 +227,16 @@ try {
     Invoke-Checked kubectl @('apply', '--dry-run=client', '-f', $manifestPath) | Out-Host
     Invoke-Checked kubectl @('apply', '-f', $manifestPath) | Out-Host
 
-    $canReadLlm = @(& kubectl auth can-i get secret/llm-secret -n $namespace --as "system:serviceaccount:${namespace}:memories" 2>&1) -join ''
+    # Capture stdout only (2>$null): a kubectl deprecation/warning line on stderr would otherwise be
+    # concatenated onto the 'yes'/'no' verdict and fail the exact-equality RBAC check on a valid cluster.
+    $canReadLlm = (@(& kubectl auth can-i get secret/llm-secret -n $namespace --as "system:serviceaccount:${namespace}:memories" 2>$null) -join '').Trim()
     if ($LASTEXITCODE -notin @(0, 1)) {
-        throw "Unable to evaluate memories Secret RBAC (kubectl exit $LASTEXITCODE): $canReadLlm"
+        throw "Unable to evaluate memories Secret RBAC (kubectl exit $LASTEXITCODE)."
     }
 
-    $mcpCanReadLlm = @(& kubectl auth can-i get secret/llm-secret -n $namespace --as "system:serviceaccount:${namespace}:memories-mcp" 2>&1) -join ''
+    $mcpCanReadLlm = (@(& kubectl auth can-i get secret/llm-secret -n $namespace --as "system:serviceaccount:${namespace}:memories-mcp" 2>$null) -join '').Trim()
     if ($LASTEXITCODE -notin @(0, 1)) {
-        throw "Unable to evaluate memories-mcp Secret RBAC (kubectl exit $LASTEXITCODE): $mcpCanReadLlm"
+        throw "Unable to evaluate memories-mcp Secret RBAC (kubectl exit $LASTEXITCODE)."
     }
     if ($canReadLlm -ne 'yes' -or $mcpCanReadLlm -ne 'no') {
         throw "Secret RBAC contract failed: memories=$canReadLlm memories-mcp=$mcpCanReadLlm"

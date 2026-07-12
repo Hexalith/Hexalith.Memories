@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Shouldly;
 
 /// <summary>Tests the sidecar-to-application DAPR token boundary.</summary>
+[Collection("DaprTokenEnvironment")]
 public sealed class DaprApplicationTokenMiddlewareTests
 {
     [Theory]
