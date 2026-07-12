@@ -376,7 +376,7 @@ development_status:
   epic-24-retrospective: done
 
   # Epic 25: Architecture Factorization & Code Health
-  epic-25: in-progress
+  epic-25: done
   25-1-program-cs-decomposition: done
   25-2-error-and-telemetry-centralization: done
   25-3-shared-route-table-and-client-consolidation: done
@@ -385,7 +385,7 @@ development_status:
   25-6-mcp-tool-executor: done
   25-7-evidence-cockpit-ux-conformance: done
   25-8-dead-code-and-topology-cleanup: done
-  epic-25-retrospective: optional
+  epic-25-retrospective: done
 
   # Epic 26: Test, Deployment & Operational Readiness
   epic-26: backlog
@@ -565,7 +565,7 @@ action_items:
   - epic: 24
     action: "Implement an executable pre-review guard or checklist for remediation stories covering File List completeness, evidence-table status, story/spec status, and sprint-status sync"
     owner: "Amelia, Murat"
-    status: open
+    status: in-progress  # 2026-07-12 (Epic 25): applied as a convention and propagated 25.1->25.2->25.3, but reviews still caught falsely-passing drift guards; not yet an executable gate. Merged into Epic 25 action item 7.
   - epic: 24
     action: "Resolve or formally accept the AppHost/EventStore validation-lane blocker before any future story claims full-stack Redis/FalkorDB or Aspire integration proof"
     owner: "Amelia, Winston"
@@ -585,4 +585,32 @@ action_items:
   - epic: 24
     action: "Reconcile Epic 25 tracking before continuing code-health execution, including the Epic 25 row, Story 25.1, and the 25.3 automation branch mismatch"
     owner: "Amelia, John"
+    status: done  # 2026-07-12 (Epic 25 retro): all 8 story rows accounted for; epic-25 row corrected in-progress->done; 25.3 branch mismatch resolved (automation blocked, story completed manually and reviewed).
+  - epic: 25
+    action: "Add a root .gitattributes (or a recorded accepted-debt entry) to settle repo-wide LF/CRLF and stop bare-CR/whole-file churn that produced LOW findings in 25.3 and 25.8; carry-forward from Epics 17/18"
+    owner: "Amelia"
+    status: open
+  - epic: 25
+    action: "Add a pre-story verify-epic-AC-against-code step to story creation so planning counts and claims are reconciled before implementation (60 literals, no Client.Rest, double authorization were all false against code)"
+    owner: "Amelia, John"
+    status: open
+  - epic: 25
+    action: "Add a submodule-pointer scope guard on the commit/CI lane so a story excluding submodule edits cannot advance root submodule pointers (25.3 8e92fe7; 25.4 94eb4c8/376096d)"
+    owner: "Amelia, Winston"
+    status: open
+  - epic: 25
+    action: "Move release-package and topology-drift validation onto the PR ci.yml lane (pack plus -PackageDirectory, publish_nuget/release_packages fixtures), not just release.yml; coordinate with Epic 26.4"
+    owner: "Amelia, Murat"
+    status: open
+  - epic: 25
+    action: "Carry a BREAKING CHANGE footer onto the Epic 25 release PR for the 25.3 TraverseAsync reorder and the 25.4 api/v1 plus CLR renames before semantic-release runs"
+    owner: "Amelia"
+    status: open
+  - epic: 25
+    action: "Convert Epic 25 latent residuals into explicit backlog or accepted-debt entries with owner and reopen trigger: rate-limiter shutdown race (25.4), MCP exception-logging gap (25.6), 25.4 backend-vocabulary test-pin, and a fail-closed trust-surface decision for the 25.7 confidence/freshness leak"
+    owner: "Amelia, Winston, Sally, Murat"
+    status: open
+  - epic: 25
+    action: "Turn the propagated review-discipline convention (File List completeness, constant-tied drift guards) into an executable pre-review gate; merges the still-open Epic 24 checklist item"
+    owner: "Amelia, Murat"
     status: open
