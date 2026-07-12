@@ -194,6 +194,9 @@ jobs:
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
 
+      - name: Run container publish fixtures
+        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
+
       - name: Initialize kubectl
         # ProductionDeploymentArtifactsTests shells out to `kubectl kustomize` and fails (does not skip)
         # when kubectl is absent; install it explicitly rather than relying on the runner's ambient binary.

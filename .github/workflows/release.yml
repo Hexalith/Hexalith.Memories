@@ -88,6 +88,9 @@ jobs:
       - name: Run release package validator fixtures
         run: python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"
 
+      - name: Run container publish fixtures
+        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
+
       - name: Run release preflight fixtures
         run: python3 -m unittest discover -s tests/tooling/release_preflight -p "*_test.py"
 

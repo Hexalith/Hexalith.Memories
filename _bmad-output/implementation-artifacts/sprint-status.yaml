@@ -389,7 +389,7 @@ development_status:
 
   # Epic 26: Test, Deployment & Operational Readiness
   epic-26: in-progress
-  26-1-production-deployment-artifacts: in-progress  # 2026-07-12: bmad-code-review (loop 2) applied 13/14 patch fixes (startup-probe aggregate-Healthy grep, verifier image-tag load/retag, DAPR-ACL structural test, MCP upstream probe timeout, +9 more); solution builds 0/0, touched tests green (53 Cli inventory, 1 MCP health, 13 Server deployment/auth). Returned review->in-progress: the OCI/partial-publish executed test is only partial, and the mandatory no-skip disposable-cluster DAPR rollout still must run (dev sandbox lacks docker/kind) before done. Prior dev-story validation: Release build 0/0, deterministic kustomize render, Server+MCP OCI non-root UID 1654 on 8080. See spec Review Findings + Dev Story Validation.
+  26-1-production-deployment-artifacts: review  # 2026-07-12: final review patch closed with executed partial-publish/retry fixture pinned in CI/release; Release build 0/0, 4,314 Docker-free tests passed, deterministic 831-line render, matching non-root OCI artifacts, and disposable kind+DAPR rollout passed with zero skips.
   26-2-backup-and-restore: backlog
   26-3-integration-stub-closure: backlog
   26-4-coverage-gating-and-benchmark-lane: backlog

@@ -235,6 +235,32 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void Workflows_ContainerPublishFixtures_RunBeforeReleasePublish()
+    {
+        const string FixtureCommand = "python3 -m unittest discover -s tests/tooling/publish_containers -p \"*_test.py\"";
+        string repoRoot = GetRepoRoot();
+        ReleaseWorkflowStep[] releaseSteps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
+        string ciWorkflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
+
+        ReleaseWorkflowStep[] fixtureSteps = [.. releaseSteps.Where(step => string.Equals(step.Run, FixtureCommand, StringComparison.Ordinal))];
+        fixtureSteps.Length.ShouldBe(1, "release.yml must execute the container partial-publish and retry fixture exactly once.");
+
+        int fixturesIndex = Array.IndexOf(releaseSteps, fixtureSteps[0]);
+        int semanticReleaseIndex = Array.FindIndex(releaseSteps, static step => string.Equals(step.Name, "Run semantic-release", StringComparison.Ordinal));
+        semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain semantic-release.");
+        fixturesIndex.ShouldBeLessThan(semanticReleaseIndex, "container publication fixtures must pass before semantic-release starts publish-capable work.");
+
+        ReleaseWorkflowStep step = fixtureSteps[0];
+        step.Name.ShouldBe("Run container publish fixtures");
+        step.If.ShouldBeNull("container publication fixtures must run unconditionally in the release lane.");
+        step.ContinueOnError.ShouldBeNull("container publication fixture failures must fail the release job.");
+        step.Uses.ShouldBeNull();
+
+        ciWorkflow.ShouldContain("name: Run container publish fixtures");
+        ciWorkflow.ShouldContain($"run: {FixtureCommand}");
+    }
+
+    [Fact]
     public void ReleaseWorkflow_AlertPartialPublishStep_GuardsOnFailureAndReferencesAuditPaths()
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Alert partial release publish");
