@@ -4,7 +4,7 @@ baseline_commit: a8a0dbd60e2c49d183248c41b952a06fb897e8d7
 
 # Story 26.3: Integration Stub Closure
 
-Status: ready-for-dev
+Status: review
 
 <!-- Epic 26 — Test, Deployment & Operational Readiness. Closes audit finding A23. Test-only changes use `test(integration): ...`; a production defect exposed by a real test may be fixed in scope, but unrelated product work and package upgrades are not. -->
 
@@ -48,52 +48,52 @@ Story 26.2 remains `in-progress` in parallel. Its Aspire fidelity/restart tests 
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Reconcile the audit anchors and freeze the 28-row disposition matrix** (AC: 1, 4, 8)
-  - [ ] Recount `[RunnableSkippedFact]` and `_ = _fixture;` at implementation start. Record the date, baseline revision, moved anchors, and adaptations in the Dev Agent Record rather than copying July audit line numbers blindly.
-  - [ ] Create the completion matrix from the inventory in Dev Notes. For each original method record: final method, `implemented`/`skipped` disposition, exact public assertion, exact persisted-state assertion, skip blocker/enabler when applicable, execution lane, and result.
-  - [ ] Add the same stable inventory to `tools/integration-stub-targets.txt`; record replacement FQNs explicitly when consolidating a duplicate so removal or renaming cannot make a row disappear.
-  - [ ] Revalidate every old skip comment against live code. Do not preserve reasons that name completed Story 6.4/Epic 7 or claim the Aspire fixture does not exist.
-  - [ ] For each accepted skip, create or update a structured `deferred-work.md` entry with unique ID, status, source story, target artifact, reopen trigger, and rationale/evidence (including the owner); reference that ID in the literal skip reason.
+- [x] **Task 1 — Reconcile the audit anchors and freeze the 28-row disposition matrix** (AC: 1, 4, 8)
+  - [x] Recount `[RunnableSkippedFact]` and `_ = _fixture;` at implementation start. Record the date, baseline revision, moved anchors, and adaptations in the Dev Agent Record rather than copying July audit line numbers blindly.
+  - [x] Create the completion matrix from the inventory in Dev Notes. For each original method record: final method, `implemented`/`skipped` disposition, exact public assertion, exact persisted-state assertion, skip blocker/enabler when applicable, execution lane, and result.
+  - [x] Add the same stable inventory to `tools/integration-stub-targets.txt`; record replacement FQNs explicitly when consolidating a duplicate so removal or renaming cannot make a row disappear.
+  - [x] Revalidate every old skip comment against live code. Do not preserve reasons that name completed Story 6.4/Epic 7 or claim the Aspire fixture does not exist.
+  - [x] For each accepted skip, create or update a structured `deferred-work.md` entry with unique ID, status, source story, target artifact, reopen trigger, and rationale/evidence (including the owner); reference that ID in the literal skip reason.
 
-- [ ] **Task 2 — Remove the false-pass mechanism and add a Docker-free regression guard** (AC: 1, 4, 7)
-  - [ ] Convert the real `AppHostComponentFileOrderingTests` method to plain `[Fact]`, retaining its `Integration` traits and its `integration-fast` required-surface coverage.
-  - [ ] Convert implemented targets to plain `[Fact]` (and add `IntegrationSlow`/`Performance` only when the actual scenario warrants the existing slower lane). Convert accepted deferrals to literal `[Fact(Skip = "specific reason; owner/follow-up; unskip condition")]`.
-  - [ ] Delete `tests/Hexalith.Memories.IntegrationTests/RunnableSkippedFactAttribute.cs` and eliminate `HEXALITH_SKIP_RUNNABLE_TESTS` use from the IntegrationTests assembly.
-  - [ ] Add `tests/Hexalith.Memories.Server.Tests/Architecture/IntegrationStubClosureGuardTests.cs`, following existing repo-root source-guard patterns. Scan only `tests/Hexalith.Memories.IntegrationTests`; report relative file/method violations. Guard against the custom attribute, canonical no-op bodies, and blank/generic explicit-skip reasons without touching the separate Server.Tests attribute.
-  - [ ] Add a focused verifier (for example `tools/verify-integration-stub-closure.py`) that joins the 28-target manifest, current source dispositions, and xUnit TRX outcomes. It must fail on a duplicate/missing mapping, a priority target that is not Passed, an unapproved skip, or an absent test result.
+- [x] **Task 2 — Remove the false-pass mechanism and add a Docker-free regression guard** (AC: 1, 4, 7)
+  - [x] Convert the real `AppHostComponentFileOrderingTests` method to plain `[Fact]`, retaining its `Integration` traits and its `integration-fast` required-surface coverage.
+  - [x] Convert implemented targets to plain `[Fact]` (and add `IntegrationSlow`/`Performance` only when the actual scenario warrants the existing slower lane). Convert accepted deferrals to literal `[Fact(Skip = "specific reason; owner/follow-up; unskip condition")]`.
+  - [x] Delete `tests/Hexalith.Memories.IntegrationTests/RunnableSkippedFactAttribute.cs` and eliminate `HEXALITH_SKIP_RUNNABLE_TESTS` use from the IntegrationTests assembly.
+  - [x] Add `tests/Hexalith.Memories.Server.Tests/Architecture/IntegrationStubClosureGuardTests.cs`, following existing repo-root source-guard patterns. Scan only `tests/Hexalith.Memories.IntegrationTests`; report relative file/method violations. Guard against the custom attribute, canonical no-op bodies, and blank/generic explicit-skip reasons without touching the separate Server.Tests attribute.
+  - [x] Add a focused verifier (for example `tools/verify-integration-stub-closure.py`) that joins the 28-target manifest, current source dispositions, and xUnit TRX outcomes. It must fail on a duplicate/missing mapping, a priority target that is not Passed, an unapproved skip, or an absent test result.
 
-- [ ] **Task 3 — Add only the fixture seams needed for deterministic failure and recovery** (AC: 2, 3, 5, 6)
-  - [ ] Reuse `AspireIngestionPipelineFixture`, `ScriptedHttpServer`, `MemoriesClient`, Redis/Falkor handles, tenant provisioning, actor proxies, captured logs, and existing bounded polling. Promote genuinely shared helpers instead of copying private polling/key-enumeration loops between seven classes.
-  - [ ] For URL/source retry, script per-request `500`/`404`/success sequences with `ScriptedHttpServer` and its atomic request counter where that exercises the intended contract. Add a provider-specific isolated seam only for embedding `429`/provider failure behavior that the fake embedding path bypasses.
-  - [ ] Add resource stop/start/restart support through Aspire's `ResourceCommandService` using `KnownResourceCommands.StopCommand`, `StartCommand`, or `RestartCommand`, checking `ExecuteCommandAsync` results and waiting through `ResourceNotificationService` with cancellation deadlines. Do not expand ad-hoc Docker process discovery for new resource control.
-  - [ ] Keep the current fake embedding default for ordinary tests. A real-provider/fault-plan fixture variant must remain Development-only, use no live secret, be deterministic, and reset its configuration after each test.
-  - [ ] Add focused Docker-free tests for new fixture/fault-plan helpers where logic can be verified without starting the AppHost.
+- [x] **Task 3 — Add only the fixture seams needed for deterministic failure and recovery** (AC: 2, 3, 5, 6)
+  - [x] Reuse `AspireIngestionPipelineFixture`, `ScriptedHttpServer`, `MemoriesClient`, Redis/Falkor handles, tenant provisioning, actor proxies, captured logs, and existing bounded polling. Promote genuinely shared helpers instead of copying private polling/key-enumeration loops between seven classes.
+  - [x] For URL/source retry, script per-request `500`/`404`/success sequences with `ScriptedHttpServer` and its atomic request counter where that exercises the intended contract. Add a provider-specific isolated seam only for embedding `429`/provider failure behavior that the fake embedding path bypasses.
+  - [x] Add resource stop/start/restart support through Aspire's `ResourceCommandService` using `KnownResourceCommands.StopCommand`, `StartCommand`, or `RestartCommand`, checking `ExecuteCommandAsync` results and waiting through `ResourceNotificationService` with cancellation deadlines. Do not expand ad-hoc Docker process discovery for new resource control.
+  - [x] Keep the current fake embedding default for ordinary tests. A real-provider/fault-plan fixture variant must remain Development-only, use no live secret, be deterministic, and reset its configuration after each test.
+  - [x] Add focused Docker-free tests for new fixture/fault-plan helpers where logic can be verified without starting the AppHost.
 
-- [ ] **Task 4 — Implement the priority retry and rate-limit proofs** (AC: 2, 3, 5)
-  - [ ] Implement transient retry success and retry exhaustion. Assert workflow completion/failure, stable memory-unit identity, exact failed-registry membership, final `MemoryUnit.Status`, and absence of duplicates/failed residue after recovery.
-  - [ ] Implement provider `429` → durable timer → success. Assert the actor's persisted paused/refill state, workflow convergence to `Indexed`, no failed registry entry, and request attempts in a non-brittle range; do not combine workflow and operator resiliency in a way that makes the expected attempt count ambiguous.
-  - [ ] Implement two-tenant independent ceilings through tenant-scoped actor proxies/configuration. Assert both actor states and a negative cross-tenant check; counting HTTP 429 responses alone is insufficient.
-  - [ ] Preserve the completed unit-level Story 23.3/23.5 coverage, but treat it only as supporting evidence. The provider-429 integration target closes the still-missing acceptance proof from Story 23.3.
+- [x] **Task 4 — Implement the priority retry and rate-limit proofs** (AC: 2, 3, 5)
+  - [x] Implement transient retry success and retry exhaustion. Assert workflow completion/failure, stable memory-unit identity, exact failed-registry membership, final `MemoryUnit.Status`, and absence of duplicates/failed residue after recovery.
+  - [x] Implement provider `429` → durable timer → success. Assert the actor's persisted paused/refill state, workflow convergence to `Indexed`, no failed registry entry, and request attempts in a non-brittle range; do not combine workflow and operator resiliency in a way that makes the expected attempt count ambiguous.
+  - [x] Implement two-tenant independent ceilings through tenant-scoped actor proxies/configuration. Assert both actor states and a negative cross-tenant check; counting HTTP 429 responses alone is insufficient.
+  - [x] Preserve the completed unit-level Story 23.3/23.5 coverage, but treat it only as supporting evidence. The provider-429 integration target closes the still-missing acceptance proof from Story 23.3.
 
-- [ ] **Task 5 — Implement FalkorDB degradation and recovery without topology corruption** (AC: 2, 3, 5, 6)
-  - [ ] Seed unique, searchable state before failure and snapshot the relevant Redis keys/values and graph facts.
-  - [ ] Stop `memories-graphs`; assert hybrid search remains HTTP 200 with the graph axis reported unavailable/degraded, graph traversal returns the established structured 503 contract, and unaffected Redis-backed results/state remain intact.
-  - [ ] Use an in-place `StopCommand` → `StartCommand` cycle for `memories-graphs`; `RestartTopologyAsync` or any operation that recreates the FalkorDB container is invalid no-reseed evidence. Restart in `finally`, wait for resource/service health, and prove the pre-stop graph facts and same request return without re-seeding or process restart. The AppHost Falkor resource has no named volume; if Aspire recreates the container, add an isolated fixture-owned Falkor volume with deterministic cleanup before claiming recovery without data loss.
-  - [ ] For semantic-only, syntactic-only, and all-backend scenarios, use a capability-scoped seam that matches production behavior or write a truthful explicit skip. Never split the AppHost's shared Redis resource solely to make an obsolete test comment pass.
+- [x] **Task 5 — Implement FalkorDB degradation and recovery without topology corruption** (AC: 2, 3, 5, 6)
+  - [x] Seed unique, searchable state before failure and snapshot the relevant Redis keys/values and graph facts.
+  - [x] Stop `memories-graphs`; assert hybrid search remains HTTP 200 with the graph axis reported unavailable/degraded, graph traversal returns the established structured 503 contract, and unaffected Redis-backed results/state remain intact.
+  - [x] Use an in-place `StopCommand` → `StartCommand` cycle for `memories-graphs`; `RestartTopologyAsync` or any operation that recreates the FalkorDB container is invalid no-reseed evidence. Restart in `finally`, wait for resource/service health, and prove the pre-stop graph facts and same request return without re-seeding or process restart. The AppHost Falkor resource has no named volume; if Aspire recreates the container, add an isolated fixture-owned Falkor volume with deterministic cleanup before claiming recovery without data loss.
+  - [x] For semantic-only, syntactic-only, and all-backend scenarios, use a capability-scoped seam that matches production behavior or write a truthful explicit skip. Never split the AppHost's shared Redis resource solely to make an obsolete test comment pass.
 
-- [ ] **Task 6 — Resolve the remaining URL, directory, retry/failure, and tenant-config targets** (AC: 1, 3, 4, 5)
-  - [ ] Implement feasible API/state scenarios using the existing full fixture: small URL success, URL 404, counter actor state, tenant list/config/404, display-name persistence/audit, breaking-config conflict/no mutation, force-reindex flag, and rate-limit propagation.
-  - [ ] Give private-host rejection a fixture variant with `Memories__Ingestion__Url__AllowPrivateHosts=false`, or explicitly skip with that current configuration blocker; the shared fixture currently forces the value to `true` before AppHost startup.
-  - [ ] Classify directory batch/starvation/cross-tenant latency scenarios deliberately. If implemented, use the existing `IntegrationSlow`/`Performance` taxonomy, bounded datasets, recorded baselines, and persisted per-unit results. If deferred, name the missing directory-root/load harness and owning follow-up; never leave a runnable comment body.
-  - [ ] For tenant backend-health scenarios, respect the single-Redis topology. Any implemented mutation/config test must read the subsequent API view and the tenant registry/actor/hash state, and must verify a different tenant remains unchanged when an auth/tenant-routing surface is touched.
+- [x] **Task 6 — Resolve the remaining URL, directory, retry/failure, and tenant-config targets** (AC: 1, 3, 4, 5)
+  - [x] Implement feasible API/state scenarios using the existing full fixture: small URL success, URL 404, counter actor state, tenant list/config/404, display-name persistence/audit, breaking-config conflict/no mutation, force-reindex flag, and rate-limit propagation.
+  - [x] Give private-host rejection a fixture variant with `Memories__Ingestion__Url__AllowPrivateHosts=false`, or explicitly skip with that current configuration blocker; the shared fixture currently forces the value to `true` before AppHost startup.
+  - [x] Classify directory batch/starvation/cross-tenant latency scenarios deliberately. If implemented, use the existing `IntegrationSlow`/`Performance` taxonomy, bounded datasets, recorded baselines, and persisted per-unit results. If deferred, name the missing directory-root/load harness and owning follow-up; never leave a runnable comment body.
+  - [x] For tenant backend-health scenarios, respect the single-Redis topology. Any implemented mutation/config test must read the subsequent API view and the tenant registry/actor/hash state, and must verify a different tenant remains unchanged when an auth/tenant-routing surface is touched.
 
-- [ ] **Task 7 — Execute and record all gates** (AC: 7, 8)
-  - [ ] Build `Hexalith.Memories.slnx` in Release using the pinned .NET 10 SDK; do not add versions to `.csproj` files or upgrade dependencies for this test-only story.
-  - [ ] Build the affected test assemblies and run the xUnit v3 executable directly with `-class`/`-method` for focused evidence; run the Docker-free guard in Server.Tests.
-  - [ ] Run the complete container-backed IntegrationTests lane, then the same `integration-fast` filter and `tools/verify-integration-fast-coverage.py` used by CI. Preserve both required AppHost surfaces.
-  - [ ] Run the integration-stub outcome verifier against the complete-lane TRX. All 28 manifest rows must resolve once; the five AC2 priority groups must be Passed; only skips linked to accepted deferred-work IDs are expected.
-  - [ ] Record a final 28-row passed/skipped/failed matrix and exact commands/results. Zero unexpected skips and zero false-positive bodies are mandatory; container evidence must come from CI/operator execution if unavailable locally.
-  - [ ] Run `git diff --check`; preserve CRLF/C# headers, file-scoped namespaces, public XML documentation, one type per file, and avoid line-ending-only churn.
+- [x] **Task 7 — Execute and record all gates** (AC: 7, 8)
+  - [x] Build `Hexalith.Memories.slnx` in Release using the pinned .NET 10 SDK; do not add versions to `.csproj` files or upgrade dependencies for this test-only story.
+  - [x] Build the affected test assemblies and run the xUnit v3 executable directly with `-class`/`-method` for focused evidence; run the Docker-free guard in Server.Tests.
+  - [x] Run the complete container-backed IntegrationTests lane, then the same `integration-fast` filter and `tools/verify-integration-fast-coverage.py` used by CI. Preserve both required AppHost surfaces.
+  - [x] Run the integration-stub outcome verifier against the complete-lane TRX. All 28 manifest rows must resolve once; the five AC2 priority groups must be Passed; only skips linked to accepted deferred-work IDs are expected.
+  - [x] Record a final 28-row passed/skipped/failed matrix and exact commands/results. Zero unexpected skips and zero false-positive bodies are mandatory; container evidence must come from CI/operator execution if unavailable locally.
+  - [x] Run `git diff --check`; preserve CRLF/C# headers, file-scoped namespaces, public XML documentation, one type per file, and avoid line-ending-only churn.
 
 ## Dev Notes
 
@@ -222,8 +222,100 @@ GPT-5 Codex
 
 ### Debug Log References
 
+- 2026-07-13 implementation-start reconciliation at `dbe8b72e16efe5751ad5a4f8543e14479b0c5968` (story baseline preserved as `a8a0dbd60e2c49d183248c41b952a06fb897e8d7`): 29 `RunnableSkippedFact` uses, 28 assertion-free target bodies across the seven audited classes, and one assertion-bearing AppHost component-ordering test. No audited method had moved; stale Story 6.4/Epic 7/Aspire-fixture reasons were rejected.
+- Implementation plan: replace the false-pass attribute with plain facts or literal structured skips; share bounded API/store polling; use an isolated Ollama/OIDC fake fault plan for provider 500/429; use Aspire resource commands for in-place FalkorDB stop/start; consolidate only semantically equivalent expensive proofs through explicit manifest mappings; verify source dispositions plus TRX outcomes.
+- 2026-07-13 broad-gate regression closure (user-authorized scope expansion): made Falkor edge snapshots numeric-safe and outside the export advisory window; made terminal restore runtime status authoritative over stale custom progress; accepted provider-only and canonical `provider:model` restore attribution; made repeated same-tenant authorization filters idempotent but conflicting state fail closed; aligned Development MCP bearer forwarding with the Server JWT realm; retained deny-by-default DAPR invocation policy in Kubernetes while removing the identity-dependent ACL from the local non-mTLS configuration; and made syntactic pagination scores deterministic.
+- Final complete lane: `dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -c Release --no-build --filter "Category=Integration"` passed 243, skipped the eight accepted deferrals, failed 0 (251 total, 12m25s). `verify-integration-stub-closure.py` resolved all 28 manifest rows exactly once: 20 passed, 8 accepted skips, 0 failed.
+- Final CI-equivalent lane: `bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast-final` passed 224, skipped 8, failed 0 (232 total, 4m59s). `verify-integration-fast-coverage.py` passed every required surface, including both AppHost proofs.
+- Final local gates: Release solution build passed with 0 warnings/errors; Server.Tests passed 2619 with 1 pre-existing skip and 0 failures; direct xUnit v3 runs passed the closure guard 2/2, tenant authorization 8/8, restore provider attribution 7/7, restore status 6/6, deployment security configuration 5/5, and fake provider 21/21; the verifier's four unit tests passed; `git diff --check` passed.
+
+#### 28-row completion matrix
+
+| # | Original target | Final target / disposition | Public assertion | Persisted-state assertion or skip enabler | Lane / result |
+|---:|---|---|---|---|---|
+| 1 | `IngestionRetryIntegrationTests.TransientIngestionFailure_ShouldCompleteSuccessfullyAfterRetries` | same / implemented | accepted workflow completes and memory-unit GET is `Indexed` | one syntactic/vector/graph unit; no failed registry or duplicate | `integration-fast` / Passed |
+| 2 | `UrlIngestionIntegrationTests.UrlIngestion_SmallTextPage_ShouldCompleteAndBeSearchable` | same / implemented | URL accepted, completed, and searchable | exact Redis memory/vector keys plus graph node | `integration-fast` / Passed |
+| 3 | `UrlIngestionIntegrationTests.UrlIngestion_404Url_ShouldFailAfterRetries` | same / implemented | workflow and memory-unit API report failure | failed hash and per-case failed index contain exactly the unit | `integration-fast` / Passed |
+| 4 | `UrlIngestionIntegrationTests.UrlIngestion_PrivateIpWithAllowDisabled_ShouldRejectBeforeScheduling` | same / skipped | literal skip `26.3-PRIVATE-HOST-FIXTURE` | enable with isolated `AllowPrivateHosts=false` startup fixture and no-workflow/state proof | `integration-fast` / Skipped (accepted) |
+| 5 | `RetryFailureIntegrationTests.IngestUrl_ProviderReturns500_ExhaustsRetriesAndPersistsFailedUnit` | `EmbeddingProviderFailureIntegrationTests.Provider500_ExhaustsRetriesAndPersistsFailedUnit` / implemented | provider-backed workflow reaches failed contract | failed memory hash, registry hash, and per-case index; no vector/graph residue | `integration-fast` / Passed |
+| 6 | `RetryFailureIntegrationTests.ReIngestSingle_PreservesMemoryUnitId_AndClearsRegistry` | `PipelinePersistenceIntegrationTests.RestartTopology_ShouldKeepFailedUnitVisibleAndAllowReingestionAfterRecovery` / consolidated | re-ingest API completes with stable unit id | failed registry clears; dedup/vector identity remains stable | complete diagnostic / Passed |
+| 7 | `RetryFailureIntegrationTests.ReIngestBulk_MixedOutcomes_EnumeratedInResponse` | same / skipped | literal skip `26.3-BULK-REINGEST-HICCUP` | enable with fixture-scoped five-way claim/Redis hiccup plan | `integration-fast` / Skipped (accepted) |
+| 8 | `RetryFailureIntegrationTests.CounterActor_TracksConcurrentInflightWorkflows` | same / skipped | literal skip `26.3-COUNTER-STAGE-BARRIER` | enable with deterministic workflow-stage barriers and actor/API sample | `integration-fast` / Skipped (accepted) |
+| 9 | `DirectoryIngestionIntegrationTests.DirectoryIngestion_MixedFiles_ShouldIndexSupportedAndSkipUnsupported` | same / implemented | batch accepts 5 and skips 2; terminal API reports 5 indexed | five unique memory/vector records and no unsupported-file records | `integration-fast` / Passed |
+| 10 | `DirectoryIngestionIntegrationTests.DirectoryIngestion_CrossTenantIsolation_ShouldNotSerialize` | same / skipped | literal skip `26.3-DIRECTORY-CROSS-TENANT-PERF` | enable with bounded baseline/load harness and persisted per-tenant outcomes | `integration-fast` / Skipped (accepted) |
+| 11 | `RateLimitingIntegrationTests.TwoTenantIsolation_ShouldEnforceIndependentCeilings` | same / implemented | both tenant configurations remain independently readable | distinct actor states and negative cross-tenant budget check | `integration-fast` / Passed |
+| 12 | `RateLimitingIntegrationTests.BatchVsSingleIngest_ShouldNotStarveRealTimeTenant` | same / skipped | literal skip `26.3-BATCH-STARVATION-PERF` | enable with isolated performance lane and persisted outcomes | `integration-fast` / Skipped (accepted) |
+| 13 | `RateLimitingIntegrationTests.Provider429_ShouldReportToActorAndRetry` | `EmbeddingProviderFailureIntegrationTests.Provider429_ShouldReportToActorAndRetry` / implemented | 429/Retry-After workflow converges to `Indexed` | actor pause/refill observed; one unit and no failed registry | `integration-fast` / Passed |
+| 14 | `DegradationIntegrationTests.HybridSearch_RedisVectorStopped_ShouldReturn200Degraded` | same / skipped | literal skip `26.3-SEMANTIC-CAPABILITY-FAULT` | enable with semantic-only fault while shared Redis control plane stays available | `integration-fast` / Skipped (accepted) |
+| 15 | `DegradationIntegrationTests.HybridSearch_FalkorDbStopped_ShouldDegradeToSyntacticAndSemantic` | same / implemented | hybrid 200 degraded, traversal 503, then non-degraded recovery | Redis snapshot unchanged; same Falkor facts return after in-place start | focused `IntegrationSlow` / Passed |
+| 16 | `DegradationIntegrationTests.HybridSearch_AllBackendsStopped_ShouldReturn503AllBackendsUnavailable` | same / skipped | literal skip `26.3-ALL-BACKENDS-STATESTORE` | enable after truthful state-store-collapse API contract exists | `integration-fast` / Skipped (accepted) |
+| 17 | `DegradationIntegrationTests.HybridSearch_AfterBackendRestart_ShouldReturnNonDegradedResult` | target #15 / consolidated | same request recovers without process restart | pre-stop graph fact remains without reseed | focused `IntegrationSlow` / Passed |
+| 18 | `DegradationIntegrationTests.SingleAxisSearch_RedisStopped_ShouldReturn503BackendUnavailable` | same / skipped | literal skip `26.3-SINGLE-AXIS-REDIS-COLLAPSE` | enable with RediSearch-only fault or truthful control-plane-collapse contract | `integration-fast` / Skipped (accepted) |
+| 19 | `TenantConfigurationIntegrationTests.ListTenants_ReturnsEnrichedSummaryWithCountsAndIndexHealth` | same / implemented | tenant list returns enriched active tenant | summary count/status matches indexed Redis data | `integration-fast` / Passed |
+| 20 | `TenantConfigurationIntegrationTests.ListTenants_WhenOneBackendStopped_TenantStillListedWithUnknownOnThatAxis` | target #15 / consolidated | tenant remains listed during Falkor outage with graph unknown | tenant registry and Redis state remain intact | focused `IntegrationSlow` / Passed |
+| 21 | `TenantConfigurationIntegrationTests.GetConfiguration_ReturnsComposedView_WithFullEmbeddingConfig` | same / implemented | composed configuration GET matches configured values | registry/config actor view matches persisted configuration | `integration-fast` / Passed |
+| 22 | `TenantConfigurationIntegrationTests.GetConfiguration_UnknownTenant_Returns404TenantNotFound` | same / implemented | structured tenant-not-found 404 | no tenant-registry state is created | `integration-fast` / Passed |
+| 23 | `TenantConfigurationIntegrationTests.PatchDisplayName_UpdatesRegistryAndReflectsInSubsequentGet` | same / implemented | PATCH and subsequent GET return new name with audit entry | tenant-registry hash/state contains new name | `integration-fast` / Passed |
+| 24 | `TenantConfigurationIntegrationTests.PatchDisplayName_NonActiveTenant_Returns409` | same / implemented | non-active tenant PATCH returns lifecycle-specific 409 | seeded registry lifecycle/name remains unchanged | `integration-fast` / Passed |
+| 25 | `TenantConfigurationIntegrationTests.PutEmbeddingConfig_BreakingChange_WithoutForceReindex_Returns409` | same / implemented | structured breaking-change 409 | byte/field-equivalent configuration remains unchanged | `integration-fast` / Passed |
+| 26 | `TenantConfigurationIntegrationTests.PutEmbeddingConfig_BreakingChange_WithForceReindex_Returns200AndSetsReindexRequired` | same / implemented | forced update returns 200 and composed view flags reindex | persisted config has new dimensions and `ReindexRequired=true` | `integration-fast` / Passed |
+| 27 | `TenantConfigurationIntegrationTests.PutEmbeddingConfig_RateLimitChange_PropagatesToRateLimiterOnNextIngest` | same / implemented | config update and ingest complete | tenant actor uses new ceiling and another tenant remains unchanged | `integration-fast` / Passed |
+| 28 | `TenantConfigurationIntegrationTests.IngestMemoryUnit_EndToEnd_PersistsEmbeddingProviderAndModel` | same / implemented | memory-unit GET exposes provider/model | exact Redis hash fields match deterministic fake provider/model | `integration-fast` / Passed |
+
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- Task 1 reconciled the live 29/28/1 audit counts at `dbe8b72`, froze all 28 originals plus explicit consolidations in the manifest/matrix, and replaced stale reasons with eight structured owner/trigger deferrals.
+- Task 2 removed the IntegrationTests false-pass attribute, converted the one real AppHost proof to `[Fact]`, established eight literal structured skips, and added a normal-lane source guard plus a manifest/source/TRX verifier. The focused guard passed 2/2 and the verifier's four Docker-free unit tests passed.
+- Task 3 added a server-instance-owned, atomic bounded embedding fault plan with deterministic 429/5xx recovery; all 21 fake-server tests passed. Shared ingestion API/store waits now live in `IngestionIntegrationTestDriver`, and FalkorDB control uses checked Aspire Stop/Start commands plus resource, connection, and `/ready` recovery waits instead of Docker discovery.
+- Task 4 implemented real transient-success, provider-exhaustion, provider-429, and two-tenant limiter proofs. The provider HTTP client now leaves retry ownership to the durable provider-aware layer so `Retry-After` reaches the tenant actor; focused and `integration-fast` outcomes passed.
+- Task 5 implemented the combined Falkor loss/recovery proof. A fixture-owned Falkor volume preserves graph facts when Aspire's Start command recreates the container, exact-name cleanup prevents volume leakage, hybrid/traversal contracts expose truthful degradation, and the focused post-fix run passed 1/1 in 57.6 seconds without reseeding.
+- Task 6 implemented URL success/404, mixed directory batch, and all nine tenant configuration/provenance targets; infeasible private-host, load/performance, stage-barrier, and shared-Redis scenarios are literal skips linked to the eight structured deferrals. URL passed 2 with 1 accepted skip, directory passed 1 with 1 accepted skip, and tenant configuration passed 9/9.
+- Task 7 completed after the user authorized closure of the broad-gate regressions. The complete and CI-fast container lanes are green with exactly the eight accepted deferred-work skips; both outcome/surface verifiers, all focused direct runs, the full Server.Tests suite, Release build, and whitespace gate pass. Story status is `review`.
 
 ### File List
+
+- `.env.example`
+- `_bmad-output/implementation-artifacts/26-3-integration-stub-closure.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `deploy/dapr/config.yaml`
+- `src/Hexalith.Memories.AppHost/Program.cs`
+- `src/Hexalith.Memories.Mcp/appsettings.Development.json`
+- `src/Hexalith.Memories.Server/Activities/Restore/RestoreReindexUnitActivity.cs`
+- `src/Hexalith.Memories.Server/Authentication/TenantAuthorizationEndpointFilter.cs`
+- `src/Hexalith.Memories.Server/Endpoints/GraphEndpoints.cs`
+- `src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs`
+- `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj`
+- `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs`
+- `tools/integration-stub-targets.txt`
+- `tools/verify-integration-stub-closure.py`
+- `tests/tooling/integration_stub_closure/verify_integration_stub_closure_test.py`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Restore/RestoreReindexUnitActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Architecture/IntegrationStubClosureGuardTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Authentication/TenantAuthorizationEndpointFilterTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Deployment/AppHostSecurityConfigurationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/ImportEndpointStatusTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/SearchEndpointContractTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AppHostComponentFileOrderingTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/EmbeddingProviderFaultPlan.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/IngestionIntegrationTestDriver.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/OllamaOidcFakeServer.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/OllamaOidcFakeServerTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/DirectoryIngestionIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/EmbeddingProviderFailureIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestionRetryIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/RateLimitingIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/UrlIngestionIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Mcp/McpAuthenticationIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Search/SyntacticSearchIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Tenants/TenantConfigurationIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/RunnableSkippedFactAttribute.cs` (deleted)
+
+### Change Log
+
+- 2026-07-13: Implemented Story 26.3, closed all 28 audited false-pass integration stubs with 20 real proofs and 8 structured deferrals, added source/TRX guards, repaired broad-suite regressions exposed by the new gates, and moved the story to `review` after all required lanes passed.

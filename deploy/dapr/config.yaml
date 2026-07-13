@@ -1,5 +1,6 @@
-# Canonical production Server-side DAPR configuration. The production overlay fixes the namespace
-# and may patch trustDomain to the value configured on the cluster's DAPR control plane.
+# Self-hosted DAPR configuration used by the Aspire AppHost. Invocation ACLs require mTLS caller
+# identities, while local self-hosted DAPR intentionally runs without mTLS. Kubernetes uses the
+# separate deny-by-default configuration under deploy/kubernetes/base/dapr/config.yaml.
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
@@ -14,15 +15,3 @@ spec:
           - google-embedding-api-key
           - memories-embedding-client-secret
           - llm-secret
-  accessControl:
-    defaultAction: deny
-    trustDomain: public
-    policies:
-      - appId: memories-mcp
-        namespace: hexalith-memories
-        trustDomain: public
-        defaultAction: deny
-        operations:
-          - name: /api/v1/**
-            httpVerb: ["GET", "POST"]
-            action: allow

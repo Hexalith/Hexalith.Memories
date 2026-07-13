@@ -109,11 +109,11 @@ internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReind
         // disagree with the restored (source) provider/model labels and the graph node's dimensions. Enforce the
         // documented restore prerequisite loudly here rather than silently writing inconsistent vectors.
         if (!string.IsNullOrEmpty(embeddingProvider)
-            && !string.Equals(embeddingProvider, config.Provider, StringComparison.OrdinalIgnoreCase))
+            && !MatchesProviderAttribution(embeddingProvider, config.Provider, config.Model))
         {
             throw new InvalidOperationException(
                 $"Restore embedding provider mismatch for memory unit {input.MemoryUnitId} in tenant {input.TenantId}: " +
-                $"the export was embedded with '{embeddingProvider}' but the target tenant is configured for '{config.Provider}'. " +
+                $"the export was embedded with '{embeddingProvider}' but the target tenant is configured for '{config.Provider}:{config.Model}'. " +
                 "Align the target tenant's embedding provider with the export before restoring.");
         }
 
@@ -188,4 +188,9 @@ internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReind
 
         return new RestoreReindexResult(input.MemoryUnitId, chunks.Count);
     }
+
+    /// <summary>Matches both provider-only and canonical provider:model export attribution.</summary>
+    internal static bool MatchesProviderAttribution(string attribution, string provider, string model)
+        => string.Equals(attribution, provider, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(attribution, $"{provider}:{model}", StringComparison.OrdinalIgnoreCase);
 }

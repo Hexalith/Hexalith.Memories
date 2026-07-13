@@ -97,6 +97,46 @@ public sealed class OllamaOidcFakeServerTests
     }
 
     [Fact]
+    public async Task Story26_3_FaultPlan_ShouldEmitBounded429SequenceThenRecover()
+    {
+        string clientSecret = $"example-{Guid.NewGuid():N}";
+        await using OllamaOidcFakeServer server = await OllamaOidcFakeServer.StartAsync(clientSecret);
+        server.SetEmbedFaultPlan(new EmbeddingProviderFaultPlan(
+            HttpStatusCode.TooManyRequests,
+            failureCount: 2,
+            retryAfter: TimeSpan.FromSeconds(3)));
+
+        using HttpClient client = new();
+        using HttpResponseMessage first = await SendAuthorizedEmbedAsync(client, server);
+        using HttpResponseMessage second = await SendAuthorizedEmbedAsync(client, server);
+        using HttpResponseMessage third = await SendAuthorizedEmbedAsync(client, server);
+
+        first.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+        first.Headers.RetryAfter?.Delta.ShouldBe(TimeSpan.FromSeconds(3));
+        second.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+        third.StatusCode.ShouldBe(HttpStatusCode.OK);
+        server.EmbedAttemptCount.ShouldBe(3);
+        server.EmbedRequestCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Story26_3_FaultPlan_Clear_ShouldRestoreSuccessWithoutLeakingFailureState()
+    {
+        await using OllamaOidcFakeServer server = await OllamaOidcFakeServer.StartAsync($"example-{Guid.NewGuid():N}");
+        server.SetEmbedFaultPlan(new EmbeddingProviderFaultPlan(HttpStatusCode.InternalServerError, failureCount: 10));
+
+        using HttpClient client = new();
+        using HttpResponseMessage failed = await SendAuthorizedEmbedAsync(client, server);
+        server.ClearEmbedFaultPlan();
+        using HttpResponseMessage recovered = await SendAuthorizedEmbedAsync(client, server);
+
+        failed.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        recovered.StatusCode.ShouldBe(HttpStatusCode.OK);
+        server.EmbedAttemptCount.ShouldBe(2);
+        server.EmbedRequestCount.ShouldBe(1);
+    }
+
+    [Fact]
     public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldRemoveLeafAndConfigOnNormalDispose()
     {
         string fixtureAppId = $"memories-it-{Guid.NewGuid():N}";
@@ -290,5 +330,17 @@ public sealed class OllamaOidcFakeServerTests
         {
             Content = new FormUrlEncodedContent(form),
         };
+    }
+
+    private static Task<HttpResponseMessage> SendAuthorizedEmbedAsync(
+        HttpClient client,
+        OllamaOidcFakeServer server)
+    {
+        HttpRequestMessage request = new(HttpMethod.Post, server.GetEmbedUri())
+        {
+            Content = JsonContent.Create(new { model = OllamaOidcFakeServer.DefaultModel, input = "fault-plan input" }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
+        return client.SendAsync(request);
     }
 }

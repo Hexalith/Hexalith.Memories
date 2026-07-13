@@ -138,35 +138,23 @@ internal static class GraphEndpoints
             catch (RedisConnectionException ex)
             {
                 logger.LogWarning(ex, "Graph traversal degraded for tenant {TenantId} and start node {StartNodeId}", tenantId, startNodeId);
-                scope.MarkPartial("GRAPH_UNAVAILABLE");
-                return Results.Ok(new TraversalResult(startNodeId, clampedDepth, [], 0)
-                {
-                    Degraded = true,
-                    UnavailableAxes = ["graph"],
-                    OmittedReason = OmittedReason.BackendDegraded,
-                });
+                scope.MarkValidationError("GRAPH_UNAVAILABLE");
+                return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(
+                    httpContext, logger, tenantId, startNodeId, ex);
             }
             catch (RedisTimeoutException ex)
             {
                 logger.LogWarning(ex, "Graph traversal degraded for tenant {TenantId} and start node {StartNodeId}", tenantId, startNodeId);
-                scope.MarkPartial("GRAPH_UNAVAILABLE");
-                return Results.Ok(new TraversalResult(startNodeId, clampedDepth, [], 0)
-                {
-                    Degraded = true,
-                    UnavailableAxes = ["graph"],
-                    OmittedReason = OmittedReason.BackendDegraded,
-                });
+                scope.MarkValidationError("GRAPH_UNAVAILABLE");
+                return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(
+                    httpContext, logger, tenantId, startNodeId, ex);
             }
             catch (RedisServerException ex) when (SearchEndpointDegradationLog.IsTransientRedisError(ex))
             {
                 logger.LogWarning(ex, "Graph traversal degraded for tenant {TenantId} and start node {StartNodeId}", tenantId, startNodeId);
-                scope.MarkPartial("GRAPH_UNAVAILABLE");
-                return Results.Ok(new TraversalResult(startNodeId, clampedDepth, [], 0)
-                {
-                    Degraded = true,
-                    UnavailableAxes = ["graph"],
-                    OmittedReason = OmittedReason.BackendDegraded,
-                });
+                scope.MarkValidationError("GRAPH_UNAVAILABLE");
+                return SearchEndpointDegradationResponses.BuildGraphUnavailableResponse(
+                    httpContext, logger, tenantId, startNodeId, ex);
             }
             catch (TimeoutException)
             {

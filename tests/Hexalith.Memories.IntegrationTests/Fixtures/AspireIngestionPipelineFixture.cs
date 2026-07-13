@@ -14,6 +14,7 @@ using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
 
 using Dapr.Actors;
@@ -50,6 +51,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private IDistributedApplicationTestingBuilder? _builder;
     private string _daprAppId = string.Empty;
     private string _redisVolumeName = string.Empty;
+    private string _falkorVolumeName = string.Empty;
     private string _eventStoreMappedTenantId = string.Empty;
     private ActorProxyFactory? _actorProxyFactory;
     private ActorProxyOptions? _actorProxyOptions;
@@ -63,6 +65,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _daprAppIdScope;
     private EnvVarScope? _daprConfigPathScope;
     private EnvVarScope? _redisVolumeNameScope;
+    private EnvVarScope? _falkorVolumeNameScope;
     private EnvVarScope? _eventStoreSourceMapScope;
     private EnvVarScope? _enableKeycloakScope;
     private EnvVarScope? _telemetryInMemoryScope;
@@ -108,13 +111,13 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     public Uri McpEndpoint { get; private set; } = null!;
 
     /// <summary>Symmetric signing key matching <c>src/Hexalith.Memories.Mcp/appsettings.Development.json</c>.</summary>
-    public const string McpDevSigningKey = "hexalith-memories-dev-signing-key-32b";
+    public const string McpDevSigningKey = "hexalith-memories-test-signing-key-32b";
 
     /// <summary>Issuer matching <c>src/Hexalith.Memories.Mcp/appsettings.Development.json</c>.</summary>
-    public const string McpDevIssuer = "hexalith-memories-dev";
+    public const string McpDevIssuer = "hexalith-memories-test";
 
     /// <summary>Audience matching <c>src/Hexalith.Memories.Mcp/appsettings.Development.json</c>.</summary>
-    public const string McpDevAudience = "hexalith-memories-mcp";
+    public const string McpDevAudience = "hexalith-memories-server";
 
     /// <summary>Symmetric signing key matching the Memories Server's test <c>Authentication:JwtBearer:SigningKey</c>
     /// in <c>src/Hexalith.Memories.Server/appsettings.Development.json</c>.</summary>
@@ -170,8 +173,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>
     /// Mints a Memories <b>Server</b>-realm bearer token (issuer/audience/key matching the server's test
     /// <c>Authentication:JwtBearer</c> configuration) so the fixture's <see cref="MemoriesClient"/> can satisfy the
-    /// server's fallback authentication policy (Story 20.1) and per-tenant authorization filter (Story 20.2). This is
-    /// distinct from <see cref="MintDevBearer"/>, which targets the separate MCP realm.
+    /// server's fallback authentication policy (Story 20.1) and per-tenant authorization filter (Story 20.2). The
+    /// Development MCP and Server resources intentionally share this realm so MCP can forward the validated bearer.
     /// </summary>
     /// <param name="tenantId">Tenant to embed as the <c>tenant_id</c> claim. When null/blank an auth-only token is
     /// produced for endpoints that require an authenticated principal but no specific tenant claim.</param>
@@ -347,6 +350,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     public IEmbeddingRateLimiterActor CreateEmbeddingRateLimiterActorProxy(string tenantId)
         => CreateActorProxy<IEmbeddingRateLimiterActor>(tenantId, "EmbeddingRateLimiterActor");
 
+    /// <summary>Creates a tenant-configuration actor proxy against the test DAPR sidecar endpoint.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <returns>The actor proxy.</returns>
+    public ITenantConfigurationActor CreateTenantConfigurationActorProxy(string tenantId)
+        => CreateActorProxy<ITenantConfigurationActor>(tenantId, nameof(TenantConfigurationActor));
+
     /// <summary>Creates a corpus-statistics actor proxy against the test DAPR sidecar endpoint.</summary>
     /// <param name="tenantId">Tenant identifier.</param>
     /// <returns>The actor proxy.</returns>
@@ -370,6 +379,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     {
         _daprAppId = $"memories-it-{Guid.NewGuid():N}";
         _redisVolumeName = $"hexalith-memories-it-{Guid.NewGuid():N}";
+        _falkorVolumeName = $"hexalith-memories-falkor-it-{Guid.NewGuid():N}";
         _eventStoreMappedTenantId = $"tenant-eventstore-{Guid.NewGuid():N}";
 
         // If anything after the env-var scopes are acquired fails, xUnit does NOT call DisposeAsync
@@ -390,6 +400,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _allowPrivateHostsScope = EnvVarScope.Set("Ingestion__UrlFetcher__AllowPrivateHosts", "true");
             _daprAppIdScope = EnvVarScope.Set("MEMORIES_DAPR_APP_ID", _daprAppId);
             _redisVolumeNameScope = EnvVarScope.Set("MEMORIES_REDIS_VOLUME_NAME", _redisVolumeName);
+            _falkorVolumeNameScope = EnvVarScope.Set("MEMORIES_FALKOR_VOLUME_NAME", _falkorVolumeName);
             _eventStoreSourceMapScope = EnvVarScope.Set(
                 "EventStoreIntegration__Routing__SourceToTenantMap__enterprise.claims",
                 _eventStoreMappedTenantId);
@@ -421,6 +432,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _workflowReplaySafetyScope = null;
         _redisVolumeNameScope?.Dispose();
         _redisVolumeNameScope = null;
+        _falkorVolumeNameScope?.Dispose();
+        _falkorVolumeNameScope = null;
         _daprAppIdScope?.Dispose();
         _daprAppIdScope = null;
         _daprConfigPathScope?.Dispose();
@@ -620,15 +633,75 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}");
     }
 
-    /// <summary>Stops the FalkorDB container hosted by the Aspire topology.</summary>
+    /// <summary>Stops the FalkorDB resource in place through the Aspire resource command service.</summary>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A task that completes when the container has stopped.</returns>
-    public Task StopFalkorDbContainerAsync(CancellationToken cancellationToken = default)
-        => StopContainerAsync(
-            "FalkorDB",
-            static container => container.Image.Contains("falkordb/falkordb", StringComparison.OrdinalIgnoreCase)
-                || container.Name.Contains("falkordb", StringComparison.OrdinalIgnoreCase),
-            cancellationToken);
+    /// <returns>A task that completes when Aspire reports the resource stopped.</returns>
+    public async Task StopFalkorDbContainerAsync(CancellationToken cancellationToken = default)
+    {
+        DistributedApplication app = _app
+            ?? throw new InvalidOperationException("The Aspire topology has not been started.");
+        using CancellationTokenSource commandCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        commandCts.CancelAfter(ResourceHealthyTimeout);
+
+        await ExecuteResourceCommandAsync(
+            app,
+            "memories-graphs",
+            KnownResourceCommands.StopCommand,
+            commandCts.Token).ConfigureAwait(false);
+        _ = await app.ResourceNotifications
+            .WaitForResourceAsync(
+                "memories-graphs",
+                [KnownResourceStates.Exited, KnownResourceStates.Finished],
+                commandCts.Token)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Reads the durable tenant registry entry directly through the DAPR state API.</summary>
+    /// <param name="tenantId">Tenant identifier.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <returns>The durable entry, or <see langword="null"/> when absent.</returns>
+    public async Task<TenantRegistryEntry?> GetTenantRegistryEntryAsync(
+        string tenantId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        HttpClient client = _daprStateClient
+            ?? throw new InvalidOperationException("DAPR state client is unavailable before the topology has started.");
+        return await GetDaprStateAsync<TenantRegistryEntry>(
+            client,
+            $"tenant-registry-{tenantId}",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Starts the stopped FalkorDB resource in place and waits for backend and API recovery.</summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes once the resource, connection, and Memories readiness endpoint recover.</returns>
+    public async Task StartFalkorDbContainerAsync(CancellationToken cancellationToken = default)
+    {
+        DistributedApplication app = _app
+            ?? throw new InvalidOperationException("The Aspire topology has not been started.");
+        using CancellationTokenSource commandCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        commandCts.CancelAfter(ResourceHealthyTimeout);
+
+        await ExecuteResourceCommandAsync(
+            app,
+            "memories-graphs",
+            KnownResourceCommands.StartCommand,
+            commandCts.Token).ConfigureAwait(false);
+        _ = await app.ResourceNotifications
+            .WaitForResourceHealthyAsync("memories-graphs", commandCts.Token)
+            .ConfigureAwait(false);
+
+        await WaitForFalkorConnectionAsync(commandCts.Token).ConfigureAwait(false);
+        await WaitForEndpointAsync(
+            MemoriesClient,
+            "/ready",
+            [HttpStatusCode.OK],
+            ResourceHealthyTimeout,
+            EndpointPollInterval,
+            _logProvider.Count,
+            commandCts.Token).ConfigureAwait(false);
+    }
 
     /// <summary>Stops the Dapr sidecar process for the Memories Server resource.</summary>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -646,6 +719,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         DisposeEnvVarScopes();
         RestoreLocalDaprSecret();
         DeleteTempDaprConfig();
+        await RemoveDockerVolumeIfPresentAsync(_falkorVolumeName).ConfigureAwait(false);
+        await RemoveDockerVolumeIfPresentAsync(_redisVolumeName).ConfigureAwait(false);
     }
 
     private TActor CreateActorProxy<TActor>(string actorId, string actorType)
@@ -1141,49 +1216,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _actorHttpMessageHandler = null;
     }
 
-    private async Task StopContainerAsync(
-        string description,
-        Func<RunningContainer, bool> predicate,
-        CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(description);
-        ArgumentNullException.ThrowIfNull(predicate);
-
-        IReadOnlyList<RunningContainer> containers = await ListRunningContainersAsync(cancellationToken).ConfigureAwait(false);
-        RunningContainer container = containers.FirstOrDefault(predicate);
-
-        if (string.IsNullOrWhiteSpace(container.Name))
-        {
-            string available = string.Join(
-                Environment.NewLine,
-                containers.Select(c => $"- {c.Name} ({c.Image})"));
-            throw new InvalidOperationException(
-                $"Could not find the {description} container in the running Aspire topology. " +
-                $"Available containers:{Environment.NewLine}{available}");
-        }
-
-        _ = await RunDockerCommandAsync($"stop --time 0 {container.Name}", cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<IReadOnlyList<RunningContainer>> ListRunningContainersAsync(CancellationToken cancellationToken)
-    {
-        string output = await RunDockerCommandAsync(
-            "ps --format \"{{.Names}}|{{.Image}}\" --no-trunc",
-            cancellationToken).ConfigureAwait(false);
-
-        List<RunningContainer> containers = [];
-        foreach (string line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            string[] parts = line.Split('|', 2, StringSplitOptions.TrimEntries);
-            if (parts.Length == 2)
-            {
-                containers.Add(new RunningContainer(parts[0], parts[1]));
-            }
-        }
-
-        return containers;
-    }
-
     private static async Task StopProcessListeningOnPortAsync(
         int port,
         string description,
@@ -1205,6 +1237,45 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         using Process process = Process.GetProcessById(processId);
         process.Kill(entireProcessTree: false);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task ExecuteResourceCommandAsync(
+        DistributedApplication app,
+        string resourceName,
+        string commandName,
+        CancellationToken cancellationToken)
+    {
+        ExecuteCommandResult result = await app.ResourceCommands
+            .ExecuteCommandAsync(resourceName, commandName, cancellationToken)
+            .ConfigureAwait(false);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(
+                $"Aspire command '{commandName}' failed for resource '{resourceName}': " +
+                (result.Message ?? "no command detail was returned"));
+        }
+    }
+
+    private async Task WaitForFalkorConnectionAsync(CancellationToken cancellationToken)
+    {
+        Exception? lastException = null;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                _ = await FalkorDbConnection.GetDatabase().PingAsync().ConfigureAwait(false);
+                return;
+            }
+            catch (Exception ex) when (ex is RedisConnectionException or RedisTimeoutException)
+            {
+                lastException = ex;
+            }
+
+            await Task.Delay(EndpointPollInterval, cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException(
+            $"FalkorDB connection did not recover before the resource-command deadline. Last error: {FormatException(lastException)}.");
     }
 
     private static async Task<int> FindWindowsListeningProcessIdAsync(int port, CancellationToken cancellationToken)
@@ -1247,9 +1318,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return int.TryParse(firstLine, out int processId) ? processId : 0;
     }
 
-    private static async Task<string> RunDockerCommandAsync(string arguments, CancellationToken cancellationToken)
-        => await RunProcessCommandAsync("docker", arguments, cancellationToken).ConfigureAwait(false);
-
     private static async Task<string> RunProcessCommandAsync(
         string fileName,
         string arguments,
@@ -1283,6 +1351,25 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
 
         return stdout;
+    }
+
+    private static async Task RemoveDockerVolumeIfPresentAsync(string volumeName)
+    {
+        if (string.IsNullOrWhiteSpace(volumeName))
+        {
+            return;
+        }
+
+        try
+        {
+            _ = await RunProcessCommandAsync(
+                "docker",
+                $"volume rm {volumeName}",
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("No such volume", StringComparison.OrdinalIgnoreCase))
+        {
+        }
     }
 
     private async Task WaitForEndpointAsync(
@@ -1351,7 +1438,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Represents a captured integration-test log entry.</summary>
     public sealed record CapturedLogEntry(LogLevel Level, string Category, string Message);
 
-    private readonly record struct RunningContainer(string Name, string Image);
 
     private sealed class TestLogProvider : ILoggerProvider
     {

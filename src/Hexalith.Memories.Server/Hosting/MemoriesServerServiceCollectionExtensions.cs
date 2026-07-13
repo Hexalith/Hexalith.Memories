@@ -189,9 +189,13 @@ internal static class MemoriesServerServiceCollectionExtensions
 
         builder.Services.AddSingleton<IContentExtractionClient, ContentExtractionClient>();
         builder.Services.AddHttpClient("EmbeddingClient", client =>
-        {
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+            })
+            // Provider responses are interpreted by EmbeddingClient and fed into the durable
+            // workflow/tenant rate-limiter retry path. An outer HTTP resilience handler would
+            // consume 429/5xx responses before that state machine can observe and persist them.
+            .RemoveAllResilienceHandlers();
         builder.Services.AddSingleton<EmbeddingClient>();
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.Configure<TenantEmbeddingConfigCacheOptions>(

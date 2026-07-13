@@ -18,6 +18,7 @@ string daprConfigPath = ResolveDaprConfigPath();
 string daprAppId = ResolveDaprAppId();
 string redisConfigPath = ResolveRedisConfigPath();
 string redisVolumeName = ResolveRedisVolumeName();
+string falkorVolumeName = ResolveFalkorVolumeName();
 GeneratedDaprComponentPaths daprComponentPaths = EnsureDaprComponentFiles(daprAppId, secretsFile);
 
 // Story 15.6 code review: the rewrite signal is refreshable so a transient OnResourceReady fault
@@ -145,6 +146,7 @@ IResourceBuilder<IDaprComponentResource> conversationLlm = builder
 // FalkorDB: graph database (Redis-protocol compatible, internal port 6379 mapped to 6380)
 IResourceBuilder<ContainerResource> falkordb = builder
     .AddContainer("memories-graphs", "falkordb/falkordb")
+    .WithVolume(falkorVolumeName, "/var/lib/falkordb/data")
     .WithEndpoint(targetPort: 6379, name: "falkordb");
 EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 
@@ -737,6 +739,14 @@ static string ResolveRedisVolumeName()
     string? configured = Environment.GetEnvironmentVariable("MEMORIES_REDIS_VOLUME_NAME");
     return string.IsNullOrWhiteSpace(configured)
         ? "hexalith-memories-redis-data"
+        : configured.Trim();
+}
+
+static string ResolveFalkorVolumeName()
+{
+    string? configured = Environment.GetEnvironmentVariable("MEMORIES_FALKOR_VOLUME_NAME");
+    return string.IsNullOrWhiteSpace(configured)
+        ? "hexalith-memories-falkor-data"
         : configured.Trim();
 }
 

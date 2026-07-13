@@ -58,11 +58,6 @@ public sealed partial class TenantAuthorizationEndpointFilter(
             return false;
         }
 
-        if (context.Items.ContainsKey(AuthorizedTenantAccessor.HttpContextItemKey))
-        {
-            throw new InvalidOperationException("HttpContext.Items leaked across requests - authorization state must be request-scoped.");
-        }
-
         ClaimsPrincipal user = context.User;
         if (user.Identity?.IsAuthenticated != true)
         {
@@ -75,6 +70,17 @@ public sealed partial class TenantAuthorizationEndpointFilter(
         {
             result = Deny(context, surface, logger, "TenantClaimMissingOrMismatch");
             return false;
+        }
+
+        if (context.Items.TryGetValue(AuthorizedTenantAccessor.HttpContextItemKey, out object? existingTenant))
+        {
+            if (existingTenant is string capturedTenant
+                && string.Equals(capturedTenant, tenantId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            throw new InvalidOperationException("HttpContext.Items contains conflicting tenant authorization state.");
         }
 
         context.Items[AuthorizedTenantAccessor.HttpContextItemKey] = tenantId;

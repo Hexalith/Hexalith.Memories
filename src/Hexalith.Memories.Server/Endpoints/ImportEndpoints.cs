@@ -236,7 +236,7 @@ internal static class ImportEndpoints
                 "Use the instanceId returned by the import scheduling endpoint for this tenant."));
         }
 
-        string status = TryReadCustomStatus(state) ?? state.RuntimeStatus.ToString();
+        string status = ResolveReportedStatus(state.RuntimeStatus, TryReadCustomStatus(state));
         RestoreWorkflowResult? result = state.RuntimeStatus == WorkflowRuntimeStatus.Completed
             ? TryReadOutput(state)
             : null;
@@ -252,6 +252,15 @@ internal static class ImportEndpoints
             result?.RestoredEdges,
             result?.SkippedRecords));
     }
+
+    /// <summary>Prevents stale custom progress text from masking a terminal workflow state.</summary>
+    internal static string ResolveReportedStatus(WorkflowRuntimeStatus runtimeStatus, string? customStatus)
+        => runtimeStatus is WorkflowRuntimeStatus.Completed
+            or WorkflowRuntimeStatus.Failed
+            or WorkflowRuntimeStatus.Canceled
+            or WorkflowRuntimeStatus.Terminated
+            ? runtimeStatus.ToString()
+            : customStatus ?? runtimeStatus.ToString();
 
     private static RestoreWorkflowInput? TryReadInput(WorkflowState state)
     {

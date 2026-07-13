@@ -2099,3 +2099,79 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
 - source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
   summary: [LOW — hygiene, not a defect] Line-ending normalization churn folded into the feature commits.
   evidence: ~2,500 diff lines are LF→CRLF flips (correct direction, toward the repo's required CRLF standard), including `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs` (959 lines, 0 substantive changes). Mixing a mass line-ending normalization into `feat` commits inflates the diff and can mask real edits. Re-open trigger: next time a bulk normalization is needed — isolate it in a dedicated `chore` commit.
+
+## Story 26.3 Explicit Integration Deferrals (2026-07-13)
+
+The following scenarios replace legacy runnable placeholders with literal xUnit skips. Each entry names the current missing seam, its owner, and the exact condition that makes the scenario runnable.
+
+- **26.3-PRIVATE-HOST-FIXTURE - accepted.** The shared Aspire ingestion fixture sets `Ingestion__UrlFetcher__AllowPrivateHosts=true` before AppHost startup and cannot vary that startup-only option per test.
+
+  - ID: 26.3-PRIVATE-HOST-FIXTURE
+  - Status: accepted
+  - Source story: 26-3-integration-stub-closure
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/UrlIngestionIntegrationTests.cs
+  - Re-open trigger: add an isolated `AllowPrivateHosts=false` AppHost fixture variant that proves rejection creates neither workflow nor Redis/DAPR state.
+  - Rationale: The production validation path is unit/API covered, but the current shared topology is intentionally private-host-enabled for scripted loopback ingestion. Owner: integration test maintainer.
+
+- **26.3-BULK-REINGEST-HICCUP - accepted.** The five-way bulk re-ingestion scenario needs deterministic per-unit missing, claimed, and Redis-write-failure control in one request.
+
+  - ID: 26.3-BULK-REINGEST-HICCUP
+  - Status: accepted
+  - Source story: 26-3-integration-stub-closure
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs
+  - Re-open trigger: provide a fixture-scoped claim/hiccup seam that can assign Scheduled, NotFound, Conflicted, and Errored outcomes without process-global mutation.
+  - Rationale: Existing topology controls cannot inject one scoped Redis failure while preserving the four sibling outcomes and shared state store. Owner: ingestion reliability maintainer.
+
+- **26.3-COUNTER-STAGE-BARRIER - accepted.** Exact simultaneous queued/extracting/embedding counts require deterministic workflow stage barriers.
+
+  - ID: 26.3-COUNTER-STAGE-BARRIER
+  - Status: accepted
+  - Source story: 26-3-integration-stub-closure
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs
+  - Re-open trigger: add fixture-scoped extraction and embedding barriers that hold six real workflows at requested stages while the public case-status API and actor state are sampled.
+  - Rationale: Direct actor transitions would not prove concurrent workflow integration, and timing-only delays would be flaky. Owner: workflow test maintainer.
+
+- **26.3-DIRECTORY-CROSS-TENANT-PERF - accepted.** The cross-tenant directory latency claim needs a recorded baseline and bounded load harness.
+
+  - ID: 26.3-DIRECTORY-CROSS-TENANT-PERF
+  - Status: accepted
+  - Source story: 26-3-integration-stub-closure
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/DirectoryIngestionIntegrationTests.cs
+  - Re-open trigger: an `IntegrationSlow` performance harness can create a bounded 100-file batch, record the single-tenant baseline, and assert persisted outcomes plus the two-times latency bound without CI noise.
+  - Rationale: The ordinary integration lane has no stable performance baseline or load-isolated runner. Owner: performance test maintainer.
+
+- **26.3-BATCH-STARVATION-PERF - accepted.** The 500-file batch-versus-single-ingest starvation claim requires the same missing load harness and latency baseline.
+
+  - ID: 26.3-BATCH-STARVATION-PERF
+  - Status: accepted
+  - Source story: 26-3-integration-stub-closure
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/RateLimitingIntegrationTests.cs
+  - Re-open trigger: an isolated performance lane can run the bounded 500-file workload, capture a control baseline, and retain per-unit Redis/actor evidence.
+  - Rationale: A timing assertion in `integration-fast` would be environment-sensitive and would not prove persisted outcomes. Owner: performance test maintainer.
+
+- **26.3-SEMANTIC-CAPABILITY-FAULT - accepted.** Semantic search shares the single `memories-vectors` Redis Stack resource with syntactic search, DAPR state, actors, workflows, and pub/sub.
+
+  - ID: 26.3-SEMANTIC-CAPABILITY-FAULT
+  - Status: accepted
+  - Source story: 26-3-integration-stub-closure
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs
+  - Re-open trigger: add a Development-only, request-scoped semantic capability fault that leaves RediSearch and DAPR state available and matches production exception behavior.
+  - Rationale: Stopping `memories-vectors` cannot truthfully represent a semantic-only outage. Owner: search reliability maintainer.
+
+- **26.3-ALL-BACKENDS-STATESTORE - accepted.** Stopping Redis Stack and FalkorDB also removes workflow, actor, pub/sub, and state-store availability.
+
+  - ID: 26.3-ALL-BACKENDS-STATESTORE
+  - Status: accepted
+  - Source story: 26-3-integration-stub-closure
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs
+  - Re-open trigger: define and implement the supported API contract for total Redis-backed control-plane collapse, then add bounded recovery assertions against that real dependency graph.
+  - Rationale: The legacy `ALL_BACKENDS_UNAVAILABLE` comment assumes independent retrieval containers that the AppHost does not have. Owner: platform reliability maintainer.
+
+- **26.3-SINGLE-AXIS-REDIS-COLLAPSE - accepted.** A Redis resource stop is not a syntactic-only outage and can prevent the service from reading authorization, tenant, workflow, and actor state.
+
+  - ID: 26.3-SINGLE-AXIS-REDIS-COLLAPSE
+  - Status: accepted
+  - Source story: 26-3-integration-stub-closure
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs
+  - Re-open trigger: add a request-scoped RediSearch capability fault or publish a truthful state-store-collapse contract for the single-axis endpoint.
+  - Rationale: A resource stop would overclaim `BACKEND_UNAVAILABLE` syntactic-only semantics. Owner: search reliability maintainer.

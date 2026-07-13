@@ -39,6 +39,8 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
     private readonly object _gate = new();
     private readonly List<FakeHttpRequestEvidence> _requestEvidence = [];
     private ScriptedHttpServer _server = null!;
+    private EmbeddingProviderFaultPlan? _embedFaultPlan;
+    private int _embedAttemptCount;
     private int _embedRequestCount;
     private int _tokenRequestCount;
 
@@ -52,6 +54,9 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
 
     /// <summary>Gets the number of valid embed requests handled by the fake.</summary>
     public int EmbedRequestCount => Volatile.Read(ref _embedRequestCount);
+
+    /// <summary>Gets the number of valid embed attempts, including planned failure responses.</summary>
+    public int EmbedAttemptCount => Volatile.Read(ref _embedAttemptCount);
 
     /// <summary>Gets the number of valid token requests handled by the fake.</summary>
     public int TokenRequestCount => Volatile.Read(ref _tokenRequestCount);
@@ -93,6 +98,17 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
     /// <summary>Gets the canonical embed endpoint URI.</summary>
     /// <returns>The absolute embed endpoint URI.</returns>
     public Uri GetEmbedUri() => _server.GetUri("/api/embed");
+
+    /// <summary>Sets the bounded embed failure plan owned by this fake server instance.</summary>
+    /// <param name="faultPlan">Failure plan to consume.</param>
+    public void SetEmbedFaultPlan(EmbeddingProviderFaultPlan faultPlan)
+    {
+        ArgumentNullException.ThrowIfNull(faultPlan);
+        Volatile.Write(ref _embedFaultPlan, faultPlan);
+    }
+
+    /// <summary>Clears this server's embed failure plan and restores normal success responses.</summary>
+    public void ClearEmbedFaultPlan() => Volatile.Write(ref _embedFaultPlan, null);
 
     /// <summary>Creates a deterministic vector from model and input text.</summary>
     /// <param name="model">The model name.</param>
@@ -231,6 +247,29 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
                 return ScriptedHttpResponse.Text("Ollama embed request has invalid model or input.", HttpStatusCode.BadRequest);
             }
 
+            AddEvidence(new FakeHttpRequestEvidence(
+                request.Method,
+                request.Path.Value ?? string.Empty,
+                Model: model,
+                HasBearerToken: true));
+            _ = Interlocked.Increment(ref _embedAttemptCount);
+
+            EmbeddingProviderFaultPlan? faultPlan = Volatile.Read(ref _embedFaultPlan);
+            if (faultPlan?.TryConsumeFailure() == true)
+            {
+                IReadOnlyDictionary<string, string> headers = faultPlan.RetryAfter is { } retryAfter
+                    ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["Retry-After"] = Math.Ceiling(retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture),
+                    }
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                return ScriptedHttpResponse.Create(
+                    faultPlan.StatusCode,
+                    $$"""{"error":"planned embedding-provider failure","status":{{(int)faultPlan.StatusCode}}}""",
+                    "application/json; charset=utf-8",
+                    headers);
+            }
+
             return BuildEmbedResponse(model, inputs, request.Method, request.Path.Value);
         }
     }
@@ -272,11 +311,6 @@ public sealed class OllamaOidcFakeServer : IAsyncDisposable
             return $"[{values}]";
         })];
 
-        AddEvidence(new FakeHttpRequestEvidence(
-            method,
-            path ?? string.Empty,
-            Model: model,
-            HasBearerToken: true));
         _ = Interlocked.Increment(ref _embedRequestCount);
 
         return Json($$"""{"model":"{{DefaultModel}}","embeddings":[{{string.Join(",", embeddings)}}]}""");

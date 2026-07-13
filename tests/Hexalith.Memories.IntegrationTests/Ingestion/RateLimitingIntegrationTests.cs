@@ -5,13 +5,17 @@
 
 namespace Hexalith.Memories.IntegrationTests.Ingestion;
 
+using System.Net;
+using System.Net.Http.Json;
+
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.Server.Actors;
+
+using Shouldly;
 
 /// <summary>
-/// Integration harness placeholders for per-tenant rate limiting and starvation prevention.
-/// Story 23.3 proves provider 429 recovery at unit level with DAPR workflow timer mocks, activity
-/// actor-feedback assertions, and actor reopen-math tests. These scenarios remain skipped until the
-/// Aspire fixture can inject a deterministic 429-then-success embedding provider across a real sidecar run.
+/// Integration coverage for per-tenant rate limiting and starvation prevention.
 /// </summary>
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
@@ -21,28 +25,68 @@ public sealed class RateLimitingIntegrationTests
 
     public RateLimitingIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [RunnableSkippedFact("Requires Aspire fixture support for per-tenant ceiling overrides.")]
-    public void TwoTenantIsolation_ShouldEnforceIndependentCeilings()
+    [Fact]
+    public async Task TwoTenantIsolation_ShouldEnforceIndependentCeilings()
     {
-        // AC1, AC10: two tenants with different ceilings (500 vs 3000) run concurrently.
-        // Assert each actor holds independent RateLimitState; t1 throttles at 500, t2 does not.
-        _ = _fixture;
+        string unique = Guid.NewGuid().ToString("N");
+        string firstTenant = $"tenant-limit-a-{unique[..10]}";
+        string secondTenant = $"tenant-limit-b-{unique[..10]}";
+        _ = await _fixture.ProvisionActiveTenantAsync(firstTenant).ConfigureAwait(true);
+        _ = await _fixture.ProvisionActiveTenantAsync(secondTenant).ConfigureAwait(true);
+
+        TenantEmbeddingConfig firstConfig = await GetEmbeddingConfigAsync(firstTenant).ConfigureAwait(true);
+        TenantEmbeddingConfig secondConfig = await GetEmbeddingConfigAsync(secondTenant).ConfigureAwait(true);
+        await PutEmbeddingConfigAsync(firstTenant, firstConfig with { RateLimitPerMinute = 2 }).ConfigureAwait(true);
+        await PutEmbeddingConfigAsync(secondTenant, secondConfig with { RateLimitPerMinute = 4 }).ConfigureAwait(true);
+
+        IEmbeddingRateLimiterActor firstActor = _fixture.CreateEmbeddingRateLimiterActorProxy(firstTenant);
+        IEmbeddingRateLimiterActor secondActor = _fixture.CreateEmbeddingRateLimiterActorProxy(secondTenant);
+        await firstActor.ResetAsync().ConfigureAwait(true);
+        await secondActor.ResetAsync().ConfigureAwait(true);
+
+        (await firstActor.TryConsumeWithCeilingAsync(2).ConfigureAwait(true)).ShouldBeTrue();
+        (await firstActor.TryConsumeWithCeilingAsync(2).ConfigureAwait(true)).ShouldBeTrue();
+        (await firstActor.TryConsumeWithCeilingAsync(2).ConfigureAwait(true)).ShouldBeFalse();
+        (await secondActor.TryConsumeWithCeilingAsync(4).ConfigureAwait(true)).ShouldBeTrue();
+
+        RateLimitState firstState = await firstActor.GetStateAsync().ConfigureAwait(true);
+        RateLimitState secondState = await secondActor.GetStateAsync().ConfigureAwait(true);
+        TenantEmbeddingConfig persistedFirst = await GetEmbeddingConfigAsync(firstTenant).ConfigureAwait(true);
+        TenantEmbeddingConfig persistedSecond = await GetEmbeddingConfigAsync(secondTenant).ConfigureAwait(true);
+
+        persistedFirst.RateLimitPerMinute.ShouldBe(2);
+        persistedSecond.RateLimitPerMinute.ShouldBe(4);
+        firstState.CeilingPerMinute.ShouldBe(2);
+        firstState.Remaining.ShouldBe(0);
+        secondState.CeilingPerMinute.ShouldBe(4);
+        secondState.Remaining.ShouldBe(3);
+        (await secondActor.TryConsumeWithCeilingAsync(4).ConfigureAwait(true)).ShouldBeTrue();
+        (await firstActor.GetStateAsync().ConfigureAwait(true)).ShouldBe(firstState);
     }
 
-    [RunnableSkippedFact("Requires Aspire fixture support for per-tenant ceiling overrides.")]
+    [Fact(Skip = "26.3-BATCH-STARVATION-PERF: Starvation prevention is a comparative latency claim that cannot be made deterministically by the functional Aspire lane. Owner: performance test maintainers. Unskip when: the performance lane can submit a 500-file batch and enforce an accepted cross-tenant latency budget.")]
     public void BatchVsSingleIngest_ShouldNotStarveRealTimeTenant()
     {
         // AC2: t1 submits 500-file batch, t2 submits single file within 1 s.
         // Assert t2 P50 latency stays within 2× single-tenant baseline.
-        _ = _fixture;
     }
 
-    [RunnableSkippedFact("Story 23.3 unit coverage exists; integration awaits Aspire fixture 429-then-success provider injection.")]
-    public void Provider429_ShouldReportToActorAndRetry()
+    private async Task<TenantEmbeddingConfig> GetEmbeddingConfigAsync(string tenantId)
     {
-        // Provider returns 429 with Retry-After, workflow waits with durable timer, second call succeeds.
-        // Assert memory unit ends Indexed, ReportRateLimitedAsync is activity-owned and called once per
-        // provider 429, actor state pauses budget until the Retry-After instant, and no failed-unit is written.
-        _ = _fixture;
+        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+            $"/api/v1/tenants/{tenantId}/embedding-config").ConfigureAwait(true);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        return await response.Content.ReadFromJsonAsync<TenantEmbeddingConfig>(MemoriesJsonContext.Options).ConfigureAwait(true)
+            ?? throw new InvalidOperationException("Tenant embedding configuration response was empty.");
     }
+
+    private async Task PutEmbeddingConfigAsync(string tenantId, TenantEmbeddingConfig config)
+    {
+        using HttpResponseMessage response = await _fixture.MemoriesClient.PutAsJsonAsync(
+            $"/api/v1/tenants/{tenantId}/embedding-config",
+            config,
+            MemoriesJsonContext.Options).ConfigureAwait(true);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
 }

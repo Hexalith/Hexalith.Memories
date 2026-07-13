@@ -309,7 +309,14 @@ public class SyntacticSearchIntegrationTests
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         for (int i = 0; i < 15; i++)
         {
-            await SeedDocumentAsync(tenantId, $"mu-{i:D3}", $"searchable document number {i} with common keyword");
+            // Keep document length constant while varying query-term frequency so every BM25 score is
+            // distinct. Equal-score documents have no stable cross-query boundary order in Redis.
+            IEnumerable<string> rankedTerms = Enumerable.Repeat("paginationrank", i + 1);
+            IEnumerable<string> fillers = Enumerable.Range(0, 14 - i).Select(j => $"filler{i:D2}x{j:D2}");
+            await SeedDocumentAsync(
+                tenantId,
+                $"mu-{i:D3}",
+                string.Join(' ', rankedTerms.Concat(fillers)));
         }
 
         SyntacticSearchService service = CreateService();
@@ -318,7 +325,7 @@ public class SyntacticSearchIntegrationTests
         SearchResult allResults = await service.SearchAsync(new SearchQuery
         {
             TenantId = tenantId,
-            Query = "searchable document keyword",
+            Query = "paginationrank",
             MaxResults = 15,
         });
 
@@ -326,7 +333,7 @@ public class SyntacticSearchIntegrationTests
         SearchResult page = await service.SearchAsync(new SearchQuery
         {
             TenantId = tenantId,
-            Query = "searchable document keyword",
+            Query = "paginationrank",
             MaxResults = 5,
             Offset = 10,
         });

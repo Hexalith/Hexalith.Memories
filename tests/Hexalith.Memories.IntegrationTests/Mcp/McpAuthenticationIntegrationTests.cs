@@ -64,8 +64,9 @@ public sealed class McpAuthenticationIntegrationTests
     public async Task GetHealth_AllowsAnonymous()
     {
         using HttpResponseMessage response = await _fixture.McpClient.GetAsync("/health");
+        string body = await response.Content.ReadAsStringAsync();
 
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, body);
     }
 
     [Fact]

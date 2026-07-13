@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.IntegrationTests.Restore;
 
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -216,7 +217,9 @@ public sealed class BackupRestoreFidelityIntegrationTests
             {
                 ["sourceId"] = sourceId,
                 ["targetId"] = targetId,
-                ["createdAt"] = DateTimeOffset.UtcNow.ToString("o"),
+                // Tenant export intentionally excludes the newest 500 ms to absorb cross-pod clock drift.
+                // Stamp this already-committed fixture edge outside that advisory snapshot window.
+                ["createdAt"] = DateTimeOffset.UtcNow.AddSeconds(-1).ToString("o"),
                 ["confidence"] = 0.75f,
                 ["origin"] = "inferred",
                 ["verifiedBy"] = "integration-reviewer",
@@ -285,13 +288,13 @@ public sealed class BackupRestoreFidelityIntegrationTests
         {
             edges.Add(string.Join(
                 '|',
-                record.GetValue<string>("sourceId"),
-                record.GetValue<string>("targetId"),
-                record.GetValue<string>("edgeType"),
-                record.GetValue<string?>("confidence"),
-                record.GetValue<string?>("origin"),
-                record.GetValue<string?>("verifiedBy"),
-                record.GetValue<string?>("previousConfidence")));
+                Convert.ToString(record.GetValue<object?>("sourceId"), CultureInfo.InvariantCulture),
+                Convert.ToString(record.GetValue<object?>("targetId"), CultureInfo.InvariantCulture),
+                Convert.ToString(record.GetValue<object?>("edgeType"), CultureInfo.InvariantCulture),
+                Convert.ToString(record.GetValue<object?>("confidence"), CultureInfo.InvariantCulture),
+                Convert.ToString(record.GetValue<object?>("origin"), CultureInfo.InvariantCulture),
+                Convert.ToString(record.GetValue<object?>("verifiedBy"), CultureInfo.InvariantCulture),
+                Convert.ToString(record.GetValue<object?>("previousConfidence"), CultureInfo.InvariantCulture)));
         }
 
         return edges;
@@ -326,21 +329,43 @@ public sealed class BackupRestoreFidelityIntegrationTests
 
     private async Task RestoreTenantAsync(string tenantId, string exportJson)
     {
+        int logStartIndex = _fixture.LogEntryCount;
         using StringContent content = new(exportJson, Encoding.UTF8, "application/json");
         using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync($"/api/v1/tenants/{tenantId}/import", content);
-        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        string responseBody = await response.Content.ReadAsStringAsync();
+        if (response.StatusCode != HttpStatusCode.Accepted)
+        {
+            // Aspire forwards child-process stdout/stderr asynchronously; allow the exception log to reach
+            // the fixture before composing a failure diagnostic.
+            await Task.Delay(TimeSpan.FromSeconds(1));
+        }
 
-        RestoreAcceptedResponse? accepted = await response.Content.ReadFromJsonAsync<RestoreAcceptedResponse>(MemoriesJsonContext.Options);
+        string recentLogs = string.Join(
+            Environment.NewLine,
+            _fixture.GetLogEntriesSince(logStartIndex)
+                .Select(entry => $"[{entry.Level}] {entry.Category}: {entry.Message}"));
+        response.StatusCode.ShouldBe(
+            HttpStatusCode.Accepted,
+            $"{responseBody}{Environment.NewLine}{recentLogs}");
+
+        RestoreAcceptedResponse? accepted = System.Text.Json.JsonSerializer.Deserialize<RestoreAcceptedResponse>(
+            responseBody,
+            MemoriesJsonContext.Options);
         accepted.ShouldNotBeNull();
 
         DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(3);
+        string lastStatusResponse = "No restore status response was received.";
         while (DateTimeOffset.UtcNow < deadline)
         {
             using HttpResponseMessage statusResponse = await _fixture.MemoriesClient.GetAsync(
                 $"/api/v1/tenants/{tenantId}/restore/{accepted.InstanceId}");
+            string statusBody = await statusResponse.Content.ReadAsStringAsync();
+            lastStatusResponse = $"HTTP {(int)statusResponse.StatusCode}: {statusBody}";
             if (statusResponse.StatusCode == HttpStatusCode.OK)
             {
-                RestoreStatusResponse? status = await statusResponse.Content.ReadFromJsonAsync<RestoreStatusResponse>(MemoriesJsonContext.Options);
+                RestoreStatusResponse? status = System.Text.Json.JsonSerializer.Deserialize<RestoreStatusResponse>(
+                    statusBody,
+                    MemoriesJsonContext.Options);
                 if (status is not null)
                 {
                     if (string.Equals(status.Status, "completed", StringComparison.OrdinalIgnoreCase)
@@ -351,7 +376,14 @@ public sealed class BackupRestoreFidelityIntegrationTests
 
                     if (status.Status.Contains("Failed", StringComparison.OrdinalIgnoreCase))
                     {
-                        throw new InvalidOperationException($"Restore workflow failed: {status.Status}");
+                        await Task.Delay(TimeSpan.FromSeconds(1));
+                        string failureLogs = string.Join(
+                            Environment.NewLine,
+                            _fixture.GetLogEntriesSince(logStartIndex)
+                                .TakeLast(80)
+                                .Select(entry => $"[{entry.Level}] {entry.Category}: {entry.Message}"));
+                        throw new InvalidOperationException(
+                            $"Restore workflow failed: {status.Status}. {lastStatusResponse}{Environment.NewLine}{failureLogs}");
                     }
                 }
             }
@@ -359,7 +391,14 @@ public sealed class BackupRestoreFidelityIntegrationTests
             await Task.Delay(TimeSpan.FromSeconds(2));
         }
 
-        throw new TimeoutException("Restore workflow did not complete in time.");
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        string timeoutLogs = string.Join(
+            Environment.NewLine,
+            _fixture.GetLogEntriesSince(logStartIndex)
+                .TakeLast(80)
+                .Select(entry => $"[{entry.Level}] {entry.Category}: {entry.Message}"));
+        throw new TimeoutException(
+            $"Restore workflow did not complete in time. Last status: {lastStatusResponse}{Environment.NewLine}{timeoutLogs}");
     }
 
     private static long ReadCount(ResultSet result)

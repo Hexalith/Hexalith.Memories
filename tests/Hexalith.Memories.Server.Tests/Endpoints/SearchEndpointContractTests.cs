@@ -417,6 +417,27 @@ public sealed class SearchEndpointContractTests : IDisposable
         response.Headers.Contains("Retry-After").ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task Traverse_WhenGraphBackendIsUnavailable_ReturnsStructuredServiceUnavailable()
+    {
+        StubTenantActive("acme-search");
+        var unavailable = new RedisConnectionException(ConnectionFailureType.UnableToConnect, "FalkorDB unavailable");
+        _factory.FalkorDbDatabase.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
+            .Returns<RedisResult>(_ => throw unavailable);
+        _factory.FalkorDbDatabase.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
+            .Returns<RedisResult>(_ => throw unavailable);
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/v1/tenants/acme-search/traverse?startNodeId=mu-1");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("GRAPH_UNAVAILABLE");
+        GetSingleHeaderValue(response, "Retry-After").ShouldBe("5");
+    }
+
     public void Dispose() => _factory.Dispose();
 
     private void StubTenantActive(string tenantId)

@@ -5,7 +5,12 @@
 
 namespace Hexalith.Memories.IntegrationTests.Ingestion;
 
+using System.Net;
+
+using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+
+using Shouldly;
 
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
@@ -15,18 +20,51 @@ public sealed class IngestionRetryIntegrationTests
 
     public IngestionRetryIntegrationTests(AspireIngestionPipelineFixture fixture) => _fixture = fixture;
 
-    [RunnableSkippedFact("Requires Aspire AppHost fixture — unskip with Story 6.3 retry validation harness")]
-    public void TransientIngestionFailure_ShouldCompleteSuccessfullyAfterRetries()
+    [Fact]
+    public async Task TransientIngestionFailure_ShouldCompleteSuccessfullyAfterRetries()
     {
-        // Scenario (Task 4.4):
-        //   1. Inject an EmbeddingClient mock that fails the first 3 calls with
-        //      EmbeddingApiException, then succeeds.
-        //   2. Start an ingestion workflow.
-        //   3. Assert the workflow completes (status=indexed), memory unit is indexed,
-        //      and no failure is recorded after the retries succeed.
-        //   4. Verifies AC5 end-to-end: the DAPR Workflow retry policy
-        //      (maxNumberOfAttempts=5, firstRetryInterval=2s, backoffCoefficient=1.5)
-        //      absorbs transient backend failures before moving the unit to `failed`.
-        _ = _fixture;
+        IngestionIntegrationTestDriver driver = new(_fixture);
+        string unique = Guid.NewGuid().ToString("N");
+        string tenantId = $"tenant-retry-{unique[..12]}";
+        string caseId = await driver.CreateTenantAndCaseAsync(tenantId).ConfigureAwait(true);
+        int attempts = 0;
+        await using ScriptedHttpServer source = await ScriptedHttpServer.StartAsync((_, _) =>
+        {
+            int attempt = Interlocked.Increment(ref attempts);
+            ScriptedHttpResponse response = attempt <= 2
+                ? ScriptedHttpResponse.Text("transient source failure", HttpStatusCode.InternalServerError)
+                : ScriptedHttpResponse.Text($"durable retry canary {unique}");
+            return ValueTask.FromResult(response);
+        }).ConfigureAwait(true);
+        string sourceUri = source.GetUri($"/retry/{unique}.txt").ToString();
+
+        UrlIngestionResponse accepted = await driver.PostUrlIngestionAsync(tenantId, caseId, sourceUri).ConfigureAwait(true);
+        string workflow = await driver.WaitForWorkflowRuntimeStatusAsync(
+            tenantId,
+            accepted.InstanceId,
+            "Completed").ConfigureAwait(true);
+        string memoryUnitId = IngestionIntegrationTestDriver.TryExtractMemoryUnitId(workflow) ?? accepted.InstanceId;
+        MemoryUnit indexed = await driver.WaitForMemoryUnitAsync(
+            tenantId,
+            caseId,
+            memoryUnitId,
+            unit => unit.Status == MemoryUnitStatus.Indexed).ConfigureAwait(true);
+        FailedUnitsPage failed = await driver.WaitForFailedUnitsPageAsync(
+            tenantId,
+            caseId,
+            page => page.TotalCount == 0).ConfigureAwait(true);
+        (string syntacticKey, string semanticKey) = await driver.WaitForSingleBackendWriteAsync(
+            tenantId,
+            caseId,
+            sourceUri).ConfigureAwait(true);
+
+        accepted.InstanceId.ShouldNotBeNullOrWhiteSpace();
+        indexed.Id.ShouldBe(memoryUnitId);
+        indexed.SourceUri.ShouldBe(sourceUri);
+        failed.Units.ShouldBeEmpty();
+        Volatile.Read(ref attempts).ShouldBeGreaterThanOrEqualTo(3);
+        Volatile.Read(ref attempts).ShouldBeLessThanOrEqualTo(7);
+        (await driver.ListRedisKeysAsync($"{tenantId}:mu:*").ConfigureAwait(true)).ShouldBe([syntacticKey]);
+        (await driver.ListRedisKeysAsync($"{tenantId}:vec:*").ConfigureAwait(true)).ShouldBe([semanticKey]);
     }
 }

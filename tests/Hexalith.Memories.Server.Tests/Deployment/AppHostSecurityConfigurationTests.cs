@@ -67,6 +67,21 @@ public sealed class AppHostSecurityConfigurationTests
         fixture.ShouldContain("EnvVarScope.Set(\"EnableKeycloak\", \"false\")", Case.Sensitive);
     }
 
+    [Fact]
+    public void AppHost_SelfHostedDaprConfigDoesNotApplyProductionMtlsAcl()
+    {
+        string localConfig = ReadRepoFile("deploy", "dapr", "config.yaml");
+        string kubernetesConfig = ReadRepoFile("deploy", "kubernetes", "base", "dapr", "config.yaml");
+
+        localConfig.ShouldNotContain("accessControl:", Case.Sensitive);
+        localConfig.ShouldNotContain("appId: memories-mcp", Case.Sensitive);
+
+        kubernetesConfig.ShouldContain("accessControl:", Case.Sensitive);
+        kubernetesConfig.ShouldContain("defaultAction: deny", Case.Sensitive);
+        kubernetesConfig.ShouldContain("appId: memories-mcp", Case.Sensitive);
+        kubernetesConfig.ShouldContain("namespace: hexalith-memories", Case.Sensitive);
+    }
+
     private static string ReadRepoFile(params string[] segments)
     {
         string[] parts = new string[segments.Length + 1];

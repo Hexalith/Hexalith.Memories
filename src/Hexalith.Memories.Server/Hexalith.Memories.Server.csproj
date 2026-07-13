@@ -8,7 +8,9 @@
          suppress this diagnostic locally so TreatWarningsAsErrors=true does not break the build.
          MUST remain scoped to this project — keep OUT of Directory.Build.props so any other project that
          accidentally takes a Dapr.AI dependency still fails fast. Remove when Dapr.AI exits alpha. -->
-    <NoWarn>$(NoWarn);DAPR_CONVERSATION</NoWarn>
+    <!-- EmbeddingClient owns provider retry/rate-limit semantics inside a durable workflow, so its
+         named HttpClient removes the global resilience handler via the current extensions API. -->
+    <NoWarn>$(NoWarn);DAPR_CONVERSATION;EXTEXP0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -48,6 +50,7 @@
     <PackageReference Include="Hexalith.EventStore.Client" />
     <PackageReference Include="Kreuzberg" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="NFalkorDB" />
     <PackageReference Include="NRedisStack" />
     <PackageReference Include="StackExchange.Redis" />

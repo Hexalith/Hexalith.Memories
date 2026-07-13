@@ -106,6 +106,41 @@ public sealed class TenantAuthorizationEndpointFilterTests
         tenantId.ShouldBe("tenant-a");
     }
 
+    [Fact]
+    public void TryAuthorizeTenant_SameRequestAlreadyAuthorizedForTenant_AllowsIdempotently()
+    {
+        DefaultHttpContext context = CreateContext("tenant-a");
+        context.Items[AuthorizedTenantAccessor.HttpContextItemKey] = "tenant-a";
+
+        bool authorized = TenantAuthorizationEndpointFilter.TryAuthorizeTenant(
+            context,
+            "tenant-a",
+            "endpoint-filter-after-middleware",
+            NullLogger<TenantAuthorizationEndpointFilter>.Instance,
+            out IResult? result);
+
+        authorized.ShouldBeTrue();
+        result.ShouldBeNull();
+        context.Items[AuthorizedTenantAccessor.HttpContextItemKey].ShouldBe("tenant-a");
+    }
+
+    [Fact]
+    public void TryAuthorizeTenant_SameRequestContainsDifferentAuthorizedTenant_FailsClosed()
+    {
+        DefaultHttpContext context = CreateContext("tenant-b");
+        context.Items[AuthorizedTenantAccessor.HttpContextItemKey] = "tenant-a";
+
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(() =>
+            TenantAuthorizationEndpointFilter.TryAuthorizeTenant(
+                context,
+                "tenant-b",
+                "conflicting-endpoint",
+                NullLogger<TenantAuthorizationEndpointFilter>.Instance,
+                out _));
+
+        exception.Message.ShouldBe("HttpContext.Items contains conflicting tenant authorization state.");
+    }
+
     private static DefaultHttpContext CreateContext(params string[] tenants)
     {
         var context = new DefaultHttpContext();
