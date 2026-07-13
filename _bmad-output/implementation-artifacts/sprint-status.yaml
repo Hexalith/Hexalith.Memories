@@ -390,7 +390,7 @@ development_status:
   # Epic 26: Test, Deployment & Operational Readiness
   epic-26: in-progress
   26-1-production-deployment-artifacts: done  # 2026-07-12: chunk-1 review closed 13 release-hardening findings with digest-safe image retries, aggregate release evidence, 113 tooling fixtures, 59 focused C# tests, real SDK archives, and development-settings layer exclusion proof.
-  26-2-backup-and-restore: backlog
+  26-2-backup-and-restore: ready-for-dev  # 2026-07-12: story context created — import/restore endpoint (mirrors export routes), export→import fidelity integration test (data-plane hashes verbatim + FalkorDB edges; re-derived vec/vecnl hashes), backup-restore.md + disaster-recovery.md runbooks. Key finding surfaced: export omits embeddings/NL descriptions → restore must re-embed, not copy.
   26-3-integration-stub-closure: backlog
   26-4-coverage-gating-and-benchmark-lane: backlog
   26-5-operational-runbook-set: backlog
