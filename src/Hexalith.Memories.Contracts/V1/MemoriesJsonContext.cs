@@ -166,6 +166,9 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(ExportedEdge))]
 [JsonSerializable(typeof(ExportedTenantConfig))]
 [JsonSerializable(typeof(ExportedMemoryUnit))]
+// Story 26.2: import/restore response contracts.
+[JsonSerializable(typeof(RestoreAcceptedResponse))]
+[JsonSerializable(typeof(RestoreStatusResponse))]
 // Story 9.2: dual embedding + NL description contracts.
 [JsonSerializable(typeof(ConfidenceSource))]
 [JsonSerializable(typeof(EmbeddingContentKind))]

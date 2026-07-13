@@ -17,7 +17,9 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Activities.Restore;
 using Hexalith.Memories.Server.Activities.Tenants;
+using Hexalith.Memories.Server.Import;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Authentication;
 using Hexalith.Memories.Server.Cases;
@@ -424,8 +426,17 @@ internal static class MemoriesServerServiceCollectionExtensions
             options.RegisterWorkflow<ConsistencyRepairWorkflow>();
             options.RegisterActivity<EnumerateMemoryUnitIdsActivity>();
             options.RegisterActivity<RepairUnitActivity>();
+
+            // Story 26.2: backup/restore — durable restore orchestration + activities.
+            options.RegisterWorkflow<RestoreWorkflow>();
+            options.RegisterActivity<RestoreDataPlaneActivity>();
+            options.RegisterActivity<RestoreReindexUnitActivity>();
+            options.RegisterActivity<DeleteRestoreStagingActivity>();
         });
         builder.Services.TryAddSingleton<IDaprWorkflowClient>(sp => sp.GetRequiredService<DaprWorkflowClient>());
+
+        // Story 26.2: import/restore payload staging store.
+        builder.Services.TryAddSingleton<IImportStagingStore, RedisImportStagingStore>();
 
         // Story 8.2: consistency services.
         builder.Services.AddScoped<IConsistencyInspectionService, ConsistencyInspectionService>();

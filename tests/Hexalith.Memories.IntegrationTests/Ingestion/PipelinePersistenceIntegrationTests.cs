@@ -368,6 +368,12 @@ public sealed class PipelinePersistenceIntegrationTests
         (await redis.KeyExistsAsync(dedupKey).ConfigureAwait(false)).ShouldBeTrue();
         (await redis.StringGetAsync(dedupKey).ConfigureAwait(false)).ToString().ShouldBe(memoryUnitId);
 
+        // Story 26.2 AC8 (NFR16) — zero memory-unit loss across an AOF-backed restart: the single ingested
+        // unit survives with no loss and no duplicate syntactic hash created by the restart/replay.
+        string[] survivingSyntacticKeys = await ListKeysAsync($"{tenantId}:mu:*").ConfigureAwait(false);
+        survivingSyntacticKeys.Length.ShouldBe(1);
+        survivingSyntacticKeys[0].ShouldBe(syntacticKey);
+
         MemoryUnit indexed = await WaitForMemoryUnitAsync(
             tenantId,
             caseId,

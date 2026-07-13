@@ -1114,6 +1114,59 @@ public class MemoriesClient
         return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Story 26.2: restores a tenant export by POSTing the export JSON envelope to the tenant import route.
+    /// The server validates the manifest (schema version, scope, same-tenant targeting) and schedules a durable
+    /// restore workflow, returning <c>202 Accepted</c>.
+    /// </summary>
+    /// <param name="tenantId">The target tenant identifier (same-tenant-id restore, Story 26.2 decision D2).</param>
+    /// <param name="exportJson">The export JSON envelope (for example, the stream returned by <see cref="ExportTenantAsync"/>).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The accepted restore descriptor (workflow instance id + status location).</returns>
+    public virtual async Task<RestoreAcceptedResponse> ImportTenantAsync(string tenantId, Stream exportJson, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentNullException.ThrowIfNull(exportJson);
+
+        string path = MemoriesRoutes.TenantImportPath(tenantId);
+        using StreamContent content = new(exportJson);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+        using HttpResponseMessage response = await _httpClient
+            .PostAsync(path, content, ct)
+            .ConfigureAwait(false);
+
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+        return await ReadRequiredAsync<RestoreAcceptedResponse>(response, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Story 26.2: restores a case export by POSTing the export JSON envelope to the case import route.
+    /// The server validates the manifest and schedules a durable restore workflow, returning <c>202 Accepted</c>.
+    /// </summary>
+    /// <param name="tenantId">The target tenant identifier.</param>
+    /// <param name="caseId">The target case identifier (same-case-id restore).</param>
+    /// <param name="exportJson">The export JSON envelope (for example, the stream returned by <see cref="ExportCaseAsync"/>).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The accepted restore descriptor (workflow instance id + status location).</returns>
+    public virtual async Task<RestoreAcceptedResponse> ImportCaseAsync(string tenantId, string caseId, Stream exportJson, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+        ArgumentNullException.ThrowIfNull(exportJson);
+
+        string path = MemoriesRoutes.CaseImportPath(tenantId, caseId);
+        using StreamContent content = new(exportJson);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+        using HttpResponseMessage response = await _httpClient
+            .PostAsync(path, content, ct)
+            .ConfigureAwait(false);
+
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+        return await ReadRequiredAsync<RestoreAcceptedResponse>(response, ct).ConfigureAwait(false);
+    }
+
     private async Task<Uri> ReadWorkflowStatusUriAsync(
         HttpResponseMessage response,
         string propertyName,

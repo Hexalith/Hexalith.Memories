@@ -8,15 +8,11 @@ namespace Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities;
 
 using System.Globalization;
-using System.Text.Json;
 
 using Dapr.Workflow;
 
-using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
-using Hexalith.Memories.Server.Serialization;
-using Hexalith.Memories.Server.Search;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -54,14 +50,6 @@ public sealed class IndexSyntacticActivity : WorkflowTraceLinkedActivity<IndexIn
         string content = await ResolveContentAsync(input).ConfigureAwait(false);
 
         IDatabase db = _redis.GetDatabase();
-        string sourceType = ToCamelCase(input.SourceType);
-        string metadataText = FlattenMetadata(input.Metadata);
-        string attributeTags = FlattenMetadataTags(input.Metadata);
-        string metadataJson = JsonSerializer.Serialize(
-            PersistenceModelMapper.ToStored(input.Metadata),
-            MemoriesPersistenceJsonContext.Options);
-        string? cloudEventSubject = TryGetMetadataValue(input.Metadata, "cloudevent.subject");
-        string ingestedAt = input.IngestedAt.ToString("o");
 
         string hashKey = IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId);
 
@@ -72,35 +60,22 @@ public sealed class IndexSyntacticActivity : WorkflowTraceLinkedActivity<IndexIn
             .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.Syntactic, null, CancellationToken.None)
             .ConfigureAwait(false);
 
-        List<HashEntry> hashEntries =
-        [
-            new HashEntry("id", input.MemoryUnitId),
-            // Story 5.4 AC2: tenantId persisted on the MU hash to enable tertiary
-            // mismatch detection in CaseService (primary defense is the key prefix).
-            new HashEntry("tenantId", input.TenantId),
-            new HashEntry("content", content),
-            new HashEntry("sourceUri", input.SourceUri),
-            new HashEntry("sourceUriText", input.SourceUri),
-            new HashEntry("sourceType", sourceType),
-            new HashEntry("sourceTypeText", sourceType),
-            new HashEntry("metadataText", metadataText),
-            new HashEntry("attributeTags", attributeTags),
-            new HashEntry("metadataJson", metadataJson),
-            new HashEntry("contentHash", input.ContentHash),
-            new HashEntry("caseId", input.CaseId),
-            new HashEntry("embeddingProvider", input.EmbeddingProvider),
-            // Story 5.5 FR70: persist the embedding model so future audits can attribute
-            // vectors to the (provider, model) pair that generated them.
-            new HashEntry("embeddingModel", input.EmbeddingModel),
-            new HashEntry("ingestedBy", input.IngestedBy),
-            new HashEntry("ingestedAt", ingestedAt),
-            new HashEntry("lastUpdated", ingestedAt),
-        ];
-
-        if (!string.IsNullOrWhiteSpace(cloudEventSubject))
-        {
-            hashEntries.Add(new HashEntry("cloudeventSubject", cloudEventSubject));
-        }
+        // Story 26.2: the syntactic hash field contract is factored into SyntacticHashProjection so ingest and
+        // restore write byte-identical hashes. Ingest stamps ingestedAt into both ingestedAt/lastUpdated.
+        List<HashEntry> hashEntries = SyntacticHashProjection.BuildEntries(
+            input.MemoryUnitId,
+            input.TenantId,
+            content,
+            input.SourceUri,
+            input.SourceType,
+            input.Metadata,
+            input.ContentHash,
+            input.CaseId,
+            input.EmbeddingProvider,
+            input.EmbeddingModel,
+            input.IngestedBy,
+            input.IngestedAt,
+            input.IngestedAt);
 
         await db.HashSetAsync(hashKey, [.. hashEntries]).ConfigureAwait(false);
 
@@ -133,37 +108,6 @@ public sealed class IndexSyntacticActivity : WorkflowTraceLinkedActivity<IndexIn
         return new IndexResult("syntactic", input.MemoryUnitId, input.TenantId);
     }
 
-    private static string FlattenMetadata(IReadOnlyDictionary<string, MetadataField> metadata)
-    {
-        if (metadata.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        List<string> parts = [];
-        foreach ((string key, MetadataField field) in metadata)
-        {
-            if (!string.IsNullOrWhiteSpace(key))
-            {
-                parts.Add(key);
-            }
-
-            if (!string.IsNullOrWhiteSpace(field.Value))
-            {
-                parts.Add(field.Value);
-            }
-
-            parts.Add(ToCamelCase(field.Origin));
-        }
-
-        return string.Join(' ', parts);
-    }
-
-    private static string? TryGetMetadataValue(IReadOnlyDictionary<string, MetadataField> metadata, string key)
-        => metadata.TryGetValue(key, out MetadataField? field) && !string.IsNullOrWhiteSpace(field.Value)
-            ? field.Value
-            : null;
-
     private async Task<string> ResolveContentAsync(IndexInput input)
     {
         if (input.ContentReference is null)
@@ -184,32 +128,4 @@ public sealed class IndexSyntacticActivity : WorkflowTraceLinkedActivity<IndexIn
 
     private IWorkflowPayloadStore RequirePayloadStore()
         => _payloadStore ?? throw new WorkflowPayloadException("PAYLOAD_STORE_UNAVAILABLE", "index-content");
-
-    private static string FlattenMetadataTags(IReadOnlyDictionary<string, MetadataField> metadata)
-    {
-        if (metadata.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        List<string> tags = [];
-        foreach ((string key, MetadataField field) in metadata.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
-        {
-            if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(field.Value))
-            {
-                tags.Add(SyntacticSearchService.BuildAttributeTag(key, field.Value));
-            }
-        }
-
-        return string.Join(',', tags);
-    }
-
-    private static string ToCamelCase<TEnum>(TEnum value)
-        where TEnum : struct, Enum
-    {
-        string name = value.ToString();
-        return string.IsNullOrEmpty(name)
-            ? string.Empty
-            : char.ToLowerInvariant(name[0]) + name[1..];
-    }
 }

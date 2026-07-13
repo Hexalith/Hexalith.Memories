@@ -4,7 +4,7 @@ baseline_commit: a077fd09f21968e494f20c72c62450c0b1d349f6
 
 # Story 26.2: Backup & Restore
 
-Status: ready-for-dev
+Status: review
 
 <!-- Epic: 26 — Test, Deployment & Operational Readiness. Closes audit finding A25 (High, "Missing feature") — feature portion. Story 26.5 closes the docs portion (broader runbook set + final cross-linking). Reinforces NFR16 (zero memory-unit loss on Redis restart, AOF verified). New operator-facing capability → commit `feat(...)` (minor release). New import/restore REST route + client method = additive contract change; do NOT rename/remove existing export contracts. -->
 
@@ -46,31 +46,31 @@ The **export** side already exists (Story 8.3): `GET /api/v1/tenants/{tenantId}/
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Route table + endpoint scaffolding** (AC: 1, 5, 6)
-  - [ ] Add `CaseImport = "/api/v1/tenants/{tenantId}/cases/{caseId}/import"` and `TenantImport = "/api/v1/tenants/{tenantId}/import"` constants to `MemoriesRoutes.cs` (near `CaseExport`/`TenantExport`, ~lines 152-158) plus `CaseImportPath(...)`/`TenantImportPath(...)` builders using the existing `Fill`/`EscapeSegment` helpers (reject `.`/`..`/whitespace segments as the export builders do). Do NOT register `MemoriesRoutes` in `MemoriesJsonContext` (not a wire DTO).
-  - [ ] Create `src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs` (`internal static class`, `MapImportEndpoints`), mirroring `ExportEndpoints.cs` route/validation shape (tenant/case id validation via `EndpointValidationHelpers.ValidateTenantId` before any work) and `IngestionEndpoints.cs` write guardrails (`TenantStatusGuard` → dedup/idempotency → schedule workflow → `202` + status `Location`; `ErrorResults.*` envelopes for 400/404/409/429/503/500). Attach `.WithMetadata(new RequestSizeLimitAttribute(...))` and `.AddEndpointFilter<InboundRateLimitEndpointFilter>()`. Rely on `TenantAuthorizationMiddleware` for the route-scoped `{tenantId}` (no explicit tenant filter needed; adding it is harmless/defensive).
-  - [ ] Wire `app.MapImportEndpoints();` in `Program.cs` right after `app.MapExportEndpoints();` (line 89).
-  - [ ] Add the import-accepted response DTO (workflow instance id) in `Contracts/V1/` and register it in `MemoriesJsonContext.cs`.
-- [ ] **Task 2 — Restore workflow + backing-store writers** (AC: 2, 3, 4, 5)
-  - [ ] Add a durable `RestoreWorkflow` (+ activities) under `Workflows/` scheduled by the endpoint, replay-safe (`context.CurrentUtcDateTime`, `CreateReplaySafeLogger`, deterministic ids, side effects only in activities). Stream-deserialize the envelope with `Utf8JsonReader` + `MemoriesJsonContext.Options` (do not buffer the whole 500 MB body).
-  - [ ] Ensure/verify target-tenant provisioning first (indexes + graph). Reuse `ITenantIndexReadinessVerifier.EnsureReadyAsync`; provision via `TenantProvisioningWorkflow` if the tenant is absent (or require an Active tenant and 404/409 otherwise — see decision note).
-  - [ ] Per memory unit: reconstruct `MemoryUnit` from `ExportedMemoryUnit.Unit`; write the syntactic hash reproducing `IndexSyntacticActivity`'s field set (prefer factoring a shared hash-writer used by both index + restore over duplicating field logic); MERGE the FalkorDB `MemoryUnit` node (`BuildMergeMemoryUnitNode`); re-embed and write `:vec:` via `IndexSemanticActivity` and `:vecnl:` via `IndexNaturalLanguageSemanticActivity`.
-  - [ ] Cases/members: write `{t}:case:{id}` and `{t}:case:{id}:members` hashes (mirror `ProjectCaseHashActivity` + members-write path); MERGE `Case` nodes; rebuild `CONTAINS` edges from `caseId`.
-  - [ ] Edges: MERGE each `ExportedEdge` via `BuildMergeEdge` keyed on `(SourceId, TargetId, EdgeType)`, setting confidence/origin/createdAt and `verifiedBy`/`previousConfidence`; create stub nodes for dangling case-scope targets (`BuildMergeStubNode`).
-  - [ ] Tenant-scope only: restore `ExportedTenantConfig` (status + `TenantConfigurationView`); document that secret **values** are not in the export (only secret-store key names) and must pre-exist in the target secret store.
-  - [ ] Make the whole restore idempotent (re-run → same state) via MERGE + `DedupKeyBuilder`/`IngestDedupReservation` reuse or an operation idempotency token.
-- [ ] **Task 3 — Client surface** (AC: 6)
-  - [ ] Add `public virtual async Task<...> ImportTenantAsync(...)` / `ImportCaseAsync(...)` to `MemoriesClient.cs` building paths from the new route builders and POSTing (stream large bodies with `HttpCompletionOption.ResponseHeadersRead` if applicable), decoding the accepted-response DTO; auth flows via the registered `MemoriesAuthHandler`. Keep methods `virtual`, class non-sealed (mockability guard).
-  - [ ] (If in scope) add a `memories import …` CLI command mirroring `export case`/`export tenant`; otherwise explicitly note CLI import is deferred. See decision note.
-- [ ] **Task 4 — Fidelity + durability tests** (AC: 7, 8)
-  - [ ] Add `Export/BackupRestoreFidelityIntegrationTests.cs` (or `Restore/…`) in `Hexalith.Memories.IntegrationTests` — `[Fact]` + `[Collection("AspireIngestionPipeline")]` — implementing the snapshot → export → restore → compare-every-hash-and-edge flow from AC7. Enumerate hashes with `RedisConnection.GetServer(...).Keys(pattern: "{t}:mu:*" | "{t}:case:*")` + `HashGetAllAsync`; enumerate edges with `FalkorDbConnection` + a `MATCH (m:MemoryUnit)-[r]-(n) RETURN ...` query. Determine the fixture's embedding provider; assert vector-byte equality if deterministic, else presence + dimensions (document choice).
-  - [ ] Confirm `PipelinePersistenceIntegrationTests.RestartTopology_ShouldPreserveIndexedRedisBackedDataAcrossControlledRestart` is green; if it lacks a memory-unit-count/zero-loss assertion, add one.
-  - [ ] Add Docker-free unit/contract coverage in `Hexalith.Memories.Server.Tests` for: schema-version rejection, scope-mismatch rejection, edge-identity reconstruction from `(source,target,type)`, dangling-target stub creation, and idempotent re-run (mock `IConnectionMultiplexer`/graph builder). Mirror `Export/TenantExportServiceTests.cs` patterns.
-- [ ] **Task 5 — Runbooks** (AC: 9)
-  - [ ] Write `docs/operations/backup-restore.md` and `docs/operations/disaster-recovery.md` per AC9, mirroring the style of `failure-recovery.md` / `pipeline-persistence.md` (H1 + Story tag, prerequisites → procedure → verification → rollback, config/command fences, cross-links). Originate the FalkorDB backup/restore procedure. Cross-link `deployment-configuration.md` + `failure-recovery.md`.
-- [ ] **Task 6 — Verify** (AC: 10)
-  - [ ] `dotnet build Hexalith.Memories.slnx` → 0 warnings / 0 errors. Run Docker-free suites via the sandbox runner (see Testing). Note the Aspire fidelity test can only reach `review` locally (no container runtime); it must run in CI / an operator environment to reach `done`.
-  - [ ] `git diff --check`; verify new `.cs` files are CRLF with the ITANEO header; confirm no submodule pointers moved and no export contract renamed.
+- [x] **Task 1 — Route table + endpoint scaffolding** (AC: 1, 5, 6)
+  - [x] Add `CaseImport = "/api/v1/tenants/{tenantId}/cases/{caseId}/import"` and `TenantImport = "/api/v1/tenants/{tenantId}/import"` constants to `MemoriesRoutes.cs` (near `CaseExport`/`TenantExport`, ~lines 152-158) plus `CaseImportPath(...)`/`TenantImportPath(...)` builders using the existing `Fill`/`EscapeSegment` helpers (reject `.`/`..`/whitespace segments as the export builders do). Do NOT register `MemoriesRoutes` in `MemoriesJsonContext` (not a wire DTO). *(Added `RestoreStatus` route + `RestoreStatusLocation` absolute builder for the 202 status Location.)*
+  - [x] Create `src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs` (`internal static class`, `MapImportEndpoints`), mirroring `ExportEndpoints.cs` route/validation shape (tenant/case id validation via `EndpointValidationHelpers.ValidateTenantId` + `CaseValidator.ValidateCaseId` before any work) and `IngestionEndpoints.cs` write guardrails (`TenantStatusGuard` → manifest validation → stage + schedule workflow → `202` + status `Location`; `ErrorResults.*` envelopes for 400/413/503). Attach `.WithMetadata(new RequestSizeLimitAttribute(512 MB))`, `.AddEndpointFilter<TenantAuthorizationEndpointFilter>()`, and `.AddEndpointFilter<InboundRateLimitEndpointFilter>()`. Rely on `TenantAuthorizationMiddleware` for the route-scoped `{tenantId}`. Added a tenant-scoped `GET restore/{instanceId}` status endpoint.
+  - [x] Wire `app.MapImportEndpoints();` in `Program.cs` right after `app.MapExportEndpoints();` (line 89).
+  - [x] Add the import-accepted response DTO (`RestoreAcceptedResponse`) + `RestoreStatusResponse` in `Contracts/V1/` and register them in `MemoriesJsonContext.cs`.
+- [x] **Task 2 — Restore workflow + backing-store writers** (AC: 2, 3, 4, 5)
+  - [x] Add a durable `RestoreWorkflow` (+ activities `RestoreDataPlaneActivity`, `RestoreReindexUnitActivity`, `DeleteRestoreStagingActivity`) under `Workflows/`/`Activities/Restore/`, replay-safe (`CreateReplaySafeLogger`, no wall-clock/random/IO in the orchestrator, side effects only in activities). The endpoint stream-copies the body to an `IImportStagingStore` (Redis) so the payload never becomes workflow state; the workflow reads it back and parses via `ImportEnvelopeReader` (`Utf8JsonReader` + `MemoriesJsonContext.Options`).
+  - [x] Ensure/verify target-tenant provisioning first (indexes + graph) via `ITenantIndexReadinessVerifier.EnsureReadyAsync` (Syntactic + Semantic families). Endpoint requires an Active tenant (`TenantStatusGuard`); the activity fails loudly if indexes are missing (decision: require provisioned tenant, do not auto-provision).
+  - [x] Per memory unit: reconstruct `MemoryUnit` from `ExportedMemoryUnit.Unit`; write the syntactic hash via the **shared** `SyntacticHashProjection` (factored out of `IndexSyntacticActivity` so both paths are byte-identical); MERGE the FalkorDB `MemoryUnit` node (`BuildMergeMemoryUnitNode`); re-embed and write the chunked `{t}:vec:{id}:{seq}` hashes (decision D-vec: reuse the live chunked layout, not the un-chunked `IndexSemanticActivity` the AC text referenced — see Completion Notes).
+  - [x] Cases/members: write `{t}:case:{id}` and `{t}:case:{id}:members` hashes (mirror `ProjectCaseHashActivity` + `CaseService.AddMemberAsync`); MERGE `Case` nodes; rebuild `CONTAINS` edges from `caseId`.
+  - [x] Edges: MERGE each `ExportedEdge` keyed on `(SourceId, TargetId, EdgeType)` via a new additive `IGraphQueryBuilder.BuildRestoreEdge` (restores confidence/origin/createdAt + `verifiedBy`/`previousConfidence` literally — no existing builder could); create stub nodes for dangling endpoints (`BuildMergeStubNode`).
+  - [x] Tenant-scope: `ExportedTenantConfig` is parsed but **not** overwritten onto the (already-provisioned) tenant (decision D3 — see Completion Notes); documented that secret **values** are not in the export and must pre-exist.
+  - [x] Restore is idempotent (re-run → same state) via Redis `HSET` overwrite + graph `MERGE` (verified by `RestoreDataPlaneActivityTests.RunAsync_RunTwice_ConvergesToSameResult`).
+- [x] **Task 3 — Client surface** (AC: 6)
+  - [x] Add `public virtual async Task<RestoreAcceptedResponse> ImportTenantAsync(...)` / `ImportCaseAsync(...)` to `MemoriesClient.cs` building paths from the new route builders and POSTing the export JSON as a `StreamContent`, decoding the accepted-response DTO via `ReadRequiredAsync`; auth flows via the registered `MemoriesAuthHandler`. Methods are `virtual`, class stays non-sealed.
+  - [x] CLI `memories import …` command **deferred** with an explicit note (decision D4 — keeps this story bounded; the client method covers programmatic restore).
+- [x] **Task 4 — Fidelity + durability tests** (AC: 7, 8)
+  - [x] Add `Restore/BackupRestoreFidelityIntegrationTests.cs` in `Hexalith.Memories.IntegrationTests` — `[Fact]` + `[Collection("AspireIngestionPipeline")]` — implementing snapshot → export → wipe → restore → compare-every-hash-and-edge. Enumerates hashes with `RedisConnection.GetServer(...).Keys(...)` + `HashGetAllAsync`, edges with `FalkorDbConnection` + `MATCH (a)-[r]->(b) RETURN ...`. Fixture uses the deterministic `GoogleFake` provider → asserts vector-byte equality. (Docker-dependent — compiles; runs in CI.)
+  - [x] Added the AC8 zero-loss/no-duplicate `{t}:mu:*` count assertion to `PipelinePersistenceIntegrationTests.RestartTopology_ShouldPreserveIndexedRedisBackedDataAcrossControlledRestart`.
+  - [x] Added Docker-free unit/contract coverage in `Hexalith.Memories.Server.Tests` (schema-version rejection, scope-mismatch, tenant/case mismatch, edge-identity reconstruction from `(source,target,type)`, dangling-target stub, idempotent re-run, syntactic-hash round-trip through `ParseMemoryUnitFromHash`, envelope reader, `BuildRestoreEdge`) + route-builder tests in `Contracts.Tests`. **23 new Docker-free tests, all green.**
+- [x] **Task 5 — Runbooks** (AC: 9)
+  - [x] Wrote `docs/operations/backup-restore.md` and `docs/operations/disaster-recovery.md` per AC9 (H1 + Story tag, prerequisites → procedure → verification → rollback, config/command fences, cross-links). Originated the FalkorDB backup/restore procedure. Cross-linked `deployment-configuration.md` + `failure-recovery.md`. Also updated `route-surface.md` with the 3 new routes (route-surface drift guard).
+- [x] **Task 6 — Verify** (AC: 10)
+  - [x] `dotnet build Hexalith.Memories.slnx` → **0 warnings / 0 errors**. Docker-free suites green (Server.Tests 2599/0 fail/1 skip; Contracts.Tests 586/0). The Aspire fidelity + restart tests compile and reach `review` locally (no container runtime); they must run in CI / an operator environment to reach `done`.
+  - [x] `git diff --check` clean; new `.cs` files are CRLF with the ITANEO header; no submodule pointers moved; no export contract renamed (additive only).
 
 ## Dev Notes
 
@@ -178,8 +178,83 @@ Recent commits are all Epic 26.1 deployment work: `a077fd0` release-orchestratio
 
 ### Agent Model Used
 
+claude-opus-4-8 (BMad dev-story workflow).
+
 ### Debug Log References
+
+- `dotnet build Hexalith.Memories.slnx -v:m` → Build succeeded, 0 Warning(s), 0 Error(s).
+- Sandbox test runner (no Docker): `DiffEngine_Disabled=true dotnet exec …Server.Tests.dll` → 2599 total, 0 failed, 1 skipped; `…Contracts.Tests.dll` → 586 total, 0 failed. 23 new Docker-free restore/import tests green.
+- `git diff --check` → clean.
 
 ### Completion Notes List
 
+Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow`: the endpoint validates the export manifest synchronously, stages the payload out-of-band, and schedules the workflow (`202 Accepted` + tenant-scoped status `Location`). The workflow restores the byte-exact data plane in one idempotent activity, then re-derives semantic vectors per unit. **Decisions flagged (per Dev Notes "do not skip"):**
+
+- **D-vec (the correctness crux — supersedes the AC4/AC7 literal reference to `IndexSemanticActivity`).** The story text assumed the live pipeline writes the un-chunked `{t}:vec:{id}` hash via `IndexSemanticActivity`. It does **not** — live ingestion writes the *chunked* `{t}:vec:{id}:{seq}` hashes via `IndexSemanticChunksActivity` (`IndexSemanticActivity` is registered but unused by `IngestionWorkflow`). To make restore output definitionally identical to a fresh ingest (true fidelity), `RestoreReindexUnitActivity` re-chunks the restored content with the same `ContentChunker`, re-embeds with the target tenant's configured provider, and writes the chunked `{t}:vec:{id}:{seq}` layout. Under the fixture's deterministic `GoogleFake` provider these vectors are byte-identical; the fidelity test asserts byte equality.
+- **D1 (NL descriptions) → option (c).** NL descriptions are non-deterministic LLM output and exist only for `SourceType.Event` units; restore does **not** regenerate `:vecnl:` hashes — they are rebuilt on the next re-index/event replay. File-sourced corpora have no NL vectors to lose. Documented in `backup-restore.md`.
+- **D2 (restore target) → same-tenant-id DR only.** Cross-tenant/cross-deployment id remapping is out of scope; the endpoint rejects `manifest.tenantId ≠ route tenant` (`IMPORT_TENANT_MISMATCH`). "A second provisioned tenant" (AC7) is interpreted as the same tenant id on a fresh cluster.
+- **D3 (tenant config).** Restore requires an already-provisioned Active tenant, so it does **not** overwrite the tenant registry/config (avoids clobbering live provisioning state). `ExportedTenantConfig` is parsed but not written; the runbook requires the target tenant to be provisioned with a matching embedding config first. Secret **values** are never in the export (only `apiSecretKeyName`).
+- **D4 (CLI import) → deferred.** The `MemoriesClient.Import*Async` methods cover programmatic restore; a `memories import …` CLI command is deferred to keep the story bounded.
+- **D5 (size limit vs streaming).** `RequestSizeLimitAttribute` is set to a documented **512 MB** ceiling; the staging path buffers the body once. For corpora beyond the ceiling, restore case-by-case — a streaming/chunked staging store is the documented follow-up.
+- **Shared syntactic-hash projection.** Factored `SyntacticHashProjection` out of `IndexSyntacticActivity` (behavior-preserving) so ingest and restore write the identical field set; proved by a round-trip test through `CaseService.ParseMemoryUnitFromHash` (AC2). Full Server.Tests suite (2599) stays green — no ingestion regression.
+- **Additive `BuildRestoreEdge`.** No existing graph builder could restore an edge's audit trail (`confidence` + `previousConfidence` + `verifiedBy`) literally, so an additive builder was added; edge identity is reconstructed from `(source, target, type)` — the exported graph-instance `id(r)` is never reused.
+
+**Container-runtime caveat:** the Aspire fidelity test (AC7) and restart test (AC8) compile and reach `review` here but cannot run in the sandbox (no docker/kind). They must be validated in CI or an operator cluster to reach `done`. The Docker-free contract tests cover the same schema-version/scope/edge-identity/dangling-stub/idempotency/round-trip logic locally.
+
 ### File List
+
+**New — Contracts (`src/Hexalith.Memories.Contracts`):**
+- `V1/RestoreAcceptedResponse.cs`
+- `V1/RestoreStatusResponse.cs`
+
+**New — Server (`src/Hexalith.Memories.Server`):**
+- `Import/ImportEnvelope.cs`
+- `Import/ImportEnvelopeException.cs`
+- `Import/ImportEnvelopeReader.cs`
+- `Import/IImportStagingStore.cs`
+- `Import/RedisImportStagingStore.cs`
+- `Import/ImportRequestValidator.cs`
+- `Activities/Indexing/SyntacticHashProjection.cs`
+- `Activities/Restore/RestoreDataPlaneActivity.cs`
+- `Activities/Restore/RestoreReindexUnitActivity.cs`
+- `Activities/Restore/DeleteRestoreStagingActivity.cs`
+- `Endpoints/ImportEndpoints.cs`
+- `Workflows/RestoreWorkflow.cs`
+- `Workflows/Contracts/RestoreWorkflowInput.cs`
+- `Workflows/Contracts/RestoreWorkflowResult.cs`
+- `Workflows/Contracts/RestoreDataPlaneInput.cs`
+- `Workflows/Contracts/RestoreDataPlaneResult.cs`
+- `Workflows/Contracts/RestoreReindexInput.cs`
+- `Workflows/Contracts/RestoreReindexResult.cs`
+
+**Modified — production:**
+- `src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs` (import route constants + builders)
+- `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs` (register restore DTOs)
+- `src/Hexalith.Memories.Server/Graph/IGraphQueryBuilder.cs` (add `BuildRestoreEdge`)
+- `src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs` (implement `BuildRestoreEdge`)
+- `src/Hexalith.Memories.Server/Activities/Indexing/IndexSyntacticActivity.cs` (use shared `SyntacticHashProjection`)
+- `src/Hexalith.Memories.Server/Endpoints/…` via `Program.cs` (`app.MapImportEndpoints();`)
+- `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs` (register workflow/activities + staging store)
+- `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs` (`ImportTenantAsync`/`ImportCaseAsync`)
+
+**New/Modified — tests:**
+- `tests/Hexalith.Memories.Server.Tests/Import/ImportRequestValidatorTests.cs` (new)
+- `tests/Hexalith.Memories.Server.Tests/Import/ImportEnvelopeReaderTests.cs` (new)
+- `tests/Hexalith.Memories.Server.Tests/Import/SyntacticHashProjectionTests.cs` (new)
+- `tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderRestoreEdgeTests.cs` (new)
+- `tests/Hexalith.Memories.Server.Tests/Activities/Restore/RestoreDataPlaneActivityTests.cs` (new)
+- `tests/Hexalith.Memories.Contracts.Tests/V1/MemoriesRoutesImportTests.cs` (new)
+- `tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs` (new)
+- `tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs` (modified — stub-caller count 3→4)
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs` (modified — AC8 zero-loss count assertion)
+
+**New/Modified — docs:**
+- `docs/operations/backup-restore.md` (new)
+- `docs/operations/disaster-recovery.md` (new)
+- `docs/operations/route-surface.md` (modified — 3 new routes)
+
+## Change Log
+
+| Date | Change |
+| --- | --- |
+| 2026-07-13 | Story 26.2 implemented: import/restore endpoints (`POST …/import`, `GET …/restore/{instanceId}`) consuming the export envelope; durable `RestoreWorkflow` (byte-exact data-plane restore + re-derived chunked semantic vectors + graph node/edge reconstruction with audit trail); additive `BuildRestoreEdge` graph builder; shared `SyntacticHashProjection`; `MemoriesClient` import methods; 23 Docker-free tests + Aspire fidelity test (AC7, CI) + AC8 zero-loss assertion; `backup-restore.md` + `disaster-recovery.md` runbooks. Build 0/0; Server.Tests 2599/0. Status → review. |

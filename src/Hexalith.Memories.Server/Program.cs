@@ -87,6 +87,7 @@ MemoriesMeter.EnsureHandlerGaugeCreated(() =>
 app.MapIngestionEndpoints();
 app.MapTenantLifecycleEndpoints();
 app.MapExportEndpoints();
+app.MapImportEndpoints();
 app.MapConsistencyEndpoints();
 app.MapCasesEndpoints();
 app.MapSearchEndpoints();

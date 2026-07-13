@@ -41,6 +41,21 @@ public interface IGraphQueryBuilder
         float confidence,
         EdgeOrigin origin);
 
+    /// <summary>Story 26.2 — restores an exported edge with its full audit trail (idempotent via MERGE).
+    /// Unlike <see cref="BuildMergeEdge"/> it sets <c>createdAt</c> authoritatively (to the exported value,
+    /// not coalesced) and, when supplied, restores the confidence-promotion audit fields
+    /// (<c>verifiedBy</c>, <c>previousConfidence</c>) literally rather than deriving them. Edge identity is
+    /// reconstructed from <c>(source, target, type)</c> — the exported graph-instance <c>id(r)</c> is not reused.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildRestoreEdge(
+        string sourceNodeId,
+        string targetNodeId,
+        EdgeType edgeType,
+        float confidence,
+        EdgeOrigin origin,
+        DateTimeOffset createdAt,
+        string? verifiedBy,
+        float? previousConfidence);
+
     /// <summary>Story 9.2 Task 7.1 — creates a stub node with an explicit <c>stubCreatedAt</c> timestamp
     /// used for orphan-detection queries (<c>MATCH (m:MemoryUnit) WHERE m.isStub = true AND
     /// m.stubCreatedAt &lt; threshold</c>). <c>ON CREATE SET</c> ensures the flag is applied only on

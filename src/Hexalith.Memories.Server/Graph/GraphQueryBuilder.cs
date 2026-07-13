@@ -448,6 +448,72 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
     }
 
     /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildRestoreEdge(
+        string sourceNodeId,
+        string targetNodeId,
+        EdgeType edgeType,
+        float confidence,
+        EdgeOrigin origin,
+        DateTimeOffset createdAt,
+        string? verifiedBy,
+        float? previousConfidence)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceNodeId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetNodeId);
+        if (!float.IsFinite(confidence))
+        {
+            throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "Confidence must be a finite value.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(confidence, 0f);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(confidence, 1f);
+
+        if (previousConfidence is { } previous)
+        {
+            if (!float.IsFinite(previous))
+            {
+                throw new ArgumentOutOfRangeException(nameof(previousConfidence), previous, "Previous confidence must be a finite value.");
+            }
+
+            ArgumentOutOfRangeException.ThrowIfLessThan(previous, 0f);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(previous, 1f);
+        }
+
+        // Edge label + node labels are interpolated from the closed EdgeType enum via the validated
+        // ToUpperSnakeCase / GetNodeLabels switches — same injection-safe pattern as BuildMergeEdge. Every
+        // value is parameterized. Restore sets createdAt to the exported value (authoritative, not coalesced)
+        // so a re-run converges to the exported state byte-for-byte.
+        string edgeLabel = ToUpperSnakeCase(edgeType);
+        (string sourceLabel, string targetLabel) = GetNodeLabels(edgeType);
+
+        Dictionary<string, object> parameters = new()
+        {
+            ["sourceId"] = sourceNodeId,
+            ["targetId"] = targetNodeId,
+            ["createdAt"] = createdAt.ToString("o"),
+            ["confidence"] = confidence,
+            ["origin"] = ToCamelCase(origin),
+        };
+
+        string setClause = "SET r.createdAt = $createdAt, r.confidence = $confidence, r.origin = $origin";
+        if (!string.IsNullOrWhiteSpace(verifiedBy))
+        {
+            parameters["verifiedBy"] = verifiedBy;
+            setClause += ", r.verifiedBy = $verifiedBy";
+        }
+
+        if (previousConfidence is { } previousValue)
+        {
+            parameters["previousConfidence"] = previousValue;
+            setClause += ", r.previousConfidence = $previousConfidence";
+        }
+
+        string query = $"MATCH (s:{sourceLabel} {{id: $sourceId}}), (t:{targetLabel} {{id: $targetId}}) MERGE (s)-[r:{edgeLabel}]->(t) {setClause}";
+
+        return (query, parameters);
+    }
+
+    /// <inheritdoc/>
     public (string Query, IDictionary<string, object> Parameters) BuildCountAnnotations(string memoryUnitId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);

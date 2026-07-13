@@ -157,6 +157,17 @@ public static class MemoriesRoutes
     /// <summary>Tenant export route (<c>GET /api/v1/tenants/{tenantId}/export</c>).</summary>
     public const string TenantExport = "/api/v1/tenants/{tenantId}/export";
 
+    // ---- Import / restore (Story 26.2) ----
+
+    /// <summary>Case import/restore route (<c>POST /api/v1/tenants/{tenantId}/cases/{caseId}/import</c>).</summary>
+    public const string CaseImport = "/api/v1/tenants/{tenantId}/cases/{caseId}/import";
+
+    /// <summary>Tenant import/restore route (<c>POST /api/v1/tenants/{tenantId}/import</c>).</summary>
+    public const string TenantImport = "/api/v1/tenants/{tenantId}/import";
+
+    /// <summary>Restore workflow status route (<c>GET /api/v1/tenants/{tenantId}/restore/{instanceId}</c>).</summary>
+    public const string RestoreStatus = "/api/v1/tenants/{tenantId}/restore/{instanceId}";
+
     // ---- Client-facing relative path builders (segment values escaped) ----
 
     /// <summary>Builds the relative DAPR service-invocation health path.</summary>
@@ -324,6 +335,24 @@ public static class MemoriesRoutes
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>The relative request path with the tenant segment escaped.</returns>
     public static string TenantExportPath(string tenantId) => Fill(TenantExport, ("tenantId", tenantId));
+
+    /// <summary>Builds the relative client request path for a case import/restore.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="caseId">The case identifier.</param>
+    /// <returns>The relative request path with the tenant and case segments escaped.</returns>
+    public static string CaseImportPath(string tenantId, string caseId) => Fill(CaseImport, ("tenantId", tenantId), ("caseId", caseId));
+
+    /// <summary>Builds the relative client request path for a tenant import/restore.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <returns>The relative request path with the tenant segment escaped.</returns>
+    public static string TenantImportPath(string tenantId) => Fill(TenantImport, ("tenantId", tenantId));
+
+    /// <summary>Builds the absolute status location returned after scheduling a restore workflow.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="instanceId">The workflow instance identifier.</param>
+    /// <returns>The absolute V1 restore-status location with all segments escaped.</returns>
+    public static string RestoreStatusLocation(string tenantId, string instanceId)
+        => FillAbsolute(RestoreStatus, ("tenantId", tenantId), ("instanceId", instanceId));
 
     /// <summary>Returns the relative (leading-slash-trimmed) form of a template that has no placeholders.</summary>
     /// <param name="template">The absolute route template.</param>

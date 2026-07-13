@@ -50,6 +50,9 @@ All 46 routes below are minimal-API endpoints mapped in `src/Hexalith.Memories.S
 | Consistency | `GET /api/v1/tenants/{tenantId}/consistency/repair/{instanceId}` | Read consistency-repair status. |
 | Export | `GET /api/v1/tenants/{tenantId}/cases/{caseId}/export` | Export a single case. |
 | Export | `GET /api/v1/tenants/{tenantId}/export` | Export all cases for a tenant. |
+| Import | `POST /api/v1/tenants/{tenantId}/cases/{caseId}/import` | Restore a case export (schedules a durable restore workflow). |
+| Import | `POST /api/v1/tenants/{tenantId}/import` | Restore a tenant export (schedules a durable restore workflow). |
+| Import | `GET /api/v1/tenants/{tenantId}/restore/{instanceId}` | Read a tenant-authorized restore workflow status projection. |
 | Cases | `POST /api/v1/tenants/{tenantId}/cases` | Create a case. |
 | Cases | `GET /api/v1/tenants/{tenantId}/cases` | List cases. |
 | Cases | `GET /api/v1/tenants/{tenantId}/cases/{caseId}` | Read a case. |

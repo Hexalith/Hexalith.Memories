@@ -272,8 +272,8 @@ public class GraphQueryBuilderTests
         }
 
         totalInvocationCount.ShouldBe(
-            3,
-            "Story 9.2 currently has exactly three production BuildMergeStubNode call sites (ProjectAnnotationGraphActivity plus two IndexGraphActivity branches). Update this assertion if a new legitimate caller is introduced.");
+            4,
+            "Production BuildMergeStubNode call sites: ProjectAnnotationGraphActivity, two IndexGraphActivity branches, and the Story 26.2 RestoreDataPlaneActivity dangling-endpoint stub. Update this assertion if a new legitimate caller is introduced.");
         oneArgumentCallSites.ShouldBeEmpty(
             "Production callers must use the 2-arg overload and pass a replay-safe stubCreatedAt timestamp.");
     }
