@@ -103,6 +103,29 @@ internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReind
             .GetAsync(input.TenantId, CancellationToken.None)
             .ConfigureAwait(false);
 
+        // Story 26.2 review (P3): the target tenant's embedding config must match the export's attribution.
+        // Readiness (below) only verifies the target index's self-consistency (dimensions vs the target config),
+        // NOT the export vs the target — so if provider/model differ, re-embedding would produce vectors that
+        // disagree with the restored (source) provider/model labels and the graph node's dimensions. Enforce the
+        // documented restore prerequisite loudly here rather than silently writing inconsistent vectors.
+        if (!string.IsNullOrEmpty(embeddingProvider)
+            && !string.Equals(embeddingProvider, config.Provider, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Restore embedding provider mismatch for memory unit {input.MemoryUnitId} in tenant {input.TenantId}: " +
+                $"the export was embedded with '{embeddingProvider}' but the target tenant is configured for '{config.Provider}'. " +
+                "Align the target tenant's embedding provider with the export before restoring.");
+        }
+
+        if (!string.IsNullOrEmpty(embeddingModel)
+            && !string.Equals(embeddingModel, config.Model, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Restore embedding model mismatch for memory unit {input.MemoryUnitId} in tenant {input.TenantId}: " +
+                $"the export was embedded with '{embeddingModel}' but the target tenant is configured for '{config.Model}'. " +
+                "Align the target tenant's embedding model with the export before restoring.");
+        }
+
         // AC5: the tenant's semantic vector index must be provisioned (with matching dimensions) before writing.
         await _readinessVerifier
             .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.Semantic, config.Dimensions, CancellationToken.None)

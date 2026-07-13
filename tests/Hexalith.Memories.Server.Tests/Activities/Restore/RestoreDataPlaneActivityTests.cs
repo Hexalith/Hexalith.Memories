@@ -23,6 +23,7 @@ using Hexalith.Memories.Server.Workflows.Contracts;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 
 using Shouldly;
 
@@ -131,6 +132,58 @@ public class RestoreDataPlaneActivityTests
             new RestoreDataPlaneInput("acme", null, "acme:import:staging:instance-1", "operator")));
 
         ex.Code.ShouldBe("IMPORT_STAGING_EXPIRED");
+    }
+
+    [Fact]
+    public async Task RunAsync_EdgeWithInvalidConfidence_SkipsEdgeAndReports()
+    {
+        Fixture fixture = Fixture.Create(TenantEnvelope);
+
+        // Simulate the real GraphQueryBuilder rejecting an out-of-range / non-finite confidence (proved in
+        // GraphQueryBuilderRestoreEdgeTests). Story 26.2 review decision D4: the activity must skip that edge
+        // best-effort and report it via the skipped count, NOT abort the whole restore.
+        fixture.Builder
+            .BuildRestoreEdge("mu-1", "mu-outside", EdgeType.CausedBy, Arg.Any<float>(), Arg.Any<EdgeOrigin>(), Arg.Any<DateTimeOffset>(), Arg.Any<string?>(), Arg.Any<float?>())
+            .Throws(new ArgumentOutOfRangeException("confidence"));
+
+        RestoreDataPlaneResult result = await fixture.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RestoreDataPlaneInput("acme", null, "acme:import:staging:instance-1", "operator"));
+
+        result.RestoredEdgeCount.ShouldBe(0);
+        result.SkippedRecords.ShouldBe(1);
+
+        // The data-plane units are still restored — one corrupt edge does not abort the whole restore.
+        result.MemoryUnitIds.ShouldBe(["mu-1", "mu-2"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_MemoryUnitWithBlankCaseId_SkipsUnitAndReports()
+    {
+        const string envelope = """
+        {
+          "manifest": { "schemaVersion": 1, "scope": "tenant", "tenantId": "acme", "caseId": null, "exportedAt": "2026-07-13T00:00:00+00:00", "snapshotAt": "2026-07-13T00:00:00+00:00" },
+          "cases": [],
+          "memoryUnits": [
+            { "unit": { "id": "mu-ok", "tenantId": "acme", "caseId": "case-1", "content": "hello", "contentHash": "h1", "sourceUri": "file:///a.txt", "sourceType": "file", "ingestedBy": "tester", "ingestedAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-01T00:00:00+00:00", "status": "indexed", "metadata": {}, "embeddingProvider": "google:text-embedding-004", "embeddingModel": "text-embedding-004", "embeddingDimensions": 768 }, "annotationTargets": [] },
+            { "unit": { "id": "mu-blank", "tenantId": "acme", "caseId": "", "content": "orphan", "contentHash": "h2", "sourceUri": "file:///b.txt", "sourceType": "file", "ingestedBy": "tester", "ingestedAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-01T00:00:00+00:00", "status": "indexed", "metadata": {}, "embeddingProvider": "google:text-embedding-004", "embeddingModel": "text-embedding-004", "embeddingDimensions": 768 }, "annotationTargets": [] }
+          ],
+          "edges": [],
+          "statistics": { "memoryUnitCount": 2, "edgeCount": 0, "caseCount": 0 }
+        }
+        """;
+
+        Fixture fixture = Fixture.Create(envelope);
+
+        RestoreDataPlaneResult result = await fixture.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RestoreDataPlaneInput("acme", null, "acme:import:staging:instance-1", "operator"));
+
+        // The blank-caseId unit is corrupt (ingestion always sets a caseId) — skipped + reported, not fatal,
+        // and its syntactic hash is never written (Story 26.2 review decision D4).
+        result.MemoryUnitIds.ShouldBe(["mu-ok"]);
+        result.SkippedRecords.ShouldBe(1);
+        await fixture.RedisDatabase.DidNotReceive().HashSetAsync("acme:mu:mu-blank", Arg.Any<HashEntry[]>());
     }
 
     private sealed class Fixture

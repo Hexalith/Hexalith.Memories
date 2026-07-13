@@ -25,6 +25,7 @@ The export is a **logical** snapshot, not a byte-image of Redis. Restore fidelit
 | Memory unit (syntactic) | `{tenantId}:mu:{id}` (HASH) | Written verbatim from the export | Field-for-field equal |
 | Case record | `{tenantId}:case:{id}` (HASH) | Written verbatim from the export | Field-for-field equal |
 | Case members | `{tenantId}:case:{id}:members` (HASH) | Written verbatim from the export | Member set + types equal |
+| Case activity feed + summary | `{tenantId}:case:{id}:activity` (STREAM) + `:activity:summary` (HASH) | **Not restored** — operational read-models, not part of the backup fidelity contract | N/A — rebuilt as new activity accrues post-restore |
 | Graph nodes + edges | per-tenant FalkorDB graph | Nodes from export; edges from `edges[]`; CONTAINS rebuilt from `caseId` | Every edge `(source, target, type, confidence, origin, verifiedBy, previousConfidence)` equal |
 | Semantic vectors | `{tenantId}:vec:{id}:{seq}` (HASH) | **Re-derived** (re-embedded) | Present + dimensions match; byte-equal under a deterministic provider |
 | NL vectors | `{tenantId}:vecnl:{id}` (HASH) | **Not re-derived** by restore | Rebuilt on next re-index/event replay (see note) |
@@ -111,8 +112,11 @@ large restore that re-embeds every unit is resumable, retried, and observable. S
 - The target tenant is **provisioned and Active** (RediSearch + vector indexes + FalkorDB graph created by
   `TenantProvisioningWorkflow`). Restore verifies index readiness and refuses to write hashes that would be
   unsearchable.
-- The target tenant's embedding config matches the export's `(provider, model, dimensions)`. Restore
-  re-embeds with the **target** tenant's provider — a mismatched dimension fails readiness verification.
+- The target tenant's embedding config **must match** the export's `(provider, model, dimensions)`. Restore
+  re-embeds with the **target** tenant's provider; a `(provider, model)` mismatch between the export's
+  attribution and the target tenant config fails the restore loudly (per-unit guard, so no inconsistent
+  vectors are written), and a dimension mismatch between the target config and its provisioned index fails
+  readiness verification.
 - The embedding provider **secret** named by `apiSecretKeyName` exists in the target secret store.
 - The export JSON is available and its `manifest.tenantId` equals the target tenant id.
 

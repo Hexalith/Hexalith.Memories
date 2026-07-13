@@ -2077,3 +2077,25 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
 - source_spec: `_bmad-output/implementation-artifacts/spec-26-1-production-deployment-artifacts.md`
   summary: [LOW — unverified] `readOnlyRootFilesystem: true` with only `/tmp` writable may fault ASP.NET Core Data Protection.
   evidence: The default Data Protection key ring path (`~/.aspnet/DataProtection-Keys`) is not under the single writable `emptyDir` at `/tmp`; if antiforgery/cookie/ephemeral key material is ever touched, the app faults or warns. Unverified — no gate that ran boots the app under the read-only rootfs. Re-open trigger: the disposable-cluster rollout running, or adding any Data-Protection-dependent feature.
+
+## Deferred from: code review of story-26.2 (2026-07-13)
+
+- source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
+  summary: [LOW] Case-scoped restore does not enforce per-record case membership.
+  evidence: `RestoreDataPlaneActivity.RunAsync` (`:71-124`) restores every case/unit/edge in the envelope and never reads `input.CaseId`; `ImportRequestValidator` checks only `manifest.CaseId`. No cross-tenant impact (caller is tenant-authorized). Re-open trigger: hardening the import validator to reject records outside the route case, or a multi-case case-scoped-export defect.
+
+- source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
+  summary: [LOW] Unknown edge `origin` is silently coerced to `Inferred` on restore.
+  evidence: `RestoreDataPlaneActivity.RestoreEdgeAsync` (`:232-235`) rewrites an unrecognized/future `origin` to `EdgeOrigin.Inferred` rather than preserving or rejecting it — a fidelity change on an audit field the story claims to round-trip exactly. Only fires on corrupt/foreign export data. Re-open trigger: an export produced by a newer edge-origin schema.
+
+- source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
+  summary: [LOW] No operation-level idempotency token — concurrent/duplicate import POSTs run duplicate full re-embeds.
+  evidence: `ImportEndpoints.HandleImportAsync` (`:147,164`) mints a fresh GUID instance id per request and unconditionally schedules a new `RestoreWorkflow`. End state converges (HSET overwrite + graph MERGE) so AC5's idempotency clause holds; the impact is doubled embedding-provider cost/load and interleaved writes on a retry/double-submit. Re-open trigger: an operator restore-cost incident, or a decision to reject a second in-flight restore per tenant.
+
+- source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
+  summary: [LOW] Re-index treats a missing syntactic hash as success; `RestoredMemoryUnits` counts the data-plane total.
+  evidence: `RestoreReindexUnitActivity.RunAsync` (`:85-95`) returns `RestoreReindexResult(id, 0)` when the syntactic hash is absent, and `RestoreWorkflow` (`:68-71`) reports `RestoredMemoryUnits` from the data-plane count — so a partially-failed restore could report `completed` with full counts and units that are `Indexed` but have no `:vec:` vectors. Largely unreachable in the happy path (the data-plane activity writes every hash first and fails the workflow if it can't). Re-open trigger: any change that decouples data-plane restore from re-index, or an observed partial-restore incident.
+
+- source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
+  summary: [LOW — hygiene, not a defect] Line-ending normalization churn folded into the feature commits.
+  evidence: ~2,500 diff lines are LF→CRLF flips (correct direction, toward the repo's required CRLF standard), including `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs` (959 lines, 0 substantive changes). Mixing a mass line-ending normalization into `feat` commits inflates the diff and can mask real edits. Re-open trigger: next time a bulk normalization is needed — isolate it in a dedicated `chore` commit.

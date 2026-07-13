@@ -23,7 +23,7 @@ This satisfies "method, path, and Dapr operation semantics" (AC2): the table giv
 
 ## REST `/api/v1/*` operation surface
 
-All 46 routes below are minimal-API endpoints mapped in `src/Hexalith.Memories.Server/Program.cs` (`app.MapGet/Post/Put/Delete/Patch`). There are no `MapGroup`/route-group prefixes; each path is the full template. The drift-guard test derives this list from the source, so a newly added endpoint that is not documented here fails the build.
+All 49 routes below are minimal-API endpoints mapped in `src/Hexalith.Memories.Server/Program.cs` (`app.MapGet/Post/Put/Delete/Patch`). There are no `MapGroup`/route-group prefixes; each path is the full template. The drift-guard test derives this list from the source, so a newly added endpoint that is not documented here fails the build.
 
 | Area | Method + path | Purpose |
 | :--- | :--- | :--- |

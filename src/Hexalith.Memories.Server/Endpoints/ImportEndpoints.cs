@@ -69,7 +69,8 @@ internal static class ImportEndpoints
             string tenantId,
             string instanceId,
             CancellationToken cancellationToken) =>
-            await ReadRestoreStatusAsync(workflowClient, tenantId, instanceId, cancellationToken));
+            await ReadRestoreStatusAsync(workflowClient, tenantId, instanceId, cancellationToken))
+            .AddEndpointFilter<InboundRateLimitEndpointFilter>();
 
         return app;
     }
@@ -120,6 +121,17 @@ internal static class ImportEndpoints
                     $"Import payload exceeds the configured size limit: {ex.Message}",
                     "Restore case-by-case, or raise the documented import size ceiling."),
                 statusCode: StatusCodes.Status413PayloadTooLarge);
+        }
+        catch (IOException ex)
+        {
+            // Story 26.2 review (P5): a client disconnect / connection reset mid-upload is a client-side abort,
+            // not a server fault — surface a 400 rather than letting it bubble up as an unhandled 500.
+            return Results.Json(
+                new ErrorResponse(
+                    "IMPORT_ABORTED",
+                    $"The import upload was interrupted before completion: {ex.Message}",
+                    "Retry the import and keep the connection open for the full request body."),
+                statusCode: StatusCodes.Status400BadRequest);
         }
 
         if (payload.Length == 0)
@@ -190,22 +202,28 @@ internal static class ImportEndpoints
             return Results.BadRequest(tenantValidationError);
         }
 
-        WorkflowState? state;
+        WorkflowState state;
         try
         {
-            state = await workflowClient.GetWorkflowStateAsync(instanceId, getInputsAndOutputs: true, cancellationToken);
+            WorkflowState? fetched = await workflowClient.GetWorkflowStateAsync(instanceId, getInputsAndOutputs: true, cancellationToken);
+            if (fetched is null || !fetched.Exists)
+            {
+                return Results.NotFound(new ErrorResponse(
+                    "RESTORE_STATUS_NOT_FOUND",
+                    "Restore workflow status was not found or has expired.",
+                    "Use the instanceId returned by the import scheduling endpoint."));
+            }
+
+            state = fetched;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            state = null;
-        }
-
-        if (state is null || !state.Exists)
-        {
-            return Results.NotFound(new ErrorResponse(
-                "RESTORE_STATUS_NOT_FOUND",
-                "Restore workflow status was not found or has expired.",
-                "Use the instanceId returned by the import scheduling endpoint."));
+            // Story 26.2 review (P4): a backend/state-store failure is NOT "not found". Surface 503 so an
+            // operator does not read a transient outage as "restore lost" and re-POST (which would spawn a
+            // duplicate restore).
+            return Results.Json(
+                ErrorResults.BackendUnavailable($"Restore status backend is unavailable: {ex.Message}"),
+                statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
         // Tenant isolation: never surface another tenant's restore under this tenant's route.
@@ -231,7 +249,8 @@ internal static class ImportEndpoints
             state.LastUpdatedAt,
             result?.RestoredMemoryUnits,
             result?.RestoredCases,
-            result?.RestoredEdges));
+            result?.RestoredEdges,
+            result?.SkippedRecords));
     }
 
     private static RestoreWorkflowInput? TryReadInput(WorkflowState state)

@@ -12,14 +12,15 @@ using Hexalith.Memories.Contracts.V1;
 /// <summary>
 /// Reverses the export envelope produced by <c>ExportWriter</c> back into a strongly typed
 /// <see cref="ImportEnvelope"/> using a forward-only <see cref="Utf8JsonReader"/> (Story 26.2).
-/// The endpoint uses <see cref="TryReadManifest"/> to validate the leading manifest before scheduling;
+/// The endpoint uses <see cref="TryReadManifest"/> to validate the manifest before scheduling;
 /// the restore workflow uses <see cref="Parse"/> to materialize the full envelope.
 /// </summary>
 internal static class ImportEnvelopeReader
 {
     /// <summary>
-    /// Reads only the leading <c>manifest</c> object so the endpoint can reject an unsupported schema
-    /// version or a scope/route mismatch before staging + scheduling. Returns early after the manifest.
+    /// Reads the <c>manifest</c> object (scanning top-level properties, in any order) so the endpoint can
+    /// reject an unsupported schema version or a scope/route mismatch before staging + scheduling. Returns
+    /// as soon as the manifest is found.
     /// </summary>
     /// <param name="payload">The complete UTF-8 import payload.</param>
     /// <param name="manifest">The parsed manifest when successful.</param>
@@ -61,7 +62,7 @@ internal static class ImportEnvelopeReader
                 reader.Skip();
             }
 
-            error = "Import payload is missing the required manifest section (it must be the first property).";
+            error = "Import payload is missing the required manifest section (a top-level \"manifest\" property).";
             return false;
         }
         catch (JsonException ex)

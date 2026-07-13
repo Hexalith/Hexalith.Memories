@@ -98,30 +98,45 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             await RestoreCaseAsync(db, falkor, input.TenantId, importedCase).ConfigureAwait(false);
         }
 
+        int skippedRecords = 0;
         List<string> memoryUnitIds = new(envelope.MemoryUnits.Count);
         foreach (ExportedMemoryUnit exported in envelope.MemoryUnits)
         {
-            await RestoreMemoryUnitAsync(db, falkor, input.TenantId, exported.Unit).ConfigureAwait(false);
-            memoryUnitIds.Add(exported.Unit.Id);
+            if (await RestoreMemoryUnitAsync(db, falkor, input.TenantId, exported.Unit).ConfigureAwait(false))
+            {
+                memoryUnitIds.Add(exported.Unit.Id);
+            }
+            else
+            {
+                skippedRecords++;
+            }
         }
 
         int restoredEdges = 0;
         foreach (ExportedEdge edge in envelope.Edges)
         {
-            if (await RestoreEdgeAsync(falkor, input.TenantId, edge).ConfigureAwait(false))
+            switch (await RestoreEdgeAsync(falkor, input.TenantId, edge).ConfigureAwait(false))
             {
-                restoredEdges++;
+                case RestoreEdgeOutcome.Restored:
+                    restoredEdges++;
+                    break;
+                case RestoreEdgeOutcome.SkippedInvalid:
+                    skippedRecords++;
+                    break;
+                default:
+                    break;
             }
         }
 
         _logger.LogInformation(
-            "Restore data plane complete for tenant {TenantId}: {CaseCount} cases, {UnitCount} memory units, {EdgeCount} edges.",
+            "Restore data plane complete for tenant {TenantId}: {CaseCount} cases, {UnitCount} memory units, {EdgeCount} edges, {SkippedCount} records skipped (invalid).",
             input.TenantId,
             envelope.Cases.Count,
             memoryUnitIds.Count,
-            restoredEdges);
+            restoredEdges,
+            skippedRecords);
 
-        return new RestoreDataPlaneResult(memoryUnitIds, envelope.Cases.Count, restoredEdges);
+        return new RestoreDataPlaneResult(memoryUnitIds, envelope.Cases.Count, restoredEdges, skippedRecords);
     }
 
     private async Task RestoreCaseAsync(IDatabase db, NFalkorDB.FalkorDB falkor, string tenantId, ImportedCase importedCase)
@@ -161,8 +176,20 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
     }
 
-    private async Task RestoreMemoryUnitAsync(IDatabase db, NFalkorDB.FalkorDB falkor, string tenantId, MemoryUnit unit)
+    private async Task<bool> RestoreMemoryUnitAsync(IDatabase db, NFalkorDB.FalkorDB falkor, string tenantId, MemoryUnit unit)
     {
+        // Story 26.2 review (D4): a memory unit with a blank caseId is corrupt (ingestion always sets one) and
+        // cannot be merged into the graph (BuildMergeMemoryUnitNode / BuildMergeEdge require a caseId). Skip it
+        // best-effort — log + report via the skipped count — rather than aborting the whole restore mid-write.
+        if (string.IsNullOrWhiteSpace(unit.CaseId))
+        {
+            _logger.LogWarning(
+                "Skipping restore of memory unit {MemoryUnitId} for tenant {TenantId}: blank caseId in the export.",
+                unit.Id,
+                tenantId);
+            return false;
+        }
+
         // Syntactic hash — byte-identical to ingest via the shared SyntacticHashProjection (AC2/AC7).
         string hashKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, unit.Id);
         List<HashEntry> hashEntries = SyntacticHashProjection.BuildEntries(
@@ -209,9 +236,10 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             EdgeTypeDefaults.Contains,
             EdgeOrigin.Explicit);
         await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        return true;
     }
 
-    private async Task<bool> RestoreEdgeAsync(NFalkorDB.FalkorDB falkor, string tenantId, ExportedEdge edge)
+    private async Task<RestoreEdgeOutcome> RestoreEdgeAsync(NFalkorDB.FalkorDB falkor, string tenantId, ExportedEdge edge)
     {
         if (!Enum.TryParse(edge.EdgeType, ignoreCase: true, out EdgeType edgeType))
         {
@@ -220,13 +248,13 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
                 edge.EdgeType,
                 edge.SourceId,
                 edge.TargetId);
-            return false;
+            return RestoreEdgeOutcome.SkippedByDesign;
         }
 
         // CONTAINS edges are rebuilt from caseId; they must never come from edges[]. Skip defensively.
         if (edgeType == EdgeType.Contains)
         {
-            return false;
+            return RestoreEdgeOutcome.SkippedByDesign;
         }
 
         if (!Enum.TryParse(edge.Origin, ignoreCase: true, out EdgeOrigin origin))
@@ -240,17 +268,47 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         await MergeStubIfMissingAsync(falkor, tenantId, edge.SourceId, edge.CreatedAt).ConfigureAwait(false);
         await MergeStubIfMissingAsync(falkor, tenantId, edge.TargetId, edge.CreatedAt).ConfigureAwait(false);
 
-        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildRestoreEdge(
-            edge.SourceId,
-            edge.TargetId,
-            edgeType,
-            edge.Confidence,
-            origin,
-            edge.CreatedAt,
-            edge.VerifiedBy,
-            edge.PreviousConfidence);
-        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
-        return true;
+        try
+        {
+            (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildRestoreEdge(
+                edge.SourceId,
+                edge.TargetId,
+                edgeType,
+                edge.Confidence,
+                origin,
+                edge.CreatedAt,
+                edge.VerifiedBy,
+                edge.PreviousConfidence);
+            await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            return RestoreEdgeOutcome.Restored;
+        }
+        catch (ArgumentException ex)
+        {
+            // Story 26.2 review (D4): a corrupt edge (out-of-range / non-finite confidence, blank endpoint id)
+            // is skipped best-effort and reported via the skipped count, rather than aborting the whole restore.
+            _logger.LogWarning(
+                ex,
+                "Skipping restore of invalid edge {EdgeType} ({SourceId} -> {TargetId}) for tenant {TenantId}: {Reason}.",
+                edge.EdgeType,
+                edge.SourceId,
+                edge.TargetId,
+                tenantId,
+                ex.Message);
+            return RestoreEdgeOutcome.SkippedInvalid;
+        }
+    }
+
+    /// <summary>The outcome of restoring a single exported edge.</summary>
+    private enum RestoreEdgeOutcome
+    {
+        /// <summary>The edge was MERGEd into the graph.</summary>
+        Restored,
+
+        /// <summary>Skipped by design (a CONTAINS edge rebuilt from caseId, or an unrecognized edge type) — not data loss.</summary>
+        SkippedByDesign,
+
+        /// <summary>Skipped because the edge was invalid/corrupt (best-effort restore) — reported via the skipped count.</summary>
+        SkippedInvalid,
     }
 
     private async Task MergeStubIfMissingAsync(NFalkorDB.FalkorDB falkor, string tenantId, string nodeId, DateTimeOffset stubCreatedAt)

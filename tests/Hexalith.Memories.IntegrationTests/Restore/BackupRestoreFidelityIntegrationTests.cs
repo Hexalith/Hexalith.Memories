@@ -232,6 +232,15 @@ public sealed class BackupRestoreFidelityIntegrationTests
 
         foreach (RedisKey key in server.Keys(pattern: pattern))
         {
+            // Story 26.2 review (decision D1): the case-activity feed ({id}:activity, a Redis STREAM) and its
+            // {id}:activity:summary hash are operational read-models, NOT part of the backup fidelity contract,
+            // so they are excluded from the snapshot (mirrors CaseService.ListCasesAsync). Skipping the stream
+            // key also avoids a WRONGTYPE error from HGETALL against a non-hash key.
+            if (key.ToString().Contains(":activity", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
             HashEntry[] entries = await db.HashGetAllAsync(key);
             Dictionary<string, string> fields = new(StringComparer.Ordinal);
             foreach (HashEntry entry in entries)

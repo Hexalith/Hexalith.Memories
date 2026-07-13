@@ -17,6 +17,7 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <param name="RestoredMemoryUnits">Count of restored memory units once the workflow completes; <see langword="null"/> while running.</param>
 /// <param name="RestoredCases">Count of restored cases once the workflow completes; <see langword="null"/> while running.</param>
 /// <param name="RestoredEdges">Count of restored graph edges once the workflow completes; <see langword="null"/> while running.</param>
+/// <param name="SkippedRecords">Count of corrupt records skipped best-effort once the workflow completes; <see langword="null"/> while running. A non-zero value means the export contained invalid records (for example an out-of-range edge confidence or a blank case id).</param>
 public sealed record RestoreStatusResponse(
     string InstanceId,
     string TenantId,
@@ -25,4 +26,5 @@ public sealed record RestoreStatusResponse(
     DateTimeOffset? LastUpdatedAt,
     int? RestoredMemoryUnits,
     int? RestoredCases,
-    int? RestoredEdges);
+    int? RestoredEdges,
+    int? SkippedRecords);

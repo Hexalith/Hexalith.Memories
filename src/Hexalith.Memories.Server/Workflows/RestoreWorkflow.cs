@@ -59,16 +59,18 @@ public sealed class RestoreWorkflow : Workflow<RestoreWorkflowInput, RestoreWork
 
         context.SetCustomStatus("completed");
         logger.LogInformation(
-            "Restore complete for tenant {TenantId}: {Units} memory units, {Cases} cases, {Edges} edges restored.",
+            "Restore complete for tenant {TenantId}: {Units} memory units, {Cases} cases, {Edges} edges restored, {Skipped} records skipped.",
             input.TenantId,
             dataPlane.MemoryUnitIds.Count,
             dataPlane.RestoredCaseCount,
-            dataPlane.RestoredEdgeCount);
+            dataPlane.RestoredEdgeCount,
+            dataPlane.SkippedRecords);
 
         return new RestoreWorkflowResult(
             dataPlane.MemoryUnitIds.Count,
             dataPlane.RestoredCaseCount,
-            dataPlane.RestoredEdgeCount);
+            dataPlane.RestoredEdgeCount,
+            dataPlane.SkippedRecords);
     }
 
     private static WorkflowTaskOptions DefaultRetry() => new(

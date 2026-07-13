@@ -4,7 +4,7 @@ baseline_commit: a077fd09f21968e494f20c72c62450c0b1d349f6
 
 # Story 26.2: Backup & Restore
 
-Status: review
+Status: in-progress
 
 <!-- Epic: 26 — Test, Deployment & Operational Readiness. Closes audit finding A25 (High, "Missing feature") — feature portion. Story 26.5 closes the docs portion (broader runbook set + final cross-linking). Reinforces NFR16 (zero memory-unit loss on Redis restart, AOF verified). New operator-facing capability → commit `feat(...)` (minor release). New import/restore REST route + client method = additive contract change; do NOT rename/remove existing export contracts. -->
 
@@ -85,7 +85,7 @@ The export is a *logical* snapshot, not a byte-image of Redis. So restore fideli
 | Case members | `{t}:case:{id}:members` | **From export** | Member set + types equal |
 | Semantic vector | `{t}:vec:{id}` | **Re-derived** (re-embed) | Hash exists; provider/model/**dimensions** match; bytes equal iff provider deterministic |
 | Semantic chunks | `{t}:vec:{id}:{seq}` | **Re-derived** (re-chunk+embed) | Present/consistent |
-| NL vector | `{t}:vecnl:{id}` | **Re-derived** (regen description + embed) | Hash exists; dimensions match (see NL decision) |
+| NL vector | `{t}:vecnl:{id}` | **Not re-derived on restore** (decision D1/D1c; amended 2026-07-13 review) | Rebuilt on next re-index/event replay; only `SourceType.Event` units have NL vectors |
 | Tenant metadata / case activity | `{t}:metadata`, `{t}:case:{id}:activity` | Rebuilt / derived | Present/consistent (not a fidelity target) |
 | FalkorDB nodes + edges | per-tenant graph | Nodes from export; edges from `edges[]` + `CONTAINS` from `caseId` | Every edge `(source,target,type,confidence,origin,verifiedBy,previousConfidence)` equal |
 
@@ -258,3 +258,58 @@ Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow
 | Date | Change |
 | --- | --- |
 | 2026-07-13 | Story 26.2 implemented: import/restore endpoints (`POST …/import`, `GET …/restore/{instanceId}`) consuming the export envelope; durable `RestoreWorkflow` (byte-exact data-plane restore + re-derived chunked semantic vectors + graph node/edge reconstruction with audit trail); additive `BuildRestoreEdge` graph builder; shared `SyntacticHashProjection`; `MemoriesClient` import methods; 23 Docker-free tests + Aspire fidelity test (AC7, CI) + AC8 zero-loss assertion; `backup-restore.md` + `disaster-recovery.md` runbooks. Build 0/0; Server.Tests 2599/0. Status → review. |
+
+### Review Findings
+
+_Adversarial code review (`bmad-code-review`), 2026-07-13 — 4 parallel layers (Blind Hunter, Edge Case Hunter, Verification Gap, Acceptance Auditor). Diff baseline `a077fd0`→HEAD. Verdict counts: 1 High, 6 Medium, 8 Low; 1 dismissed. Every finding below was re-verified against source before rating._
+
+**Decision-needed (resolved 2026-07-13 by Jerome):**
+
+- [x] [Review][Decision → Patch D1] Case activity feed & summary read-models not restored — **Resolved: document as out-of-scope.** Activity feed/summary are operational read-models, not part of the backup fidelity contract. Action (see Patch D1): add a caveat to the `backup-restore.md` fidelity table; the AC7 test excludes `:activity`/`:activity:summary` (folded into Patch P1). `RestoreDataPlaneActivity.cs` unchanged.
+- [x] [Review][Decision → Patch D2] Submodule pointer bumps vs AC10 — **Resolved: keep and accept.** The `Hexalith.EventStore`/`Hexalith.FrontComposer` bumps are accepted as intentional. Action (see Patch D2): record the AC10 deviation + rationale in this story; no revert.
+- [x] [Review][Decision → Patch D3] `:vecnl:` NL vectors not re-derived (D1c) — **Resolved: ratify D1c, amend the ACs.** NL vectors rebuild lazily on next re-index (regeneration needs a non-deterministic LLM). Action (see Patch D3): amend AC4/AC7 + the Dev Notes fidelity table to match D1c. Code unchanged.
+- [x] [Review][Decision → Patch D4] Restore aborts on one corrupt record — **Resolved: skip-and-report.** Action (see Patch D4): catch out-of-range/non-finite confidence in `RestoreEdgeAsync` (log + skip); guard blank `caseId` in `RestoreMemoryUnitAsync` (log + skip); surface a skipped-record count in the result — mirroring the existing unknown-edge-type skip.
+
+**Patch:**
+
+- [x] [Review][Patch D1] Runbook caveat: activity feed/summary are operational read-models, not restored (Medium→doc) [docs/operations/backup-restore.md] — add a caveat to the case fidelity table so it no longer claims "field-for-field equal" without qualification (resolves D1; AC7 test exclusion is folded into P1).
+- [x] [Review][Patch D2] Record the AC10 submodule-bump deviation (Medium→doc) [this story: Dev Notes + Change Log] — note that `Hexalith.EventStore` (940e8ac→341ed48) + `Hexalith.FrontComposer` (9ee5cb5→e914c61) were consciously accepted, with rationale (resolves D2; no revert).
+- [x] [Review][Patch D3] Amend AC4/AC7 + fidelity table for D1c `:vecnl:` deviation (Medium→doc) [this story] — AC4/AC7 to state NL vectors rebuild on next re-index (not on restore); drop the `:vecnl:` assertion requirement (resolves D3; code unchanged).
+- [x] [Review][Patch D4] Skip-and-report for corrupt records (Medium) [src/Hexalith.Memories.Server/Activities/Restore/RestoreDataPlaneActivity.cs:214-254,189-211] — catch out-of-range/non-finite confidence in `RestoreEdgeAsync` (log + skip, return false); guard blank `caseId` in `RestoreMemoryUnitAsync` (log + skip); add a `SkippedRecords` count to `RestoreDataPlaneResult`/`RestoreWorkflowResult` so a best-effort restore is observable (resolves D4).
+
+- [x] [Review][Patch] AC7 fidelity integration test throws WRONGTYPE before asserting — restore fidelity is unproven (HIGH) [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:72] — `SnapshotHashesAsync("{t}:case:*")` HGETALLs every matching key including the `{t}:case:{id}:activity` Redis stream (populated by ingestion `MemoryUnitIngested` at IngestionWorkflow.cs:573-577 and case-creation events), which raises `RedisServerException: WRONGTYPE` at the first case snapshot — before export/restore/assertions. The CI-gated test therefore cannot pass as written, so AC7/NFR16 "fidelity proven end-to-end" is unsubstantiated. Fix: restrict the case snapshot to data-plane hashes (`{t}:case:{id}` + `:members`), excluding `:activity`/`:activity:summary`, mirroring `CaseService.ListCasesAsync:309-310` (align the exclusion with the D1 decision).
+- [x] [Review][Patch] No Docker-free coverage of restore's core behaviors (Medium) [tests/Hexalith.Memories.Server.Tests/…] — reindex vec-hash field/dimension/guard, workflow activity-order, import endpoint status codes (413/empty/schema/scope/503), unprovisioned-tenant rejection, and a real convergence check all lack Docker-free tests; the only end-to-end proof is the (currently broken, per the HIGH above) CI-gated fidelity test, and the existing unit tests are pure mocks that can't distinguish converged-vs-duplicated state (`RunTwice_ConvergesToSameResult`) or a removed guard.
+- [x] [Review][Patch] Re-index attribution/dimension mismatch is unguarded; runbook overstates readiness (Medium) [src/Hexalith.Memories.Server/Activities/Restore/RestoreReindexUnitActivity.cs:143-145] — `:vec:` hashes are stamped with the source's provider/model but the target's dimensions, and readiness only checks target self-consistency (not source-vs-target), so restoring into a differently-configured tenant silently yields inconsistent attribution + graph-node/vec dimension disagreement. `backup-restore.md` claims a mismatched dimension "fails readiness verification" — it does not. Add a source-vs-target guard (fail loudly) and/or fix the runbook. (Also: ingest's `EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker` guard is skipped on the restore path.)
+- [x] [Review][Patch] Restore-status GET missing rate-limit filter + masks backend errors as 404 (Low) [src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs:67] — NOT an auth hole (the global `TenantAuthorizationMiddleware` authorizes the `{tenantId}` segment for this route). Add `.AddEndpointFilter<InboundRateLimitEndpointFilter>()` to match the POST/consistency siblings; optionally return 503 (not 404) when the state-store lookup throws so operators don't read a transient outage as "restore lost" and re-POST.
+- [x] [Review][Patch] Misleading manifest-position doc/message + narrow body-copy catch (Low) [src/Hexalith.Memories.Server/Import/ImportEnvelopeReader.cs; ImportEndpoints.cs:109-139] — `TryReadManifest` accepts a manifest at any top-level position, but the XML doc + error string assert "must be the first property"; and the body copy catches only `BadHttpRequestException` (413), so a client disconnect mid-upload surfaces as an unhandled 500. Fix the message to match behavior; catch `IOException`/cancellation on `CopyToAsync`.
+- [x] [Review][Patch] Stale "46 routes" prose in route-surface.md (Low) [docs/operations/route-surface.md:26] — now ~49 mapped routes after the 3 additions; update the literal count (the drift-guard test asserts count-equality, not this prose).
+
+**Deferred:**
+
+- [x] [Review][Defer] Case-scoped restore doesn't enforce per-record case membership [src/Hexalith.Memories.Server/Activities/Restore/RestoreDataPlaneActivity.cs:71-124] — deferred, low-impact hardening (`RunAsync` ignores `input.CaseId`; validator checks only `manifest.CaseId`; no cross-tenant impact — caller is tenant-authorized).
+- [x] [Review][Defer] Unknown edge `origin` silently coerced to `Inferred` [src/Hexalith.Memories.Server/Activities/Restore/RestoreDataPlaneActivity.cs:232-235] — deferred, fidelity change on an audit field, only on corrupt/foreign data.
+- [x] [Review][Defer] No operation-level idempotency token; concurrent/duplicate POSTs run duplicate full re-embeds [src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs:147] — deferred, end-state converges (MERGE/HSET) so AC5's idempotency clause holds; impact is wasted embedding-provider cost.
+- [x] [Review][Defer] Re-index treats a missing syntactic hash as success; `RestoredMemoryUnits` counts the data-plane total [src/Hexalith.Memories.Server/Activities/Restore/RestoreReindexUnitActivity.cs:85-95] — deferred, largely unreachable in the happy path, but a partial restore could report "completed" with full counts.
+- [x] [Review][Defer] Line-ending normalization churn folded into feature commits [src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs] — deferred, not a defect (LF→CRLF toward the repo standard) but ~2,500 lines of flip (incl. one 959-line pure-flip file) should be isolated as a `chore` commit so feature diffs stay reviewable.
+
+**Dismissed (1):** "Cross-tenant restore-status read" (claimed auth hole, Edge Case Hunter + Verification Gap) — refuted. `TenantAuthorizationMiddleware` runs `TryAuthorizeTenant` on every `/api/v1/tenants/{tenantId}/…` route including the GET, denying (403) any principal whose tenant claim ≠ route `tenantId`. The residual operability points (no rate-limit filter, 404-masking) are captured in the P4 patch above.
+
+### Review Resolutions (2026-07-13)
+
+Applied from the resolved decision-needed findings and the patch set:
+
+- **D1 — case activity read-models documented out-of-scope.** `{t}:case:{id}:activity` (stream) + `:activity:summary` are operational read-models, not part of the backup fidelity contract. Runbook fidelity table now carries an explicit "Not restored" row; the AC7 test excludes `:activity`/`:activity:summary` from the case snapshot (Patch P1 + Patch D1).
+- **D2 — AC10 submodule deviation accepted.** `references/Hexalith.EventStore` (940e8ac→341ed48) and `references/Hexalith.FrontComposer` (9ee5cb5→e914c61) were consciously kept, not reverted — required for the current build/test to pass 0/0. Recorded, accepted deviation from AC10's "no submodule pointer changes."
+- **D3 — AC4/AC7 amended for the `:vecnl:` (D1c) deviation.** NL vectors are **not** re-derived on restore (regeneration needs a non-deterministic LLM; only `SourceType.Event` units have NL vectors); they rebuild on the next re-index/event replay. AC4's "Semantic **and NL** vector hashes are re-derived" is amended to **semantic-only on restore**; AC7's requirement to assert a `{t}:vecnl:{id}` hash per restored unit is **dropped**. Dev Notes fidelity-table NL row updated accordingly.
+- **D4 — skip-and-report implemented.** A corrupt edge (out-of-range/non-finite confidence) or a unit with a blank `caseId` is now logged + skipped best-effort and counted in `RestoreDataPlaneResult.SkippedRecords` → `RestoreWorkflowResult.SkippedRecords` → the restore-status response, instead of aborting the whole restore. Covered by two new Docker-free tests.
+
+### Patch application (2026-07-13)
+
+All 10 patches applied. Build verified green (`dotnet build` — 0 warnings, 0 errors) on Server + Server.Tests.
+
+- **P1** (High) — `BackupRestoreFidelityIntegrationTests.SnapshotHashesAsync` now skips `:activity`/`:activity:summary` keys, resolving the `WRONGTYPE` crash so the AC7 assertions actually run.
+- **P3** (Med) — `RestoreReindexUnitActivity` now fails loudly on a source-vs-target `(provider, model)` mismatch; runbook readiness wording corrected.
+- **P4** (Low) — restore-status GET gained `InboundRateLimitEndpointFilter` and now returns 503 (not 404) on a state-store failure.
+- **P5** (Low) — `ImportEnvelopeReader` doc/message no longer claims "first property"; the import body-copy now catches `IOException` (client disconnect → 400, not 500).
+- **P6** (Low) — `route-surface.md` route count 46 → 49.
+- **P2** (Med) — added two Docker-free tests for the D4 skip-and-report path (`RunAsync_EdgeWithInvalidConfidence_SkipsEdgeAndReports`, `RunAsync_MemoryUnitWithBlankCaseId_SkipsUnitAndReports`). **Follow-up:** broader Docker-free coverage (reindex vec-hash shape + P3 provider-guard, workflow activity-order, import endpoint status codes, unprovisioned-tenant rejection) remains recommended — tracked as remaining P2 scope.

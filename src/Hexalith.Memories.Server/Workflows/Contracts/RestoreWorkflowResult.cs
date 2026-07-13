@@ -9,7 +9,9 @@ namespace Hexalith.Memories.Server.Workflows.Contracts;
 /// <param name="RestoredMemoryUnits">The number of memory units restored (data plane written + re-indexed).</param>
 /// <param name="RestoredCases">The number of cases restored.</param>
 /// <param name="RestoredEdges">The number of graph edges restored (excludes rebuilt CONTAINS edges).</param>
+/// <param name="SkippedRecords">The number of corrupt records skipped best-effort during restore (zero for a faithful export).</param>
 public sealed record RestoreWorkflowResult(
     int RestoredMemoryUnits,
     int RestoredCases,
-    int RestoredEdges);
+    int RestoredEdges,
+    int SkippedRecords);
