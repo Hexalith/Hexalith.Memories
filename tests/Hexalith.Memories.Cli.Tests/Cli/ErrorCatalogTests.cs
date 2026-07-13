@@ -38,6 +38,15 @@ public sealed class ErrorCatalogTests
         ["EDGE_NOT_FOUND", 1, "REST API"],
         ["BATCH_NOT_FOUND", 1, "REST API"],
         ["RE_INGESTION_IN_PROGRESS", 1, "Retry"],
+        ["IMPORT_SCHEMA_VERSION_UNSUPPORTED", 1, "Re-export"],
+        ["IMPORT_SCOPE_MISMATCH", 1, "import route"],
+        ["IMPORT_TENANT_MISMATCH", 1, "same tenant"],
+        ["IMPORT_CASE_MISMATCH", 1, "same case"],
+        ["IMPORT_TOO_LARGE", 1, "case-by-case"],
+        ["IMPORT_ABORTED", 1, "Retry"],
+        ["IMPORT_EMPTY", 1, "export envelope"],
+        ["IMPORT_MANIFEST_UNREADABLE", 1, "export envelope"],
+        ["RESTORE_STATUS_NOT_FOUND", 1, "instance id"],
         ["TENANT_UPDATE_CONFLICT", 1, "memories tenant list"],
     ];
 

@@ -4,7 +4,7 @@ baseline_commit: a077fd09f21968e494f20c72c62450c0b1d349f6
 
 # Story 26.2: Backup & Restore
 
-Status: in-progress
+Status: review
 
 <!-- Epic: 26 — Test, Deployment & Operational Readiness. Closes audit finding A25 (High, "Missing feature") — feature portion. Story 26.5 closes the docs portion (broader runbook set + final cross-linking). Reinforces NFR16 (zero memory-unit loss on Redis restart, AOF verified). New operator-facing capability → commit `feat(...)` (minor release). New import/restore REST route + client method = additive contract change; do NOT rename/remove existing export contracts. -->
 
@@ -185,6 +185,11 @@ claude-opus-4-8 (BMad dev-story workflow).
 - `dotnet build Hexalith.Memories.slnx -v:m` → Build succeeded, 0 Warning(s), 0 Error(s).
 - Sandbox test runner (no Docker): `DiffEngine_Disabled=true dotnet exec …Server.Tests.dll` → 2599 total, 0 failed, 1 skipped; `…Contracts.Tests.dll` → 586 total, 0 failed. 23 new Docker-free restore/import tests green.
 - `git diff --check` → clean.
+- Completion gate (2026-07-13): the full unit lane exposed nine unmapped restore/import server error codes in the CLI catalog. Added failing catalog coverage first (10 focused failures), implemented actionable translations, then verified 58/58 focused catalog tests and 462/462 full CLI tests.
+- `DiffEngine_Disabled=true bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build` → 4,374 passed, 1 intentional skip, 0 failed across six per-project suites.
+- Fast Aspire lane (`Category=Integration&Category!=IntegrationSlow&Category!=Performance`) → 224 passed, 8 accepted structured skips, 0 failed; `BackupRestoreFidelityIntegrationTests.ExportThenImport_RestoresEveryHashAndEdge` passed against real Redis Stack/FalkorDB.
+- Slow Aspire lane (`Category=IntegrationSlow`) → 16 passed, 0 skipped/failed; `PipelinePersistenceIntegrationTests.RestartTopology_ShouldPreserveIndexedRedisBackedDataAcrossControlledRestart` passed with the zero-loss assertion.
+- Final `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore -m:1` → 0 warnings / 0 errors; `git diff --check` clean; modified C# files normalized to CRLF.
 
 ### Completion Notes List
 
@@ -199,7 +204,9 @@ Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow
 - **Shared syntactic-hash projection.** Factored `SyntacticHashProjection` out of `IndexSyntacticActivity` (behavior-preserving) so ingest and restore write the identical field set; proved by a round-trip test through `CaseService.ParseMemoryUnitFromHash` (AC2). Full Server.Tests suite (2599) stays green — no ingestion regression.
 - **Additive `BuildRestoreEdge`.** No existing graph builder could restore an edge's audit trail (`confidence` + `previousConfidence` + `verifiedBy`) literally, so an additive builder was added; edge identity is reconstructed from `(source, target, type)` — the exported graph-instance `id(r)` is never reused.
 
-**Container-runtime caveat:** the Aspire fidelity test (AC7) and restart test (AC8) compile and reach `review` here but cannot run in the sandbox (no docker/kind). They must be validated in CI or an operator cluster to reach `done`. The Docker-free contract tests cover the same schema-version/scope/edge-identity/dangling-stub/idempotency/round-trip logic locally.
+**Runtime evidence closure (2026-07-13):** Docker and the Dapr/Aspire prerequisites were available during the completion gate. The AC7 fidelity test passed against real Redis Stack and FalkorDB, and the AC8 controlled-restart test passed after replacing the topology while retaining its persistent volumes. The prior container-runtime caveat is resolved.
+
+**Regression closure:** the broad unit lane found that the nine Story 26.2 import/restore error codes were absent from `ErrorMessageCatalog`. Added actionable domain-error translations and explicit catalog tests, restoring the drift guard and full CLI suite to green.
 
 ### File List
 
@@ -236,6 +243,7 @@ Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow
 - `src/Hexalith.Memories.Server/Endpoints/…` via `Program.cs` (`app.MapImportEndpoints();`)
 - `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs` (register workflow/activities + staging store)
 - `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs` (`ImportTenantAsync`/`ImportCaseAsync`)
+- `src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs` (actionable translations for nine import/restore error codes)
 
 **New/Modified — tests:**
 - `tests/Hexalith.Memories.Server.Tests/Import/ImportRequestValidatorTests.cs` (new)
@@ -247,16 +255,22 @@ Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow
 - `tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs` (new)
 - `tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs` (modified — stub-caller count 3→4)
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs` (modified — AC8 zero-loss count assertion)
+- `tests/Hexalith.Memories.Cli.Tests/Cli/ErrorCatalogTests.cs` (modified — import/restore catalog coverage)
 
 **New/Modified — docs:**
 - `docs/operations/backup-restore.md` (new)
 - `docs/operations/disaster-recovery.md` (new)
 - `docs/operations/route-surface.md` (modified — 3 new routes)
 
+**Modified — story tracking:**
+- `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
 ## Change Log
 
 | Date | Change |
 | --- | --- |
+| 2026-07-13 | Completion gates closed locally: fixed nine missing CLI error-catalog mappings found by the broad regression lane; 4,374 unit/contract tests passed with 1 intentional skip; fast Aspire lane passed 224/8/0 including AC7 fidelity; slow Aspire lane passed 16/0/0 including AC8 controlled-restart zero-loss; final Release build 0 warnings/errors. Status → review. |
 | 2026-07-13 | Story 26.2 implemented: import/restore endpoints (`POST …/import`, `GET …/restore/{instanceId}`) consuming the export envelope; durable `RestoreWorkflow` (byte-exact data-plane restore + re-derived chunked semantic vectors + graph node/edge reconstruction with audit trail); additive `BuildRestoreEdge` graph builder; shared `SyntacticHashProjection`; `MemoriesClient` import methods; 23 Docker-free tests + Aspire fidelity test (AC7, CI) + AC8 zero-loss assertion; `backup-restore.md` + `disaster-recovery.md` runbooks. Build 0/0; Server.Tests 2599/0. Status → review. |
 
 ### Review Findings

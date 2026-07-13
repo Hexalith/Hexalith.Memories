@@ -390,6 +390,46 @@ public static class ErrorMessageCatalog
                 CliSuggestion: "Check Redis/FalkorDB connectivity and retry the export.",
                 ExitCode: 2),
 
+            // Story 26.2: backup import / restore codes. The CLI import command remains deferred,
+            // but programmatic client callers can surface these server responses through the shared
+            // CLI error renderer, so every code still needs actionable translation coverage.
+            ["IMPORT_SCHEMA_VERSION_UNSUPPORTED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Re-export the data from a server version compatible with this restore target, then retry.",
+                ExitCode: 1),
+            ["IMPORT_SCOPE_MISMATCH"] = new(
+                CliMessage: null,
+                CliSuggestion: "Post tenant exports to the tenant import route and case exports to the matching case import route.",
+                ExitCode: 1),
+            ["IMPORT_TENANT_MISMATCH"] = new(
+                CliMessage: null,
+                CliSuggestion: "Restore the export into the same tenant id from which it was created.",
+                ExitCode: 1),
+            ["IMPORT_CASE_MISMATCH"] = new(
+                CliMessage: null,
+                CliSuggestion: "Restore the case export into the same case id from which it was created.",
+                ExitCode: 1),
+            ["IMPORT_TOO_LARGE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Restore the export case-by-case or ask an operator to raise the documented import size ceiling.",
+                ExitCode: 1),
+            ["IMPORT_ABORTED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Retry the import and keep the connection open until the request body is uploaded.",
+                ExitCode: 1),
+            ["IMPORT_EMPTY"] = new(
+                CliMessage: null,
+                CliSuggestion: "Provide the JSON export envelope produced by the Memories export endpoint.",
+                ExitCode: 1),
+            ["IMPORT_MANIFEST_UNREADABLE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Verify that the request body is an unmodified JSON export envelope and retry.",
+                ExitCode: 1),
+            ["RESTORE_STATUS_NOT_FOUND"] = new(
+                CliMessage: null,
+                CliSuggestion: "Use the restore instance id returned by the import scheduling endpoint for this tenant.",
+                ExitCode: 1),
+
             // Story 18.5: search lookup — Redis read failed; this is a backend outage, NOT a not-found. Retry
             // rather than treating the URI as unmapped (which could trigger a duplicate re-ingest downstream).
             ["LOOKUP_BACKEND_UNAVAILABLE"] = new(
