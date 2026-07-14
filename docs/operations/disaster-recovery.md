@@ -12,7 +12,9 @@ Only two workloads hold durable data (Server, MCP, and Dapr sidecars are statele
 Cross-links: [backup-restore.md](./backup-restore.md) (backup + restore procedure),
 [deployment-configuration.md](./deployment-configuration.md) (Story 26.1 topology),
 [pipeline-persistence.md](./pipeline-persistence.md) (AOF/NFR16 durability evidence),
-[failure-recovery.md](./failure-recovery.md) (re-ingestion of failed units).
+[failure-recovery.md](./failure-recovery.md) (re-ingestion of failed units),
+[incident-response.md](./incident-response.md) (incident command), [index-rebuild.md](./index-rebuild.md)
+(supported rebuild decisions), and [upgrade-migration.md](./upgrade-migration.md) (upgrade rollback boundaries).
 
 ## Recovery evidence (what backs the guarantees below)
 
@@ -38,13 +40,15 @@ The common case: the Redis pod is rescheduled but its `20Gi` PVC survives.
 
 ```bash
 # 1. Confirm the PVC is Bound and will re-attach.
-kubectl -n memories get pvc redis-data
+kubectl -n hexalith-memories get pvc data-redis-stack-0
 # 2. Let the StatefulSet reschedule the pod; AOF replays from /data on start.
-kubectl -n memories delete pod redis-0        # (only if stuck; normally auto-reschedules)
-kubectl -n memories rollout status statefulset/redis
+kubectl -n hexalith-memories delete pod redis-stack-0 # only with incident-command approval
+kubectl -n hexalith-memories rollout status statefulset/redis-stack
 # 3. Verify AOF replayed and data is present.
-kubectl -n memories exec redis-0 -- redis-cli DBSIZE
-kubectl -n memories exec redis-0 -- redis-cli --scan --pattern "*:mu:*" | head
+kubectl -n hexalith-memories exec redis-stack-0 -- \
+  sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep -E "^(loading|aof_enabled|aof_last_write_status):"'
+kubectl -n hexalith-memories exec redis-stack-0 -- \
+  sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning DBSIZE'
 ```
 
 If the PVC is **lost**, restore a PVC volume snapshot (see backup-restore.md), or fall back to logical
@@ -58,34 +62,44 @@ procedure existed before this story; this section originates it.
 **Pod reschedule (PVC intact):**
 
 ```bash
-kubectl -n memories get pvc falkordb-data
-kubectl -n memories rollout status statefulset/falkordb
+kubectl -n hexalith-memories get pvc data-falkordb-0
+kubectl -n hexalith-memories rollout status statefulset/falkordb
 # AOF replays on start; verify the per-tenant graphs exist and hold nodes.
-kubectl -n memories exec falkordb-0 -- redis-cli GRAPH.LIST
-kubectl -n memories exec falkordb-0 -- redis-cli GRAPH.QUERY "$TENANT" "MATCH (n) RETURN count(n)"
+kubectl -n hexalith-memories exec falkordb-0 -- \
+  sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning GRAPH.LIST'
+kubectl -n hexalith-memories exec falkordb-0 -- \
+  sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning GRAPH.QUERY "$1" "MATCH (n) RETURN count(n)"' -- "$TENANT"
 ```
 
 **FalkorDB physical backup (take on a schedule):**
 
 ```bash
-# Trigger a background save (writes dump.rdb + appendonlydir under the data dir).
-kubectl -n memories exec falkordb-0 -- redis-cli BGSAVE
-kubectl -n memories exec falkordb-0 -- redis-cli INFO persistence | grep -E "aof_enabled|rdb_last_save_time"
-# Copy the data directory off the PVC (or snapshot the 10Gi PVC).
-kubectl -n memories cp falkordb-0:/var/lib/falkordb/data ./falkordb-backup
+# Freeze intake and drain in-flight workflows before this save.
+kubectl -n hexalith-memories exec falkordb-0 -- \
+  sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning BGSAVE'
+kubectl -n hexalith-memories exec falkordb-0 -- \
+  sh -ec 'until redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_bgsave_in_progress:0"; do sleep 2; done; redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_last_bgsave_status:ok"'
+kubectl -n hexalith-memories exec falkordb-0 -- \
+  sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -E "^(aof_enabled|aof_last_write_status|aof_last_bgrewrite_status):"'
 ```
+
+Take a verified `VolumeSnapshot` of `data-falkordb-0` while intake remains frozen, or copy artifacts from a
+read-only mount of a quiesced snapshot. Never copy the live AOF directory. Pair the FalkorDB snapshot ID and
+timestamp with the Redis snapshot ID and timestamp for the same recovery point; resume intake only after both
+backups pass metadata, checksum, and restore-readiness verification.
 
 **FalkorDB physical restore (PVC lost):**
 
 ```bash
 # 1. Scale FalkorDB down so the data dir is quiescent.
-kubectl -n memories scale statefulset/falkordb --replicas=0
+kubectl -n hexalith-memories scale statefulset/falkordb --replicas=0
 # 2. Provision a fresh 10Gi PVC (or restore its VolumeSnapshot), then stage the backup into /var/lib/falkordb/data
 #    (dump.rdb + appendonlydir) using an init job or `kubectl cp` into a maintenance pod that mounts the PVC.
 # 3. Scale back up; FalkorDB loads dump.rdb / replays AOF on start.
-kubectl -n memories scale statefulset/falkordb --replicas=1
-kubectl -n memories rollout status statefulset/falkordb
-kubectl -n memories exec falkordb-0 -- redis-cli GRAPH.QUERY "$TENANT" "MATCH ()-[r]->() RETURN count(r)"
+kubectl -n hexalith-memories scale statefulset/falkordb --replicas=1
+kubectl -n hexalith-memories rollout status statefulset/falkordb
+kubectl -n hexalith-memories exec falkordb-0 -- \
+  sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning GRAPH.QUERY "$1" "MATCH ()-[r]->() RETURN count(r)"' -- "$TENANT"
 ```
 
 If no FalkorDB backup exists, the graph can be **rebuilt by logical restore** (Scenario 3): restore re-MERGEs
@@ -94,6 +108,7 @@ every node and edge (and rebuilds CONTAINS from each unit's `caseId`).
 ## Scenario 3 — Full-cluster loss (cross-cluster recovery)
 
 Both PVCs are gone; recover onto a fresh cluster from the latest **logical export** (same tenant ids).
+Obtain `$TOKEN` through the approved identity workflow and keep shell tracing disabled; never print the token.
 
 1. **Redeploy the topology** on the new cluster:
    `kubectl apply -k deploy/kubernetes/overlays/production` (Server + MCP Deployments; Redis Stack + FalkorDB
@@ -119,7 +134,7 @@ Both PVCs are gone; recover onto a fresh cluster from the latest **logical expor
 
 ## Caveats (hardening carried from Story 26.1 review)
 
-- Redis and FalkorDB currently run as **root** (no `runAsNonRoot`; an `fsGroup`/PVC-permission hardening TODO
-  remains). Ensure restored PVCs keep data-dir ownership compatible with the container.
+- Redis and FalkorDB currently run as **root** (no `runAsNonRoot`; `fsGroup`/PVC-permission hardening remains
+  an explicitly tracked gap). Ensure restored PVCs keep data-dir ownership compatible with the container.
 - There are **no NetworkPolicies** yet. On a rebuilt cluster, restrict data-plane access to the Server/MCP
   pods as part of hardening. These fixes belong to a dedicated hardening story, not to a recovery run.

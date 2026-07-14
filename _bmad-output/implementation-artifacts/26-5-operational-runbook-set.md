@@ -4,7 +4,7 @@ baseline_commit: e574c313ae067b72ac7f69dd3061099c1a425466
 
 # Story 26.5: Operational Runbook Set
 
-Status: ready-for-dev
+Status: review
 
 <!-- Epic 26 — Test, Deployment & Operational Readiness. Documentation-and-contract-test story closing the runbook portion assigned to audit finding A25. Do not change product behavior, deployment manifests, package versions, alert infrastructure, benchmark inputs, or submodule pointers. -->
 
@@ -52,56 +52,56 @@ Story 26.5 is checkpoint-heavy. The implementation remains one story only if eve
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Freeze the live audit anchors and evidence contract** (AC: 1, 8, 10)
-  - [ ] Record the implementation-start revision/date and re-check Stories 26.2, 26.6, and 26.7 plus the production Kustomize, route, health, telemetry, index, and workflow anchors. Record moved/stale anchors and the adopted replacement in the completion notes.
-  - [ ] Confirm the exact six filenames and shared headings before authoring; fill one checkpoint row per runbook, navigation/recovery reconciliation, contract test, and final verification.
-  - [ ] Treat current code/manifests and `project-context.md` as authoritative over stale planning-version/topology prose. Do not silently “correct” behavior in documentation.
+- [x] **Task 1 — Freeze the live audit anchors and evidence contract** (AC: 1, 8, 10)
+  - [x] Record the implementation-start revision/date and re-check Stories 26.2, 26.6, and 26.7 plus the production Kustomize, route, health, telemetry, index, and workflow anchors. Record moved/stale anchors and the adopted replacement in the completion notes.
+  - [x] Confirm the exact six filenames and shared headings before authoring; fill one checkpoint row per runbook, navigation/recovery reconciliation, contract test, and final verification.
+  - [x] Treat current code/manifests and `project-context.md` as authoritative over stale planning-version/topology prose. Do not silently “correct” behavior in documentation.
 
-- [ ] **Task 2 — Author the capacity-planning runbook** (AC: 1, 2)
-  - [ ] Publish the current Server, MCP, Dapr sidecar, Redis, and FalkorDB requests/limits plus 20 GiB Redis and 10 GiB FalkorDB PVC bootstrap values by referencing the manifests, not duplicating them as timeless recommendations.
-  - [ ] Provide a worked, measurement-first worksheet for vector dimensions, chunks/stored-vector count, metadata/content, Redis Search/HNSW, FalkorDB, workflow/state, AOF/RDB, PVC growth, and headroom; label every value as measured, configured, formula-derived, or assumed.
-  - [ ] Include baseline/load/measure/project/verify/stop/recover steps and evidence artifacts. Explain no-HPA, single-replica, `noeviction`, provider quota, and process-local extraction-gate constraints.
+- [x] **Task 2 — Author the capacity-planning runbook** (AC: 1, 2)
+  - [x] Publish the current Server, MCP, Dapr sidecar, Redis, and FalkorDB requests/limits plus 20 GiB Redis and 10 GiB FalkorDB PVC bootstrap values by referencing the manifests, not duplicating them as timeless recommendations.
+  - [x] Provide a worked, measurement-first worksheet for vector dimensions, chunks/stored-vector count, metadata/content, Redis Search/HNSW, FalkorDB, workflow/state, AOF/RDB, PVC growth, and headroom; label every value as measured, configured, formula-derived, or assumed.
+  - [x] Include baseline/load/measure/project/verify/stop/recover steps and evidence artifacts. Explain no-HPA, single-replica, `noeviction`, provider quota, and process-local extraction-gate constraints.
 
-- [ ] **Task 3 — Author the incident-response runbook** (AC: 1, 3)
-  - [ ] Define severity, commander/owner roles, response timing, scope/blast-radius assessment, communications, containment, evidence/redaction, recovery verification, escalation, and post-incident review.
-  - [ ] Build the decision tree from structured health JSON and current metrics/log/error codes, including Degraded HTTP 200, missing event-topic ingestion, backend/provider/rate-limit/workflow/consistency/capacity branches, and missing telemetry.
-  - [ ] Route destructive or stateful recovery to the canonical backup/restore, disaster-recovery, failure-recovery, consistency, and index-rebuild procedures; never recommend secret disclosure or direct state edits.
+- [x] **Task 3 — Author the incident-response runbook** (AC: 1, 3)
+  - [x] Define severity, commander/owner roles, response timing, scope/blast-radius assessment, communications, containment, evidence/redaction, recovery verification, escalation, and post-incident review.
+  - [x] Build the decision tree from structured health JSON and current metrics/log/error codes, including Degraded HTTP 200, missing event-topic ingestion, backend/provider/rate-limit/workflow/consistency/capacity branches, and missing telemetry.
+  - [x] Route destructive or stateful recovery to the canonical backup/restore, disaster-recovery, failure-recovery, consistency, and index-rebuild procedures; never recommend secret disclosure or direct state edits.
 
-- [ ] **Task 4 — Author the index-rebuild decision runbook** (AC: 1, 4)
-  - [ ] Document the verify/inspect/repair, embedding migration, restore/import, and full reprovision/re-ingest paths with applicability, limitations, authorization, prerequisites, verification, stop, and rollback/recovery.
-  - [ ] Reuse `docs/dev/consistency.md`, `embedding-providers.md`, and the Story 26.2 recovery docs. Call out supported graph re-merge/orphan removal, unrepairable missing syntactic records, unsupported semantic re-index, duplicate EventStore replay, current chunked vector shape, and provisioning ownership.
-  - [ ] Require backup, intake/workflow coordination, tenant canary, per-axis parity, index/graph evidence, and preservation of old targets until acceptance.
+- [x] **Task 4 — Author the index-rebuild decision runbook** (AC: 1, 4)
+  - [x] Document the verify/inspect/repair, embedding migration, restore/import, and full reprovision/re-ingest paths with applicability, limitations, authorization, prerequisites, verification, stop, and rollback/recovery.
+  - [x] Reuse `docs/dev/consistency.md`, `embedding-providers.md`, and the Story 26.2 recovery docs. Call out supported graph re-merge/orphan removal, unrepairable missing syntactic records, unsupported semantic re-index, duplicate EventStore replay, current chunked vector shape, and provisioning ownership.
+  - [x] Require backup, intake/workflow coordination, tenant canary, per-axis parity, index/graph evidence, and preservation of old targets until acceptance.
 
-- [ ] **Task 5 — Author the tenant lifecycle runbook** (AC: 1, 5)
-  - [ ] Describe authenticated REST create/provision-status/verify and delete/deletion-status flows using the route constants/current endpoint contracts; document the typed client's current 768-dimension limitation and do not infer a CLI surface from stale prose or verifier messages.
-  - [ ] Define onboarding preflight for identity mapping, capacity/quota, dimensions/provider secret references, physical isolation, Active status, canary ingest/search, and telemetry handoff.
-  - [ ] Define offboarding freeze/approval/export/consistent-backup/delete/poll/independent-absence-verification/secret-retirement/evidence sequence, including the post-registry-removal `TENANT_NOT_FOUND` status race, idempotent DELETE recovery for failed states, and non-reversible/cross-tenant-reference boundaries.
+- [x] **Task 5 — Author the tenant lifecycle runbook** (AC: 1, 5)
+  - [x] Describe authenticated REST create/provision-status/verify and delete/deletion-status flows using the route constants/current endpoint contracts; document the typed client's current 768-dimension limitation and do not infer a CLI surface from stale prose or verifier messages.
+  - [x] Define onboarding preflight for identity mapping, capacity/quota, dimensions/provider secret references, physical isolation, Active status, canary ingest/search, and telemetry handoff.
+  - [x] Define offboarding freeze/approval/export/consistent-backup/delete/poll/independent-absence-verification/secret-retirement/evidence sequence, including the post-registry-removal `TENANT_NOT_FOUND` status race, idempotent DELETE recovery for failed states, and non-reversible/cross-tenant-reference boundaries.
 
-- [ ] **Task 6 — Author the upgrade/migration runbook** (AC: 1, 6)
-  - [ ] Cover inventory/compatibility, rendered diff, image provenance, secret/config, backup and restore rehearsal, intake/workflow drain, canary, rollout, structured health, smoke/parity, and observation-window evidence.
-  - [ ] Separate stateless rollback from state/schema recovery; retain PVCs and old logical/snapshot evidence. Link rather than duplicate embedding provider migration.
-  - [ ] Include Dapr workflow determinism/versioning/purge considerations, CRD/runtime upgrade order, Kubernetes skew, container-base compatibility, Redis Stack-to-Redis 8 planning, and staged FalkorDB migration as preflight topics only—do not upgrade any component in this story.
+- [x] **Task 6 — Author the upgrade/migration runbook** (AC: 1, 6)
+  - [x] Cover inventory/compatibility, rendered diff, image provenance, secret/config, backup and restore rehearsal, intake/workflow drain, canary, rollout, structured health, smoke/parity, and observation-window evidence.
+  - [x] Separate stateless rollback from state/schema recovery; retain PVCs and old logical/snapshot evidence. Link rather than duplicate embedding provider migration.
+  - [x] Include Dapr workflow determinism/versioning/purge considerations, CRD/runtime upgrade order, Kubernetes skew, container-base compatibility, Redis Stack-to-Redis 8 planning, and staged FalkorDB migration as preflight topics only—do not upgrade any component in this story.
 
-- [ ] **Task 7 — Author the monitoring and alerting-threshold runbook** (AC: 1, 7)
-  - [ ] Inventory the actual `Hexalith.Memories` meter/dashboard signals and structured health entries; distinguish emitted metrics, infrastructure metrics, and signals the operator must supply.
-  - [ ] Publish a signal/condition/window/severity/NoData/blast-radius/action/verification table. Carry hard PRD targets exactly; mark all other starter thresholds provisional and require baseline/tuning ownership.
-  - [ ] Include stalled-progress rather than depth-only queue detection, index-count-versus-byte distinction, rate-limit/failure ratios, OOM/restart/PVC/AOF/backend signals, handler mismatch/drop, OTLP missing data, and low-cardinality/redaction rules.
+- [x] **Task 7 — Author the monitoring and alerting-threshold runbook** (AC: 1, 7)
+  - [x] Inventory the actual `Hexalith.Memories` meter/dashboard signals and structured health entries; distinguish emitted metrics, infrastructure metrics, and signals the operator must supply.
+  - [x] Publish a signal/condition/window/severity/NoData/blast-radius/action/verification table. Carry hard PRD targets exactly; mark all other starter thresholds provisional and require baseline/tuning ownership.
+  - [x] Include stalled-progress rather than depth-only queue detection, index-count-versus-byte distinction, rate-limit/failure ratios, OOM/restart/PVC/AOF/backend signals, handler mismatch/drop, OTLP missing data, and low-cardinality/redaction rules.
 
-- [ ] **Task 8 — Complete navigation and reconcile recovery docs** (AC: 3-8)
-  - [ ] Add all six direct links to both `deployment-configuration.md` and `failure-recovery.md` while preserving their existing contracts, review-cadence comment, exact metrics/log IDs, and deployment drift guards.
-  - [ ] Reconcile only the stale namespace, StatefulSet/pod/PVC, authentication, physical-consistency, and navigation examples in `backup-restore.md` and `disaster-recovery.md`; parameterize safe values, distinguish the still-current `redis` Service/container/component from stale StatefulSet references, and validate commands against current production manifests.
-  - [ ] Require intake quiescence/workflow drain or a supported atomic group snapshot, completed Redis persistence status, no copying from a live mutating AOF directory, paired Redis/FalkorDB snapshot IDs/timestamps, verification, and controlled intake resume.
-  - [ ] Cross-link each new procedure to the minimum canonical related sources and validate every changed relative Markdown link.
+- [x] **Task 8 — Complete navigation and reconcile recovery docs** (AC: 3-8)
+  - [x] Add all six direct links to both `deployment-configuration.md` and `failure-recovery.md` while preserving their existing contracts, review-cadence comment, exact metrics/log IDs, and deployment drift guards.
+  - [x] Reconcile only the stale namespace, StatefulSet/pod/PVC, authentication, physical-consistency, and navigation examples in `backup-restore.md` and `disaster-recovery.md`; parameterize safe values, distinguish the still-current `redis` Service/container/component from stale StatefulSet references, and validate commands against current production manifests.
+  - [x] Require intake quiescence/workflow drain or a supported atomic group snapshot, completed Redis persistence status, no copying from a live mutating AOF directory, paired Redis/FalkorDB snapshot IDs/timestamps, verification, and controlled intake resume.
+  - [x] Cross-link each new procedure to the minimum canonical related sources and validate every changed relative Markdown link.
 
-- [ ] **Task 9 — Add the runbook-set contract test** (AC: 1, 8, 9)
-  - [ ] Add `OperationalRunbookSetTests.cs` beside the existing deployment contracts; reuse repo-root discovery and Shouldly patterns, with no Docker, network, new library, or duplicate parser product.
-  - [ ] Verify the six-file required-new set without rejecting existing operations docs, headings, backlinks, relative links, no unfinished/unsafe examples, and critical code/manifest/metric/route anchors. Use structured/anchored checks and small source ties rather than restating entire runbooks in assertions.
-  - [ ] Keep `DeploymentConfigurationContractTests` green and add only this one C# type/file.
+- [x] **Task 9 — Add the runbook-set contract test** (AC: 1, 8, 9)
+  - [x] Add `OperationalRunbookSetTests.cs` beside the existing deployment contracts; reuse repo-root discovery and Shouldly patterns, with no Docker, network, new library, or duplicate parser product.
+  - [x] Verify the six-file required-new set without rejecting existing operations docs, headings, backlinks, relative links, no unfinished/unsafe examples, and critical code/manifest/metric/route anchors. Use structured/anchored checks and small source ties rather than restating entire runbooks in assertions.
+  - [x] Keep `DeploymentConfigurationContractTests` green and add only this one C# type/file.
 
-- [ ] **Task 10 — Execute and record every checkpoint** (AC: 9, 10)
-  - [ ] Build `Hexalith.Memories.Server.Tests.csproj` in Release, then run the focused xUnit v3 assembly classes `OperationalRunbookSetTests` and `DeploymentConfigurationContractTests` with `DiffEngine_Disabled=true`.
-  - [ ] Run the normal Docker-free Server test project/lane and `dotnet build Hexalith.Memories.slnx --configuration Release -m:1 /nodeReuse:false`; record counts and any legitimate baseline change without copying Story 26.4's old count as a new result.
-  - [ ] Run `git diff --check`, resolve every Markdown link in the changed set, confirm the file-scope/forbidden-scope contract, and complete every evidence-table owner/status/date cell before moving the story to review.
+- [x] **Task 10 — Execute and record every checkpoint** (AC: 9, 10)
+  - [x] Build `Hexalith.Memories.Server.Tests.csproj` in Release, then run the focused xUnit v3 assembly classes `OperationalRunbookSetTests` and `DeploymentConfigurationContractTests` with `DiffEngine_Disabled=true`.
+  - [x] Run the normal Docker-free Server test project/lane and `dotnet build Hexalith.Memories.slnx --configuration Release -m:1 /nodeReuse:false`; record counts and any legitimate baseline change without copying Story 26.4's old count as a new result.
+  - [x] Run `git diff --check`, resolve every Markdown link in the changed set, confirm the file-scope/forbidden-scope contract, and complete every evidence-table owner/status/date cell before moving the story to review.
 
 ## File Scope
 
@@ -288,10 +288,67 @@ Complete every row before moving the story to review. Split the story if one row
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+OpenAI Codex (GPT-5)
+
+### Implementation Plan
+
+- Freeze source-backed operational literals and record every live mismatch before authoring.
+- Implement the six runbooks in task order using the shared executable-safety section contract.
+- Reconcile navigation and recovery commands only after the new procedures exist.
+- Add one Docker-free source-drift contract, then run focused, project, solution, link, scope, and whitespace gates.
 
 ### Debug Log References
 
+- 2026-07-14 audit RED: the exact six required runbook files were absent, so the preflight file-set assertion failed as expected.
+- 2026-07-14 audit GREEN: source-anchor shell contract passed at revision `1553ee6` for production namespace, lifecycle routes, degraded-health semantics, `memories.index.size`, unsupported semantic repair, and the five-minute fail-open replay gate.
+- Checkpoint tracker (review status is implementation self-review; independent peer review remains the next workflow):
+
+  | Checkpoint | Owner | Validation command/artifact | Review status | Completion date |
+  |---|---|---|---|---|
+  | Audit-anchor preflight | Developer / Reviewer | Revision plus source-anchor shell contract | complete | 2026-07-14 |
+  | Capacity planning | Developer / Operator reviewer | `capacity-planning.md` plus source-tied contract tests | complete | 2026-07-14 |
+  | Incident response | Developer / Incident owner | `incident-response.md` plus decision-tree/redaction review | complete | 2026-07-14 |
+  | Index rebuild | Developer / Data owner | `index-rebuild.md` plus supported-path/rollback review | complete | 2026-07-14 |
+  | Tenant lifecycle | Developer / Tenant owner | `tenant-onboarding-offboarding.md` plus route/destructive-step review | complete | 2026-07-14 |
+  | Upgrade/migration | Developer / Release owner | `upgrade-migration.md` plus compatibility/rollback review | complete | 2026-07-14 |
+  | Monitoring/thresholds | Developer / Observability owner | `monitoring-alerting-thresholds.md` plus signal/threshold/NoData review | complete | 2026-07-14 |
+  | Navigation/recovery reconciliation | Developer / Operator reviewer | Changed-link resolution plus production command review | complete | 2026-07-14 |
+  | Documentation contract | Developer / Test reviewer | Focused operational and deployment contract tests: 11 passed | complete | 2026-07-14 |
+  | Final scope and build | Developer / Reviewer | Server 2,629 total/0 failed/1 skipped; Release builds 0 warnings/errors; clean diff/scope gates | complete | 2026-07-14 |
+
 ### Completion Notes List
 
+- Implementation started 2026-07-14 at `1553ee6708f644f3a4bc3638d3aaceed682b2371`; the story baseline remains `e574c313ae067b72ac7f69dd3061099c1a425466`.
+- Story 26.2 is present at `review` and its current restore/recovery source was adopted. Story artifacts 26.6 and 26.7 are absent from this checkout although sprint tracking marks both `review`; their sprint comments and current checked-in CI/runtime sources are used without claiming their external evidence is present.
+- Live replacements for stale planning prose: production namespace `hexalith-memories`; StatefulSets/pods `redis-stack`/`redis-stack-0` and `falkordb`/`falkordb-0`; generated PVCs `data-redis-stack-0` and `data-falkordb-0`; Server Dapr app-id `memories`; canonical lifecycle paths from `MemoriesRoutes`; health JSON semantics from `health-checks.md`; metric names from `MemoriesMeter`; consistency limitations from `SemanticIndexer`/repair workflow; replay behavior from `WorkflowReplaySafetyHostedService`.
+- The required authoring contract is frozen at exactly six filenames and the eight exact second-level headings listed in AC1. Current code/manifests and project context take precedence over architecture version tables and missing review artifacts.
+- Capacity planning now publishes the bootstrap resource/PVC values as source-backed configuration, a classified NFR14 worksheet, per-unit/per-vector/per-tenant delta method, authenticated backend measurement commands, persistence-rewrite headroom, and evidence-based scale/stop decisions without claiming HPA, backend redundancy, or linear scalability.
+- Incident response now defines severity/timing/roles, read-only first response, structured health parsing, tenant/backend blast-radius containment, all required degradation and stalled-ingestion branches, current import/restore error families, redacted evidence, and explicit handoff to owned recovery procedures without direct state edits.
+- Index recovery now uses a four-path decision matrix covering bounded consistency repair, blue/green migration, logical/physical restore, and destructive reprovision/re-ingestion. It records unsupported semantic repair, missing-syntactic and dedup/no-force-replay limits, chunked vectors, provisioning ownership, canary/parity gates, and retained-target rollback.
+- Tenant lifecycle now follows the authenticated asynchronous route contract, distinguishes typed-client 768-default behavior, requires terminal provisioning plus independent Active/isolation/canary proof, and implements freeze/export/paired-backup/delete/404-race/independent-absence/secret-retirement offboarding with failed-state re-trigger and cross-tenant/compliance limits.
+- Upgrade/migration now gates on live version/skew/inventory, rendered provenance diff, immutable backup and restore rehearsal, workflow quiescence and replay-version safety, canary/control parity, and observation evidence. It separates stateless rollback from CRD/schema/data recovery, retains PVCs, and treats Redis 8/FalkorDB changes as separate staged migrations.
+- Monitoring/thresholds now maps real meter/dashboard/health/infrastructure sources to owner, severity, condition, window, NoData, blast radius, action, and verification. It preserves the exact PRD search/throughput/freshness/startup targets, labels other thresholds provisional, pairs queues with progress, and makes missing telemetry/cardinality/redaction explicit without claiming alert rules are deployed.
+- Navigation now exposes all six new runbooks directly from both required anchors. Backup/recovery examples use the production namespace, StatefulSet/pod/PVC identities and in-container secret authentication; coordinated quiescence, completed persistence checks, paired snapshot evidence, quiesced artifact copying, verification, and controlled intake resumption replace the stale live-copy procedure. A focused shell gate resolved every relative link across all ten changed operation documents and rejected stale executable resource examples.
+- The Docker-free documentation contract now parses real second-level headings and Markdown links outside code/comments, rejects repository traversal and unresolved targets, guards unfinished/unsafe executable examples, and ties namespace, data-plane resource names, lifecycle routes, emitted metric names, dashboard normalization, and Degraded-to-HTTP-200 semantics to canonical sources. The Release test project builds with zero warnings/errors; the focused new and existing deployment contracts pass 11/11.
+- Final verification completed: the focused contracts pass 11/11; the normal Docker-free Server assembly passes 2,628 with one existing skip and zero failures (2,629 total, five more tests than the pre-change lane); both the Server test project and full Release solution build with zero warnings/errors; `git diff --check`, changed-link resolution, CRLF, 13-file declared scope, and forbidden-scope gates pass. The three dirty `references/Hexalith.EventStore`, `references/Hexalith.FrontComposer`, and `references/Hexalith.Tenants` worktrees pre-date this implementation and remain untouched/uncommitted.
+- All ten owner/status/date rows are complete in the Dev Agent Record checkpoint tracker, the workflow-permitted execution-evidence location; the story-authoring checkpoint table above remains preserved as immutable context for independent review.
+
 ### File List
+
+- docs/operations/capacity-planning.md
+- docs/operations/incident-response.md
+- docs/operations/index-rebuild.md
+- docs/operations/tenant-onboarding-offboarding.md
+- docs/operations/upgrade-migration.md
+- docs/operations/monitoring-alerting-thresholds.md
+- docs/operations/deployment-configuration.md
+- docs/operations/failure-recovery.md
+- docs/operations/backup-restore.md
+- docs/operations/disaster-recovery.md
+- tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs
+- _bmad-output/implementation-artifacts/26-5-operational-runbook-set.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+
+## Change Log
+
+- 2026-07-14: Added six source-backed operational runbooks, direct navigation, safe production-aligned backup/recovery procedures, and one Docker-free documentation contract. Completed all focused, Server, Release-build, link, whitespace, and scope gates and moved the story to review.

@@ -140,3 +140,12 @@ Queued | Extracting | Embedding | Indexing
 - Dedup key is **not** cleared on `DELETE /memory-units/{id}` for indexed units — re-ingestion via
   `POST /api/v1/ingest` of the same source URI hits the duplicate short-circuit. To re-ingest a deleted
   unit, use the failed-units re-ingest endpoint (which clears the key). This asymmetry is intentional.
+
+## Operational runbooks
+
+- [Capacity planning](./capacity-planning.md)
+- [Incident response](./incident-response.md)
+- [Index rebuild and recovery decisions](./index-rebuild.md)
+- [Tenant onboarding and offboarding](./tenant-onboarding-offboarding.md)
+- [Upgrade and migration](./upgrade-migration.md)
+- [Monitoring and alerting thresholds](./monitoring-alerting-thresholds.md)

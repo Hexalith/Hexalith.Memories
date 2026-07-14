@@ -14,7 +14,9 @@ Restore fidelity is proved end to end by the integration test
 
 Cross-links: [deployment-configuration.md](./deployment-configuration.md) (topology, PVCs, AOF enforcement),
 [pipeline-persistence.md](./pipeline-persistence.md) (AOF/NFR16 durability), [disaster-recovery.md](./disaster-recovery.md)
-(pod/cluster-loss recovery), [failure-recovery.md](./failure-recovery.md) (re-ingestion of failed units).
+(pod/cluster-loss recovery), [failure-recovery.md](./failure-recovery.md) (re-ingestion of failed units),
+[incident-response.md](./incident-response.md) (incident command), [index-rebuild.md](./index-rebuild.md)
+(supported rebuild decisions), and [upgrade-migration.md](./upgrade-migration.md) (upgrade backup gates).
 
 ## What is (and is not) captured
 
@@ -48,6 +50,7 @@ The export is a **logical** snapshot, not a byte-image of Redis. Restore fidelit
 ## Logical backup (export)
 
 Export produces the portable JSON envelope (schema version 1, `X-Export-Schema-Version: 1`).
+Obtain `$TOKEN` through the approved identity workflow, keep it out of shell tracing and logs, and never print it.
 
 ```bash
 # Tenant-scoped export (all cases)
@@ -77,29 +80,56 @@ AOF configuration is **repo-owned and already enforced** (`deploy/redis/redis.co
 
 Physical backup options, in order of preference:
 
-1. **PVC volume snapshot (primary).** Use your CSI driver's `VolumeSnapshot` on the Redis (`20Gi`) and
-   FalkorDB (`10Gi`) PVCs. Snapshot both together to keep the data plane and graph consistent.
+1. **Coordinated PVC volume snapshots (primary).** Use the provider's supported atomic group-snapshot
+   capability when available. Otherwise freeze tenant intake, drain in-flight workflows, and keep intake
+   frozen until both snapshots have completed and been verified. Independent live snapshots are not a
+   consistency boundary.
 
    ```bash
-   kubectl -n memories apply -f - <<'EOF'
+   # Replace the class and snapshot names with approved values for this recovery point.
+   kubectl -n hexalith-memories apply -f - <<'EOF'
    apiVersion: snapshot.storage.k8s.io/v1
    kind: VolumeSnapshot
-   metadata: { name: redis-data-snap, namespace: memories }
-   spec: { volumeSnapshotClassName: csi-snapclass, source: { persistentVolumeClaimName: redis-data } }
+   metadata: { name: redis-stack-data-snap, namespace: hexalith-memories }
+   spec: { volumeSnapshotClassName: csi-snapclass, source: { persistentVolumeClaimName: data-redis-stack-0 } }
+   ---
+   apiVersion: snapshot.storage.k8s.io/v1
+   kind: VolumeSnapshot
+   metadata: { name: falkordb-data-snap, namespace: hexalith-memories }
+   spec: { volumeSnapshotClassName: csi-snapclass, source: { persistentVolumeClaimName: data-falkordb-0 } }
    EOF
    ```
 
-2. **File-level backup (portable).** Trigger a background save, then copy the AOF/RDB artifacts off the PVC.
+   Wait for both `VolumeSnapshot` objects to report `readyToUse: true`. Record both snapshot IDs, creation
+   timestamps, source PVC UIDs, and the frozen-intake window in the same evidence record. Do not resume intake
+   until restore metadata and snapshot readability have been verified.
+
+2. **File-level backup from quiesced storage (portable).** Freeze intake and drain workflows. Trigger an RDB
+   save in each authenticated data-plane process, then poll persistence until the save completes successfully.
 
    ```bash
    # Redis
-   kubectl -n memories exec redis-0 -- redis-cli BGSAVE
-   kubectl -n memories cp redis-0:/data ./redis-backup
+   kubectl -n hexalith-memories exec redis-stack-0 -- \
+     sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning BGSAVE'
+   kubectl -n hexalith-memories exec redis-stack-0 -- \
+     sh -ec 'until redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_bgsave_in_progress:0"; do sleep 2; done; redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_last_bgsave_status:ok"'
+   kubectl -n hexalith-memories exec redis-stack-0 -- \
+     sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep -E "^(aof_enabled|aof_last_write_status|aof_last_bgrewrite_status):"'
 
-   # FalkorDB (originates a repo procedure — see Disaster Recovery for full detail)
-   kubectl -n memories exec falkordb-0 -- redis-cli BGSAVE
-   kubectl -n memories cp falkordb-0:/var/lib/falkordb/data ./falkordb-backup
+   # FalkorDB
+   kubectl -n hexalith-memories exec falkordb-0 -- \
+     sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning BGSAVE'
+   kubectl -n hexalith-memories exec falkordb-0 -- \
+     sh -ec 'until redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_bgsave_in_progress:0"; do sleep 2; done; redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_last_bgsave_status:ok"'
+   kubectl -n hexalith-memories exec falkordb-0 -- \
+     sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -E "^(aof_enabled|aof_last_write_status|aof_last_bgrewrite_status):"'
    ```
+
+   Never copy a live, mutating AOF directory from either pod. After the checks pass, take coordinated PVC
+   snapshots or scale the StatefulSets down under the approved maintenance procedure and mount the PVCs
+   read-only in maintenance pods. Copy and checksum the RDB/AOF artifacts only from that quiesced or snapshot
+   mount. Record the Redis and FalkorDB artifact IDs, timestamps, checksums, source PVC UIDs, and restore-test
+   result together. Resume intake only after the backup is verified and both workloads are healthy.
 
 ## Restore procedure
 
@@ -153,13 +183,16 @@ or resumed restore converges to the same state.
 
 ```bash
 # Memory-unit hashes restored
-kubectl -n memories exec redis-0 -- redis-cli --scan --pattern "$TENANT:mu:*" | wc -l
+kubectl -n hexalith-memories exec redis-stack-0 -- \
+  sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "$1:mu:*"' -- "$TENANT" | wc -l
 
 # Semantic vectors re-derived
-kubectl -n memories exec redis-0 -- redis-cli --scan --pattern "$TENANT:vec:*" | wc -l
+kubectl -n hexalith-memories exec redis-stack-0 -- \
+  sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "$1:vec:*"' -- "$TENANT" | wc -l
 
 # Graph edges restored (per tenant graph)
-kubectl -n memories exec falkordb-0 -- redis-cli GRAPH.QUERY "$TENANT" "MATCH ()-[r]->() RETURN count(r)"
+kubectl -n hexalith-memories exec falkordb-0 -- \
+  sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning GRAPH.QUERY "$1" "MATCH ()-[r]->() RETURN count(r)"' -- "$TENANT"
 ```
 
 A search against the restored tenant should return results (confirms the re-derived vectors are indexed).

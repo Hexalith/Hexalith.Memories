@@ -149,6 +149,15 @@ A content-asserting drift-guard test protects this contract:
 
 Story 26.1 closes the former aspirate-manifest deferral with the Kustomize base and production overlay documented above. Aspirate/Helm output remains non-authoritative; deployment changes must update the Kustomize artifact, its executable tests, and this operator contract together.
 
+## Operational runbooks
+
+- [Capacity planning](./capacity-planning.md)
+- [Incident response](./incident-response.md)
+- [Index rebuild and recovery decisions](./index-rebuild.md)
+- [Tenant onboarding and offboarding](./tenant-onboarding-offboarding.md)
+- [Upgrade and migration](./upgrade-migration.md)
+- [Monitoring and alerting thresholds](./monitoring-alerting-thresholds.md)
+
 ## References
 
 - Story 18.2 — Deployment Configuration Contract Publication (this contract).
