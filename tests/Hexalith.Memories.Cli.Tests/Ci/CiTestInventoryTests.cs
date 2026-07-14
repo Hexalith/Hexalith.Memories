@@ -352,7 +352,10 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("artifacts/production-deployment-verification/**");
         verifier.ShouldContain("--image', $KindNodeImage");
         verifier.ShouldContain("test ! -e /app/appsettings.Development.json");
+        verifier.ShouldContain("Get-RunningContainerObservation");
         verifier.ShouldContain("Get-RunningPodName");
+        verifier.ShouldContain("state.running.startedAt");
+        verifier.ShouldContain("$runningContainerInstance");
         verifier.ShouldContain("verification.hexalith.com/dapr-token-stage");
         verifier.ShouldContain("verification-invalid-dapr-api-token");
         verifier.ShouldContain("required-dapr-token-unhealthy");

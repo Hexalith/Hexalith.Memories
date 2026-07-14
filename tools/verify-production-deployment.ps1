@@ -118,7 +118,7 @@ function Apply-GeneratedSecret {
     }
 }
 
-function Get-RunningPodName {
+function Get-RunningContainerObservation {
     param(
         [Parameter(Mandatory)][string]$AppName,
         [Parameter(Mandatory)][string]$Container,
@@ -128,14 +128,14 @@ function Get-RunningPodName {
 
     $json = @(& kubectl --request-timeout=15s get pods -n $namespace -l "app.kubernetes.io/name=$AppName" -o json 2>$null) -join [Environment]::NewLine
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
-        return ''
+        return $null
     }
 
     try {
         $items = @(($json | ConvertFrom-Json).items)
     }
     catch {
-        return ''
+        return $null
     }
 
     $pod = @($items |
@@ -161,10 +161,38 @@ function Get-RunningPodName {
         Sort-Object { [DateTime]$_.metadata.creationTimestamp } -Descending |
         Select-Object -First 1)
     if ($pod.Count -eq 0) {
+        return $null
+    }
+
+    $containerStatus = @($pod[0].status.containerStatuses |
+        Where-Object { $_.name -eq $Container -and $null -ne $_.state.running })[0]
+    $startedAt = if ($null -eq $containerStatus.state.running.startedAt) {
+        $null
+    }
+    else {
+        ([DateTime]$containerStatus.state.running.startedAt).ToUniversalTime()
+    }
+
+    return [pscustomobject]@{
+        PodName = [string]$pod[0].metadata.name
+        ContainerStartedAt = $startedAt
+    }
+}
+
+function Get-RunningPodName {
+    param(
+        [Parameter(Mandatory)][string]$AppName,
+        [Parameter(Mandatory)][string]$Container,
+        [string]$RequiredAnnotationName = '',
+        [string]$RequiredAnnotationValue = ''
+    )
+
+    $observation = Get-RunningContainerObservation @PSBoundParameters
+    if ($null -eq $observation) {
         return ''
     }
 
-    return [string]$pod[0].metadata.name
+    return [string]$observation.PodName
 }
 
 function Get-HealthResponse {
@@ -208,18 +236,27 @@ function Wait-AggregateStatus {
     Set-VerificationStage $Stage
     $deadline = [DateTime]::UtcNow.AddMinutes(4)
     $runningAt = $null
-    $runningPod = ''
+    $runningContainerInstance = ''
     $lastBody = ''
     $lastStatusCode = $null
     $expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }
     while ([DateTime]::UtcNow -lt $deadline) {
-        $pod = Get-RunningPodName $AppName $Container $RequiredPodAnnotationName $RequiredPodAnnotationValue
-        if (-not [string]::IsNullOrWhiteSpace($pod)) {
-            if ($null -eq $runningAt -or $pod -ne $runningPod) {
-                # Reset the startup timer when a new pod is observed (e.g. a restart) so the
-                # -TimeoutSeconds budget is measured from the current container, not a torn-down predecessor.
-                $runningAt = [DateTime]::UtcNow
-                $runningPod = $pod
+        $observation = Get-RunningContainerObservation $AppName $Container $RequiredPodAnnotationName $RequiredPodAnnotationValue
+        if ($null -ne $observation) {
+            $pod = [string]$observation.PodName
+            $containerStartedAt = $observation.ContainerStartedAt
+            $containerInstance = if ($null -eq $containerStartedAt) {
+                $pod
+            }
+            else {
+                "$pod|$($containerStartedAt.ToString('o'))"
+            }
+            if ($null -eq $runningAt -or $containerInstance -ne $runningContainerInstance) {
+                # A Kubernetes container can restart inside the same pod. Measure the startup
+                # budget from the current container instance so a recovered restart is not charged
+                # the elapsed lifetime of its failed predecessor.
+                $runningAt = if ($null -eq $containerStartedAt) { [DateTime]::UtcNow } else { $containerStartedAt }
+                $runningContainerInstance = $containerInstance
             }
 
             $response = Get-HealthResponse $pod $Container
