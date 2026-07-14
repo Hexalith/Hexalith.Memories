@@ -32,6 +32,7 @@ context:
 - The complete kind verifier passed with zero skips using the CI-pinned Dapr runtime and kind node image.
 - The captured post-run evidence passed `validate-production-deployment-evidence.ps1`.
 - After reconciling main's production-dependency staging, the combined inventory passed: 56/56.
+- Partial-release recovery now rebuilds and reconciles container images from the trusted release tag when the original release commit is behind `main`.
 
 ## File Scope
 
@@ -41,6 +42,8 @@ Allowed files for this story:
 - `tools/validate-production-deployment-evidence.ps1` - UPDATE. Require the final Server/MCP restoration stage for success.
 - `tests/tooling/production_deployment_evidence/production_deployment_evidence_test.py` - UPDATE. Cover final-stage evidence enforcement and recovery wiring.
 - `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` - UPDATE. Pin the startup, restoration, cleanup, and evidence contracts.
+- `.github/workflows/recover-partial-release.yml` - ADD. Reconcile missing immutable container tags from an existing trusted release tag.
+- `docs/dev/release-runbook.md` - UPDATE. Distinguish normal reruns from tagged container-only recovery after `main` advances.
 - `_bmad-output/implementation-artifacts/26-6-production-rollout-recovery-hardening.md` - ADD. Record intent, evidence, and the exact permitted change surface.
 
 Read/verify only:

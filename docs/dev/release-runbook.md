@@ -346,9 +346,16 @@ those actions can move the published state away from the CI-recorded audit ancho
   for the same version, reruns add a comment to the existing issue instead of creating a duplicate.
   The issue/comment includes the run URL, version, pushed/failed/not-attempted package lists, and
   this runbook reference.
-- Recovery remains the same: rerun the Release workflow after investigating the failure. Do not
-  delete packages from nuget.org. `--skip-duplicate` skips already-published packages while the
-  rerun retries the failed or not-attempted packages.
+- If the failed release commit is still the tip of `main`, rerun the Release workflow after
+  investigating the failure. Do not delete packages from nuget.org. `--skip-duplicate` skips
+  already-published packages while the rerun retries the failed or not-attempted packages.
+- If `main` has advanced after semantic-release created the version tag, semantic-release treats a
+  rerun of the older commit as stale and performs no publication. Use the **Recover Partial
+  Release** workflow from `main` with the existing bare version (for example, `2.6.4`). The workflow
+  accepts only a semantic-version tag reachable from `origin/main`, checks out that exact tagged
+  source, rebuilds only the Server and MCP archives, and reconciles their immutable registry tags
+  by digest. It never republishes NuGet packages, creates or moves tags, or creates a GitHub Release.
+  A conflicting remote digest fails closed and still requires release-owner reconciliation.
 - Container release members are prebuilt during prepare. On a rerun, an existing immutable image
   tag is accepted only when its remote config digest matches the prebuilt archive; a conflicting
   digest fails closed and requires release-owner reconciliation.

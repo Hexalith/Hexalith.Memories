@@ -248,6 +248,26 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void PartialReleaseRecovery_UsesTrustedTagAndPublishesContainersOnly()
+    {
+        string repoRoot = GetRepoRoot();
+        string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "recover-partial-release.yml"));
+
+        workflow.ShouldContain("workflow_dispatch:");
+        workflow.ShouldContain("group: release");
+        workflow.ShouldContain("contents: read");
+        workflow.ShouldContain("github.ref == 'refs/heads/main'");
+        workflow.ShouldContain("git show-ref --verify --quiet");
+        workflow.ShouldContain("git merge-base --is-ancestor");
+        workflow.ShouldContain("git checkout --detach");
+        workflow.ShouldContain("./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION");
+        workflow.ShouldContain("./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION -Push");
+        workflow.ShouldContain("@('pushed', 'already-present')");
+        workflow.ShouldNotContain("NUGET_API_KEY");
+        workflow.ShouldNotContain("semantic-release");
+    }
+
+    [Fact]
     public void ReleaseWorkflow_RegistryAuthentication_IsDeferredToPublishAndUsesSharedZotContract()
     {
         string repoRoot = GetRepoRoot();
