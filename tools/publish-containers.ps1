@@ -308,24 +308,24 @@ function Publish-ContainerArchive {
     if ($localInspect.ExitCode -ne 0) {
         return New-Outcome -Image $Image -Status 'failed' -ExitCode $localInspect.ExitCode -Error (Get-FailureText $localInspect) -Disposition 'inspect-failed'
     }
-    $localConfigDigest = $localInspect.Stdout.Trim()
+    $localImageDigest = $localInspect.Stdout.Trim()
 
-    $remoteInspect = Invoke-NativeCommand -Command 'docker' -Arguments @('manifest', 'inspect', $imageReference)
+    $remoteInspect = Invoke-NativeCommand -Command 'docker' -Arguments @('manifest', 'inspect', '--verbose', $imageReference)
     if ($remoteInspect.ExitCode -eq 0) {
         try {
             $remoteManifest = $remoteInspect.Stdout | ConvertFrom-Json
-            $remoteConfigDigest = [string]$remoteManifest.config.digest
+            $remoteImageDigest = [string]$remoteManifest.Descriptor.digest
         }
         catch {
             return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Remote manifest for '$imageReference' was not valid JSON: $(Protect-LogText $_.Exception.Message)" -Disposition 'remote-inspect-failed'
         }
 
-        if ([string]::IsNullOrWhiteSpace($remoteConfigDigest)) {
-            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Remote manifest for '$imageReference' did not expose a single-platform config digest." -Disposition 'remote-inspect-failed'
+        if ([string]::IsNullOrWhiteSpace($remoteImageDigest)) {
+            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Remote manifest for '$imageReference' did not expose a single-platform descriptor digest." -Disposition 'remote-inspect-failed'
         }
 
-        if (-not [string]::Equals($remoteConfigDigest, $localConfigDigest, [StringComparison]::OrdinalIgnoreCase)) {
-            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Immutable tag '$imageReference' already exists with config digest '$remoteConfigDigest', expected '$localConfigDigest'." -Disposition 'digest-conflict'
+        if (-not [string]::Equals($remoteImageDigest, $localImageDigest, [StringComparison]::OrdinalIgnoreCase)) {
+            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Immutable tag '$imageReference' already exists with descriptor digest '$remoteImageDigest', expected '$localImageDigest'." -Disposition 'digest-conflict'
         }
 
         return New-Outcome -Image $Image -Status 'succeeded' -ExitCode 0 -Error $null -Disposition 'already-present'

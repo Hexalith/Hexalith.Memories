@@ -184,12 +184,18 @@ def write_fake_docker(directory: Path) -> None:
                     sys.exit(4)
                 print(state["local"][reference])
             elif args[:2] == ["manifest", "inspect"]:
-                reference = args[2]
+                if args[2] != "--verbose":
+                    print("manifest inspection must request the descriptor digest", file=sys.stderr)
+                    sys.exit(95)
+                reference = args[3]
                 digest = state["remote"].get(reference)
                 if digest is None:
                     print("no such manifest", file=sys.stderr)
                     sys.exit(1)
-                print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digest}}}}))
+                print(json.dumps({{
+                    "Descriptor": {{"digest": digest}},
+                    "SchemaV2Manifest": {{"config": {{"digest": "sha256:intentionally-different-config"}}}},
+                }}))
             elif args and args[0] == "push":
                 reference = args[1]
                 image = "server" if reference == "{SERVER_IMAGE}" else "mcp"

@@ -72,6 +72,12 @@ SDK 10.0.301 writes `RepoTags:["memories:<version>"]` in archive mode even when 
 - Build both archives with `tools/publish-containers.ps1`, inspect `manifest.json`, and run the complete kind verifier -- expected: zero skips and all recovery stages pass.
 - Run `tools/publish-containers.ps1 -Push -Version 2.6.0` with the supplied API key and matching Zot username -- expected: both missing v2.6.0 images push or reconcile by digest; no NuGet publication occurs.
 
+**Actual results:**
+- Rebuilt and published both v2.6.0 images from the exact release commit; an authenticated rerun reconciled both as `already-present` by descriptor digest.
+- Repaired the partial v2.6.1 release by rebuilding from commit `86f5186`, publishing both missing images, and reconciling both on rerun.
+- Updated the repository Zot Actions secrets to the verified username/key pair without persisting either value in the repository.
+- Reproduced CI run 29329108431 from its exact archives; evidence identified an unschedulable surge pod, and the capacity-bounded rollout passed with zero skips after scaling Server 2→1→2 around the Dapr fault.
+
 ## Suggested Review Order
 
 **Container publication normalization**

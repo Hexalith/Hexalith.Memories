@@ -30,6 +30,7 @@ $kubeconfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories
 $originalKubeconfig = $env:KUBECONFIG
 $clusterCreated = $false
 $daprTokenFaultInjected = $false
+$memoriesReplicaCountReduced = $false
 $verificationError = $null
 $verificationSucceeded = $false
 $verificationStage = 'preflight'
@@ -515,6 +516,12 @@ spec:
     Invoke-Checked kubectl @('scale', 'statefulset/redis-stack', '-n', $namespace, '--replicas=1') | Out-Null
     Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'required-redis-restored' | Out-Null
 
+    Set-VerificationStage 'required-dapr-token-capacity-preparation'
+    Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=1') | Out-Null
+    $memoriesReplicaCountReduced = $true
+    Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
+    Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'required-dapr-token-capacity-ready' | Out-Null
+
     Set-VerificationStage 'required-dapr-token-fault-injection'
     Set-DaprClientTokenFault $true
     $daprTokenFaultInjected = $true
@@ -533,6 +540,15 @@ spec:
         -RequiredPodAnnotationValue 'restored' | Out-Null
     Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
     $daprTokenFaultInjected = $false
+
+    Set-VerificationStage 'required-dapr-token-capacity-restoration'
+    Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=2') | Out-Null
+    Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
+    Wait-AggregateStatus 'memories' 'memories' 'Healthy' `
+        -Stage 'required-dapr-token-capacity-restored' `
+        -RequiredPodAnnotationName 'verification.hexalith.com/dapr-token-stage' `
+        -RequiredPodAnnotationValue 'restored' | Out-Null
+    $memoriesReplicaCountReduced = $false
 
     Set-VerificationStage 'required-server-fault-injection'
     Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=0') | Out-Null
@@ -561,6 +577,17 @@ finally {
         }
         catch {
             Write-Warning "Unable to restore the Dapr client token after verifier failure: $(Protect-EvidenceText $_.Exception.Message)"
+        }
+    }
+
+    if ($clusterCreated -and $memoriesReplicaCountReduced) {
+        try {
+            Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=2') | Out-Null
+            Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
+            $memoriesReplicaCountReduced = $false
+        }
+        catch {
+            Write-Warning "Unable to restore the Server replica count after verifier failure: $(Protect-EvidenceText $_.Exception.Message)"
         }
     }
 

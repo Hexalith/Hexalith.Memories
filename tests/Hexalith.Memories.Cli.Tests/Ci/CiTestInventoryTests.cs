@@ -319,7 +319,8 @@ public sealed partial class CiTestInventoryTests
         publishContainers.ShouldContain("render-production-deployment.ps1");
         publishContainers.ShouldContain("Loaded image(?<id> ID)?");
         publishContainers.ShouldContain("@('tag', $loadedReference, $imageReference)");
-        publishContainers.ShouldContain("docker' -Arguments @('manifest', 'inspect'");
+        publishContainers.ShouldContain("docker' -Arguments @('manifest', 'inspect', '--verbose'");
+        publishContainers.ShouldContain("Descriptor.digest");
         publishContainers.ShouldContain("disposition = $Disposition");
         renderDeployment.ShouldContain("Both release image references must end with the semantic-release version");
     }
@@ -355,6 +356,10 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("verification.hexalith.com/dapr-token-stage");
         verifier.ShouldContain("verification-invalid-dapr-api-token");
         verifier.ShouldContain("required-dapr-token-unhealthy");
+        verifier.ShouldContain("required-dapr-token-capacity-preparation");
+        verifier.ShouldContain("@('scale', 'deployment/memories', '-n', $namespace, '--replicas=1')");
+        verifier.ShouldContain("required-dapr-token-capacity-restored");
+        verifier.ShouldContain("@('scale', 'deployment/memories', '-n', $namespace, '--replicas=2')");
         verifier.ShouldContain("RequiredPodAnnotationValue 'faulted'");
         verifier.ShouldContain("RequiredPodAnnotationValue 'restored'");
         verifier.ShouldContain("rollout', 'status', 'deployment/memories'");
