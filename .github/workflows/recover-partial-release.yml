@@ -1,0 +1,126 @@
+name: Recover Partial Release
+run-name: Recover container images for v${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing partial-release version without the leading v
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RECOVERY_VERSION: ${{ inputs.version }}
+
+jobs:
+  recover-container-images:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout recovery workflow source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Resolve trusted release source
+        id: release-source
+        shell: bash
+        run: |
+          if [[ ! "$RECOVERY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Recovery version must be an image-taggable semantic version without a leading v."
+            exit 1
+          fi
+
+          tag_ref="refs/tags/v$RECOVERY_VERSION"
+          git show-ref --verify --quiet "$tag_ref" || {
+            echo "::error::Trusted release tag $tag_ref does not exist."
+            exit 1
+          }
+
+          tag_commit="$(git rev-list -n 1 "$tag_ref")"
+          git merge-base --is-ancestor "$tag_commit" origin/main || {
+            echo "::error::Release tag $tag_ref is not reachable from origin/main."
+            exit 1
+          }
+
+          echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tagged release source
+        env:
+          RECOVERY_COMMIT: ${{ steps.release-source.outputs.commit }}
+        run: git checkout --detach "$RECOVERY_COMMIT"
+
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        with:
+          global-json-file: global.json
+
+      - name: Restore tagged source
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+
+      - name: Validate container recovery tooling
+        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
+
+      - name: Build tagged container archives
+        shell: pwsh
+        run: ./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION
+
+      - name: Reconcile immutable container tags
+        shell: pwsh
+        run: ./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION -Push
+        env:
+          HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
+
+      - name: Validate recovery evidence
+        shell: pwsh
+        run: |
+          $summaryPath = 'artifacts/containers/release/publish-summary.json'
+          $deploymentPath = 'artifacts/containers/release/production-deployment.yaml'
+          if (-not (Test-Path -LiteralPath $summaryPath)) {
+            throw "Container recovery summary was not created."
+          }
+          if (-not (Test-Path -LiteralPath $deploymentPath)) {
+            throw "Versioned production deployment was not created."
+          }
+
+          $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+          if ($summary.status -ne 'succeeded' -or $summary.version -ne $env:RECOVERY_VERSION) {
+            throw "Container recovery summary did not report success for $env:RECOVERY_VERSION."
+          }
+
+          $images = @($summary.images)
+          if ($images.Count -ne 2) {
+            throw "Container recovery must reconcile exactly two immutable image tags."
+          }
+          foreach ($image in $images) {
+            if ($image.status -ne 'succeeded' -or $image.disposition -notin @('pushed', 'already-present')) {
+              throw "Container recovery evidence contains an unverified image outcome."
+            }
+          }
+
+      - name: Upload container recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: partial-release-container-recovery-v${{ inputs.version }}
+          path: |
+            artifacts/containers/release/build-summary.json
+            artifacts/containers/release/publish-summary.json
+            artifacts/containers/release/production-deployment.yaml
+          if-no-files-found: warn
+          retention-days: 14

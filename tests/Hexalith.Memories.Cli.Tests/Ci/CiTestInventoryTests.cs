@@ -248,6 +248,26 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void PartialReleaseRecovery_UsesTrustedTagAndPublishesContainersOnly()
+    {
+        string repoRoot = GetRepoRoot();
+        string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "recover-partial-release.yml"));
+
+        workflow.ShouldContain("workflow_dispatch:");
+        workflow.ShouldContain("group: release");
+        workflow.ShouldContain("contents: read");
+        workflow.ShouldContain("github.ref == 'refs/heads/main'");
+        workflow.ShouldContain("git show-ref --verify --quiet");
+        workflow.ShouldContain("git merge-base --is-ancestor");
+        workflow.ShouldContain("git checkout --detach");
+        workflow.ShouldContain("./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION");
+        workflow.ShouldContain("./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION -Push");
+        workflow.ShouldContain("@('pushed', 'already-present')");
+        workflow.ShouldNotContain("NUGET_API_KEY");
+        workflow.ShouldNotContain("semantic-release");
+    }
+
+    [Fact]
     public void ReleaseWorkflow_RegistryAuthentication_IsDeferredToPublishAndUsesSharedZotContract()
     {
         string repoRoot = GetRepoRoot();
@@ -377,8 +397,9 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("Get-RunningContainerObservation");
         verifier.ShouldContain("Get-RunningPodName");
         verifier.ShouldContain("state.running.startedAt");
+        verifier.ShouldContain("lastTransitionTime");
+        verifier.ShouldContain("$healthyAt");
         verifier.ShouldContain("$runningContainerInstance");
-        verifier.ShouldContain("$containerStartedAt -lt $waitStartedAt");
         verifier.ShouldContain("@('scale', 'deployment/memories', 'deployment/memories-mcp', '-n', $namespace, '--replicas=0')");
         verifier.ShouldContain("@('rollout', 'status', 'statefulset/redis-stack', '-n', $namespace, '--timeout=180s')");
         verifier.ShouldContain("@('rollout', 'status', 'statefulset/falkordb', '-n', $namespace, '--timeout=180s')");
@@ -386,13 +407,22 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("verification.hexalith.com/dapr-token-stage");
         verifier.ShouldContain("verification-invalid-dapr-api-token");
         verifier.ShouldContain("required-dapr-token-unhealthy");
-        verifier.ShouldContain("required-dapr-token-capacity-preparation");
-        verifier.ShouldContain("@('scale', 'deployment/memories', '-n', $namespace, '--replicas=1')");
         verifier.ShouldContain("required-dapr-token-capacity-restored");
-        verifier.ShouldContain("@('scale', 'deployment/memories', '-n', $namespace, '--replicas=2')");
         verifier.ShouldContain("RequiredPodAnnotationValue 'faulted'");
         verifier.ShouldContain("RequiredPodAnnotationValue 'restored'");
         verifier.ShouldContain("rollout', 'status', 'deployment/memories'");
+        verifier.ShouldContain("Save-MemoriesDeploymentState");
+        verifier.ShouldContain("Set-CapacityPreservingMemoriesRollout");
+        verifier.ShouldContain("Restore-MemoriesDeploymentState");
+        verifier.ShouldContain("\"maxSurge\":0");
+        verifier.ShouldContain("\"maxUnavailable\":1");
+        verifier.ShouldContain("path = '/spec/replicas'");
+        verifier.ShouldContain("path = '/spec/strategy'");
+        verifier.ShouldContain("did not return to its exact captured replicas and rollout strategy");
+        verifier.ShouldContain("cleanup-server-restored");
+        verifier.ShouldContain("cleanup-mcp-restored");
+        verifier.ShouldContain("required-server-restored");
+        verifier.ShouldContain("required-server-mcp-restored");
         verifier.ShouldContain("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }");
         verifier.ShouldContain("Write-ClusterDiagnostics");
         verifier.ShouldContain("describe-pods.txt");
@@ -402,6 +432,7 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("--previous");
         verifier.ShouldNotContain("dapr.io/enabled\":\"false");
         evidenceValidator.ShouldContain("verification-result.json");
+        evidenceValidator.ShouldContain("Succeeded production deployment evidence must finish at required-server-mcp-restored");
         evidenceValidator.ShouldContain("*-current.log");
         evidenceValidator.ShouldContain("*-previous.log");
         evidenceValidator.ShouldContain("unredacted secret canary");

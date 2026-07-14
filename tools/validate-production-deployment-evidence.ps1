@@ -38,6 +38,9 @@ if ($result.schemaVersion -ne 1 -or $result.status -notin @('succeeded', 'failed
 if ($result.status -eq 'failed' -and [string]::IsNullOrWhiteSpace([string]$result.error)) {
     throw 'Failed production deployment evidence must include a redacted terminal error.'
 }
+if ($result.status -eq 'succeeded' -and $result.stage -ne 'required-server-mcp-restored') {
+    throw "Succeeded production deployment evidence must finish at required-server-mcp-restored; found '$($result.stage)'."
+}
 
 $lastStage = (Get-Content -LiteralPath (Join-Path $evidencePath 'last-stage.txt') -Raw).Trim()
 if (-not [string]::Equals($lastStage, [string]$result.stage, [StringComparison]::Ordinal)) {
