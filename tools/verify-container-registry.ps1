@@ -7,6 +7,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# release-preflight.ps1 invokes semantic-release only to classify the next version. Semantic-release
+# still calls verifyRelease plugins in dry-run mode, so that subprocess marks itself explicitly.
+# The actual publish-capable semantic-release step does not receive this process-scoped flag.
+if ($env:HEXALITH_RELEASE_CLASSIFICATION_ONLY -eq 'true') {
+    Write-Host 'Registry write-scope verification is deferred from release classification to the publish-capable semantic-release run.'
+    exit 0
+}
+
 if (-not $PSBoundParameters.ContainsKey('Registry') -and
     -not [string]::IsNullOrWhiteSpace($env:HEXALITH_ZOT_REGISTRY)) {
     $Registry = $env:HEXALITH_ZOT_REGISTRY

@@ -406,6 +406,7 @@ class ReleasePreflightTests(unittest.TestCase):
             fake_bin.mkdir()
             fake_npm.write_text(
                 "#!/bin/sh\n"
+                "test \"$HEXALITH_RELEASE_CLASSIFICATION_ONLY\" = 'true' || exit 91\n"
                 "printf '%s\\n' \\\n"
                 "  'The next release version is 9.9.9' \\\n"
                 "  '[4:12:33 PM] [semantic-release] › ℹ  The next release version is 1.2.3'\n",

@@ -47,10 +47,10 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `tools/verify-container-registry.ps1`, `.releaserc.json`, and fixtures -- add redacted OCI start/cancel probes for both repositories in `verifyReleaseCmd`, before prepare/tag.
-- [ ] `tools/publish-containers.ps1` and its Python fixtures -- compare `SchemaV2Manifest.config.digest` with local image ID; classify auth failures, remove false login assurance, and model real manifests plus login-success/push-denied.
-- [ ] `.github/workflows/recover-partial-release.yml` and fixtures -- run trusted current recovery logic on exact tagged source; verify NuGets, reconcile images, idempotently create/validate a Release with nine published nupkgs and deployment, retain evidence, then close its incident.
-- [ ] `tools/create-partial-publish-issue.ps1`, `docs/dev/release-runbook.md`, and `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` -- make guidance state-aware and pin ordering, credentials, permissions, redaction, and failure propagation.
+- [x] `tools/verify-container-registry.ps1`, `.releaserc.json`, and fixtures -- add redacted OCI start/cancel probes for both repositories in `verifyReleaseCmd`, before prepare/tag.
+- [x] `tools/publish-containers.ps1` and its Python fixtures -- compare `SchemaV2Manifest.config.digest` with local image ID; classify auth failures, remove false login assurance, and model real manifests plus login-success/push-denied.
+- [x] `.github/workflows/recover-partial-release.yml` and fixtures -- run trusted current recovery logic on exact tagged source; verify NuGets, reconcile images, idempotently create/validate a Release with nine published nupkgs and deployment, retain evidence, then close its incident.
+- [x] `tools/create-partial-publish-issue.ps1`, `docs/dev/release-runbook.md`, and `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` -- make guidance state-aware and pin ordering, credentials, permissions, redaction, and failure propagation.
 - [ ] After Zot access is repaired, recover `2.6.0`-`2.6.7`; require images for `2.6.5`-`2.6.7`, Releases/assets for all eight, and evidence-backed issue closure.
 
 **Acceptance Criteria:**

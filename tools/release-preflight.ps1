@@ -79,8 +79,21 @@ function Get-SemanticReleaseDryRunOutput {
 
     Push-Location -LiteralPath $script:ResolvedRepositoryPath
     try {
-        $output = & npm run release:dry-run --silent 2>&1
-        $exitCode = $LASTEXITCODE
+        $classificationFlag = [Environment]::GetEnvironmentVariable('HEXALITH_RELEASE_CLASSIFICATION_ONLY')
+        try {
+            $env:HEXALITH_RELEASE_CLASSIFICATION_ONLY = 'true'
+            $output = & npm run release:dry-run --silent 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            if ($null -eq $classificationFlag) {
+                Remove-Item Env:HEXALITH_RELEASE_CLASSIFICATION_ONLY -ErrorAction SilentlyContinue
+            }
+            else {
+                $env:HEXALITH_RELEASE_CLASSIFICATION_ONLY = $classificationFlag
+            }
+        }
+
         if ($exitCode -ne 0) {
             throw "semantic-release dry-run failed with exit code $exitCode. Inspect the release preflight log and fix semantic-release configuration or repository credentials before publishing."
         }

@@ -5,10 +5,9 @@ on:
     branches: [main]
 
 # cancel-in-progress: false is deliberate. A release run that is interrupted mid-publish
-# would leave NuGet in a partial-publish state; the rerun-and-self-heal recovery model
-# (see docs/dev/release-runbook.md and tools/publish-nuget.ps1 with --skip-duplicate)
-# requires that an in-flight release runs to completion rather than being cancelled by
-# the next push to main.
+# would leave NuGet in a partial-publish state. The trusted Recover Partial Release workflow
+# can reconcile a tagged partial release, but an in-flight release must still run to completion
+# rather than being cancelled by the next push to main.
 concurrency:
   group: release
   cancel-in-progress: false

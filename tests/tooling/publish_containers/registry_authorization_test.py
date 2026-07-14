@@ -77,7 +77,12 @@ class RegistryServer:
         return f"http://127.0.0.1:{self.server.server_port}"
 
 
-def run_probe(origin: str, *, include_credentials: bool = True) -> subprocess.CompletedProcess[str]:
+def run_probe(
+    origin: str,
+    *,
+    include_credentials: bool = True,
+    classification_only: bool = False,
+) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     if include_credentials:
         env["HEXALITH_ZOT_USERNAME"] = USERNAME
@@ -85,6 +90,10 @@ def run_probe(origin: str, *, include_credentials: bool = True) -> subprocess.Co
     else:
         env.pop("HEXALITH_ZOT_USERNAME", None)
         env.pop("HEXALITH_ZOT_API_KEY", None)
+    if classification_only:
+        env["HEXALITH_RELEASE_CLASSIFICATION_ONLY"] = "true"
+    else:
+        env.pop("HEXALITH_RELEASE_CLASSIFICATION_ONLY", None)
 
     return subprocess.run(
         [
@@ -167,6 +176,19 @@ class RegistryAuthorizationTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual([], state.posts)
         self.assertIn("HEXALITH_ZOT_USERNAME", result.stdout + result.stderr)
+
+    def test_release_classification_skips_probe_without_credentials_or_requests(self) -> None:
+        state = RegistryState()
+        with RegistryServer(state) as registry:
+            result = run_probe(
+                registry.origin,
+                include_credentials=False,
+                classification_only=True,
+            )
+
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual([], state.posts)
+        self.assertIn("deferred from release classification", result.stdout)
 
 
 if __name__ == "__main__":

@@ -288,6 +288,7 @@ public sealed partial class CiTestInventoryTests
     {
         string repoRoot = GetRepoRoot();
         string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
+        string releasePreflight = File.ReadAllText(Path.Combine(repoRoot, "tools", "release-preflight.ps1"));
 
         workflow.ShouldNotContain("docker/login-action");
         workflow.ShouldNotContain("CONTAINER_REGISTRY_USERNAME");
@@ -295,6 +296,8 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}");
         workflow.ShouldContain("HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}");
         workflow.ShouldContain("HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}");
+        workflow.ShouldNotContain("HEXALITH_RELEASE_CLASSIFICATION_ONLY");
+        releasePreflight.ShouldContain("$env:HEXALITH_RELEASE_CLASSIFICATION_ONLY = 'true'");
     }
 
     [Fact]

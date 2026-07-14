@@ -207,7 +207,7 @@ function Write-ContainerSummary {
         notAttempted = @($notAttempted | ForEach-Object {
             [ordered]@{ package = $_.image; reason = $_.error }
         })
-        recovery = 'Rerun the Release workflow. Matching immutable remote tags are reconciled by digest; conflicting tags fail closed.'
+        recovery = 'If the exact tag exists, repair registry authorization and dispatch Recover Partial Release from main. Matching immutable remote tags are reconciled by config digest; conflicting tags fail closed.'
     }
     $summary | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $SummaryPath -Encoding utf8
     Write-Host "Container publication summary: $SummaryPath ($Status)"
