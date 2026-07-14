@@ -4,7 +4,7 @@ baseline_commit: a077fd09f21968e494f20c72c62450c0b1d349f6
 
 # Story 26.2: Backup & Restore
 
-Status: review
+Status: in-progress
 
 <!-- Epic: 26 — Test, Deployment & Operational Readiness. Closes audit finding A25 (High, "Missing feature") — feature portion. Story 26.5 closes the docs portion (broader runbook set + final cross-linking). Reinforces NFR16 (zero memory-unit loss on Redis restart, AOF verified). New operator-facing capability → commit `feat(...)` (minor release). New import/restore REST route + client method = additive contract change; do NOT rename/remove existing export contracts. -->
 
@@ -413,9 +413,15 @@ Verification: `Hexalith.Memories.Cli.Tests` **475 passed / 0 failed**; `Hexalith
 
 ### Review Findings (2026-07-15, chunk 3: integration evidence)
 
-- [ ] [Review][Patch] HIGH — Stabilize all three ingestion workflows and prove a complete source snapshot before export; waiting only for `CONTAINS` edges can race post-index compensation and leave vector-byte assertions vacuous [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:58]
-- [ ] [Review][Patch] HIGH — Compare every semantic chunk hash field and the exact chunk-key set, not only `embedding` bytes, so tenant/case attribution, provider/model, dimensions, offsets, sequence, and chunk text are covered [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:123]
-- [ ] [Review][Patch] HIGH — Require exact restored key, field, and edge sets; the current one-way comparisons accept extra memory-unit fields, case/member hashes, graph edges, and vector artifacts [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:90]
-- [ ] [Review][Patch] HIGH — Include `createdAt` in the graph-edge snapshot and exact comparison so AC3's edge chronology and audit fidelity are actually verified [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:278]
-- [ ] [Review][Patch] MEDIUM — Verify case/member hashes, vector hashes, and graph artifacts are empty after the wipe; checking only `{tenant}:mu:*` lets stale non-memory-unit artifacts satisfy restore assertions [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:82]
-- [ ] [Review][Patch] MEDIUM — Validate completed restore counters and require `SkippedRecords == 0`, while failing immediately on every terminal non-success state, instead of accepting any `Completed` response without result integrity checks [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:371]
+- [x] [Review][Patch] HIGH — Stabilize all three ingestion workflows and prove a complete source snapshot before export; waiting only for `CONTAINS` edges can race post-index compensation and leave vector-byte assertions vacuous [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:58]
+- [x] [Review][Patch] HIGH — Compare every semantic chunk hash field and the exact chunk-key set, not only `embedding` bytes, so tenant/case attribution, provider/model, dimensions, offsets, sequence, and chunk text are covered [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:123]
+- [x] [Review][Patch] HIGH — Require exact restored key, field, and edge sets; the current one-way comparisons accept extra memory-unit fields, case/member hashes, graph edges, and vector artifacts [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:90]
+- [x] [Review][Patch] HIGH — Include `createdAt` in the graph-edge snapshot and exact comparison so AC3's edge chronology and audit fidelity are actually verified [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:278]
+- [x] [Review][Patch] MEDIUM — Verify case/member hashes, vector hashes, and graph artifacts are empty after the wipe; checking only `{tenant}:mu:*` lets stale non-memory-unit artifacts satisfy restore assertions [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:82]
+- [x] [Review][Patch] MEDIUM — Validate completed restore counters and require `SkippedRecords == 0`, while failing immediately on every terminal non-success state, instead of accepting any `Completed` response without result integrity checks [tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs:371]
+
+### Patch application (2026-07-15, chunk 3)
+
+All six approved integration-evidence patches were applied. The AC7 test now waits for all ingestion workflows to complete and clears the export clock-skew window; seeds two non-empty membership hashes; proves every portable Redis/FalkorDB family is empty before restore; compares exact memory-unit, case/member, graph-edge, and semantic-chunk key/field sets; preserves deterministic embedding-byte checks; includes exported-edge `createdAt`; and validates terminal restore counts with zero skipped records.
+
+Verification: `Hexalith.Memories.IntegrationTests` Release build **0 warnings / 0 errors**; `BackupRestoreFidelityIntegrationTests.ExportThenImport_RestoresEveryHashAndEdge` passed against the real Aspire Redis Stack/FalkorDB/Dapr topology **1 passed / 0 skipped / 0 failed** in 29.468 seconds; scoped `git diff --check` clean; modified C# file normalized to CRLF. The runbook review chunk remains outstanding.

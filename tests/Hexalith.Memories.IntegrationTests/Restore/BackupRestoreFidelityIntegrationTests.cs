@@ -55,9 +55,36 @@ public sealed class BackupRestoreFidelityIntegrationTests
         string firstCaseId = await CreateCaseAsync(tenantId, "Restore fidelity case one");
         string secondCaseId = await CreateCaseAsync(tenantId, "Restore fidelity case two");
 
-        await IngestMemoryUnitAsync(tenantId, firstCaseId, "restore fidelity first memory");
-        await IngestMemoryUnitAsync(tenantId, firstCaseId, "restore fidelity second memory");
-        await IngestMemoryUnitAsync(tenantId, secondCaseId, "restore fidelity third memory");
+        await AddCaseMemberAsync(tenantId, firstCaseId, "restore-user-one");
+        await AddCaseMemberAsync(tenantId, secondCaseId, "restore-user-two");
+
+        IngestionIntegrationTestDriver ingestion = new(_fixture);
+        string[] ingestionInstanceIds =
+        [
+            await ingestion.PostInlineIngestionAsync(
+                tenantId,
+                firstCaseId,
+                $"file:///{Guid.NewGuid():N}.txt",
+                "restore fidelity first memory"),
+            await ingestion.PostInlineIngestionAsync(
+                tenantId,
+                firstCaseId,
+                $"file:///{Guid.NewGuid():N}.txt",
+                "restore fidelity second memory"),
+            await ingestion.PostInlineIngestionAsync(
+                tenantId,
+                secondCaseId,
+                $"file:///{Guid.NewGuid():N}.txt",
+                "restore fidelity third memory"),
+        ];
+        foreach (string instanceId in ingestionInstanceIds)
+        {
+            _ = await ingestion.WaitForWorkflowRuntimeStatusAsync(tenantId, instanceId, "Completed");
+        }
+
+        // Tenant export excludes records newer than its 500 ms cross-pod clock-skew window. All workflows are
+        // terminal now; wait past that boundary so the source snapshot and export describe the same committed state.
+        await Task.Delay(TimeSpan.FromMilliseconds(600));
         await WaitForContainsEdgeAsync(tenantId, firstCaseId, expectedCount: 2);
         await WaitForContainsEdgeAsync(tenantId, secondCaseId, expectedCount: 1);
 
@@ -71,9 +98,26 @@ public sealed class BackupRestoreFidelityIntegrationTests
         // --- Snapshot the backing stores ---
         Dictionary<string, Dictionary<string, string>> muSnapshot = await SnapshotHashesAsync($"{tenantId}:mu:*");
         Dictionary<string, Dictionary<string, string>> caseSnapshot = await SnapshotHashesAsync($"{tenantId}:case:*");
-        Dictionary<string, byte[]> vecSnapshot = await SnapshotVectorBytesAsync($"{tenantId}:vec:*");
+        Dictionary<string, (byte[] Embedding, Dictionary<string, string> Fields)> vecSnapshot =
+            await SnapshotVectorsAsync($"{tenantId}:vec:*");
         HashSet<string> edgeSnapshot = await SnapshotEdgesAsync(tenantId);
-        muSnapshot.Count.ShouldBeGreaterThanOrEqualTo(3);
+        muSnapshot.Count.ShouldBe(3);
+        vecSnapshot.Count.ShouldBe(muSnapshot.Count);
+        foreach (string memoryUnitId in muSnapshot.Keys.Select(static key => key.Split(':').Last()))
+        {
+            vecSnapshot.Keys.Count(key => key.StartsWith($"{tenantId}:vec:{memoryUnitId}:", StringComparison.Ordinal))
+                .ShouldBeGreaterThan(0, $"source memory unit '{memoryUnitId}' had no committed semantic chunk");
+        }
+
+        HashSet<string> expectedCaseKeys =
+        [
+            $"{tenantId}:case:{firstCaseId}",
+            $"{tenantId}:case:{firstCaseId}:members",
+            $"{tenantId}:case:{secondCaseId}",
+            $"{tenantId}:case:{secondCaseId}:members",
+        ];
+        caseSnapshot.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(expectedCaseKeys).ShouldBeTrue(
+            "the source snapshot must contain both case hashes and both non-empty members hashes");
         edgeSnapshot.ShouldContain(e => e.Contains("REFERENCES", StringComparison.Ordinal));
 
         // --- Export the tenant ---
@@ -82,57 +126,34 @@ public sealed class BackupRestoreFidelityIntegrationTests
         // --- Wipe the data plane but keep the provisioned indexes (simulates same-tenant-id DR into a clean store) ---
         await WipeDataPlaneAsync(tenantId);
         (await SnapshotHashesAsync($"{tenantId}:mu:*")).ShouldBeEmpty();
+        (await SnapshotHashesAsync($"{tenantId}:case:*")).ShouldBeEmpty();
+        (await SnapshotVectorsAsync($"{tenantId}:vec:*")).ShouldBeEmpty();
+        (await SnapshotEdgesAsync(tenantId)).ShouldBeEmpty();
 
         // --- Restore ---
-        await RestoreTenantAsync(tenantId, exportJson);
+        RestoreStatusResponse completed = await RestoreTenantAsync(tenantId, exportJson);
+        completed.RestoredMemoryUnits.ShouldBe(muSnapshot.Count);
+        completed.RestoredCases.ShouldBe(2);
+        completed.RestoredEdges.ShouldBe(edgeSnapshot.Count(static edge => !edge.StartsWith("CONTAINS|", StringComparison.Ordinal)));
+        completed.SkippedRecords.ShouldBe(0);
 
         // --- Assert every syntactic memory-unit hash field round-trips ---
         Dictionary<string, Dictionary<string, string>> muRestored = await SnapshotHashesAsync($"{tenantId}:mu:*");
-        muRestored.Count.ShouldBe(muSnapshot.Count);
-        foreach ((string key, Dictionary<string, string> originalFields) in muSnapshot)
-        {
-            muRestored.ShouldContainKey(key);
-            Dictionary<string, string> restoredFields = muRestored[key];
-            foreach ((string field, string value) in originalFields)
-            {
-                restoredFields.ShouldContainKey(field);
-                restoredFields[field].ShouldBe(value, $"memory unit hash '{key}' field '{field}' did not round-trip");
-            }
-        }
+        AssertHashSnapshotsEqual(muSnapshot, muRestored, "memory unit");
 
         // --- Assert every case + members hash round-trips ---
         Dictionary<string, Dictionary<string, string>> caseRestored = await SnapshotHashesAsync($"{tenantId}:case:*");
-        foreach ((string key, Dictionary<string, string> originalFields) in caseSnapshot)
-        {
-            caseRestored.ShouldContainKey(key);
-            Dictionary<string, string> restoredFields = caseRestored[key];
-            foreach ((string field, string value) in originalFields)
-            {
-                restoredFields.ShouldContainKey(field);
-                restoredFields[field].ShouldBe(value, $"case hash '{key}' field '{field}' did not round-trip");
-            }
-        }
+        AssertHashSnapshotsEqual(caseSnapshot, caseRestored, "case/member");
 
-        // --- Assert every graph edge round-trips (source, target, type, confidence, origin, audit) ---
+        // --- Assert every graph edge round-trips (source, target, type, confidence, origin, createdAt, audit) ---
         HashSet<string> edgeRestored = await SnapshotEdgesAsync(tenantId);
-        foreach (string edge in edgeSnapshot)
-        {
-            edgeRestored.ShouldContain(edge, $"graph edge '{edge}' was not restored");
-        }
+        edgeRestored.SetEquals(edgeSnapshot).ShouldBeTrue(
+            $"restored graph edges differed. Expected: [{string.Join(", ", edgeSnapshot)}]; actual: [{string.Join(", ", edgeRestored)}]");
 
-        // --- Assert re-derived semantic vectors exist and are byte-identical (deterministic fixture provider) ---
-        Dictionary<string, byte[]> vecRestored = await SnapshotVectorBytesAsync($"{tenantId}:vec:*");
-        foreach (string muKey in muSnapshot.Keys)
-        {
-            string memoryUnitId = muKey.Split(':').Last();
-            vecRestored.Keys.ShouldContain(k => k.StartsWith($"{tenantId}:vec:{memoryUnitId}", StringComparison.Ordinal));
-        }
-
-        foreach ((string vecKey, byte[] originalBytes) in vecSnapshot)
-        {
-            vecRestored.ShouldContainKey(vecKey);
-            vecRestored[vecKey].ShouldBe(originalBytes, $"semantic vector '{vecKey}' was not byte-identical after restore");
-        }
+        // --- Assert exact re-derived vector keys, metadata, chunk layout, and deterministic bytes ---
+        Dictionary<string, (byte[] Embedding, Dictionary<string, string> Fields)> vecRestored =
+            await SnapshotVectorsAsync($"{tenantId}:vec:*");
+        AssertVectorSnapshotsEqual(vecSnapshot, vecRestored);
     }
 
     private async Task<string> CreateCaseAsync(string tenantId, string caseName)
@@ -148,24 +169,13 @@ public sealed class BackupRestoreFidelityIntegrationTests
         return createdCase.Id;
     }
 
-    private async Task IngestMemoryUnitAsync(string tenantId, string caseId, string content)
+    private async Task AddCaseMemberAsync(string tenantId, string caseId, string memberId)
     {
-        IngestionInput input = new()
-        {
-            TenantId = tenantId,
-            CaseId = caseId,
-            SourceUri = $"file:///{Guid.NewGuid():N}.txt",
-            ContentBytes = Encoding.UTF8.GetBytes(content),
-            ContentType = "text/plain",
-            SourceType = SourceType.File,
-            IngestedBy = "integration@test.local",
-        };
-
-        using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsJsonAsync(
-            "/api/v1/ingest",
-            input,
+        using HttpResponseMessage response = await _fixture.MemoriesClient.PutAsJsonAsync(
+            $"/api/v1/tenants/{tenantId}/cases/{caseId}/members/{memberId}",
+            new AddCaseMemberInput(memberId, CaseMemberType.User),
             MemoriesJsonContext.Options);
-        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
     }
 
     private async Task WaitForContainsEdgeAsync(string tenantId, string caseId, int expectedCount)
@@ -257,19 +267,33 @@ public sealed class BackupRestoreFidelityIntegrationTests
         return snapshot;
     }
 
-    private async Task<Dictionary<string, byte[]>> SnapshotVectorBytesAsync(string pattern)
+    private async Task<Dictionary<string, (byte[] Embedding, Dictionary<string, string> Fields)>> SnapshotVectorsAsync(
+        string pattern)
     {
         IServer server = _fixture.RedisConnection.GetServer(_fixture.RedisConnection.GetEndPoints().Single());
         IDatabase db = _fixture.RedisConnection.GetDatabase();
-        Dictionary<string, byte[]> snapshot = [];
+        Dictionary<string, (byte[] Embedding, Dictionary<string, string> Fields)> snapshot = [];
 
         foreach (RedisKey key in server.Keys(pattern: pattern))
         {
-            RedisValue embedding = await db.HashGetAsync(key, "embedding");
-            if (!embedding.IsNull)
+            HashEntry[] entries = await db.HashGetAllAsync(key);
+            byte[]? embedding = null;
+            Dictionary<string, string> fields = new(StringComparer.Ordinal);
+            foreach (HashEntry entry in entries)
             {
-                snapshot[key.ToString()] = (byte[])embedding!;
+                string field = entry.Name.ToString();
+                if (string.Equals(field, "embedding", StringComparison.Ordinal))
+                {
+                    embedding = (byte[])entry.Value!;
+                }
+                else
+                {
+                    fields[field] = entry.Value.ToString();
+                }
             }
+
+            embedding.ShouldNotBeNull($"semantic hash '{key}' had no embedding field");
+            snapshot[key.ToString()] = (embedding, fields);
         }
 
         return snapshot;
@@ -280,17 +304,24 @@ public sealed class BackupRestoreFidelityIntegrationTests
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
         ResultSet result = await falkor.SelectGraph(tenantId).QueryAsync(
             "MATCH (a)-[r]->(b) RETURN a.id AS sourceId, b.id AS targetId, type(r) AS edgeType, " +
-            "r.confidence AS confidence, r.origin AS origin, r.verifiedBy AS verifiedBy, " +
+            "r.createdAt AS createdAt, r.confidence AS confidence, r.origin AS origin, r.verifiedBy AS verifiedBy, " +
             "r.previousConfidence AS previousConfidence");
 
         HashSet<string> edges = new(StringComparer.Ordinal);
         foreach (Record record in result)
         {
+            string edgeType = Convert.ToString(
+                record.GetValue<object?>("edgeType"),
+                CultureInfo.InvariantCulture) ?? string.Empty;
+            string createdAt = string.Equals(edgeType, "CONTAINS", StringComparison.Ordinal)
+                ? string.Empty
+                : Convert.ToString(record.GetValue<object?>("createdAt"), CultureInfo.InvariantCulture) ?? string.Empty;
             edges.Add(string.Join(
                 '|',
+                edgeType,
                 Convert.ToString(record.GetValue<object?>("sourceId"), CultureInfo.InvariantCulture),
                 Convert.ToString(record.GetValue<object?>("targetId"), CultureInfo.InvariantCulture),
-                Convert.ToString(record.GetValue<object?>("edgeType"), CultureInfo.InvariantCulture),
+                createdAt,
                 Convert.ToString(record.GetValue<object?>("confidence"), CultureInfo.InvariantCulture),
                 Convert.ToString(record.GetValue<object?>("origin"), CultureInfo.InvariantCulture),
                 Convert.ToString(record.GetValue<object?>("verifiedBy"), CultureInfo.InvariantCulture),
@@ -327,7 +358,7 @@ public sealed class BackupRestoreFidelityIntegrationTests
         _ = await falkor.SelectGraph(tenantId).QueryAsync("MATCH (n) DETACH DELETE n");
     }
 
-    private async Task RestoreTenantAsync(string tenantId, string exportJson)
+    private async Task<RestoreStatusResponse> RestoreTenantAsync(string tenantId, string exportJson)
     {
         int logStartIndex = _fixture.LogEntryCount;
         using StringContent content = new(exportJson, Encoding.UTF8, "application/json");
@@ -368,13 +399,14 @@ public sealed class BackupRestoreFidelityIntegrationTests
                     MemoriesJsonContext.Options);
                 if (status is not null)
                 {
-                    if (string.Equals(status.Status, "completed", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(status.Status, "Completed", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(status.Status, "Completed", StringComparison.OrdinalIgnoreCase))
                     {
-                        return;
+                        return status;
                     }
 
-                    if (status.Status.Contains("Failed", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(status.Status, "Failed", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(status.Status, "Canceled", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(status.Status, "Terminated", StringComparison.OrdinalIgnoreCase))
                     {
                         await Task.Delay(TimeSpan.FromSeconds(1));
                         string failureLogs = string.Join(
@@ -383,7 +415,8 @@ public sealed class BackupRestoreFidelityIntegrationTests
                                 .TakeLast(80)
                                 .Select(entry => $"[{entry.Level}] {entry.Category}: {entry.Message}"));
                         throw new InvalidOperationException(
-                            $"Restore workflow failed: {status.Status}. {lastStatusResponse}{Environment.NewLine}{failureLogs}");
+                            $"Restore workflow ended with {status.Status} ({status.FailureCode}): {status.FailureMessage} " +
+                            $"{status.FailureSuggestion}. {lastStatusResponse}{Environment.NewLine}{failureLogs}");
                     }
                 }
             }
@@ -399,6 +432,48 @@ public sealed class BackupRestoreFidelityIntegrationTests
                 .Select(entry => $"[{entry.Level}] {entry.Category}: {entry.Message}"));
         throw new TimeoutException(
             $"Restore workflow did not complete in time. Last status: {lastStatusResponse}{Environment.NewLine}{timeoutLogs}");
+    }
+
+    private static void AssertHashSnapshotsEqual(
+        Dictionary<string, Dictionary<string, string>> expected,
+        Dictionary<string, Dictionary<string, string>> actual,
+        string artifactName)
+    {
+        actual.Count.ShouldBe(expected.Count, $"restored {artifactName} hash count differed");
+        actual.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(expected.Keys).ShouldBeTrue(
+            $"restored {artifactName} hash keys differed");
+        foreach ((string key, Dictionary<string, string> expectedFields) in expected)
+        {
+            Dictionary<string, string> actualFields = actual[key];
+            actualFields.Count.ShouldBe(expectedFields.Count, $"{artifactName} hash '{key}' field count differed");
+            actualFields.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(expectedFields.Keys).ShouldBeTrue(
+                $"{artifactName} hash '{key}' field names differed");
+            foreach ((string field, string value) in expectedFields)
+            {
+                actualFields[field].ShouldBe(value, $"{artifactName} hash '{key}' field '{field}' did not round-trip");
+            }
+        }
+    }
+
+    private static void AssertVectorSnapshotsEqual(
+        Dictionary<string, (byte[] Embedding, Dictionary<string, string> Fields)> expected,
+        Dictionary<string, (byte[] Embedding, Dictionary<string, string> Fields)> actual)
+    {
+        actual.Count.ShouldBe(expected.Count, "restored semantic chunk count differed");
+        actual.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(expected.Keys).ShouldBeTrue(
+            "restored semantic chunk keys differed");
+        foreach ((string key, (byte[] expectedEmbedding, Dictionary<string, string> expectedFields)) in expected)
+        {
+            (byte[] actualEmbedding, Dictionary<string, string> actualFields) = actual[key];
+            actualEmbedding.ShouldBe(expectedEmbedding, $"semantic vector '{key}' was not byte-identical after restore");
+            actualFields.Count.ShouldBe(expectedFields.Count, $"semantic hash '{key}' field count differed");
+            actualFields.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(expectedFields.Keys).ShouldBeTrue(
+                $"semantic hash '{key}' field names differed");
+            foreach ((string field, string value) in expectedFields)
+            {
+                actualFields[field].ShouldBe(value, $"semantic hash '{key}' field '{field}' did not round-trip");
+            }
+        }
     }
 
     private static long ReadCount(ResultSet result)
