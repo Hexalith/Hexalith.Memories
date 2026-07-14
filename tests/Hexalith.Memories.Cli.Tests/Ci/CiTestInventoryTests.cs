@@ -226,6 +226,20 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_RegistryAuthentication_IsDeferredToPublishAndUsesSharedZotContract()
+    {
+        string repoRoot = GetRepoRoot();
+        string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
+
+        workflow.ShouldNotContain("docker/login-action");
+        workflow.ShouldNotContain("CONTAINER_REGISTRY_USERNAME");
+        workflow.ShouldNotContain("CONTAINER_REGISTRY_PASSWORD");
+        workflow.ShouldContain("HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}");
+        workflow.ShouldContain("HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}");
+        workflow.ShouldContain("HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}");
+    }
+
+    [Fact]
     public void ReleaseWorkflow_ReleasePackageValidatorFixtures_RunBeforePublish()
     {
         ReleaseWorkflowStep step = GetReleaseWorkflowStep("Run release package validator fixtures");
@@ -294,9 +308,12 @@ public sealed partial class CiTestInventoryTests
         publishRelease.ShouldContain("'-Push'");
         publishRelease.ShouldContain("artifactKind = 'release-artifacts'");
         publishRelease.ShouldContain("artifacts/release");
-        publishContainers.ShouldContain("[string]$RepositoryPrefix = 'hexalith/memories'");
-        publishContainers.ShouldContain("repository = \"$RepositoryPrefix-server\"");
+        publishContainers.ShouldContain("[string]$RepositoryPrefix = 'memories'");
+        publishContainers.ShouldContain("repository = $RepositoryPrefix");
         publishContainers.ShouldContain("repository = \"$RepositoryPrefix-mcp\"");
+        publishContainers.ShouldContain("HEXALITH_ZOT_USERNAME");
+        publishContainers.ShouldContain("HEXALITH_ZOT_API_KEY");
+        publishContainers.ShouldContain("docker login $Registry --username $username --password-stdin");
         publishContainers.ShouldContain("partial-publish");
         publishContainers.ShouldContain("publish-summary.json");
         publishContainers.ShouldContain("render-production-deployment.ps1");

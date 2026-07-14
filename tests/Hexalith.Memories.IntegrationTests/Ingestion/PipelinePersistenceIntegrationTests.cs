@@ -126,6 +126,7 @@ public sealed class PipelinePersistenceIntegrationTests
     [Fact]
     public async Task RestartTopology_InFlightUrlIngestion_ShouldRestoreCaseCounterActorState()
     {
+        int logStartIndex = _fixture.LogEntryCount;
         string tenantId = $"tenant-{Guid.NewGuid():N}";
         string caseId = await CreateTenantAndCaseAsync(tenantId).ConfigureAwait(false);
 
@@ -158,7 +159,22 @@ public sealed class PipelinePersistenceIntegrationTests
         (statusAfterRestart.QueuedCount + statusAfterRestart.ExtractingCount + statusAfterRestart.EmbeddingCount + statusAfterRestart.IndexingCount)
             .ShouldBeGreaterThan(0);
 
-        await WaitForWorkflowRuntimeStatusAsync(tenantId, accepted.InstanceId, "Completed", DefaultTimeout).ConfigureAwait(false);
+        await WaitForWorkflowRuntimeStatusAsync(
+            tenantId,
+            accepted.InstanceId,
+            "Completed",
+            DefaultTimeout,
+            () => BuildRestartFailureDiagnosticsAsync(
+                tenantId,
+                caseId,
+                accepted.InstanceId,
+                server,
+                statusBeforeRestart,
+                statusAfterRestart,
+                logStartIndex)).ConfigureAwait(false);
+        server.RequestCount.ShouldBeLessThanOrEqualTo(
+            5,
+            "URL fetching must use only the durable workflow retry budget, without nested HTTP resilience retries.");
 
         CaseStatusDetail drained = await WaitForCaseStatusAsync(
             tenantId,
@@ -510,7 +526,8 @@ public sealed class PipelinePersistenceIntegrationTests
         string tenantId,
         string instanceId,
         string expectedRuntimeStatus,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        Func<Task<string>>? failureDiagnostics = null)
     {
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
         string lastPayload = string.Empty;
@@ -529,6 +546,17 @@ public sealed class PipelinePersistenceIntegrationTests
                 {
                     return;
                 }
+
+                if (TryReadNamedRuntimeStatus(lastPayload, out string? actualRuntimeStatus)
+                    && IsTerminalRuntimeStatus(actualRuntimeStatus))
+                {
+                    string diagnostics = failureDiagnostics is null
+                        ? "Additional diagnostics: not requested."
+                        : await CaptureFailureDiagnosticsAsync(failureDiagnostics).ConfigureAwait(false);
+                    throw new InvalidOperationException(
+                        $"Workflow '{instanceId}' reached unexpected terminal runtimeStatus='{actualRuntimeStatus}' " +
+                        $"while waiting for '{expectedRuntimeStatus}'. Payload: {lastPayload}{Environment.NewLine}{diagnostics}");
+                }
             }
 
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
@@ -537,6 +565,114 @@ public sealed class PipelinePersistenceIntegrationTests
         throw new TimeoutException(
             $"Workflow '{instanceId}' did not reach runtimeStatus='{expectedRuntimeStatus}' within {timeout}. Last payload: {lastPayload}");
     }
+
+    private async Task<string> BuildRestartFailureDiagnosticsAsync(
+        string tenantId,
+        string caseId,
+        string instanceId,
+        ScriptedHttpServer server,
+        CaseStatusDetail statusBeforeRestart,
+        CaseStatusDetail statusAfterRestart,
+        int logStartIndex)
+    {
+        string daprWorkflowState;
+        try
+        {
+            daprWorkflowState = await _fixture
+                .GetDaprWorkflowStateDiagnosticAsync(instanceId)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            daprWorkflowState = $"unavailable ({ex.GetType().Name}: {ex.Message})";
+        }
+
+        string currentCounterState;
+        try
+        {
+            CaseIngestionCounts current = await _fixture
+                .CreateCaseIngestionCounterActorProxy(tenantId, caseId)
+                .GetCountsAsync()
+                .ConfigureAwait(false);
+            currentCounterState = FormatCounts(current);
+        }
+        catch (Exception ex)
+        {
+            currentCounterState = $"unavailable ({ex.GetType().Name}: {ex.Message})";
+        }
+
+        IReadOnlyList<AspireIngestionPipelineFixture.CapturedLogEntry> allLogs = _fixture.GetLogEntriesSince(logStartIndex);
+        AspireIngestionPipelineFixture.CapturedLogEntry[] relevantLogs =
+        [
+            .. allLogs.Where(entry =>
+                    (entry.Level >= Microsoft.Extensions.Logging.LogLevel.Warning
+                        && !entry.Message.StartsWith("__hexalith_activity__", StringComparison.Ordinal))
+                    || entry.Message.Contains(instanceId, StringComparison.Ordinal)
+                    || entry.Message.Contains(tenantId, StringComparison.Ordinal)
+                    || entry.Message.Contains(caseId, StringComparison.Ordinal))
+                .TakeLast(40),
+        ];
+        if (relevantLogs.Length == 0)
+        {
+            relevantLogs = [.. allLogs.TakeLast(40)];
+        }
+
+        string formattedLogs = relevantLogs.Length == 0
+            ? "n/a"
+            : string.Join(
+                Environment.NewLine,
+                relevantLogs.Select(entry => $"[{entry.Level}] {entry.Category}: {entry.Message}"));
+
+        return $"""
+            Restart failure diagnostics:
+            Dapr workflow state: {daprWorkflowState}
+            Scripted HTTP request count: {server.RequestCount}
+            Counter before restart: {FormatCounts(statusBeforeRestart)}
+            Counter after restart: {FormatCounts(statusAfterRestart)}
+            Counter at failure: {currentCounterState}
+            Relevant captured logs:
+            {formattedLogs}
+            """;
+    }
+
+    private static async Task<string> CaptureFailureDiagnosticsAsync(Func<Task<string>> diagnosticFactory)
+    {
+        try
+        {
+            return await diagnosticFactory().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return $"Additional diagnostic capture failed ({ex.GetType().Name}: {ex.Message}).";
+        }
+    }
+
+    private static string FormatCounts(CaseStatusDetail status)
+        => $"queued={status.QueuedCount}, extracting={status.ExtractingCount}, embedding={status.EmbeddingCount}, indexing={status.IndexingCount}";
+
+    private static string FormatCounts(CaseIngestionCounts counts)
+        => $"queued={counts.Queued}, extracting={counts.Extracting}, embedding={counts.Embedding}, indexing={counts.Indexing}";
+
+    private static bool TryReadNamedRuntimeStatus(string payload, out string runtimeStatus)
+    {
+        using JsonDocument document = JsonDocument.Parse(payload);
+        if (document.RootElement.TryGetProperty("runtimeStatus", out JsonElement value)
+            && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            runtimeStatus = value.GetString()!;
+            return true;
+        }
+
+        runtimeStatus = string.Empty;
+        return false;
+    }
+
+    private static bool IsTerminalRuntimeStatus(string runtimeStatus)
+        => string.Equals(runtimeStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(runtimeStatus, "Failed", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(runtimeStatus, "Canceled", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(runtimeStatus, "Terminated", StringComparison.OrdinalIgnoreCase);
 
     private static bool ReachedRuntimeStatus(string payload, string expectedRuntimeStatus)
     {

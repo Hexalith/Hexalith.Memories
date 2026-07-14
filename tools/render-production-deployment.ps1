@@ -53,8 +53,8 @@ if (-not [string]::IsNullOrWhiteSpace($stderr)) {
     Write-Warning "kubectl kustomize emitted warnings: $($stderr.Trim())"
 }
 
-$defaultServerImage = 'registry.hexalith.com/hexalith/memories-server:0.0.0'
-$defaultMcpImage = 'registry.hexalith.com/hexalith/memories-mcp:0.0.0'
+$defaultServerImage = 'registry.hexalith.com/memories:0.0.0'
+$defaultMcpImage = 'registry.hexalith.com/memories-mcp:0.0.0'
 if (($rendered.Split($defaultServerImage).Count - 1) -ne 1) {
     throw "Rendered deployment must contain exactly one Server image placeholder."
 }

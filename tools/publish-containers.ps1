@@ -5,7 +5,7 @@ param(
 
     [string]$Registry = 'registry.hexalith.com',
 
-    [string]$RepositoryPrefix = 'hexalith/memories',
+    [string]$RepositoryPrefix = 'memories',
 
     [string]$OutputDirectory = 'artifacts/containers/release',
 
@@ -13,6 +13,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $PSBoundParameters.ContainsKey('Registry') -and
+    -not [string]::IsNullOrWhiteSpace($env:HEXALITH_ZOT_REGISTRY)) {
+    $Registry = $env:HEXALITH_ZOT_REGISTRY
+}
 
 # Build metadata (+meta) is a valid semver suffix but an invalid OCI/Docker image tag character,
 # so it is rejected here rather than flowing into -p:ContainerImageTag / docker tag / kind load.
@@ -33,7 +38,7 @@ $images = @(
     [ordered]@{
         name = 'server'
         project = 'src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj'
-        repository = "$RepositoryPrefix-server"
+        repository = $RepositoryPrefix
         archive = Join-Path $outputPath 'server.tar.gz'
     },
     [ordered]@{
@@ -53,8 +58,8 @@ function Protect-LogText {
         'GH_TOKEN',
         'CR_PAT',
         'NUGET_API_KEY',
-        'CONTAINER_REGISTRY_USERNAME',
-        'CONTAINER_REGISTRY_PASSWORD')) {
+        'HEXALITH_ZOT_USERNAME',
+        'HEXALITH_ZOT_API_KEY')) {
         $secret = [Environment]::GetEnvironmentVariable($secretName)
         if (-not [string]::IsNullOrWhiteSpace($secret)) {
             $sanitized = $sanitized.Replace($secret, '***', [StringComparison]::Ordinal)
@@ -106,6 +111,48 @@ function Get-FailureText {
 
     return Protect-LogText ((@($Result.Stdout, $Result.Stderr) |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine)
+}
+
+function Connect-ContainerRegistry {
+    $username = $env:HEXALITH_ZOT_USERNAME
+    $apiKey = $env:HEXALITH_ZOT_API_KEY
+    if ([string]::IsNullOrWhiteSpace($username) -or [string]::IsNullOrWhiteSpace($apiKey)) {
+        return [pscustomobject]@{
+            ExitCode = 1
+            Stdout = ''
+            Stderr = 'Container publication requires HEXALITH_ZOT_USERNAME and HEXALITH_ZOT_API_KEY.'
+        }
+    }
+
+    $stderrPath = [System.IO.Path]::GetTempFileName()
+    try {
+        try {
+            $stdoutLines = @($apiKey | & docker login $Registry --username $username --password-stdin 2> $stderrPath)
+            $exitCode = $LASTEXITCODE
+            $stderr = if ((Get-Item -LiteralPath $stderrPath).Length -gt 0) {
+                Get-Content -LiteralPath $stderrPath -Raw
+            }
+            else {
+                ''
+            }
+
+            return [pscustomobject]@{
+                ExitCode = $exitCode
+                Stdout = $stdoutLines -join [Environment]::NewLine
+                Stderr = $stderr
+            }
+        }
+        catch {
+            return [pscustomobject]@{
+                ExitCode = 127
+                Stdout = ''
+                Stderr = $_.Exception.Message
+            }
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Get-ContainerStatus {
@@ -272,7 +319,7 @@ Remove-Item -LiteralPath $deploymentPath -Force -ErrorAction SilentlyContinue
 
 Push-Location $repoRoot
 try {
-    $serverImage = "$Registry/$RepositoryPrefix-server`:$Version"
+    $serverImage = "$Registry/$RepositoryPrefix`:$Version"
     $mcpImage = "$Registry/$RepositoryPrefix-mcp`:$Version"
     $render = Invoke-NativeCommand -Command 'pwsh' -Arguments @(
         '-NoLogo', '-NoProfile', '-File', './tools/render-production-deployment.ps1',
@@ -287,6 +334,20 @@ try {
         })
         Write-ContainerSummary -Status 'publish-failed' -StartedAt $startedAt -Outcomes $outcomes -SummaryPath $summaryPath
         throw $reason
+    }
+
+    if ($Push) {
+        $login = Connect-ContainerRegistry
+        if ($login.ExitCode -ne 0) {
+            $reason = "Container registry authentication failed: $(Get-FailureText $login)"
+            $outcomes = @($images | ForEach-Object {
+                New-Outcome -Image $_ -Status 'not-attempted' -ExitCode $null -Error $reason -Disposition 'authentication-failed'
+            })
+            Write-ContainerSummary -Status 'publish-failed' -StartedAt $startedAt -Outcomes $outcomes -SummaryPath $summaryPath
+            throw $reason
+        }
+
+        Write-Host "Authenticated container publisher to $Registry."
     }
 
     $outcomes = foreach ($image in $images) {

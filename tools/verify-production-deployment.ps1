@@ -21,8 +21,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $namespace = 'hexalith-memories'
-$serverImage = "registry.hexalith.com/hexalith/memories-server:$Version"
-$mcpImage = "registry.hexalith.com/hexalith/memories-mcp:$Version"
+$serverImage = "registry.hexalith.com/memories:$Version"
+$mcpImage = "registry.hexalith.com/memories-mcp:$Version"
 $manifestPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-production-$Version.yaml"
 $kubeconfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-kubeconfig-$([Guid]::NewGuid().ToString('N'))"
 $originalKubeconfig = $env:KUBECONFIG

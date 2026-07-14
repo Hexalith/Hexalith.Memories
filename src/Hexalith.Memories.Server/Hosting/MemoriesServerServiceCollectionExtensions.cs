@@ -225,7 +225,12 @@ internal static class MemoriesServerServiceCollectionExtensions
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
             {
                 AllowAutoRedirect = false,
-            });
+            })
+            // UrlContentFetcher owns the end-to-end timeout and the durable workflow owns retries.
+            // Keeping the global standard resilience handler here adds a hidden 10-second attempt timeout
+            // and nested transport retries; after a topology restart those retries can exhaust the fetch
+            // activity even when the upstream responds within UrlFetcherOptions.TimeoutSeconds.
+            .RemoveAllResilienceHandlers();
         builder.Services.AddSingleton<IUrlContentFetcher, UrlContentFetcher>();
         builder.Services.AddSingleton<IWorkflowPayloadStore, DaprWorkflowPayloadStore>();
         // Story 23.7 (A34): memoized, process-local tenant index-readiness verification shared across all indexing

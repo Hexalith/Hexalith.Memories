@@ -5,9 +5,9 @@ resources:
   - namespace.yaml
   - ../../base
 images:
-  - name: registry.hexalith.com/hexalith/memories-server
-    newName: registry.hexalith.com/hexalith/memories-server
+  - name: registry.hexalith.com/memories
+    newName: registry.hexalith.com/memories
     newTag: 0.0.0
-  - name: registry.hexalith.com/hexalith/memories-mcp
-    newName: registry.hexalith.com/hexalith/memories-mcp
+  - name: registry.hexalith.com/memories-mcp
+    newName: registry.hexalith.com/memories-mcp
     newTag: 0.0.0

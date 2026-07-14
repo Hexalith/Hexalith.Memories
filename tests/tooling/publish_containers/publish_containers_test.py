@@ -12,8 +12,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "tools" / "publish-containers.ps1"
 VERSION = "1.2.3-test.1"
-SERVER_IMAGE = f"registry.test/hexalith/memories-server:{VERSION}"
-MCP_IMAGE = f"registry.test/hexalith/memories-mcp:{VERSION}"
+SERVER_IMAGE = f"registry.test/memories:{VERSION}"
+MCP_IMAGE = f"registry.test/memories-mcp:{VERSION}"
 
 
 def write_executable(path: Path, content: str) -> None:
@@ -93,8 +93,8 @@ def write_fake_kubectl(directory: Path) -> None:
             print("apiVersion: v1")
             print("kind: List")
             print("items:")
-            print("  - image: registry.hexalith.com/hexalith/memories-server:0.0.0")
-            print("  - image: registry.hexalith.com/hexalith/memories-mcp:0.0.0")
+            print("  - image: registry.hexalith.com/memories:0.0.0")
+            print("  - image: registry.hexalith.com/memories-mcp:0.0.0")
             """
         ).strip()
         + "\n",
@@ -133,7 +133,19 @@ def write_fake_docker(directory: Path) -> None:
             with open(os.environ["FAKE_COMMAND_LOG"], "a", encoding="utf-8") as log:
                 log.write(json.dumps({{"command": "docker", "args": args}}) + "\\n")
 
-            if args[:2] == ["load", "--input"]:
+            if args and args[0] == "login":
+                password = sys.stdin.read().strip()
+                expected_registry = os.environ["EXPECTED_ZOT_REGISTRY"]
+                expected_username = os.environ["HEXALITH_ZOT_USERNAME"]
+                expected_password = os.environ["HEXALITH_ZOT_API_KEY"]
+                if args != ["login", expected_registry, "--username", expected_username, "--password-stdin"]:
+                    print("unexpected login arguments", file=sys.stderr)
+                    sys.exit(93)
+                if password != expected_password:
+                    print("unexpected login password", file=sys.stderr)
+                    sys.exit(92)
+                print("Login Succeeded")
+            elif args[:2] == ["load", "--input"]:
                 image = "server" if Path(args[2]).name.startswith("server") else "mcp"
                 reference = "{SERVER_IMAGE}" if image == "server" else "{MCP_IMAGE}"
                 print(f"Loaded image: {{reference}}")
@@ -152,7 +164,7 @@ def write_fake_docker(directory: Path) -> None:
                 print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digest}}}}))
             elif args and args[0] == "push":
                 reference = args[1]
-                image = "server" if "memories-server" in reference else "mcp"
+                image = "server" if reference == "{SERVER_IMAGE}" else "mcp"
                 attempt = int(state["attempts"].get(image, 0))
                 state["attempts"][image] = attempt + 1
                 outcomes = plan.get(image, [{{"exitCode": 0}}])
@@ -204,6 +216,9 @@ def prepare_environment(root: Path, plan: dict[str, list[dict[str, object]]] | N
     env["GITHUB_ACTIONS"] = "true"
     env["GH_TOKEN"] = "SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK"
     env["NUGET_API_KEY"] = "SECRET_NUGET_TOKEN_SHOULD_NOT_LEAK"
+    env["EXPECTED_ZOT_REGISTRY"] = "registry.test"
+    env["HEXALITH_ZOT_USERNAME"] = "SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK"
+    env["HEXALITH_ZOT_API_KEY"] = "SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK"
     return fake_bin, env
 
 
@@ -266,7 +281,7 @@ class PublishContainersTests(unittest.TestCase):
 
             calls = [entry for entry in command_log(root) if entry["command"] == "dotnet"]
             self.assertEqual(["server", "mcp"], [entry["image"] for entry in calls])
-            expected_repositories = ["hexalith/memories-server", "hexalith/memories-mcp"]
+            expected_repositories = ["memories", "memories-mcp"]
             for call, repository in zip(calls, expected_repositories, strict=True):
                 args = call["args"]
                 self.assertIn("-t:PublishContainer", args)
@@ -274,6 +289,50 @@ class PublishContainersTests(unittest.TestCase):
                 self.assertIn(f"-p:ContainerRepository={repository}", args)
                 self.assertIn(f"-p:ContainerImageTag={VERSION}", args)
                 self.assertTrue(any(arg.startswith("-p:ContainerArchiveOutputPath=") for arg in args))
+
+            logins = [
+                entry for entry in command_log(root)
+                if entry["command"] == "docker" and entry["args"][0] == "login"
+            ]
+            self.assertEqual([], logins, "build-only publication must remain credential-free")
+
+    def test_push_authenticates_with_password_stdin_before_registry_operations(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
+            self.assertEqual(
+                ["login", "registry.test", "--username", env["HEXALITH_ZOT_USERNAME"], "--password-stdin"],
+                docker_calls[0],
+            )
+            serialized_calls = json.dumps(docker_calls)
+            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized_calls)
+
+    def test_push_without_standard_credentials_fails_at_publish_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            env.pop("HEXALITH_ZOT_USERNAME")
+            env.pop("HEXALITH_ZOT_API_KEY")
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertEqual(2, len(summary["notAttempted"]))
+            self.assertTrue(all(image["disposition"] == "authentication-failed" for image in summary["images"]))
+            self.assertIn("HEXALITH_ZOT_USERNAME", result.stdout + result.stderr)
+            docker_calls = [entry for entry in command_log(root) if entry["command"] == "docker"]
+            self.assertEqual([], docker_calls)
 
     def test_partial_publish_writes_redacted_summary_and_returns_nonzero(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -283,7 +342,7 @@ class PublishContainersTests(unittest.TestCase):
                 "mcp": [
                     {
                         "exitCode": 42,
-                        "stderr": "registry rejected SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK SECRET_NUGET_TOKEN_SHOULD_NOT_LEAK",
+                        "stderr": "registry rejected SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK SECRET_NUGET_TOKEN_SHOULD_NOT_LEAK SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
                     }
                 ],
             }
@@ -301,6 +360,8 @@ class PublishContainersTests(unittest.TestCase):
             serialized = json.dumps(summary)
             self.assertNotIn("SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK", serialized)
             self.assertNotIn("SECRET_NUGET_TOKEN_SHOULD_NOT_LEAK", serialized)
+            self.assertNotIn("SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK", serialized)
+            self.assertNotIn("SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK", serialized)
             self.assertIn("PARTIAL CONTAINER PUBLISH", result.stdout + result.stderr)
 
     def test_rerun_skips_matching_remote_digest_and_retries_only_missing_member(self) -> None:

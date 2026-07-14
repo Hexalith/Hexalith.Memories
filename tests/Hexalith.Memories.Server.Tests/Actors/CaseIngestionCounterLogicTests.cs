@@ -62,6 +62,61 @@ public class CaseIngestionCounterLogicTests
     }
 
     [Fact]
+    public void Transition_NonAdjacentReplayForSameWorkflow_IsIdempotent()
+    {
+        CaseIngestionCounterLogic logic = new();
+        CaseIngestionCounterState state = logic.Transition(Empty(), "none", "queued", "workflow-a:1");
+        state = logic.Transition(state, "queued", "extracting", "workflow-a:2");
+
+        CaseIngestionCounterState replayed = logic.Transition(state, "none", "queued", "workflow-a:1");
+
+        ReferenceEquals(state, replayed).ShouldBeTrue();
+        replayed.Queued.ShouldBe(0);
+        replayed.Extracting.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Transition_InterleavedWorkflowReplay_IsIdempotent()
+    {
+        CaseIngestionCounterLogic logic = new();
+        CaseIngestionCounterState state = logic.Transition(Empty(), "none", "queued", "workflow-a:1");
+        state = logic.Transition(state, "none", "queued", "workflow-b:1");
+
+        CaseIngestionCounterState replayed = logic.Transition(state, "none", "queued", "workflow-a:1");
+
+        ReferenceEquals(state, replayed).ShouldBeTrue();
+        replayed.Queued.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Transition_LegacyLastTransitionSeedsReplayWatermark()
+    {
+        CaseIngestionCounterLogic logic = new();
+        CaseIngestionCounterState legacy = new(0, 1, 0, 0, "workflow-a:3");
+
+        CaseIngestionCounterState replayed = logic.Transition(legacy, "none", "queued", "workflow-a:2");
+
+        ReferenceEquals(legacy, replayed).ShouldBeTrue();
+        replayed.Queued.ShouldBe(0);
+        replayed.Extracting.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Transition_LedgerIsBoundedAcrossWorkflows()
+    {
+        CaseIngestionCounterLogic logic = new();
+        CaseIngestionCounterState state = Empty();
+        for (int index = 1; index <= 300; index++)
+        {
+            state = logic.Transition(state, "none", "queued", $"workflow-{index}:1");
+        }
+
+        state.AppliedTransitionSequences.ShouldNotBeNull();
+        state.AppliedTransitionSequences.Count.ShouldBe(256);
+        state.AppliedTransitionSequences.ShouldContainKey("workflow-300");
+    }
+
+    [Fact]
     public void Transition_DecrementFromZero_StaysAtZero()
     {
         CaseIngestionCounterLogic logic = new();

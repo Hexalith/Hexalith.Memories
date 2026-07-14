@@ -394,6 +394,8 @@ development_status:
   26-3-integration-stub-closure: review  # 2026-07-13: dev-story complete — all 28 audited rows resolve once (20 passed, 8 accepted structured skips); complete integration 243/8/0, CI-fast 224/8/0, required surfaces and outcome verifier green, Release build 0 warnings/errors, Server.Tests 2619/1/0. Story 26.2 remains in progress in parallel.
   26-4-coverage-gating-and-benchmark-lane: review
   26-5-operational-runbook-set: backlog
+  26-6-zot-release-contract-alignment: review  # 2026-07-14: implementation complete locally — standard publish-only HEXALITH_ZOT auth, flat memories/memories-mcp repositories, 12/12 publisher fixtures, 14/14 workflow guards, 28/28 package fixtures, 26/26 preflight fixtures, authenticated live dry-run green; GitHub Release evidence pending push.
+  26-7-restart-recovery-reliability-gate: review  # 2026-07-14: implementation complete locally — exact failure isolated as nested HTTP resilience timeout/retries, URL fetch transport retry removed, fail-fast Dapr/counter/log diagnostics retained, bounded replay watermark added; focused restart 3/3 and full slow lane 16/16 green; Nightly evidence pending push.
   epic-26-retrospective: optional
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done

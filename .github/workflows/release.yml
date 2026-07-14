@@ -52,13 +52,6 @@ jobs:
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
-      - name: Authenticate container registry
-        uses: docker/login-action@v4
-        with:
-          registry: registry.hexalith.com
-          username: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
-          password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -111,6 +104,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
 
       - name: Alert partial release publish
         if: failure()

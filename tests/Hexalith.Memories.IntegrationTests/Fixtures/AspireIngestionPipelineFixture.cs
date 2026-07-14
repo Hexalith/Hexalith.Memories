@@ -344,6 +344,24 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     public ICaseIngestionCounterActor CreateCaseIngestionCounterActorProxy(string tenantId, string caseId)
         => CreateActorProxy<ICaseIngestionCounterActor>($"{tenantId}:{caseId}", "CaseIngestionCounterActor");
 
+    /// <summary>Gets the raw Dapr workflow-management projection for failure diagnostics.</summary>
+    /// <param name="instanceId">Workflow instance identifier.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <returns>The HTTP status and raw JSON body returned by the local Dapr sidecar.</returns>
+    public async Task<string> GetDaprWorkflowStateDiagnosticAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
+        HttpClient client = _daprStateClient
+            ?? throw new InvalidOperationException("DAPR state client is unavailable before the topology has started.");
+        using HttpResponseMessage response = await client
+            .GetAsync($"/v1.0/workflows/dapr/{Uri.EscapeDataString(instanceId)}", cancellationToken)
+            .ConfigureAwait(false);
+        string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        return $"{(int)response.StatusCode} {response.StatusCode}: {body}";
+    }
+
     /// <summary>Creates a rate-limiter actor proxy against the test DAPR sidecar endpoint.</summary>
     /// <param name="tenantId">Tenant identifier.</param>
     /// <returns>The actor proxy.</returns>
@@ -1491,7 +1509,15 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 TState state,
                 Exception? exception,
                 Func<TState, Exception?, string> formatter)
-                => owner.Add(new CapturedLogEntry(logLevel, categoryName, formatter(state, exception)));
+            {
+                string message = formatter(state, exception);
+                if (exception is not null)
+                {
+                    message += $" | {exception.GetType().Name}: {exception.Message}";
+                }
+
+                owner.Add(new CapturedLogEntry(logLevel, categoryName, message));
+            }
         }
     }
 }

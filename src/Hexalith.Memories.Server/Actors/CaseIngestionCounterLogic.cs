@@ -11,6 +11,8 @@ using Hexalith.Memories.Contracts.V1;
 /// precedent — testable without DAPR plumbing.</summary>
 internal sealed class CaseIngestionCounterLogic
 {
+    private const int MaxTrackedWorkflowSequences = 256;
+
     /// <summary>Applies a stage transition to the supplied state. Returns the same instance unchanged when
     /// the transitionId has already been applied (idempotent).</summary>
     /// <param name="state">The current actor state.</param>
@@ -29,6 +31,23 @@ internal sealed class CaseIngestionCounterLogic
         if (string.Equals(state.LastTransitionId, transitionId, StringComparison.Ordinal))
         {
             return state;
+        }
+
+        Dictionary<string, int>? appliedSequences = CreateAppliedSequenceSnapshot(state);
+        if (TryParseTransitionId(transitionId, out string? workflowInstanceId, out int sequence))
+        {
+            appliedSequences ??= new Dictionary<string, int>(StringComparer.Ordinal);
+            if (appliedSequences.TryGetValue(workflowInstanceId, out int appliedSequence)
+                && sequence <= appliedSequence)
+            {
+                return state;
+            }
+
+            // Dictionary insertion order acts as a compact least-recently-updated queue. Reinsert an
+            // existing workflow before trimming so active workflows survive a busy case's bounded ledger.
+            _ = appliedSequences.Remove(workflowInstanceId);
+            appliedSequences[workflowInstanceId] = sequence;
+            TrimAppliedSequences(appliedSequences, workflowInstanceId);
         }
 
         int q = state.Queued;
@@ -56,7 +75,10 @@ internal sealed class CaseIngestionCounterLogic
             default: throw new ArgumentException($"Invalid nextStage '{next}'", nameof(next));
         }
 
-        return new CaseIngestionCounterState(q, e, m, i, transitionId);
+        return new CaseIngestionCounterState(q, e, m, i, transitionId)
+        {
+            AppliedTransitionSequences = appliedSequences,
+        };
     }
 
     /// <summary>Projects the actor state to the public counts contract.</summary>
@@ -66,5 +88,67 @@ internal sealed class CaseIngestionCounterLogic
     {
         ArgumentNullException.ThrowIfNull(s);
         return new(s.Queued, s.Extracting, s.Embedding, s.Indexing);
+    }
+
+    private static Dictionary<string, int>? CreateAppliedSequenceSnapshot(CaseIngestionCounterState state)
+    {
+        Dictionary<string, int>? appliedSequences = state.AppliedTransitionSequences is null
+            ? null
+            : new Dictionary<string, int>(state.AppliedTransitionSequences, StringComparer.Ordinal);
+
+        // Actor state written before Story 26.7 has only LastTransitionId. Seed that checkpoint on read so
+        // an older transition is rejected immediately without requiring an eager state migration.
+        if (TryParseTransitionId(state.LastTransitionId, out string? workflowInstanceId, out int sequence))
+        {
+            appliedSequences ??= new Dictionary<string, int>(StringComparer.Ordinal);
+            if (!appliedSequences.TryGetValue(workflowInstanceId, out int appliedSequence)
+                || sequence > appliedSequence)
+            {
+                appliedSequences[workflowInstanceId] = sequence;
+            }
+        }
+
+        return appliedSequences;
+    }
+
+    private static bool TryParseTransitionId(
+        string? transitionId,
+        out string workflowInstanceId,
+        out int sequence)
+    {
+        workflowInstanceId = string.Empty;
+        sequence = 0;
+        if (string.IsNullOrWhiteSpace(transitionId))
+        {
+            return false;
+        }
+
+        int separatorIndex = transitionId.LastIndexOf(':');
+        if (separatorIndex <= 0
+            || separatorIndex == transitionId.Length - 1
+            || !int.TryParse(
+                transitionId.AsSpan(separatorIndex + 1),
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out sequence)
+            || sequence <= 0)
+        {
+            return false;
+        }
+
+        workflowInstanceId = transitionId[..separatorIndex];
+        return true;
+    }
+
+    private static void TrimAppliedSequences(
+        Dictionary<string, int> appliedSequences,
+        string currentWorkflowInstanceId)
+    {
+        while (appliedSequences.Count > MaxTrackedWorkflowSequences)
+        {
+            string oldestWorkflowInstanceId = appliedSequences.Keys
+                .First(id => !string.Equals(id, currentWorkflowInstanceId, StringComparison.Ordinal));
+            _ = appliedSequences.Remove(oldestWorkflowInstanceId);
+        }
     }
 }

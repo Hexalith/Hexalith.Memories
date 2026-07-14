@@ -4548,7 +4548,7 @@ So that the topology matches its stated intent.
 Operators can deploy to production, back up and restore data, and rely on a coverage gate and real failure-mode tests; the empty integration stubs are closed and the operational runbook set is complete.
 **Lifecycle label:** Operational Readiness / Deploy & Test
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A23, A24, A25, A42
-**NFRs reinforced:** NFR7, NFR14, NFR16
+**NFRs reinforced:** NFR7, NFR14, NFR16, NFR17
 
 ### Story 26.1: Production Deployment Artifacts
 
@@ -4609,3 +4609,55 @@ So that production incidents and lifecycle operations have documented procedures
 **Given** `docs/operations/` lacks capacity planning, incident response, index-rebuild, tenant onboarding/offboarding, upgrade/migration, and monitoring/alerting-threshold runbooks,
 **When** this story completes,
 **Then** each runbook exists under `docs/operations/` and is cross-linked from the deployment/failure-recovery docs. Closes A25 (docs portion).
+
+### Story 26.6: Zot Release Contract Alignment
+
+As a release maintainer,
+I want container publication to use the shared Hexalith Zot credential and repository conventions only when an actual release is published,
+So that ordinary `main` pushes do not fail on unused credentials and real releases publish discoverable images.
+
+**Acceptance Criteria:**
+
+**Given** semantic-release evaluates a commit that does not produce a release,
+**When** the Release workflow runs,
+**Then** it completes without attempting registry authentication or container pushes.
+
+**Given** semantic-release reaches the container publish command,
+**When** the publisher authenticates,
+**Then** it consumes `HEXALITH_ZOT_REGISTRY`, `HEXALITH_ZOT_USERNAME`, and `HEXALITH_ZOT_API_KEY`,
+**And** missing publish credentials fail at the publish boundary with an actionable, secret-safe message.
+
+**Given** the default Hexalith Zot registry convention,
+**When** Server and MCP images are built, rendered, verified, or published,
+**Then** their targets are `registry.hexalith.com/memories:<version>` and `registry.hexalith.com/memories-mcp:<version>`,
+**And** build-only validation remains credential-free,
+**And** immutable-tag digest reconciliation and aggregate publication evidence remain intact.
+
+**Given** release workflow and publisher fixtures run,
+**Then** they reject early unconditional login, legacy secret names, and legacy nested repository names.
+
+### Story 26.7: Restart-Recovery Reliability Gate
+
+As a reliability maintainer,
+I want restart tests to expose the first terminal failure and prove replay-safe counter/workflow recovery,
+So that NFR17 regressions are actionable and cannot be hidden by timeouts or flaky green runs.
+
+**Acceptance Criteria:**
+
+**Given** a persistence test expects workflow completion,
+**When** the workflow reaches an unexpected terminal state,
+**Then** the waiter fails immediately with safe status, topology-log, scripted-request, and counter-state diagnostics.
+
+**Given** a deterministic counter transition is delayed or redelivered after later transitions,
+**When** the case counter actor applies it,
+**Then** the transition is idempotent across restart and persisted-state evolution remains backward compatible.
+
+**Given** URL ingestion is in flight,
+**When** the Aspire topology restarts,
+**Then** the workflow reaches `Completed`,
+**And** the pending counter survives restart,
+**And** every counter bucket drains to zero at completion.
+
+**Given** the correction is verified,
+**Then** focused repetition and the full slow integration lane pass,
+**And** evidence is not obtained by raising the timeout, suppressing terminal `Failed`, removing the restart, or weakening zero-loss assertions.

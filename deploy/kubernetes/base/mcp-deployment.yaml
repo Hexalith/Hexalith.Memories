@@ -36,7 +36,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: memories-mcp
-          image: registry.hexalith.com/hexalith/memories-mcp:0.0.0
+          image: registry.hexalith.com/memories-mcp:0.0.0
           imagePullPolicy: IfNotPresent
           env:
             - name: ASPNETCORE_URLS
