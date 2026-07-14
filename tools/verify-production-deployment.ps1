@@ -234,7 +234,8 @@ function Wait-AggregateStatus {
     )
 
     Set-VerificationStage $Stage
-    $deadline = [DateTime]::UtcNow.AddMinutes(4)
+    $waitStartedAt = [DateTime]::UtcNow
+    $deadline = $waitStartedAt.AddMinutes(4)
     $runningAt = $null
     $runningContainerInstance = ''
     $lastBody = ''
@@ -253,9 +254,15 @@ function Wait-AggregateStatus {
             }
             if ($null -eq $runningAt -or $containerInstance -ne $runningContainerInstance) {
                 # A Kubernetes container can restart inside the same pod. Measure the startup
-                # budget from the current container instance so a recovered restart is not charged
-                # the elapsed lifetime of its failed predecessor.
-                $runningAt = if ($null -eq $containerStartedAt) { [DateTime]::UtcNow } else { $containerStartedAt }
+                # budget from a current container instance that starts while this wait is observing
+                # it. A container that predates the wait may already have become healthy, so do not
+                # retroactively charge unobserved age (notably when initial app checks run in sequence).
+                $runningAt = if ($null -eq $containerStartedAt -or $containerStartedAt -lt $waitStartedAt) {
+                    [DateTime]::UtcNow
+                }
+                else {
+                    $containerStartedAt
+                }
                 $runningContainerInstance = $containerInstance
             }
 

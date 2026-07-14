@@ -356,6 +356,7 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("Get-RunningPodName");
         verifier.ShouldContain("state.running.startedAt");
         verifier.ShouldContain("$runningContainerInstance");
+        verifier.ShouldContain("$containerStartedAt -lt $waitStartedAt");
         verifier.ShouldContain("verification.hexalith.com/dapr-token-stage");
         verifier.ShouldContain("verification-invalid-dapr-api-token");
         verifier.ShouldContain("required-dapr-token-unhealthy");
