@@ -30,7 +30,8 @@ $kubeconfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories
 $originalKubeconfig = $env:KUBECONFIG
 $clusterCreated = $false
 $daprTokenFaultInjected = $false
-$memoriesReplicaCountReduced = $false
+$originalMemoriesDeploymentState = $null
+$memoriesDeploymentStateChanged = $false
 $verificationError = $null
 $verificationSucceeded = $false
 $verificationStage = 'preflight'
@@ -172,10 +173,20 @@ function Get-RunningContainerObservation {
     else {
         ([DateTime]$containerStatus.state.running.startedAt).ToUniversalTime()
     }
+    $readyCondition = @($pod[0].status.conditions |
+        Where-Object { $_.type -eq 'Ready' -and $_.status -eq 'True' } |
+        Select-Object -First 1)
+    $readyAt = if ($readyCondition.Count -eq 0 -or $null -eq $readyCondition[0].lastTransitionTime) {
+        $null
+    }
+    else {
+        ([DateTime]$readyCondition[0].lastTransitionTime).ToUniversalTime()
+    }
 
     return [pscustomobject]@{
         PodName = [string]$pod[0].metadata.name
         ContainerStartedAt = $startedAt
+        ReadyAt = $readyAt
     }
 }
 
@@ -236,6 +247,7 @@ function Wait-AggregateStatus {
     Set-VerificationStage $Stage
     $deadline = [DateTime]::UtcNow.AddMinutes(4)
     $runningAt = $null
+    $readyAt = $null
     $runningContainerInstance = ''
     $lastBody = ''
     $lastStatusCode = $null
@@ -245,6 +257,7 @@ function Wait-AggregateStatus {
         if ($null -ne $observation) {
             $pod = [string]$observation.PodName
             $containerStartedAt = $observation.ContainerStartedAt
+            $readyAt = $observation.ReadyAt
             $containerInstance = if ($null -eq $containerStartedAt) {
                 $pod
             }
@@ -271,7 +284,11 @@ function Wait-AggregateStatus {
             }
 
             if ($null -ne $health -and $health.status -eq $ExpectedStatus -and $lastStatusCode -eq $expectedHttpStatus) {
-                if ($MeasureFromContainerRunning -and (([DateTime]::UtcNow - $runningAt).TotalSeconds -gt $TimeoutSeconds)) {
+                # The Server and MCP checks run sequentially. If this probe observes a healthy pod
+                # after the wall-clock budget, use Kubernetes' recorded Ready transition to prove
+                # that the current container actually became ready inside its startup budget.
+                $healthyAt = if ($null -eq $readyAt) { [DateTime]::UtcNow } else { $readyAt }
+                if ($MeasureFromContainerRunning -and (($healthyAt - $runningAt).TotalSeconds -gt $TimeoutSeconds)) {
                     throw "[$Stage] $AppName reached $ExpectedStatus after the $TimeoutSeconds-second startup limit."
                 }
 
@@ -366,6 +383,68 @@ function Set-DaprClientTokenFault {
     }
 
     Invoke-Checked kubectl @('patch', 'deployment/memories', '-n', $namespace, '--type=strategic', '-p', $patch) | Out-Null
+}
+
+function Save-MemoriesDeploymentState {
+    $deploymentJson = (Invoke-Checked kubectl @('get', 'deployment/memories', '-n', $namespace, '-o', 'json')) -join [Environment]::NewLine
+    $deployment = $deploymentJson | ConvertFrom-Json
+    if ($null -eq $deployment.spec.replicas -or $null -eq $deployment.spec.strategy) {
+        throw 'Deployment/memories did not expose the replicas and rollout strategy required for reversible fault injection.'
+    }
+
+    $script:originalMemoriesDeploymentState = [pscustomobject]@{
+        Replicas = [int]$deployment.spec.replicas
+        Strategy = $deployment.spec.strategy
+    }
+}
+
+function Set-CapacityPreservingMemoriesRollout {
+    if ($null -eq $script:originalMemoriesDeploymentState) {
+        throw 'Deployment/memories state must be captured before changing its rollout strategy.'
+    }
+
+    $patch = '{"spec":{"strategy":{"type":"RollingUpdate","rollingUpdate":{"maxSurge":0,"maxUnavailable":1}}}}'
+    $script:memoriesDeploymentStateChanged = $true
+    Invoke-Checked kubectl @('patch', 'deployment/memories', '-n', $namespace, '--type=merge', '-p', $patch) | Out-Null
+}
+
+function Restore-MemoriesDeploymentState {
+    param(
+        [Parameter(Mandatory)][string]$ServerStage,
+        [Parameter(Mandatory)][string]$McpStage
+    )
+
+    if ($null -eq $script:originalMemoriesDeploymentState) {
+        throw 'Deployment/memories state was not captured and cannot be restored.'
+    }
+
+    $patch = @(
+        [ordered]@{
+            op = 'replace'
+            path = '/spec/replicas'
+            value = $script:originalMemoriesDeploymentState.Replicas
+        },
+        [ordered]@{
+            op = 'replace'
+            path = '/spec/strategy'
+            value = $script:originalMemoriesDeploymentState.Strategy
+        }
+    ) | ConvertTo-Json -Depth 10 -Compress
+    Invoke-Checked kubectl @('patch', 'deployment/memories', '-n', $namespace, '--type=json', '-p', $patch) | Out-Null
+    Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
+    Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage $ServerStage | Out-Null
+    Wait-AggregateStatus 'memories-mcp' 'memories-mcp' 'Healthy' -Stage $McpStage | Out-Null
+
+    $deploymentJson = (Invoke-Checked kubectl @('get', 'deployment/memories', '-n', $namespace, '-o', 'json')) -join [Environment]::NewLine
+    $deployment = $deploymentJson | ConvertFrom-Json
+    $actualStrategy = $deployment.spec.strategy | ConvertTo-Json -Depth 10 -Compress
+    $expectedStrategy = $script:originalMemoriesDeploymentState.Strategy | ConvertTo-Json -Depth 10 -Compress
+    if ([int]$deployment.spec.replicas -ne $script:originalMemoriesDeploymentState.Replicas -or
+        -not [string]::Equals($actualStrategy, $expectedStrategy, [StringComparison]::Ordinal)) {
+        throw 'Deployment/memories did not return to its exact captured replicas and rollout strategy.'
+    }
+
+    $script:memoriesDeploymentStateChanged = $false
 }
 
 function Assert-ImageContract {
@@ -553,15 +632,11 @@ spec:
     Invoke-Checked kubectl @('scale', 'statefulset/redis-stack', '-n', $namespace, '--replicas=1') | Out-Null
     Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'required-redis-restored' | Out-Null
 
-    Set-VerificationStage 'required-dapr-token-capacity-preparation'
-    Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=1') | Out-Null
-    $memoriesReplicaCountReduced = $true
-    Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
-    Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'required-dapr-token-capacity-ready' | Out-Null
-
     Set-VerificationStage 'required-dapr-token-fault-injection'
-    Set-DaprClientTokenFault $true
+    Save-MemoriesDeploymentState
+    Set-CapacityPreservingMemoriesRollout
     $daprTokenFaultInjected = $true
+    Set-DaprClientTokenFault $true
     $daprUnhealthy = Wait-AggregateStatus 'memories' 'memories' 'Unhealthy' `
         -Stage 'required-dapr-token-unhealthy' `
         -RequiredPodAnnotationName 'verification.hexalith.com/dapr-token-stage' `
@@ -577,19 +652,17 @@ spec:
         -RequiredPodAnnotationValue 'restored' | Out-Null
     Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
     $daprTokenFaultInjected = $false
-
-    Set-VerificationStage 'required-dapr-token-capacity-restoration'
-    Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=2') | Out-Null
-    Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
-    Wait-AggregateStatus 'memories' 'memories' 'Healthy' `
-        -Stage 'required-dapr-token-capacity-restored' `
-        -RequiredPodAnnotationName 'verification.hexalith.com/dapr-token-stage' `
-        -RequiredPodAnnotationValue 'restored' | Out-Null
-    $memoriesReplicaCountReduced = $false
+    Restore-MemoriesDeploymentState `
+        -ServerStage 'required-dapr-token-capacity-restored' `
+        -McpStage 'required-dapr-token-mcp-restored'
 
     Set-VerificationStage 'required-server-fault-injection'
+    $memoriesDeploymentStateChanged = $true
     Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=0') | Out-Null
     Wait-AggregateStatus 'memories-mcp' 'memories-mcp' 'Unhealthy' -Stage 'required-server-mcp-unhealthy' | Out-Null
+    Restore-MemoriesDeploymentState `
+        -ServerStage 'required-server-restored' `
+        -McpStage 'required-server-mcp-restored'
 
     $verificationSucceeded = $true
     Write-Host 'Production deployment verification passed with zero skips.'
@@ -599,12 +672,7 @@ catch {
     throw
 }
 finally {
-    try {
-        Write-ClusterDiagnostics $(if ($verificationSucceeded) { 'succeeded' } else { 'failed' })
-    }
-    catch {
-        Write-Warning "Unable to persist complete production deployment diagnostics: $(Protect-EvidenceText $_.Exception.Message)"
-    }
+    $terminalStage = $verificationStage
 
     if ($clusterCreated -and $daprTokenFaultInjected) {
         try {
@@ -617,15 +685,24 @@ finally {
         }
     }
 
-    if ($clusterCreated -and $memoriesReplicaCountReduced) {
+    if ($clusterCreated -and $memoriesDeploymentStateChanged) {
         try {
-            Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=2') | Out-Null
-            Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
-            $memoriesReplicaCountReduced = $false
+            Restore-MemoriesDeploymentState `
+                -ServerStage 'cleanup-server-restored' `
+                -McpStage 'cleanup-mcp-restored'
         }
         catch {
-            Write-Warning "Unable to restore the Server replica count after verifier failure: $(Protect-EvidenceText $_.Exception.Message)"
+            Write-Warning "Unable to restore the deployment strategy and replicas after verifier failure: $(Protect-EvidenceText $_.Exception.Message)"
         }
+    }
+
+    try {
+        # Capture the live post-cleanup cluster while retaining the terminal verification stage.
+        Set-VerificationStage $terminalStage
+        Write-ClusterDiagnostics $(if ($verificationSucceeded) { 'succeeded' } else { 'failed' })
+    }
+    catch {
+        Write-Warning "Unable to persist complete production deployment diagnostics: $(Protect-EvidenceText $_.Exception.Message)"
     }
 
     if (Test-Path -LiteralPath $manifestPath) {
