@@ -226,6 +226,28 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void ReleaseWorkflow_NoOpRelease_SkipsReleaseOnlyArtifactUploads()
+    {
+        ReleaseWorkflowStep snapshot = GetReleaseWorkflowStep("Snapshot release tags");
+        snapshot.Shell.ShouldBe("bash");
+        snapshot.Run.ShouldNotBeNull();
+        snapshot.Run!.ShouldContain("git tag --points-at HEAD --list 'v*'");
+        snapshot.Run.ShouldContain("fingerprint={}");
+
+        ReleaseWorkflowStep detection = GetReleaseWorkflowStep("Detect release publication");
+        detection.If.ShouldBe("success()");
+        detection.Shell.ShouldBe("bash");
+        detection.RunBlock.ShouldContain("published=false");
+        detection.RunBlock.ShouldContain("artifacts/deployment/hexalith-memories-production.yaml");
+        detection.RunBlock.ShouldContain("artifacts/packages/release/*.nupkg");
+        detection.RunBlock.ShouldContain("published=true");
+
+        string releaseOnlyCondition = "success() && steps.release-publication.outputs.published == 'true'";
+        GetReleaseWorkflowStep("Upload package artifacts").If.ShouldBe(releaseOnlyCondition);
+        GetReleaseWorkflowStep("Upload deployment artifact").If.ShouldBe(releaseOnlyCondition);
+    }
+
+    [Fact]
     public void ReleaseWorkflow_RegistryAuthentication_IsDeferredToPublishAndUsesSharedZotContract()
     {
         string repoRoot = GetRepoRoot();
@@ -358,6 +380,10 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("lastTransitionTime");
         verifier.ShouldContain("$healthyAt");
         verifier.ShouldContain("$runningContainerInstance");
+        verifier.ShouldContain("@('scale', 'deployment/memories', 'deployment/memories-mcp', '-n', $namespace, '--replicas=0')");
+        verifier.ShouldContain("@('rollout', 'status', 'statefulset/redis-stack', '-n', $namespace, '--timeout=180s')");
+        verifier.ShouldContain("@('rollout', 'status', 'statefulset/falkordb', '-n', $namespace, '--timeout=180s')");
+        verifier.ShouldContain("@('scale', 'deployment/memories', 'deployment/memories-mcp', '-n', $namespace, '--replicas=2')");
         verifier.ShouldContain("verification.hexalith.com/dapr-token-stage");
         verifier.ShouldContain("verification-invalid-dapr-api-token");
         verifier.ShouldContain("required-dapr-token-unhealthy");

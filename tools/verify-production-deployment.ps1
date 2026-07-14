@@ -539,6 +539,18 @@ try {
     Invoke-Checked kubectl @('apply', '--dry-run=client', '-f', $manifestPath) | Out-Host
     Invoke-Checked kubectl @('apply', '-f', $manifestPath) | Out-Host
 
+    # The release manifest assumes external Redis/FalkorDB services already exist. This disposable
+    # cluster creates them in the same apply, so keep the applications stopped until those required
+    # dependencies are Ready. Otherwise Dapr sidecars can repeatedly exit while Redis DNS/storage is
+    # still being provisioned and the verifier incorrectly charges infrastructure bootstrap time to
+    # the application's 60-second cold-start contract.
+    Invoke-Checked kubectl @('scale', 'deployment/memories', 'deployment/memories-mcp', '-n', $namespace, '--replicas=0') | Out-Null
+    Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=60s') | Out-Null
+    Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories-mcp', '-n', $namespace, '--timeout=60s') | Out-Null
+    Invoke-Checked kubectl @('rollout', 'status', 'statefulset/redis-stack', '-n', $namespace, '--timeout=180s') | Out-Null
+    Invoke-Checked kubectl @('rollout', 'status', 'statefulset/falkordb', '-n', $namespace, '--timeout=180s') | Out-Null
+    Invoke-Checked kubectl @('scale', 'deployment/memories', 'deployment/memories-mcp', '-n', $namespace, '--replicas=2') | Out-Null
+
     # Capture stdout only (2>$null): a kubectl deprecation/warning line on stderr would otherwise be
     # concatenated onto the 'yes'/'no' verdict and fail the exact-equality RBAC check on a valid cluster.
     $canReadLlm = (@(& kubectl auth can-i get secret/llm-secret -n $namespace --as "system:serviceaccount:${namespace}:memories" 2>$null) -join '').Trim()
