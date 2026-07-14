@@ -63,6 +63,9 @@ try {
         $effectiveFilter = if ($Filter -eq 'Category!=Integration') {
             'Category!=Integration&Category!=Benchmark'
         }
+        elseif ($Filter -eq 'Category=Benchmark') {
+            $null
+        }
         else {
             $Filter
         }

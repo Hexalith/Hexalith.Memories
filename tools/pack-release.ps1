@@ -11,6 +11,8 @@ param(
 
     [string]$DeploymentOutputPath = "artifacts/deployment/hexalith-memories-production.yaml",
 
+    [switch]$PackageOnly,
+
     [string]$PowerShellExecutable = "pwsh"
 )
 
@@ -63,6 +65,11 @@ try {
     & $PowerShellExecutable -NoLogo -NoProfile -File ./tools/validate-release-packages.ps1 -PackageDirectory $outputPath -Version $Version
     if ($LASTEXITCODE -ne 0) {
         throw "Generated package validation failed."
+    }
+
+    if ($PackageOnly) {
+        Write-Host "Package-only validation completed successfully."
+        return
     }
 
     & $PowerShellExecutable -NoLogo -NoProfile -File ./tools/publish-containers.ps1 `

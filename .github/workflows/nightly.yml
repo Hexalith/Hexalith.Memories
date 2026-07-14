@@ -108,3 +108,51 @@ jobs:
             **/TestResults/**
             artifacts/**
           if-no-files-found: ignore
+
+  benchmark:
+    name: NDCG benchmark quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Initialize build submodules
+        uses: Hexalith/Hexalith.Builds/Github/initialize-build@main
+
+      - name: Initialize .NET
+        uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
+        with:
+          global-json-file: global.json
+
+      - name: Verify Docker
+        run: docker info
+
+      - name: Restore solution
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+
+      - name: Build solution
+        run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
+
+      - name: Run complete NDCG benchmark project
+        run: bash ./tools/test.sh --filter "Category=Benchmark" --configuration Release --no-build --results-directory TestResults/benchmark
+
+      - name: Upload benchmark TRX
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-benchmark-trx
+          path: TestResults/benchmark/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.trx
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload benchmark quality result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nightly-benchmark-quality-result
+          path: tests/Hexalith.Memories.Benchmarks/bin/Release/net10.0/benchmark-results.json
+          if-no-files-found: error
+          retention-days: 14

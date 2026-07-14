@@ -109,6 +109,8 @@ for project in "${PROJECTS[@]}"; do
   EFFECTIVE_FILTER="$FILTER"
   if [[ "$FILTER" == "Category!=Integration" ]]; then
     EFFECTIVE_FILTER="Category!=Integration&Category!=Benchmark"
+  elif [[ "$FILTER" == "Category=Benchmark" ]]; then
+    EFFECTIVE_FILTER=""
   fi
 
   if [[ -n "$project" ]]; then

@@ -270,6 +270,50 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             publish_call = next(entry for entry in read_log(log_path) if entry.get("script") == "publish-containers.ps1")
             self.assertNotIn("-Push", publish_call["args"])
 
+    def test_pack_release_package_only_stops_after_real_package_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            env, log_path = make_environment(root)
+            package_output = root / "packages"
+
+            result = subprocess.run(
+                [
+                    shutil.which("pwsh") or "pwsh",
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-File",
+                    str(PACK_SCRIPT),
+                    "-Version",
+                    VERSION,
+                    "-OutputDirectory",
+                    str(package_output),
+                    "-PackageOnly",
+                    "-PowerShellExecutable",
+                    env["FAKE_PWSH"],
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            entries = read_log(log_path)
+            child_scripts = [entry["script"] for entry in entries if entry["command"] == "pwsh"]
+            self.assertEqual(
+                ["validate-release-packages.ps1", "validate-release-packages.ps1"],
+                child_scripts,
+            )
+            generated_validation = [
+                entry for entry in entries if entry.get("script") == "validate-release-packages.ps1"
+            ][-1]
+            self.assertIn("-PackageDirectory", generated_validation["args"])
+            self.assertIn("-Version", generated_validation["args"])
+            self.assertNotIn("publish-containers.ps1", child_scripts)
+            dotnet_commands = [entry["args"][0] for entry in entries if entry["command"] == "dotnet"]
+            self.assertEqual(["build"] + ["pack"] * 9, dotnet_commands)
+
 
 if __name__ == "__main__":
     unittest.main()

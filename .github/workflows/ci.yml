@@ -176,7 +176,7 @@ jobs:
   test-unit-contract:
     name: test-unit-contract
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -197,8 +197,20 @@ jobs:
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
 
+      - name: Run coverage gate fixtures
+        run: python3 -m unittest discover -s tests/tooling/coverage_gate -p "*_test.py"
+
+      - name: Run release package fixtures
+        run: python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"
+
+      - name: Run NuGet publish fixtures
+        run: python3 -m unittest discover -s tests/tooling/publish_nuget -p "*_test.py"
+
       - name: Run container publish fixtures
         run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
+
+      - name: Pack and validate release packages
+        run: pwsh ./tools/pack-release.ps1 -Version 0.0.264 -OutputDirectory artifacts/packages/ci -PackageOnly
 
       - name: Initialize kubectl
         # ProductionDeploymentArtifactsTests shells out to `kubectl kustomize` and fails (does not skip)
@@ -208,7 +220,10 @@ jobs:
           version: ${{ env.KUBECTL_VERSION }}
 
       - name: Run Docker-free unit and contract tests
-        run: bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --results-directory TestResults/test-unit-contract
+        run: bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --coverage --results-directory TestResults/test-unit-contract
+
+      - name: Validate scoped line coverage
+        run: python3 tools/validate-coverage.py --results-directory TestResults/test-unit-contract --config tests/tooling/coverage_gate/line-coverage-gate.json
 
       - name: Upload unit and contract test results
         if: always()

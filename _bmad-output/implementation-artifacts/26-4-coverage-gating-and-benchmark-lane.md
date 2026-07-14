@@ -4,7 +4,7 @@ baseline_commit: 1ce41926feca03bdd4bbe74e053db45535980421
 
 # Story 26.4: Coverage Gating & Benchmark Lane
 
-Status: ready-for-dev
+Status: review
 
 <!-- Epic 26 — Test, Deployment & Operational Readiness. CI/tooling-only story closing audit finding A42 plus the explicitly assigned Epic 25.8 PR-package carry-forward. Do not change retrieval behavior, benchmark data, package versions, product code, or submodule pointers to make a gate pass. -->
 
@@ -48,61 +48,61 @@ Story 26.3 supplies the meaningful failure-mode baseline for this gate. It is in
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Freeze the live baseline and gate contract** (AC: 2, 3, 6, 7, 9)
-  - [ ] Re-run the audit preflight at implementation start. Record the revision, package/test-platform properties, current coverage reports, current benchmark JSON, and any moved anchors.
-  - [ ] Preserve a version-controlled coverage configuration (for example `tools/coverage-thresholds.json`) containing the 78.0% minimum, first-party source scope, and required assemblies. CI, local validation, and tests must consume this source rather than repeat literals.
-  - [ ] Record the diagnostic baseline: 4,374 passed/1 skipped in the six Docker-free projects; 25,990/33,114 first-party lines = 78.49% after source-line union with `Program.cs` restored. Do not treat raw per-report or all-dependency rates as the gate.
-  - [ ] If present, record the local diagnostic baseline from `tests/Hexalith.Memories.Benchmarks/bin/Release/net10.0/benchmark-results.json`: 6/8 wins, 75%, `thesisValidated=false`. The file is gitignored and non-authoritative; on a fresh checkout, regenerate it with the Docker benchmark command rather than treating its absence as source drift. Never edit generated `bin/**` evidence as source.
+- [x] **Task 1 — Freeze the live baseline and gate contract** (AC: 2, 3, 6, 7, 9)
+  - [x] Re-run the audit preflight at implementation start. Record the revision, package/test-platform properties, current coverage reports, current benchmark JSON, and any moved anchors.
+  - [x] Preserve a version-controlled coverage configuration (for example `tools/coverage-thresholds.json`) containing the 78.0% minimum, first-party source scope, and required assemblies. CI, local validation, and tests must consume this source rather than repeat literals.
+  - [x] Record the diagnostic baseline: 4,374 passed/1 skipped in the six Docker-free projects; 25,990/33,114 first-party lines = 78.49% after source-line union with `Program.cs` restored. Do not treat raw per-report or all-dependency rates as the gate.
+  - [x] If present, record the local diagnostic baseline from `tests/Hexalith.Memories.Benchmarks/bin/Release/net10.0/benchmark-results.json`: 6/8 wins, 75%, `thesisValidated=false`. The file is gitignored and non-authoritative; on a fresh checkout, regenerate it with the Docker benchmark command rather than treating its absence as source drift. Never edit generated `bin/**` evidence as source.
 
-- [ ] **Task 2 — Repair and narrow the existing Coverlet configuration** (AC: 1, 2, 3, 8)
-  - [ ] Make `tests/tests.runsettings` well-formed XML (XML comments cannot contain `--`) and add a fixture/contract test that parses it.
-  - [ ] Remove `**/Program.cs` from `ExcludeByFile`; retain only justified generated-code exclusions such as `**/obj/**` and the existing attribute exclusions unless a measured reason requires change.
-  - [ ] Add explicit Coverlet include/exclude filters for repo-owned production assemblies versus tests, test helpers/specimens, and external dependencies. Keep the VSTest `XPlat Code Coverage` collector and Cobertura format.
-  - [ ] Do not change test project package references: every actual test project already references `coverlet.collector` with the correct private assets.
+- [x] **Task 2 — Repair and narrow the existing Coverlet configuration** (AC: 1, 2, 3, 8)
+  - [x] Make `tests/tests.runsettings` well-formed XML (XML comments cannot contain `--`) and add a fixture/contract test that parses it.
+  - [x] Remove `**/Program.cs` from `ExcludeByFile`; retain only justified generated-code exclusions such as `**/obj/**` and the existing attribute exclusions unless a measured reason requires change.
+  - [x] Add explicit Coverlet include/exclude filters for repo-owned production assemblies versus tests, test helpers/specimens, and external dependencies. Keep the VSTest `XPlat Code Coverage` collector and Cobertura format.
+  - [x] Do not change test project package references: every actual test project already references `coverlet.collector` with the correct private assets.
 
-- [ ] **Task 3 — Implement a fail-closed union coverage validator** (AC: 2, 3, 4)
-  - [ ] Add a standard-library validator (for example `tools/validate-coverage.py`) that recursively discovers Cobertura attachments, validates XML, canonicalizes separators/source roots, applies the checked-in scope, and unions source-line hits.
-  - [ ] Content-deduplicate or safely union the byte-identical UUID and `_HOST.../In/...` attachment copies currently produced per project. Never double-count a line or trust the sum of report-level `lines-valid` values.
-  - [ ] Require every configured production assembly/scope and explicit executable line evidence for `src/Hexalith.Memories.Server/Program.cs`, `src/Hexalith.Memories.Cli/Program.cs`, and `src/Hexalith.Memories.Mcp/Program.cs`.
-  - [ ] Print a concise console/GitHub summary and return nonzero for all fail-closed conditions and for `< 78.0%` (78.0 exactly passes). Do not silently skip an unreadable report.
-  - [ ] Add deterministic Python fixture tests under `tests/tooling/coverage_gate/` for every AC4 pass/fail/merge/path case. Follow the repository's existing `tools/verify-integration-stub-closure.py` plus `tests/tooling/integration_stub_closure/` pattern.
+- [x] **Task 3 — Implement a fail-closed union coverage validator** (AC: 2, 3, 4)
+  - [x] Add a standard-library validator (for example `tools/validate-coverage.py`) that recursively discovers Cobertura attachments, validates XML, canonicalizes separators/source roots, applies the checked-in scope, and unions source-line hits.
+  - [x] Content-deduplicate or safely union the byte-identical UUID and `_HOST.../In/...` attachment copies currently produced per project. Never double-count a line or trust the sum of report-level `lines-valid` values.
+  - [x] Require every configured production assembly/scope and explicit executable line evidence for `src/Hexalith.Memories.Server/Program.cs`, `src/Hexalith.Memories.Cli/Program.cs`, and `src/Hexalith.Memories.Mcp/Program.cs`.
+  - [x] Print a concise console/GitHub summary and return nonzero for all fail-closed conditions and for `< 78.0%` (78.0 exactly passes). Do not silently skip an unreadable report.
+  - [x] Add deterministic Python fixture tests under `tests/tooling/coverage_gate/` for every AC4 pass/fail/merge/path case. Follow the repository's existing `tools/verify-integration-stub-closure.py` plus `tests/tooling/integration_stub_closure/` pattern.
 
-- [ ] **Task 4 — Wire collection, validation, and evidence into CI** (AC: 1, 2, 4, 8)
-  - [ ] Update only the existing `.github/workflows/ci.yml` `test-unit-contract` job: call the existing test wrapper with `--coverage`, then call the validator with the checked-in configuration.
-  - [ ] Run the coverage-tooling fixture tests in the normal CI path before relying on the validator.
-  - [ ] Preserve the existing Release restore/build, kubectl-backed deployment contract tests, per-project inventory, TRX zero-test defense, and unrelated jobs.
-  - [ ] Keep artifact upload under `if: always()` and include all TRX/Cobertura outputs with `if-no-files-found: error` and 14-day retention.
-  - [ ] Measure the combined clean-run cost after enabling Coverlet and set an explicit `test-unit-contract` timeout with bounded margin. The current 25-minute value is not presumed sufficient, and timeout growth must be justified by observed collection/validation time rather than made unbounded.
-  - [ ] Do not collect coverage by invoking the whole `.slnx`; the root project inventories prevent filtered zero-test projects and are the canonical automation surface.
+- [x] **Task 4 — Wire collection, validation, and evidence into CI** (AC: 1, 2, 4, 8)
+  - [x] Update only the existing `.github/workflows/ci.yml` `test-unit-contract` job: call the existing test wrapper with `--coverage`, then call the validator with the checked-in configuration.
+  - [x] Run the coverage-tooling fixture tests in the normal CI path before relying on the validator.
+  - [x] Preserve the existing Release restore/build, kubectl-backed deployment contract tests, per-project inventory, TRX zero-test defense, and unrelated jobs.
+  - [x] Keep artifact upload under `if: always()` and include all TRX/Cobertura outputs with `if-no-files-found: error` and 14-day retention.
+  - [x] Measure the combined clean-run cost after enabling Coverlet and set an explicit `test-unit-contract` timeout with bounded margin. The current 25-minute value is not presumed sufficient, and timeout growth must be justified by observed collection/validation time rather than made unbounded.
+  - [x] Do not collect coverage by invoking the whole `.slnx`; the root project inventories prevent filtered zero-test projects and are the canonical automation surface.
 
-- [ ] **Task 5 — Close the Epic 25 package/topology PR-lane gap** (AC: 7, 8, 9)
-  - [ ] Add bounded steps to the existing required `test-unit-contract` job that run both `python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"` and `python3 -m unittest discover -s tests/tooling/publish_nuget -p "*_test.py"`; preserve the already-executed `publish_containers` fixtures and reuse that job's standard checkout, build-submodule initialization, pinned-SDK initialization, restore, and Release build. Include package-mode time in the measured timeout budget from Task 4.
-  - [ ] Pack the approved projects from `tools/release-packages.json` with one synthetic stable version into a clean `artifacts/packages/ci`-style directory, then validate the produced set with `tools/validate-release-packages.ps1 -PackageDirectory ... -Version ...`. Require exactly the nine approved packages and no extras.
-  - [ ] Add a narrowly named package-only switch to `tools/pack-release.ps1` and use that same inventory-driven build/pack/real-package-validation path in PR CI. The default release invocation must remain byte-for-behavior compatible and continue into container/deployment preparation; package-only mode must return successfully only after `-PackageDirectory` validation. Cover both branches in the existing release orchestration fixtures.
-  - [ ] Keep the PR exercise offline with respect to NuGet publication: no API key, `dotnet nuget push`, semantic-release, GitHub Release, or package upload to a registry. Local artifact upload is optional and must never substitute for validation.
-  - [ ] Update CI contract tests and `CONTRIBUTING.md` so the package/topology check is discoverable and its pack-plus-`-PackageDirectory` contract cannot silently return to post-merge-only execution.
+- [x] **Task 5 — Close the Epic 25 package/topology PR-lane gap** (AC: 7, 8, 9)
+  - [x] Add bounded steps to the existing required `test-unit-contract` job that run both `python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"` and `python3 -m unittest discover -s tests/tooling/publish_nuget -p "*_test.py"`; preserve the already-executed `publish_containers` fixtures and reuse that job's standard checkout, build-submodule initialization, pinned-SDK initialization, restore, and Release build. Include package-mode time in the measured timeout budget from Task 4.
+  - [x] Pack the approved projects from `tools/release-packages.json` with one synthetic stable version into a clean `artifacts/packages/ci`-style directory, then validate the produced set with `tools/validate-release-packages.ps1 -PackageDirectory ... -Version ...`. Require exactly the nine approved packages and no extras.
+  - [x] Add a narrowly named package-only switch to `tools/pack-release.ps1` and use that same inventory-driven build/pack/real-package-validation path in PR CI. The default release invocation must remain byte-for-behavior compatible and continue into container/deployment preparation; package-only mode must return successfully only after `-PackageDirectory` validation. Cover both branches in the existing release orchestration fixtures.
+  - [x] Keep the PR exercise offline with respect to NuGet publication: no API key, `dotnet nuget push`, semantic-release, GitHub Release, or package upload to a registry. Local artifact upload is optional and must never substitute for validation.
+  - [x] Update CI contract tests and `CONTRIBUTING.md` so the package/topology check is discoverable and its pack-plus-`-PackageDirectory` contract cannot silently return to post-merge-only execution.
 
-- [ ] **Task 6 — Add the nightly benchmark job without weakening it** (AC: 5, 6, 8)
-  - [ ] Extend `.github/workflows/nightly.yml`; do not create a second scheduled workflow. Keep `workflow_dispatch` and the daily cadence. The current `0 3 * * *` trigger is at the top of the hour; moving it to a nonzero minute is permitted to reduce peak scheduling delay, but is not required for A42 closure.
-  - [ ] Initialize the same build submodules/.NET SDK as current jobs, restore/build Release, verify Docker, and run `bash ./tools/test.sh --filter "Category=Benchmark" --configuration Release --no-build --results-directory TestResults/benchmark`.
-  - [ ] Update `tools/test.sh` and `tools/test.ps1` symmetrically so the **exact** `Category=Benchmark` selector chooses `tools/test-projects.benchmark.txt` but passes no trait filter to `dotnet test`; preserve normal filtering for every other expression. Add drift/runner-contract tests proving all 17 benchmark-project tests are selected rather than the current 13.
-  - [ ] Give the job a bounded timeout at least as large as the fixture/test five-minute bounds plus image pull/build margin. Reuse the benchmark project's pinned Testcontainers images; DAPR initialization is unnecessary for this suite.
-  - [ ] Upload the benchmark TRX and the exact Release `benchmark-results.json` in separate fail-closed artifact steps under `if: always()` so one file cannot mask the other's absence.
-  - [ ] Keep `ThesisValidation_HybridOutperforms80Percent`, `ReproducibilityTest_SameDatasetProducesIdenticalScores`, the full Category=Benchmark inventory, and the failing exit status. No selective `--filter`, retry-to-green, `continue-on-error`, or JSON post-processing.
+- [x] **Task 6 — Add the nightly benchmark job without weakening it** (AC: 5, 6, 8)
+  - [x] Extend `.github/workflows/nightly.yml`; do not create a second scheduled workflow. Keep `workflow_dispatch` and the daily cadence. The current `0 3 * * *` trigger is at the top of the hour; moving it to a nonzero minute is permitted to reduce peak scheduling delay, but is not required for A42 closure.
+  - [x] Initialize the same build submodules/.NET SDK as current jobs, restore/build Release, verify Docker, and run `bash ./tools/test.sh --filter "Category=Benchmark" --configuration Release --no-build --results-directory TestResults/benchmark`.
+  - [x] Update `tools/test.sh` and `tools/test.ps1` symmetrically so the **exact** `Category=Benchmark` selector chooses `tools/test-projects.benchmark.txt` but passes no trait filter to `dotnet test`; preserve normal filtering for every other expression. Add drift/runner-contract tests proving all 17 benchmark-project tests are selected rather than the current 13.
+  - [x] Give the job a bounded timeout at least as large as the fixture/test five-minute bounds plus image pull/build margin. Reuse the benchmark project's pinned Testcontainers images; DAPR initialization is unnecessary for this suite.
+  - [x] Upload the benchmark TRX and the exact Release `benchmark-results.json` in separate fail-closed artifact steps under `if: always()` so one file cannot mask the other's absence.
+  - [x] Keep `ThesisValidation_HybridOutperforms80Percent`, `ReproducibilityTest_SameDatasetProducesIdenticalScores`, the full Category=Benchmark inventory, and the failing exit status. No selective `--filter`, retry-to-green, `continue-on-error`, or JSON post-processing.
 
-- [ ] **Task 7 — Add drift guards and update documentation** (AC: 3, 4, 5, 6, 7)
-  - [ ] Source/fixture-test `.github/workflows/ci.yml`, `.github/workflows/nightly.yml`, `tests/tests.runsettings`, the threshold configuration, and test inventories for the required commands/paths without using brittle bare-substring checks where parsed YAML/XML/JSON or table-row anchors are practical.
-  - [ ] Update `tests/README.md` with the local coverage collection + validation sequence, the scheduled/manual benchmark command, artifact locations, Docker requirement, 78.0% scoped line gate, and the current 80% thesis requirement.
-  - [ ] Update `CONTRIBUTING.md` with the current six-project Docker-free inventory, coverage/package PR gates, whole-project benchmark-selector behavior, and stable CI check/artifact guidance. Remove the stale `tests/README.md` sentence claiming the repository has no root CI workflow; keep the existing fast/slow integration taxonomy and per-project runner guidance.
+- [x] **Task 7 — Add drift guards and update documentation** (AC: 3, 4, 5, 6, 7)
+  - [x] Source/fixture-test `.github/workflows/ci.yml`, `.github/workflows/nightly.yml`, `tests/tests.runsettings`, the threshold configuration, and test inventories for the required commands/paths without using brittle bare-substring checks where parsed YAML/XML/JSON or table-row anchors are practical.
+  - [x] Update `tests/README.md` with the local coverage collection + validation sequence, the scheduled/manual benchmark command, artifact locations, Docker requirement, 78.0% scoped line gate, and the current 80% thesis requirement.
+  - [x] Update `CONTRIBUTING.md` with the current six-project Docker-free inventory, coverage/package PR gates, whole-project benchmark-selector behavior, and stable CI check/artifact guidance. Remove the stale `tests/README.md` sentence claiming the repository has no root CI workflow; keep the existing fast/slow integration taxonomy and per-project runner guidance.
 
-- [ ] **Task 8 — Run and record the gates** (AC: 9)
-  - [ ] Run the coverage-tooling unit tests and any workflow/runsettings contract tests.
-  - [ ] Build `Hexalith.Memories.slnx` in Release with the pinned SDK and zero warnings/errors.
-  - [ ] Run the six-project Docker-free lane with coverage into a clean results directory; require 4,374 passed/1 expected skip or reconcile any legitimate count change, then run the validator and retain its summary.
-  - [ ] Confirm the merged report contains executable lines for all three required `Program.cs` files and remains at or above 78.0%.
-  - [ ] Run the release-package and publish-NuGet fixtures; pack the synthetic version; require nine validated packages from the real `-PackageDirectory` path; and confirm no publish command or credential is used.
-  - [ ] With Docker, run the Category=Benchmark project through the wrapper and retain TRX/JSON. Require 17 executed tests; record the expected 16 passed/1 failed and current 75% thesis result as a known pre-existing red unless separately owned work has already corrected it. Do not absorb that correction into this diff.
-  - [ ] Run `git diff --check`; confirm no product source, benchmark corpus/algorithm, package version, submodule pointer, generated build artifact, or unrelated story tracking file entered the diff.
+- [x] **Task 8 — Run and record the gates** (AC: 9)
+  - [x] Run the coverage-tooling unit tests and any workflow/runsettings contract tests.
+  - [x] Build `Hexalith.Memories.slnx` in Release with the pinned SDK and zero warnings/errors.
+  - [x] Run the six-project Docker-free lane with coverage into a clean results directory; require 4,374 passed/1 expected skip or reconcile any legitimate count change, then run the validator and retain its summary.
+  - [x] Confirm the merged report contains executable lines for all three required `Program.cs` files and remains at or above 78.0%.
+  - [x] Run the release-package and publish-NuGet fixtures; pack the synthetic version; require nine validated packages from the real `-PackageDirectory` path; and confirm no publish command or credential is used.
+  - [x] With Docker, run the Category=Benchmark project through the wrapper and retain TRX/JSON. Require 17 executed tests; record the expected 16 passed/1 failed and current 75% thesis result as a known pre-existing red unless separately owned work has already corrected it. Do not absorb that correction into this diff.
+  - [x] Run `git diff --check`; confirm no product source, benchmark corpus/algorithm, package version, submodule pointer, generated build artifact, or unrelated story tracking file entered the diff.
 
 ## File Scope
 
@@ -298,8 +298,50 @@ GPT-5 Codex
 
 ### Debug Log References
 
+- 2026-07-13 Task 1 preflight: implementation-start HEAD `7593f4bbf0a1462e77cda67a4839f4d0f5d48d4f`; the story's preserved baseline is `1ce41926feca03bdd4bbe74e053db45535980421`. The moved HEAD commit contains story/tracking creation and a pre-existing FrontComposer pointer update, not Story 26.4 implementation; this implementation leaves `references/**` untouched.
+- 2026-07-13 Task 1 platform baseline: .NET SDK 10.0.301; VSTest collector path; coverlet.collector 10.0.1; Microsoft.NET.Test.Sdk 18.7.0; xUnit v3 3.2.2; xunit.runner.visualstudio 3.1.5. Twelve Cobertura attachments (six byte-identical path pairs) exist under `TestResults/story-26-4-coverage-baseline`.
+- 2026-07-13 Task 1 evidence baseline: Docker-free inventory 4,374 passed/1 skipped/0 failed; diagnostic source-line union 25,990/33,114 (78.49%) with Server/CLI/MCP `Program.cs` evidence restored. Local ignored benchmark JSON remains 6/8 wins (75%), `thesisValidated=false`.
+- Implementation plan: establish the checked-in scope contract first, then repair collection, implement and fixture-test the fail-closed union validator, wire CI/package/nightly lanes, add drift guards/docs, and execute the complete gates without changing product or benchmark behavior.
+- 2026-07-13 Task 2 red/green: XML parsing initially failed at the double-hyphen coverage comment. After repair and scope filters, two coverage contract tests pass and a real six-project Coverlet run produced six Cobertura reports with 4,374 passed/1 skipped/0 failed.
+- 2026-07-13 Task 3 red/green/refactor: validator fixtures first failed because `tools/validate-coverage.py` was absent. The first real-report validation then exposed `repo/src` source roots with project-relative filenames; a new regression fixture pinned that shape before normalization was corrected. Final evidence: 13 tooling tests pass; six unique reports plus six duplicates union to 25,990/33,114 (78.49%); Server/CLI/MCP roots expose 56/49/10 executable lines; full Docker-free regression remains 4,374 passed/1 skipped/0 failed.
+- 2026-07-13 Task 4 red/green: the job-scoped contract initially failed on the old 25-minute timeout. CI now runs 14 coverage fixtures, wrapper-based collection, validator execution, and fail-closed 14-day artifact retention in the existing required job. Measured local post-build collection was 36.90 seconds and validation 0.23 seconds; the lane produced 4,374 passed/1 skipped/0 failed and 25,990/33,114 (78.49%). Timeout is bounded at 40 minutes to include shared Release restore/build, kubectl contracts, coverage, and the Task 5 real-package gate.
+- 2026-07-13 Task 5 red/green: package-only and CI contracts first failed because the switch/steps were absent. The first real pack then correctly rejected prerelease `0.0.0-ci.264`; the test and workflow were tightened to stable `0.0.264`. Final evidence: release_packages 28/28 (56.46s), publish_nuget 8/8 (23.01s), publish_containers/release orchestration 10/10 (28.06s), package-only build/pack/validation 30.50s with 0 warnings/errors and exactly nine `.nupkg` files, plus Docker-free regression 4,374 passed/1 skipped/0 failed. These measured additions remain comfortably bounded by the 40-minute job timeout.
+- 2026-07-13 Task 6 red/green/evidence: job and wrapper contracts initially failed because the nightly job was absent and both wrappers forwarded the exact selector. Final 19 coverage/runner contracts pass. Docker 29.4.3 executed the whole project with no trait filter: 17 total, 16 passed, 1 failed at `ThesisValidation_HybridOutperforms80Percent`; JSON records 6/8 wins, 75%, `thesisValidated=false`, while reproducibility and all four untraited seeder tests passed. The failure remains blocking and is not described as green. Docker-free regression remains 4,374 passed/1 skipped/0 failed.
+- 2026-07-13 Task 7 red/green: the documentation contract first failed on stale coverage/CI guidance. Final 20 tooling contracts parse JSON/XML, scope assertions to specific workflow jobs, execute both wrappers through a fake test host, pin the benchmark inventory/count/assertion names, and guard contributor commands, thresholds, artifacts, and six-project inventory. Full Docker-free regression remains 4,374 passed/1 skipped/0 failed.
+- 2026-07-13 Task 8 gate evidence: 21 coverage/workflow/runsettings/runner/documentation contracts pass; the Release solution build completed with 0 warnings/errors; the clean six-project coverage lane completed 4,374 passed/1 skipped/0 failed and unioned six unique plus six duplicate attachments to 25,990/33,114 (78.49%), including 56/49/10 executable Server/CLI/MCP `Program.cs` lines. Release-package, publish-NuGet, and release-orchestration fixtures completed 28/8/10 passes; package-only mode validated exactly nine stable `0.0.264` packages through the real `-PackageDirectory` path without publication. Docker executed all 17 benchmark tests and retained TRX/JSON with the known pre-existing result of 16 passed/1 thesis failure, 6/8 wins (75%), `thesisValidated=false`. `git diff --check` is clean, generated evidence remains ignored, and the version-controlled gate configuration was moved into the allowed `tests/tooling/coverage_gate/**` scope after an ignore guard exposed the repository's `coverage*.json` rule.
+- 2026-07-13 final review regression: the post-implementation six-project Docker-free inventory again completed 4,374 passed/1 expected skip/0 failed with nonzero execution verified from every TRX.
+
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- Task 1 complete: added the single-source 78.0% coverage contract with nine required assemblies and three required composition roots; its focused unittest and the full six-project 4,374 passed/1 skipped regression inventory pass.
+- Task 2 complete: repaired `tests.runsettings`, restored composition-root collection, narrowed collector scope to first-party production assemblies, preserved the pinned VSTest/Coverlet seam, and verified collection across all six Docker-free test projects.
+- Task 3 complete: added a standard-library, fail-closed Cobertura validator with content deduplication, safe source-root/path normalization, source-line union, per-assembly diagnostics, required assembly/root evidence, exact threshold enforcement, console output, and GitHub step summaries.
+- Task 4 complete: made scoped coverage a blocking path in the existing PR/push job, with gate fixtures before collection, validator enforcement after all six inventory projects, fail-closed evidence retention, and a measured bounded timeout.
+- Task 5 complete: added tested `-PackageOnly` orchestration, ran release/package/publication fixtures before merge, packed and validated the real nine-package set with stable synthetic version `0.0.264`, preserved default container/deployment preparation, and kept PR CI publication-free.
+- Task 6 complete: added the bounded nightly NDCG job, inventory-only exact selector behavior in both wrappers, separate fail-closed TRX/JSON artifacts, and executable 17-test drift proof while preserving the known 75% quality failure.
+- Task 7 complete: added durable workflow/runsettings/config/inventory/runner/documentation guards and reconciled local/CI guidance for coverage, package-only validation, benchmark execution, thresholds, Docker, and retained evidence.
+- Task 8 complete: executed and recorded every required gate, retained truthful coverage/package/benchmark evidence, confirmed the configured threshold and composition roots, and verified a scope-clean diff with no product, benchmark, version, submodule, generated-artifact, or publication changes.
 
 ### File List
+
+- `.github/workflows/ci.yml` (modified)
+- `.github/workflows/nightly.yml` (modified)
+- `CONTRIBUTING.md` (modified)
+- `_bmad-output/implementation-artifacts/26-4-coverage-gating-and-benchmark-lane.md` (modified)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified)
+- `tests/tests.runsettings` (modified)
+- `tests/README.md` (modified)
+- `tests/tooling/coverage_gate/coverage_contract_test.py` (new)
+- `tests/tooling/coverage_gate/test_runner_contract_test.py` (new)
+- `tests/tooling/coverage_gate/validate_coverage_test.py` (new)
+- `tests/tooling/publish_containers/release_orchestration_test.py` (modified)
+- `tests/tooling/coverage_gate/line-coverage-gate.json` (new)
+- `tools/pack-release.ps1` (modified)
+- `tools/test.ps1` (modified)
+- `tools/test.sh` (modified)
+- `tools/validate-coverage.py` (new)
+
+## Change Log
+
+- 2026-07-13: Implemented blocking scoped coverage and package validation in PR CI, a fail-closed union coverage validator and drift guards, whole-project nightly benchmark execution with durable evidence, symmetric test-runner behavior, and updated contributor/test documentation. Verified the known benchmark quality result remains truthfully red at 75%.

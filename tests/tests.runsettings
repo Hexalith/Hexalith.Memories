@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RunSettings>
   <!--
-    Shared coverage/runsettings used by `tools/test.ps1 -Coverage` and `tools/test.sh --coverage`.
+    Shared coverage/runsettings used by the root test wrappers when coverage is enabled.
     Deliberately omits <TestSessionTimeout>: a session-wide cap was confusing (the prior 300 000 ms
     value matched neither its comment nor integration reality — 17 min) and duplicated job-level
     timeouts in .github/workflows/nightly.yml. Rely on per-test `[Fact(Timeout = ...)]` and CI
@@ -13,7 +13,9 @@
       <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
           <Format>cobertura</Format>
-          <ExcludeByFile>**/Program.cs,**/obj/**</ExcludeByFile>
+          <Include>[Hexalith.Memories.*]*</Include>
+          <Exclude>[*.Tests]*,[Hexalith.Memories.TestHelpers]*,[Hexalith.Memories.Web.Specimens]*,[Hexalith.Memories.MigrateEmbeddingVectors]*</Exclude>
+          <ExcludeByFile>**/obj/**</ExcludeByFile>
           <ExcludeByAttribute>GeneratedCodeAttribute,ObsoleteAttribute</ExcludeByAttribute>
         </Configuration>
       </DataCollector>

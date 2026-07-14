@@ -19,7 +19,7 @@ For local service-backed runs, the default server endpoints exposed by the AppHo
 ### Fast local loop
 
 ```bash
-dotnet test --filter "Category!=Integration"
+./tools/test.sh --filter "Category!=Integration"
 ```
 
 ```powershell
@@ -60,13 +60,51 @@ dotnet test
 
 ### Coverage
 
+The required `test-unit-contract` PR/push job collects the six-project Docker-free inventory and then
+enforces unioned first-party line coverage. Run the same blocking sequence locally from the repository
+root after a Release build:
+
 ```bash
-dotnet test --collect:"XPlat Code Coverage" --settings tests/tests.runsettings
+bash ./tools/test.sh --filter "Category!=Integration" --configuration Release --no-build --coverage --results-directory TestResults/test-unit-contract
+python3 tools/validate-coverage.py --results-directory TestResults/test-unit-contract --config tests/tooling/coverage_gate/line-coverage-gate.json
 ```
 
 ```powershell
-./tools/test.ps1 -Coverage
+./tools/test.ps1 -Filter 'Category!=Integration' -Configuration Release -NoBuild -Coverage -ResultsDirectory 'TestResults/test-unit-contract'
+python tools/validate-coverage.py --results-directory TestResults/test-unit-contract --config tests/tooling/coverage_gate/line-coverage-gate.json
 ```
+
+`tests/tooling/coverage_gate/line-coverage-gate.json` is the single source for the **78.0%** minimum, production source
+scope, required assemblies, and Server/CLI/MCP composition-root evidence. The validator unions
+Cobertura lines by normalized repository path and line number, deduplicates collector attachment
+copies, and fails on missing, malformed, incomplete, or below-threshold evidence. CI retains the TRX
+and per-project Cobertura files together in the `test-unit-contract-results` artifact for 14 days.
+
+### Benchmark quality gate
+
+The benchmark project requires Docker because its three end-to-end suite tests use the pinned Redis
+Stack and FalkorDB Testcontainers. After a Release build, run the same whole-project selector used by
+the scheduled/manual `.github/workflows/nightly.yml` job:
+
+```bash
+bash ./tools/test.sh --filter "Category=Benchmark" --configuration Release --no-build --results-directory TestResults/benchmark
+```
+
+```powershell
+./tools/test.ps1 -Filter 'Category=Benchmark' -Configuration Release -NoBuild -ResultsDirectory 'TestResults/benchmark'
+```
+
+Exact `Category=Benchmark` selects `tools/test-projects.benchmark.txt` but passes no trait filter to
+the test host, so all 17 tests run: 10 scorer tests, 4 untraited seeder tests, and 3 Testcontainers
+suite tests. Other filter expressions retain normal `dotnet test` filter semantics. The benchmark
+remains a blocking quality gate: at least 80% of queries must favor hybrid retrieval and identical
+input runs must produce identical NDCG@10. Do not hide a failure with a narrower filter or retries.
+
+Local TRX evidence is written under `TestResults/benchmark`; the quality JSON is written to
+`tests/Hexalith.Memories.Benchmarks/bin/Release/net10.0/benchmark-results.json`. Nightly uploads them
+separately as `nightly-benchmark-trx` and `nightly-benchmark-quality-result`, even when the test step
+fails. The current measured result is truthfully known-red at 6/8 hybrid wins (75%), below the 80%
+requirement; Story 26.4 automates that signal and does not tune retrieval behavior.
 
 ### Debug / investigation
 
@@ -117,7 +155,8 @@ tests/
 - Use `tools/test.sh` on bash/Linux runners.
 - Coverage collection relies on `XPlat Code Coverage` plus `tests/tests.runsettings`.
 - Integration targets require Docker availability for Testcontainers.
-- The root repository currently exposes script entry points rather than a dedicated root CI workflow; these commands are the intended automation surface.
+- Root PR/push automation lives in `.github/workflows/ci.yml`; scheduled/manual integration and
+  benchmark automation lives in `.github/workflows/nightly.yml`.
 
 ## Troubleshooting
 

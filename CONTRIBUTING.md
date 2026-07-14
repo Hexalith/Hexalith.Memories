@@ -202,8 +202,13 @@ sidecars:
 ```powershell
 dotnet restore Hexalith.Memories.slnx
 dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
-./tools/test.ps1 -Filter "Category!=Integration" -Configuration Release -NoBuild -ResultsDirectory "TestResults/test-unit-contract"
+./tools/test.ps1 -Filter "Category!=Integration" -Configuration Release -NoBuild -Coverage -ResultsDirectory "TestResults/test-unit-contract"
+python tools/validate-coverage.py --results-directory TestResults/test-unit-contract --config tests/tooling/coverage_gate/line-coverage-gate.json
 ```
+
+The checked-in coverage contract enforces at least 78.0% unioned line coverage across the required
+first-party production assemblies and requires executable evidence for the Server, CLI, and MCP
+composition roots.
 
 The Docker-free lane maps `Category!=Integration` to
 `Category!=Integration&Category!=Benchmark` and runs the shared inventory in
@@ -215,11 +220,14 @@ Server.Tests
 Cli.Tests
 Mcp.Tests
 EventStore.Tests
+Web.Tests
 ```
 
 `Hexalith.Memories.TestHelpers` builds through the solution but is not a direct test target.
-`Hexalith.Memories.Benchmarks` is intentionally excluded from PR CI; run benchmark tests explicitly
-with `Category=Benchmark` when needed.
+`Hexalith.Memories.Benchmarks` is intentionally excluded from PR CI. Exact `Category=Benchmark`
+selects its one-project inventory but clears the effective trait filter so all 17 tests run, including
+the four untraited seeder tests. The lane requires Docker and preserves the blocking 80% hybrid-win
+and identical-NDCG@10 reproducibility assertions.
 
 ### Sandbox test runner workaround
 
@@ -270,14 +278,29 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 | --- | --- |
 | `story-file-scope` | Validate changed files against the originating story's `File Scope`. |
 | `build` | Restore and build `Hexalith.Memories.slnx` in Release. |
-| `test-unit-contract` | Run Docker-free unit/contract tests from `tools/test-projects.unit-contract.txt`. |
+| `test-unit-contract` | Run Docker-free unit/contract coverage, enforce the scoped line gate, and pack/validate the approved NuGet topology before merge. |
 | `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow&Category!=Performance` tests and verify required surface evidence. |
 
-All jobs checkout root-declared submodules under `references/` and use the SDK from `global.json`. Test lanes write TRX files
-under `TestResults/<lane>` and upload those folders as workflow artifacts. The test scripts fail if a
+All jobs checkout root-declared submodules under `references/` and use the SDK from `global.json`. The
+`test-unit-contract` check uploads TRX plus per-project Cobertura reports as the 14-day
+`test-unit-contract-results` artifact. The scheduled/manual benchmark job uploads its TRX and exact
+quality JSON separately as `nightly-benchmark-trx` and `nightly-benchmark-quality-result`. Other test
+lanes write TRX files under `TestResults/<lane>` and upload those folders as workflow artifacts. The test scripts fail if a
 selected project executes zero tests **when `--results-directory` (or `-ResultsDirectory`) is passed**;
 local invocations without the flag skip TRX emission and therefore skip the zero-test guard. Pass the
 flag locally if you want the same protection CI uses.
+
+The same required job runs the `release_packages` and `publish_nuget` fixtures, then exercises the
+real inventory-driven package path without publishing:
+
+```powershell
+./tools/pack-release.ps1 -Version 0.0.264 -OutputDirectory artifacts/packages/ci -PackageOnly
+```
+
+Package-only mode builds and packs exactly the nine projects in `tools/release-packages.json`, runs
+`validate-release-packages.ps1` against the generated `.nupkg` directory and version, and stops before
+container/deployment preparation. It does not invoke semantic-release, contact NuGet, or require a
+publishing credential.
 
 Linux and macOS contributors should use `./tools/test.sh` (the script CI runs) for full parity with the
 PR lanes; `./tools/test.ps1` is the Windows-first variant and is used in `CONTRIBUTING.md` examples for
@@ -287,8 +310,8 @@ Required branch protection for `main` is documented in `docs/dev/branch-protecti
 must select the exact checks `story-file-scope`, `build`, `test-unit-contract`, and
 `integration-fast` after the workflow has run at least once and GitHub exposes the check names.
 
-Package publishing, semantic-release, and `NUGET_API_KEY` are Story 11.2 release automation scope, not
-PR CI scope.
+Package publication, semantic-release, and `NUGET_API_KEY` remain release automation scope. PR CI
+packs and validates local artifacts only; it never publishes them.
 
 ## Code Review
 
@@ -396,7 +419,7 @@ Before changing release automation, run:
 ```powershell
 ./tools/validate-release-packages.ps1
 ./tools/test-release.ps1
-./tools/pack-release.ps1 -Version 0.0.1-ci -OutputDirectory artifacts/packages/test
+./tools/pack-release.ps1 -Version 0.0.1-ci -OutputDirectory artifacts/packages/test -PackageOnly
 npm ci
 npx semantic-release --dry-run --no-ci
 ```
