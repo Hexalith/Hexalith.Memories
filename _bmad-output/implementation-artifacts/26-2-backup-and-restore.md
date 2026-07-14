@@ -4,7 +4,7 @@ baseline_commit: a077fd09f21968e494f20c72c62450c0b1d349f6
 
 # Story 26.2: Backup & Restore
 
-Status: in-progress
+Status: review
 
 <!-- Epic: 26 — Test, Deployment & Operational Readiness. Closes audit finding A25 (High, "Missing feature") — feature portion. Story 26.5 closes the docs portion (broader runbook set + final cross-linking). Reinforces NFR16 (zero memory-unit loss on Redis restart, AOF verified). New operator-facing capability → commit `feat(...)` (minor release). New import/restore REST route + client method = additive contract change; do NOT rename/remove existing export contracts. -->
 
@@ -190,6 +190,8 @@ claude-opus-4-8 (BMad dev-story workflow).
 - Fast Aspire lane (`Category=Integration&Category!=IntegrationSlow&Category!=Performance`) → 224 passed, 8 accepted structured skips, 0 failed; `BackupRestoreFidelityIntegrationTests.ExportThenImport_RestoresEveryHashAndEdge` passed against real Redis Stack/FalkorDB.
 - Slow Aspire lane (`Category=IntegrationSlow`) → 16 passed, 0 skipped/failed; `PipelinePersistenceIntegrationTests.RestartTopology_ShouldPreserveIndexedRedisBackedDataAcrossControlledRestart` passed with the zero-loss assertion.
 - Final `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore -m:1` → 0 warnings / 0 errors; `git diff --check` clean; modified C# files normalized to CRLF.
+- Final BMad completion gate (2026-07-14): the six-project unit/contract lane passed 4,413 tests with 1 intentional skip on `0fa8085`; concurrent final commit `373d893` added four restore staging-stream tests, after which the final-HEAD Release build again passed with 0 warnings / 0 errors and the Server lane passed 2,641 / 1 / 0. Aggregate final unit/contract evidence is 4,417 passed / 1 intentional skip / 0 failed.
+- Final AC7/AC8 evidence (2026-07-14): fast Aspire integration passed 224 / 8 / 0 and the TRX records `BackupRestoreFidelityIntegrationTests.ExportThenImport_RestoresEveryHashAndEdge` as Passed; slow Aspire integration passed 16 / 0 / 0 and records `PipelinePersistenceIntegrationTests.RestartTopology_ShouldPreserveIndexedRedisBackedDataAcrossControlledRestart` as Passed.
 
 ### Completion Notes List
 
@@ -208,68 +210,103 @@ Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow
 
 **Regression closure:** the broad unit lane found that the nine Story 26.2 import/restore error codes were absent from `ErrorMessageCatalog`. Added actionable domain-error translations and explicit catalog tests, restoring the drift guard and full CLI suite to green.
 
+**Final completion closure (2026-07-14):** Re-ran the complete configured non-benchmark regression evidence on the final implementation: Release solution build 0 warnings/errors; 4,417 unit/contract tests passed with one intentional skip; 224 fast Aspire tests passed with eight accepted structured skips; all 16 slow Aspire tests passed. The named AC7 fidelity and AC8 controlled-restart zero-loss tests both passed against real infrastructure. Reconciled the File List with the original implementation, both review-hardening chunks, and the final staged Redis stream tests. Story is ready for review.
+
 ### File List
 
-**New — Contracts (`src/Hexalith.Memories.Contracts`):**
-- `V1/RestoreAcceptedResponse.cs`
-- `V1/RestoreStatusResponse.cs`
+**Contracts and client:**
+- `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs`
+- `src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs`
+- `src/Hexalith.Memories.Contracts/V1/RestoreAcceptedResponse.cs`
+- `src/Hexalith.Memories.Contracts/V1/RestoreStatusResponse.cs`
+- `src/Hexalith.Memories.Client.Rest/BorrowedStreamContent.cs`
+- `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs`
+- `src/Hexalith.Memories.Client.Rest/MemoriesClientOptions.cs`
+- `src/Hexalith.Memories.Client.Rest/MemoriesClientRequestTimeoutHandler.cs`
+- `src/Hexalith.Memories.Client.Rest/MemoriesClientServiceCollectionExtensions.cs`
+- `src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs`
 
-**New — Server (`src/Hexalith.Memories.Server`):**
-- `Import/ImportEnvelope.cs`
-- `Import/ImportEnvelopeException.cs`
-- `Import/ImportEnvelopeReader.cs`
-- `Import/IImportStagingStore.cs`
-- `Import/RedisImportStagingStore.cs`
-- `Import/ImportRequestValidator.cs`
-- `Activities/Indexing/SyntacticHashProjection.cs`
-- `Activities/Restore/RestoreDataPlaneActivity.cs`
-- `Activities/Restore/RestoreReindexUnitActivity.cs`
-- `Activities/Restore/DeleteRestoreStagingActivity.cs`
-- `Endpoints/ImportEndpoints.cs`
-- `Workflows/RestoreWorkflow.cs`
-- `Workflows/Contracts/RestoreWorkflowInput.cs`
-- `Workflows/Contracts/RestoreWorkflowResult.cs`
-- `Workflows/Contracts/RestoreDataPlaneInput.cs`
-- `Workflows/Contracts/RestoreDataPlaneResult.cs`
-- `Workflows/Contracts/RestoreReindexInput.cs`
-- `Workflows/Contracts/RestoreReindexResult.cs`
+**Server:**
+- `src/Hexalith.Memories.Server/Activities/Indexing/IndexSyntacticActivity.cs`
+- `src/Hexalith.Memories.Server/Activities/Indexing/SyntacticHashProjection.cs`
+- `src/Hexalith.Memories.Server/Activities/Restore/DeleteRestoreStagingActivity.cs`
+- `src/Hexalith.Memories.Server/Activities/Restore/IRestoreReindexUnitProcessor.cs`
+- `src/Hexalith.Memories.Server/Activities/Restore/RestoreDataPlaneActivity.cs`
+- `src/Hexalith.Memories.Server/Activities/Restore/RestoreEdgeOutcome.cs`
+- `src/Hexalith.Memories.Server/Activities/Restore/RestoreReindexBatchActivity.cs`
+- `src/Hexalith.Memories.Server/Activities/Restore/RestoreReindexUnitActivity.cs`
+- `src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs`
+- `src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs`
+- `src/Hexalith.Memories.Server/Graph/IGraphQueryBuilder.cs`
+- `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs`
+- `src/Hexalith.Memories.Server/Import/IImportStagingStore.cs`
+- `src/Hexalith.Memories.Server/Import/IRestoreTargetGuard.cs`
+- `src/Hexalith.Memories.Server/Import/ImportEnvelope.cs`
+- `src/Hexalith.Memories.Server/Import/ImportEnvelopeException.cs`
+- `src/Hexalith.Memories.Server/Import/ImportEnvelopeReader.cs`
+- `src/Hexalith.Memories.Server/Import/ImportEnvelopeScanResult.cs`
+- `src/Hexalith.Memories.Server/Import/ImportEnvelopeStreamProcessor.cs`
+- `src/Hexalith.Memories.Server/Import/ImportEnvelopeValidator.cs`
+- `src/Hexalith.Memories.Server/Import/ImportJsonStreamReader.cs`
+- `src/Hexalith.Memories.Server/Import/ImportRequestValidator.cs`
+- `src/Hexalith.Memories.Server/Import/ImportedCase.cs`
+- `src/Hexalith.Memories.Server/Import/RedisChunkReadStream.cs`
+- `src/Hexalith.Memories.Server/Import/RedisImportStagingStore.cs`
+- `src/Hexalith.Memories.Server/Import/RestoreLeaseResult.cs`
+- `src/Hexalith.Memories.Server/Import/RestoreTargetGuard.cs`
+- `src/Hexalith.Memories.Server/Program.cs`
+- `src/Hexalith.Memories.Server/Workflows/Contracts/RestoreDataPlaneInput.cs`
+- `src/Hexalith.Memories.Server/Workflows/Contracts/RestoreDataPlaneResult.cs`
+- `src/Hexalith.Memories.Server/Workflows/Contracts/RestoreReindexBatchInput.cs`
+- `src/Hexalith.Memories.Server/Workflows/Contracts/RestoreReindexBatchResult.cs`
+- `src/Hexalith.Memories.Server/Workflows/Contracts/RestoreReindexInput.cs`
+- `src/Hexalith.Memories.Server/Workflows/Contracts/RestoreReindexResult.cs`
+- `src/Hexalith.Memories.Server/Workflows/Contracts/RestoreWorkflowInput.cs`
+- `src/Hexalith.Memories.Server/Workflows/Contracts/RestoreWorkflowResult.cs`
+- `src/Hexalith.Memories.Server/Workflows/RestoreWorkflow.cs`
 
-**Modified — production:**
-- `src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs` (import route constants + builders)
-- `src/Hexalith.Memories.Contracts/V1/MemoriesJsonContext.cs` (register restore DTOs)
-- `src/Hexalith.Memories.Server/Graph/IGraphQueryBuilder.cs` (add `BuildRestoreEdge`)
-- `src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs` (implement `BuildRestoreEdge`)
-- `src/Hexalith.Memories.Server/Activities/Indexing/IndexSyntacticActivity.cs` (use shared `SyntacticHashProjection`)
-- `src/Hexalith.Memories.Server/Endpoints/…` via `Program.cs` (`app.MapImportEndpoints();`)
-- `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs` (register workflow/activities + staging store)
-- `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs` (`ImportTenantAsync`/`ImportCaseAsync`)
-- `src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs` (actionable translations for nine import/restore error codes)
+**Tests:**
+- `tests/Hexalith.Memories.Cli.Tests/Cli/ErrorCatalogDriftTests.cs`
+- `tests/Hexalith.Memories.Cli.Tests/Cli/ErrorCatalogTests.cs`
+- `tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientImportTests.cs`
+- `tests/Hexalith.Memories.Contracts.Tests/V1/MemoriesRoutesImportTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Restore/DeleteRestoreStagingActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Restore/RestoreDataPlaneActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Restore/RestoreReindexBatchActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Activities/Restore/RestoreReindexUnitActivityTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/ImportEndpointStatusTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Endpoints/ImportRouteMappingTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderRestoreEdgeTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Import/ImportEnvelopeReaderTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Import/ImportRequestValidatorTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Import/RedisChunkReadStreamTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Import/SyntacticHashProjectionTests.cs`
 
-**New/Modified — tests:**
-- `tests/Hexalith.Memories.Server.Tests/Import/ImportRequestValidatorTests.cs` (new)
-- `tests/Hexalith.Memories.Server.Tests/Import/ImportEnvelopeReaderTests.cs` (new)
-- `tests/Hexalith.Memories.Server.Tests/Import/SyntacticHashProjectionTests.cs` (new)
-- `tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderRestoreEdgeTests.cs` (new)
-- `tests/Hexalith.Memories.Server.Tests/Activities/Restore/RestoreDataPlaneActivityTests.cs` (new)
-- `tests/Hexalith.Memories.Contracts.Tests/V1/MemoriesRoutesImportTests.cs` (new)
-- `tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs` (new)
-- `tests/Hexalith.Memories.Server.Tests/Graph/GraphQueryBuilderTests.cs` (modified — stub-caller count 3→4)
-- `tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs` (modified — AC8 zero-loss count assertion)
-- `tests/Hexalith.Memories.Cli.Tests/Cli/ErrorCatalogTests.cs` (modified — import/restore catalog coverage)
-
-**New/Modified — docs:**
-- `docs/operations/backup-restore.md` (new)
-- `docs/operations/disaster-recovery.md` (new)
-- `docs/operations/route-surface.md` (modified — 3 new routes)
-
-**Modified — story tracking:**
+**Documentation and tracking:**
+- `docs/operations/backup-restore.md`
+- `docs/operations/disaster-recovery.md`
+- `docs/operations/route-surface.md`
 - `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
+- `_bmad-output/implementation-artifacts/26-2-restore-target-busy-catalog.md`
+- `_bmad-output/implementation-artifacts/bmad-dev-auto-result-26-2-backup-and-restore.md` (deleted)
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+**Accepted dependency pointer updates:**
+- `references/Hexalith.Builds`
+- `references/Hexalith.EventStore`
+- `references/Hexalith.FrontComposer`
+- `references/Hexalith.PolymorphicSerializations`
+- `references/Hexalith.Tenants`
 
 ## Change Log
 
 | Date | Change |
 | --- | --- |
+| 2026-07-14 | Final BMad completion gate on `373d893`: Release solution build 0 warnings/errors; aggregate unit/contract evidence 4,417/1/0; fast Aspire 224/8/0 with AC7 fidelity Passed; slow Aspire 16/0/0 with AC8 controlled-restart zero-loss Passed; File List reconciled; status → review. |
 | 2026-07-14 | Chunk-1 adversarial review patches applied: strict streamed envelope validation; clean-target tenant lease/idempotency; 512 MB chunked renewable staging; bounded re-index workflow pages; embedding readiness/dimension/migration guards; graph timestamp/edge fidelity; fail-closed status and best-effort cleanup; expanded Docker-free coverage. Server tests 2641/1/0; Release solution build 0/0. Status remains review for the remaining agreed review chunks. |
 | 2026-07-13 | Completion gates closed locally: fixed nine missing CLI error-catalog mappings found by the broad regression lane; 4,374 unit/contract tests passed with 1 intentional skip; fast Aspire lane passed 224/8/0 including AC7 fidelity; slow Aspire lane passed 16/0/0 including AC8 controlled-restart zero-loss; final Release build 0 warnings/errors. Status → review. |
 | 2026-07-13 | Story 26.2 implemented: import/restore endpoints (`POST …/import`, `GET …/restore/{instanceId}`) consuming the export envelope; durable `RestoreWorkflow` (byte-exact data-plane restore + re-derived chunked semantic vectors + graph node/edge reconstruction with audit trail); additive `BuildRestoreEdge` graph builder; shared `SyntacticHashProjection`; `MemoriesClient` import methods; 23 Docker-free tests + Aspire fidelity test (AC7, CI) + AC8 zero-loss assertion; `backup-restore.md` + `disaster-recovery.md` runbooks. Build 0/0; Server.Tests 2599/0. Status → review. |
