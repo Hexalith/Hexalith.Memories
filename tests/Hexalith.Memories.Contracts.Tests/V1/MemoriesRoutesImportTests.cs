@@ -35,9 +35,14 @@ public class MemoriesRoutesImportTests
         => MemoriesRoutes.RestoreStatusLocation("acme", "instance-1").ShouldBe("/api/v1/tenants/acme/restore/instance-1");
 
     [Fact]
+    public void RestoreStatusPath_ReturnsRelativeEscapedPath()
+        => MemoriesRoutes.RestoreStatusPath("acme", "instance 1").ShouldBe("api/v1/tenants/acme/restore/instance%201");
+
+    [Fact]
     public void ImportPathBuilders_RejectDotSegments()
     {
         Should.Throw<ArgumentException>(() => MemoriesRoutes.TenantImportPath(".."));
         Should.Throw<ArgumentException>(() => MemoriesRoutes.CaseImportPath("acme", "."));
+        Should.Throw<ArgumentException>(() => MemoriesRoutes.RestoreStatusPath("acme", ".."));
     }
 }

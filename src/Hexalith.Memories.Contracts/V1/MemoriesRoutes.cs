@@ -354,6 +354,13 @@ public static class MemoriesRoutes
     public static string RestoreStatusLocation(string tenantId, string instanceId)
         => FillAbsolute(RestoreStatus, ("tenantId", tenantId), ("instanceId", instanceId));
 
+    /// <summary>Builds the relative client request path for restore workflow status.</summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="instanceId">The workflow instance identifier.</param>
+    /// <returns>The relative restore-status path with both segments escaped.</returns>
+    public static string RestoreStatusPath(string tenantId, string instanceId)
+        => Fill(RestoreStatus, ("tenantId", tenantId), ("instanceId", instanceId));
+
     /// <summary>Returns the relative (leading-slash-trimmed) form of a template that has no placeholders.</summary>
     /// <param name="template">The absolute route template.</param>
     /// <returns>The template without its leading slash.</returns>

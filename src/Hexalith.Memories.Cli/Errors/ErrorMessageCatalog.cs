@@ -429,6 +429,14 @@ public static class ErrorMessageCatalog
                 CliMessage: null,
                 CliSuggestion: "Use the restore instance id returned by the import scheduling endpoint for this tenant.",
                 ExitCode: 1),
+            ["RESTORE_TARGET_BUSY"] = new(
+                CliMessage: null,
+                CliSuggestion: "Wait for the active restore to finish before importing different content into the same target.",
+                ExitCode: 1),
+            ["RESTORE_TARGET_NOT_CLEAN"] = new(
+                CliMessage: null,
+                CliSuggestion: "Restore into a newly provisioned empty tenant or case target.",
+                ExitCode: 1),
 
             // Story 18.5: search lookup — Redis read failed; this is a backend outage, NOT a not-found. Retry
             // rather than treating the URI as unmapped (which could trigger a duplicate re-ingest downstream).

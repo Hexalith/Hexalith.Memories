@@ -27,4 +27,49 @@ public sealed class ImportEndpointStatusTests
         string? customStatus,
         string expected)
         => ImportEndpoints.ResolveReportedStatus(runtimeStatus, customStatus).ShouldBe(expected);
+
+    [Fact]
+    public void ResolveFailureDiagnostics_KnownEmbeddingFailure_ReturnsSanitizedGuidance()
+    {
+        var details = new WorkflowTaskFailureDetails(
+            "System.InvalidOperationException",
+            "IMPORT_EMBEDDING_MODEL_MISMATCH api-key=do-not-expose",
+            "secret stack trace");
+
+        (string? code, string? message, string? suggestion) = ImportEndpoints.ResolveFailureDiagnostics(
+            WorkflowRuntimeStatus.Failed,
+            details);
+
+        code.ShouldBe("RESTORE_EMBEDDING_CONFIGURATION_MISMATCH");
+        message.ShouldNotBeNull().ShouldNotContain("api-key", Shouldly.Case.Insensitive);
+        suggestion.ShouldNotBeNull().ShouldNotContain("do-not-expose", Shouldly.Case.Insensitive);
+    }
+
+    [Theory]
+    [InlineData(WorkflowRuntimeStatus.Canceled, "RESTORE_WORKFLOW_CANCELED")]
+    [InlineData(WorkflowRuntimeStatus.Terminated, "RESTORE_WORKFLOW_TERMINATED")]
+    public void ResolveFailureDiagnostics_TerminalInterruption_ReturnsStableCode(
+        WorkflowRuntimeStatus runtimeStatus,
+        string expectedCode)
+    {
+        (string? code, string? message, string? suggestion) = ImportEndpoints.ResolveFailureDiagnostics(
+            runtimeStatus,
+            failureDetails: null);
+
+        code.ShouldBe(expectedCode);
+        message.ShouldNotBeNullOrWhiteSpace();
+        suggestion.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void ResolveFailureDiagnostics_Running_ReturnsNoFailureFields()
+    {
+        (string? code, string? message, string? suggestion) = ImportEndpoints.ResolveFailureDiagnostics(
+            WorkflowRuntimeStatus.Running,
+            failureDetails: null);
+
+        code.ShouldBeNull();
+        message.ShouldBeNull();
+        suggestion.ShouldBeNull();
+    }
 }

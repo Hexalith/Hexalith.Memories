@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 /// <summary>DI extensions for registering <see cref="MemoriesClient"/>.</summary>
 public static class MemoriesClientServiceCollectionExtensions
 {
-    /// <summary>The default HTTP client timeout.</summary>
+    /// <summary>The default timeout enforced for ordinary REST requests.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>Registers <see cref="MemoriesClient"/>, its options, and the auth delegating handler.</summary>
@@ -31,6 +31,7 @@ public static class MemoriesClientServiceCollectionExtensions
 
         services.AddOptions<MemoriesClientOptions>();
         services.AddTransient<MemoriesAuthHandler>();
+        services.AddTransient<MemoriesClientRequestTimeoutHandler>();
 
         return services.AddHttpClient<MemoriesClient>((sp, httpClient) =>
         {
@@ -40,8 +41,11 @@ public static class MemoriesClientServiceCollectionExtensions
                 httpClient.BaseAddress = opts.Endpoint;
             }
 
-            httpClient.Timeout = DefaultTimeout;
+            // Per-request timeout selection lives in MemoriesClientRequestTimeoutHandler so large imports can
+            // use their dedicated budget without weakening the ordinary 30-second request budget.
+            httpClient.Timeout = Timeout.InfiniteTimeSpan;
         })
-        .AddHttpMessageHandler<MemoriesAuthHandler>();
+        .AddHttpMessageHandler<MemoriesAuthHandler>()
+        .AddHttpMessageHandler<MemoriesClientRequestTimeoutHandler>();
     }
 }

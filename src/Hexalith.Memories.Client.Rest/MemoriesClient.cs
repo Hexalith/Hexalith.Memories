@@ -1129,15 +1129,22 @@ public class MemoriesClient
         ArgumentNullException.ThrowIfNull(exportJson);
 
         string path = MemoriesRoutes.TenantImportPath(tenantId);
-        using StreamContent content = new(exportJson);
+        using BorrowedStreamContent content = new(exportJson);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
+        using HttpRequestMessage request = new(HttpMethod.Post, path) { Content = content };
+        request.Options.Set(MemoriesClientRequestTimeoutHandler.UseImportTimeout, true);
         using HttpResponseMessage response = await _httpClient
-            .PostAsync(path, content, ct)
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
             .ConfigureAwait(false);
 
         await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
-        return await ReadRequiredAsync<RestoreAcceptedResponse>(response, ct).ConfigureAwait(false);
+        return await ReadRestoreAcceptedResponseAsync(
+            response,
+            tenantId,
+            null,
+            ExportScope.Tenant,
+            ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1156,15 +1163,65 @@ public class MemoriesClient
         ArgumentNullException.ThrowIfNull(exportJson);
 
         string path = MemoriesRoutes.CaseImportPath(tenantId, caseId);
-        using StreamContent content = new(exportJson);
+        using BorrowedStreamContent content = new(exportJson);
         content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
+        using HttpRequestMessage request = new(HttpMethod.Post, path) { Content = content };
+        request.Options.Set(MemoriesClientRequestTimeoutHandler.UseImportTimeout, true);
         using HttpResponseMessage response = await _httpClient
-            .PostAsync(path, content, ct)
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
             .ConfigureAwait(false);
 
         await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
-        return await ReadRequiredAsync<RestoreAcceptedResponse>(response, ct).ConfigureAwait(false);
+        return await ReadRestoreAcceptedResponseAsync(
+            response,
+            tenantId,
+            caseId,
+            ExportScope.Case,
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Gets the current state of a scheduled tenant or case restore workflow.</summary>
+    /// <param name="tenantId">The target tenant identifier.</param>
+    /// <param name="instanceId">The restore workflow instance identifier returned by an import method.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The restore status, or <see langword="null"/> when the workflow does not exist for the tenant.</returns>
+    public virtual async Task<RestoreStatusResponse?> GetRestoreStatusAsync(
+        string tenantId,
+        string instanceId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
+
+        return await SendOptionalAsync<RestoreStatusResponse>(
+            MemoriesRoutes.RestoreStatusPath(tenantId, instanceId),
+            ct).ConfigureAwait(false);
+    }
+
+    private static async Task<RestoreAcceptedResponse> ReadRestoreAcceptedResponseAsync(
+        HttpResponseMessage response,
+        string expectedTenantId,
+        string? expectedCaseId,
+        ExportScope expectedScope,
+        CancellationToken ct)
+    {
+        RestoreAcceptedResponse accepted = await ReadRequiredAsync<RestoreAcceptedResponse>(response, ct).ConfigureAwait(false);
+        bool invalid = string.IsNullOrWhiteSpace(accepted.InstanceId)
+            || string.IsNullOrWhiteSpace(accepted.TenantId)
+            || !string.Equals(accepted.TenantId, expectedTenantId, StringComparison.Ordinal)
+            || !string.Equals(accepted.CaseId, expectedCaseId, StringComparison.Ordinal)
+            || accepted.Scope != expectedScope
+            || string.IsNullOrWhiteSpace(accepted.StatusLocation)
+            || !Uri.TryCreate(accepted.StatusLocation, UriKind.RelativeOrAbsolute, out _);
+        if (invalid)
+        {
+            throw CreateInvalidResponseException(
+                response.StatusCode,
+                "Server returned a 2xx restore response with missing, invalid, or mismatched descriptor fields.");
+        }
+
+        return accepted;
     }
 
     private async Task<Uri> ReadWorkflowStatusUriAsync(

@@ -47,6 +47,8 @@ public sealed class ErrorCatalogTests
         ["IMPORT_EMPTY", 1, "export envelope"],
         ["IMPORT_MANIFEST_UNREADABLE", 1, "export envelope"],
         ["RESTORE_STATUS_NOT_FOUND", 1, "instance id"],
+        ["RESTORE_TARGET_BUSY", 1, "active restore"],
+        ["RESTORE_TARGET_NOT_CLEAN", 1, "empty tenant"],
         ["TENANT_UPDATE_CONFLICT", 1, "memories tenant list"],
     ];
 

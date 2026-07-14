@@ -51,14 +51,23 @@ public sealed class ErrorCatalogDriftTests
             .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
             .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
 
-        var codePattern = new Regex("ErrorResponse\\(\\s*\"([A-Z][A-Z0-9_]*)\"", RegexOptions.Compiled);
+        Regex[] codePatterns =
+        [
+            new Regex("ErrorResponse\\(\\s*\"([A-Z][A-Z0-9_]*)\"", RegexOptions.Compiled),
+            // Catch filters that deliberately propagate an ImportEnvelopeException code into ErrorResponse(ex.Code).
+            // Without this pattern, RESTORE_TARGET_NOT_CLEAN bypassed the literal-only drift guard.
+            new Regex("string\\.Equals\\(ex\\.Code,\\s*\"([A-Z][A-Z0-9_]*)\"", RegexOptions.Compiled),
+        ];
         var foundCodes = new HashSet<string>(StringComparer.Ordinal);
         foreach (string file in serverFiles)
         {
             string content = File.ReadAllText(file);
-            foreach (Match match in codePattern.Matches(content))
+            foreach (Regex codePattern in codePatterns)
             {
-                foundCodes.Add(match.Groups[1].Value);
+                foreach (Match match in codePattern.Matches(content))
+                {
+                    foundCodes.Add(match.Groups[1].Value);
+                }
             }
         }
 

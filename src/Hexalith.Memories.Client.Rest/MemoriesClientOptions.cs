@@ -8,6 +8,12 @@ namespace Hexalith.Memories.Client.Rest;
 /// <summary>Options controlling how <see cref="MemoriesClient"/> talks to the Memories Server.</summary>
 public sealed class MemoriesClientOptions
 {
+    /// <summary>
+    /// Gets or sets the timeout for streaming backup imports. The default is 30 minutes so uploads near the
+    /// server's 512 MB ceiling are not constrained by the ordinary 30-second request budget.
+    /// </summary>
+    public TimeSpan ImportTimeout { get; set; } = TimeSpan.FromMinutes(30);
+
     /// <summary>The base URI of the Memories Server (e.g. <c>http://127.0.0.1:5000/</c>).</summary>
     public Uri? Endpoint { get; set; }
 

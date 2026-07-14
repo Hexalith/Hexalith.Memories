@@ -11,7 +11,7 @@ namespace Hexalith.Memories.Contracts.V1;
 /// </summary>
 /// <param name="InstanceId">The restore workflow instance identifier.</param>
 /// <param name="TenantId">The target tenant of the restore.</param>
-/// <param name="Status">The runtime/custom status of the restore (for example <c>restoring-data-plane</c>, <c>reindexing</c>, <c>completed</c>, <c>failed</c>).</param>
+/// <param name="Status">The runtime/custom status of the restore (for example <c>restoring-data-plane</c>, <c>reindexing</c>, <c>Completed</c>, <c>Failed</c>).</param>
 /// <param name="CreatedAt">When the restore workflow was created; <see langword="null"/> when unknown.</param>
 /// <param name="LastUpdatedAt">When the restore workflow last changed state; <see langword="null"/> when unknown.</param>
 /// <param name="RestoredMemoryUnits">Count of restored memory units once the workflow completes; <see langword="null"/> while running.</param>
@@ -27,4 +27,14 @@ public sealed record RestoreStatusResponse(
     int? RestoredMemoryUnits,
     int? RestoredCases,
     int? RestoredEdges,
-    int? SkippedRecords);
+    int? SkippedRecords)
+{
+    /// <summary>Gets a stable, support-safe failure code for a terminal non-success state.</summary>
+    public string? FailureCode { get; init; }
+
+    /// <summary>Gets a sanitized failure summary that never contains raw workflow exception details.</summary>
+    public string? FailureMessage { get; init; }
+
+    /// <summary>Gets operator-safe recovery guidance for a terminal non-success state.</summary>
+    public string? FailureSuggestion { get; init; }
+}

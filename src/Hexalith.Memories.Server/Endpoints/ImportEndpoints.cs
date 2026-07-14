@@ -361,6 +361,9 @@ internal static class ImportEndpoints
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
+        (string? failureCode, string? failureMessage, string? failureSuggestion) =
+            ResolveFailureDiagnostics(state.RuntimeStatus, state.FailureDetails);
+
         return Results.Ok(new RestoreStatusResponse(
             instanceId,
             tenantId,
@@ -370,7 +373,12 @@ internal static class ImportEndpoints
             result?.RestoredMemoryUnits,
             result?.RestoredCases,
             result?.RestoredEdges,
-            result?.SkippedRecords));
+            result?.SkippedRecords)
+        {
+            FailureCode = failureCode,
+            FailureMessage = failureMessage,
+            FailureSuggestion = failureSuggestion,
+        });
     }
 
     /// <summary>Prevents stale custom progress text from masking a terminal workflow state.</summary>
@@ -381,6 +389,57 @@ internal static class ImportEndpoints
             or WorkflowRuntimeStatus.Terminated
             ? runtimeStatus.ToString()
             : customStatus ?? runtimeStatus.ToString();
+
+    /// <summary>Projects raw workflow failure state into stable, support-safe operator diagnostics.</summary>
+    internal static (string? Code, string? Message, string? Suggestion) ResolveFailureDiagnostics(
+        WorkflowRuntimeStatus runtimeStatus,
+        WorkflowTaskFailureDetails? failureDetails)
+    {
+        if (runtimeStatus == WorkflowRuntimeStatus.Canceled)
+        {
+            return (
+                "RESTORE_WORKFLOW_CANCELED",
+                "The restore workflow was canceled before completion.",
+                "Verify the cancellation was intentional; otherwise retry the backup into a clean target.");
+        }
+
+        if (runtimeStatus == WorkflowRuntimeStatus.Terminated)
+        {
+            return (
+                "RESTORE_WORKFLOW_TERMINATED",
+                "The restore workflow was terminated before completion.",
+                "Review the operator action that terminated the workflow, then retry the backup into a clean target.");
+        }
+
+        if (runtimeStatus != WorkflowRuntimeStatus.Failed)
+        {
+            return (null, null, null);
+        }
+
+        string rawMessage = failureDetails?.ErrorMessage ?? string.Empty;
+        if (rawMessage.Contains("RESTORE_LEASE_LOST", StringComparison.Ordinal))
+        {
+            return (
+                "RESTORE_LEASE_LOST",
+                "The restore lost access to its staged backup lease before completion.",
+                "Verify Redis staging availability and retention, then retry the backup into a clean target.");
+        }
+
+        if (rawMessage.Contains("IMPORT_EMBEDDING_PROVIDER_MISMATCH", StringComparison.Ordinal)
+            || rawMessage.Contains("IMPORT_EMBEDDING_MODEL_MISMATCH", StringComparison.Ordinal)
+            || rawMessage.Contains("IMPORT_EMBEDDING_DIMENSIONS_MISMATCH", StringComparison.Ordinal))
+        {
+            return (
+                "RESTORE_EMBEDDING_CONFIGURATION_MISMATCH",
+                "The restore target embedding configuration does not match the exported data.",
+                "Provision a clean target with the export's provider, model, and dimensions, then retry.");
+        }
+
+        return (
+            "RESTORE_WORKFLOW_FAILED",
+            "The restore workflow failed before completion.",
+            "Inspect server logs for this restore instance id, correct the backend or configuration issue, then retry into a clean target.");
+    }
 
     private static RestoreWorkflowInput? TryReadInput(WorkflowState state)
     {

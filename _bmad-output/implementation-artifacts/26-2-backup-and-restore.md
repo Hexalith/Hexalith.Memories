@@ -4,7 +4,7 @@ baseline_commit: a077fd09f21968e494f20c72c62450c0b1d349f6
 
 # Story 26.2: Backup & Restore
 
-Status: review
+Status: in-progress
 
 <!-- Epic: 26 — Test, Deployment & Operational Readiness. Closes audit finding A25 (High, "Missing feature") — feature portion. Story 26.5 closes the docs portion (broader runbook set + final cross-linking). Reinforces NFR16 (zero memory-unit loss on Redis restart, AOF verified). New operator-facing capability → commit `feat(...)` (minor release). New import/restore REST route + client method = additive contract change; do NOT rename/remove existing export contracts. -->
 
@@ -355,3 +355,21 @@ All 10 patches applied. Build verified green (`dotnet build` — 0 warnings, 0 e
 All 17 approved patches were applied. The import body now streams into 1 MiB staging chunks; canonical validation and restore use bounded record scans; re-index ids stay in renewable staging and execute in pages of at most 100. A tenant-wide restore lease plus clean-target guard prevents overlapping/different restores while allowing retries of the same operation. Both index families, embedding attribution/dimensions, and migration markers are preflighted before mutation; graph timestamps and edge validation preserve fidelity without orphan stubs.
 
 Verification: `Hexalith.Memories.Server.Tests` **2641 passed / 1 intentional skip / 0 failed**; `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore` **0 warnings / 0 errors**; integration-test project compiles **0 warnings / 0 errors**. Story remains `review` because the agreed chunked code review still has the public/client, integration, and runbook diff groups to review.
+
+### Review Findings (2026-07-14, chunk 2: public contracts + client)
+
+- [x] [Review][Patch] HIGH — Add dedicated, configurable long-running import timeout semantics so the shipped client can honor the 512 MB import contract instead of inheriting the shared 30-second timeout [src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:1135; src/Hexalith.Memories.Client.Rest/MemoriesClientServiceCollectionExtensions.cs:43]
+- [x] [Review][Patch] MEDIUM — Add a relative `RestoreStatusPath` builder and typed `GetRestoreStatusAsync` method so `MemoriesClient` owns the complete asynchronous restore lifecycle [src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:1126; src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs:354]
+- [x] [Review][Patch] MEDIUM — Add sanitized failure code and operator-safe diagnostic fields to restore status without exposing raw workflow exception details [src/Hexalith.Memories.Contracts/V1/RestoreStatusResponse.cs:21; src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs:353]
+
+- [x] [Review][Patch] HIGH — Map `RESTORE_TARGET_BUSY` and `RESTORE_TARGET_NOT_CLEAN`, test both translations, and strengthen drift coverage for propagated exception codes [src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs:393]
+- [x] [Review][Patch] MEDIUM — Add `TestDelegatingHandler` coverage for both import methods: POST/path escaping, content type/body, typed decode, structured errors, and stream ownership [src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:1126]
+- [x] [Review][Patch] MEDIUM — Reject a malformed 202 body whose required restore descriptor fields are missing or invalid instead of returning null identifiers/default scope [src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:1140]
+- [x] [Review][Patch] MEDIUM — Preserve the caller-owned export stream after `ImportTenantAsync` / `ImportCaseAsync` rather than disposing it through `StreamContent` [src/Hexalith.Memories.Client.Rest/MemoriesClient.cs:1132]
+- [x] [Review][Patch] LOW — Align `RestoreStatusResponse` terminal-status documentation with the actual `Completed` / `Failed` wire casing [src/Hexalith.Memories.Contracts/V1/RestoreStatusResponse.cs:14]
+
+### Patch application (2026-07-14, chunk 2)
+
+All eight approved public/client patches were applied. Backup imports now use a dedicated configurable 30-minute timeout through a per-request handler while ordinary client calls retain their 30-second budget. The typed client preserves caller-owned streams, validates every accepted descriptor, and can poll restore status. Terminal non-success status includes stable, sanitized diagnostics without raw Dapr failure messages or stack traces. Both clean-target conflict codes now have actionable catalog mappings, and the drift guard recognizes explicitly propagated exception codes.
+
+Verification: `Hexalith.Memories.Cli.Tests` **475 passed / 0 failed**; `Hexalith.Memories.Contracts.Tests` **587 passed / 0 failed**; `Hexalith.Memories.Server.Tests` **2645 passed / 1 intentional skip / 0 failed**; `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore -m:1` **0 warnings / 0 errors**; `git diff --check` clean. The integration and runbook review chunks remain outstanding.
