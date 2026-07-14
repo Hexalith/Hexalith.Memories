@@ -144,6 +144,13 @@ def write_fake_docker(directory: Path) -> None:
                 if password != expected_password:
                     print("unexpected login password", file=sys.stderr)
                     sys.exit(92)
+                outcome = plan.get("login", {{}})
+                if outcome.get("stdout"):
+                    print(outcome["stdout"])
+                if outcome.get("stderr"):
+                    print(outcome["stderr"], file=sys.stderr)
+                if int(outcome.get("exitCode", 0)) != 0:
+                    sys.exit(int(outcome["exitCode"]))
                 print("Login Succeeded")
             elif args[:2] == ["load", "--input"]:
                 image = "server" if Path(args[2]).name.startswith("server") else "mcp"
@@ -193,8 +200,8 @@ def write_fake_docker(directory: Path) -> None:
                     print("no such manifest", file=sys.stderr)
                     sys.exit(1)
                 print(json.dumps({{
-                    "Descriptor": {{"digest": digest}},
-                    "SchemaV2Manifest": {{"config": {{"digest": "sha256:intentionally-different-config"}}}},
+                    "Descriptor": {{"digest": "sha256:intentionally-different-manifest"}},
+                    "SchemaV2Manifest": {{"config": {{"digest": digest}}}},
                 }}))
             elif args and args[0] == "push":
                 reference = args[1]
@@ -347,6 +354,57 @@ class PublishContainersTests(unittest.TestCase):
             )
             serialized_calls = json.dumps(docker_calls)
             self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized_calls)
+
+    def test_login_failure_is_redacted_and_stops_before_image_operations(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "login": {
+                    "exitCode": 41,
+                    "stderr": "expired SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertTrue(all(image["disposition"] == "authentication-failed" for image in summary["images"]))
+            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
+            self.assertEqual(
+                [["login", "registry.test", "--username", env["HEXALITH_ZOT_USERNAME"], "--password-stdin"]],
+                docker_calls,
+            )
+            serialized = result.stdout + result.stderr + json.dumps(summary)
+            self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized)
+            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
+
+    def test_login_success_with_push_denial_is_reported_as_authorization_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            denial = {
+                "exitCode": 1,
+                "stderr": "unauthorized: authentication required SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
+            }
+            plan = {"server": [denial], "mcp": [denial]}
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertTrue(all(image["disposition"] == "authorization-failed" for image in summary["images"]))
+            self.assertTrue(all("grant push access" in image["error"] for image in summary["images"]))
+            serialized = result.stdout + result.stderr + json.dumps(summary)
+            self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized)
+            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
 
     def test_push_retags_registry_less_loaded_images_before_canonical_inspect(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

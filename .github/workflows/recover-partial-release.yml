@@ -1,5 +1,5 @@
 name: Recover Partial Release
-run-name: Recover container images for v${{ inputs.version }}
+run-name: Complete partial release v${{ inputs.version }}
 
 on:
   workflow_dispatch:
@@ -14,13 +14,14 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
+  issues: write
 
 env:
   RECOVERY_VERSION: ${{ inputs.version }}
 
 jobs:
-  recover-container-images:
+  recover-partial-release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -55,6 +56,20 @@ jobs:
 
           echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
 
+      - name: Validate trusted recovery tooling
+        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
+
+      - name: Stage trusted recovery tooling
+        id: recovery-tooling
+        shell: pwsh
+        run: |
+          $toolingPath = Join-Path $env:RUNNER_TEMP 'memories-recovery-tooling'
+          New-Item -ItemType Directory -Path $toolingPath -Force | Out-Null
+          Copy-Item ./tools/verify-container-registry.ps1 $toolingPath
+          Copy-Item ./tools/publish-containers.ps1 $toolingPath
+          Copy-Item ./tools/complete-partial-release.ps1 $toolingPath
+          "path=$toolingPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Checkout tagged release source
         env:
           RECOVERY_COMMIT: ${{ steps.release-source.outputs.commit }}
@@ -68,19 +83,31 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Verify container registry write scope
+        shell: pwsh
+        run: '& "${{ steps.recovery-tooling.outputs.path }}/verify-container-registry.ps1"'
+        env:
+          HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
+          HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
+          HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
+
       - name: Restore tagged source
         run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
 
-      - name: Validate container recovery tooling
-        run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
-
       - name: Build tagged container archives
         shell: pwsh
-        run: ./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION
+        run: |
+          & "${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1" `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -Version $env:RECOVERY_VERSION
 
       - name: Reconcile immutable container tags
         shell: pwsh
-        run: ./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION -Push
+        run: |
+          & "${{ steps.recovery-tooling.outputs.path }}/publish-containers.ps1" `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -Version $env:RECOVERY_VERSION `
+            -Push
         env:
           HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
           HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
@@ -113,14 +140,44 @@ jobs:
             }
           }
 
+      - name: Complete GitHub Release and incident recovery
+        shell: pwsh
+        run: |
+          & "${{ steps.recovery-tooling.outputs.path }}/complete-partial-release.ps1" `
+            -Version $env:RECOVERY_VERSION `
+            -SourceRoot $env:GITHUB_WORKSPACE `
+            -ContainerSummaryPath ./artifacts/containers/release/publish-summary.json `
+            -DeploymentPath ./artifacts/containers/release/production-deployment.yaml `
+            -OutputDirectory "./artifacts/recovery/v$env:RECOVERY_VERSION" `
+            -Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
+
+      - name: Validate release completion evidence
+        shell: pwsh
+        run: |
+          $summaryPath = "./artifacts/recovery/v$env:RECOVERY_VERSION/completion-summary.json"
+          if (-not (Test-Path -LiteralPath $summaryPath)) {
+            throw "Partial-release completion summary was not created."
+          }
+          $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
+          if ($summary.status -ne 'succeeded' -or $summary.version -ne $env:RECOVERY_VERSION) {
+            throw "Partial-release completion evidence did not report success."
+          }
+          if (@($summary.packages).Count -ne 9 -or @($summary.images).Count -ne 2 -or @($summary.releaseAssets).Count -ne 10) {
+            throw "Partial-release completion evidence does not contain the complete release unit."
+          }
+
       - name: Upload container recovery evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: partial-release-container-recovery-v${{ inputs.version }}
+          name: partial-release-completion-v${{ inputs.version }}
           path: |
             artifacts/containers/release/build-summary.json
             artifacts/containers/release/publish-summary.json
             artifacts/containers/release/production-deployment.yaml
+            artifacts/recovery/v${{ inputs.version }}/completion-summary.json
           if-no-files-found: warn
           retention-days: 14

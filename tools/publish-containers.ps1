@@ -9,6 +9,8 @@ param(
 
     [string]$OutputDirectory = 'artifacts/containers/release',
 
+    [string]$RepositoryRoot,
+
     [switch]$Push
 )
 
@@ -25,7 +27,12 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
     throw "Version '$Version' is not a valid image-taggable semantic version (build metadata '+meta' is not allowed)."
 }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
+    Split-Path -Parent $PSScriptRoot
+}
+else {
+    (Resolve-Path -LiteralPath $RepositoryRoot).Path
+}
 $outputPath = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
     $OutputDirectory
 }
@@ -314,18 +321,18 @@ function Publish-ContainerArchive {
     if ($remoteInspect.ExitCode -eq 0) {
         try {
             $remoteManifest = $remoteInspect.Stdout | ConvertFrom-Json
-            $remoteImageDigest = [string]$remoteManifest.Descriptor.digest
+            $remoteImageDigest = [string]$remoteManifest.SchemaV2Manifest.config.digest
         }
         catch {
             return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Remote manifest for '$imageReference' was not valid JSON: $(Protect-LogText $_.Exception.Message)" -Disposition 'remote-inspect-failed'
         }
 
         if ([string]::IsNullOrWhiteSpace($remoteImageDigest)) {
-            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Remote manifest for '$imageReference' did not expose a single-platform descriptor digest." -Disposition 'remote-inspect-failed'
+            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Remote manifest for '$imageReference' did not expose a single-platform config digest." -Disposition 'remote-inspect-failed'
         }
 
         if (-not [string]::Equals($remoteImageDigest, $localImageDigest, [StringComparison]::OrdinalIgnoreCase)) {
-            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Immutable tag '$imageReference' already exists with descriptor digest '$remoteImageDigest', expected '$localImageDigest'." -Disposition 'digest-conflict'
+            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Immutable tag '$imageReference' already exists with config digest '$remoteImageDigest', expected '$localImageDigest'." -Disposition 'digest-conflict'
         }
 
         return New-Outcome -Image $Image -Status 'succeeded' -ExitCode 0 -Error $null -Disposition 'already-present'
@@ -333,10 +340,16 @@ function Publish-ContainerArchive {
 
     $push = Invoke-NativeCommand -Command 'docker' -Arguments @('push', $imageReference)
     if ($push.ExitCode -ne 0) {
+        $pushFailure = Get-FailureText $push
         $combinedFailure = @(
             "Remote inspection before push: $(Get-FailureText $remoteInspect)",
-            "Push: $(Get-FailureText $push)"
+            "Push: $pushFailure"
         ) -join [Environment]::NewLine
+        if ($pushFailure -match '(?i)(unauthorized|authentication required|requested access.+denied|access denied)') {
+            $authorizationFailure = "Container registry rejected write authorization for '$imageReference'. Confirm the HEXALITH_ZOT_USERNAME/API-key pair and grant push access to repository '$($Image.repository)'." + [Environment]::NewLine + $combinedFailure
+            return New-Outcome -Image $Image -Status 'failed' -ExitCode $push.ExitCode -Error $authorizationFailure -Disposition 'authorization-failed'
+        }
+
         return New-Outcome -Image $Image -Status 'failed' -ExitCode $push.ExitCode -Error $combinedFailure -Disposition 'push-failed'
     }
 
@@ -380,7 +393,7 @@ try {
             throw $reason
         }
 
-        Write-Host "Authenticated container publisher to $Registry."
+        Write-Host "Stored container registry credentials for $Registry; repository write authorization is verified separately."
     }
 
     $outcomes = foreach ($image in $images) {

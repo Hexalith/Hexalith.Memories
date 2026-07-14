@@ -155,7 +155,7 @@ $summary = [ordered]@{
     pushed = $pushed
     failed = $failed
     notAttempted = $notAttempted
-    recovery = 'Rerun the Release workflow. NuGet skips duplicates; matching immutable container tags are reconciled by digest.'
+    recovery = 'If the exact tag or any package exists, do not republish or delete NuGet packages. Repair the failed dependency and dispatch Recover Partial Release from main.'
 }
 $summary | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $summaryPath -Encoding utf8
 Write-Host "Aggregate release publication summary: $summaryPath ($status)"

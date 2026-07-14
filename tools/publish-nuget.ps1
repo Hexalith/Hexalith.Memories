@@ -43,7 +43,7 @@ function Get-PackageFiles {
 }
 
 function New-RecoveryText {
-    return "See docs/dev/release-runbook.md. Rerun the Release workflow; --skip-duplicate skips already-published packages and retries failed or not-attempted packages."
+    return "See docs/dev/release-runbook.md. If the exact tag or any package exists, do not republish or delete NuGet packages; dispatch Recover Partial Release from main after repairing the failed dependency."
 }
 
 function Write-PublishSummary {

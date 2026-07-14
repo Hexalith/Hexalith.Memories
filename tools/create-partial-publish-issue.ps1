@@ -93,7 +93,7 @@ $bodyParts = @(
     "",
     "### Recovery",
     "",
-    "See `docs/dev/release-runbook.md`. Rerun the Release workflow; NuGet uses `--skip-duplicate` and matching immutable container tags are reconciled by digest."
+    "See `docs/dev/release-runbook.md`. Do not delete or republish NuGet packages. If the exact release tag exists and is reachable from `main`, repair Zot push authorization for both repositories, then dispatch **Recover Partial Release** from `main` with this bare version. The trusted workflow reconciles both immutable images, verifies all nine NuGet packages, creates or completes the GitHub Release with ten assets, and closes this incident only after the full release unit is verified."
 )
 $body = $bodyParts -join [Environment]::NewLine
 

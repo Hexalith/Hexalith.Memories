@@ -229,7 +229,7 @@ def write_partial_summary(path: Path) -> None:
                 "reason": "unrecoverable auth failure",
             }
         ],
-        "recovery": "See docs/dev/release-runbook.md. Rerun the Release workflow; --skip-duplicate skips already-published packages and retries failed or not-attempted packages.",
+        "recovery": "See docs/dev/release-runbook.md. If the exact tag or any package exists, dispatch Recover Partial Release and do not republish packages.",
     }
     path.write_text(json.dumps(summary), encoding="utf-8")
 
@@ -252,7 +252,7 @@ def write_publish_failed_summary(path: Path) -> None:
             }
         ],
         "notAttempted": [],
-        "recovery": "See docs/dev/release-runbook.md. Rerun the Release workflow; --skip-duplicate skips already-published packages and retries failed or not-attempted packages.",
+        "recovery": "See docs/dev/release-runbook.md. If the exact tag or any package exists, dispatch Recover Partial Release and do not republish packages.",
     }
     path.write_text(json.dumps(summary), encoding="utf-8")
 
@@ -436,7 +436,8 @@ class PublishNuGetTests(unittest.TestCase):
             body = calls[1]["body"]
             self.assertIn("https://github.com/Hexalith/Hexalith.Memories/actions/runs/123456", body)
             self.assertIn("docs/dev/release-runbook.md", body)
-            self.assertIn("--skip-duplicate", body)
+            self.assertIn("Recover Partial Release", body)
+            self.assertNotIn("Rerun the Release workflow", body)
 
     def test_issue_helper_comments_on_existing_partial_publish_issue(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

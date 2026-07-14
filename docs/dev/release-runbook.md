@@ -25,6 +25,11 @@ artifacts from a workstation.
   `.releaserc.json` `tagFormat: "v${version}"`, and checks exact local and remote tag refs such as
   `refs/tags/v1.2.3`. It intentionally does not treat similarly prefixed tags such as
   `v1.2.30` as collisions.
+- Semantic-release runs `tools/verify-container-registry.ps1` as its `verifyReleaseCmd`, before
+  prepare creates release artifacts or a tag can be published. The probe opens and immediately
+  cancels an OCI upload session in both `memories` and `memories-mcp`. A login, `/v2/` response,
+  or read-only catalog request is not proof of push authorization. Every opened probe session must
+  return HTTP 204 when cancelled or the release fails closed.
 - `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`.
 - `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It always attempts
   both NuGet and container publication and writes one aggregate release summary.
@@ -76,7 +81,10 @@ Before relying on the release path:
 4. Required checks are exactly `build`, `test-unit-contract`, and `integration-fast`.
 5. Direct pushes are blocked by the protected-branch policy; the only path to producing a `push`
    event on `main` is merging a PR.
-6. A scoped `NUGET_API_KEY` repository secret and container-registry credentials exist.
+6. A scoped `NUGET_API_KEY` repository secret and the standard `HEXALITH_ZOT_USERNAME` and
+   `HEXALITH_ZOT_API_KEY` secrets exist. The Zot principal has repository write authorization for
+   both flat repositories, `memories` and `memories-mcp`. `HEXALITH_ZOT_REGISTRY` may override the
+   default `registry.hexalith.com` host.
 7. The merge to `main` uses a conventional commit that semantic-release can classify.
 8. The local working tree is clean before opening the release PR — no uncommitted edits, no
    in-flight tag drift, no orphan packages in `artifacts/`. The release job builds from the merged
@@ -295,14 +303,17 @@ those actions can move the published state away from the CI-recorded audit ancho
 9. Watch the `Release` workflow run.
 10. Confirm `Install release tooling` used `npm ci` from the tracked lockfile.
 11. Confirm `Run release preflight` succeeded before `Run semantic-release`.
-12. If the release preflight fails on a stale tag, confirm the exact blocked ref and resolve the
+12. Confirm semantic-release's registry write-scope verification opened and cancelled upload
+    sessions for both repositories before prepare/publish work began.
+13. If the release preflight fails on a stale tag, confirm the exact blocked ref and resolve the
     tag only after release-owner review.
-13. Confirm `Build`, `Test unit and non-Docker suite`, `Validate package inventory before release`,
+14. Confirm `Build`, `Test unit and non-Docker suite`, `Validate package inventory before release`,
    `Run release preflight`, `Run semantic-release`, and `Upload package artifacts` all succeed.
-14. Confirm the new tag exists.
-15. Confirm the GitHub Release contains exactly the approved package assets for the new version.
-16. Confirm NuGet flat-container APIs show the new version for all approved packages.
-17. Confirm semantic-release created the new tag and GitHub Release without attempting to push a
+15. Confirm the new tag exists.
+16. Confirm the GitHub Release contains the nine approved package assets and the versioned
+    `hexalith-memories-production.yaml` deployment asset.
+17. Confirm NuGet flat-container APIs show the new version for all approved packages.
+18. Confirm semantic-release created the new tag and GitHub Release without attempting to push a
     release commit back to `main`.
 
 ## Failure And Recovery Notes
@@ -314,6 +325,11 @@ those actions can move the published state away from the CI-recorded audit ancho
   validator.
 - If semantic-release fails before publishing, inspect the run logs and fix the repository state or
   release configuration through a pull request.
+- If registry write-scope verification returns HTTP 401 or 403, stop before creating a release.
+  An organization or Zot administrator must grant the `HEXALITH_ZOT_USERNAME` principal push
+  authorization to both `memories` and `memories-mcp`; rotating a valid credential or proving
+  registry login/read access does not repair a repository ACL. Never paste the username, API key,
+  or authorization header into an issue or workflow log.
 - If `tools/release-preflight.ps1` reports that `refs/tags/v<version>` already exists locally or on
   `origin`, stop before publish work starts. The message names the exact conflicting ref. Do not
   delete the remote tag casually; confirm whether it came from an aborted/manual release, record the
@@ -346,16 +362,23 @@ those actions can move the published state away from the CI-recorded audit ancho
   for the same version, reruns add a comment to the existing issue instead of creating a duplicate.
   The issue/comment includes the run URL, version, pushed/failed/not-attempted package lists, and
   this runbook reference.
-- If the failed release commit is still the tip of `main`, rerun the Release workflow after
-  investigating the failure. Do not delete packages from nuget.org. `--skip-duplicate` skips
-  already-published packages while the rerun retries the failed or not-attempted packages.
-- If `main` has advanced after semantic-release created the version tag, semantic-release treats a
-  rerun of the older commit as stale and performs no publication. Use the **Recover Partial
-  Release** workflow from `main` with the existing bare version (for example, `2.6.4`). The workflow
-  accepts only a semantic-version tag reachable from `origin/main`, checks out that exact tagged
-  source, rebuilds only the Server and MCP archives, and reconciles their immutable registry tags
-  by digest. It never republishes NuGet packages, creates or moves tags, or creates a GitHub Release.
-  A conflicting remote digest fails closed and still requires release-owner reconciliation.
+- Once a failed publish has created the exact version tag or published any NuGet package, do not
+  rerun normal semantic-release for that version and do not delete or republish packages. Dispatch
+  **Recover Partial Release** from `main` with the existing bare version (for example, `2.6.6`).
+  The workflow accepts only a semantic-version tag reachable from `origin/main` and never creates
+  or moves a tag. It stages the recovery scripts and their passing fixtures from current trusted
+  `main`, then checks out and builds the exact tagged source.
+- Recovery first proves Zot write scope for both repositories. It then rebuilds and reconciles the
+  Server and MCP immutable tags using the remote image **config digest**. A matching tag is recorded
+  as already present, a missing tag is pushed, and any conflicting digest fails closed.
+- Recovery never invokes a NuGet push. It downloads the nine expected packages from the NuGet flat
+  container, validates their nuspec id/version against the tagged inventory, hashes them, and uses
+  those verified bytes as GitHub Release assets. It creates or completes the stable GitHub Release
+  with exactly those nine `.nupkg` files plus `hexalith-memories-production.yaml`. Existing matching
+  assets are retained; unexpected names or mismatched bytes fail closed.
+- Only after the two images, nine packages, versioned deployment, and all ten GitHub Release assets
+  verify does recovery attach the evidence artifact to the matching partial-publish incident and
+  close it. A failed or interrupted run remains safely rerunnable and leaves the incident open.
 - Container release members are prebuilt during prepare. On a rerun, an existing immutable image
   tag is accepted only when its remote config digest matches the prebuilt archive; a conflicting
   digest fails closed and requires release-owner reconciliation.

@@ -248,22 +248,38 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void PartialReleaseRecovery_UsesTrustedTagAndPublishesContainersOnly()
+    public void PartialReleaseRecovery_UsesTrustedTagAndCompletesWholeReleaseUnit()
     {
         string repoRoot = GetRepoRoot();
         string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "recover-partial-release.yml"));
 
         workflow.ShouldContain("workflow_dispatch:");
         workflow.ShouldContain("group: release");
-        workflow.ShouldContain("contents: read");
+        workflow.ShouldContain("contents: write");
+        workflow.ShouldContain("issues: write");
         workflow.ShouldContain("github.ref == 'refs/heads/main'");
         workflow.ShouldContain("git show-ref --verify --quiet");
         workflow.ShouldContain("git merge-base --is-ancestor");
         workflow.ShouldContain("git checkout --detach");
-        workflow.ShouldContain("./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION");
-        workflow.ShouldContain("./tools/publish-containers.ps1 -Version $env:RECOVERY_VERSION -Push");
+        workflow.ShouldContain("Validate trusted recovery tooling");
+        workflow.ShouldContain("Stage trusted recovery tooling");
+        workflow.ShouldContain("verify-container-registry.ps1");
+        workflow.ShouldContain("-RepositoryRoot $env:GITHUB_WORKSPACE");
+        workflow.ShouldContain("complete-partial-release.ps1");
+        workflow.ShouldContain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
+        workflow.ShouldContain("@($summary.packages).Count -ne 9");
+        workflow.ShouldContain("@($summary.images).Count -ne 2");
+        workflow.ShouldContain("@($summary.releaseAssets).Count -ne 10");
         workflow.ShouldContain("@('pushed', 'already-present')");
+        workflow.ShouldContain("if: always()");
+        workflow.IndexOf("Stage trusted recovery tooling", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Checkout tagged release source", StringComparison.Ordinal));
+        workflow.IndexOf("Verify container registry write scope", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Restore tagged source", StringComparison.Ordinal));
+        workflow.IndexOf("Reconcile immutable container tags", StringComparison.Ordinal).ShouldBeLessThan(
+            workflow.IndexOf("Complete GitHub Release and incident recovery", StringComparison.Ordinal));
         workflow.ShouldNotContain("NUGET_API_KEY");
+        workflow.ShouldNotContain("dotnet nuget push");
         workflow.ShouldNotContain("semantic-release");
     }
 
@@ -342,6 +358,10 @@ public sealed partial class CiTestInventoryTests
         string publishContainers = File.ReadAllText(Path.Combine(repoRoot, "tools", "publish-containers.ps1"));
         string renderDeployment = File.ReadAllText(Path.Combine(repoRoot, "tools", "render-production-deployment.ps1"));
 
+        releaseConfig.ShouldContain("verifyReleaseCmd");
+        releaseConfig.ShouldContain("./tools/verify-container-registry.ps1");
+        releaseConfig.IndexOf("verifyReleaseCmd", StringComparison.Ordinal).ShouldBeLessThan(
+            releaseConfig.IndexOf("prepareCmd", StringComparison.Ordinal));
         releaseConfig.ShouldContain("./tools/publish-release.ps1 -Version ${nextRelease.version}");
         releaseConfig.ShouldContain("artifacts/deployment/hexalith-memories-production.yaml");
         packRelease.ShouldContain("./tools/publish-containers.ps1");
@@ -362,7 +382,8 @@ public sealed partial class CiTestInventoryTests
         publishContainers.ShouldContain("Loaded image(?<id> ID)?");
         publishContainers.ShouldContain("@('tag', $loadedReference, $imageReference)");
         publishContainers.ShouldContain("docker' -Arguments @('manifest', 'inspect', '--verbose'");
-        publishContainers.ShouldContain("Descriptor.digest");
+        publishContainers.ShouldContain("SchemaV2Manifest.config.digest");
+        publishContainers.ShouldNotContain("$remoteManifest.Descriptor.digest");
         publishContainers.ShouldContain("disposition = $Disposition");
         renderDeployment.ShouldContain("Both release image references must end with the semantic-release version");
     }
