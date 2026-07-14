@@ -99,6 +99,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Snapshot release tags
+        id: release-tags-before
+        shell: bash
+        run: git tag --points-at HEAD --list 'v*' | sort | sha256sum | sed 's/ .*//' | xargs -I{} echo 'fingerprint={}' >> "$GITHUB_OUTPUT"
+
       - name: Run semantic-release
         run: npx semantic-release
         env:
@@ -107,6 +112,23 @@ jobs:
           HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
           HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
           HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}
+
+      - name: Detect release publication
+        id: release-publication
+        if: success()
+        shell: bash
+        env:
+          BEFORE_FINGERPRINT: ${{ steps.release-tags-before.outputs.fingerprint }}
+        run: |
+          after_fingerprint="$(git tag --points-at HEAD --list 'v*' | sort | sha256sum | sed 's/ .*//')"
+          if [[ "$after_fingerprint" == "$BEFORE_FINGERPRINT" ]]; then
+            echo 'published=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          test -f artifacts/deployment/hexalith-memories-production.yaml
+          compgen -G 'artifacts/packages/release/*.nupkg' >/dev/null
+          echo 'published=true' >> "$GITHUB_OUTPUT"
 
       - name: Alert partial release publish
         if: failure()
@@ -139,7 +161,7 @@ jobs:
           retention-days: 14
 
       - name: Upload package artifacts
-        if: success()
+        if: success() && steps.release-publication.outputs.published == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: release-packages
@@ -147,7 +169,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload deployment artifact
-        if: success()
+        if: success() && steps.release-publication.outputs.published == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: production-deployment
