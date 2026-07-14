@@ -271,6 +271,39 @@ function Publish-ContainerArchive {
         return New-Outcome -Image $Image -Status 'failed' -ExitCode $load.ExitCode -Error (Get-FailureText $load) -Disposition 'load-failed'
     }
 
+    $loadOutput = @($load.Stdout, $load.Stderr) -join [Environment]::NewLine
+    $loadedMatches = [regex]::Matches($loadOutput, '(?m)^Loaded image(?<id> ID)?:\s*(?<reference>\S+)\s*$')
+    if ($loadedMatches.Count -ne 1) {
+        $loadEvidence = Get-FailureText $load
+        if ([string]::IsNullOrWhiteSpace($loadEvidence)) {
+            $loadEvidence = '<no docker load output>'
+        }
+
+        return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Expected exactly one loaded image reference for '$imageReference', but found $($loadedMatches.Count). Docker load output: $loadEvidence" -Disposition 'load-reference-invalid'
+    }
+
+    $loadedMatch = $loadedMatches[0]
+    $loadedReference = $loadedMatch.Groups['reference'].Value
+    $archiveReference = "$($Image.repository):$Version"
+    $isImageId = $loadedMatch.Groups['id'].Success -and $loadedReference -match '^sha256:[0-9a-fA-F]{64}$'
+    $isExpectedReference =
+        [string]::Equals($loadedReference, $archiveReference, [StringComparison]::Ordinal) -or
+        [string]::Equals($loadedReference, $imageReference, [StringComparison]::Ordinal)
+    if (-not $isImageId -and -not $isExpectedReference) {
+        return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Loaded image reference '$loadedReference' does not match expected archive reference '$archiveReference' or canonical reference '$imageReference'." -Disposition 'load-reference-invalid'
+    }
+
+    if (-not [string]::Equals($loadedReference, $imageReference, [StringComparison]::Ordinal)) {
+        $tag = Invoke-NativeCommand -Command 'docker' -Arguments @('tag', $loadedReference, $imageReference)
+        if ($tag.ExitCode -ne 0) {
+            $tagEvidence = @(
+                "Docker load: $(Get-FailureText $load)",
+                "Docker tag: $(Get-FailureText $tag)"
+            ) -join [Environment]::NewLine
+            return New-Outcome -Image $Image -Status 'failed' -ExitCode $tag.ExitCode -Error $tagEvidence -Disposition 'tag-failed'
+        }
+    }
+
     $localInspect = Invoke-NativeCommand -Command 'docker' -Arguments @('image', 'inspect', $imageReference, '--format={{.Id}}')
     if ($localInspect.ExitCode -ne 0) {
         return New-Outcome -Image $Image -Status 'failed' -ExitCode $localInspect.ExitCode -Error (Get-FailureText $localInspect) -Disposition 'inspect-failed'

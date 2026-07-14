@@ -317,6 +317,8 @@ public sealed partial class CiTestInventoryTests
         publishContainers.ShouldContain("partial-publish");
         publishContainers.ShouldContain("publish-summary.json");
         publishContainers.ShouldContain("render-production-deployment.ps1");
+        publishContainers.ShouldContain("Loaded image(?<id> ID)?");
+        publishContainers.ShouldContain("@('tag', $loadedReference, $imageReference)");
         publishContainers.ShouldContain("docker' -Arguments @('manifest', 'inspect'");
         publishContainers.ShouldContain("disposition = $Disposition");
         renderDeployment.ShouldContain("Both release image references must end with the semantic-release version");
@@ -328,6 +330,7 @@ public sealed partial class CiTestInventoryTests
         string repoRoot = GetRepoRoot();
         string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
         string verifier = File.ReadAllText(Path.Combine(repoRoot, "tools", "verify-production-deployment.ps1"));
+        string evidenceValidator = File.ReadAllText(Path.Combine(repoRoot, "tools", "validate-production-deployment-evidence.ps1"));
 
         // The disposable-cluster rollout is the only executed proof of the runtime, OCI, Secret-RBAC,
         // deny-by-default ACL, and readiness contracts. Pin its job and both script invocations so it
@@ -341,8 +344,32 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("KIND_VERSION: 'v0.31.0'");
         workflow.ShouldContain("KIND_NODE_IMAGE: 'kindest/node:v1.35.0'");
         workflow.ShouldContain("-KindNodeImage $env:KIND_NODE_IMAGE");
+        workflow.ShouldContain("-EvidenceDirectory ./artifacts/production-deployment-verification");
+        workflow.ShouldContain("name: Validate production deployment evidence");
+        workflow.ShouldContain("./tools/validate-production-deployment-evidence.ps1 -EvidenceDirectory ./artifacts/production-deployment-verification");
+        workflow.ShouldContain("python3 -m unittest discover -s tests/tooling/production_deployment_evidence -p \"*_test.py\"");
+        workflow.ShouldContain("artifacts/production-deployment-verification/**");
         verifier.ShouldContain("--image', $KindNodeImage");
         verifier.ShouldContain("test ! -e /app/appsettings.Development.json");
+        verifier.ShouldContain("Get-RunningPodName");
+        verifier.ShouldContain("verification.hexalith.com/dapr-token-stage");
+        verifier.ShouldContain("verification-invalid-dapr-api-token");
+        verifier.ShouldContain("required-dapr-token-unhealthy");
+        verifier.ShouldContain("RequiredPodAnnotationValue 'faulted'");
+        verifier.ShouldContain("RequiredPodAnnotationValue 'restored'");
+        verifier.ShouldContain("rollout', 'status', 'deployment/memories'");
+        verifier.ShouldContain("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }");
+        verifier.ShouldContain("Write-ClusterDiagnostics");
+        verifier.ShouldContain("describe-pods.txt");
+        verifier.ShouldContain("events.txt");
+        verifier.ShouldContain("if ($null -eq $container)");
+        verifier.ShouldContain("IsNullOrWhiteSpace($containerName)");
+        verifier.ShouldContain("--previous");
+        verifier.ShouldNotContain("dapr.io/enabled\":\"false");
+        evidenceValidator.ShouldContain("verification-result.json");
+        evidenceValidator.ShouldContain("*-current.log");
+        evidenceValidator.ShouldContain("*-previous.log");
+        evidenceValidator.ShouldContain("unredacted secret canary");
     }
 
     [Fact]

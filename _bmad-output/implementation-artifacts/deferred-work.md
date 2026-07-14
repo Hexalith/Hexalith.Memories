@@ -2175,3 +2175,7 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
   - Target artifact: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs
   - Re-open trigger: add a request-scoped RediSearch capability fault or publish a truthful state-store-collapse contract for the single-axis endpoint.
   - Rationale: A resource stop would overclaim `BACKEND_UNAVAILABLE` syntactic-only semantics. Owner: search reliability maintainer.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-container-publication-and-rollout-verification.md`
+  summary: Distinguish a confirmed missing remote manifest from registry authentication, availability, and malformed-response failures before authorizing a container push.
+  evidence: The pre-existing publisher treats every nonzero `docker manifest inspect` exit as tag absence and pushes immediately, so an outage or authorization error can enter the blind retry path.

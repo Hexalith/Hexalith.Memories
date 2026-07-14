@@ -15,6 +15,8 @@ param(
 
     [string]$KindNodeImage = "kindest/node:v1.35.0",
 
+    [string]$EvidenceDirectory = "artifacts/production-deployment-verification",
+
     [switch]$KeepCluster
 )
 
@@ -27,6 +29,67 @@ $manifestPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-p
 $kubeconfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-kubeconfig-$([Guid]::NewGuid().ToString('N'))"
 $originalKubeconfig = $env:KUBECONFIG
 $clusterCreated = $false
+$daprTokenFaultInjected = $false
+$verificationError = $null
+$verificationSucceeded = $false
+$verificationStage = 'preflight'
+$evidencePath = if ([System.IO.Path]::IsPathRooted($EvidenceDirectory)) {
+    $EvidenceDirectory
+}
+else {
+    Join-Path $repoRoot $EvidenceDirectory
+}
+New-Item -ItemType Directory -Path $evidencePath -Force | Out-Null
+$ownedEvidenceNames = @(
+    'verification-result.json',
+    'last-stage.txt',
+    'pods.txt',
+    'events.txt',
+    'describe-pods.txt',
+    'describe-workloads.txt',
+    'pods.json',
+    'logs-enumeration-error.txt'
+)
+Get-ChildItem -LiteralPath $evidencePath -File -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.Name -in $ownedEvidenceNames -or
+        $_.Name -like '*-current.log' -or
+        $_.Name -like '*-previous.log'
+    } |
+    Remove-Item -Force
+
+function Protect-EvidenceText {
+    param([AllowEmptyString()][string]$Text)
+
+    $sanitized = $Text
+    $secrets = @(
+        'verification-redis-password',
+        'verification-falkordb-password',
+        'verification-openai-key',
+        'verification-google-key',
+        'verification-embedding-secret',
+        'verification-app-api-token',
+        'verification-dapr-api-token',
+        'verification-invalid-dapr-api-token',
+        $env:HEXALITH_ZOT_USERNAME,
+        $env:HEXALITH_ZOT_API_KEY
+    )
+    foreach ($secret in $secrets) {
+        if (-not [string]::IsNullOrWhiteSpace($secret)) {
+            $sanitized = $sanitized.Replace($secret, '***', [StringComparison]::Ordinal)
+        }
+    }
+
+    return $sanitized
+}
+
+function Set-VerificationStage {
+    param([Parameter(Mandatory)][string]$Stage)
+
+    $script:verificationStage = $Stage
+    $Stage | Set-Content -LiteralPath (Join-Path $evidencePath 'last-stage.txt') -Encoding utf8
+    Write-Host "[$Stage]"
+}
 
 function Invoke-Checked {
     param([Parameter(Mandatory)][string]$File, [Parameter(ValueFromRemainingArguments)][string[]]$Arguments)
@@ -54,15 +117,46 @@ function Apply-GeneratedSecret {
     }
 }
 
-function Get-PodName {
-    param([Parameter(Mandatory)][string]$AppName)
+function Get-RunningPodName {
+    param(
+        [Parameter(Mandatory)][string]$AppName,
+        [Parameter(Mandatory)][string]$Container,
+        [string]$RequiredAnnotationName = '',
+        [string]$RequiredAnnotationValue = ''
+    )
 
-    $json = @(& kubectl get pods -n $namespace -l "app.kubernetes.io/name=$AppName" -o json 2>$null) -join [Environment]::NewLine
+    $json = @(& kubectl --request-timeout=15s get pods -n $namespace -l "app.kubernetes.io/name=$AppName" -o json 2>$null) -join [Environment]::NewLine
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($json)) {
         return ''
     }
 
-    $pod = @((ConvertFrom-Json $json).items |
+    try {
+        $items = @(($json | ConvertFrom-Json).items)
+    }
+    catch {
+        return ''
+    }
+
+    $pod = @($items |
+        Where-Object {
+            $annotationMatches = if ([string]::IsNullOrWhiteSpace($RequiredAnnotationName)) {
+                $true
+            }
+            elseif ($null -eq $_.metadata.annotations) {
+                $false
+            }
+            else {
+                $property = $_.metadata.annotations.PSObject.Properties[$RequiredAnnotationName]
+                $null -ne $property -and [string]$property.Value -eq $RequiredAnnotationValue
+            }
+
+            $null -eq $_.metadata.deletionTimestamp -and
+            $_.status.phase -eq 'Running' -and
+            $annotationMatches -and
+            @($_.status.containerStatuses | Where-Object {
+                    $_.name -eq $Container -and $null -ne $_.state.running
+                }).Count -eq 1
+        } |
         Sort-Object { [DateTime]$_.metadata.creationTimestamp } -Descending |
         Select-Object -First 1)
     if ($pod.Count -eq 0) {
@@ -72,30 +166,30 @@ function Get-PodName {
     return [string]$pod[0].metadata.name
 }
 
-function Test-ContainerRunning {
+function Get-HealthResponse {
     param([Parameter(Mandatory)][string]$Pod, [Parameter(Mandatory)][string]$Container)
 
-    $json = Invoke-Checked kubectl @('get', 'pod', $Pod, '-n', $namespace, '-o', 'json') | ConvertFrom-Json
-    $status = @($json.status.containerStatuses | Where-Object { $_.name -eq $Container })
-    return $status.Count -eq 1 -and $null -ne $status[0].state.running
-}
-
-function Get-HealthBody {
-    param([Parameter(Mandatory)][string]$Pod, [Parameter(Mandatory)][string]$Container)
-
-    # BusyBox wget is fast for the 200 Healthy/Degraded responses but discards 503
-    # bodies. Fall back to its netcat applet for fail-closed aggregate documents;
-    # keep stdin open beyond the longest (3 second) backend health-check timeout.
-    $probeCommand = 'body=$(wget -qO- http://127.0.0.1:8080/ready 2>/dev/null) && { printf "%s" "$body"; exit 0; }; { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"; sleep 5; } | nc -w 6 127.0.0.1 8080'
+    # Capture the HTTP status line as well as the aggregate document. Keeping stdin open beyond
+    # the longest backend health-check timeout makes BusyBox netcat reliable for 503 responses.
+    $probeCommand = '{ printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"; sleep 5; } | nc -w 6 127.0.0.1 8080'
     $output = @(& kubectl exec -n $namespace $Pod -c $Container -- /bin/sh -ec $probeCommand 2>&1)
     $text = $output -join [Environment]::NewLine
+    $statusMatch = [regex]::Match($text, 'HTTP/\d(?:\.\d)?\s+(?<status>\d{3})')
+    $statusCode = if ($statusMatch.Success) { [int]$statusMatch.Groups['status'].Value } else { $null }
     $start = $text.IndexOf('{')
     $end = $text.LastIndexOf('}')
-    if ($start -ge 0 -and $end -ge $start) {
-        return $text.Substring($start, $end - $start + 1)
+    $body = if ($start -ge 0 -and $end -ge $start) {
+        $text.Substring($start, $end - $start + 1)
+    }
+    else {
+        $text
     }
 
-    return $text
+    return [pscustomobject]@{
+        StatusCode = $statusCode
+        Body = $body
+        Raw = $text
+    }
 }
 
 function Wait-AggregateStatus {
@@ -103,17 +197,23 @@ function Wait-AggregateStatus {
         [Parameter(Mandatory)][string]$AppName,
         [Parameter(Mandatory)][string]$Container,
         [Parameter(Mandatory)][string]$ExpectedStatus,
+        [Parameter(Mandatory)][string]$Stage,
         [int]$TimeoutSeconds = 60,
-        [switch]$MeasureFromContainerRunning
+        [switch]$MeasureFromContainerRunning,
+        [string]$RequiredPodAnnotationName = '',
+        [string]$RequiredPodAnnotationValue = ''
     )
 
+    Set-VerificationStage $Stage
     $deadline = [DateTime]::UtcNow.AddMinutes(4)
     $runningAt = $null
     $runningPod = ''
     $lastBody = ''
+    $lastStatusCode = $null
+    $expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }
     while ([DateTime]::UtcNow -lt $deadline) {
-        $pod = Get-PodName $AppName
-        if (-not [string]::IsNullOrWhiteSpace($pod) -and (Test-ContainerRunning $pod $Container)) {
+        $pod = Get-RunningPodName $AppName $Container $RequiredPodAnnotationName $RequiredPodAnnotationValue
+        if (-not [string]::IsNullOrWhiteSpace($pod)) {
             if ($null -eq $runningAt -or $pod -ne $runningPod) {
                 # Reset the startup timer when a new pod is observed (e.g. a restart) so the
                 # -TimeoutSeconds budget is measured from the current container, not a torn-down predecessor.
@@ -121,7 +221,9 @@ function Wait-AggregateStatus {
                 $runningPod = $pod
             }
 
-            $lastBody = Get-HealthBody $pod $Container
+            $response = Get-HealthResponse $pod $Container
+            $lastBody = $response.Body
+            $lastStatusCode = $response.StatusCode
             $health = $null
             try {
                 $health = $lastBody | ConvertFrom-Json
@@ -130,23 +232,102 @@ function Wait-AggregateStatus {
                 # kubectl exec may emit a transient startup error; preserve it for the terminal diagnostic.
             }
 
-            if ($null -ne $health -and $health.status -eq $ExpectedStatus) {
+            if ($null -ne $health -and $health.status -eq $ExpectedStatus -and $lastStatusCode -eq $expectedHttpStatus) {
                 if ($MeasureFromContainerRunning -and (([DateTime]::UtcNow - $runningAt).TotalSeconds -gt $TimeoutSeconds)) {
-                    throw "$AppName reached $ExpectedStatus after the $TimeoutSeconds-second startup limit."
+                    throw "[$Stage] $AppName reached $ExpectedStatus after the $TimeoutSeconds-second startup limit."
                 }
 
                 return $lastBody
             }
 
             if ($MeasureFromContainerRunning -and (([DateTime]::UtcNow - $runningAt).TotalSeconds -gt $TimeoutSeconds)) {
-                throw "$AppName did not report aggregate $ExpectedStatus within $TimeoutSeconds seconds after container $Container started. Last response: $lastBody"
+                throw "[$Stage] $AppName did not report HTTP $expectedHttpStatus aggregate $ExpectedStatus within $TimeoutSeconds seconds after container $Container started. Last HTTP status: $lastStatusCode. Last response: $lastBody"
             }
         }
 
         Start-Sleep -Seconds 2
     }
 
-    throw "$AppName did not report aggregate $ExpectedStatus. Last response: $lastBody"
+    throw "[$Stage] $AppName did not report HTTP $expectedHttpStatus aggregate $ExpectedStatus. Last HTTP status: $lastStatusCode. Last response: $lastBody"
+}
+
+function Save-KubectlEvidence {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string[]]$Arguments
+    )
+
+    $kubectlArguments = @('--request-timeout=15s') + $Arguments
+    $output = @(& kubectl @kubectlArguments 2>&1) -join [Environment]::NewLine
+    Protect-EvidenceText $output | Set-Content -LiteralPath (Join-Path $evidencePath $Name) -Encoding utf8
+}
+
+function Write-ClusterDiagnostics {
+    param([Parameter(Mandatory)][string]$Status)
+
+    $result = [ordered]@{
+        schemaVersion = 1
+        status = $Status
+        stage = $verificationStage
+        capturedAt = [DateTime]::UtcNow.ToString('o')
+        error = if ($null -eq $verificationError) { $null } else { Protect-EvidenceText $verificationError.Exception.Message }
+    }
+    $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidencePath 'verification-result.json') -Encoding utf8
+
+    if (-not $clusterCreated) {
+        return
+    }
+
+    Save-KubectlEvidence 'pods.txt' @('get', 'pods', '-n', $namespace, '-o', 'wide')
+    Save-KubectlEvidence 'events.txt' @('get', 'events', '-n', $namespace, '--sort-by=.lastTimestamp')
+    Save-KubectlEvidence 'describe-pods.txt' @('describe', 'pods', '-n', $namespace)
+    Save-KubectlEvidence 'describe-workloads.txt' @('describe', 'deployments,statefulsets,services', '-n', $namespace)
+
+    $podsJson = @(& kubectl --request-timeout=15s get pods -n $namespace -o json 2>&1) -join [Environment]::NewLine
+    Protect-EvidenceText $podsJson | Set-Content -LiteralPath (Join-Path $evidencePath 'pods.json') -Encoding utf8
+    if ($LASTEXITCODE -ne 0) {
+        return
+    }
+
+    try {
+        $pods = @(($podsJson | ConvertFrom-Json).items)
+    }
+    catch {
+        Protect-EvidenceText $_.Exception.Message | Set-Content -LiteralPath (Join-Path $evidencePath 'logs-enumeration-error.txt') -Encoding utf8
+        return
+    }
+
+    foreach ($pod in $pods) {
+        $podName = [string]$pod.metadata.name
+        $containers = @($pod.spec.initContainers) + @($pod.spec.containers)
+        foreach ($container in $containers) {
+            if ($null -eq $container) {
+                continue
+            }
+
+            $containerName = [string]$container.name
+            if ([string]::IsNullOrWhiteSpace($containerName)) {
+                continue
+            }
+
+            $safeName = "$podName-$containerName" -replace '[^0-9A-Za-z_.-]', '_'
+            Save-KubectlEvidence "$safeName-current.log" @('logs', $podName, '-n', $namespace, '-c', $containerName, '--timestamps=true')
+            Save-KubectlEvidence "$safeName-previous.log" @('logs', $podName, '-n', $namespace, '-c', $containerName, '--previous', '--timestamps=true')
+        }
+    }
+}
+
+function Set-DaprClientTokenFault {
+    param([Parameter(Mandatory)][bool]$Faulted)
+
+    $patch = if ($Faulted) {
+        '{"spec":{"template":{"metadata":{"annotations":{"verification.hexalith.com/dapr-token-stage":"faulted"}},"spec":{"containers":[{"name":"memories","env":[{"name":"DAPR_API_TOKEN","value":"verification-invalid-dapr-api-token","valueFrom":null}]}]}}}}'
+    }
+    else {
+        '{"spec":{"template":{"metadata":{"annotations":{"verification.hexalith.com/dapr-token-stage":"restored"}},"spec":{"containers":[{"name":"memories","env":[{"name":"DAPR_API_TOKEN","value":null,"valueFrom":{"secretKeyRef":{"name":"dapr-api-token","key":"token"}}}]}]}}}}'
+    }
+
+    Invoke-Checked kubectl @('patch', 'deployment/memories', '-n', $namespace, '--type=strategic', '-p', $patch) | Out-Null
 }
 
 function Assert-ImageContract {
@@ -175,18 +356,18 @@ function Assert-ImageContract {
         '-c', 'test ! -e /app/appsettings.Development.json') | Out-Null
 }
 
-foreach ($command in @('docker', 'kind', 'kubectl', 'dapr', 'pwsh')) {
-    if ($null -eq (Get-Command $command -ErrorAction SilentlyContinue)) {
-        throw "Required command '$command' is not available. The deployment verifier never skips prerequisites."
-    }
-}
-foreach ($archive in @($ServerArchive, $McpArchive)) {
-    if (-not (Test-Path -LiteralPath $archive)) {
-        throw "Container archive not found: $archive"
-    }
-}
-
 try {
+    foreach ($command in @('docker', 'kind', 'kubectl', 'dapr', 'pwsh')) {
+        if ($null -eq (Get-Command $command -ErrorAction SilentlyContinue)) {
+            throw "Required command '$command' is not available. The deployment verifier never skips prerequisites."
+        }
+    }
+    foreach ($archive in @($ServerArchive, $McpArchive)) {
+        if (-not (Test-Path -LiteralPath $archive)) {
+            throw "Container archive not found: $archive"
+        }
+    }
+
     $existingClusters = @(Invoke-Checked kind @('get', 'clusters'))
     if ($existingClusters -contains $ClusterName) {
         throw "Disposable cluster '$ClusterName' already exists; remove it or choose another ClusterName."
@@ -202,9 +383,9 @@ try {
     $env:KUBECONFIG = $kubeconfigPath
     Invoke-Checked dapr @('init', '-k', '--runtime-version', $DaprRuntimeVersion, '--wait') | Out-Host
 
-    # publish-containers.ps1 sets -p:ContainerRegistry, so the archive's RepoTag is registry-qualified;
-    # parse the reference docker actually loaded instead of assuming a registry-less name, then re-tag it
-    # to the canonical reference that Assert-ImageContract and 'kind load' expect.
+    # .NET SDK archive mode can emit registry-less RepoTags even when ContainerRegistry is supplied.
+    # Parse the reference docker actually loaded, then re-tag it to the canonical reference that
+    # Assert-ImageContract and 'kind load' expect.
     foreach ($load in @(
             @{ Archive = $ServerArchive; Target = $serverImage },
             @{ Archive = $McpArchive; Target = $mcpImage })) {
@@ -256,10 +437,15 @@ try {
         throw "Secret RBAC contract failed: memories=$canReadLlm memories-mcp=$mcpCanReadLlm"
     }
 
-    Wait-AggregateStatus 'memories' 'memories' 'Healthy' -TimeoutSeconds 60 -MeasureFromContainerRunning | Out-Null
-    Wait-AggregateStatus 'memories-mcp' 'memories-mcp' 'Healthy' -TimeoutSeconds 60 -MeasureFromContainerRunning | Out-Null
+    Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'initial-server-health' -TimeoutSeconds 60 -MeasureFromContainerRunning | Out-Null
+    Wait-AggregateStatus 'memories-mcp' 'memories-mcp' 'Healthy' -Stage 'initial-mcp-health' -TimeoutSeconds 60 -MeasureFromContainerRunning | Out-Null
 
-    $mcpPod = Get-PodName 'memories-mcp'
+    Set-VerificationStage 'dapr-allowed-invocation'
+    $mcpPod = Get-RunningPodName 'memories-mcp' 'memories-mcp'
+    if ([string]::IsNullOrWhiteSpace($mcpPod)) {
+        throw 'No running MCP pod was available for the DAPR allowed-invocation check.'
+    }
+
     $allowed = @(& kubectl exec -n $namespace $mcpPod -c memories-mcp -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" http://127.0.0.1:3500/v1.0/invoke/memories/method/api/v1/health' 2>&1) -join [Environment]::NewLine
     if ($LASTEXITCODE -ne 0 -or (($allowed | ConvertFrom-Json).status -ne 'Healthy')) {
         throw "MCP-to-Server DAPR ACL health invocation failed: $allowed"
@@ -267,6 +453,7 @@ try {
 
     # A sidecar invoking its own app-id is optimized locally by DAPR and does not
     # exercise workload-identity ACL evaluation. Use a distinct injected caller.
+    Set-VerificationStage 'dapr-denied-invocation'
     $deniedCaller = @"
 apiVersion: v1
 kind: Pod
@@ -313,30 +500,70 @@ spec:
     }
     Invoke-Checked kubectl @('delete', 'pod/memories-acl-denied', '-n', $namespace, '--wait=true') | Out-Null
 
+    Set-VerificationStage 'optional-falkordb-fault-injection'
     Invoke-Checked kubectl @('scale', 'statefulset/falkordb', '-n', $namespace, '--replicas=0') | Out-Null
-    $degraded = Wait-AggregateStatus 'memories' 'memories' 'Degraded'
+    $degraded = Wait-AggregateStatus 'memories' 'memories' 'Degraded' -Stage 'optional-falkordb-degraded'
     if ($degraded -notmatch 'graph-traversal') {
         throw "Optional FalkorDB degradation did not identify graph capabilities: $degraded"
     }
     Invoke-Checked kubectl @('scale', 'statefulset/falkordb', '-n', $namespace, '--replicas=1') | Out-Null
-    Wait-AggregateStatus 'memories' 'memories' 'Healthy' | Out-Null
+    Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'optional-falkordb-restored' | Out-Null
 
+    Set-VerificationStage 'required-redis-fault-injection'
     Invoke-Checked kubectl @('scale', 'statefulset/redis-stack', '-n', $namespace, '--replicas=0') | Out-Null
-    Wait-AggregateStatus 'memories' 'memories' 'Unhealthy' | Out-Null
+    Wait-AggregateStatus 'memories' 'memories' 'Unhealthy' -Stage 'required-redis-unhealthy' | Out-Null
     Invoke-Checked kubectl @('scale', 'statefulset/redis-stack', '-n', $namespace, '--replicas=1') | Out-Null
-    Wait-AggregateStatus 'memories' 'memories' 'Healthy' | Out-Null
+    Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'required-redis-restored' | Out-Null
 
-    Invoke-Checked kubectl @('patch', 'deployment/memories', '-n', $namespace, '-p', '{"spec":{"template":{"metadata":{"annotations":{"dapr.io/enabled":"false"}}}}}') | Out-Null
-    Wait-AggregateStatus 'memories' 'memories' 'Unhealthy' | Out-Null
-    Invoke-Checked kubectl @('patch', 'deployment/memories', '-n', $namespace, '-p', '{"spec":{"template":{"metadata":{"annotations":{"dapr.io/enabled":"true"}}}}}') | Out-Null
-    Wait-AggregateStatus 'memories' 'memories' 'Healthy' | Out-Null
+    Set-VerificationStage 'required-dapr-token-fault-injection'
+    Set-DaprClientTokenFault $true
+    $daprTokenFaultInjected = $true
+    $daprUnhealthy = Wait-AggregateStatus 'memories' 'memories' 'Unhealthy' `
+        -Stage 'required-dapr-token-unhealthy' `
+        -RequiredPodAnnotationName 'verification.hexalith.com/dapr-token-stage' `
+        -RequiredPodAnnotationValue 'faulted'
+    if ($daprUnhealthy -notmatch '(?i)dapr') {
+        throw "Dapr token fault did not identify Dapr dependency evidence: $daprUnhealthy"
+    }
+    Set-VerificationStage 'required-dapr-token-restoration'
+    Set-DaprClientTokenFault $false
+    Wait-AggregateStatus 'memories' 'memories' 'Healthy' `
+        -Stage 'required-dapr-token-restored' `
+        -RequiredPodAnnotationName 'verification.hexalith.com/dapr-token-stage' `
+        -RequiredPodAnnotationValue 'restored' | Out-Null
+    Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
+    $daprTokenFaultInjected = $false
 
+    Set-VerificationStage 'required-server-fault-injection'
     Invoke-Checked kubectl @('scale', 'deployment/memories', '-n', $namespace, '--replicas=0') | Out-Null
-    Wait-AggregateStatus 'memories-mcp' 'memories-mcp' 'Unhealthy' | Out-Null
+    Wait-AggregateStatus 'memories-mcp' 'memories-mcp' 'Unhealthy' -Stage 'required-server-mcp-unhealthy' | Out-Null
 
+    $verificationSucceeded = $true
     Write-Host 'Production deployment verification passed with zero skips.'
 }
+catch {
+    $verificationError = $_
+    throw
+}
 finally {
+    try {
+        Write-ClusterDiagnostics $(if ($verificationSucceeded) { 'succeeded' } else { 'failed' })
+    }
+    catch {
+        Write-Warning "Unable to persist complete production deployment diagnostics: $(Protect-EvidenceText $_.Exception.Message)"
+    }
+
+    if ($clusterCreated -and $daprTokenFaultInjected) {
+        try {
+            Set-DaprClientTokenFault $false
+            Invoke-Checked kubectl @('rollout', 'status', 'deployment/memories', '-n', $namespace, '--timeout=120s') | Out-Null
+            $daprTokenFaultInjected = $false
+        }
+        catch {
+            Write-Warning "Unable to restore the Dapr client token after verifier failure: $(Protect-EvidenceText $_.Exception.Message)"
+        }
+    }
+
     if (Test-Path -LiteralPath $manifestPath) {
         Remove-Item -LiteralPath $manifestPath -Force
     }

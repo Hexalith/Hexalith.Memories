@@ -123,11 +123,11 @@ def write_fake_docker(directory: Path) -> None:
             args = sys.argv[1:]
             state_path = Path(os.environ["FAKE_DOCKER_STATE"])
             plan_path = Path(os.environ["FAKE_DOCKER_PLAN"])
-            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {{"remote": {{}}, "attempts": {{}}}}
+            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {{"remote": {{}}, "attempts": {{}}, "local": {{}}}}
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
-            local = {{
-                "{SERVER_IMAGE}": "sha256:server-config",
-                "{MCP_IMAGE}": "sha256:mcp-config",
+            digests = {{
+                "server": "sha256:server-config",
+                "mcp": "sha256:mcp-config",
             }}
 
             with open(os.environ["FAKE_COMMAND_LOG"], "a", encoding="utf-8") as log:
@@ -147,14 +147,42 @@ def write_fake_docker(directory: Path) -> None:
                 print("Login Succeeded")
             elif args[:2] == ["load", "--input"]:
                 image = "server" if Path(args[2]).name.startswith("server") else "mcp"
-                reference = "{SERVER_IMAGE}" if image == "server" else "{MCP_IMAGE}"
-                print(f"Loaded image: {{reference}}")
+                default_reference = "memories:{VERSION}" if image == "server" else "memories-mcp:{VERSION}"
+                outcome = plan.get("load", {{}}).get(image, {{}})
+                reference = outcome.get("reference", default_reference)
+                if reference:
+                    state["local"][reference] = digests[image]
+                if "stdout" in outcome:
+                    print(outcome["stdout"])
+                elif reference:
+                    print(f"Loaded image: {{reference}}")
+                if outcome.get("stderr"):
+                    print(outcome["stderr"], file=sys.stderr)
+                if int(outcome.get("exitCode", 0)) != 0:
+                    state_path.write_text(json.dumps(state), encoding="utf-8")
+                    sys.exit(int(outcome["exitCode"]))
+            elif args and args[0] == "tag":
+                source = args[1]
+                target = args[2]
+                image = "server" if target == "{SERVER_IMAGE}" else "mcp"
+                outcome = plan.get("tag", {{}}).get(image, {{}})
+                if outcome.get("stdout"):
+                    print(outcome["stdout"])
+                if outcome.get("stderr"):
+                    print(outcome["stderr"], file=sys.stderr)
+                if int(outcome.get("exitCode", 0)) != 0:
+                    state_path.write_text(json.dumps(state), encoding="utf-8")
+                    sys.exit(int(outcome["exitCode"]))
+                if source not in state["local"]:
+                    print("unknown tag source", file=sys.stderr)
+                    sys.exit(4)
+                state["local"][target] = state["local"][source]
             elif args[:2] == ["image", "inspect"]:
                 reference = args[2]
-                if reference not in local:
+                if reference not in state["local"]:
                     print("unknown local image", file=sys.stderr)
                     sys.exit(4)
-                print(local[reference])
+                print(state["local"][reference])
             elif args[:2] == ["manifest", "inspect"]:
                 reference = args[2]
                 digest = state["remote"].get(reference)
@@ -174,7 +202,7 @@ def write_fake_docker(directory: Path) -> None:
                 if outcome.get("stderr"):
                     print(outcome["stderr"], file=sys.stderr)
                 if int(outcome.get("exitCode", 0)) == 0:
-                    state["remote"][reference] = local[reference]
+                    state["remote"][reference] = state["local"][reference]
                 state_path.write_text(json.dumps(state), encoding="utf-8")
                 sys.exit(int(outcome.get("exitCode", 0)))
             else:
@@ -198,7 +226,7 @@ def write_fake_docker(directory: Path) -> None:
     )
 
 
-def prepare_environment(root: Path, plan: dict[str, list[dict[str, object]]] | None = None) -> tuple[Path, dict[str, str]]:
+def prepare_environment(root: Path, plan: dict[str, object] | None = None) -> tuple[Path, dict[str, str]]:
     fake_bin = root / "bin"
     fake_bin.mkdir()
     write_fake_dotnet(fake_bin)
@@ -314,6 +342,198 @@ class PublishContainersTests(unittest.TestCase):
             serialized_calls = json.dumps(docker_calls)
             self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized_calls)
 
+    def test_push_retags_registry_less_loaded_images_before_canonical_inspect(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
+            self.assertLess(
+                docker_calls.index(["tag", f"memories:{VERSION}", SERVER_IMAGE]),
+                docker_calls.index(["image", "inspect", SERVER_IMAGE, "--format={{.Id}}"]),
+            )
+            self.assertLess(
+                docker_calls.index(["tag", f"memories-mcp:{VERSION}", MCP_IMAGE]),
+                docker_calls.index(["image", "inspect", MCP_IMAGE, "--format={{.Id}}"]),
+            )
+
+    def test_push_skips_tag_when_archive_load_is_already_canonical(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "load": {
+                    "server": {"reference": SERVER_IMAGE},
+                    "mcp": {"reference": MCP_IMAGE},
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            tags = [
+                entry for entry in command_log(root)
+                if entry["command"] == "docker" and entry["args"][0] == "tag"
+            ]
+            self.assertEqual([], tags)
+
+    def test_push_accepts_single_loaded_image_id_and_retags_it(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            image_id = "sha256:" + ("a" * 64)
+            plan = {
+                "load": {
+                    "server": {
+                        "reference": image_id,
+                        "stdout": f"Loaded image ID: {image_id}",
+                    }
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
+            self.assertIn(["tag", image_id, SERVER_IMAGE], docker_calls)
+
+    def test_push_accepts_single_loaded_reference_reported_on_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "load": {
+                    "server": {
+                        "stdout": "",
+                        "stderr": f"Loaded image: memories:{VERSION}",
+                    }
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
+            self.assertIn(["tag", f"memories:{VERSION}", SERVER_IMAGE], docker_calls)
+
+    def test_multiple_loaded_references_fail_closed_before_tag_or_inspect(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "load": {
+                    "server": {
+                        "stdout": (
+                            f"Loaded image: memories:{VERSION}\n"
+                            f"Loaded image: unrelated:{VERSION}"
+                        ),
+                    }
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("load-reference-invalid", server["disposition"])
+            server_operations = [
+                entry["args"] for entry in command_log(root)
+                if entry["command"] == "docker" and SERVER_IMAGE in entry["args"]
+            ]
+            self.assertEqual([], server_operations)
+
+    def test_unrelated_loaded_reference_fails_closed_before_tag_or_inspect(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {"load": {"server": {"reference": f"unrelated:{VERSION}"}}}
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("load-reference-invalid", server["disposition"])
+            server_operations = [
+                entry["args"] for entry in command_log(root)
+                if entry["command"] == "docker" and SERVER_IMAGE in entry["args"]
+            ]
+            self.assertEqual([], server_operations)
+
+    def test_unparseable_load_output_fails_member_before_inspect_or_remote_operation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "load": {
+                    "server": {
+                        "stdout": "archive imported SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
+                    }
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("load-reference-invalid", server["disposition"])
+            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], json.dumps(summary))
+            server_operations = [
+                entry["args"] for entry in command_log(root)
+                if entry["command"] == "docker" and SERVER_IMAGE in entry["args"]
+            ]
+            self.assertEqual([], server_operations)
+
+    def test_tag_failure_is_redacted_and_stops_member_before_canonical_inspect(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "tag": {
+                    "server": {
+                        "exitCode": 44,
+                        "stderr": "tag rejected SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
+                    }
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("tag-failed", server["disposition"])
+            self.assertEqual(44, server["exitCode"])
+            serialized = json.dumps(summary)
+            self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized)
+            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
+            canonical_inspects = [
+                entry for entry in command_log(root)
+                if entry["command"] == "docker" and entry["args"][:3] == ["image", "inspect", SERVER_IMAGE]
+            ]
+            self.assertEqual([], canonical_inspects)
+
     def test_push_without_standard_credentials_fails_at_publish_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -391,6 +611,36 @@ class PublishContainersTests(unittest.TestCase):
                 if entry["command"] == "docker" and entry["args"][0] == "push"
             ]
             self.assertEqual([SERVER_IMAGE, MCP_IMAGE, MCP_IMAGE], pushes)
+
+    def test_existing_immutable_tag_with_conflicting_digest_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            (root / "docker-state.json").write_text(
+                json.dumps(
+                    {
+                        "remote": {SERVER_IMAGE: "sha256:conflicting-config"},
+                        "attempts": {},
+                        "local": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("digest-conflict", server["disposition"])
+            pushes = [
+                entry["args"][1]
+                for entry in command_log(root)
+                if entry["command"] == "docker" and entry["args"][0] == "push"
+            ]
+            self.assertEqual([MCP_IMAGE], pushes)
 
     def test_render_failure_happens_before_push_and_writes_current_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

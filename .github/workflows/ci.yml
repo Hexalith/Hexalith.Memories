@@ -209,6 +209,9 @@ jobs:
       - name: Run container publish fixtures
         run: python3 -m unittest discover -s tests/tooling/publish_containers -p "*_test.py"
 
+      - name: Run production deployment evidence fixtures
+        run: python3 -m unittest discover -s tests/tooling/production_deployment_evidence -p "*_test.py"
+
       - name: Pack and validate release packages
         run: pwsh ./tools/pack-release.ps1 -Version 0.0.264 -OutputDirectory artifacts/packages/ci -PackageOnly
 
@@ -403,7 +406,13 @@ jobs:
             -McpArchive ./artifacts/containers/release/mcp.tar.gz `
             -Version "0.0.0-ci.${{ github.run_number }}" `
             -DaprRuntimeVersion $env:DAPR_RUNTIME_VERSION `
-            -KindNodeImage $env:KIND_NODE_IMAGE
+            -KindNodeImage $env:KIND_NODE_IMAGE `
+            -EvidenceDirectory ./artifacts/production-deployment-verification
+
+      - name: Validate production deployment evidence
+        if: always()
+        shell: pwsh
+        run: ./tools/validate-production-deployment-evidence.ps1 -EvidenceDirectory ./artifacts/production-deployment-verification
 
       - name: Upload production deployment evidence
         if: always()
@@ -412,5 +421,6 @@ jobs:
           name: production-deployment-evidence
           path: |
             artifacts/containers/release/**
+            artifacts/production-deployment-verification/**
           if-no-files-found: error
           retention-days: 14
