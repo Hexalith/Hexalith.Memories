@@ -18,6 +18,7 @@ public class ImportEnvelopeReaderTests
     private const string TenantEnvelope = """
     {
       "manifest": { "schemaVersion": 1, "scope": "tenant", "tenantId": "acme", "caseId": null, "exportedAt": "2026-07-13T00:00:00+00:00", "snapshotAt": "2026-07-13T00:00:00+00:00" },
+      "tenant": { "configuration": { "id": "acme", "displayName": "Acme", "status": "active", "createdAt": "2026-07-01T00:00:00+00:00", "embeddingConfig": { "provider": "google", "model": "text-embedding-004", "dimensions": 768, "rateLimitPerMinute": 60, "apiSecretKeyName": "embedding-key" }, "indexStatus": { "rediSearch": "ready", "redisVector": "ready", "falkorDb": "ready" } }, "status": "active", "createdAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-13T00:00:00+00:00" },
       "cases": [
         { "id": "case-1", "tenantId": "acme", "name": "Case One", "status": "active", "createdAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-02T00:00:00+00:00", "memoryUnitCount": 2,
           "members": [ { "memberId": "user-1", "memberType": "user", "addedAt": "2026-07-01T00:00:00+00:00" } ] }
@@ -114,6 +115,76 @@ public class ImportEnvelopeReaderTests
         envelope.Cases[0].Members[0].MemberType.ShouldBe(CaseMemberType.Role);
         envelope.MemoryUnits.Count.ShouldBe(1);
         envelope.Edges.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Parse_DuplicateTopLevelSection_Throws()
+    {
+        string duplicate = TenantEnvelope.Replace(
+            "\"cases\": [",
+            "\"manifest\": { \"schemaVersion\": 1 }, \"cases\": [",
+            StringComparison.Ordinal);
+
+        ImportEnvelopeException exception = Should.Throw<ImportEnvelopeException>(
+            () => ImportEnvelopeReader.Parse(Encoding.UTF8.GetBytes(duplicate)));
+
+        exception.Code.ShouldBe("DUPLICATE_SECTION");
+    }
+
+    [Fact]
+    public void Parse_TrailingTopLevelContent_Throws()
+    {
+        ImportEnvelopeException exception = Should.Throw<ImportEnvelopeException>(
+            () => ImportEnvelopeReader.Parse(Encoding.UTF8.GetBytes(TenantEnvelope + " {}")));
+
+        exception.Code.ShouldBe("TRAILING_CONTENT");
+    }
+
+    [Fact]
+    public void Parse_StatisticsMismatch_Throws()
+    {
+        string mismatch = TenantEnvelope.Replace(
+            "\"memoryUnitCount\": 2",
+            "\"memoryUnitCount\": 3",
+            StringComparison.Ordinal);
+
+        ImportEnvelopeException exception = Should.Throw<ImportEnvelopeException>(
+            () => ImportEnvelopeReader.Parse(Encoding.UTF8.GetBytes(mismatch)));
+
+        exception.Code.ShouldBe("STATISTICS_MISMATCH");
+    }
+
+    [Fact]
+    public void Parse_MalformedArraySection_Throws()
+    {
+        string malformed = TenantEnvelope.Replace("\"edges\": [", "\"edges\": {", StringComparison.Ordinal);
+
+        ImportEnvelopeException exception = Should.Throw<ImportEnvelopeException>(
+            () => ImportEnvelopeReader.Parse(Encoding.UTF8.GetBytes(malformed)));
+
+        exception.Code.ShouldBe("MALFORMED_IMPORT");
+    }
+
+    [Fact]
+    public async Task StreamProcessor_ValidEnvelope_VisitsBoundedRecordsAndCounts()
+    {
+        List<string> units = [];
+        await using MemoryStream stream = new(Encoding.UTF8.GetBytes(TenantEnvelope), writable: false);
+
+        ImportEnvelopeScanResult result = await ImportEnvelopeStreamProcessor.ProcessAsync(
+            stream,
+            caseHandler: null,
+            (unit, _) =>
+            {
+                units.Add(unit.Unit.Id);
+                return Task.CompletedTask;
+            },
+            edgeHandler: null,
+            CancellationToken.None);
+
+        result.Manifest.TenantId.ShouldBe("acme");
+        result.Statistics.MemoryUnitCount.ShouldBe(2);
+        units.ShouldBe(["mu-1", "mu-2"]);
     }
 
     [Fact]

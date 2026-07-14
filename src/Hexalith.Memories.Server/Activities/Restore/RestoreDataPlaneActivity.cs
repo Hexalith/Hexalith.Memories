@@ -13,6 +13,8 @@ using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Import;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Migration;
 using Hexalith.Memories.Server.Serialization;
 
 using Microsoft.Extensions.Logging;
@@ -35,7 +37,9 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
     private readonly IConnectionMultiplexer _redis;
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly IGraphQueryBuilder _graphQueryBuilder;
+    private readonly ITenantEmbeddingConfigProvider _tenantEmbeddingConfigProvider;
     private readonly ITenantIndexReadinessVerifier _readinessVerifier;
+    private readonly IRestoreTargetGuard _targetGuard;
     private readonly ILogger<RestoreDataPlaneActivity> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="RestoreDataPlaneActivity"/> class.</summary>
@@ -43,6 +47,8 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
     /// <param name="redis">The Redis connection multiplexer (data plane).</param>
     /// <param name="falkorDb">The FalkorDB connection multiplexer (graph plane).</param>
     /// <param name="graphQueryBuilder">The parameterized graph query builder.</param>
+    /// <param name="tenantEmbeddingConfigProvider">The target tenant embedding configuration provider.</param>
+    /// <param name="targetGuard">The clean-target restore guard.</param>
     /// <param name="logger">The logger.</param>
     /// <param name="readinessVerifier">The tenant index readiness verifier (defaults to a self-constructed instance).</param>
     public RestoreDataPlaneActivity(
@@ -50,6 +56,8 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
         [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
         IGraphQueryBuilder graphQueryBuilder,
+        ITenantEmbeddingConfigProvider tenantEmbeddingConfigProvider,
+        IRestoreTargetGuard targetGuard,
         ILogger<RestoreDataPlaneActivity> logger,
         ITenantIndexReadinessVerifier? readinessVerifier = null)
     {
@@ -57,11 +65,15 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentNullException.ThrowIfNull(falkorDb);
         ArgumentNullException.ThrowIfNull(graphQueryBuilder);
+        ArgumentNullException.ThrowIfNull(tenantEmbeddingConfigProvider);
+        ArgumentNullException.ThrowIfNull(targetGuard);
         ArgumentNullException.ThrowIfNull(logger);
         _stagingStore = stagingStore;
         _redis = redis;
         _falkorDb = falkorDb;
         _graphQueryBuilder = graphQueryBuilder;
+        _tenantEmbeddingConfigProvider = tenantEmbeddingConfigProvider;
+        _targetGuard = targetGuard;
         _logger = logger;
         _readinessVerifier = readinessVerifier
             ?? new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance);
@@ -72,71 +84,149 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        byte[]? payload = await _stagingStore.RetrieveAsync(input.StagingKey, CancellationToken.None).ConfigureAwait(false);
-        if (payload is null)
+        TenantEmbeddingConfig config = await _tenantEmbeddingConfigProvider
+            .GetAsync(input.TenantId, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        await using Stream? preflightStream = await _stagingStore
+            .OpenReadAsync(input.StagingKey, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (preflightStream is null)
         {
             throw new ImportEnvelopeException(
                 "IMPORT_STAGING_EXPIRED",
                 $"Staged import payload '{input.StagingKey}' is missing or expired; resubmit the import.");
         }
 
-        ImportEnvelope envelope = ImportEnvelopeReader.Parse(payload);
+        ImportEnvelopeScanResult scan = await ImportEnvelopeStreamProcessor.ProcessAsync(
+            preflightStream,
+            (importedCase, _) =>
+            {
+                ImportEnvelopeValidator.EnsureCaseTarget(importedCase, input.TenantId, input.CaseId);
+                return Task.CompletedTask;
+            },
+            (exported, _) =>
+            {
+                ImportEnvelopeValidator.EnsureMemoryUnitTarget(exported, input.TenantId, input.CaseId);
+                EnsureEmbeddingCompatibility(exported.Unit, input.TenantId, config);
+                return Task.CompletedTask;
+            },
+            edgeHandler: null,
+            CancellationToken.None).ConfigureAwait(false);
+        ImportEnvelopeValidator.EnsureManifestTarget(scan.Manifest, input.TenantId, input.CaseId);
 
         IDatabase db = _redis.GetDatabase();
 
-        // AC5: the tenant's syntactic index must already be provisioned (TenantProvisioningWorkflow owns index
-        // creation). Verify before writing so a restore into an unprovisioned tenant fails loudly rather than
-        // writing hashes that are never indexed and silently unsearchable.
+        // AC5: preflight both required index families before the first data-plane write. Running semantic
+        // readiness only after cases/hashes were written could leave a target partially restored.
         await _readinessVerifier
             .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.Syntactic, null, CancellationToken.None)
             .ConfigureAwait(false);
+        await _readinessVerifier
+            .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.Semantic, config.Dimensions, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
+            .ReadActiveMarkerAsync(db, input.TenantId, CancellationToken.None)
+            .ConfigureAwait(false);
+        EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
+            marker,
+            config.Provider,
+            config.Model,
+            config.Dimensions);
+
+        await _stagingStore.RenewAsync(input.StagingKey, CancellationToken.None).ConfigureAwait(false);
+        if (!await _stagingStore.OwnsRestoreLeaseAsync(input.StagingKey, CancellationToken.None).ConfigureAwait(false))
+        {
+            throw new ImportEnvelopeException(
+                "RESTORE_LEASE_LOST",
+                "The restore operation no longer owns the target lease; resubmit after the active restore finishes.");
+        }
+
+        if (!await _stagingStore.HasRestoreStartedAsync(input.StagingKey, CancellationToken.None).ConfigureAwait(false))
+        {
+            await _targetGuard.EnsureCleanAsync(input.TenantId, input.CaseId, CancellationToken.None).ConfigureAwait(false);
+            await _stagingStore.MarkRestoreStartedAsync(input.StagingKey, CancellationToken.None).ConfigureAwait(false);
+        }
 
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
-
-        foreach (ImportedCase importedCase in envelope.Cases)
-        {
-            await RestoreCaseAsync(db, falkor, input.TenantId, importedCase).ConfigureAwait(false);
-        }
-
+        await _stagingStore.ResetReindexIdsAsync(input.StagingKey, CancellationToken.None).ConfigureAwait(false);
+        List<string> reindexPage = new(1000);
+        int restoredMemoryUnits = 0;
         int skippedRecords = 0;
-        List<string> memoryUnitIds = new(envelope.MemoryUnits.Count);
-        foreach (ExportedMemoryUnit exported in envelope.MemoryUnits)
+        int restoredEdges = 0;
+
+        await using Stream? restoreStream = await _stagingStore
+            .OpenReadAsync(input.StagingKey, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (restoreStream is null)
         {
-            if (await RestoreMemoryUnitAsync(db, falkor, input.TenantId, exported.Unit).ConfigureAwait(false))
-            {
-                memoryUnitIds.Add(exported.Unit.Id);
-            }
-            else
-            {
-                skippedRecords++;
-            }
+            throw new ImportEnvelopeException(
+                "IMPORT_STAGING_EXPIRED",
+                $"Staged import payload '{input.StagingKey}' expired after preflight; resubmit the import.");
         }
 
-        int restoredEdges = 0;
-        foreach (ExportedEdge edge in envelope.Edges)
-        {
-            switch (await RestoreEdgeAsync(falkor, input.TenantId, edge).ConfigureAwait(false))
+        _ = await ImportEnvelopeStreamProcessor.ProcessAsync(
+            restoreStream,
+            (importedCase, _) => RestoreCaseAsync(db, falkor, input.TenantId, importedCase),
+            async (exported, _) =>
             {
-                case RestoreEdgeOutcome.Restored:
-                    restoredEdges++;
-                    break;
-                case RestoreEdgeOutcome.SkippedInvalid:
+                if (await RestoreMemoryUnitAsync(db, falkor, input.TenantId, exported.Unit, config).ConfigureAwait(false))
+                {
+                    restoredMemoryUnits++;
+                    reindexPage.Add(exported.Unit.Id);
+                    if (reindexPage.Count == reindexPage.Capacity)
+                    {
+                        await _stagingStore
+                            .AppendReindexIdsAsync(input.StagingKey, reindexPage, CancellationToken.None)
+                            .ConfigureAwait(false);
+                        reindexPage.Clear();
+                    }
+                }
+                else
+                {
                     skippedRecords++;
-                    break;
-                default:
-                    break;
-            }
+                }
+            },
+            async (edge, _) =>
+            {
+                switch (await RestoreEdgeAsync(falkor, input.TenantId, edge).ConfigureAwait(false))
+                {
+                    case RestoreEdgeOutcome.Restored:
+                        restoredEdges++;
+                        break;
+                    case RestoreEdgeOutcome.SkippedInvalid:
+                        skippedRecords++;
+                        break;
+                    default:
+                        break;
+                }
+            },
+            CancellationToken.None).ConfigureAwait(false);
+
+        if (reindexPage.Count > 0)
+        {
+            await _stagingStore
+                .AppendReindexIdsAsync(input.StagingKey, reindexPage, CancellationToken.None)
+                .ConfigureAwait(false);
         }
+
+        await _stagingStore.RenewAsync(input.StagingKey, CancellationToken.None).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "Restore data plane complete for tenant {TenantId}: {CaseCount} cases, {UnitCount} memory units, {EdgeCount} edges, {SkippedCount} records skipped (invalid).",
+            "Restore data plane requested by {RequestedBy} complete for tenant {TenantId}: {CaseCount} cases, {UnitCount} memory units, {EdgeCount} edges, {SkippedCount} records skipped (invalid).",
+            input.RequestedBy,
             input.TenantId,
-            envelope.Cases.Count,
-            memoryUnitIds.Count,
+            scan.Statistics.CaseCount,
+            restoredMemoryUnits,
             restoredEdges,
             skippedRecords);
 
-        return new RestoreDataPlaneResult(memoryUnitIds, envelope.Cases.Count, restoredEdges, skippedRecords);
+        return new RestoreDataPlaneResult(
+            restoredMemoryUnits,
+            scan.Statistics.CaseCount,
+            restoredEdges,
+            skippedRecords);
     }
 
     private async Task RestoreCaseAsync(IDatabase db, NFalkorDB.FalkorDB falkor, string tenantId, ImportedCase importedCase)
@@ -176,7 +266,12 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
     }
 
-    private async Task<bool> RestoreMemoryUnitAsync(IDatabase db, NFalkorDB.FalkorDB falkor, string tenantId, MemoryUnit unit)
+    private async Task<bool> RestoreMemoryUnitAsync(
+        IDatabase db,
+        NFalkorDB.FalkorDB falkor,
+        string tenantId,
+        MemoryUnit unit,
+        TenantEmbeddingConfig config)
     {
         // Story 26.2 review (D4): a memory unit with a blank caseId is corrupt (ingestion always sets one) and
         // cannot be merged into the graph (BuildMergeMemoryUnitNode / BuildMergeEdge require a caseId). Skip it
@@ -203,6 +298,7 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             unit.CaseId,
             unit.EmbeddingProvider,
             unit.EmbeddingModel,
+            unit.EmbeddingDimensions ?? config.Dimensions,
             unit.IngestedBy,
             unit.IngestedAt,
             unit.LastUpdated);
@@ -213,7 +309,7 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         string metadataJson = JsonSerializer.Serialize(
             PersistenceModelMapper.ToStored(unit.Metadata),
             MemoriesPersistenceJsonContext.Options);
-        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeMemoryUnitNode(
+        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildRestoreMemoryUnitNode(
             unit.Id,
             unit.CaseId,
             unit.Content,
@@ -222,9 +318,10 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             unit.SourceType,
             string.IsNullOrWhiteSpace(unit.EmbeddingProvider) ? "unknown" : unit.EmbeddingProvider,
             string.IsNullOrWhiteSpace(unit.EmbeddingModel) ? "unknown" : unit.EmbeddingModel,
-            unit.EmbeddingDimensions ?? 0,
+            unit.EmbeddingDimensions ?? config.Dimensions,
             unit.IngestedBy,
             unit.IngestedAt,
+            unit.LastUpdated,
             metadataJson);
         await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
@@ -262,15 +359,12 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             origin = EdgeOrigin.Inferred;
         }
 
-        // Ensure both endpoints exist. For a case-scope export, an edge's far endpoint may live outside the
-        // exported case (dangling target) — MERGE a stub so the edge MATCH resolves. ON CREATE SET means a
-        // real node already merged above is never regressed to a stub.
-        await MergeStubIfMissingAsync(falkor, tenantId, edge.SourceId, edge.CreatedAt).ConfigureAwait(false);
-        await MergeStubIfMissingAsync(falkor, tenantId, edge.TargetId, edge.CreatedAt).ConfigureAwait(false);
-
+        string query;
+        IDictionary<string, object> parameters;
         try
         {
-            (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildRestoreEdge(
+            // Validate/build before creating endpoint stubs. A corrupt edge must not leave orphan graph nodes.
+            (query, parameters) = _graphQueryBuilder.BuildRestoreEdge(
                 edge.SourceId,
                 edge.TargetId,
                 edgeType,
@@ -279,8 +373,6 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
                 edge.CreatedAt,
                 edge.VerifiedBy,
                 edge.PreviousConfidence);
-            await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
-            return RestoreEdgeOutcome.Restored;
         }
         catch (ArgumentException ex)
         {
@@ -296,19 +388,45 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
                 ex.Message);
             return RestoreEdgeOutcome.SkippedInvalid;
         }
+
+        // Ensure both endpoints exist. For a case-scope export, an edge's far endpoint may live outside the
+        // exported case (dangling target) — MERGE a stub so the edge MATCH resolves.
+        await MergeStubIfMissingAsync(falkor, tenantId, edge.SourceId, edge.CreatedAt).ConfigureAwait(false);
+        await MergeStubIfMissingAsync(falkor, tenantId, edge.TargetId, edge.CreatedAt).ConfigureAwait(false);
+        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        return RestoreEdgeOutcome.Restored;
     }
 
-    /// <summary>The outcome of restoring a single exported edge.</summary>
-    private enum RestoreEdgeOutcome
+    private static void EnsureEmbeddingCompatibility(
+        MemoryUnit unit,
+        string tenantId,
+        TenantEmbeddingConfig config)
     {
-        /// <summary>The edge was MERGEd into the graph.</summary>
-        Restored,
+        if (!string.IsNullOrWhiteSpace(unit.EmbeddingProvider)
+            && !RestoreReindexUnitActivity.MatchesProviderAttribution(
+                unit.EmbeddingProvider,
+                config.Provider,
+                config.Model))
+        {
+            throw new ImportEnvelopeException(
+                "IMPORT_EMBEDDING_PROVIDER_MISMATCH",
+                $"Memory unit '{unit.Id}' uses embedding provider '{unit.EmbeddingProvider}', but target tenant '{tenantId}' uses '{config.Provider}:{config.Model}'.");
+        }
 
-        /// <summary>Skipped by design (a CONTAINS edge rebuilt from caseId, or an unrecognized edge type) — not data loss.</summary>
-        SkippedByDesign,
+        if (!string.IsNullOrWhiteSpace(unit.EmbeddingModel)
+            && !string.Equals(unit.EmbeddingModel, config.Model, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ImportEnvelopeException(
+                "IMPORT_EMBEDDING_MODEL_MISMATCH",
+                $"Memory unit '{unit.Id}' uses embedding model '{unit.EmbeddingModel}', but target tenant '{tenantId}' uses '{config.Model}'.");
+        }
 
-        /// <summary>Skipped because the edge was invalid/corrupt (best-effort restore) — reported via the skipped count.</summary>
-        SkippedInvalid,
+        if (unit.EmbeddingDimensions != config.Dimensions)
+        {
+            throw new ImportEnvelopeException(
+                "IMPORT_EMBEDDING_DIMENSIONS_MISMATCH",
+                $"Memory unit '{unit.Id}' uses {unit.EmbeddingDimensions} embedding dimensions, but target tenant '{tenantId}' uses {config.Dimensions}.");
+        }
     }
 
     private async Task MergeStubIfMissingAsync(NFalkorDB.FalkorDB falkor, string tenantId, string nodeId, DateTimeOffset stubCreatedAt)

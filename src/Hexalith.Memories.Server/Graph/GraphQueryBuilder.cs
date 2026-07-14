@@ -63,6 +63,36 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         string ingestedBy,
         DateTimeOffset ingestedAt,
         string metadataJson)
+        => BuildRestoreMemoryUnitNode(
+            memoryUnitId,
+            caseId,
+            content,
+            contentHash,
+            sourceUri,
+            sourceType,
+            embeddingProvider,
+            embeddingModel,
+            embeddingDimensions,
+            ingestedBy,
+            ingestedAt,
+            ingestedAt,
+            metadataJson);
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildRestoreMemoryUnitNode(
+        string memoryUnitId,
+        string caseId,
+        string content,
+        string contentHash,
+        string sourceUri,
+        SourceType sourceType,
+        string embeddingProvider,
+        string embeddingModel,
+        int embeddingDimensions,
+        string ingestedBy,
+        DateTimeOffset ingestedAt,
+        DateTimeOffset lastUpdated,
+        string metadataJson)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
@@ -94,7 +124,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
             ["indexedAt"] = ingestedAt.ToString("o"),
             ["ingestedBy"] = ingestedBy,
             ["ingestedAt"] = ingestedAt.ToString("o"),
-            ["lastUpdated"] = ingestedAt.ToString("o"),
+            ["lastUpdated"] = lastUpdated.ToString("o"),
             ["metadataJson"] = metadataJson,
         };
 
@@ -150,6 +180,15 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         };
 
         return (query, parameters);
+    }
+
+    /// <inheritdoc/>
+    public (string Query, IDictionary<string, object> Parameters) BuildCountCaseRestoreArtifacts(string caseId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
+
+        const string query = "OPTIONAL MATCH (c:Case {id: $caseId}) OPTIONAL MATCH (c)-[:CONTAINS]->(m:MemoryUnit) RETURN count(DISTINCT c) + count(DISTINCT m) AS count";
+        return (query, new Dictionary<string, object> { ["caseId"] = caseId });
     }
 
     /// <inheritdoc/>

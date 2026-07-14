@@ -73,6 +73,7 @@ public sealed class IndexSyntacticActivity : WorkflowTraceLinkedActivity<IndexIn
             input.CaseId,
             input.EmbeddingProvider,
             input.EmbeddingModel,
+            input.EmbeddingDimensions,
             input.IngestedBy,
             input.IngestedAt,
             input.IngestedAt);

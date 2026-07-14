@@ -7,11 +7,6 @@ namespace Hexalith.Memories.Server.Import;
 
 using Hexalith.Memories.Contracts.V1;
 
-/// <summary>A case object from the export envelope: the <see cref="Case"/> record plus its members array.</summary>
-/// <param name="Case">The case record (its <c>members</c> array is carried separately).</param>
-/// <param name="Members">The case membership entries.</param>
-internal sealed record ImportedCase(Case Case, IReadOnlyList<CaseMember> Members);
-
 /// <summary>
 /// The fully parsed export envelope (Story 26.2), normalized across case-scope and tenant-scope exports:
 /// a case-scope export's single <c>case</c> object is normalized into <see cref="Cases"/> with one element.

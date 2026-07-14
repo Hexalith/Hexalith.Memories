@@ -32,6 +32,7 @@ internal static class SyntacticHashProjection
     /// <param name="caseId">The owning case identifier.</param>
     /// <param name="embeddingProvider">The embedding provider identifier (may be null for legacy units).</param>
     /// <param name="embeddingModel">The embedding model identifier (may be null for legacy units).</param>
+    /// <param name="embeddingDimensions">The source embedding vector dimensions.</param>
     /// <param name="ingestedBy">The principal that ingested the unit.</param>
     /// <param name="ingestedAt">The ingestion timestamp (persisted as ISO-8601 round-trip in <c>ingestedAt</c>).</param>
     /// <param name="lastUpdated">The last-updated timestamp (persisted as ISO-8601 round-trip in <c>lastUpdated</c>).</param>
@@ -47,6 +48,7 @@ internal static class SyntacticHashProjection
         string caseId,
         string? embeddingProvider,
         string? embeddingModel,
+        int embeddingDimensions,
         string ingestedBy,
         DateTimeOffset ingestedAt,
         DateTimeOffset lastUpdated)
@@ -83,6 +85,7 @@ internal static class SyntacticHashProjection
             // Story 5.5 FR70: persist the embedding model so future audits can attribute
             // vectors to the (provider, model) pair that generated them.
             new HashEntry("embeddingModel", embeddingModel ?? string.Empty),
+            new HashEntry("embeddingDimensions", embeddingDimensions),
             new HashEntry("ingestedBy", ingestedBy),
             new HashEntry("ingestedAt", ingestedAt.ToString("o")),
             new HashEntry("lastUpdated", lastUpdated.ToString("o")),

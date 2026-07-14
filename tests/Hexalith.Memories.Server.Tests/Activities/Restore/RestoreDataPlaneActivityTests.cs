@@ -18,6 +18,7 @@ using Hexalith.Memories.Server.Activities.Restore;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Import;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Workflows.Contracts;
 
 using Microsoft.Extensions.Logging;
@@ -39,12 +40,13 @@ public class RestoreDataPlaneActivityTests
     private const string TenantEnvelope = """
     {
       "manifest": { "schemaVersion": 1, "scope": "tenant", "tenantId": "acme", "caseId": null, "exportedAt": "2026-07-13T00:00:00+00:00", "snapshotAt": "2026-07-13T00:00:00+00:00" },
+          "tenant": { "configuration": { "id": "acme", "displayName": "Acme", "status": "active", "createdAt": "2026-07-01T00:00:00+00:00", "embeddingConfig": { "provider": "google", "model": "text-embedding-004", "dimensions": 768, "rateLimitPerMinute": 60, "apiSecretKeyName": "embedding-key" }, "indexStatus": { "rediSearch": "ready", "redisVector": "ready", "falkorDb": "ready" } }, "status": "active", "createdAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-13T00:00:00+00:00" },
       "cases": [
         { "id": "case-1", "tenantId": "acme", "name": "Case One", "status": "active", "createdAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-02T00:00:00+00:00", "memoryUnitCount": 2,
           "members": [ { "memberId": "user-1", "memberType": "user", "addedAt": "2026-07-01T00:00:00+00:00" } ] }
       ],
       "memoryUnits": [
-        { "unit": { "id": "mu-1", "tenantId": "acme", "caseId": "case-1", "content": "hello", "contentHash": "h1", "sourceUri": "file:///a.txt", "sourceType": "file", "ingestedBy": "tester", "ingestedAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-01T00:00:00+00:00", "status": "indexed", "metadata": {}, "embeddingProvider": "google:text-embedding-004", "embeddingModel": "text-embedding-004", "embeddingDimensions": 768 }, "annotationTargets": [] },
+        { "unit": { "id": "mu-1", "tenantId": "acme", "caseId": "case-1", "content": "hello", "contentHash": "h1", "sourceUri": "file:///a.txt", "sourceType": "file", "ingestedBy": "tester", "ingestedAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-02T00:00:00+00:00", "status": "indexed", "metadata": {}, "embeddingProvider": "google:text-embedding-004", "embeddingModel": "text-embedding-004", "embeddingDimensions": 768 }, "annotationTargets": [] },
         { "unit": { "id": "mu-2", "tenantId": "acme", "caseId": "case-1", "content": "world", "contentHash": "h2", "sourceUri": "file:///b.txt", "sourceType": "file", "ingestedBy": "tester", "ingestedAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-01T00:00:00+00:00", "status": "indexed", "metadata": {}, "embeddingProvider": "google:text-embedding-004", "embeddingModel": "text-embedding-004", "embeddingDimensions": 768 }, "annotationTargets": [] }
       ],
       "edges": [
@@ -63,7 +65,7 @@ public class RestoreDataPlaneActivityTests
             Substitute.For<WorkflowActivityContext>(),
             new RestoreDataPlaneInput("acme", null, "acme:import:staging:instance-1", "operator"));
 
-        result.MemoryUnitIds.ShouldBe(["mu-1", "mu-2"]);
+        result.RestoredMemoryUnitCount.ShouldBe(2);
         result.RestoredCaseCount.ShouldBe(1);
         result.RestoredEdgeCount.ShouldBe(1);
 
@@ -81,14 +83,32 @@ public class RestoreDataPlaneActivityTests
 
         // Case + memory-unit nodes merged.
         fixture.Builder.Received(1).BuildMergeCaseNode("case-1", "Case One", "acme", Arg.Any<DateTimeOffset>());
-        fixture.Builder.Received(1).BuildMergeMemoryUnitNode(
+        fixture.Builder.Received(1).BuildRestoreMemoryUnitNode(
             "mu-1", "case-1", "hello", "h1", "file:///a.txt", SourceType.File,
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), "tester", Arg.Any<DateTimeOffset>(), Arg.Any<string>());
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), "tester", Arg.Any<DateTimeOffset>(),
+            new DateTimeOffset(2026, 7, 2, 0, 0, 0, TimeSpan.Zero), Arg.Any<string>());
 
         // Syntactic hashes written under the tenant-prefixed key.
         await fixture.RedisDatabase.Received().HashSetAsync("acme:mu:mu-1", Arg.Any<HashEntry[]>());
         await fixture.RedisDatabase.Received().HashSetAsync("acme:mu:mu-2", Arg.Any<HashEntry[]>());
         await fixture.RedisDatabase.Received().HashSetAsync("acme:case:case-1", Arg.Any<HashEntry[]>());
+        await fixture.Readiness.Received(1).EnsureReadyAsync(
+            fixture.RedisDatabase,
+            "acme",
+            TenantIndexFamily.Syntactic,
+            null,
+            CancellationToken.None);
+        await fixture.Readiness.Received(1).EnsureReadyAsync(
+            fixture.RedisDatabase,
+            "acme",
+            TenantIndexFamily.Semantic,
+            768,
+            CancellationToken.None);
+        await fixture.TargetGuard.Received(1).EnsureCleanAsync("acme", null, CancellationToken.None);
+        await fixture.StagingStore.Received().AppendReindexIdsAsync(
+            Arg.Any<string>(),
+            Arg.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "mu-1", "mu-2" })),
+            CancellationToken.None);
     }
 
     [Fact]
@@ -116,7 +136,7 @@ public class RestoreDataPlaneActivityTests
         RestoreDataPlaneResult first = await fixture.Activity.RunAsync(context, input);
         RestoreDataPlaneResult second = await fixture.Activity.RunAsync(context, input);
 
-        second.MemoryUnitIds.ShouldBe(first.MemoryUnitIds);
+        second.RestoredMemoryUnitCount.ShouldBe(first.RestoredMemoryUnitCount);
         second.RestoredCaseCount.ShouldBe(first.RestoredCaseCount);
         second.RestoredEdgeCount.ShouldBe(first.RestoredEdgeCount);
     }
@@ -125,7 +145,7 @@ public class RestoreDataPlaneActivityTests
     public async Task RunAsync_StagingExpired_Throws()
     {
         Fixture fixture = Fixture.Create(TenantEnvelope);
-        fixture.StagingStore.RetrieveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((byte[]?)null);
+        fixture.StagingStore.OpenReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((Stream?)null);
 
         ImportEnvelopeException ex = await Should.ThrowAsync<ImportEnvelopeException>(() => fixture.Activity.RunAsync(
             Substitute.For<WorkflowActivityContext>(),
@@ -153,16 +173,19 @@ public class RestoreDataPlaneActivityTests
         result.RestoredEdgeCount.ShouldBe(0);
         result.SkippedRecords.ShouldBe(1);
 
+        fixture.Builder.DidNotReceive().BuildMergeStubNode(Arg.Any<string>(), Arg.Any<DateTimeOffset>());
+
         // The data-plane units are still restored — one corrupt edge does not abort the whole restore.
-        result.MemoryUnitIds.ShouldBe(["mu-1", "mu-2"]);
+        result.RestoredMemoryUnitCount.ShouldBe(2);
     }
 
     [Fact]
-    public async Task RunAsync_MemoryUnitWithBlankCaseId_SkipsUnitAndReports()
+    public async Task RunAsync_MemoryUnitWithBlankCaseId_RejectsBeforeMutation()
     {
         const string envelope = """
         {
           "manifest": { "schemaVersion": 1, "scope": "tenant", "tenantId": "acme", "caseId": null, "exportedAt": "2026-07-13T00:00:00+00:00", "snapshotAt": "2026-07-13T00:00:00+00:00" },
+          "tenant": { "configuration": { "id": "acme", "displayName": "Acme", "status": "active", "createdAt": "2026-07-01T00:00:00+00:00", "embeddingConfig": { "provider": "google", "model": "text-embedding-004", "dimensions": 768, "rateLimitPerMinute": 60, "apiSecretKeyName": "embedding-key" }, "indexStatus": { "rediSearch": "ready", "redisVector": "ready", "falkorDb": "ready" } }, "status": "active", "createdAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-13T00:00:00+00:00" },
           "cases": [],
           "memoryUnits": [
             { "unit": { "id": "mu-ok", "tenantId": "acme", "caseId": "case-1", "content": "hello", "contentHash": "h1", "sourceUri": "file:///a.txt", "sourceType": "file", "ingestedBy": "tester", "ingestedAt": "2026-07-01T00:00:00+00:00", "lastUpdated": "2026-07-01T00:00:00+00:00", "status": "indexed", "metadata": {}, "embeddingProvider": "google:text-embedding-004", "embeddingModel": "text-embedding-004", "embeddingDimensions": 768 }, "annotationTargets": [] },
@@ -175,15 +198,30 @@ public class RestoreDataPlaneActivityTests
 
         Fixture fixture = Fixture.Create(envelope);
 
-        RestoreDataPlaneResult result = await fixture.Activity.RunAsync(
+        ImportEnvelopeException exception = await Should.ThrowAsync<ImportEnvelopeException>(() => fixture.Activity.RunAsync(
             Substitute.For<WorkflowActivityContext>(),
-            new RestoreDataPlaneInput("acme", null, "acme:import:staging:instance-1", "operator"));
+            new RestoreDataPlaneInput("acme", null, "acme:import:staging:instance-1", "operator")));
 
-        // The blank-caseId unit is corrupt (ingestion always sets a caseId) — skipped + reported, not fatal,
-        // and its syntactic hash is never written (Story 26.2 review decision D4).
-        result.MemoryUnitIds.ShouldBe(["mu-ok"]);
-        result.SkippedRecords.ShouldBe(1);
+        exception.Code.ShouldBe("IMPORT_RECORD_SCOPE_MISMATCH");
+        await fixture.RedisDatabase.DidNotReceive().HashSetAsync("acme:mu:mu-ok", Arg.Any<HashEntry[]>());
         await fixture.RedisDatabase.DidNotReceive().HashSetAsync("acme:mu:mu-blank", Arg.Any<HashEntry[]>());
+    }
+
+    [Fact]
+    public async Task RunAsync_LeaseLost_FailsBeforeTargetMutation()
+    {
+        Fixture fixture = Fixture.Create(TenantEnvelope);
+        fixture.StagingStore.OwnsRestoreLeaseAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(false);
+
+        ImportEnvelopeException exception = await Should.ThrowAsync<ImportEnvelopeException>(() => fixture.Activity.RunAsync(
+            Substitute.For<WorkflowActivityContext>(),
+            new RestoreDataPlaneInput("acme", null, "acme:import:staging:instance-1", "operator")));
+
+        exception.Code.ShouldBe("RESTORE_LEASE_LOST");
+        await fixture.RedisDatabase.DidNotReceive().HashSetAsync(
+            Arg.Is<RedisKey>(key => key.ToString().StartsWith("acme:mu:", StringComparison.Ordinal)),
+            Arg.Any<HashEntry[]>(),
+            Arg.Any<CommandFlags>());
     }
 
     private sealed class Fixture
@@ -196,12 +234,19 @@ public class RestoreDataPlaneActivityTests
 
         public required IImportStagingStore StagingStore { get; init; }
 
+        public required ITenantIndexReadinessVerifier Readiness { get; init; }
+
+        public required IRestoreTargetGuard TargetGuard { get; init; }
+
         public static Fixture Create(string envelopeJson)
         {
             byte[] payload = Encoding.UTF8.GetBytes(envelopeJson);
 
             IImportStagingStore stagingStore = Substitute.For<IImportStagingStore>();
-            stagingStore.RetrieveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(payload);
+            stagingStore
+                .OpenReadAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(_ => new MemoryStream(payload, writable: false));
+            stagingStore.OwnsRestoreLeaseAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(true);
 
             IDatabase redisDb = Substitute.For<IDatabase>();
             IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
@@ -210,12 +255,22 @@ public class RestoreDataPlaneActivityTests
             (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
             IGraphQueryBuilder builder = CreateMockBuilder();
             ITenantIndexReadinessVerifier readiness = Substitute.For<ITenantIndexReadinessVerifier>();
+            ITenantEmbeddingConfigProvider configProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
+            configProvider.GetAsync("acme", Arg.Any<CancellationToken>()).Returns(new TenantEmbeddingConfig(
+                "google",
+                "text-embedding-004",
+                768,
+                60,
+                "embedding-key"));
+            IRestoreTargetGuard targetGuard = Substitute.For<IRestoreTargetGuard>();
 
             RestoreDataPlaneActivity activity = new(
                 stagingStore,
                 redis,
                 falkorDb,
                 builder,
+                configProvider,
+                targetGuard,
                 Substitute.For<ILogger<RestoreDataPlaneActivity>>(),
                 readiness);
 
@@ -225,6 +280,8 @@ public class RestoreDataPlaneActivityTests
                 Builder = builder,
                 RedisDatabase = redisDb,
                 StagingStore = stagingStore,
+                Readiness = readiness,
+                TargetGuard = targetGuard,
             };
         }
 
@@ -235,10 +292,10 @@ public class RestoreDataPlaneActivityTests
 
             builder.BuildMergeCaseNode(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DateTimeOffset>())
                 .Returns(dummy);
-            builder.BuildMergeMemoryUnitNode(
+            builder.BuildRestoreMemoryUnitNode(
                     Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
                     Arg.Any<SourceType>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<string>(),
-                    Arg.Any<DateTimeOffset>(), Arg.Any<string>())
+                    Arg.Any<DateTimeOffset>(), Arg.Any<DateTimeOffset>(), Arg.Any<string>())
                 .Returns(dummy);
             builder.BuildMergeEdge(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<EdgeType>(), Arg.Any<float>(), Arg.Any<EdgeOrigin>())
                 .Returns(dummy);

@@ -23,6 +23,22 @@ public interface IGraphQueryBuilder
         DateTimeOffset ingestedAt,
         string metadataJson);
 
+    /// <summary>Restores a memory unit node while preserving its exported last-updated timestamp.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildRestoreMemoryUnitNode(
+        string memoryUnitId,
+        string caseId,
+        string content,
+        string contentHash,
+        string sourceUri,
+        SourceType sourceType,
+        string embeddingProvider,
+        string embeddingModel,
+        int embeddingDimensions,
+        string ingestedBy,
+        DateTimeOffset ingestedAt,
+        DateTimeOffset lastUpdated,
+        string metadataJson);
+
     /// <summary>Creates a case node if it doesn't exist (MERGE pattern).</summary>
     (string Query, IDictionary<string, object> Parameters) BuildMergeCaseNode(string caseId);
 
@@ -32,6 +48,9 @@ public interface IGraphQueryBuilder
 
     /// <summary>Counts memory units linked to a case via CONTAINS edges.</summary>
     (string Query, IDictionary<string, object> Parameters) BuildCountCaseMemoryUnits(string caseId);
+
+    /// <summary>Counts the case node and contained memory-unit nodes used by clean-target restore preflight.</summary>
+    (string Query, IDictionary<string, object> Parameters) BuildCountCaseRestoreArtifacts(string caseId);
 
     /// <summary>Creates a typed edge between two nodes (idempotent via MERGE).</summary>
     (string Query, IDictionary<string, object> Parameters) BuildMergeEdge(

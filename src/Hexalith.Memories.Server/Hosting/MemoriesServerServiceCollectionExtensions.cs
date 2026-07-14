@@ -440,12 +440,16 @@ internal static class MemoriesServerServiceCollectionExtensions
             options.RegisterWorkflow<RestoreWorkflow>();
             options.RegisterActivity<RestoreDataPlaneActivity>();
             options.RegisterActivity<RestoreReindexUnitActivity>();
+            options.RegisterActivity<RestoreReindexBatchActivity>();
             options.RegisterActivity<DeleteRestoreStagingActivity>();
         });
         builder.Services.TryAddSingleton<IDaprWorkflowClient>(sp => sp.GetRequiredService<DaprWorkflowClient>());
 
         // Story 26.2: import/restore payload staging store.
         builder.Services.TryAddSingleton<IImportStagingStore, RedisImportStagingStore>();
+        builder.Services.TryAddSingleton<IRestoreTargetGuard, RestoreTargetGuard>();
+        builder.Services.TryAddTransient<IRestoreReindexUnitProcessor, RestoreReindexUnitActivity>();
+        builder.Services.TryAddSingleton<IRestoreTargetGuard, RestoreTargetGuard>();
 
         // Story 8.2: consistency services.
         builder.Services.AddScoped<IConsistencyInspectionService, ConsistencyInspectionService>();

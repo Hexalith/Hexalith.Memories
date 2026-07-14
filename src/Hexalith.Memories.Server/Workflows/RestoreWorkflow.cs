@@ -25,6 +25,8 @@ using Microsoft.Extensions.Logging;
 /// </summary>
 public sealed class RestoreWorkflow : Workflow<RestoreWorkflowInput, RestoreWorkflowResult>
 {
+    private const int ReindexBatchSize = 100;
+
     /// <inheritdoc/>
     public override async Task<RestoreWorkflowResult> RunAsync(WorkflowContext context, RestoreWorkflowInput input)
     {
@@ -39,15 +41,18 @@ public sealed class RestoreWorkflow : Workflow<RestoreWorkflowInput, RestoreWork
             new RestoreDataPlaneInput(input.TenantId, input.CaseId, input.StagingKey, input.RequestedBy),
             DefaultRetry());
 
-        // Re-index each restored unit sequentially. Sequential (not fan-out) deliberately bounds pressure on the
-        // embedding provider during a bulk restore; each re-index is idempotent so a resume re-runs safely.
+        // Re-index bounded pages sequentially. The activity reads ids from staging, so workflow history carries
+        // only offsets and aggregate counts even for a 100K-unit restore.
         context.SetCustomStatus("reindexing");
-        foreach (string memoryUnitId in dataPlane.MemoryUnitIds)
+        int reindexedUnits = 0;
+        for (long offset = 0; offset < dataPlane.RestoredMemoryUnitCount; offset += ReindexBatchSize)
         {
-            _ = await context.CallActivityAsync<RestoreReindexResult>(
-                nameof(RestoreReindexUnitActivity),
-                new RestoreReindexInput(input.TenantId, memoryUnitId),
+            int batchSize = (int)Math.Min(ReindexBatchSize, dataPlane.RestoredMemoryUnitCount - offset);
+            RestoreReindexBatchResult batch = await context.CallActivityAsync<RestoreReindexBatchResult>(
+                nameof(RestoreReindexBatchActivity),
+                new RestoreReindexBatchInput(input.TenantId, input.StagingKey, offset, batchSize),
                 DefaultRetry());
+            reindexedUnits += batch.ProcessedMemoryUnits;
         }
 
         // Best-effort staging cleanup (the TTL is the backstop if this is skipped).
@@ -61,13 +66,13 @@ public sealed class RestoreWorkflow : Workflow<RestoreWorkflowInput, RestoreWork
         logger.LogInformation(
             "Restore complete for tenant {TenantId}: {Units} memory units, {Cases} cases, {Edges} edges restored, {Skipped} records skipped.",
             input.TenantId,
-            dataPlane.MemoryUnitIds.Count,
+            reindexedUnits,
             dataPlane.RestoredCaseCount,
             dataPlane.RestoredEdgeCount,
             dataPlane.SkippedRecords);
 
         return new RestoreWorkflowResult(
-            dataPlane.MemoryUnitIds.Count,
+            reindexedUnits,
             dataPlane.RestoredCaseCount,
             dataPlane.RestoredEdgeCount,
             dataPlane.SkippedRecords);

@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Endpoints;
 
+using System.Diagnostics;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -29,8 +31,8 @@ internal static class ImportEndpoints
 {
     /// <summary>
     /// The maximum accepted import body. Deliberate, documented ceiling (decision D5): a tenant export of 100K
-    /// units is ≈500 MB. The current staging path buffers the body once (bounded here); for corpora beyond this
-    /// ceiling, restore case-by-case — a streaming/chunked staging store is the documented follow-up.
+    /// units is ≈500 MB. The request body is streamed into bounded staging chunks; the ceiling protects both
+    /// the service and Redis from an unbounded upload.
     /// </summary>
     private const long MaxImportBodyBytes = 512L * 1024 * 1024;
 
@@ -45,9 +47,10 @@ internal static class ImportEndpoints
             DaprWorkflowClient workflowClient,
             TenantStatusGuard tenantGuard,
             IImportStagingStore stagingStore,
+            IRestoreTargetGuard targetGuard,
             HttpContext context,
             string tenantId) =>
-            await HandleImportAsync(context, workflowClient, tenantGuard, stagingStore, tenantId, caseId: null, ExportScope.Tenant, context.RequestAborted))
+            await HandleImportAsync(context, workflowClient, tenantGuard, stagingStore, targetGuard, tenantId, caseId: null, ExportScope.Tenant, context.RequestAborted))
             .WithMetadata(new RequestSizeLimitAttribute(MaxImportBodyBytes))
             .AddEndpointFilter<TenantAuthorizationEndpointFilter>()
             .AddEndpointFilter<InboundRateLimitEndpointFilter>();
@@ -56,10 +59,11 @@ internal static class ImportEndpoints
             DaprWorkflowClient workflowClient,
             TenantStatusGuard tenantGuard,
             IImportStagingStore stagingStore,
+            IRestoreTargetGuard targetGuard,
             HttpContext context,
             string tenantId,
             string caseId) =>
-            await HandleImportAsync(context, workflowClient, tenantGuard, stagingStore, tenantId, caseId, ExportScope.Case, context.RequestAborted))
+            await HandleImportAsync(context, workflowClient, tenantGuard, stagingStore, targetGuard, tenantId, caseId, ExportScope.Case, context.RequestAborted))
             .WithMetadata(new RequestSizeLimitAttribute(MaxImportBodyBytes))
             .AddEndpointFilter<TenantAuthorizationEndpointFilter>()
             .AddEndpointFilter<InboundRateLimitEndpointFilter>();
@@ -80,6 +84,7 @@ internal static class ImportEndpoints
         DaprWorkflowClient workflowClient,
         TenantStatusGuard tenantGuard,
         IImportStagingStore stagingStore,
+        IRestoreTargetGuard targetGuard,
         string tenantId,
         string? caseId,
         ExportScope expectedScope,
@@ -106,14 +111,18 @@ internal static class ImportEndpoints
             return TenantStatusGuard.ToHttpResult(tenantStatusError);
         }
 
-        byte[] payload;
+        string instanceId = Guid.NewGuid().ToString();
+        string stagingKey;
         try
         {
-            using MemoryStream buffer = new();
-            await context.Request.Body.CopyToAsync(buffer, cancellationToken);
-            payload = buffer.ToArray();
+            stagingKey = await stagingStore.StageAsync(
+                tenantId,
+                instanceId,
+                context.Request.Body,
+                MaxImportBodyBytes,
+                cancellationToken);
         }
-        catch (BadHttpRequestException ex)
+        catch (Exception ex) when (ex is BadHttpRequestException or InvalidDataException)
         {
             return Results.Json(
                 new ErrorResponse(
@@ -133,41 +142,113 @@ internal static class ImportEndpoints
                     "Retry the import and keep the connection open for the full request body."),
                 statusCode: StatusCodes.Status400BadRequest);
         }
-
-        if (payload.Length == 0)
-        {
-            return Results.BadRequest(new ErrorResponse(
-                "IMPORT_EMPTY",
-                "Import payload is empty.",
-                "POST the JSON export envelope produced by the export endpoint."));
-        }
-
-        if (!ImportEnvelopeReader.TryReadManifest(payload, out ExportManifest? manifest, out string? parseError) || manifest is null)
-        {
-            return Results.BadRequest(new ErrorResponse(
-                "IMPORT_MANIFEST_UNREADABLE",
-                parseError ?? "The import manifest could not be read.",
-                "Ensure the body is the JSON export envelope whose first property is the manifest."));
-        }
-
-        ErrorResponse? manifestError = ImportRequestValidator.Validate(manifest, expectedScope, tenantId, caseId);
-        if (manifestError is not null)
-        {
-            return Results.BadRequest(manifestError);
-        }
-
-        string instanceId = Guid.NewGuid().ToString();
-        string requestedBy = context.User.Identity?.Name ?? "system";
-
-        string stagingKey;
-        try
-        {
-            stagingKey = await stagingStore.StageAsync(tenantId, instanceId, payload, cancellationToken);
-        }
         catch (StackExchange.Redis.RedisConnectionException ex)
         {
             return Results.Json(
                 ErrorResults.BackendUnavailable($"Import staging backend is unavailable: {ex.Message}"),
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        ExportManifest manifest;
+        try
+        {
+            await using Stream? staged = await stagingStore.OpenReadAsync(stagingKey, cancellationToken);
+            if (staged is null || staged.Length == 0)
+            {
+                await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+                return Results.BadRequest(new ErrorResponse(
+                    "IMPORT_EMPTY",
+                    "Import payload is empty.",
+                    "POST the JSON export envelope produced by the export endpoint."));
+            }
+
+            ImportEnvelopeScanResult scan = await ImportEnvelopeStreamProcessor.ProcessAsync(
+                staged,
+                (importedCase, _) =>
+                {
+                    ImportEnvelopeValidator.EnsureCaseTarget(importedCase, tenantId, caseId);
+                    return Task.CompletedTask;
+                },
+                (unit, _) =>
+                {
+                    ImportEnvelopeValidator.EnsureMemoryUnitTarget(unit, tenantId, caseId);
+                    return Task.CompletedTask;
+                },
+                edgeHandler: null,
+                cancellationToken).ConfigureAwait(false);
+            ImportEnvelopeValidator.EnsureManifestTarget(scan.Manifest, tenantId, caseId);
+            manifest = scan.Manifest;
+        }
+        catch (ImportEnvelopeException ex)
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            return Results.BadRequest(new ErrorResponse(
+                "IMPORT_MANIFEST_UNREADABLE",
+                ex.Message,
+                "Ensure the body is the canonical JSON export envelope produced by this service."));
+        }
+        catch (Exception ex) when (ex is StackExchange.Redis.RedisException or EndOfStreamException or InvalidDataException)
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            return Results.Json(
+                ErrorResults.BackendUnavailable($"Staged import could not be verified: {ex.Message}"),
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        string requestedBy = EndpointTelemetryHelpers.ResolvePrincipalAuditUser(context, Activity.Current);
+
+        RestoreLeaseResult lease;
+        try
+        {
+            lease = await stagingStore.AcquireRestoreLeaseAsync(
+                stagingKey,
+                tenantId,
+                caseId,
+                instanceId,
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is StackExchange.Redis.RedisException or InvalidDataException)
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            return Results.Json(
+                ErrorResults.BackendUnavailable($"Restore lease could not be acquired: {ex.Message}"),
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        if (!lease.Acquired)
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            string existingLocation = MemoriesRoutes.RestoreStatusLocation(tenantId, lease.InstanceId);
+            if (lease.SameOperation)
+            {
+                return Results.Accepted(
+                    existingLocation,
+                    new RestoreAcceptedResponse(lease.InstanceId, tenantId, caseId, manifest.Scope, existingLocation));
+            }
+
+            return Results.Conflict(new ErrorResponse(
+                "RESTORE_TARGET_BUSY",
+                $"A restore already owns the target scope (workflow '{lease.InstanceId}').",
+                "Wait for that restore to finish before importing different content into the same target."));
+        }
+
+        try
+        {
+            await targetGuard.EnsureCleanAsync(tenantId, caseId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ImportEnvelopeException ex) when (string.Equals(ex.Code, "RESTORE_TARGET_NOT_CLEAN", StringComparison.Ordinal))
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            return Results.Conflict(new ErrorResponse(
+                ex.Code,
+                ex.Message,
+                "Restore into a newly provisioned empty tenant or case target."));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            return Results.Json(
+                ErrorResults.BackendUnavailable($"Restore target cleanliness could not be verified: {ex.Message}"),
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
@@ -180,7 +261,32 @@ internal static class ImportEndpoints
         }
         catch (Dapr.DaprException ex)
         {
-            await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            try
+            {
+                WorkflowState? state = await workflowClient.GetWorkflowStateAsync(
+                    instanceId,
+                    getInputsAndOutputs: false,
+                    cancellationToken);
+                if (state is not null && state.Exists)
+                {
+                    string ambiguousLocation = MemoriesRoutes.RestoreStatusLocation(tenantId, instanceId);
+                    return Results.Accepted(
+                        ambiguousLocation,
+                        new RestoreAcceptedResponse(instanceId, tenantId, caseId, manifest.Scope, ambiguousLocation));
+                }
+
+                await stagingStore.DeleteAsync(stagingKey, CancellationToken.None);
+            }
+            catch (Exception stateException) when (stateException is not OperationCanceledException)
+            {
+                // Scheduling may have succeeded before the response was lost. Preserve staging + lease until
+                // their TTLs expire rather than deleting input a live workflow may still need.
+                return Results.Json(
+                    ErrorResults.BackendUnavailable(
+                        $"Restore scheduling outcome is unknown ({ex.Message}); status confirmation also failed ({stateException.Message}). Staging was retained."),
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
             return ErrorResults.DaprUnavailableResult(
                 $"Restore workflow could not be scheduled: {ex.Message}",
                 "Retry the import after Dapr connectivity is restored.");
@@ -228,7 +334,15 @@ internal static class ImportEndpoints
 
         // Tenant isolation: never surface another tenant's restore under this tenant's route.
         RestoreWorkflowInput? restoreInput = TryReadInput(state);
-        if (restoreInput is not null && !string.Equals(restoreInput.TenantId, tenantId, StringComparison.Ordinal))
+        if (restoreInput is null)
+        {
+            return Results.NotFound(new ErrorResponse(
+                "RESTORE_STATUS_NOT_FOUND",
+                "Restore workflow status could not be verified for this tenant.",
+                "Use the instanceId returned by this tenant's import endpoint."));
+        }
+
+        if (!string.Equals(restoreInput.TenantId, tenantId, StringComparison.Ordinal))
         {
             return Results.NotFound(new ErrorResponse(
                 "RESTORE_STATUS_NOT_FOUND",
@@ -240,6 +354,12 @@ internal static class ImportEndpoints
         RestoreWorkflowResult? result = state.RuntimeStatus == WorkflowRuntimeStatus.Completed
             ? TryReadOutput(state)
             : null;
+        if (state.RuntimeStatus == WorkflowRuntimeStatus.Completed && result is null)
+        {
+            return Results.Json(
+                ErrorResults.BackendUnavailable("Restore completed, but its result could not be read safely."),
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
 
         return Results.Ok(new RestoreStatusResponse(
             instanceId,

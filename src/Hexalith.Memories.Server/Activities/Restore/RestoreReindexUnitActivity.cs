@@ -11,6 +11,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -32,7 +33,7 @@ using StackExchange.Redis;
 /// They are rebuilt on the next re-index / event replay; see docs/operations/backup-restore.md.
 /// </para>
 /// </summary>
-internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReindexInput, RestoreReindexResult>
+internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReindexInput, RestoreReindexResult>, IRestoreReindexUnitProcessor
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly EmbeddingClient _embeddingClient;
@@ -72,6 +73,10 @@ internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReind
 
     /// <inheritdoc/>
     public override async Task<RestoreReindexResult> RunAsync(WorkflowActivityContext context, RestoreReindexInput input)
+        => await ReindexOneAsync(input).ConfigureAwait(false);
+
+    /// <summary>Re-indexes one restored unit; shared by the bounded batch activity.</summary>
+    public async Task<RestoreReindexResult> ReindexOneAsync(RestoreReindexInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
 
@@ -80,24 +85,20 @@ internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReind
 
         RedisValue[] fields = await db.HashGetAsync(
             syntacticKey,
-            ["content", "caseId", "embeddingProvider", "embeddingModel", "cloudeventSubject"]).ConfigureAwait(false);
+            ["content", "caseId", "embeddingProvider", "embeddingModel", "embeddingDimensions", "cloudeventSubject"]).ConfigureAwait(false);
 
         string? content = fields[0];
-        if (string.IsNullOrEmpty(content))
+        if (string.IsNullOrWhiteSpace(content))
         {
-            // The data-plane activity runs first, so a missing syntactic hash means the unit was not restored.
-            // Treat as a no-op rather than failing the whole restore for one absent unit.
-            _logger.LogWarning(
-                "Skipping re-index of memory unit {MemoryUnitId} for tenant {TenantId}: syntactic hash not found.",
-                input.MemoryUnitId,
-                input.TenantId);
-            return new RestoreReindexResult(input.MemoryUnitId, 0);
+            throw new InvalidOperationException(
+                $"Re-indexing restored memory unit '{input.MemoryUnitId}' produced zero semantic chunks because its syntactic content is missing or blank.");
         }
 
         string caseId = fields[1].HasValue ? fields[1].ToString() : string.Empty;
         string embeddingProvider = fields[2].HasValue ? fields[2].ToString() : string.Empty;
         string embeddingModel = fields[3].HasValue ? fields[3].ToString() : string.Empty;
-        string? cloudEventSubject = fields[4].HasValue ? fields[4].ToString() : null;
+        string embeddingDimensionsText = fields[4].HasValue ? fields[4].ToString() : string.Empty;
+        string? cloudEventSubject = fields[5].HasValue ? fields[5].ToString() : null;
 
         TenantEmbeddingConfig config = await _tenantEmbeddingConfigProvider
             .GetAsync(input.TenantId, CancellationToken.None)
@@ -126,27 +127,56 @@ internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReind
                 "Align the target tenant's embedding model with the export before restoring.");
         }
 
+        if (!int.TryParse(embeddingDimensionsText, out int sourceDimensions)
+            || sourceDimensions != config.Dimensions)
+        {
+            throw new InvalidOperationException(
+                $"Restore embedding dimensions mismatch for memory unit {input.MemoryUnitId} in tenant {input.TenantId}: " +
+                $"the export used '{embeddingDimensionsText}' dimensions but the target tenant is configured for '{config.Dimensions}'.");
+        }
+
         // AC5: the tenant's semantic vector index must be provisioned (with matching dimensions) before writing.
         await _readinessVerifier
             .EnsureReadyAsync(db, input.TenantId, TenantIndexFamily.Semantic, config.Dimensions, CancellationToken.None)
             .ConfigureAwait(false);
 
+        EmbeddingMigrationMarker? marker = await EmbeddingMigrationMarkerReader
+            .ReadActiveMarkerAsync(db, input.TenantId, CancellationToken.None)
+            .ConfigureAwait(false);
+        EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
+            marker,
+            config.Provider,
+            config.Model,
+            config.Dimensions);
+
         // Chunk identically to ingestion; re-embed each chunk via the target tenant's configured provider.
         IReadOnlyList<ContentChunk> chunks = new ContentChunker(_chunkingOptions).Split(content);
         if (chunks.Count == 0)
         {
-            return new RestoreReindexResult(input.MemoryUnitId, 0);
+            throw new InvalidOperationException(
+                $"Re-indexing restored memory unit '{input.MemoryUnitId}' produced zero semantic chunks.");
         }
 
         await _embeddingClient.PrimeApiKeyAsync(input.TenantId, config, CancellationToken.None).ConfigureAwait(false);
         IReadOnlyList<float[]> vectors = await _embeddingClient
             .GenerateBatchAsync(chunks.Select(static c => c.Text).ToArray(), input.TenantId, config, CancellationToken.None)
             .ConfigureAwait(false);
+        if (vectors.Count != chunks.Count)
+        {
+            throw new InvalidOperationException(
+                $"Embedding provider returned {vectors.Count} vectors for {chunks.Count} restored chunks.");
+        }
 
         // Provider/model are reused from the restored syntactic hash so the chunk hash matches the original
         // byte-for-byte; dimensions come from the (target) tenant config.
         for (int i = 0; i < chunks.Count; i++)
         {
+            EmbeddingMigrationMarkerReader.EnsureWriteMatchesMarker(
+                marker,
+                config.Provider,
+                config.Model,
+                config.Dimensions);
+
             ContentChunk chunk = chunks[i];
             float[] vector = vectors[i];
             byte[] vectorBytes = MemoryMarshal.AsBytes(vector.AsSpan()).ToArray();

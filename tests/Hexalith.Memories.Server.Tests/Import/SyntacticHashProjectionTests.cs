@@ -43,6 +43,7 @@ public class SyntacticHashProjectionTests
             "case-1",
             "google:text-embedding-004",
             "text-embedding-004",
+            768,
             "tester",
             ingestedAt,
             lastUpdated);
@@ -62,6 +63,7 @@ public class SyntacticHashProjectionTests
         parsed.LastUpdated.ShouldBe(lastUpdated);
         parsed.EmbeddingProvider.ShouldBe("google:text-embedding-004");
         parsed.EmbeddingModel.ShouldBe("text-embedding-004");
+        parsed.EmbeddingDimensions.ShouldBe(768);
         parsed.Metadata.ShouldContainKey("topic");
         parsed.Metadata["topic"].Value.ShouldBe("legal");
         parsed.Metadata["topic"].Origin.ShouldBe(MetadataOrigin.Human);
@@ -81,6 +83,7 @@ public class SyntacticHashProjectionTests
             "case-1",
             "google:text-embedding-004",
             "text-embedding-004",
+            768,
             "tester",
             DateTimeOffset.UnixEpoch,
             DateTimeOffset.UnixEpoch);
@@ -92,7 +95,7 @@ public class SyntacticHashProjectionTests
         {
             "id", "tenantId", "content", "sourceUri", "sourceUriText", "sourceType", "sourceTypeText",
             "metadataText", "attributeTags", "metadataJson", "contentHash", "caseId", "embeddingProvider",
-            "embeddingModel", "ingestedBy", "ingestedAt", "lastUpdated",
+            "embeddingModel", "embeddingDimensions", "ingestedBy", "ingestedAt", "lastUpdated",
         })
         {
             fieldNames.ShouldContain(expected);

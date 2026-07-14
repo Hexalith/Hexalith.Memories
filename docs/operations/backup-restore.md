@@ -177,7 +177,7 @@ or resumed restore converges to the same state.
 | `IMPORT_SCOPE_MISMATCH` | Tenant JSON posted to the case route (or vice-versa). |
 | `IMPORT_TENANT_MISMATCH` | `manifest.tenantId` ≠ the target tenant (cross-tenant remap is out of scope). |
 | `IMPORT_CASE_MISMATCH` | `manifest.caseId` ≠ the target case. |
-| `IMPORT_TOO_LARGE` (413) | Body exceeds the 512 MB ceiling — restore case-by-case (see Scale note). |
+| `IMPORT_TOO_LARGE` (413) | Body exceeds the 512 MB ceiling — split the logical backup by case. |
 
 ### Verification
 
@@ -205,6 +205,8 @@ restore a known-good earlier snapshot over the top (MERGE/overwrite converges).
 
 ## Scale note (decision D5)
 
-The current staging path buffers the import body once (bounded by a documented **512 MB** `RequestSizeLimit`
-ceiling). A tenant export of ~100K units is ≈500 MB. For corpora beyond the ceiling, restore case-by-case; a
-streaming/chunked staging store is the documented follow-up.
+The import path supports the documented **512 MB** `RequestSizeLimit` ceiling without materializing the body:
+it streams into 1 MiB Redis staging chunks, validates/restores one envelope record at a time, keeps re-index ids
+outside Dapr workflow state, and processes at most 100 units per re-index activity. Staging and the clean-target
+lease use a renewable 12-hour TTL, renewed by the data-plane and every re-index page. A tenant export of ~100K
+units (≈500 MB) remains supported. Payloads above 512 MB must be split into case-scoped exports.
