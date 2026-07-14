@@ -31,6 +31,7 @@ context:
 - `CiTestInventoryTests` passed: 55/55.
 - The complete kind verifier passed with zero skips using the CI-pinned Dapr runtime and kind node image.
 - The captured post-run evidence passed `validate-production-deployment-evidence.ps1`.
+- After reconciling main's production-dependency staging, the combined inventory passed: 56/56.
 
 ## File Scope
 
