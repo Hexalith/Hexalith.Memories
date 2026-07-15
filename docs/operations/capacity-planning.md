@@ -119,13 +119,13 @@ persistence copy-on-write/rewrite pressure, backups, and any future replication.
 
    ```bash
    kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO memory; redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence'
+     'export REDISCLI_AUTH="$REDIS_PASSWORD"; redis-cli --no-auth-warning INFO memory; redis-cli --no-auth-warning INFO persistence'
    kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning FT.INFO "$1"' sh "$SYNTACTIC_INDEX"
+     'export REDISCLI_AUTH="$REDIS_PASSWORD"; redis-cli --no-auth-warning FT.INFO "$1"' sh "$SYNTACTIC_INDEX"
    kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning FT.INFO "$1"' sh "$SEMANTIC_INDEX"
+     'export REDISCLI_AUTH="$REDIS_PASSWORD"; redis-cli --no-auth-warning FT.INFO "$1"' sh "$SEMANTIC_INDEX"
    kubectl -n "$NAMESPACE" exec "$FALKORDB_POD" -- sh -ec \
-     'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning GRAPH.MEMORY USAGE "$1" SAMPLES 100' sh "$TENANT_ID"
+     'export REDISCLI_AUTH="$FALKORDB_PASSWORD"; redis-cli --no-auth-warning GRAPH.MEMORY USAGE "$1" SAMPLES 100' sh "$TENANT_ID"
    ```
 
 ### 2. Load a representative increment
@@ -146,9 +146,9 @@ persistence copy-on-write/rewrite pressure, backups, and any future replication.
 
    ```bash
    kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'key=$(redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "$1:mu:*" | head -n 1); test -n "$key"; redis-cli -a "$REDIS_PASSWORD" --no-auth-warning MEMORY USAGE "$key"' sh "$TENANT_ID"
+     'export REDISCLI_AUTH="$REDIS_PASSWORD"; key=$(redis-cli --no-auth-warning --scan --pattern "$1:mu:*" | head -n 1); test -n "$key"; redis-cli --no-auth-warning MEMORY USAGE "$key"' sh "$TENANT_ID"
    kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'key=$(redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "$1:vec:*" | head -n 1); test -n "$key"; redis-cli -a "$REDIS_PASSWORD" --no-auth-warning MEMORY USAGE "$key"' sh "$TENANT_ID"
+     'export REDISCLI_AUTH="$REDIS_PASSWORD"; key=$(redis-cli --no-auth-warning --scan --pattern "$1:vec:*" | head -n 1); test -n "$key"; redis-cli --no-auth-warning MEMORY USAGE "$key"' sh "$TENANT_ID"
    ```
 
 3. Calculate per-unit and per-tenant deltas independently:

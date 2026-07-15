@@ -1,212 +1,359 @@
 # Backup & Restore (Story 26.2)
 
-This runbook documents how to back up and restore Hexalith.Memories data. It closes the feature portion of
-audit finding A25 (missing restore path) and reinforces NFR16 (zero memory-unit loss). It covers two
-complementary layers:
+This runbook defines logical and physical backup and restore for Hexalith.Memories. It closes the feature
+portion of audit finding A25 and reinforces NFR16's controlled-restart zero-loss guarantee.
 
-- **Logical backup** — a portable JSON snapshot produced by the export endpoints and consumed by the new
-  import/restore endpoints. Survives cluster migrations and schema-compatible upgrades.
-- **Physical backup** — the Redis and FalkorDB append-only files (AOF) plus the persistent-volume (PVC)
-  snapshots that back a same-cluster recovery.
+- **Logical backup** is the portable JSON envelope produced by export and consumed by import/restore.
+- **Physical backup** is a coordinated Redis/FalkorDB recovery point made from their persistent volumes.
 
-Restore fidelity is proved end to end by the integration test
-`tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs` (AC7).
+Restore fidelity is proved by
+`tests/Hexalith.Memories.IntegrationTests/Restore/BackupRestoreFidelityIntegrationTests.cs`. Controlled Redis
+restart durability is proved by
+`Ingestion/PipelinePersistenceIntegrationTests.RestartTopology_ShouldPreserveIndexedRedisBackedDataAcrossControlledRestart`.
 
-Cross-links: [deployment-configuration.md](./deployment-configuration.md) (topology, PVCs, AOF enforcement),
-[pipeline-persistence.md](./pipeline-persistence.md) (AOF/NFR16 durability), [disaster-recovery.md](./disaster-recovery.md)
-(pod/cluster-loss recovery), [failure-recovery.md](./failure-recovery.md) (re-ingestion of failed units),
-[incident-response.md](./incident-response.md) (incident command), [index-rebuild.md](./index-rebuild.md)
-(supported rebuild decisions), and [upgrade-migration.md](./upgrade-migration.md) (upgrade backup gates).
+Cross-links: [deployment-configuration.md](./deployment-configuration.md) (topology and persistence),
+[pipeline-persistence.md](./pipeline-persistence.md) (NFR16 evidence),
+[disaster-recovery.md](./disaster-recovery.md) (pod/PVC/cluster recovery),
+[failure-recovery.md](./failure-recovery.md) (failed-unit re-ingestion),
+[incident-response.md](./incident-response.md) (incident command),
+[tenant-onboarding-offboarding.md](./tenant-onboarding-offboarding.md) (clean tenant provisioning), and
+[upgrade-migration.md](./upgrade-migration.md) (upgrade backup gates).
 
 ## What is (and is not) captured
 
-The export is a **logical** snapshot, not a byte-image of Redis. Restore fidelity is defined per data family:
+The export is a logical snapshot, not a byte-image of Redis.
 
 | Data | Redis/graph object | On restore | Fidelity |
-|------|--------------------|-----------|----------|
-| Memory unit (syntactic) | `{tenantId}:mu:{id}` (HASH) | Written verbatim from the export | Field-for-field equal |
-| Case record | `{tenantId}:case:{id}` (HASH) | Written verbatim from the export | Field-for-field equal |
-| Case members | `{tenantId}:case:{id}:members` (HASH) | Written verbatim from the export | Member set + types equal |
-| Case activity feed + summary | `{tenantId}:case:{id}:activity` (STREAM) + `:activity:summary` (HASH) | **Not restored** — operational read-models, not part of the backup fidelity contract | N/A — rebuilt as new activity accrues post-restore |
-| Graph nodes + edges | per-tenant FalkorDB graph | Nodes from export; edges from `edges[]`; CONTAINS rebuilt from `caseId` | Every edge `(source, target, type, confidence, origin, verifiedBy, previousConfidence)` equal |
-| Semantic vectors | `{tenantId}:vec:{id}:{seq}` (HASH) | **Re-derived** (re-embedded) | Present + dimensions match; byte-equal under a deterministic provider |
-| NL vectors | `{tenantId}:vecnl:{id}` (HASH) | **Not re-derived** by restore | Rebuilt on next re-index/event replay (see note) |
+|---|---|---|---|
+| Memory unit | `{tenantId}:mu:{id}` (HASH) | Written from export | Exact field set and values |
+| Case record | `{tenantId}:case:{id}` (HASH) | Written from export | Exact field set and values |
+| Case members | `{tenantId}:case:{id}:members` (HASH) | Written from export | Exact member set and types |
+| Case activity | `{tenantId}:case:{id}:activity` + `:activity:summary` | Not restored | Operational read-model; new activity accrues after restore |
+| Graph | Per-tenant FalkorDB graph | Exported edges restored; `CONTAINS` rebuilt from `caseId` | Direction, type, `createdAt`, confidence, origin, `verifiedBy`, and `previousConfidence` preserved |
+| Semantic chunks | `{tenantId}:vec:{id}:{seq}` (HASH) | Re-chunked and re-embedded | Attribution/dimensions equal; bytes equal for deterministic providers |
+| NL vectors | `{tenantId}:vecnl:{id}` (HASH) | Not restored | Rebuilt on later event replay/re-index |
 
-> **Why vectors are re-derived, not copied.** The export JSON does **not** contain embedding vectors or
-> natural-language (NL) descriptions — only the `(provider, model, dimensions)` attribution. The restore
-> workflow re-embeds each unit's content with the **target tenant's configured provider**, reproducing the
-> chunked `{tenantId}:vec:{id}:{seq}` hashes. Under a deterministic provider the re-derived vectors are
-> byte-identical to the originals; under a non-deterministic hosted provider they are semantically equivalent
-> but not bit-identical.
+Vectors are re-derived because export contains provider/model/dimensions attribution but no vector bytes or
+AI-generated NL description. Secret values are never exported: `apiSecretKeyName` is only a secret-store key
+name, so the target deployment must restore the referenced secret independently.
 
-> **NL vectors (decision D1c).** NL descriptions are AI-generated (non-deterministic LLM) and exist only for
-> event-sourced units. Restore does not regenerate them; they are rebuilt on the next re-index / event replay.
-> For file-sourced corpora there are no NL vectors to lose.
+## Backup policy, prerequisites, and authorization
 
-> **Secrets are never in the export.** Only secret-store **key names** (`apiSecretKeyName`) travel in the
-> snapshot — never secret values. The target tenant's embedding secret must already exist in the target secret
-> store before restore.
+The repository owns the safety invariants and evidence schema. Each deployment owns the concrete values and
+commands that satisfy them. Before any backup, record and approve:
+
+- `RPO`, logical-export cadence, physical-snapshot cadence, retention, backup owner, and restore-test cadence;
+- an encrypted, immutable, off-cluster destination that survives loss of the application cluster;
+- the deployment's approved intake-quiescence and resume playbook URI/version;
+- the CSI `VolumeSnapshotClass`, restore `StorageClass`, namespace, and permission owner;
+- the recovery-point identifier that binds the logical export, Redis snapshot, FalkorDB snapshot, checksums,
+  source PVC UIDs, and restore-rehearsal result.
+
+Required tools are `memories`, `curl`, `jq`, `sha256sum`, `python3`, and `kubectl` with permission to read/scale
+the two StatefulSets and create/read `VolumeSnapshot` and PVC resources. Obtain `$TOKEN` through the approved
+identity workflow, keep shell tracing disabled, and never print it.
+
+```bash
+set -euo pipefail
+: "${MEMORIES_BASE_URL:?set the Memories HTTPS base URL}"
+: "${TOKEN:?obtain an approved bearer token}"
+: "${TENANT:?set the tenant id}"
+: "${NAMESPACE:=hexalith-memories}"
+: "${SNAPSHOT_CLASS:?set the approved VolumeSnapshotClass}"
+: "${RESTORE_STORAGE_CLASS:?set the approved restore StorageClass}"
+: "${BACKUP_DESTINATION:?set the immutable off-cluster destination}"
+: "${BACKUP_OWNER:?set the accountable backup owner}"
+: "${RPO:?set the approved recovery-point objective}"
+: "${RETENTION:?set the approved retention policy}"
+: "${QUIESCE_PLAYBOOK:?set the approved deployment-specific quiescence playbook URI/version}"
+: "${QUIESCE_EVIDENCE:?set the access-controlled evidence file written by that playbook}"
+RECOVERY_ID="${RECOVERY_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+BACKUP_WORKDIR="${BACKUP_WORKDIR:-$PWD/backups/$RECOVERY_ID}"
+mkdir -p "$BACKUP_WORKDIR"
+```
+
+The deployment-specific quiescence playbook must pause every ingress/publisher path, prevent new scheduling,
+and enumerate the app-owned in-flight workflow registry plus Dapr workflow state until every tracked ingestion,
+restore, provisioning, deletion, and repair workflow is terminal. Its evidence must name the paused controls,
+the zero-active result, timestamps, deployment revision, and resume owner. If the evidence is missing, stale,
+non-zero, or cannot be independently verified, stop: do not take independent Redis/FalkorDB snapshots.
+
+```bash
+# Run the approved deployment-owned playbook outside this document, then enforce the repository-owned gate.
+test -s "$QUIESCE_EVIDENCE"
+jq -e --arg playbook "$QUIESCE_PLAYBOOK" \
+  '.playbook == $playbook and .intakePaused == true and .activeWorkflows == 0 and
+   (.capturedAt | type == "string") and (.resumeOwner | type == "string" and length > 0)' \
+  "$QUIESCE_EVIDENCE" >/dev/null
+
+jq -n --arg recoveryId "$RECOVERY_ID" --arg owner "$BACKUP_OWNER" --arg rpo "$RPO" \
+  --arg retention "$RETENTION" --arg destination "$BACKUP_DESTINATION" \
+  --arg quiescenceEvidence "$QUIESCE_EVIDENCE" \
+  '{schemaVersion:1,recoveryId:$recoveryId,owner:$owner,rpo:$rpo,retention:$retention,
+    destination:$destination,quiescenceEvidence:$quiescenceEvidence}' \
+  > "$BACKUP_WORKDIR/recovery-policy.json"
+```
+
+Keep intake paused until both physical snapshots and their metadata are verified. The resume playbook must be
+an explicit incident-command action; never resume automatically after a failed or timed-out backup.
 
 ## Logical backup (export)
 
-Export produces the portable JSON envelope (schema version 1, `X-Export-Schema-Version: 1`).
-Obtain `$TOKEN` through the approved identity workflow, keep it out of shell tracing and logs, and never print it.
+Use the CLI as the primary path. Its `--output` writer writes a `.part` file and atomically renames on success,
+so an interrupted request cannot truncate the preceding recovery point.
 
 ```bash
-# Tenant-scoped export (all cases)
-curl -fsS -H "Authorization: Bearer $TOKEN" \
-  "https://$MEMORIES_HOST/api/v1/tenants/$TENANT/export" -o "$TENANT-export.json"
+TENANT_EXPORT="$BACKUP_WORKDIR/$TENANT-tenant-export.json"
+memories export tenant --tenant "$TENANT" --output "$TENANT_EXPORT" --allow-absolute-path
+jq -e --arg tenant "$TENANT" \
+  '.manifest.schemaVersion == 1 and .manifest.scope == "tenant" and .manifest.tenantId == $tenant and
+   (.statistics.memoryUnitCount | type == "number") and (.statistics.edgeCount | type == "number")' \
+  "$TENANT_EXPORT" >/dev/null
+sha256sum "$TENANT_EXPORT" > "$TENANT_EXPORT.sha256"
 
-# Case-scoped export
-curl -fsS -H "Authorization: Bearer $TOKEN" \
-  "https://$MEMORIES_HOST/api/v1/tenants/$TENANT/cases/$CASE/export" -o "$TENANT-$CASE-export.json"
+# Case-scoped backup when required by recovery-point policy or the 512 MiB import ceiling.
+CASE_EXPORT="$BACKUP_WORKDIR/$TENANT-$CASE-case-export.json"
+memories export case --tenant "$TENANT" --case "$CASE" --output "$CASE_EXPORT" --allow-absolute-path
+jq -e --arg tenant "$TENANT" --arg caseId "$CASE" \
+  '.manifest.schemaVersion == 1 and .manifest.scope == "case" and
+   .manifest.tenantId == $tenant and .manifest.caseId == $caseId' "$CASE_EXPORT" >/dev/null
+sha256sum "$CASE_EXPORT" > "$CASE_EXPORT.sha256"
 ```
 
-The `MemoriesClient.ExportTenantAsync` / `ExportCaseAsync` methods stream the same envelope for programmatic
-backups. Store snapshots encrypted at rest; they contain memory content but no provider secrets.
-
-## Physical backup (Redis + FalkorDB AOF / PVC)
-
-Only two workloads hold durable state (the Server, MCP, and Dapr sidecars are stateless — no PVC):
-
-| Workload | Mount | PVC size | Persistence |
-|----------|-------|----------|-------------|
-| Redis Stack | `/data` | `20Gi` | AOF (`appendonly yes`, `appendfsync everysec`, `aof-use-rdb-preamble yes`) + RDB save points |
-| FalkorDB | `/var/lib/falkordb/data` | `10Gi` | AOF via `FALKORDB_PERSISTENCE_ARGS=--appendonly yes ...` |
-
-AOF configuration is **repo-owned and already enforced** (`deploy/redis/redis.conf`;
-`AppHost/Program.cs` throws if `appendonly yes` is absent; `deploy/kubernetes/base/kustomization.yaml`
-`FALKORDB_PERSISTENCE_ARGS`). Do **not** re-add it — see [deployment-configuration.md](./deployment-configuration.md).
-
-Physical backup options, in order of preference:
-
-1. **Coordinated PVC volume snapshots (primary).** Use the provider's supported atomic group-snapshot
-   capability when available. Otherwise freeze tenant intake, drain in-flight workflows, and keep intake
-   frozen until both snapshots have completed and been verified. Independent live snapshots are not a
-   consistency boundary.
-
-   ```bash
-   # Replace the class and snapshot names with approved values for this recovery point.
-   kubectl -n hexalith-memories apply -f - <<'EOF'
-   apiVersion: snapshot.storage.k8s.io/v1
-   kind: VolumeSnapshot
-   metadata: { name: redis-stack-data-snap, namespace: hexalith-memories }
-   spec: { volumeSnapshotClassName: csi-snapclass, source: { persistentVolumeClaimName: data-redis-stack-0 } }
-   ---
-   apiVersion: snapshot.storage.k8s.io/v1
-   kind: VolumeSnapshot
-   metadata: { name: falkordb-data-snap, namespace: hexalith-memories }
-   spec: { volumeSnapshotClassName: csi-snapclass, source: { persistentVolumeClaimName: data-falkordb-0 } }
-   EOF
-   ```
-
-   Wait for both `VolumeSnapshot` objects to report `readyToUse: true`. Record both snapshot IDs, creation
-   timestamps, source PVC UIDs, and the frozen-intake window in the same evidence record. Do not resume intake
-   until restore metadata and snapshot readability have been verified.
-
-2. **File-level backup from quiesced storage (portable).** Freeze intake and drain workflows. Trigger an RDB
-   save in each authenticated data-plane process, then poll persistence until the save completes successfully.
-
-   ```bash
-   # Redis
-   kubectl -n hexalith-memories exec redis-stack-0 -- \
-     sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning BGSAVE'
-   kubectl -n hexalith-memories exec redis-stack-0 -- \
-     sh -ec 'until redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_bgsave_in_progress:0"; do sleep 2; done; redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_last_bgsave_status:ok"'
-   kubectl -n hexalith-memories exec redis-stack-0 -- \
-     sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep -E "^(aof_enabled|aof_last_write_status|aof_last_bgrewrite_status):"'
-
-   # FalkorDB
-   kubectl -n hexalith-memories exec falkordb-0 -- \
-     sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning BGSAVE'
-   kubectl -n hexalith-memories exec falkordb-0 -- \
-     sh -ec 'until redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_bgsave_in_progress:0"; do sleep 2; done; redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -q "rdb_last_bgsave_status:ok"'
-   kubectl -n hexalith-memories exec falkordb-0 -- \
-     sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning INFO persistence | grep -E "^(aof_enabled|aof_last_write_status|aof_last_bgrewrite_status):"'
-   ```
-
-   Never copy a live, mutating AOF directory from either pod. After the checks pass, take coordinated PVC
-   snapshots or scale the StatefulSets down under the approved maintenance procedure and mount the PVCs
-   read-only in maintenance pods. Copy and checksum the RDB/AOF artifacts only from that quiesced or snapshot
-   mount. Record the Redis and FalkorDB artifact IDs, timestamps, checksums, source PVC UIDs, and restore-test
-   result together. Resume intake only after the backup is verified and both workloads are healthy.
-
-## Restore procedure
-
-Restore consumes the **exact** export envelope and runs as a durable Dapr workflow (`RestoreWorkflow`) so a
-large restore that re-embeds every unit is resumable, retried, and observable. Story 26.2 scopes restore to
-**same-tenant-id disaster recovery** (decision D2): the export is restored into a tenant with the same id.
-
-### Prerequisites
-
-- The target tenant is **provisioned and Active** (RediSearch + vector indexes + FalkorDB graph created by
-  `TenantProvisioningWorkflow`). Restore verifies index readiness and refuses to write hashes that would be
-  unsearchable.
-- The target tenant's embedding config **must match** the export's `(provider, model, dimensions)`. Restore
-  re-embeds with the **target** tenant's provider; a `(provider, model)` mismatch between the export's
-  attribution and the target tenant config fails the restore loudly (per-unit guard, so no inconsistent
-  vectors are written), and a dimension mismatch between the target config and its provisioned index fails
-  readiness verification.
-- The embedding provider **secret** named by `apiSecretKeyName` exists in the target secret store.
-- The export JSON is available and its `manifest.tenantId` equals the target tenant id.
-
-### Procedure
+For endpoint-only environments, retain the same atomic and validation behavior:
 
 ```bash
-# Tenant restore — returns 202 Accepted + a Location for the restore status.
-curl -fsS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  --data-binary "@$TENANT-export.json" \
-  -D - "https://$MEMORIES_HOST/api/v1/tenants/$TENANT/import"
-
-# Poll the restore status until "completed".
+TMP_EXPORT="$(mktemp "$BACKUP_WORKDIR/export.XXXXXX.part")"
+trap 'rm -f "$TMP_EXPORT"' EXIT
 curl -fsS -H "Authorization: Bearer $TOKEN" \
-  "https://$MEMORIES_HOST/api/v1/tenants/$TENANT/restore/$INSTANCE_ID"
+  "$MEMORIES_BASE_URL/api/v1/tenants/$TENANT/export" -o "$TMP_EXPORT"
+jq -e --arg tenant "$TENANT" \
+  '.manifest.schemaVersion == 1 and .manifest.scope == "tenant" and .manifest.tenantId == $tenant' \
+  "$TMP_EXPORT" >/dev/null
+mv "$TMP_EXPORT" "$TENANT_EXPORT"
+sha256sum "$TENANT_EXPORT" > "$TENANT_EXPORT.sha256"
+trap - EXIT
 ```
 
-The case route is symmetric: `POST /api/v1/tenants/{tenantId}/cases/{caseId}/import`.
+Upload the JSON, checksum, `recovery-policy.json`, and quiescence evidence through the deployment's approved
+immutable-storage playbook. Verify the destination object identity/checksum and record that evidence before
+considering the logical backup complete.
 
-Restore phases (surfaced via the status `status` field): `restoring-data-plane` → `reindexing` →
-`cleaning-up` → `completed`. Restore is **idempotent** (Redis `HSET` overwrite + graph `MERGE`), so a retried
-or resumed restore converges to the same state.
+## Physical backup (Redis + FalkorDB)
 
-### Rejections (400)
+| Workload | Mount | PVC | Persistence |
+|---|---|---|---|
+| Redis Stack | `/data` | `data-redis-stack-0` (`20Gi`) | AOF + RDB |
+| FalkorDB | `/var/lib/falkordb/data` | `data-falkordb-0` (`10Gi`) | AOF + RDB |
 
-| Code | Meaning |
-|------|---------|
-| `IMPORT_SCHEMA_VERSION_UNSUPPORTED` | The envelope's `manifest.schemaVersion` is not `1`. |
-| `IMPORT_SCOPE_MISMATCH` | Tenant JSON posted to the case route (or vice-versa). |
-| `IMPORT_TENANT_MISMATCH` | `manifest.tenantId` ≠ the target tenant (cross-tenant remap is out of scope). |
-| `IMPORT_CASE_MISMATCH` | `manifest.caseId` ≠ the target case. |
-| `IMPORT_TOO_LARGE` (413) | Body exceeds the 512 MB ceiling — split the logical backup by case. |
+Redis persistence is configured in `deploy/redis/redis.conf` and enforced by
+`src/Hexalith.Memories.AppHost/Program.cs`. FalkorDB persistence is configured by
+`deploy/kubernetes/base/kustomization.yaml`. Do not redefine either configuration in an operator session.
 
-### Verification
+### 1. Prove a fresh RDB save and healthy AOF
+
+Each bounded command requires the just-requested save to advance `LASTSAVE`; it then requires exact healthy
+AOF values. A timeout or mismatch is a hard stop.
 
 ```bash
-# Memory-unit hashes restored
-kubectl -n hexalith-memories exec redis-stack-0 -- \
-  sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "$1:mu:*"' -- "$TENANT" | wc -l
+kubectl -n "$NAMESPACE" exec redis-stack-0 -- sh -ec '
+  export REDISCLI_AUTH="$REDIS_PASSWORD"
+  before="$(redis-cli --no-auth-warning --raw LASTSAVE)"
+  redis-cli --no-auth-warning --raw BGSAVE | grep -Eq "Background saving (started|scheduled)"
+  deadline=$(( $(date +%s) + 600 ))
+  while [ "$(redis-cli --no-auth-warning --raw LASTSAVE)" -le "$before" ]; do
+    [ "$(date +%s)" -lt "$deadline" ] || exit 124
+    sleep 2
+  done
+  info="$(redis-cli --no-auth-warning --raw INFO persistence | tr -d "\r")"
+  printf "%s\n" "$info" | grep -qx "rdb_last_bgsave_status:ok"
+  printf "%s\n" "$info" | grep -qx "aof_enabled:1"
+  printf "%s\n" "$info" | grep -qx "aof_last_write_status:ok"
+  printf "%s\n" "$info" | grep -qx "aof_last_bgrewrite_status:ok"
+'
 
-# Semantic vectors re-derived
-kubectl -n hexalith-memories exec redis-stack-0 -- \
-  sh -ec 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --scan --pattern "$1:vec:*"' -- "$TENANT" | wc -l
-
-# Graph edges restored (per tenant graph)
-kubectl -n hexalith-memories exec falkordb-0 -- \
-  sh -ec 'redis-cli -a "$FALKORDB_PASSWORD" --no-auth-warning GRAPH.QUERY "$1" "MATCH ()-[r]->() RETURN count(r)"' -- "$TENANT"
+kubectl -n "$NAMESPACE" exec falkordb-0 -- sh -ec '
+  export REDISCLI_AUTH="$FALKORDB_PASSWORD"
+  before="$(redis-cli --no-auth-warning --raw LASTSAVE)"
+  redis-cli --no-auth-warning --raw BGSAVE | grep -Eq "Background saving (started|scheduled)"
+  deadline=$(( $(date +%s) + 600 ))
+  while [ "$(redis-cli --no-auth-warning --raw LASTSAVE)" -le "$before" ]; do
+    [ "$(date +%s)" -lt "$deadline" ] || exit 124
+    sleep 2
+  done
+  info="$(redis-cli --no-auth-warning --raw INFO persistence | tr -d "\r")"
+  printf "%s\n" "$info" | grep -qx "rdb_last_bgsave_status:ok"
+  printf "%s\n" "$info" | grep -qx "aof_enabled:1"
+  printf "%s\n" "$info" | grep -qx "aof_last_write_status:ok"
+  printf "%s\n" "$info" | grep -qx "aof_last_bgrewrite_status:ok"
+'
 ```
 
-A search against the restored tenant should return results (confirms the re-derived vectors are indexed).
+`REDISCLI_AUTH` keeps the credential out of `redis-cli` process arguments. It remains an in-container secret;
+never print the environment or enable shell tracing.
 
-### Rollback
+### 2. Create the paired recovery point
 
-Restore is additive and idempotent; it does not delete data. To abandon a restore, stop before searching and
-either delete the tenant (`DELETE /api/v1/tenants/{tenantId}` — tenant deletion workflow) and re-provision, or
-restore a known-good earlier snapshot over the top (MERGE/overwrite converges).
+Use provider-supported atomic group snapshots when available. Otherwise the verified quiescence gate above is
+mandatory and intake stays paused until both independent snapshots are ready.
 
-## Scale note (decision D5)
+```bash
+REDIS_SNAPSHOT="redis-stack-$RECOVERY_ID"
+FALKORDB_SNAPSHOT="falkordb-$RECOVERY_ID"
 
-The import path supports the documented **512 MB** `RequestSizeLimit` ceiling without materializing the body:
-it streams into 1 MiB Redis staging chunks, validates/restores one envelope record at a time, keeps re-index ids
-outside Dapr workflow state, and processes at most 100 units per re-index activity. Staging and the clean-target
-lease use a renewable 12-hour TTL, renewed by the data-plane and every re-index page. A tenant export of ~100K
-units (≈500 MB) remains supported. Payloads above 512 MB must be split into case-scoped exports.
+kubectl -n "$NAMESPACE" apply -f - <<EOF
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: $REDIS_SNAPSHOT
+spec:
+  volumeSnapshotClassName: $SNAPSHOT_CLASS
+  source:
+    persistentVolumeClaimName: data-redis-stack-0
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: $FALKORDB_SNAPSHOT
+spec:
+  volumeSnapshotClassName: $SNAPSHOT_CLASS
+  source:
+    persistentVolumeClaimName: data-falkordb-0
+EOF
+
+kubectl -n "$NAMESPACE" wait \
+  --for=jsonpath='{.status.readyToUse}'=true "volumesnapshot/$REDIS_SNAPSHOT" --timeout=10m
+kubectl -n "$NAMESPACE" wait \
+  --for=jsonpath='{.status.readyToUse}'=true "volumesnapshot/$FALKORDB_SNAPSHOT" --timeout=10m
+kubectl -n "$NAMESPACE" get volumesnapshot "$REDIS_SNAPSHOT" "$FALKORDB_SNAPSHOT" -o json \
+  > "$BACKUP_WORKDIR/volume-snapshots.json"
+kubectl -n "$NAMESPACE" get pvc data-redis-stack-0 data-falkordb-0 -o json \
+  > "$BACKUP_WORKDIR/source-pvcs.json"
+```
+
+If either wait fails, keep intake paused, capture `kubectl describe volumesnapshot`, and have incident command
+either delete both failed recovery-point resources and retry with a new ID or abandon the physical backup.
+Never pair a newly retried snapshot with one from the failed attempt.
+
+Record both snapshot handles, creation timestamps, source PVC UIDs, policy evidence, and logical-export
+checksums together. File-level copies are allowed only through a deployment-owned maintenance-pod playbook
+mounting a quiesced snapshot read-only; never copy a live AOF directory.
+
+## Logical restore procedure
+
+Restore is same-tenant-id only and asynchronous. The target tenant/case must be provisioned, `Active`, and
+clean: no indexed units, case hashes, or graph artifacts. Its provider/model/dimensions and secret reference
+must match the export. `RestoreTargetGuard` rejects a non-clean target.
+
+```bash
+submit_and_wait_restore() {
+  export_file="$1"
+  import_url="$2"
+  expected_units="$(jq -er '.statistics.memoryUnitCount | select(type == "number")' "$export_file")"
+  expected_cases="$(jq -er '.statistics.caseCount | select(type == "number")' "$export_file")"
+  expected_edges="$(jq -er '.statistics.edgeCount | select(type == "number")' "$export_file")"
+  response_headers="$(mktemp)"
+  response_body="$(mktemp)"
+  if ! curl -fsS -X POST "$import_url" \
+      -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+      --data-binary "@$export_file" -D "$response_headers" -o "$response_body"; then
+    rm -f "$response_headers" "$response_body"
+    return 1
+  fi
+
+  instance_id="$(jq -er '.instanceId | select(type == "string" and length > 0)' "$response_body")"
+  status_url="$(jq -er '.statusLocation | select(type == "string" and length > 0)' "$response_body")"
+  deadline=$(( $(date +%s) + 1800 ))
+  status=''
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if ! curl -fsS -H "Authorization: Bearer $TOKEN" "$status_url" -o "$response_body" ||
+        ! jq -e --arg instance "$instance_id" '.instanceId == $instance' "$response_body" >/dev/null; then
+      rm -f "$response_headers" "$response_body"
+      return 1
+    fi
+    status="$(jq -er '.status' "$response_body")"
+    case "$status" in
+      Completed)
+        jq -e --argjson units "$expected_units" --argjson cases "$expected_cases" \
+          --argjson edges "$expected_edges" \
+          '.skippedRecords == 0 and
+          .restoredMemoryUnits == $units and
+          .restoredCases == $cases and
+          .restoredEdges == $edges' "$response_body" >/dev/null
+        rm -f "$response_headers" "$response_body"
+        return 0
+        ;;
+      Failed|Canceled|Terminated)
+        jq -r '{failureCode,failureMessage,failureSuggestion}' "$response_body" >&2
+        rm -f "$response_headers" "$response_body"
+        return 1
+        ;;
+      *) sleep 5 ;;
+    esac
+  done
+
+  printf 'restore %s did not reach a terminal state before the deadline\n' "$instance_id" >&2
+  rm -f "$response_headers" "$response_body"
+  return 1
+}
+
+submit_and_wait_restore "$TENANT_EXPORT" \
+  "$MEMORIES_BASE_URL/api/v1/tenants/$TENANT/import"
+
+# Case restore:
+# submit_and_wait_restore "$CASE_EXPORT" \
+#   "$MEMORIES_BASE_URL/api/v1/tenants/$TENANT/cases/$CASE/import"
+```
+
+### Client errors
+
+| HTTP | Code | Meaning |
+|---|---|---|
+| 400 | `IMPORT_SCHEMA_VERSION_UNSUPPORTED` | `manifest.schemaVersion` is not `1`. |
+| 400 | `IMPORT_SCOPE_MISMATCH` | Tenant JSON used on the case route or vice versa. |
+| 400 | `IMPORT_TENANT_MISMATCH` | Manifest tenant differs from the route tenant. |
+| 400 | `IMPORT_CASE_MISMATCH` | Manifest case differs from the route case. |
+| 409 | `RESTORE_TARGET_BUSY` | Another restore owns the tenant-wide lease. |
+| 409 | `RESTORE_TARGET_NOT_CLEAN` | Existing data would make exact restore impossible. |
+| 413 | `IMPORT_TOO_LARGE` | Payload exceeds 512 MiB; restore case-scoped exports. |
+
+## Verification and evidence
+
+Run the repository verifier after logical or physical recovery. It asserts both PVCs are bound; exact Redis
+and FalkorDB AOF health; memory-unit and case counts from export statistics; at least one semantic chunk per
+unit; and total graph relationships equal `statistics.edgeCount + statistics.memoryUnitCount` (the second term
+is the rebuilt `CONTAINS` set). It emits sanitized JSON evidence and fails non-zero on mismatch.
+
+```bash
+python3 tools/verify-backup-recovery.py \
+  --namespace "$NAMESPACE" \
+  --tenant "$TENANT" \
+  --export "$TENANT_EXPORT" \
+  --evidence-output "$BACKUP_WORKDIR/recovery-verification.json"
+```
+
+`statistics.edgeCount` counts only edges serialized in `edges[]`; never compare it directly with an all-edge
+FalkorDB count. For case-scoped restore sets, require every restore status counter to match its source export,
+then take a fresh tenant export and run the verifier against that consolidated snapshot. Preserve the verifier
+output, restore status bodies, checksums, search smoke-test evidence, and incident approvals together.
+
+## Rollback and stop conditions
+
+There is no supported "restore an older snapshot over the top." Additive `HSET`/`MERGE` cannot remove newer
+objects, and the clean-target guard rejects them. On upload, validation, lease, workflow, or verification
+failure:
+
+1. Stop new intake and keep it stopped.
+2. Wait for the restore to become terminal, or have incident command terminate it through the approved Dapr
+   workflow operation; never delete the tenant while restore activities can still write.
+3. Delete the failed target through the tenant deletion workflow and wait for deletion evidence.
+4. Re-provision the same tenant id/configuration, require `Active` plus isolation verification, and retry the
+   known-good export into the clean target.
+
+If deletion or termination cannot be proved, stop and escalate. Do not search, resume intake, or layer another
+restore over the uncertain target.
+
+## Scale limit
+
+Import accepts at most 512 MiB. It stages 1 MiB Redis chunks, processes at most 100 units per re-index activity,
+and renews staging/lease retention for up to 12 hours. Larger recovery points must use case-scoped exports.

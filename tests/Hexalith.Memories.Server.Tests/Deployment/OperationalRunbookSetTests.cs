@@ -172,15 +172,71 @@ public sealed class OperationalRunbookSetTests
                     RegexOptions.CultureInvariant)
                 .ShouldBeFalse($"{runbookPath} copies a live data-plane directory instead of a quiesced mount.");
 
-            foreach (string line in executableExamples.Split('\n').Where(line => line.Contains("redis-cli", StringComparison.Ordinal)))
+            if (executableExamples.Contains("redis-cli", StringComparison.Ordinal))
             {
                 Regex.IsMatch(
-                        line,
-                        "redis-cli -a \"\\$(?:REDIS_PASSWORD|FALKORDB_PASSWORD)\" --no-auth-warning",
+                        executableExamples,
+                        @"\bredis-cli\s+-a\b",
                         RegexOptions.CultureInvariant)
-                    .ShouldBeTrue($"Every redis-cli example must use its in-container secret without printing it: {runbookPath}: {line.Trim()}");
+                    .ShouldBeFalse($"redis-cli credentials must not be expanded into process arguments: {runbookPath}");
+                executableExamples.ShouldContain(
+                    "REDISCLI_AUTH",
+                    Case.Sensitive,
+                    $"Every redis-cli runbook must use the in-container REDISCLI_AUTH mechanism: {runbookPath}");
             }
         }
+    }
+
+    [Fact]
+    public void BackupRecoveryRunbooks_EnforceExecutableRecoveryContracts()
+    {
+        string backup = ReadRepoFile("docs/operations/backup-restore.md");
+        string disaster = ReadRepoFile("docs/operations/disaster-recovery.md");
+        string verifier = ReadRepoFile("tools/verify-backup-recovery.py");
+
+        foreach (string policyField in new[]
+                 {
+                     "RPO",
+                     "RETENTION",
+                     "BACKUP_DESTINATION",
+                     "QUIESCE_PLAYBOOK",
+                     "activeWorkflows == 0",
+                 })
+        {
+            backup.ShouldContain(policyField, Case.Sensitive);
+        }
+
+        backup.ShouldContain("memories export tenant", Case.Sensitive);
+        backup.ShouldContain("memories export case", Case.Sensitive);
+        backup.ShouldContain("statusLocation", Case.Sensitive);
+        backup.ShouldContain("instanceId", Case.Sensitive);
+        backup.ShouldContain("Completed", Case.Sensitive);
+        backup.ShouldContain("Failed|Canceled|Terminated", Case.Sensitive);
+        backup.ShouldContain(".restoredMemoryUnits == $units", Case.Sensitive);
+        backup.ShouldContain(".restoredCases == $cases", Case.Sensitive);
+        backup.ShouldContain(".restoredEdges == $edges", Case.Sensitive);
+        backup.ShouldContain(".skippedRecords == 0", Case.Sensitive);
+        backup.ShouldContain("RESTORE_TARGET_NOT_CLEAN", Case.Sensitive);
+        backup.ShouldContain("edgeCount + statistics.memoryUnitCount", Case.Sensitive);
+        backup.ShouldContain("tools/verify-backup-recovery.py", Case.Sensitive);
+
+        disaster.ShouldContain("name: data-redis-stack-0", Case.Sensitive);
+        disaster.ShouldContain("name: data-falkordb-0", Case.Sensitive);
+        disaster.ShouldContain("apiGroup: snapshot.storage.k8s.io", Case.Sensitive);
+        disaster.ShouldContain("case_id=", Case.Sensitive);
+        disaster.ShouldContain("/cases/$case_id/import", Case.Sensitive);
+        disaster.ShouldContain("statusLocation", Case.Sensitive);
+        disaster.ShouldContain("instanceId", Case.Sensitive);
+        disaster.ShouldContain(".restoredMemoryUnits == $units", Case.Sensitive);
+        disaster.ShouldContain(".restoredCases == $cases", Case.Sensitive);
+        disaster.ShouldContain(".restoredEdges == $edges", Case.Sensitive);
+        disaster.ShouldContain("SkippedRecords", Case.Insensitive);
+        disaster.ShouldContain("tenant-onboarding-offboarding.md#onboarding", Case.Sensitive);
+
+        verifier.ShouldContain("exportedEdgeCount", Case.Sensitive);
+        verifier.ShouldContain("expected_graph_edges", Case.Sensitive);
+        verifier.ShouldContain("REDISCLI_AUTH", Case.Sensitive);
+        verifier.ShouldNotContain("redis-cli -a", Case.Sensitive);
     }
 
     [Fact]

@@ -4,7 +4,7 @@ baseline_commit: a077fd09f21968e494f20c72c62450c0b1d349f6
 
 # Story 26.2: Backup & Restore
 
-Status: in-progress
+Status: done
 
 <!-- Epic: 26 — Test, Deployment & Operational Readiness. Closes audit finding A25 (High, "Missing feature") — feature portion. Story 26.5 closes the docs portion (broader runbook set + final cross-linking). Reinforces NFR16 (zero memory-unit loss on Redis restart, AOF verified). New operator-facing capability → commit `feat(...)` (minor release). New import/restore REST route + client method = additive contract change; do NOT rename/remove existing export contracts. -->
 
@@ -192,6 +192,7 @@ claude-opus-4-8 (BMad dev-story workflow).
 - Final `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore -m:1` → 0 warnings / 0 errors; `git diff --check` clean; modified C# files normalized to CRLF.
 - Final BMad completion gate (2026-07-14): the six-project unit/contract lane passed 4,413 tests with 1 intentional skip on `0fa8085`; concurrent final commit `373d893` added four restore staging-stream tests, after which the final-HEAD Release build again passed with 0 warnings / 0 errors and the Server lane passed 2,641 / 1 / 0. Aggregate final unit/contract evidence is 4,417 passed / 1 intentional skip / 0 failed.
 - Final AC7/AC8 evidence (2026-07-14): fast Aspire integration passed 224 / 8 / 0 and the TRX records `BackupRestoreFidelityIntegrationTests.ExportThenImport_RestoresEveryHashAndEdge` as Passed; slow Aspire integration passed 16 / 0 / 0 and records `PipelinePersistenceIntegrationTests.RestartTopology_ShouldPreserveIndexedRedisBackedDataAcrossControlledRestart` as Passed.
+- Operational-runbook review closure (2026-07-15): `Hexalith.Memories.Server.Tests` Release build passed with 0 warnings/errors; all 6 `OperationalRunbookSetTests` passed; all 13 production-deployment-evidence Python tests passed; verifier `--help` and `git diff --check` passed.
 
 ### Completion Notes List
 
@@ -211,6 +212,8 @@ Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow
 **Regression closure:** the broad unit lane found that the nine Story 26.2 import/restore error codes were absent from `ErrorMessageCatalog`. Added actionable domain-error translations and explicit catalog tests, restoring the drift guard and full CLI suite to green.
 
 **Final completion closure (2026-07-14):** Re-ran the complete configured non-benchmark regression evidence on the final implementation: Release solution build 0 warnings/errors; 4,417 unit/contract tests passed with one intentional skip; 224 fast Aspire tests passed with eight accepted structured skips; all 16 slow Aspire tests passed. The named AC7 fidelity and AC8 controlled-restart zero-loss tests both passed against real infrastructure. Reconciled the File List with the original implementation, both review-hardening chunks, and the final staged Redis stream tests. Story is ready for review.
+
+**Operational-runbook review closure (2026-07-15):** Applied all 15 approved runbook patches under the resolved hybrid ownership policy. The repository now owns mandatory consistency/evidence/stop gates while deployments supply concrete quiescence commands and recovery-policy values. Logical and physical procedures are fail-closed, scope-aware, clean-target-only, bounded, and backed by an executable recovery verifier. The representative 512 MiB / approximately 100K-unit boundary test remains explicitly deferred in the governed ledger. Story is done.
 
 ### File List
 
@@ -284,9 +287,15 @@ Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow
 - `tests/Hexalith.Memories.Server.Tests/Import/ImportRequestValidatorTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Import/RedisChunkReadStreamTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Import/SyntacticHashProjectionTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs`
+- `tests/tooling/production_deployment_evidence/backup_recovery_verifier_test.py`
+
+**Tools:**
+- `tools/verify-backup-recovery.py`
 
 **Documentation and tracking:**
 - `docs/operations/backup-restore.md`
+- `docs/operations/capacity-planning.md`
 - `docs/operations/disaster-recovery.md`
 - `docs/operations/route-surface.md`
 - `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
@@ -306,6 +315,7 @@ Implemented the restore counterpart to export as a durable Dapr `RestoreWorkflow
 
 | Date | Change |
 | --- | --- |
+| 2026-07-15 | Operational-runbook review closed: 15 approved patches applied under the hybrid policy; fail-closed logical/physical recovery procedures and executable evidence verifier added; focused C# 6/0/0 and Python 13/0/0 validation green; one representative large-payload test remains deferred; status → done. |
 | 2026-07-14 | Final BMad completion gate on `373d893`: Release solution build 0 warnings/errors; aggregate unit/contract evidence 4,417/1/0; fast Aspire 224/8/0 with AC7 fidelity Passed; slow Aspire 16/0/0 with AC8 controlled-restart zero-loss Passed; File List reconciled; status → review. |
 | 2026-07-14 | Chunk-1 adversarial review patches applied: strict streamed envelope validation; clean-target tenant lease/idempotency; 512 MB chunked renewable staging; bounded re-index workflow pages; embedding readiness/dimension/migration guards; graph timestamp/edge fidelity; fail-closed status and best-effort cleanup; expanded Docker-free coverage. Server tests 2641/1/0; Release solution build 0/0. Status remains review for the remaining agreed review chunks. |
 | 2026-07-13 | Completion gates closed locally: fixed nine missing CLI error-catalog mappings found by the broad regression lane; 4,374 unit/contract tests passed with 1 intentional skip; fast Aspire lane passed 224/8/0 including AC7 fidelity; slow Aspire lane passed 16/0/0 including AC8 controlled-restart zero-loss; final Release build 0 warnings/errors. Status → review. |
@@ -425,3 +435,28 @@ Verification: `Hexalith.Memories.Cli.Tests` **475 passed / 0 failed**; `Hexalith
 All six approved integration-evidence patches were applied. The AC7 test now waits for all ingestion workflows to complete and clears the export clock-skew window; seeds two non-empty membership hashes; proves every portable Redis/FalkorDB family is empty before restore; compares exact memory-unit, case/member, graph-edge, and semantic-chunk key/field sets; preserves deterministic embedding-byte checks; includes exported-edge `createdAt`; and validates terminal restore counts with zero skipped records.
 
 Verification: `Hexalith.Memories.IntegrationTests` Release build **0 warnings / 0 errors**; `BackupRestoreFidelityIntegrationTests.ExportThenImport_RestoresEveryHashAndEdge` passed against the real Aspire Redis Stack/FalkorDB/Dapr topology **1 passed / 0 skipped / 0 failed** in 29.468 seconds; scoped `git diff --check` clean; modified C# file normalized to CRLF. The runbook review chunk remains outstanding.
+
+### Review Findings (2026-07-15, chunk 4: operational runbooks)
+
+- [x] [Review][Patch] HIGH — Define the physical-backup consistency boundary using the resolved hybrid policy: the repository documents mandatory pause/drain invariants, observable evidence, timeouts, and stop conditions; each deployment supplies the concrete ingress/publisher quiescence commands and their approved playbook reference. Independent Redis/FalkorDB snapshots must not proceed until the deployment-specific controls satisfy the repository-owned gates [docs/operations/backup-restore.md:83]
+- [x] [Review][Patch] HIGH — Define backup survival and recovery-point selection using the resolved hybrid policy: the repository requires an immutable off-cluster copy, paired recovery-point identity, restore-test evidence, and mandatory recorded policy fields; each deployment supplies its RPO, cadence, retention, destination, owner, and approved recovery-point selection values [docs/operations/disaster-recovery.md:110]
+- [x] [Review][Patch] HIGH — Implement the asynchronous restore-status contract in both procedures: capture `StatusLocation`/`instanceId`, poll with a deadline until terminal `Completed`, fail on `Failed`/`Canceled`/`Terminated`, and require completed counters with `SkippedRecords == 0`; the current basic example uses an unset `$INSTANCE_ID` and lowercase `completed`, while the full-cluster loop discards every `202` response and verifies immediately [docs/operations/backup-restore.md:156]
+- [x] [Review][Patch] HIGH — Document and enforce the clean-target invariant; remove the false "restore an earlier snapshot over the top" rollback because `RestoreTargetGuard` rejects non-clean targets and additive `HSET`/`MERGE` cannot remove data absent from the older snapshot; wait for or terminate an active workflow before deleting and re-provisioning [docs/operations/backup-restore.md:140]
+- [x] [Review][Patch] HIGH — Add an executable Redis PVC-loss recovery path, including StatefulSet scale-down, a same-name PVC restored from `VolumeSnapshot`, binding/readiness checks, scale-up, AOF health, and tenant-specific data verification; the current text only links to snapshot creation [docs/operations/disaster-recovery.md:54]
+- [x] [Review][Patch] HIGH — Complete the FalkorDB physical-restore procedure; the decisive PVC provisioning and `dump.rdb`/`appendonlydir` staging operation is currently only a comment and lacks a maintenance pod/job, ownership checks, checksum verification, and stop/rollback conditions [docs/operations/disaster-recovery.md:91]
+- [x] [Review][Patch] HIGH — Make `memories export tenant|case --output` the primary logical-backup path and add schema/checksum evidence; the current fixed-name `curl -o` examples omit the AC9 CLI path and can truncate the previous recovery point before a failed export completes, while the existing CLI already uses an atomic `.part` rename [docs/operations/backup-restore.md:50]
+- [x] [Review][Patch] HIGH — Route full-cluster imports by manifest scope and fail closed on malformed/failed files; the tenant-only loop rejects the case-scoped exports that the same runbook requires for payloads above 512 MB, accepts empty/null tenant extraction, and continues after a failed request [docs/operations/disaster-recovery.md:124]
+- [x] [Review][Patch] HIGH — Replace display-only recovery checks with exact assertions and correct the graph comparison model: `statistics.edgeCount` counts only serialized MemoryUnit-to-MemoryUnit edges, while the post-restore graph count also includes rebuilt `CONTAINS`; verify terminal counters, expected key/field sets, vector attribution/dimensions, case/member hashes, `createdAt` and audit properties, and use `pipefail` so command failure cannot look like a zero count [docs/operations/backup-restore.md:182]
+- [x] [Review][Patch] MEDIUM — Bound snapshot/BGSAVE waits and assert exact persistence health; current loops can hang indefinitely and the AOF checks merely print fields, accepting `aof_enabled:0` or failed write/rewrite status, while snapshot failure has no abort/cleanup path [docs/operations/backup-restore.md:103]
+- [x] [Review][Patch] MEDIUM — Stop expanding Redis and FalkorDB passwords into `redis-cli -a` process arguments; use a non-argv authentication mechanism and update the runbook guard that currently mandates the exposed form [docs/operations/backup-restore.md:112]
+- [x] [Review][Patch] MEDIUM — Bring the disaster-recovery document up to the required runbook contract with explicit prerequisites/authorization, verification evidence, rollback/stop conditions, and executable same-id tenant provisioning (or a direct link to the canonical onboarding procedure) [docs/operations/disaster-recovery.md:108]
+- [x] [Review][Patch] MEDIUM — Add executable verification for the physical backup/PVC recovery commands; current tests only regex-check resource-name and command strings, so invalid `BGSAVE`, snapshot, or artifact-staging commands can pass every normal gate [tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs:142]
+- [x] [Review][Patch] LOW — Correct the AOF enforcement source path from nonexistent `AppHost/Program.cs` to `src/Hexalith.Memories.AppHost/Program.cs` in both runbooks [docs/operations/backup-restore.md:77]
+- [x] [Review][Patch] LOW — Rename `Rejections (400)` to cover all client errors because `IMPORT_TOO_LARGE` is HTTP 413 [docs/operations/backup-restore.md:172]
+- [x] [Review][Defer] MEDIUM — Add representative boundary coverage for the documented 512 MiB / approximately 100K-unit restore contract; existing fidelity coverage restores three small units and chunk-stream coverage reads five mocked bytes, so reductions in the endpoint ceiling or large-staging failures can ship undetected [docs/operations/backup-restore.md:206] — deferred, pre-existing
+
+### Patch application (2026-07-15, chunk 4)
+
+All 15 approved operational-runbook patches were applied under the resolved hybrid policy. The rewritten backup and disaster-recovery procedures now gate paired physical snapshots on deployment-owned quiescence evidence; record immutable off-cluster recovery policy; use atomic CLI exports; poll typed restore status to exact terminal counters; enforce clean targets; restore Redis and FalkorDB same-name PVCs from `VolumeSnapshot`; route tenant/case exports correctly; and fail closed on timeouts, unhealthy AOF, mismatched scope/counts, and unverified recovery evidence. Passwords use `REDISCLI_AUTH`, source paths/client-error headings are corrected, and the shared capacity runbook follows the same non-argv secret rule.
+
+Added `tools/verify-backup-recovery.py` plus seven focused tests to assert PVC binding, exact Redis/FalkorDB persistence fields, tenant/export identity, memory-unit/case/semantic counts, the `exportedEdgeCount + memoryUnitCount` graph model, sanitized evidence, and atomic evidence writes. Validation: Server.Tests Release build **0 warnings / 0 errors**; `OperationalRunbookSetTests` **6 passed / 0 failed**; production-deployment-evidence Python suite **13 passed / 0 failed**; verifier CLI smoke and `git diff --check` passed. The 512 MiB / approximately 100K-unit representative test remains deferred in `deferred-work.md`.
