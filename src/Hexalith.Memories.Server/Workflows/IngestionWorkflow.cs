@@ -397,24 +397,6 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 HashSet<string> completedBackends = GetCompletedBackends(syntacticTask, semanticTask, graphTask, nlSemanticTask);
                 await CompensateAsync(context, completedBackends, cleanupInput, compensationRetry, logger, ex);
 
-                try
-                {
-                    await context.CallActivityAsync<bool>(
-                        nameof(RecordCaseActivityActivity),
-                        new CaseActivityInput(
-                            input.TenantId,
-                            input.CaseId,
-                            CaseActivityEventType.IngestionFailed,
-                            input.IngestedBy,
-                            $"Ingestion failed for {input.SourceUri} at stage {currentStage}",
-                            memoryUnitId,
-                            traceContext));
-                }
-                catch
-                {
-                    // Activity recording failure must not mask the original ingestion failure
-                }
-
                 logger.LogInformation(
                     "Indexing failed for {MemoryUnitId}, compensated backends: [{Backends}]",
                     memoryUnitId,
@@ -427,6 +409,12 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     _mainRetryAttempts,
                     new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero),
                     logger);
+                await TryRecordIngestionFailedActivityAsync(
+                    context,
+                    input,
+                    memoryUnitId,
+                    currentStage,
+                    traceContext);
                 try { await UpdateCounter("indexing", "none"); } catch { /* counter drift documented */ }
                 context.SetCustomStatus("failed");
                 WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
@@ -559,6 +547,12 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     _mainRetryAttempts,
                     new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero),
                     logger);
+                await TryRecordIngestionFailedActivityAsync(
+                    context,
+                    input,
+                    memoryUnitId,
+                    currentStage,
+                    traceContext);
                 try { await UpdateCounter("indexing", "none"); } catch { /* counter drift documented */ }
                 context.SetCustomStatus("failed");
                 WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
@@ -611,6 +605,12 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 GetRetryCountForStage(currentStage),
                 new DateTimeOffset(context.CurrentUtcDateTime, TimeSpan.Zero),
                 logger);
+            await TryRecordIngestionFailedActivityAsync(
+                context,
+                input,
+                memoryUnitId,
+                currentStage,
+                traceContext);
             try { await UpdateCounter(MapStageToBucket(currentStage), "none"); } catch { /* counter drift documented */ }
             context.SetCustomStatus("failed");
             WorkflowPayloadReference? retainedSourcePayload = GetRetainedSourcePayloadReference(input, memoryUnitId);
@@ -970,6 +970,32 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
 
     private static bool HasFailureDetails(Exception exception)
         => exception.Data.Contains(nameof(FailureDetails));
+
+    private static async Task TryRecordIngestionFailedActivityAsync(
+        WorkflowContext context,
+        IngestionInput input,
+        string memoryUnitId,
+        string stage,
+        WorkflowTraceContext? traceContext)
+    {
+        try
+        {
+            await context.CallActivityAsync<bool>(
+                nameof(RecordCaseActivityActivity),
+                new CaseActivityInput(
+                    input.TenantId,
+                    input.CaseId,
+                    CaseActivityEventType.IngestionFailed,
+                    input.IngestedBy,
+                    $"Ingestion failed for {input.SourceUri} at stage {stage}",
+                    memoryUnitId,
+                    traceContext));
+        }
+        catch
+        {
+            // Activity recording is best-effort and must never mask the original ingestion failure.
+        }
+    }
 
     /// <summary>Story 6.3: maps the workflow's pipeline-stage string to the counter-actor bucket name.
     /// Stages BEFORE the queued bucket is incremented (idempotency, validation) map to <c>"none"</c>; stages

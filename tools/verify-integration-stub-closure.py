@@ -32,6 +32,14 @@ METHOD_RE = re.compile(
 )
 SKIP_REASON_RE = re.compile(r'\bSkip\s*=\s*"(?P<reason>(?:\\.|[^"])*)"')
 DEFERRED_ID_RE = re.compile(r"\b\d+\.\d+-[A-Z0-9][A-Z0-9-]+\b")
+TEST_ATTRIBUTE_RE = re.compile(r"\b(?:Fact|Theory)\b")
+DEFERRED_FIELD_RE = re.compile(
+    r"^\s*-\s+(?P<name>ID|Status|Source story|Target artifact|Re-open trigger|Rationale):\s*(?P<value>.*)\s*$",
+    re.IGNORECASE,
+)
+LINE_COMMENT_RE = re.compile(r"//[^\r\n]*")
+BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+WHITESPACE_RE = re.compile(r"\s+")
 
 
 class VerificationError(RuntimeError):
@@ -47,6 +55,7 @@ class SourceDisposition(NamedTuple):
     final: str
     skipped: bool
     reason: str | None
+    no_op: bool
     path: Path
 
 
@@ -89,7 +98,7 @@ def discover_source_dispositions(source_root: Path) -> dict[str, list[SourceDisp
         classes = list(CLASS_RE.finditer(source))
         for method_match in METHOD_RE.finditer(source):
             attributes = method_match.group("attributes")
-            if "Fact" not in attributes:
+            if TEST_ATTRIBUTE_RE.search(attributes) is None:
                 continue
             preceding_classes = [match for match in classes if match.start() < method_match.start()]
             if not preceding_classes:
@@ -97,15 +106,164 @@ def discover_source_dispositions(source_root: Path) -> dict[str, list[SourceDisp
             class_name = preceding_classes[-1].group(1)
             final = f"{namespace}.{class_name}.{method_match.group('method')}"
             skip_match = SKIP_REASON_RE.search(attributes)
+            body = _extract_method_body(source, method_match.end() - 1)
             discovered[final].append(
                 SourceDisposition(
                     final=final,
                     skipped=skip_match is not None,
                     reason=skip_match.group("reason") if skip_match is not None else None,
+                    no_op=_is_no_op_body(body),
                     path=path,
                 )
             )
     return discovered
+
+
+def _extract_method_body(source: str, opening_parenthesis: int) -> str:
+    closing_parenthesis = _find_matching_delimiter(source, opening_parenthesis, "(", ")")
+    cursor = closing_parenthesis + 1
+    while cursor < len(source):
+        cursor = _skip_whitespace_and_comments(source, cursor)
+        if source.startswith("=>", cursor):
+            expression_start = cursor + 2
+            semicolon = _find_unquoted_character(source, expression_start, ";")
+            return source[expression_start:semicolon]
+        if cursor < len(source) and source[cursor] == "{":
+            closing_brace = _find_matching_delimiter(source, cursor, "{", "}")
+            return source[cursor + 1:closing_brace]
+        cursor += 1
+    return ""
+
+
+def _find_matching_delimiter(source: str, opening_index: int, opening: str, closing: str) -> int:
+    depth = 0
+    cursor = opening_index
+    while cursor < len(source):
+        skipped = _skip_literal_or_comment(source, cursor)
+        if skipped is not None:
+            cursor = skipped
+            continue
+        if source[cursor] == opening:
+            depth += 1
+        elif source[cursor] == closing:
+            depth -= 1
+            if depth == 0:
+                return cursor
+        cursor += 1
+    raise VerificationError(f"unterminated method delimiter at source offset {opening_index}")
+
+
+def _find_unquoted_character(source: str, start: int, value: str) -> int:
+    cursor = start
+    while cursor < len(source):
+        skipped = _skip_literal_or_comment(source, cursor)
+        if skipped is not None:
+            cursor = skipped
+            continue
+        if source[cursor] == value:
+            return cursor
+        cursor += 1
+    raise VerificationError(f"unterminated expression-bodied test at source offset {start}")
+
+
+def _skip_whitespace_and_comments(source: str, start: int) -> int:
+    cursor = start
+    while cursor < len(source):
+        if source[cursor].isspace():
+            cursor += 1
+            continue
+        skipped = _skip_comment(source, cursor)
+        if skipped is None:
+            return cursor
+        cursor = skipped
+    return cursor
+
+
+def _skip_literal_or_comment(source: str, start: int) -> int | None:
+    comment_end = _skip_comment(source, start)
+    if comment_end is not None:
+        return comment_end
+
+    quote_index = start
+    while quote_index < len(source) and source[quote_index] in "$@":
+        quote_index += 1
+    if quote_index >= len(source) or source[quote_index] not in "\"'":
+        return None
+
+    quote = source[quote_index]
+    verbatim = "@" in source[start:quote_index]
+    if quote == '"':
+        raw_quote_count = 0
+        while quote_index + raw_quote_count < len(source) and source[quote_index + raw_quote_count] == '"':
+            raw_quote_count += 1
+        if raw_quote_count >= 3:
+            terminator = '"' * raw_quote_count
+            raw_end = source.find(terminator, quote_index + raw_quote_count)
+            return len(source) if raw_end < 0 else raw_end + raw_quote_count
+
+    cursor = quote_index + 1
+    while cursor < len(source):
+        if verbatim and source.startswith('""', cursor):
+            cursor += 2
+            continue
+        if not verbatim and source[cursor] == "\\":
+            cursor += 2
+            continue
+        if source[cursor] == quote:
+            return cursor + 1
+        cursor += 1
+    return len(source)
+
+
+def _skip_comment(source: str, start: int) -> int | None:
+    if source.startswith("//", start):
+        newline = source.find("\n", start + 2)
+        return len(source) if newline < 0 else newline + 1
+    if source.startswith("/*", start):
+        end = source.find("*/", start + 2)
+        return len(source) if end < 0 else end + 2
+    return None
+
+
+def _is_no_op_body(body: str) -> bool:
+    without_comments = BLOCK_COMMENT_RE.sub("", LINE_COMMENT_RE.sub("", body))
+    normalized = WHITESPACE_RE.sub("", without_comments)
+    return normalized in {
+        "",
+        "return;",
+        "Task.CompletedTask",
+        "Task.CompletedTask;",
+        "returnTask.CompletedTask;",
+        "awaitTask.CompletedTask;",
+        "_=_fixture",
+        "_=_fixture;",
+    }
+
+
+def read_deferred_entries(path: Path) -> dict[str, list[dict[str, str]]]:
+    entries: dict[str, list[dict[str, str]]] = defaultdict(list)
+    current: dict[str, str] | None = None
+    current_field: str | None = None
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        match = DEFERRED_FIELD_RE.match(raw_line)
+        if match is not None:
+            field = match.group("name").lower()
+            if field == "id":
+                current = {"id": match.group("value").strip()}
+                entries[current["id"]].append(current)
+            elif current is not None:
+                current[field] = match.group("value").strip()
+            current_field = field if current is not None else None
+            continue
+
+        if current is not None and current_field is not None and raw_line.startswith(("  ", "\t")):
+            continuation = raw_line.strip()
+            if continuation:
+                current[current_field] = f"{current.get(current_field, '')} {continuation}".strip()
+        elif raw_line.lstrip().startswith("- ") or raw_line.startswith("#"):
+            current = None
+            current_field = None
+    return entries
 
 
 def read_trx_outcomes(results_directory: Path) -> dict[str, list[str]]:
@@ -137,7 +295,7 @@ def verify_closure(
     rows = read_targets(targets_path, expected_count)
     sources = discover_source_dispositions(source_root)
     outcomes = read_trx_outcomes(results_directory)
-    deferred_work = deferred_work_path.read_text(encoding="utf-8") if deferred_work_path.exists() else ""
+    deferred_entries = read_deferred_entries(deferred_work_path) if deferred_work_path.exists() else {}
 
     errors: list[str] = []
     report_rows: list[tuple[str, str, str]] = []
@@ -157,6 +315,9 @@ def verify_closure(
             )
 
         source = final_sources[0]
+        if not source.skipped and source.no_op:
+            errors.append(f"{row.final}: runnable target has an assertion-free no-op body")
+
         result_values = outcomes.get(row.final, [])
         if len(result_values) != 1:
             errors.append(
@@ -168,8 +329,18 @@ def verify_closure(
         if source.skipped:
             reason = source.reason or ""
             deferred_ids = DEFERRED_ID_RE.findall(reason)
-            if len(deferred_ids) != 1 or f"ID: {deferred_ids[0]}" not in deferred_work:
+            matching_entries = deferred_entries.get(deferred_ids[0], []) if len(deferred_ids) == 1 else []
+            if len(matching_entries) != 1:
                 errors.append(f"{row.final}: skip is not linked to exactly one accepted deferred-work ID")
+            else:
+                entry = matching_entries[0]
+                if entry.get("status", "").lower() != "accepted":
+                    errors.append(f"{row.final}: deferred-work entry status must be accepted")
+                rationale = entry.get("rationale", "")
+                if "Owner:" not in rationale:
+                    errors.append(f"{row.final}: deferred-work rationale must name Owner")
+                if not entry.get("re-open trigger", "").strip():
+                    errors.append(f"{row.final}: deferred-work entry must define a Re-open trigger")
             if "Owner:" not in reason or "Unskip when:" not in reason:
                 errors.append(f"{row.final}: skip reason must name Owner and Unskip when")
             if outcome not in {"NotExecuted", "Skipped"}:

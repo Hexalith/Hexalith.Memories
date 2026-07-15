@@ -21,7 +21,7 @@ public sealed class EmbeddingProviderFaultPlan
         int failureCount,
         TimeSpan? retryAfter = null)
     {
-        if (statusCode != HttpStatusCode.TooManyRequests && (int)statusCode < 500)
+        if (statusCode != HttpStatusCode.TooManyRequests && (int)statusCode is < 500 or > 599)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(statusCode),

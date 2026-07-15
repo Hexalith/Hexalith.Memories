@@ -50,14 +50,70 @@ public sealed class EmbeddingProviderFailureIntegrationTests : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         _fakeServer?.ClearEmbedFaultPlan();
-        if (_fixture is not null)
+        try
         {
-            await _fixture.DisposeAsync();
+            if (_fixture is not null)
+            {
+                await _fixture.DisposeAsync();
+            }
         }
-
-        if (_fakeServer is not null)
+        finally
         {
-            await _fakeServer.DisposeAsync();
+            if (_fakeServer is not null)
+            {
+                await _fakeServer.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TransientIngestionFailure_ShouldCompleteSuccessfullyAfterRetries()
+    {
+        AspireIngestionPipelineFixture fixture = _fixture!;
+        OllamaOidcFakeServer fake = _fakeServer!;
+        IngestionIntegrationTestDriver driver = new(fixture);
+        string unique = Guid.NewGuid().ToString("N");
+        string tenantId = $"tenant-retry-{unique[..10]}";
+        string sourceUri = $"file:///{unique}-provider-retry.txt";
+        string caseId = await driver.CreateTenantAndCaseAsync(
+            tenantId,
+            OllamaOidcFakeServer.OllamaDimensions);
+        await ConfigureOllamaTenantAsync(fixture, fake, tenantId);
+        fake.SetEmbedFaultPlan(new EmbeddingProviderFaultPlan(HttpStatusCode.InternalServerError, failureCount: 3));
+
+        try
+        {
+            string instanceId = await driver.PostInlineIngestionAsync(
+                tenantId,
+                caseId,
+                sourceUri,
+                $"Durable embedding retry canary {unique}.");
+            string workflow = await driver.WaitForWorkflowRuntimeStatusAsync(tenantId, instanceId, "Completed");
+            string memoryUnitId = IngestionIntegrationTestDriver.TryExtractMemoryUnitId(workflow) ?? instanceId;
+            MemoryUnit indexed = await driver.WaitForMemoryUnitAsync(
+                tenantId,
+                caseId,
+                memoryUnitId,
+                unit => unit.Status == MemoryUnitStatus.Indexed);
+            FailedUnitsPage failed = await driver.WaitForFailedUnitsPageAsync(
+                tenantId,
+                caseId,
+                page => page.TotalCount == 0);
+            (string syntacticKey, string semanticKey) = await driver.WaitForSingleBackendWriteAsync(
+                tenantId,
+                caseId,
+                sourceUri);
+
+            indexed.SourceUri.ShouldBe(sourceUri);
+            failed.Units.ShouldBeEmpty();
+            fake.EmbedAttemptCount.ShouldBeGreaterThanOrEqualTo(4);
+            fake.EmbedAttemptCount.ShouldBeLessThanOrEqualTo(10);
+            (await driver.ListRedisKeysAsync($"{tenantId}:mu:*")).ShouldBe([syntacticKey]);
+            (await driver.ListRedisKeysAsync($"{tenantId}:vec:*")).ShouldBe([semanticKey]);
+        }
+        finally
+        {
+            fake.ClearEmbedFaultPlan();
         }
     }
 
@@ -107,6 +163,10 @@ public sealed class EmbeddingProviderFailureIntegrationTests : IAsyncLifetime
             string failedIndex = $"{tenantId}:case:{caseId}:failed-units";
             (await redis.KeyExistsAsync(failedHash)).ShouldBeTrue();
             (await redis.SortedSetScoreAsync(failedIndex, failed.MemoryUnitId)).ShouldNotBeNull();
+            StreamEntry[] activity = await redis.StreamRangeAsync($"{tenantId}:case:{caseId}:activity");
+            activity.Count(entry =>
+                entry.Values.Any(value => value.Name == "type" && value.Value == "ingestionFailed") &&
+                entry.Values.Any(value => value.Name == "memoryUnitId" && value.Value == failed.MemoryUnitId)).ShouldBe(1);
             (await driver.ListRedisKeysAsync($"{tenantId}:mu:*")).ShouldBeEmpty();
             (await driver.ListRedisKeysAsync($"{tenantId}:vec:*")).ShouldBeEmpty();
             (await driver.CountGraphNodesAsync(tenantId, caseId, sourceUri)).ShouldBe(0);

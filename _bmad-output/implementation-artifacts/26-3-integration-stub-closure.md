@@ -4,7 +4,7 @@ baseline_commit: a8a0dbd60e2c49d183248c41b952a06fb897e8d7
 
 # Story 26.3: Integration Stub Closure
 
-Status: review
+Status: done
 
 <!-- Epic 26 — Test, Deployment & Operational Readiness. Closes audit finding A23. Test-only changes use `test(integration): ...`; a production defect exposed by a real test may be fixed in scope, but unrelated product work and package upgrades are not. -->
 
@@ -94,6 +94,21 @@ Story 26.2 remains `in-progress` in parallel. Its Aspire fidelity/restart tests 
   - [x] Run the integration-stub outcome verifier against the complete-lane TRX. All 28 manifest rows must resolve once; the five AC2 priority groups must be Passed; only skips linked to accepted deferred-work IDs are expected.
   - [x] Record a final 28-row passed/skipped/failed matrix and exact commands/results. Zero unexpected skips and zero false-positive bodies are mandatory; container evidence must come from CI/operator execution if unavailable locally.
   - [x] Run `git diff --check`; preserve CRLF/C# headers, file-scoped namespaces, public XML documentation, one type per file, and avoid line-ending-only churn.
+
+### Review Findings
+
+- [x] [Review][Patch] Make the closure guard reject empty, comment-only, return-only, and other assertion-free runnable facts [tests/Hexalith.Memories.Server.Tests/Architecture/IntegrationStubClosureGuardTests.cs:38]
+- [x] [Review][Patch] Exercise transient embedding-provider failure and durable workflow recovery instead of source-fetch retries [tests/Hexalith.Memories.IntegrationTests/Ingestion/EmbeddingProviderFailureIntegrationTests.cs:63]
+- [x] [Review][Patch] Guarantee FalkorDB recovery when the stop command succeeds but state convergence throws [tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs:658]
+- [x] [Review][Patch] Parse the matching deferred-work entry and require its accepted status, owner rationale, and reopen trigger [tools/verify-integration-stub-closure.py:276]
+- [x] [Review][Patch] Inspect explicit skip attributes structurally so additional arguments or alternate xUnit shapes cannot bypass generic-reason checks [tests/Hexalith.Memories.Server.Tests/Architecture/IntegrationStubClosureGuardTests.cs:69]
+- [x] [Review][Patch] Assert the URL-404 failed-unit hash and per-case failed index directly in Redis [tests/Hexalith.Memories.IntegrationTests/Ingestion/UrlIngestionIntegrationTests.cs:100]
+- [x] [Review][Patch] Restore deterministic PDF extraction coverage in the mixed-directory scenario [tests/Hexalith.Memories.IntegrationTests/Ingestion/DirectoryIngestionIntegrationTests.cs:37]
+- [x] [Review][Patch] Assert the provider-500 IngestionFailed activity-stream event required by the original target [tests/Hexalith.Memories.IntegrationTests/Ingestion/EmbeddingProviderFailureIntegrationTests.cs:164]
+- [x] [Review][Patch] Make workflow polling fail fast on unexpected named or numeric terminal states and preserve timeout diagnostics [tests/Hexalith.Memories.IntegrationTests/Fixtures/IngestionIntegrationTestDriver.cs:156]
+- [x] [Review][Patch] Dispose the fake embedding server even when Aspire fixture cleanup throws [tests/Hexalith.Memories.IntegrationTests/Ingestion/EmbeddingProviderFailureIntegrationTests.cs:50]
+- [x] [Review][Patch] Bound Docker volume-removal processes and report teardown timeout diagnostics [tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs:1450]
+- [x] [Review][Patch] Reject undefined HTTP status values above 599 in embedding fault plans [tests/Hexalith.Memories.IntegrationTests/Fixtures/EmbeddingProviderFaultPlan.cs:24]
 
 ## Dev Notes
 
@@ -228,12 +243,13 @@ GPT-5 Codex
 - Final complete lane: `dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -c Release --no-build --filter "Category=Integration"` passed 243, skipped the eight accepted deferrals, failed 0 (251 total, 12m25s). `verify-integration-stub-closure.py` resolved all 28 manifest rows exactly once: 20 passed, 8 accepted skips, 0 failed.
 - Final CI-equivalent lane: `bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast-final` passed 224, skipped 8, failed 0 (232 total, 4m59s). `verify-integration-fast-coverage.py` passed every required surface, including both AppHost proofs.
 - Final local gates: Release solution build passed with 0 warnings/errors; Server.Tests passed 2619 with 1 pre-existing skip and 0 failures; direct xUnit v3 runs passed the closure guard 2/2, tenant authorization 8/8, restore provider attribution 7/7, restore status 6/6, deployment security configuration 5/5, and fake provider 21/21; the verifier's four unit tests passed; `git diff --check` passed.
+- 2026-07-15 adversarial review repair: the first complete lane intentionally exposed the missing provider-failure activity contract (242 passed, 8 accepted skips, 1 failed). The workflow now records best-effort `IngestionFailed` activity for pre-index and post-index failures; the provider class passed 3/3 and the repeated complete lane passed 243 with 8 accepted skips and 0 failures in 11m48s. The strengthened closure verifier resolved 20 passed, 8 accepted skips, 0 failed; its seven unit tests and the 12-case structural source guard passed.
 
 #### 28-row completion matrix
 
 | # | Original target | Final target / disposition | Public assertion | Persisted-state assertion or skip enabler | Lane / result |
 |---:|---|---|---|---|---|
-| 1 | `IngestionRetryIntegrationTests.TransientIngestionFailure_ShouldCompleteSuccessfullyAfterRetries` | same / implemented | accepted workflow completes and memory-unit GET is `Indexed` | one syntactic/vector/graph unit; no failed registry or duplicate | `integration-fast` / Passed |
+| 1 | `IngestionRetryIntegrationTests.TransientIngestionFailure_ShouldCompleteSuccessfullyAfterRetries` | `EmbeddingProviderFailureIntegrationTests.TransientIngestionFailure_ShouldCompleteSuccessfullyAfterRetries` / implemented | accepted workflow completes after transient provider 500s and memory-unit GET is `Indexed` | one syntactic/vector/graph unit; no failed registry or duplicate | complete diagnostic / Passed |
 | 2 | `UrlIngestionIntegrationTests.UrlIngestion_SmallTextPage_ShouldCompleteAndBeSearchable` | same / implemented | URL accepted, completed, and searchable | exact Redis memory/vector keys plus graph node | `integration-fast` / Passed |
 | 3 | `UrlIngestionIntegrationTests.UrlIngestion_404Url_ShouldFailAfterRetries` | same / implemented | workflow and memory-unit API report failure | failed hash and per-case failed index contain exactly the unit | `integration-fast` / Passed |
 | 4 | `UrlIngestionIntegrationTests.UrlIngestion_PrivateIpWithAllowDisabled_ShouldRejectBeforeScheduling` | same / skipped | literal skip `26.3-PRIVATE-HOST-FIXTURE` | enable with isolated `AllowPrivateHosts=false` startup fixture and no-workflow/state proof | `integration-fast` / Skipped (accepted) |
@@ -272,6 +288,7 @@ GPT-5 Codex
 - Task 5 implemented the combined Falkor loss/recovery proof. A fixture-owned Falkor volume preserves graph facts when Aspire's Start command recreates the container, exact-name cleanup prevents volume leakage, hybrid/traversal contracts expose truthful degradation, and the focused post-fix run passed 1/1 in 57.6 seconds without reseeding.
 - Task 6 implemented URL success/404, mixed directory batch, and all nine tenant configuration/provenance targets; infeasible private-host, load/performance, stage-barrier, and shared-Redis scenarios are literal skips linked to the eight structured deferrals. URL passed 2 with 1 accepted skip, directory passed 1 with 1 accepted skip, and tenant configuration passed 9/9.
 - Task 7 completed after the user authorized closure of the broad-gate regressions. The complete and CI-fast container lanes are green with exactly the eight accepted deferred-work skips; both outcome/surface verifiers, all focused direct runs, the full Server.Tests suite, Release build, and whitespace gate pass. Story status is `review`.
+- Code review closed all 12 patch findings: guards now reject no-op runnable tests and malformed deferrals, integration proofs cover embedding retries/failure activity, PDF extraction, and direct failed-state indexes, while workflow polling, Falkor recovery, fake-server disposal, fault-plan validation, and Docker cleanup fail safely and diagnostically.
 
 ### File List
 
@@ -288,6 +305,7 @@ GPT-5 Codex
 - `src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs`
 - `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj`
 - `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs`
+- `src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs`
 - `tools/integration-stub-targets.txt`
 - `tools/verify-integration-stub-closure.py`
 - `tests/tooling/integration_stub_closure/verify_integration_stub_closure_test.py`
@@ -305,7 +323,7 @@ GPT-5 Codex
 - `tests/Hexalith.Memories.IntegrationTests/Fixtures/OllamaOidcFakeServerTests.cs`
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/DirectoryIngestionIntegrationTests.cs`
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/EmbeddingProviderFailureIntegrationTests.cs`
-- `tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestionRetryIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestionRetryIntegrationTests.cs` (deleted)
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/RateLimitingIntegrationTests.cs`
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/RetryFailureIntegrationTests.cs`
 - `tests/Hexalith.Memories.IntegrationTests/Ingestion/UrlIngestionIntegrationTests.cs`
@@ -319,3 +337,4 @@ GPT-5 Codex
 ### Change Log
 
 - 2026-07-13: Implemented Story 26.3, closed all 28 audited false-pass integration stubs with 20 real proofs and 8 structured deferrals, added source/TRX guards, repaired broad-suite regressions exposed by the new gates, and moved the story to `review` after all required lanes passed.
+- 2026-07-15: Applied all 12 adversarial code-review patches, repaired the provider-failure activity contract exposed by the new assertion, and revalidated the complete 251-test integration lane plus the strengthened 28-row closure gate.

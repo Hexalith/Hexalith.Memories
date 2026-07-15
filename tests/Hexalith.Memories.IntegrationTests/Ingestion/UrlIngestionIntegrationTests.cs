@@ -13,6 +13,8 @@ using Hexalith.Memories.IntegrationTests.Fixtures;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
 public sealed class UrlIngestionIntegrationTests
@@ -89,6 +91,11 @@ public sealed class UrlIngestionIntegrationTests
         failed.ErrorCode.ShouldBe("URL_CLIENT_ERROR");
         failed.RetryCount.ShouldBeGreaterThan(0);
         failedUnit.FailureDetails!.ErrorCode.ShouldBe("URL_CLIENT_ERROR");
+        IDatabase redis = _fixture.RedisConnection.GetDatabase();
+        string failedHash = $"{tenantId}:failed-unit:{failed.MemoryUnitId}";
+        string failedIndex = $"{tenantId}:case:{caseId}:failed-units";
+        (await redis.KeyExistsAsync(failedHash)).ShouldBeTrue();
+        (await redis.SortedSetScoreAsync(failedIndex, failed.MemoryUnitId)).ShouldNotBeNull();
         (await driver.ListRedisKeysAsync($"{tenantId}:mu:*")).ShouldBeEmpty();
         (await driver.ListRedisKeysAsync($"{tenantId}:vec:*")).ShouldBeEmpty();
         (await driver.CountGraphNodesAsync(tenantId, caseId, sourceUri)).ShouldBe(0);

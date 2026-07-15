@@ -162,29 +162,45 @@ public sealed class IngestionIntegrationTestDriver
     {
         using CancellationTokenSource waitCts = CreateWaitCancellation(timeout, cancellationToken);
         string lastPayload = string.Empty;
-        while (!waitCts.IsCancellationRequested)
+        try
         {
-            using HttpRequestMessage request = new(HttpMethod.Get, $"/api/v1/ingest/{instanceId}");
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Bearer",
-                AspireIngestionPipelineFixture.MintServerBearer(tenantId));
-            using HttpResponseMessage response = await _fixture.MemoriesClient.SendAsync(
-                request,
-                waitCts.Token).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.OK)
+            while (true)
             {
-                lastPayload = await response.Content.ReadAsStringAsync(waitCts.Token).ConfigureAwait(false);
-                if (ReachedRuntimeStatus(lastPayload, expectedRuntimeStatus))
+                waitCts.Token.ThrowIfCancellationRequested();
+                using HttpRequestMessage request = new(HttpMethod.Get, $"/api/v1/ingest/{instanceId}");
+                request.Headers.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    AspireIngestionPipelineFixture.MintServerBearer(tenantId));
+                using HttpResponseMessage response = await _fixture.MemoriesClient.SendAsync(
+                    request,
+                    waitCts.Token).ConfigureAwait(false);
+                if (response.StatusCode == HttpStatusCode.OK)
                 {
-                    return lastPayload;
+                    lastPayload = await response.Content.ReadAsStringAsync(waitCts.Token).ConfigureAwait(false);
+                    if (ReachedRuntimeStatus(lastPayload, expectedRuntimeStatus))
+                    {
+                        return lastPayload;
+                    }
+
+                    if (TryReadRuntimeStatus(lastPayload, out string actualRuntimeStatus) &&
+                        IsTerminalRuntimeStatus(actualRuntimeStatus))
+                    {
+                        throw new InvalidOperationException(
+                            $"Workflow '{instanceId}' reached unexpected terminal runtimeStatus='{actualRuntimeStatus}' " +
+                            $"while waiting for '{expectedRuntimeStatus}'. Payload: {lastPayload}");
+                    }
                 }
+
+                await Task.Delay(PollInterval, waitCts.Token).ConfigureAwait(false);
             }
-
-            await Task.Delay(PollInterval, waitCts.Token).ConfigureAwait(false);
         }
-
-        throw new TimeoutException(
-            $"Workflow '{instanceId}' did not reach '{expectedRuntimeStatus}'. Last payload: {lastPayload}");
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Workflow '{instanceId}' did not reach '{expectedRuntimeStatus}' within " +
+                $"{timeout ?? DefaultTimeout}. Last payload: {lastPayload}",
+                ex);
+        }
     }
 
     /// <summary>Waits for a failed-units API predicate.</summary>
@@ -401,27 +417,56 @@ public sealed class IngestionIntegrationTestDriver
     {
         using JsonDocument document = JsonDocument.Parse(payload);
         JsonElement root = document.RootElement;
-        if (root.TryGetProperty("runtimeStatus", out JsonElement runtimeStatus))
+        if (TryReadRuntimeStatus(root, out string actualRuntimeStatus) &&
+            string.Equals(actualRuntimeStatus, expectedRuntimeStatus, StringComparison.OrdinalIgnoreCase))
         {
-            if (runtimeStatus.ValueKind == JsonValueKind.String &&
-                string.Equals(runtimeStatus.GetString(), expectedRuntimeStatus, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            if (runtimeStatus.ValueKind == JsonValueKind.Number &&
-                runtimeStatus.TryGetInt32(out int ordinal) &&
-                ((ordinal == 3 && string.Equals(expectedRuntimeStatus, "Completed", StringComparison.OrdinalIgnoreCase)) ||
-                 (ordinal == 5 && string.Equals(expectedRuntimeStatus, "Failed", StringComparison.OrdinalIgnoreCase))))
-            {
-                return true;
-            }
+            return true;
         }
 
         return string.Equals(expectedRuntimeStatus, "Completed", StringComparison.OrdinalIgnoreCase) &&
             root.TryGetProperty("isWorkflowCompleted", out JsonElement completed) &&
             completed.ValueKind == JsonValueKind.True;
     }
+
+    private static bool TryReadRuntimeStatus(string payload, out string runtimeStatus)
+    {
+        using JsonDocument document = JsonDocument.Parse(payload);
+        return TryReadRuntimeStatus(document.RootElement, out runtimeStatus);
+    }
+
+    private static bool TryReadRuntimeStatus(JsonElement root, out string runtimeStatus)
+    {
+        if (root.TryGetProperty("runtimeStatus", out JsonElement value))
+        {
+            if (value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()))
+            {
+                runtimeStatus = value.GetString()!;
+                return true;
+            }
+
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int ordinal))
+            {
+                runtimeStatus = ordinal switch
+                {
+                    3 => "Completed",
+                    5 => "Failed",
+                    6 => "Canceled",
+                    7 => "Terminated",
+                    _ => string.Empty,
+                };
+                return runtimeStatus.Length > 0;
+            }
+        }
+
+        runtimeStatus = string.Empty;
+        return false;
+    }
+
+    private static bool IsTerminalRuntimeStatus(string runtimeStatus)
+        => string.Equals(runtimeStatus, "Completed", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(runtimeStatus, "Failed", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(runtimeStatus, "Canceled", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(runtimeStatus, "Terminated", StringComparison.OrdinalIgnoreCase);
 
     private static CancellationTokenSource CreateWaitCancellation(
         TimeSpan? timeout,

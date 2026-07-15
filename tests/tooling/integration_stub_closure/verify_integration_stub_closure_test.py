@@ -127,6 +127,99 @@ class VerifyIntegrationStubClosureTests(unittest.TestCase):
                     priority_originals=set(),
                 )
 
+    def test_verify_closure_rejects_runnable_no_op_target_even_when_trx_passed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = "Example.Tests.FalsePassTests.Empty"
+            targets = self._write_targets(root, [target])
+            self._write_source(
+                root,
+                """
+                namespace Example.Tests;
+                public sealed class FalsePassTests
+                {
+                    [Fact]
+                    public void Empty() { /* scenario only */ }
+                }
+                """,
+            )
+            results = self._write_trx(root, [(target, "Passed")])
+
+            with self.assertRaisesRegex(MODULE.VerificationError, "assertion-free no-op body"):
+                MODULE.verify_closure(
+                    targets,
+                    root / "tests" / "Hexalith.Memories.IntegrationTests",
+                    root / "deferred-work.md",
+                    results,
+                    expected_count=1,
+                    priority_originals=set(),
+                )
+
+    def test_verify_closure_rejects_nonaccepted_deferred_entry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = "Example.Tests.DeferredTests.Blocked"
+            targets = self._write_targets(root, [target])
+            self._write_source(
+                root,
+                """
+                namespace Example.Tests;
+                public sealed class DeferredTests
+                {
+                    [Theory(DisplayName = "blocked", Skip = "26.3-EXAMPLE: current blocker. Owner: test owner. Unskip when: seam exists.")]
+                    [InlineData(1)]
+                    public void Blocked(int value) { }
+                }
+                """,
+            )
+            deferred = self._write_deferred(root, "26.3-EXAMPLE", status="resolved")
+            results = self._write_trx(root, [(target, "NotExecuted")])
+
+            with self.assertRaisesRegex(MODULE.VerificationError, "status must be accepted"):
+                MODULE.verify_closure(
+                    targets,
+                    root / "tests" / "Hexalith.Memories.IntegrationTests",
+                    deferred,
+                    results,
+                    expected_count=1,
+                    priority_originals=set(),
+                )
+
+    def test_verify_closure_rejects_deferred_entry_without_owner_or_reopen_trigger(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            target = "Example.Tests.DeferredTests.Blocked"
+            targets = self._write_targets(root, [target])
+            self._write_source(
+                root,
+                """
+                namespace Example.Tests;
+                public sealed class DeferredTests
+                {
+                    [Fact(Skip = "26.3-EXAMPLE: current blocker. Owner: test owner. Unskip when: seam exists.")]
+                    public void Blocked() { }
+                }
+                """,
+            )
+            deferred = root / "deferred-work.md"
+            deferred.write_text(
+                "- ID: 26.3-EXAMPLE\n- Status: accepted\n- Rationale: missing seam\n",
+                encoding="utf-8",
+            )
+            results = self._write_trx(root, [(target, "NotExecuted")])
+
+            with self.assertRaises(MODULE.VerificationError) as raised:
+                MODULE.verify_closure(
+                    targets,
+                    root / "tests" / "Hexalith.Memories.IntegrationTests",
+                    deferred,
+                    results,
+                    expected_count=1,
+                    priority_originals=set(),
+                )
+            self.assertIn("rationale must name Owner", str(raised.exception))
+            self.assertIn("must define a Re-open trigger", str(raised.exception))
+
     @staticmethod
     def _write_targets(root: Path, rows: list[str]) -> Path:
         path = root / "targets.txt"
@@ -141,9 +234,15 @@ class VerifyIntegrationStubClosureTests(unittest.TestCase):
         return path
 
     @staticmethod
-    def _write_deferred(root: Path, entry_id: str) -> Path:
+    def _write_deferred(root: Path, entry_id: str, status: str = "accepted") -> Path:
         path = root / "deferred-work.md"
-        path.write_text(f"- ID: {entry_id}\n- Status: accepted\n", encoding="utf-8")
+        path.write_text(
+            f"- ID: {entry_id}\n"
+            f"- Status: {status}\n"
+            "- Re-open trigger: the deterministic seam exists.\n"
+            "- Rationale: The seam is currently unavailable. Owner: test owner.\n",
+            encoding="utf-8",
+        )
         return path
 
     @staticmethod

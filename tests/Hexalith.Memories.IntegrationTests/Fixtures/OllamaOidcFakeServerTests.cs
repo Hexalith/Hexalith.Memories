@@ -137,6 +137,15 @@ public sealed class OllamaOidcFakeServerTests
     }
 
     [Fact]
+    public void Story26_3_FaultPlan_ShouldRejectUndefinedStatusAbove599()
+    {
+        ArgumentOutOfRangeException exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => new EmbeddingProviderFaultPlan((HttpStatusCode)600, failureCount: 1));
+
+        exception.ParamName.ShouldBe("statusCode");
+    }
+
+    [Fact]
     public void Story14_4_AC4_DeleteFixtureOwnedTempDaprDirectory_ShouldRemoveLeafAndConfigOnNormalDispose()
     {
         string fixtureAppId = $"memories-it-{Guid.NewGuid():N}";

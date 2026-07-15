@@ -547,7 +547,7 @@ public sealed class PipelinePersistenceIntegrationTests
                     return;
                 }
 
-                if (TryReadNamedRuntimeStatus(lastPayload, out string? actualRuntimeStatus)
+                if (TryReadRuntimeStatus(lastPayload, out string? actualRuntimeStatus)
                     && IsTerminalRuntimeStatus(actualRuntimeStatus))
                 {
                     string diagnostics = failureDiagnostics is null
@@ -653,15 +653,29 @@ public sealed class PipelinePersistenceIntegrationTests
     private static string FormatCounts(CaseIngestionCounts counts)
         => $"queued={counts.Queued}, extracting={counts.Extracting}, embedding={counts.Embedding}, indexing={counts.Indexing}";
 
-    private static bool TryReadNamedRuntimeStatus(string payload, out string runtimeStatus)
+    private static bool TryReadRuntimeStatus(string payload, out string runtimeStatus)
     {
         using JsonDocument document = JsonDocument.Parse(payload);
-        if (document.RootElement.TryGetProperty("runtimeStatus", out JsonElement value)
-            && value.ValueKind == JsonValueKind.String
-            && !string.IsNullOrWhiteSpace(value.GetString()))
+        if (document.RootElement.TryGetProperty("runtimeStatus", out JsonElement value))
         {
-            runtimeStatus = value.GetString()!;
-            return true;
+            if (value.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(value.GetString()))
+            {
+                runtimeStatus = value.GetString()!;
+                return true;
+            }
+
+            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int ordinal))
+            {
+                runtimeStatus = ordinal switch
+                {
+                    3 => "Completed",
+                    5 => "Failed",
+                    6 => "Canceled",
+                    7 => "Terminated",
+                    _ => string.Empty,
+                };
+                return runtimeStatus.Length > 0;
+            }
         }
 
         runtimeStatus = string.Empty;
@@ -679,23 +693,10 @@ public sealed class PipelinePersistenceIntegrationTests
         using JsonDocument document = JsonDocument.Parse(payload);
         JsonElement root = document.RootElement;
 
-        if (root.TryGetProperty("runtimeStatus", out JsonElement runtimeStatus))
+        if (TryReadRuntimeStatus(payload, out string actualRuntimeStatus)
+            && string.Equals(actualRuntimeStatus, expectedRuntimeStatus, StringComparison.OrdinalIgnoreCase))
         {
-            if (runtimeStatus.ValueKind == JsonValueKind.String
-                && string.Equals(runtimeStatus.GetString(), expectedRuntimeStatus, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            // Dapr Workflow `OrchestrationRuntimeStatus.Completed` = 3 — some payloads emit the numeric ordinal
-            // instead of the enum name. Treat only `Completed` as equivalent to avoid cross-status false positives.
-            if (runtimeStatus.ValueKind == JsonValueKind.Number
-                && runtimeStatus.TryGetInt32(out int ordinal)
-                && ordinal == 3
-                && string.Equals(expectedRuntimeStatus, "Completed", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
+            return true;
         }
 
         if (string.Equals(expectedRuntimeStatus, "Completed", StringComparison.OrdinalIgnoreCase)

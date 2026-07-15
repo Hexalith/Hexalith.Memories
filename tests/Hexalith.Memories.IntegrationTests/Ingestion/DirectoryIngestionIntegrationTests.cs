@@ -34,21 +34,32 @@ public sealed class DirectoryIngestionIntegrationTests
 
         try
         {
-            string[] supported = ["document.md", "notes.txt", "page.html", "rows.csv", "payload.json"];
+            string[] supported = ["document.md", "sample.pdf", "notes.txt", "page.html", "payload.json"];
             string[] unsupported = ["program.exe", "archive.iso"];
             foreach (string file in supported)
             {
+                string destination = Path.Combine(directory, file);
+                if (Path.GetExtension(file).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Copy(
+                        Path.Combine(
+                            RepositoryRootLocator.Resolve(),
+                            "tests",
+                            "Hexalith.Memories.Server.Tests",
+                            "Fixtures",
+                            "sample.pdf"),
+                        destination);
+                    continue;
+                }
+
                 string content = Path.GetExtension(file) switch
                 {
                     ".md" => $"# Directory ingestion\n\nCanary {unique}.",
                     ".html" => $"<html><body>Directory canary {unique}.</body></html>",
-                    ".csv" => $"kind,value\ncanary,{unique}",
                     ".json" => $$"""{"canary":"{{unique}}"}""",
                     _ => $"Directory ingestion canary {unique} from {file}.",
                 };
-                await File.WriteAllTextAsync(
-                    Path.Combine(directory, file),
-                    content);
+                await File.WriteAllTextAsync(destination, content);
             }
 
             foreach (string file in unsupported)

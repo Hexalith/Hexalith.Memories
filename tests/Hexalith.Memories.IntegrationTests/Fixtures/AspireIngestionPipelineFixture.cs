@@ -46,6 +46,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointProbeTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan EndpointPollInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan DockerVolumeCleanupTimeout = TimeSpan.FromSeconds(30);
 
     private DistributedApplication? _app;
     private IDistributedApplicationTestingBuilder? _builder;
@@ -660,18 +661,39 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             ?? throw new InvalidOperationException("The Aspire topology has not been started.");
         using CancellationTokenSource commandCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         commandCts.CancelAfter(ResourceHealthyTimeout);
+        bool stopCommandSucceeded = false;
 
-        await ExecuteResourceCommandAsync(
-            app,
-            "memories-graphs",
-            KnownResourceCommands.StopCommand,
-            commandCts.Token).ConfigureAwait(false);
-        _ = await app.ResourceNotifications
-            .WaitForResourceAsync(
+        try
+        {
+            await ExecuteResourceCommandAsync(
+                app,
                 "memories-graphs",
-                [KnownResourceStates.Exited, KnownResourceStates.Finished],
-                commandCts.Token)
-            .ConfigureAwait(false);
+                KnownResourceCommands.StopCommand,
+                commandCts.Token).ConfigureAwait(false);
+            stopCommandSucceeded = true;
+            _ = await app.ResourceNotifications
+                .WaitForResourceAsync(
+                    "memories-graphs",
+                    [KnownResourceStates.Exited, KnownResourceStates.Finished],
+                    commandCts.Token)
+                .ConfigureAwait(false);
+        }
+        catch (Exception stopException) when (stopCommandSucceeded)
+        {
+            try
+            {
+                await RecoverFalkorDbAfterPartialStopAsync(app).ConfigureAwait(false);
+            }
+            catch (Exception recoveryException)
+            {
+                throw new AggregateException(
+                    "FalkorDB stop convergence failed after Aspire accepted the command, and automatic recovery also failed.",
+                    stopException,
+                    recoveryException);
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Reads the durable tenant registry entry directly through the DAPR state API.</summary>
@@ -719,6 +741,41 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             EndpointPollInterval,
             _logProvider.Count,
             commandCts.Token).ConfigureAwait(false);
+    }
+
+    private async Task RecoverFalkorDbAfterPartialStopAsync(DistributedApplication app)
+    {
+        using CancellationTokenSource recoveryCts = new(ResourceHealthyTimeout);
+        try
+        {
+            _ = await app.ResourceNotifications
+                .WaitForResourceAsync(
+                    "memories-graphs",
+                    [KnownResourceStates.Exited, KnownResourceStates.Finished],
+                    recoveryCts.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (
+            app.ResourceNotifications.TryGetCurrentState("memories-graphs", out ResourceEvent? current) &&
+            string.Equals(current?.Snapshot.State?.Text, KnownResourceStates.Running, StringComparison.Ordinal))
+        {
+            using CancellationTokenSource readinessCts = new(ResourceHealthyTimeout);
+            _ = await app.ResourceNotifications
+                .WaitForResourceHealthyAsync("memories-graphs", readinessCts.Token)
+                .ConfigureAwait(false);
+            await WaitForFalkorConnectionAsync(readinessCts.Token).ConfigureAwait(false);
+            await WaitForEndpointAsync(
+                MemoriesClient,
+                "/ready",
+                [HttpStatusCode.OK],
+                ResourceHealthyTimeout,
+                EndpointPollInterval,
+                _logProvider.Count,
+                readinessCts.Token).ConfigureAwait(false);
+            return;
+        }
+
+        await StartFalkorDbContainerAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     /// <summary>Stops the Dapr sidecar process for the Memories Server resource.</summary>
@@ -1254,7 +1311,37 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         using Process process = Process.GetProcessById(processId);
         process.Kill(entireProcessTree: false);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // The process exited between the state check and Kill.
+                }
+            }
+
+            try
+            {
+                await process.WaitForExitAsync(CancellationToken.None)
+                    .WaitAsync(TimeSpan.FromSeconds(5))
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                // Preserve the caller's cancellation; teardown diagnostics identify the command.
+            }
+
+            throw;
+        }
     }
 
     private static async Task ExecuteResourceCommandAsync(
@@ -1380,13 +1467,20 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         try
         {
+            using CancellationTokenSource cleanupCts = new(DockerVolumeCleanupTimeout);
             _ = await RunProcessCommandAsync(
                 "docker",
                 $"volume rm {volumeName}",
-                CancellationToken.None).ConfigureAwait(false);
+                cleanupCts.Token).ConfigureAwait(false);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("No such volume", StringComparison.OrdinalIgnoreCase))
         {
+        }
+        catch (OperationCanceledException ex)
+        {
+            throw new TimeoutException(
+                $"Docker volume removal timed out after {DockerVolumeCleanupTimeout} for fixture-owned volume '{volumeName}'.",
+                ex);
         }
     }
 
