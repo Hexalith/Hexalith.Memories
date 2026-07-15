@@ -58,6 +58,24 @@ try {
         $projectPaths = @($null)
     }
 
+    $resultsRoot = $null
+    if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
+        $repoRootFull = [System.IO.Path]::GetFullPath($repoRoot).TrimEnd(
+            [System.IO.Path]::DirectorySeparatorChar,
+            [System.IO.Path]::AltDirectorySeparatorChar)
+        $resultsRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $ResultsDirectory))
+        $repoPrefix = $repoRootFull + [System.IO.Path]::DirectorySeparatorChar
+        if ($resultsRoot -eq $repoRootFull -or
+            -not $resultsRoot.StartsWith($repoPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "-ResultsDirectory must resolve beneath the repository root."
+        }
+
+        if (Test-Path -LiteralPath $resultsRoot) {
+            Remove-Item -LiteralPath $resultsRoot -Recurse -Force
+        }
+        New-Item -ItemType Directory -Force -Path $resultsRoot | Out-Null
+    }
+
     foreach ($projectPath in $projectPaths) {
         $arguments = @('test')
         $effectiveFilter = if ($Filter -eq 'Category!=Integration') {
@@ -85,6 +103,7 @@ try {
         }
 
         $trxPath = $null
+        $expectedExecutedTests = $null
         if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
             $safeName = if ([string]::IsNullOrWhiteSpace($projectPath)) {
                 'solution'
@@ -93,7 +112,7 @@ try {
                 [System.IO.Path]::GetFileNameWithoutExtension($projectPath)
             }
 
-            $projectResultsDirectory = Join-Path $repoRoot (Join-Path $ResultsDirectory $safeName)
+            $projectResultsDirectory = Join-Path $resultsRoot $safeName
             New-Item -ItemType Directory -Force -Path $projectResultsDirectory | Out-Null
             $trxPath = Join-Path $projectResultsDirectory "$safeName.trx"
             $arguments += @(
@@ -102,6 +121,9 @@ try {
                 '--results-directory',
                 $projectResultsDirectory
             )
+            if ($Filter -eq 'Category=Benchmark') {
+                $expectedExecutedTests = 17
+            }
         }
 
         if ($Coverage) {
@@ -110,9 +132,7 @@ try {
 
         Write-Host ("dotnet {0}" -f ($arguments -join ' '))
         & dotnet @arguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "dotnet test failed ($LASTEXITCODE)"
-        }
+        $testExitCode = $LASTEXITCODE
 
         if ($trxPath) {
             if (-not (Test-Path -LiteralPath $trxPath)) {
@@ -121,11 +141,20 @@ try {
 
             [xml]$trx = Get-Content -LiteralPath $trxPath
             $executed = [int]$trx.TestRun.ResultSummary.Counters.executed
+            $notExecuted = [int]$trx.TestRun.ResultSummary.Counters.notExecuted
             if ($executed -le 0) {
                 throw "Test project '$projectPath' executed zero tests for filter '$effectiveFilter'."
             }
+            if ($null -ne $expectedExecutedTests -and
+                ($executed -ne $expectedExecutedTests -or $notExecuted -ne 0)) {
+                throw "Test project '$projectPath' must execute exactly $expectedExecutedTests tests with none skipped; TRX reported executed=$executed, notExecuted=$notExecuted."
+            }
 
             Write-Host "Executed $executed tests for $projectPath"
+        }
+
+        if ($testExitCode -ne 0) {
+            throw "dotnet test failed ($testExitCode)"
         }
     }
 }

@@ -28,5 +28,24 @@
     "Hexalith.Memories.Cli": "src/Hexalith.Memories.Cli/Program.cs",
     "Hexalith.Memories.Mcp": "src/Hexalith.Memories.Mcp/Program.cs",
     "Hexalith.Memories.Server": "src/Hexalith.Memories.Server/Program.cs"
-  }
+  },
+  "assemblySourcePrefixes": {
+    "Hexalith.Memories.Cli": ["src/Hexalith.Memories.Cli"],
+    "Hexalith.Memories.Client.Rest": ["src/Hexalith.Memories.Client.Rest"],
+    "Hexalith.Memories.Contracts": ["src/Hexalith.Memories.Contracts"],
+    "Hexalith.Memories.EventStore": ["src/Hexalith.Memories.EventStore"],
+    "Hexalith.Memories.Mcp": ["src/Hexalith.Memories.Mcp"],
+    "Hexalith.Memories.Server": ["src/Hexalith.Memories.Server"],
+    "Hexalith.Memories.ServiceDefaults": ["src/Hexalith.Memories.ServiceDefaults"],
+    "Hexalith.Memories.Telemetry": ["src/Hexalith.Memories.Telemetry"],
+    "Hexalith.Memories.Web": ["src/Hexalith.Memories.Web"]
+  },
+  "requiredReportProjects": [
+    "Hexalith.Memories.Contracts.Tests",
+    "Hexalith.Memories.Server.Tests",
+    "Hexalith.Memories.Cli.Tests",
+    "Hexalith.Memories.Mcp.Tests",
+    "Hexalith.Memories.EventStore.Tests",
+    "Hexalith.Memories.Web.Tests"
+  ]
 }

@@ -68,6 +68,8 @@ def write_fake_pwsh(directory: Path) -> None:
                 )
 
             if script_path == "validate-release-packages.ps1":
+                if "-PackageDirectory" in args and os.environ.get("FAKE_PACKAGE_VALIDATION_STATUS") == "failed":
+                    sys.exit(42)
                 sys.exit(0)
 
             if script_path == "publish-nuget.ps1":
@@ -142,7 +144,13 @@ def write_fake_dotnet(directory: Path) -> None:
     )
 
 
-def make_environment(root: Path, *, nuget_status: str = "succeeded", container_status: str = "succeeded") -> tuple[dict[str, str], Path]:
+def make_environment(
+    root: Path,
+    *,
+    nuget_status: str = "succeeded",
+    container_status: str = "succeeded",
+    package_validation_status: str = "succeeded",
+) -> tuple[dict[str, str], Path]:
     fake_bin = root / "bin"
     fake_bin.mkdir()
     write_fake_pwsh(fake_bin)
@@ -155,6 +163,7 @@ def make_environment(root: Path, *, nuget_status: str = "succeeded", container_s
     env["FAKE_RELEASE_VERSION"] = VERSION
     env["FAKE_NUGET_STATUS"] = nuget_status
     env["FAKE_CONTAINER_STATUS"] = container_status
+    env["FAKE_PACKAGE_VALIDATION_STATUS"] = package_validation_status
     env["FAKE_PWSH"] = str(fake_bin / "pwsh")
     return env, log_path
 
@@ -313,6 +322,45 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             self.assertNotIn("publish-containers.ps1", child_scripts)
             dotnet_commands = [entry["args"][0] for entry in entries if entry["command"] == "dotnet"]
             self.assertEqual(["build"] + ["pack"] * 9, dotnet_commands)
+
+    def test_pack_release_package_only_propagates_generated_validation_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            env, log_path = make_environment(root, package_validation_status="failed")
+            package_output = root / "packages"
+
+            result = subprocess.run(
+                [
+                    shutil.which("pwsh") or "pwsh",
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-File",
+                    str(PACK_SCRIPT),
+                    "-Version",
+                    VERSION,
+                    "-OutputDirectory",
+                    str(package_output),
+                    "-PackageOnly",
+                    "-PowerShellExecutable",
+                    env["FAKE_PWSH"],
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("Generated package validation failed", result.stdout + result.stderr)
+            child_scripts = [
+                entry["script"] for entry in read_log(log_path) if entry["command"] == "pwsh"
+            ]
+            self.assertEqual(
+                ["validate-release-packages.ps1", "validate-release-packages.ps1"],
+                child_scripts,
+            )
+            self.assertNotIn("publish-containers.ps1", child_scripts)
 
 
 if __name__ == "__main__":

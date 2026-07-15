@@ -44,6 +44,24 @@ class CoverageContractTests(unittest.TestCase):
             },
             configuration["requiredFiles"],
         )
+        self.assertEqual(
+            {
+                assembly: [f"src/{assembly}"]
+                for assembly in configuration["requiredAssemblies"]
+            },
+            configuration["assemblySourcePrefixes"],
+        )
+        self.assertEqual(
+            [
+                "Hexalith.Memories.Contracts.Tests",
+                "Hexalith.Memories.Server.Tests",
+                "Hexalith.Memories.Cli.Tests",
+                "Hexalith.Memories.Mcp.Tests",
+                "Hexalith.Memories.EventStore.Tests",
+                "Hexalith.Memories.Web.Tests",
+            ],
+            configuration["requiredReportProjects"],
+        )
 
     def test_configuration_is_not_excluded_from_version_control(self):
         result = subprocess.run(
@@ -74,6 +92,7 @@ class CoverageContractTests(unittest.TestCase):
 
     def test_unit_contract_job_collects_validates_and_retains_coverage(self):
         job = self._read_workflow_job(CI_WORKFLOW_PATH, "test-unit-contract")
+        steps = self._read_workflow_steps(job)
 
         timeout_match = re.search(r"^    timeout-minutes: (\d+)$", job, re.MULTILINE)
         self.assertIsNotNone(timeout_match)
@@ -90,19 +109,33 @@ class CoverageContractTests(unittest.TestCase):
             "python3 tools/validate-coverage.py --results-directory "
             "TestResults/test-unit-contract --config tests/tooling/coverage_gate/line-coverage-gate.json"
         )
-        self.assertIn(fixture_command, job)
-        self.assertIn(collection_command, job)
-        self.assertIn(validation_command, job)
-        self.assertLess(job.index(fixture_command), job.index(collection_command))
-        self.assertLess(job.index(collection_command), job.index(validation_command))
-        upload = job[job.index("- name: Upload unit and contract test results") :]
+        fixture = self._assert_blocking_run_step(
+            steps,
+            "Run coverage gate fixtures",
+            fixture_command,
+        )
+        collection = self._assert_blocking_run_step(
+            steps,
+            "Run Docker-free unit and contract tests",
+            collection_command,
+        )
+        validation = self._assert_blocking_run_step(
+            steps,
+            "Validate scoped line coverage",
+            validation_command,
+        )
+        self.assertLess(job.index(fixture), job.index(collection))
+        self.assertLess(job.index(collection), job.index(validation))
+        upload = steps["Upload unit and contract test results"]
         self.assertIn("if: always()", upload)
+        self.assertIn("uses: actions/upload-artifact@v7", upload)
         self.assertIn("path: TestResults/test-unit-contract/**", upload)
         self.assertIn("if-no-files-found: error", upload)
         self.assertIn("retention-days: 14", upload)
 
     def test_unit_contract_job_runs_real_package_topology_gate_without_publication(self):
         job = self._read_workflow_job(CI_WORKFLOW_PATH, "test-unit-contract")
+        steps = self._read_workflow_steps(job)
 
         release_fixtures = (
             'python3 -m unittest discover -s tests/tooling/release_packages -p "*_test.py"'
@@ -114,17 +147,30 @@ class CoverageContractTests(unittest.TestCase):
             "pwsh ./tools/pack-release.ps1 -Version 0.0.264 "
             "-OutputDirectory artifacts/packages/ci -PackageOnly"
         )
-        self.assertIn(release_fixtures, job)
-        self.assertIn(publish_fixtures, job)
-        self.assertIn(pack_command, job)
-        self.assertLess(job.index(release_fixtures), job.index(pack_command))
-        self.assertLess(job.index(publish_fixtures), job.index(pack_command))
+        release_step = self._assert_blocking_run_step(
+            steps,
+            "Run release package fixtures",
+            release_fixtures,
+        )
+        publish_step = self._assert_blocking_run_step(
+            steps,
+            "Run NuGet publish fixtures",
+            publish_fixtures,
+        )
+        pack_step = self._assert_blocking_run_step(
+            steps,
+            "Pack and validate release packages",
+            pack_command,
+        )
+        self.assertLess(job.index(release_step), job.index(pack_step))
+        self.assertLess(job.index(publish_step), job.index(pack_step))
         self.assertNotIn("dotnet nuget push", job)
         self.assertNotIn("tools/publish-nuget.ps1 -PackageDirectory", job)
 
     def test_nightly_benchmark_job_runs_complete_project_and_retains_both_evidence_types(self):
         workflow = NIGHTLY_WORKFLOW_PATH.read_text(encoding="utf-8")
         job = self._read_workflow_job(NIGHTLY_WORKFLOW_PATH, "benchmark")
+        steps = self._read_workflow_steps(job)
 
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("cron: '0 3 * * *'", workflow)
@@ -136,18 +182,21 @@ class CoverageContractTests(unittest.TestCase):
         self.assertIn("dotnet restore Hexalith.Memories.slnx -p:Configuration=Release", job)
         self.assertIn("dotnet build Hexalith.Memories.slnx --configuration Release --no-restore", job)
         self.assertIn("docker info", job)
-        self.assertIn(
+        self._assert_blocking_run_step(
+            steps,
+            "Run complete NDCG benchmark project",
             'bash ./tools/test.sh --filter "Category=Benchmark" --configuration Release '
             "--no-build --results-directory TestResults/benchmark",
-            job,
         )
-        self.assertNotIn("continue-on-error", job)
+        self.assertNotIn("continue-on-error", steps["Run complete NDCG benchmark project"])
         self.assertNotIn("dotnet test", job)
         self.assertNotIn("dapr init", job)
-        self.assertEqual(2, job.count("uses: actions/upload-artifact@v7"))
-        self.assertEqual(2, job.count("if: always()"))
-        self.assertEqual(2, job.count("if-no-files-found: error"))
-        self.assertEqual(2, job.count("retention-days: 14"))
+        uploads = [steps["Upload benchmark TRX"], steps["Upload benchmark quality result"]]
+        for upload in uploads:
+            self.assertIn("uses: actions/upload-artifact@v7", upload)
+            self.assertIn("if: always()", upload)
+            self.assertIn("if-no-files-found: error", upload)
+            self.assertIn("retention-days: 14", upload)
         self.assertIn(
             "TestResults/benchmark/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.trx",
             job,
@@ -205,6 +254,28 @@ class CoverageContractTests(unittest.TestCase):
         if match is None:
             raise AssertionError(f"workflow job {job_name!r} was not found in {path}")
         return f"  {job_name}:\n{match.group('body')}"
+
+    @staticmethod
+    def _read_workflow_steps(job: str) -> dict[str, str]:
+        matches = list(re.finditer(r"(?m)^      - name: (?P<name>[^\n]+)\n", job))
+        steps: dict[str, str] = {}
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(job)
+            steps[match.group("name").strip()] = job[match.start():end]
+        return steps
+
+    def _assert_blocking_run_step(
+        self,
+        steps: dict[str, str],
+        name: str,
+        command: str,
+    ) -> str:
+        self.assertIn(name, steps)
+        step = steps[name]
+        self.assertIn(f"run: {command}", step)
+        self.assertNotRegex(step, r"(?m)^        continue-on-error:")
+        self.assertNotRegex(step, r"(?m)^        if:")
+        return step
 
 
 if __name__ == "__main__":

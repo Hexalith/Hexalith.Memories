@@ -4,7 +4,7 @@ baseline_commit: 1ce41926feca03bdd4bbe74e053db45535980421
 
 # Story 26.4: Coverage Gating & Benchmark Lane
 
-Status: review
+Status: done
 
 <!-- Epic 26 — Test, Deployment & Operational Readiness. CI/tooling-only story closing audit finding A42 plus the explicitly assigned Epic 25.8 PR-package carry-forward. Do not change retrieval behavior, benchmark data, package versions, product code, or submodule pointers to make a gate pass. -->
 
@@ -103,6 +103,23 @@ Story 26.3 supplies the meaningful failure-mode baseline for this gate. It is in
   - [x] Run the release-package and publish-NuGet fixtures; pack the synthetic version; require nine validated packages from the real `-PackageDirectory` path; and confirm no publish command or credential is used.
   - [x] With Docker, run the Category=Benchmark project through the wrapper and retain TRX/JSON. Require 17 executed tests; record the expected 16 passed/1 failed and current 75% thesis result as a known pre-existing red unless separately owned work has already corrected it. Do not absorb that correction into this diff.
   - [x] Run `git diff --check`; confirm no product source, benchmark corpus/algorithm, package version, submodule pointer, generated build artifact, or unrelated story tracking file entered the diff.
+
+### Review Findings
+
+- [x] [Review][Patch] Reject out-of-repository Cobertura source roots [tools/validate-coverage.py:134]
+- [x] [Review][Patch] Validate coverage configuration types and finite thresholds [tools/validate-coverage.py:181]
+- [x] [Review][Patch] Require complete nonempty coverage evidence for every inventory project [tools/validate-coverage.py:386]
+- [x] [Review][Patch] Bind assembly evidence to the assembly's declared source scope [tools/validate-coverage.py:316]
+- [x] [Review][Patch] Enforce exactly 17 executed benchmark tests from TRX evidence [tools/test.sh:155]
+- [x] [Review][Patch] Prevent stale coverage attachments from contaminating repeated runs [tools/test.sh:107]
+- [x] [Review][Patch] Emit per-assembly diagnostics when coverage is below threshold [tools/validate-coverage.py:495]
+- [x] [Review][Patch] Structurally verify that workflow gates remain executable and blocking [tests/tooling/coverage_gate/coverage_contract_test.py:93]
+- [x] [Review][Patch] Resolve filenames across multiple valid Cobertura source roots [tools/validate-coverage.py:134]
+- [x] [Review][Patch] Test the coverage validator's CLI exit-code contract [tests/tooling/coverage_gate/validate_coverage_test.py:356]
+- [x] [Review][Patch] Test package-only validation failure propagation [tests/tooling/publish_containers/release_orchestration_test.py:326]
+- [x] [Review][Patch] Verify mapped absolute POSIX and Windows coverage paths [tests/tooling/coverage_gate/validate_coverage_test.py:335]
+- [x] [Review][Patch] Pin the benchmark thesis and reproducibility assertions, not only their names [tests/tooling/coverage_gate/test_runner_contract_test.py:45]
+- [x] [Review][Patch] Reconcile the stale story completion status [26-4-coverage-gating-and-benchmark-lane.md:306]
 
 ## File Scope
 
@@ -286,7 +303,7 @@ Follow `_bmad-output/project-context.md` and `references/Hexalith.AI.Tools/hexal
 
 ## Story Completion Status
 
-- Status set to `ready-for-dev`.
+- Status set to `done`.
 - Ultimate context engine analysis completed - comprehensive developer guide created.
 - A42 and the assigned Epic 25 carry-forward are fully contexted with a measured 78.49% baseline, a 78.0% fail-closed ratchet, composition-root guards, real package/topology PR validation, whole-project benchmark execution, and a separately tracked Epic 26 readiness action for the current 75% thesis failure.
 
@@ -310,6 +327,7 @@ GPT-5 Codex
 - 2026-07-13 Task 7 red/green: the documentation contract first failed on stale coverage/CI guidance. Final 20 tooling contracts parse JSON/XML, scope assertions to specific workflow jobs, execute both wrappers through a fake test host, pin the benchmark inventory/count/assertion names, and guard contributor commands, thresholds, artifacts, and six-project inventory. Full Docker-free regression remains 4,374 passed/1 skipped/0 failed.
 - 2026-07-13 Task 8 gate evidence: 21 coverage/workflow/runsettings/runner/documentation contracts pass; the Release solution build completed with 0 warnings/errors; the clean six-project coverage lane completed 4,374 passed/1 skipped/0 failed and unioned six unique plus six duplicate attachments to 25,990/33,114 (78.49%), including 56/49/10 executable Server/CLI/MCP `Program.cs` lines. Release-package, publish-NuGet, and release-orchestration fixtures completed 28/8/10 passes; package-only mode validated exactly nine stable `0.0.264` packages through the real `-PackageDirectory` path without publication. Docker executed all 17 benchmark tests and retained TRX/JSON with the known pre-existing result of 16 passed/1 thesis failure, 6/8 wins (75%), `thesisValidated=false`. `git diff --check` is clean, generated evidence remains ignored, and the version-controlled gate configuration was moved into the allowed `tests/tooling/coverage_gate/**` scope after an ignore guard exposed the repository's `coverage*.json` rule.
 - 2026-07-13 final review regression: the post-implementation six-project Docker-free inventory again completed 4,374 passed/1 expected skip/0 failed with nonzero execution verified from every TRX.
+- 2026-07-15 adversarial review remediation: closed all 14 patch findings. Coverage evidence now rejects external/ambiguous roots, malformed configuration, assembly/source mismatches, stale attachments, and missing/empty project reports; below-threshold runs retain per-assembly console/GitHub diagnostics. Both wrappers clean repository-local result roots and require benchmark TRX evidence of exactly 17 executed/0 skipped tests before propagating the known thesis failure. Evidence: coverage/workflow/runner fixtures 30/30, release orchestration fixtures 5/5, Docker-free inventory 4,428 passed/1 expected skip/0 failed, hardened union 26,721/34,191 (78.15%) with six reports and all composition roots, Release solution build 0 warnings/errors, and `git diff --check` clean.
 
 ### Completion Notes List
 
@@ -322,6 +340,7 @@ GPT-5 Codex
 - Task 6 complete: added the bounded nightly NDCG job, inventory-only exact selector behavior in both wrappers, separate fail-closed TRX/JSON artifacts, and executable 17-test drift proof while preserving the known 75% quality failure.
 - Task 7 complete: added durable workflow/runsettings/config/inventory/runner/documentation guards and reconciled local/CI guidance for coverage, package-only validation, benchmark execution, thresholds, Docker, and retained evidence.
 - Task 8 complete: executed and recorded every required gate, retained truthful coverage/package/benchmark evidence, confirmed the configured threshold and composition roots, and verified a scope-clean diff with no product, benchmark, version, submodule, generated-artifact, or publication changes.
+- Code review remediation complete: applied and verified all 14 adversarial findings; no decisions or deferred items remain, and four review claims were dismissed after call-path and Git-history verification.
 
 ### File List
 
@@ -345,3 +364,4 @@ GPT-5 Codex
 ## Change Log
 
 - 2026-07-13: Implemented blocking scoped coverage and package validation in PR CI, a fail-closed union coverage validator and drift guards, whole-project nightly benchmark execution with durable evidence, symmetric test-runner behavior, and updated contributor/test documentation. Verified the known benchmark quality result remains truthfully red at 75%.
+- 2026-07-15: Applied all adversarial review patches, hardening coverage trust boundaries and completeness, benchmark execution-count evidence, blocking workflow contracts, CLI/package failure propagation, repeated-run cleanup, and story status consistency.

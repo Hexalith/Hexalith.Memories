@@ -75,7 +75,9 @@ python tools/validate-coverage.py --results-directory TestResults/test-unit-cont
 ```
 
 `tests/tooling/coverage_gate/line-coverage-gate.json` is the single source for the **78.0%** minimum, production source
-scope, required assemblies, and Server/CLI/MCP composition-root evidence. The validator unions
+scope, required assemblies, six required project reports, and Server/CLI/MCP composition-root evidence. Each wrapper
+removes the requested repository-local results directory before starting, so repeated runs cannot union stale
+attachments. The validator unions
 Cobertura lines by normalized repository path and line number, deduplicates collector attachment
 copies, and fails on missing, malformed, incomplete, or below-threshold evidence. CI retains the TRX
 and per-project Cobertura files together in the `test-unit-contract-results` artifact for 14 days.
@@ -96,7 +98,8 @@ bash ./tools/test.sh --filter "Category=Benchmark" --configuration Release --no-
 
 Exact `Category=Benchmark` selects `tools/test-projects.benchmark.txt` but passes no trait filter to
 the test host, so all 17 tests run: 10 scorer tests, 4 untraited seeder tests, and 3 Testcontainers
-suite tests. Other filter expressions retain normal `dotnet test` filter semantics. The benchmark
+suite tests. Both wrappers verify from the generated TRX that exactly 17 tests executed with none skipped,
+even when the test host returns the known thesis failure. Other filter expressions retain normal `dotnet test` filter semantics. The benchmark
 remains a blocking quality gate: at least 80% of queries must favor hybrid retrieval and identical
 input runs must produce identical NDCG@10. Do not hide a failure with a narrower filter or retries.
 

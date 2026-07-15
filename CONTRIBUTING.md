@@ -208,7 +208,9 @@ python tools/validate-coverage.py --results-directory TestResults/test-unit-cont
 
 The checked-in coverage contract enforces at least 78.0% unioned line coverage across the required
 first-party production assemblies and requires executable evidence for the Server, CLI, and MCP
-composition roots.
+composition roots plus a nonempty Cobertura report from every inventoried test project. The wrappers
+clean the requested repository-local results directory before collection so old attachments cannot
+mask a regression.
 
 The Docker-free lane maps `Category!=Integration` to
 `Category!=Integration&Category!=Benchmark` and runs the shared inventory in
@@ -226,7 +228,8 @@ Web.Tests
 `Hexalith.Memories.TestHelpers` builds through the solution but is not a direct test target.
 `Hexalith.Memories.Benchmarks` is intentionally excluded from PR CI. Exact `Category=Benchmark`
 selects its one-project inventory but clears the effective trait filter so all 17 tests run, including
-the four untraited seeder tests. The lane requires Docker and preserves the blocking 80% hybrid-win
+the four untraited seeder tests. The wrappers require the resulting TRX to report exactly 17 executed
+tests and zero skipped tests, even when the test process returns the known thesis failure. The lane requires Docker and preserves the blocking 80% hybrid-win
 and identical-NDCG@10 reproducibility assertions.
 
 ### Sandbox test runner workaround

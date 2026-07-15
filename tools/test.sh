@@ -104,6 +104,17 @@ if [[ ${#PROJECTS[@]} -eq 0 ]]; then
   PROJECTS=("")
 fi
 
+RESULTS_ROOT=""
+if [[ -n "$RESULTS_DIRECTORY" ]]; then
+  if [[ "$RESULTS_DIRECTORY" == /* || "$RESULTS_DIRECTORY" =~ ^[A-Za-z]:[\\/] || "/$RESULTS_DIRECTORY/" == *"/../"* ]]; then
+    echo "--results-directory must be a repository-relative path without '..' segments." >&2
+    exit 1
+  fi
+  RESULTS_ROOT="$REPO_ROOT/${RESULTS_DIRECTORY#./}"
+  rm -rf -- "$RESULTS_ROOT"
+  mkdir -p "$RESULTS_ROOT"
+fi
+
 for project in "${PROJECTS[@]}"; do
   CMD=(dotnet test)
   EFFECTIVE_FILTER="$FILTER"
@@ -128,6 +139,7 @@ for project in "${PROJECTS[@]}"; do
   fi
 
   TRX_PATH=""
+  EXPECTED_EXECUTED_TESTS=""
   if [[ -n "$RESULTS_DIRECTORY" ]]; then
     if [[ -n "$project" ]]; then
       project_name="$(basename "$project" .csproj)"
@@ -135,10 +147,13 @@ for project in "${PROJECTS[@]}"; do
       project_name="solution"
     fi
 
-    project_results_directory="$REPO_ROOT/$RESULTS_DIRECTORY/$project_name"
+    project_results_directory="$RESULTS_ROOT/$project_name"
     mkdir -p "$project_results_directory"
     TRX_PATH="$project_results_directory/$project_name.trx"
     CMD+=(--logger "trx;LogFileName=$project_name.trx" --results-directory "$project_results_directory")
+    if [[ "$FILTER" == "Category=Benchmark" ]]; then
+      EXPECTED_EXECUTED_TESTS="17"
+    fi
   fi
 
   if [[ "$COVERAGE" == true ]]; then
@@ -146,22 +161,36 @@ for project in "${PROJECTS[@]}"; do
   fi
 
   echo "${CMD[*]}"
-  "${CMD[@]}"
+  test_exit_code=0
+  "${CMD[@]}" || test_exit_code=$?
 
   if [[ -n "$TRX_PATH" ]]; then
-    python3 - "$TRX_PATH" "$project" "$EFFECTIVE_FILTER" <<'PY'
+    python3 - "$TRX_PATH" "$project" "$EFFECTIVE_FILTER" "$EXPECTED_EXECUTED_TESTS" <<'PY'
 import sys
 import xml.etree.ElementTree as ET
 
-trx_path, project, test_filter = sys.argv[1], sys.argv[2], sys.argv[3]
+trx_path, project, test_filter, expected_text = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 root = ET.parse(trx_path).getroot()
 counters = root.find(".//{*}Counters")
 executed = int(counters.attrib.get("executed", "0")) if counters is not None else 0
+not_executed = int(counters.attrib.get("notExecuted", "0")) if counters is not None else 0
 
 if executed <= 0:
     raise SystemExit(f"Test project '{project}' executed zero tests for filter '{test_filter}'.")
+if expected_text:
+    expected = int(expected_text)
+    if executed != expected or not_executed != 0:
+        raise SystemExit(
+            f"Test project '{project}' must execute exactly {expected} tests with none skipped; "
+            f"TRX reported executed={executed}, notExecuted={not_executed}."
+        )
 
 print(f"Executed {executed} tests for {project}")
 PY
+  fi
+
+  if [[ $test_exit_code -ne 0 ]]; then
+    echo "dotnet test failed ($test_exit_code) for $project" >&2
+    exit "$test_exit_code"
   fi
 done
