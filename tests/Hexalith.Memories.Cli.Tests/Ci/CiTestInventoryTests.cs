@@ -378,15 +378,16 @@ public sealed partial class CiTestInventoryTests
         publishContainers.ShouldContain("repository = \"$RepositoryPrefix-mcp\"");
         publishContainers.ShouldContain("HEXALITH_ZOT_USERNAME");
         publishContainers.ShouldContain("HEXALITH_ZOT_API_KEY");
-        publishContainers.ShouldContain("docker login $Registry --username $username --password-stdin");
+        publishContainers.ShouldContain("New-RegistryAuthFile");
         publishContainers.ShouldContain("partial-publish");
         publishContainers.ShouldContain("publish-summary.json");
         publishContainers.ShouldContain("render-production-deployment.ps1");
-        publishContainers.ShouldContain("Loaded image(?<id> ID)?");
-        publishContainers.ShouldContain("@('tag', $loadedReference, $imageReference)");
-        publishContainers.ShouldContain("docker' -Arguments @('manifest', 'inspect', '--verbose'");
-        publishContainers.ShouldContain("SchemaV2Manifest.config.digest");
-        publishContainers.ShouldNotContain("$remoteManifest.Descriptor.digest");
+        publishContainers.ShouldContain("'inspect', '--raw', '--authfile', $AuthFile");
+        publishContainers.ShouldContain("'copy', '--authfile', $AuthFile");
+        publishContainers.ShouldContain("docker-archive:");
+        publishContainers.ShouldContain("[string]$manifest.config.digest");
+        publishContainers.ShouldNotContain("docker login");
+        publishContainers.ShouldNotContain("& docker");
         publishContainers.ShouldContain("disposition = $Disposition");
         renderDeployment.ShouldContain("Both release image references must end with the semantic-release version");
     }

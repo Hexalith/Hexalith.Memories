@@ -11,6 +11,9 @@ param(
 
     [string]$RepositoryRoot,
 
+    [ValidateNotNullOrEmpty()]
+    [string]$SkopeoCommand = 'skopeo',
+
     [switch]$Push
 )
 
@@ -120,46 +123,58 @@ function Get-FailureText {
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join [Environment]::NewLine)
 }
 
-function Connect-ContainerRegistry {
+function New-RegistryAuthFile {
+    # The docker daemon must not be used for release pushes: this registry allows anonymous
+    # read, so zot answers the daemon's unauthenticated GET /v2/ ping with HTTP 200 and the
+    # daemon then never sends credentials on push (project-zot/zot#2928). skopeo negotiates
+    # the per-request auth challenge correctly, and this scoped credential file hands it the
+    # exact bytes that verify-container-registry.ps1 already proved carry write authorization.
     $username = $env:HEXALITH_ZOT_USERNAME
     $apiKey = $env:HEXALITH_ZOT_API_KEY
-    if ([string]::IsNullOrWhiteSpace($username) -or [string]::IsNullOrWhiteSpace($apiKey)) {
-        return [pscustomobject]@{
-            ExitCode = 1
-            Stdout = ''
-            Stderr = 'Container publication requires HEXALITH_ZOT_USERNAME and HEXALITH_ZOT_API_KEY.'
+    $credentialBytes = [Text.Encoding]::UTF8.GetBytes("$username`:$apiKey")
+    $credential = [Convert]::ToBase64String($credentialBytes)
+    [Array]::Clear($credentialBytes, 0, $credentialBytes.Length)
+
+    $authFilePath = [System.IO.Path]::GetTempFileName()
+    $authDocument = [ordered]@{
+        auths = [ordered]@{
+            $Registry = [ordered]@{ auth = $credential }
         }
     }
-
-    $stderrPath = [System.IO.Path]::GetTempFileName()
     try {
-        try {
-            $stdoutLines = @($apiKey | & docker login $Registry --username $username --password-stdin 2> $stderrPath)
-            $exitCode = $LASTEXITCODE
-            $stderr = if ((Get-Item -LiteralPath $stderrPath).Length -gt 0) {
-                Get-Content -LiteralPath $stderrPath -Raw
+        $authDocument | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $authFilePath -Encoding utf8
+        $credential = $null
+        if (-not $IsWindows) {
+            & chmod 600 $authFilePath
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to restrict registry credential file permissions (chmod exited with $LASTEXITCODE)."
             }
-            else {
-                ''
-            }
+        }
+    }
+    catch {
+        Remove-Item -LiteralPath $authFilePath -Force -ErrorAction SilentlyContinue
+        throw
+    }
 
-            return [pscustomobject]@{
-                ExitCode = $exitCode
-                Stdout = $stdoutLines -join [Environment]::NewLine
-                Stderr = $stderr
-            }
-        }
-        catch {
-            return [pscustomobject]@{
-                ExitCode = 127
-                Stdout = ''
-                Stderr = $_.Exception.Message
-            }
-        }
+    return $authFilePath
+}
+
+function Get-ManifestConfigDigest {
+    param([AllowEmptyString()][string]$ManifestJson)
+
+    try {
+        $manifest = $ManifestJson | ConvertFrom-Json
     }
-    finally {
-        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+    catch {
+        return $null
     }
+
+    $digest = [string]$manifest.config.digest
+    if ([string]::IsNullOrWhiteSpace($digest)) {
+        return $null
+    }
+
+    return $digest
 }
 
 function Get-ContainerStatus {
@@ -266,68 +281,51 @@ function Build-ContainerArchive {
 }
 
 function Publish-ContainerArchive {
-    param([Parameter(Mandatory)]$Image)
+    param(
+        [Parameter(Mandatory)]$Image,
+        [Parameter(Mandatory)][string]$AuthFile
+    )
 
     $imageReference = "$Registry/$($Image.repository):$Version"
     if (-not (Test-Path -LiteralPath $Image.archive) -or (Get-Item -LiteralPath $Image.archive).Length -eq 0) {
         return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Prebuilt archive '$($Image.archive)' is required before release publication." -Disposition 'archive-missing'
     }
 
-    $load = Invoke-NativeCommand -Command 'docker' -Arguments @('load', '--input', $Image.archive)
-    if ($load.ExitCode -ne 0) {
-        return New-Outcome -Image $Image -Status 'failed' -ExitCode $load.ExitCode -Error (Get-FailureText $load) -Disposition 'load-failed'
+    $archiveInspect = Invoke-NativeCommand -Command $SkopeoCommand -Arguments @('inspect', '--raw', "docker-archive:$($Image.archive)")
+    if ($archiveInspect.ExitCode -ne 0) {
+        return New-Outcome -Image $Image -Status 'failed' -ExitCode $archiveInspect.ExitCode -Error (Get-FailureText $archiveInspect) -Disposition 'archive-inspect-failed'
     }
 
-    $loadOutput = @($load.Stdout, $load.Stderr) -join [Environment]::NewLine
-    $loadedMatches = [regex]::Matches($loadOutput, '(?m)^Loaded image(?<id> ID)?:\s*(?<reference>\S+)\s*$')
-    if ($loadedMatches.Count -ne 1) {
-        $loadEvidence = Get-FailureText $load
-        if ([string]::IsNullOrWhiteSpace($loadEvidence)) {
-            $loadEvidence = '<no docker load output>'
-        }
-
-        return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Expected exactly one loaded image reference for '$imageReference', but found $($loadedMatches.Count). Docker load output: $loadEvidence" -Disposition 'load-reference-invalid'
+    $localImageDigest = Get-ManifestConfigDigest -ManifestJson $archiveInspect.Stdout
+    if ($null -eq $localImageDigest) {
+        return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Prebuilt archive '$($Image.archive)' did not expose a single-platform config digest." -Disposition 'archive-inspect-failed'
     }
 
-    $loadedMatch = $loadedMatches[0]
-    $loadedReference = $loadedMatch.Groups['reference'].Value
-    $archiveReference = "$($Image.repository):$Version"
-    $isImageId = $loadedMatch.Groups['id'].Success -and $loadedReference -match '^sha256:[0-9a-fA-F]{64}$'
-    $isExpectedReference =
-        [string]::Equals($loadedReference, $archiveReference, [StringComparison]::Ordinal) -or
-        [string]::Equals($loadedReference, $imageReference, [StringComparison]::Ordinal)
-    if (-not $isImageId -and -not $isExpectedReference) {
-        return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Loaded image reference '$loadedReference' does not match expected archive reference '$archiveReference' or canonical reference '$imageReference'." -Disposition 'load-reference-invalid'
-    }
-
-    if (-not [string]::Equals($loadedReference, $imageReference, [StringComparison]::Ordinal)) {
-        $tag = Invoke-NativeCommand -Command 'docker' -Arguments @('tag', $loadedReference, $imageReference)
-        if ($tag.ExitCode -ne 0) {
-            $tagEvidence = @(
-                "Docker load: $(Get-FailureText $load)",
-                "Docker tag: $(Get-FailureText $tag)"
-            ) -join [Environment]::NewLine
-            return New-Outcome -Image $Image -Status 'failed' -ExitCode $tag.ExitCode -Error $tagEvidence -Disposition 'tag-failed'
-        }
-    }
-
-    $localInspect = Invoke-NativeCommand -Command 'docker' -Arguments @('image', 'inspect', $imageReference, '--format={{.Id}}')
-    if ($localInspect.ExitCode -ne 0) {
-        return New-Outcome -Image $Image -Status 'failed' -ExitCode $localInspect.ExitCode -Error (Get-FailureText $localInspect) -Disposition 'inspect-failed'
-    }
-    $localImageDigest = $localInspect.Stdout.Trim()
-
-    $remoteInspect = Invoke-NativeCommand -Command 'docker' -Arguments @('manifest', 'inspect', '--verbose', $imageReference)
-    if ($remoteInspect.ExitCode -eq 0) {
+    # Fail closed only on positive evidence of a mislabeled archive; image-ID-only archives
+    # (no embedded references) were accepted by the previous daemon-based flow and still are.
+    $archiveReferences = Invoke-NativeCommand -Command $SkopeoCommand -Arguments @('inspect', "docker-archive:$($Image.archive)")
+    if ($archiveReferences.ExitCode -eq 0) {
+        $repoTags = @()
         try {
-            $remoteManifest = $remoteInspect.Stdout | ConvertFrom-Json
-            $remoteImageDigest = [string]$remoteManifest.SchemaV2Manifest.config.digest
+            $repoTags = @(($archiveReferences.Stdout | ConvertFrom-Json).RepoTags |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
         }
         catch {
-            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Remote manifest for '$imageReference' was not valid JSON: $(Protect-LogText $_.Exception.Message)" -Disposition 'remote-inspect-failed'
+            $repoTags = @()
         }
 
-        if ([string]::IsNullOrWhiteSpace($remoteImageDigest)) {
+        $expectedReferences = @("$($Image.repository):$Version", $imageReference)
+        if ($repoTags.Count -gt 0 -and @($repoTags | Where-Object { $expectedReferences -ccontains $_ }).Count -eq 0) {
+            $foundText = $repoTags -join ', '
+            $expectedText = $expectedReferences -join ' or '
+            return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Prebuilt archive '$($Image.archive)' is tagged [$foundText] but this member must publish [$expectedText]." -Disposition 'archive-reference-invalid'
+        }
+    }
+
+    $remoteInspect = Invoke-NativeCommand -Command $SkopeoCommand -Arguments @('inspect', '--raw', '--authfile', $AuthFile, "docker://$imageReference")
+    if ($remoteInspect.ExitCode -eq 0) {
+        $remoteImageDigest = Get-ManifestConfigDigest -ManifestJson $remoteInspect.Stdout
+        if ($null -eq $remoteImageDigest) {
             return New-Outcome -Image $Image -Status 'failed' -ExitCode 1 -Error "Remote manifest for '$imageReference' did not expose a single-platform config digest." -Disposition 'remote-inspect-failed'
         }
 
@@ -338,14 +336,14 @@ function Publish-ContainerArchive {
         return New-Outcome -Image $Image -Status 'succeeded' -ExitCode 0 -Error $null -Disposition 'already-present'
     }
 
-    $push = Invoke-NativeCommand -Command 'docker' -Arguments @('push', $imageReference)
+    $push = Invoke-NativeCommand -Command $SkopeoCommand -Arguments @('copy', '--authfile', $AuthFile, "docker-archive:$($Image.archive)", "docker://$imageReference")
     if ($push.ExitCode -ne 0) {
         $pushFailure = Get-FailureText $push
         $combinedFailure = @(
             "Remote inspection before push: $(Get-FailureText $remoteInspect)",
             "Push: $pushFailure"
         ) -join [Environment]::NewLine
-        if ($pushFailure -match '(?i)(unauthorized|authentication required|requested access.+denied|access denied)') {
+        if ($pushFailure -match '(?i)(unauthorized|authentication required|requested access.+denied|access denied|forbidden|invalid username/password)') {
             $authorizationFailure = "Container registry rejected write authorization for '$imageReference'. Confirm the HEXALITH_ZOT_USERNAME/API-key pair and grant push access to repository '$($Image.repository)'." + [Environment]::NewLine + $combinedFailure
             return New-Outcome -Image $Image -Status 'failed' -ExitCode $push.ExitCode -Error $authorizationFailure -Disposition 'authorization-failed'
         }
@@ -382,10 +380,11 @@ try {
         throw $reason
     }
 
+    $authFile = $null
     if ($Push) {
-        $login = Connect-ContainerRegistry
-        if ($login.ExitCode -ne 0) {
-            $reason = "Container registry authentication failed: $(Get-FailureText $login)"
+        if ([string]::IsNullOrWhiteSpace($env:HEXALITH_ZOT_USERNAME) -or
+            [string]::IsNullOrWhiteSpace($env:HEXALITH_ZOT_API_KEY)) {
+            $reason = 'Container registry authentication failed: Container publication requires HEXALITH_ZOT_USERNAME and HEXALITH_ZOT_API_KEY.'
             $outcomes = @($images | ForEach-Object {
                 New-Outcome -Image $_ -Status 'not-attempted' -ExitCode $null -Error $reason -Disposition 'authentication-failed'
             })
@@ -393,18 +392,35 @@ try {
             throw $reason
         }
 
-        Write-Host "Stored container registry credentials for $Registry; repository write authorization is verified separately."
+        if ($null -eq (Get-Command -Name $SkopeoCommand -CommandType Application -ErrorAction SilentlyContinue)) {
+            $reason = "Container publication requires the '$SkopeoCommand' CLI on PATH; it pushes release images because the docker daemon never sends credentials to this registry (see docs/dev/release-runbook.md)."
+            $outcomes = @($images | ForEach-Object {
+                New-Outcome -Image $_ -Status 'not-attempted' -ExitCode $null -Error $reason -Disposition 'tooling-missing'
+            })
+            Write-ContainerSummary -Status 'publish-failed' -StartedAt $startedAt -Outcomes $outcomes -SummaryPath $summaryPath
+            throw $reason
+        }
+
+        $authFile = New-RegistryAuthFile
+        Write-Host "Prepared scoped registry credential file for $Registry; repository write authorization is verified separately."
     }
 
-    $outcomes = foreach ($image in $images) {
-        $imageReference = "$Registry/$($image.repository):$Version"
-        if ($Push) {
-            Write-Host "Publishing prebuilt container unit member $imageReference"
-            Publish-ContainerArchive -Image $image
+    try {
+        $outcomes = foreach ($image in $images) {
+            $imageReference = "$Registry/$($image.repository):$Version"
+            if ($Push) {
+                Write-Host "Publishing prebuilt container unit member $imageReference"
+                Publish-ContainerArchive -Image $image -AuthFile $authFile
+            }
+            else {
+                Write-Host "Building container unit member $imageReference"
+                Build-ContainerArchive -Image $image
+            }
         }
-        else {
-            Write-Host "Building container unit member $imageReference"
-            Build-ContainerArchive -Image $image
+    }
+    finally {
+        if ($null -ne $authFile) {
+            Remove-Item -LiteralPath $authFile -Force -ErrorAction SilentlyContinue
         }
     }
 

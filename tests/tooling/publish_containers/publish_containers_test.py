@@ -110,130 +110,123 @@ def write_fake_kubectl(directory: Path) -> None:
     )
 
 
-def write_fake_docker(directory: Path) -> None:
-    script = directory / "fake_docker.py"
+def write_fake_skopeo(directory: Path) -> None:
+    script = directory / "fake_skopeo.py"
     script.write_text(
         textwrap.dedent(
             f"""
+            import base64
             import json
             import os
             import sys
             from pathlib import Path
 
             args = sys.argv[1:]
-            state_path = Path(os.environ["FAKE_DOCKER_STATE"])
-            plan_path = Path(os.environ["FAKE_DOCKER_PLAN"])
-            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {{"remote": {{}}, "attempts": {{}}, "local": {{}}}}
+            state_path = Path(os.environ["FAKE_SKOPEO_STATE"])
+            plan_path = Path(os.environ["FAKE_SKOPEO_PLAN"])
+            state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {{"remote": {{}}, "attempts": {{}}}}
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             digests = {{
                 "server": "sha256:server-config",
                 "mcp": "sha256:mcp-config",
             }}
 
-            with open(os.environ["FAKE_COMMAND_LOG"], "a", encoding="utf-8") as log:
-                log.write(json.dumps({{"command": "docker", "args": args}}) + "\\n")
+            def image_for_archive(path: str) -> str:
+                return "server" if Path(path).name.startswith("server") else "mcp"
 
-            if args and args[0] == "login":
-                password = sys.stdin.read().strip()
-                expected_registry = os.environ["EXPECTED_ZOT_REGISTRY"]
-                expected_username = os.environ["HEXALITH_ZOT_USERNAME"]
-                expected_password = os.environ["HEXALITH_ZOT_API_KEY"]
-                if args != ["login", expected_registry, "--username", expected_username, "--password-stdin"]:
-                    print("unexpected login arguments", file=sys.stderr)
-                    sys.exit(93)
-                if password != expected_password:
-                    print("unexpected login password", file=sys.stderr)
-                    sys.exit(92)
-                outcome = plan.get("login", {{}})
+            def image_for_reference(reference: str) -> str:
+                return "server" if reference == "{SERVER_IMAGE}" else "mcp"
+
+            entry = {{"command": "skopeo", "args": args}}
+            if "--authfile" in args:
+                authfile = Path(args[args.index("--authfile") + 1])
+                entry["authfile_path"] = str(authfile)
+                entry["authfile_mode"] = oct(authfile.stat().st_mode & 0o777) if authfile.exists() else "missing"
+                expected_user = os.environ.get("HEXALITH_ZOT_USERNAME", "")
+                expected_key = os.environ.get("HEXALITH_ZOT_API_KEY", "")
+                expected_auth = base64.b64encode(f"{{expected_user}}:{{expected_key}}".encode()).decode()
+                try:
+                    # Strict utf-8: a BOM must break parsing exactly like Go's JSON decoder in real skopeo.
+                    document = json.loads(authfile.read_text(encoding="utf-8"))
+                    recorded = document["auths"][os.environ["EXPECTED_ZOT_REGISTRY"]]["auth"]
+                    entry["authfile_valid"] = recorded == expected_auth
+                except (OSError, KeyError, ValueError):
+                    entry["authfile_valid"] = False
+
+            with open(os.environ["FAKE_COMMAND_LOG"], "a", encoding="utf-8") as log:
+                log.write(json.dumps(entry) + "\\n")
+
+            forbidden_flags = {{"--creds", "--src-creds", "--dest-creds", "--dest-password", "--dest-username"}}
+            if forbidden_flags.intersection(args):
+                print(f"forbidden credential argument in: {{args}}", file=sys.stderr)
+                sys.exit(99)
+
+            def emit(outcome: dict) -> None:
                 if outcome.get("stdout"):
                     print(outcome["stdout"])
                 if outcome.get("stderr"):
                     print(outcome["stderr"], file=sys.stderr)
-                if int(outcome.get("exitCode", 0)) != 0:
-                    sys.exit(int(outcome["exitCode"]))
-                print("Login Succeeded")
-            elif args[:2] == ["load", "--input"]:
-                image = "server" if Path(args[2]).name.startswith("server") else "mcp"
-                default_reference = "memories:{VERSION}" if image == "server" else "memories-mcp:{VERSION}"
-                outcome = plan.get("load", {{}}).get(image, {{}})
-                reference = outcome.get("reference", default_reference)
-                if reference:
-                    state["local"][reference] = digests[image]
-                if "stdout" in outcome:
-                    print(outcome["stdout"])
-                elif reference:
-                    print(f"Loaded image: {{reference}}")
-                if outcome.get("stderr"):
-                    print(outcome["stderr"], file=sys.stderr)
-                if int(outcome.get("exitCode", 0)) != 0:
+
+            if args[:2] == ["inspect", "--raw"] and len(args) == 3 and args[2].startswith("docker-archive:"):
+                image = image_for_archive(args[2].removeprefix("docker-archive:"))
+                outcome = plan.get("archiveInspect", {{}}).get(image, {{}})
+                emit(outcome)
+                exit_code = int(outcome.get("exitCode", 0))
+                if exit_code == 0 and not outcome.get("stdout"):
+                    print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digests[image]}}}}))
+                state_path.write_text(json.dumps(state), encoding="utf-8")
+                sys.exit(exit_code)
+            elif args[0] == "inspect" and len(args) == 2 and args[1].startswith("docker-archive:"):
+                image = image_for_archive(args[1].removeprefix("docker-archive:"))
+                outcome = plan.get("archiveReferences", {{}}).get(image, {{}})
+                emit(outcome)
+                exit_code = int(outcome.get("exitCode", 0))
+                if exit_code == 0 and not outcome.get("stdout"):
+                    repository = "memories" if image == "server" else "memories-mcp"
+                    print(json.dumps({{"RepoTags": [f"{{repository}}:{VERSION}"]}}))
+                state_path.write_text(json.dumps(state), encoding="utf-8")
+                sys.exit(exit_code)
+            elif args[:2] == ["inspect", "--raw"] and "--authfile" in args and args[-1].startswith("docker://"):
+                reference = args[-1].removeprefix("docker://")
+                image = image_for_reference(reference)
+                outcome = plan.get("remoteInspect", {{}}).get(image)
+                if outcome is not None:
+                    emit(outcome)
                     state_path.write_text(json.dumps(state), encoding="utf-8")
-                    sys.exit(int(outcome["exitCode"]))
-            elif args and args[0] == "tag":
-                source = args[1]
-                target = args[2]
-                image = "server" if target == "{SERVER_IMAGE}" else "mcp"
-                outcome = plan.get("tag", {{}}).get(image, {{}})
-                if outcome.get("stdout"):
-                    print(outcome["stdout"])
-                if outcome.get("stderr"):
-                    print(outcome["stderr"], file=sys.stderr)
-                if int(outcome.get("exitCode", 0)) != 0:
-                    state_path.write_text(json.dumps(state), encoding="utf-8")
-                    sys.exit(int(outcome["exitCode"]))
-                if source not in state["local"]:
-                    print("unknown tag source", file=sys.stderr)
-                    sys.exit(4)
-                state["local"][target] = state["local"][source]
-            elif args[:2] == ["image", "inspect"]:
-                reference = args[2]
-                if reference not in state["local"]:
-                    print("unknown local image", file=sys.stderr)
-                    sys.exit(4)
-                print(state["local"][reference])
-            elif args[:2] == ["manifest", "inspect"]:
-                if args[2] != "--verbose":
-                    print("manifest inspection must request the descriptor digest", file=sys.stderr)
-                    sys.exit(95)
-                reference = args[3]
+                    sys.exit(int(outcome.get("exitCode", 0)))
                 digest = state["remote"].get(reference)
+                state_path.write_text(json.dumps(state), encoding="utf-8")
                 if digest is None:
-                    print("no such manifest", file=sys.stderr)
+                    print(f"reading manifest {{reference}}: manifest unknown", file=sys.stderr)
                     sys.exit(1)
-                print(json.dumps({{
-                    "Descriptor": {{"digest": "sha256:intentionally-different-manifest"}},
-                    "SchemaV2Manifest": {{"config": {{"digest": digest}}}},
-                }}))
-            elif args and args[0] == "push":
-                reference = args[1]
-                image = "server" if reference == "{SERVER_IMAGE}" else "mcp"
+                print(json.dumps({{"schemaVersion": 2, "config": {{"digest": digest}}}}))
+                sys.exit(0)
+            elif args and args[0] == "copy" and "--authfile" in args:
+                source = next(arg for arg in args if arg.startswith("docker-archive:"))
+                reference = next(arg for arg in args if arg.startswith("docker://")).removeprefix("docker://")
+                image = image_for_reference(reference)
                 attempt = int(state["attempts"].get(image, 0))
                 state["attempts"][image] = attempt + 1
                 outcomes = plan.get(image, [{{"exitCode": 0}}])
                 outcome = outcomes[min(attempt, len(outcomes) - 1)]
-                if outcome.get("stdout"):
-                    print(outcome["stdout"])
-                if outcome.get("stderr"):
-                    print(outcome["stderr"], file=sys.stderr)
+                emit(outcome)
                 if int(outcome.get("exitCode", 0)) == 0:
-                    state["remote"][reference] = state["local"][reference]
+                    state["remote"][reference] = digests[image_for_archive(source.removeprefix("docker-archive:"))]
                 state_path.write_text(json.dumps(state), encoding="utf-8")
                 sys.exit(int(outcome.get("exitCode", 0)))
             else:
-                print(f"unexpected docker arguments: {{args}}", file=sys.stderr)
+                print(f"unexpected skopeo arguments: {{args}}", file=sys.stderr)
                 sys.exit(98)
-
-            state_path.write_text(json.dumps(state), encoding="utf-8")
-            sys.exit(0)
             """
         ).strip()
         + "\n",
         encoding="utf-8",
     )
     write_executable(
-        directory / "docker",
+        directory / "skopeo",
         f'#!/usr/bin/env sh\nexec "{sys.executable}" "{script}" "$@"\n',
     )
-    (directory / "docker.cmd").write_text(
+    (directory / "skopeo.cmd").write_text(
         f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n',
         encoding="utf-8",
     )
@@ -244,15 +237,15 @@ def prepare_environment(root: Path, plan: dict[str, object] | None = None) -> tu
     fake_bin.mkdir()
     write_fake_dotnet(fake_bin)
     write_fake_kubectl(fake_bin)
-    write_fake_docker(fake_bin)
+    write_fake_skopeo(fake_bin)
 
-    plan_path = root / "docker-plan.json"
+    plan_path = root / "skopeo-plan.json"
     plan_path.write_text(json.dumps(plan or {}), encoding="utf-8")
     env = os.environ.copy()
     env["REAL_DOTNET"] = shutil.which("dotnet") or "dotnet"
     env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
-    env["FAKE_DOCKER_PLAN"] = str(plan_path)
-    env["FAKE_DOCKER_STATE"] = str(root / "docker-state.json")
+    env["FAKE_SKOPEO_PLAN"] = str(plan_path)
+    env["FAKE_SKOPEO_STATE"] = str(root / "skopeo-state.json")
     env["FAKE_COMMAND_LOG"] = str(root / "commands.jsonl")
     env["GITHUB_ACTIONS"] = "true"
     env["GH_TOKEN"] = "SECRET_GITHUB_TOKEN_SHOULD_NOT_LEAK"
@@ -269,7 +262,15 @@ def prepare_archives(output: Path) -> None:
     (output / "mcp.tar.gz").write_bytes(b"mcp-archive")
 
 
-def run_publish(output: Path, env: dict[str, str], *, push: bool, kubectl_exit: int = 0, kubectl_warning: str = "") -> subprocess.CompletedProcess[str]:
+def run_publish(
+    output: Path,
+    env: dict[str, str],
+    *,
+    push: bool,
+    kubectl_exit: int = 0,
+    kubectl_warning: str = "",
+    extra_arguments: list[str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     invocation = [
         "pwsh",
         "-NoLogo",
@@ -285,6 +286,8 @@ def run_publish(output: Path, env: dict[str, str], *, push: bool, kubectl_exit: 
     ]
     if push:
         invocation.append("-Push")
+    if extra_arguments:
+        invocation.extend(extra_arguments)
     run_env = env.copy()
     run_env["FAKE_KUBECTL_EXIT"] = str(kubectl_exit)
     run_env["FAKE_KUBECTL_WARNING"] = kubectl_warning
@@ -303,6 +306,26 @@ def command_log(root: Path) -> list[dict[str, object]]:
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def skopeo_calls(root: Path) -> list[dict[str, object]]:
+    return [entry for entry in command_log(root) if entry["command"] == "skopeo"]
+
+
+def copy_references(root: Path) -> list[str]:
+    return [
+        next(arg for arg in entry["args"] if arg.startswith("docker://")).removeprefix("docker://")
+        for entry in skopeo_calls(root)
+        if entry["args"][0] == "copy"
+    ]
+
+
+def assert_authenticated_calls_use_scoped_authfile(test: unittest.TestCase, root: Path) -> None:
+    authenticated = [entry for entry in skopeo_calls(root) if "--authfile" in entry["args"]]
+    test.assertGreater(len(authenticated), 0)
+    for entry in authenticated:
+        test.assertTrue(entry["authfile_valid"], entry)
+        test.assertEqual("0o600", entry["authfile_mode"], entry)
 
 
 class PublishContainersTests(unittest.TestCase):
@@ -331,13 +354,9 @@ class PublishContainersTests(unittest.TestCase):
                 self.assertIn(f"-p:ContainerImageTag={VERSION}", args)
                 self.assertTrue(any(arg.startswith("-p:ContainerArchiveOutputPath=") for arg in args))
 
-            logins = [
-                entry for entry in command_log(root)
-                if entry["command"] == "docker" and entry["args"][0] == "login"
-            ]
-            self.assertEqual([], logins, "build-only publication must remain credential-free")
+            self.assertEqual([], skopeo_calls(root), "build-only publication must remain credential-free")
 
-    def test_push_authenticates_with_password_stdin_before_registry_operations(self) -> None:
+    def test_push_publishes_with_scoped_authfile_and_no_secret_arguments(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             _, env = prepare_environment(root)
@@ -347,43 +366,28 @@ class PublishContainersTests(unittest.TestCase):
             result = run_publish(output, env, push=True)
 
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
-            self.assertEqual(
-                ["login", "registry.test", "--username", env["HEXALITH_ZOT_USERNAME"], "--password-stdin"],
-                docker_calls[0],
-            )
-            serialized_calls = json.dumps(docker_calls)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("succeeded", summary["status"])
+            self.assertTrue(all(image["disposition"] == "pushed" for image in summary["images"]))
+            self.assertEqual([SERVER_IMAGE, MCP_IMAGE], copy_references(root))
+
+            copies = [entry for entry in skopeo_calls(root) if entry["args"][0] == "copy"]
+            for entry in copies:
+                self.assertTrue(any(arg.startswith("docker-archive:") for arg in entry["args"]))
+                self.assertTrue(any(arg.startswith("docker://") for arg in entry["args"]))
+                self.assertIn("--authfile", entry["args"])
+
+            assert_authenticated_calls_use_scoped_authfile(self, root)
+            authenticated = [entry for entry in skopeo_calls(root) if "--authfile" in entry["args"]]
+            for entry in authenticated:
+                self.assertFalse(Path(str(entry["authfile_path"])).exists(), "authfile must be deleted after publication")
+
+            serialized_calls = json.dumps([entry["args"] for entry in skopeo_calls(root)])
+            self.assertNotIn("--dest-creds", serialized_calls)
+            self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized_calls)
             self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized_calls)
 
-    def test_login_failure_is_redacted_and_stops_before_image_operations(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            plan = {
-                "login": {
-                    "exitCode": 41,
-                    "stderr": "expired SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
-                }
-            }
-            _, env = prepare_environment(root, plan)
-            output = root / "artifacts"
-            prepare_archives(output)
-
-            result = run_publish(output, env, push=True)
-
-            self.assertNotEqual(0, result.returncode)
-            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
-            self.assertEqual("publish-failed", summary["status"])
-            self.assertTrue(all(image["disposition"] == "authentication-failed" for image in summary["images"]))
-            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
-            self.assertEqual(
-                [["login", "registry.test", "--username", env["HEXALITH_ZOT_USERNAME"], "--password-stdin"]],
-                docker_calls,
-            )
-            serialized = result.stdout + result.stderr + json.dumps(summary)
-            self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized)
-            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
-
-    def test_login_success_with_push_denial_is_reported_as_authorization_failure(self) -> None:
+    def test_push_denial_is_reported_as_authorization_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             denial = {
@@ -406,102 +410,44 @@ class PublishContainersTests(unittest.TestCase):
             self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized)
             self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
 
-    def test_push_retags_registry_less_loaded_images_before_canonical_inspect(self) -> None:
+    def test_invalid_credentials_stderr_is_classified_as_authorization_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            _, env = prepare_environment(root)
-            output = root / "artifacts"
-            prepare_archives(output)
-
-            result = run_publish(output, env, push=True)
-
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
-            self.assertLess(
-                docker_calls.index(["tag", f"memories:{VERSION}", SERVER_IMAGE]),
-                docker_calls.index(["image", "inspect", SERVER_IMAGE, "--format={{.Id}}"]),
-            )
-            self.assertLess(
-                docker_calls.index(["tag", f"memories-mcp:{VERSION}", MCP_IMAGE]),
-                docker_calls.index(["image", "inspect", MCP_IMAGE, "--format={{.Id}}"]),
-            )
-
-    def test_push_skips_tag_when_archive_load_is_already_canonical(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            plan = {
-                "load": {
-                    "server": {"reference": SERVER_IMAGE},
-                    "mcp": {"reference": MCP_IMAGE},
-                }
-            }
+            plan = {"server": [{"exitCode": 1, "stderr": "copying image: invalid username/password"}]}
             _, env = prepare_environment(root, plan)
             output = root / "artifacts"
             prepare_archives(output)
 
             result = run_publish(output, env, push=True)
 
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            tags = [
-                entry for entry in command_log(root)
-                if entry["command"] == "docker" and entry["args"][0] == "tag"
-            ]
-            self.assertEqual([], tags)
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("authorization-failed", server["disposition"])
+            self.assertIn("grant push access", server["error"])
 
-    def test_push_accepts_single_loaded_image_id_and_retags_it(self) -> None:
+    def test_forbidden_stderr_is_classified_as_authorization_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            image_id = "sha256:" + ("a" * 64)
-            plan = {
-                "load": {
-                    "server": {
-                        "reference": image_id,
-                        "stdout": f"Loaded image ID: {image_id}",
-                    }
-                }
-            }
+            plan = {"server": [{"exitCode": 1, "stderr": "writing manifest: forbidden"}]}
             _, env = prepare_environment(root, plan)
             output = root / "artifacts"
             prepare_archives(output)
 
             result = run_publish(output, env, push=True)
 
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
-            self.assertIn(["tag", image_id, SERVER_IMAGE], docker_calls)
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("authorization-failed", server["disposition"])
+            self.assertIn("grant push access", server["error"])
 
-    def test_push_accepts_single_loaded_reference_reported_on_stderr(self) -> None:
+    def test_archive_reference_mismatch_fails_closed_before_copy(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             plan = {
-                "load": {
-                    "server": {
-                        "stdout": "",
-                        "stderr": f"Loaded image: memories:{VERSION}",
-                    }
-                }
-            }
-            _, env = prepare_environment(root, plan)
-            output = root / "artifacts"
-            prepare_archives(output)
-
-            result = run_publish(output, env, push=True)
-
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            docker_calls = [entry["args"] for entry in command_log(root) if entry["command"] == "docker"]
-            self.assertIn(["tag", f"memories:{VERSION}", SERVER_IMAGE], docker_calls)
-
-    def test_multiple_loaded_references_fail_closed_before_tag_or_inspect(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            plan = {
-                "load": {
-                    "server": {
-                        "stdout": (
-                            f"Loaded image: memories:{VERSION}\n"
-                            f"Loaded image: unrelated:{VERSION}"
-                        ),
-                    }
+                "archiveReferences": {
+                    "server": {"stdout": json.dumps({"RepoTags": [f"wrong-repo:{VERSION}"]})}
                 }
             }
             _, env = prepare_environment(root, plan)
@@ -512,42 +458,18 @@ class PublishContainersTests(unittest.TestCase):
 
             self.assertNotEqual(0, result.returncode)
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("partial-publish", summary["status"])
             server = next(image for image in summary["images"] if image["name"] == "server")
-            self.assertEqual("load-reference-invalid", server["disposition"])
-            server_operations = [
-                entry["args"] for entry in command_log(root)
-                if entry["command"] == "docker" and SERVER_IMAGE in entry["args"]
-            ]
-            self.assertEqual([], server_operations)
+            self.assertEqual("archive-reference-invalid", server["disposition"])
+            self.assertIn("wrong-repo", server["error"])
+            self.assertEqual([MCP_IMAGE], copy_references(root))
 
-    def test_unrelated_loaded_reference_fails_closed_before_tag_or_inspect(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            plan = {"load": {"server": {"reference": f"unrelated:{VERSION}"}}}
-            _, env = prepare_environment(root, plan)
-            output = root / "artifacts"
-            prepare_archives(output)
-
-            result = run_publish(output, env, push=True)
-
-            self.assertNotEqual(0, result.returncode)
-            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
-            server = next(image for image in summary["images"] if image["name"] == "server")
-            self.assertEqual("load-reference-invalid", server["disposition"])
-            server_operations = [
-                entry["args"] for entry in command_log(root)
-                if entry["command"] == "docker" and SERVER_IMAGE in entry["args"]
-            ]
-            self.assertEqual([], server_operations)
-
-    def test_unparseable_load_output_fails_member_before_inspect_or_remote_operation(self) -> None:
+    def test_archive_without_embedded_references_still_publishes(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             plan = {
-                "load": {
-                    "server": {
-                        "stdout": "archive imported SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
-                    }
+                "archiveReferences": {
+                    "server": {"stdout": json.dumps({"RepoTags": []})}
                 }
             }
             _, env = prepare_environment(root, plan)
@@ -556,47 +478,10 @@ class PublishContainersTests(unittest.TestCase):
 
             result = run_publish(output, env, push=True)
 
-            self.assertNotEqual(0, result.returncode)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
-            server = next(image for image in summary["images"] if image["name"] == "server")
-            self.assertEqual("load-reference-invalid", server["disposition"])
-            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], json.dumps(summary))
-            server_operations = [
-                entry["args"] for entry in command_log(root)
-                if entry["command"] == "docker" and SERVER_IMAGE in entry["args"]
-            ]
-            self.assertEqual([], server_operations)
-
-    def test_tag_failure_is_redacted_and_stops_member_before_canonical_inspect(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            plan = {
-                "tag": {
-                    "server": {
-                        "exitCode": 44,
-                        "stderr": "tag rejected SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
-                    }
-                }
-            }
-            _, env = prepare_environment(root, plan)
-            output = root / "artifacts"
-            prepare_archives(output)
-
-            result = run_publish(output, env, push=True)
-
-            self.assertNotEqual(0, result.returncode)
-            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
-            server = next(image for image in summary["images"] if image["name"] == "server")
-            self.assertEqual("tag-failed", server["disposition"])
-            self.assertEqual(44, server["exitCode"])
-            serialized = json.dumps(summary)
-            self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized)
-            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
-            canonical_inspects = [
-                entry for entry in command_log(root)
-                if entry["command"] == "docker" and entry["args"][:3] == ["image", "inspect", SERVER_IMAGE]
-            ]
-            self.assertEqual([], canonical_inspects)
+            self.assertEqual("succeeded", summary["status"])
+            self.assertEqual([SERVER_IMAGE, MCP_IMAGE], copy_references(root))
 
     def test_push_without_standard_credentials_fails_at_publish_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -615,8 +500,122 @@ class PublishContainersTests(unittest.TestCase):
             self.assertEqual(2, len(summary["notAttempted"]))
             self.assertTrue(all(image["disposition"] == "authentication-failed" for image in summary["images"]))
             self.assertIn("HEXALITH_ZOT_USERNAME", result.stdout + result.stderr)
-            docker_calls = [entry for entry in command_log(root) if entry["command"] == "docker"]
-            self.assertEqual([], docker_calls)
+            self.assertEqual([], skopeo_calls(root))
+
+    def test_push_without_skopeo_fails_before_any_push_work(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(
+                output,
+                env,
+                push=True,
+                extra_arguments=["-SkopeoCommand", "skopeo-missing-for-tests"],
+            )
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertEqual(2, len(summary["notAttempted"]))
+            self.assertTrue(all(image["disposition"] == "tooling-missing" for image in summary["images"]))
+            self.assertIn("skopeo-missing-for-tests", result.stdout + result.stderr)
+            self.assertEqual([], skopeo_calls(root))
+
+    def test_missing_archive_fails_member_before_any_skopeo_call(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            output = root / "artifacts"
+            output.mkdir(parents=True, exist_ok=True)
+            (output / "mcp.tar.gz").write_bytes(b"mcp-archive")
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("partial-publish", summary["status"])
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("archive-missing", server["disposition"])
+            server_calls = [
+                entry for entry in skopeo_calls(root)
+                if any(arg.endswith("server.tar.gz") or SERVER_IMAGE in arg for arg in entry["args"])
+            ]
+            self.assertEqual([], server_calls)
+            self.assertEqual([MCP_IMAGE], copy_references(root))
+
+    def test_archive_inspect_failure_fails_member_closed_and_is_redacted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "archiveInspect": {
+                    "server": {
+                        "exitCode": 3,
+                        "stderr": "invalid archive SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK",
+                    }
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("archive-inspect-failed", server["disposition"])
+            self.assertEqual(3, server["exitCode"])
+            serialized = json.dumps(summary)
+            self.assertNotIn(env["HEXALITH_ZOT_USERNAME"], serialized)
+            self.assertNotIn(env["HEXALITH_ZOT_API_KEY"], serialized)
+            self.assertEqual([MCP_IMAGE], copy_references(root))
+
+    def test_remote_inspect_error_still_attempts_push(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "remoteInspect": {
+                    "server": {"exitCode": 2, "stderr": "connection reset by registry"},
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("succeeded", summary["status"])
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("pushed", server["disposition"])
+            self.assertEqual([SERVER_IMAGE, MCP_IMAGE], copy_references(root))
+
+    def test_remote_manifest_without_config_digest_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plan = {
+                "remoteInspect": {
+                    "server": {
+                        "exitCode": 0,
+                        "stdout": json.dumps({"schemaVersion": 2, "manifests": [{"digest": "sha256:list-entry"}]}),
+                    }
+                }
+            }
+            _, env = prepare_environment(root, plan)
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            server = next(image for image in summary["images"] if image["name"] == "server")
+            self.assertEqual("remote-inspect-failed", server["disposition"])
+            self.assertEqual([MCP_IMAGE], copy_references(root))
 
     def test_partial_publish_writes_redacted_summary_and_returns_nonzero(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -669,23 +668,18 @@ class PublishContainersTests(unittest.TestCase):
             dispositions = {image["name"]: image["disposition"] for image in summary["images"]}
             self.assertEqual("already-present", dispositions["server"])
             self.assertEqual("pushed", dispositions["mcp"])
-            pushes = [
-                entry["args"][1]
-                for entry in command_log(root)
-                if entry["command"] == "docker" and entry["args"][0] == "push"
-            ]
-            self.assertEqual([SERVER_IMAGE, MCP_IMAGE, MCP_IMAGE], pushes)
+            self.assertEqual([SERVER_IMAGE, MCP_IMAGE, MCP_IMAGE], copy_references(root))
+            assert_authenticated_calls_use_scoped_authfile(self, root)
 
     def test_existing_immutable_tag_with_conflicting_digest_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             _, env = prepare_environment(root)
-            (root / "docker-state.json").write_text(
+            (root / "skopeo-state.json").write_text(
                 json.dumps(
                     {
                         "remote": {SERVER_IMAGE: "sha256:conflicting-config"},
                         "attempts": {},
-                        "local": {},
                     }
                 ),
                 encoding="utf-8",
@@ -699,12 +693,8 @@ class PublishContainersTests(unittest.TestCase):
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             server = next(image for image in summary["images"] if image["name"] == "server")
             self.assertEqual("digest-conflict", server["disposition"])
-            pushes = [
-                entry["args"][1]
-                for entry in command_log(root)
-                if entry["command"] == "docker" and entry["args"][0] == "push"
-            ]
-            self.assertEqual([MCP_IMAGE], pushes)
+            self.assertEqual([MCP_IMAGE], copy_references(root))
+            assert_authenticated_calls_use_scoped_authfile(self, root)
 
     def test_render_failure_happens_before_push_and_writes_current_summary(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -720,11 +710,7 @@ class PublishContainersTests(unittest.TestCase):
             summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
             self.assertEqual("publish-failed", summary["status"])
             self.assertEqual(2, len(summary["notAttempted"]))
-            pushes = [
-                entry for entry in command_log(root)
-                if entry["command"] == "docker" and entry["args"][0] == "push"
-            ]
-            self.assertEqual([], pushes)
+            self.assertEqual([], copy_references(root))
 
     def test_successful_kubectl_warning_is_not_written_to_deployment(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

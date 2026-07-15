@@ -2185,3 +2185,9 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 - source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md`
   summary: [MEDIUM] Add representative boundary coverage for the documented 512 MiB / approximately 100K-unit restore contract.
   evidence: The current fidelity integration restores three small units and `RedisChunkReadStreamTests` reads five mocked bytes; neither observes the endpoint ceiling, real multi-chunk staging, retention renewal, or high-cardinality workflow paging. Re-open trigger: restore-size/staging hardening or the first supported large-tenant recovery rehearsal.
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-release-container-push-unauthorized.md`
+  summary: Distinguish "manifest unknown" from transient errors in remote registry inspect so a transient failure cannot bypass the digest-conflict fail-closed guard before push.
+  evidence: publish-containers.ps1 treats any nonzero skopeo/docker remote inspect as "tag absent" and proceeds to push; behavior predates this story and was preserved as explicit spec parity, flagged by two independent review layers.
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-release-container-push-unauthorized.md`
+  summary: Probe skopeo availability in release-preflight so a missing runner binary fails before NuGet publish and tag creation instead of causing a partial release.
+  evidence: Container publish now hard-depends on the runner-preinstalled skopeo; the publish-time tooling-missing check fires only after NuGet packages and the release tag exist. The story spec froze "no touching preflight", so this hardening was out of scope.

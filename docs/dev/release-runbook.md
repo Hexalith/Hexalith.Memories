@@ -35,6 +35,16 @@ artifacts from a workstation.
   both NuGet and container publication and writes one aggregate release summary.
 - `tools/pack-release.ps1` prebuilds the Server and MCP OCI archives and the versioned production
   deployment before any publish-side effects occur.
+- `tools/publish-containers.ps1 -Push` publishes the prebuilt archives with `skopeo copy`, passing
+  credentials through a scoped temporary authfile built from `HEXALITH_ZOT_USERNAME` and
+  `HEXALITH_ZOT_API_KEY` and deleted after publication. The docker daemon must not be used to push
+  to this registry: the registry allows anonymous read, so zot answers the daemon's
+  unauthenticated `GET /v2/` ping with HTTP 200, the daemon caches "no auth required", and it then
+  never sends credentials on push, failing with `unauthorized: authentication required`
+  (project-zot/zot#2928). skopeo negotiates the auth challenge per request and is unaffected.
+  Remote tag reconciliation compares the archive and remote manifest config digests through the
+  same skopeo path. The local side of that comparison is the prebuilt archive manifest's config
+  digest (the archives are single-platform), no longer a daemon-loaded image ID.
 - Semantic-release does not commit generated files back to `main`. It creates the release tag,
   GitHub Release, and package assets without using `@semantic-release/git`, so the release path is
   compatible with the protected-branch rule that requires pull requests for repository changes.
@@ -85,12 +95,15 @@ Before relying on the release path:
    `HEXALITH_ZOT_API_KEY` secrets exist. The Zot principal has repository write authorization for
    both flat repositories, `memories` and `memories-mcp`. `HEXALITH_ZOT_REGISTRY` may override the
    default `registry.hexalith.com` host.
-7. The merge to `main` uses a conventional commit that semantic-release can classify.
-8. The local working tree is clean before opening the release PR — no uncommitted edits, no
+7. The `skopeo` CLI is on the release runner's PATH (preinstalled on the GitHub-hosted
+   `ubuntu-24.04` image). Container publication fails closed with disposition `tooling-missing`
+   when it is absent.
+8. The merge to `main` uses a conventional commit that semantic-release can classify.
+9. The local working tree is clean before opening the release PR — no uncommitted edits, no
    in-flight tag drift, no orphan packages in `artifacts/`. The release job builds from the merged
    commit; clean local state is what makes the merged commit predictable.
-9. `./tools/validate-release-packages.ps1` passes before release.
-10. `tools/release-packages.json` still lists the intended package set.
+10. `./tools/validate-release-packages.ps1` passes before release.
+11. `tools/release-packages.json` still lists the intended package set.
 
 ## Branch Protection Evidence
 
@@ -330,6 +343,11 @@ those actions can move the published state away from the CI-recorded audit ancho
   authorization to both `memories` and `memories-mcp`; rotating a valid credential or proving
   registry login/read access does not repair a repository ACL. Never paste the username, API key,
   or authorization header into an issue or workflow log.
+- If container pushes fail with `unauthorized: authentication required` while write-scope
+  verification passes, a docker-daemon push path has been reintroduced. That path cannot
+  authenticate against this registry (see the `skopeo` publication note above and
+  project-zot/zot#2928); restore the skopeo authfile path in `tools/publish-containers.ps1`
+  instead of rotating credentials or changing registry ACLs.
 - If `tools/release-preflight.ps1` reports that `refs/tags/v<version>` already exists locally or on
   `origin`, stop before publish work starts. The message names the exact conflicting ref. Do not
   delete the remote tag casually; confirm whether it came from an aborted/manual release, record the
