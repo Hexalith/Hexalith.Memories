@@ -4,7 +4,7 @@ baseline_commit: e574c313ae067b72ac7f69dd3061099c1a425466
 
 # Story 26.5: Operational Runbook Set
 
-Status: in-progress
+Status: done
 
 <!-- Epic 26 — Test, Deployment & Operational Readiness. Documentation-and-contract-test story closing the runbook portion assigned to audit finding A25. Do not change product behavior, deployment manifests, package versions, alert infrastructure, benchmark inputs, or submodule pointers. -->
 
@@ -142,6 +142,23 @@ Story 26.5 is checkpoint-heavy. The implementation remains one story only if eve
 - [x] [Review][Patch] [Medium] The natural-language retry-stall alert names no source-backed progress signal [`docs/operations/monitoring-alerting-thresholds.md:89`]
 - [x] [Review][Patch] [Medium] Most alert rows omit the required linked response procedure [`docs/operations/monitoring-alerting-thresholds.md:79`]
 - [x] [Review][Patch] [Medium] Escalation guidance redacts workflow IDs required for protected Dapr incident correlation [`docs/operations/monitoring-alerting-thresholds.md:150`]
+- [x] [Review][Patch] [High] Prove at least one active semantic chunk per memory unit in `verify-backup-recovery.py` and its tooling tests; aggregate `{tenant}:vec:*` counts include multiple chunks plus legacy-NL/staging keys and cannot certify per-unit recovery. Scope expansion approved during code review. [`docs/operations/backup-restore.md:322`]
+- [x] [Review][Patch] [High] Compose returned root-relative restore status locations with `MEMORIES_BASE_URL` before polling in both logical-recovery procedures [`docs/operations/backup-restore.md:264`]
+- [x] [Review][Patch] [High] Generate a lowercase DNS-compatible recovery ID before using it in Kubernetes `VolumeSnapshot` names [`docs/operations/backup-restore.md:70`]
+- [x] [Review][Patch] [High] Restore every required production Secret and config input before requiring the full-cluster topology to become healthy [`docs/operations/disaster-recovery.md:175`]
+- [x] [Review][Patch] [High] Prevent single-backend PVC recovery from mixing one old snapshot with the surviving backend's newer timeline; require the paired boundary or proof of exact equivalence [`docs/operations/disaster-recovery.md:69`]
+- [x] [Review][Patch] [High] Verify physical recovery against pre-loss recovery-point evidence instead of a fresh export from the potentially truncated recovered state [`docs/operations/disaster-recovery.md:254`]
+- [x] [Review][Patch] [High] Wire the primary CLI backup commands to `HEXALITH_MEMORIES_ENDPOINT` and `HEXALITH_MEMORIES_API_TOKEN` so the declared URL/token select the intended environment [`docs/operations/backup-restore.md:56`]
+- [x] [Review][Patch] [High] Reject stale quiescence evidence by parsing and bounding `capturedAt`, not merely checking that it is a string [`docs/operations/backup-restore.md:81`]
+- [x] [Review][Patch] [High] Validate export checksums and one recovery-point identity before the full-cluster loop restores a directory of tenant/case exports [`docs/operations/disaster-recovery.md:209`]
+- [x] [Review][Patch] [High] Verify every restored tenant before intake resumes instead of checking only the separately required uppercase `$TENANT` [`docs/operations/disaster-recovery.md:254`]
+- [x] [Review][Patch] [Medium] Make the optional case export conditional or require `CASE`; the current `set -u` procedure aborts a tenant-only backup [`docs/operations/backup-restore.md:114`]
+- [x] [Review][Patch] [Medium] Persist terminal restore-status bodies instead of deleting the evidence that both runbooks require operators to retain [`docs/operations/backup-restore.md:264`]
+- [x] [Review][Patch] [Medium] Capture the bound `VolumeSnapshotContent` and provider snapshot identity needed to recover after control-plane loss [`docs/operations/backup-restore.md:224`]
+- [x] [Review][Patch] [Medium] Replace the unsupported automatic-sounding NL replay/re-index recovery claim with the actual original-source republication or re-ingestion path [`docs/operations/backup-restore.md:34`]
+- [x] [Review][Patch] [Medium] Validate Markdown fragments and reference-style links instead of stripping anchors and parsing inline links only [`tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs:59`]
+- [x] [Review][Patch] [Medium] Enforce preservation of the existing operations-document baseline, not only existence of the six new runbooks [`tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs:72`]
+- [x] [Review][Patch] [Medium] Validate each `redis-cli` invocation independently so option reordering cannot bypass the credential-in-argv guard [`tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs:175`]
 
 ## File Scope
 
@@ -158,6 +175,8 @@ Allowed files for this story:
 - `docs/operations/backup-restore.md` - UPDATE only for current production resource/authentication correctness and incident/rebuild/upgrade navigation.
 - `docs/operations/disaster-recovery.md` - UPDATE only for current production resource/authentication correctness and incident/rebuild/upgrade navigation.
 - `tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs` - NEW. Docker-free inventory, structure, link, safety, and source-drift contract.
+- `tools/verify-backup-recovery.py` - UPDATE by approved review decision. Prove active semantic coverage per memory unit instead of relying on an aggregate vector-key count.
+- `tests/tooling/production_deployment_evidence/backup_recovery_verifier_test.py` - UPDATE by approved review decision. Cover per-unit semantic recovery failure.
 - `_bmad-output/implementation-artifacts/26-5-operational-runbook-set.md` - UPDATE. Record evidence, completion notes, and final file list.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` - UPDATE only through BMad status transitions.
 
@@ -374,6 +393,7 @@ OpenAI Codex (GPT-5)
 - All ten owner/status/date rows are complete in the Dev Agent Record checkpoint tracker, the workflow-permitted execution-evidence location; the story-authoring checkpoint table above remains preserved as immutable context for independent review.
 - 2026-07-15 adversarial review chunk 1 closed all 16 findings across capacity planning, incident response, and index rebuild. The source-backed synthetic coefficient, full-window/PVC evidence, active raw/NL index measurement, fail-closed incident containment, current restore errors, clean-target/all-tenant recovery boundaries, NL limitations, and bounded destructive-workflow gates are now explicit. Release Server.Tests build: 0 warnings/errors; focused operational/deployment contracts: 12/12; `git diff --check`: clean. Story status remains `review` because the remaining runbook/navigation/test chunks were deliberately deferred to follow-up review runs.
 - 2026-07-16 adversarial review chunk 2 closed all 21 findings across tenant lifecycle, upgrade/migration, and monitoring/alerting. Accepted lifecycle requests and bounded polling now fail closed; deletion verification covers source-owned keys and shared-backend recovery is isolated; rollout/render/rollback are staged and scoped; alerts use semantically valid signals and direct response links. Release Server.Tests build: 0 warnings/errors; focused operational/deployment contracts: 13/13; Docker-free Server lane: 2,661 passed, 1 skipped, 0 failed (2,662 total); `git diff --check` and shell syntax checks: clean. Story status is `in-progress` because chunk 3 (navigation/recovery/test/tracking review) remains pending.
+- 2026-07-16 adversarial review chunk 3 closed all 17 accepted findings across backup/recovery execution, verifier fidelity, Markdown navigation, operations-document preservation, and credential guards; one speculative `BGSAVE` race finding was dismissed. Recovery now uses a portable immutable manifest, paired backend snapshots, pre-loss per-tenant baselines, retained status evidence, bounded quiescence evidence, and per-memory-unit active semantic verification. Verifier unit tests pass 8/8; focused operational/deployment contracts pass 15/15; the Docker-free Server lane passes 2,663 with 1 skipped and 0 failed (2,664 total); Server.Tests and the Release solution build with 0 warnings/errors; all 15 changed-runbook Bash blocks parse; Python compilation and `git diff --check` are clean. Story status is `done`.
 
 ### File List
 
@@ -388,11 +408,14 @@ OpenAI Codex (GPT-5)
 - docs/operations/backup-restore.md
 - docs/operations/disaster-recovery.md
 - tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs
+- tests/tooling/production_deployment_evidence/backup_recovery_verifier_test.py
+- tools/verify-backup-recovery.py
 - _bmad-output/implementation-artifacts/26-5-operational-runbook-set.md
 - _bmad-output/implementation-artifacts/sprint-status.yaml
 
 ## Change Log
 
+- 2026-07-16: Closed adversarial code-review chunk 3 — 17/17 accepted High/Medium findings patched across recovery runbooks, verifier/test scope, navigation, baseline preservation, and credential guards; focused contracts pass 15/15, verifier tests pass 8/8, and the Docker-free Server lane passes 2,663 with 1 skipped and 0 failed. Story completed.
 - 2026-07-16: Closed adversarial code-review chunk 2 — 21/21 High/Medium findings patched across tenant lifecycle, upgrade/migration, and monitoring/alerting; focused contracts pass 13/13 and the Docker-free Server lane passes 2,661 with 1 skipped and 0 failed.
 - 2026-07-15: Closed adversarial code-review chunk 1 — 16/16 High/Medium findings patched in capacity planning, incident response, and index rebuild; focused contracts pass 12/12.
 - 2026-07-14: Added six source-backed operational runbooks, direct navigation, safe production-aligned backup/recovery procedures, and one Docker-free documentation contract. Completed all focused, Server, Release-build, link, whitespace, and scope gates and moved the story to review.

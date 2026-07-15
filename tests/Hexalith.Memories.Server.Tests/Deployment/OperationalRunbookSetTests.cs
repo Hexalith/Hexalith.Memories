@@ -30,6 +30,18 @@ public sealed class OperationalRunbookSetTests
         "monitoring-alerting-thresholds.md",
     ];
 
+    private static readonly string[] PreservedOperationFileNames =
+    [
+        "backup-restore.md",
+        "deployment-configuration.md",
+        "disaster-recovery.md",
+        "embedding-providers.md",
+        "failure-recovery.md",
+        "pipeline-persistence.md",
+        "rate-limiting.md",
+        "route-surface.md",
+    ];
+
     private static readonly string[] CommonHeadings =
     [
         "Purpose and scope",
@@ -57,7 +69,15 @@ public sealed class OperationalRunbookSetTests
     ];
 
     private static readonly Regex MarkdownLinkRegex = new(
-        @"\[[^\]]+\]\((?<target><[^>]+>|[^)\s]+)",
+        @"(?<!!)\[[^\]]+\]\((?<target><[^>]+>|[^)\s]+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex MarkdownReferenceDefinitionRegex = new(
+        @"^\s{0,3}\[(?<label>[^\]]+)\]:\s*(?<target><[^>]+>|\S+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex MarkdownReferenceUseRegex = new(
+        @"(?<!!)\[(?<text>[^\]]+)\]\[(?<label>[^\]]*)\]",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex AuthoringMarkerRegex = new(
@@ -111,21 +131,24 @@ public sealed class OperationalRunbookSetTests
             string sourcePath = ResolveRepoPath(runbookPath.Split('/'));
             foreach (string target in GetMarkdownLinkTargets(File.ReadAllText(sourcePath)))
             {
-                if (IsExternalOrDocumentAnchor(target))
+                if (IsExternal(target))
                 {
                     continue;
                 }
 
-                string pathTarget = RemoveQueryAndFragment(Uri.UnescapeDataString(target));
-                if (pathTarget.Length == 0)
+                string decodedTarget = Uri.UnescapeDataString(target);
+                string pathTarget = RemoveQueryAndFragment(decodedTarget);
+                string fragment = GetFragment(decodedTarget);
+
+                if (pathTarget.Length > 0)
                 {
-                    continue;
+                    Path.IsPathRooted(pathTarget).ShouldBeFalse(
+                        $"Runbook link must be repository-relative: {runbookPath} -> {target}");
                 }
 
-                Path.IsPathRooted(pathTarget).ShouldBeFalse(
-                    $"Runbook link must be repository-relative: {runbookPath} -> {target}");
-
-                string resolved = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourcePath)!, pathTarget));
+                string resolved = pathTarget.Length == 0
+                    ? sourcePath
+                    : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourcePath)!, pathTarget));
                 string relativeToRoot = Path.GetRelativePath(repoRoot, resolved);
                 bool staysInRepository = !Path.IsPathRooted(relativeToRoot)
                     && !relativeToRoot.Equals("..", StringComparison.Ordinal)
@@ -135,6 +158,13 @@ public sealed class OperationalRunbookSetTests
                     $"Runbook link traverses outside the repository: {runbookPath} -> {target}");
                 (File.Exists(resolved) || Directory.Exists(resolved)).ShouldBeTrue(
                     $"Runbook link target does not resolve: {runbookPath} -> {target} ({resolved})");
+
+                if (fragment.Length > 0 && File.Exists(resolved))
+                {
+                    GetMarkdownHeadingAnchors(File.ReadAllText(resolved)).ShouldContain(
+                        fragment,
+                        $"Runbook link fragment does not resolve: {runbookPath} -> {target}");
+                }
             }
         }
     }
@@ -172,17 +202,18 @@ public sealed class OperationalRunbookSetTests
                     RegexOptions.CultureInvariant)
                 .ShouldBeFalse($"{runbookPath} copies a live data-plane directory instead of a quiesced mount.");
 
-            if (executableExamples.Contains("redis-cli", StringComparison.Ordinal))
+            foreach (string codeBlock in GetFencedCodeBlocks(content)
+                         .Where(static block => block.Contains("redis-cli", StringComparison.Ordinal)))
             {
                 Regex.IsMatch(
-                        executableExamples,
-                        @"\bredis-cli\s+-a\b",
+                        codeBlock,
+                        @"(?im)^\s*(?!#)[^\r\n]*\bredis-cli\b[^\r\n]*\s-a(?:\s|=)",
                         RegexOptions.CultureInvariant)
                     .ShouldBeFalse($"redis-cli credentials must not be expanded into process arguments: {runbookPath}");
-                executableExamples.ShouldContain(
+                codeBlock.ShouldContain(
                     "REDISCLI_AUTH",
                     Case.Sensitive,
-                    $"Every redis-cli runbook must use the in-container REDISCLI_AUTH mechanism: {runbookPath}");
+                    $"Every redis-cli code block must use the in-container REDISCLI_AUTH mechanism: {runbookPath}");
             }
         }
     }
@@ -208,7 +239,14 @@ public sealed class OperationalRunbookSetTests
 
         backup.ShouldContain("memories export tenant", Case.Sensitive);
         backup.ShouldContain("memories export case", Case.Sensitive);
+        backup.ShouldContain("HEXALITH_MEMORIES_ENDPOINT", Case.Sensitive);
+        backup.ShouldContain("HEXALITH_MEMORIES_API_TOKEN", Case.Sensitive);
+        backup.ShouldContain("MAX_QUIESCE_EVIDENCE_AGE_SECONDS", Case.Sensitive);
+        backup.ShouldContain("+%Y%m%dt%H%M%Sz", Case.Sensitive);
+        backup.ShouldNotContain("+%Y%m%dT%H%M%SZ", Case.Sensitive);
+        backup.ShouldContain("if [ -n \"${CASE:-}\" ]", Case.Sensitive);
         backup.ShouldContain("statusLocation", Case.Sensitive);
+        backup.ShouldContain("status_url=\"${MEMORIES_BASE_URL%/}$status_path\"", Case.Sensitive);
         backup.ShouldContain("instanceId", Case.Sensitive);
         backup.ShouldContain("Completed", Case.Sensitive);
         backup.ShouldContain("Failed|Canceled|Terminated", Case.Sensitive);
@@ -219,6 +257,10 @@ public sealed class OperationalRunbookSetTests
         backup.ShouldContain("RESTORE_TARGET_NOT_CLEAN", Case.Sensitive);
         backup.ShouldContain("edgeCount + statistics.memoryUnitCount", Case.Sensitive);
         backup.ShouldContain("tools/verify-backup-recovery.py", Case.Sensitive);
+        backup.ShouldContain("volume-snapshot-contents.json", Case.Sensitive);
+        backup.ShouldContain("recovery-manifest.json", Case.Sensitive);
+        backup.ShouldContain("install -m 600", Case.Sensitive);
+        backup.ShouldContain("No generic semantic re-index or force-replay path exists", Case.Sensitive);
 
         disaster.ShouldContain("name: data-redis-stack-0", Case.Sensitive);
         disaster.ShouldContain("name: data-falkordb-0", Case.Sensitive);
@@ -226,15 +268,25 @@ public sealed class OperationalRunbookSetTests
         disaster.ShouldContain("case_id=", Case.Sensitive);
         disaster.ShouldContain("/cases/$case_id/import", Case.Sensitive);
         disaster.ShouldContain("statusLocation", Case.Sensitive);
+        disaster.ShouldContain("status_url=\"${MEMORIES_BASE_URL%/}$status_path\"", Case.Sensitive);
+        disaster.ShouldContain("RECOVERY_MANIFEST", Case.Sensitive);
+        disaster.ShouldContain("select(.restore)", Case.Sensitive);
+        disaster.ShouldContain("paired PVC restore", Case.Insensitive);
+        disaster.ShouldContain("immutable, pre-loss consolidated", Case.Sensitive);
+        disaster.ShouldContain("install -m 600", Case.Sensitive);
         disaster.ShouldContain("instanceId", Case.Sensitive);
         disaster.ShouldContain(".restoredMemoryUnits == $units", Case.Sensitive);
         disaster.ShouldContain(".restoredCases == $cases", Case.Sensitive);
         disaster.ShouldContain(".restoredEdges == $edges", Case.Sensitive);
         disaster.ShouldContain("SkippedRecords", Case.Insensitive);
         disaster.ShouldContain("tenant-onboarding-offboarding.md#onboarding", Case.Sensitive);
+        disaster.IndexOf("Restore every external input", StringComparison.Ordinal)
+            .ShouldBeLessThan(disaster.IndexOf("Deploy `deploy/kubernetes/overlays/production`", StringComparison.Ordinal));
 
         verifier.ShouldContain("exportedEdgeCount", Case.Sensitive);
         verifier.ShouldContain("expected_graph_edges", Case.Sensitive);
+        verifier.ShouldContain("missing_semantic_units", Case.Sensitive);
+        verifier.ShouldContain("memoryUnitsMissingSemanticChunks", Case.Sensitive);
         verifier.ShouldContain("REDISCLI_AUTH", Case.Sensitive);
         verifier.ShouldNotContain("redis-cli -a", Case.Sensitive);
     }
@@ -374,6 +426,28 @@ public sealed class OperationalRunbookSetTests
         }
     }
 
+    [Fact]
+    public void MarkdownParser_ResolvesReferenceLinksAndGitHubStyleHeadingAnchors()
+    {
+        const string markdown = "## Physical backup (Redis + FalkorDB)\n[Recovery procedure][paired]\n[paired]: ./backup.md#physical-backup-redis--falkordb\n";
+
+        GetMarkdownLinkTargets(markdown).ShouldContain("./backup.md#physical-backup-redis--falkordb");
+        GetMarkdownHeadingAnchors(markdown).ShouldContain("physical-backup-redis--falkordb");
+        Should.Throw<InvalidDataException>(() => GetMarkdownLinkTargets("[Missing][target]").ToArray());
+    }
+
+    [Fact]
+    public void ExistingOperationDocuments_RemainAlongsideTheSixNewRunbooks()
+    {
+        RequiredRunbookFileNames.Intersect(PreservedOperationFileNames, StringComparer.Ordinal).ShouldBeEmpty();
+
+        foreach (string fileName in PreservedOperationFileNames)
+        {
+            string path = ResolveRepoPath("docs", "operations", fileName);
+            File.Exists(path).ShouldBeTrue($"Existing operational document not found at {path}");
+        }
+    }
+
     private static string[] GetLevelTwoHeadings(string content)
     {
         var headings = new List<string>();
@@ -401,6 +475,9 @@ public sealed class OperationalRunbookSetTests
 
     private static IEnumerable<string> GetMarkdownLinkTargets(string content)
     {
+        var visibleLines = new List<string>();
+        var targets = new List<string>();
+        var definitions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         bool insideFence = false;
         bool insideComment = false;
 
@@ -419,17 +496,97 @@ public sealed class OperationalRunbookSetTests
                 continue;
             }
 
+            visibleLines.Add(visibleLine);
+
+            Match definition = MarkdownReferenceDefinitionRegex.Match(visibleLine);
+            if (definition.Success)
+            {
+                definitions[definition.Groups["label"].Value.Trim()] =
+                    TrimAngleBrackets(definition.Groups["target"].Value);
+            }
+
             foreach (Match match in MarkdownLinkRegex.Matches(visibleLine))
             {
-                string target = match.Groups["target"].Value;
-                yield return target.Length >= 2 && target[0] == '<' && target[^1] == '>'
-                    ? target[1..^1]
-                    : target;
+                targets.Add(TrimAngleBrackets(match.Groups["target"].Value));
             }
         }
+
+        foreach (string visibleLine in visibleLines)
+        {
+            foreach (Match reference in MarkdownReferenceUseRegex.Matches(visibleLine))
+            {
+                string label = reference.Groups["label"].Value;
+                if (label.Length == 0)
+                {
+                    label = reference.Groups["text"].Value;
+                }
+
+                if (!definitions.TryGetValue(label.Trim(), out string? target))
+                {
+                    throw new InvalidDataException($"Markdown reference link '{label}' has no target definition.");
+                }
+
+                targets.Add(target);
+            }
+        }
+
+        return targets;
+    }
+
+    private static string TrimAngleBrackets(string target)
+        => target.Length >= 2 && target[0] == '<' && target[^1] == '>'
+            ? target[1..^1]
+            : target;
+
+    private static string[] GetMarkdownHeadingAnchors(string content)
+    {
+        var anchors = new List<string>();
+        var duplicates = new Dictionary<string, int>(StringComparer.Ordinal);
+        bool insideFence = false;
+        bool insideComment = false;
+
+        foreach (string originalLine in content.ReplaceLineEndings("\n").Split('\n'))
+        {
+            string trimmed = originalLine.TrimStart();
+            if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal))
+            {
+                insideFence = !insideFence;
+                continue;
+            }
+
+            string visibleLine = RemoveHtmlComments(originalLine, ref insideComment);
+            if (insideFence)
+            {
+                continue;
+            }
+
+            Match heading = Regex.Match(
+                visibleLine,
+                @"^#{1,6}\s+(?<text>.+?)(?:\s+#+)?\s*$",
+                RegexOptions.CultureInvariant);
+            if (!heading.Success)
+            {
+                continue;
+            }
+
+            string baseAnchor = Regex.Replace(
+                heading.Groups["text"].Value.ToLowerInvariant(),
+                @"[^\p{L}\p{Nd}\s-]",
+                string.Empty,
+                RegexOptions.CultureInvariant);
+            baseAnchor = Regex.Replace(baseAnchor, @"\s", "-", RegexOptions.CultureInvariant);
+            duplicates.TryGetValue(baseAnchor, out int duplicateCount);
+            duplicates[baseAnchor] = duplicateCount + 1;
+            anchors.Add(duplicateCount == 0 ? baseAnchor : $"{baseAnchor}-{duplicateCount}");
+        }
+
+        return [.. anchors];
     }
 
     private static string GetFencedCode(string content)
+        => string.Join('\n', GetFencedCodeBlocks(content));
+
+    private static IEnumerable<string> GetFencedCodeBlocks(string content)
     {
         var lines = new List<string>();
         bool insideFence = false;
@@ -439,6 +596,12 @@ public sealed class OperationalRunbookSetTests
             string trimmed = line.TrimStart();
             if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal))
             {
+                if (insideFence)
+                {
+                    yield return string.Join('\n', lines);
+                    lines.Clear();
+                }
+
                 insideFence = !insideFence;
                 continue;
             }
@@ -448,8 +611,6 @@ public sealed class OperationalRunbookSetTests
                 lines.Add(line);
             }
         }
-
-        return string.Join('\n', lines);
     }
 
     private static string RemoveHtmlComments(string line, ref bool insideComment)
@@ -486,13 +647,8 @@ public sealed class OperationalRunbookSetTests
         return visible;
     }
 
-    private static bool IsExternalOrDocumentAnchor(string target)
+    private static bool IsExternal(string target)
     {
-        if (target.StartsWith('#'))
-        {
-            return true;
-        }
-
         return Uri.TryCreate(target, UriKind.Absolute, out Uri? uri)
             && (uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
                 || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
@@ -503,6 +659,12 @@ public sealed class OperationalRunbookSetTests
     {
         int delimiter = target.IndexOfAny(['?', '#']);
         return delimiter < 0 ? target : target[..delimiter];
+    }
+
+    private static string GetFragment(string target)
+    {
+        int delimiter = target.IndexOf('#');
+        return delimiter < 0 ? string.Empty : target[(delimiter + 1)..];
     }
 
     private static string ReadRepoFile(string relativePath)

@@ -30,6 +30,7 @@ class FakeRunner:
         falkor_info: str = HEALTHY_INFO,
         memory_units: int = 3,
         semantic_chunks: int = 4,
+        missing_semantic_units: int = 0,
         cases: int = 2,
         graph_edges: int = 4,
     ) -> None:
@@ -38,6 +39,7 @@ class FakeRunner:
         self.falkor_info = falkor_info
         self.memory_units = memory_units
         self.semantic_chunks = semantic_chunks
+        self.missing_semantic_units = missing_semantic_units
         self.cases = cases
         self.graph_edges = graph_edges
         self.commands: list[list[str]] = []
@@ -52,6 +54,8 @@ class FakeRunner:
             return "Bound"
         if "INFO persistence" in joined:
             return self.redis_info if "redis-stack-0" in joined else self.falkor_info
+        if "missing_semantic_units" in joined:
+            return str(self.missing_semantic_units)
         if ":mu:*" in joined:
             return str(self.memory_units)
         if ":vec:*" in joined:
@@ -87,6 +91,7 @@ class BackupRecoveryVerifierTests(unittest.TestCase):
             self.assertEqual(4, evidence["expected"]["totalGraphEdges"])
             self.assertEqual(4, evidence["actual"]["totalGraphEdges"])
             self.assertEqual(4, evidence["actual"]["semanticChunks"])
+            self.assertEqual(0, evidence["actual"]["memoryUnitsMissingSemanticChunks"])
             all_commands = "\n".join(" ".join(command) for command in runner.commands)
             self.assertIn("REDISCLI_AUTH", all_commands)
             self.assertNotIn("redis-cli -a", all_commands)
@@ -104,6 +109,13 @@ class BackupRecoveryVerifierTests(unittest.TestCase):
             runner = FakeRunner(semantic_chunks=2)
 
             with self.assertRaisesRegex(VERIFIER.VerificationError, "semantic-chunk count"):
+                self.verify(Path(temp), runner)
+
+    def test_missing_per_unit_semantic_coverage_fails_despite_sufficient_total_chunks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            runner = FakeRunner(semantic_chunks=4, missing_semantic_units=2)
+
+            with self.assertRaisesRegex(VERIFIER.VerificationError, "no active semantic chunk"):
                 self.verify(Path(temp), runner)
 
     def test_graph_count_includes_rebuilt_contains_edges(self) -> None:

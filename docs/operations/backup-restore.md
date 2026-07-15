@@ -31,7 +31,7 @@ The export is a logical snapshot, not a byte-image of Redis.
 | Case activity | `{tenantId}:case:{id}:activity` + `:activity:summary` | Not restored | Operational read-model; new activity accrues after restore |
 | Graph | Per-tenant FalkorDB graph | Exported edges restored; `CONTAINS` rebuilt from `caseId` | Direction, type, `createdAt`, confidence, origin, `verifiedBy`, and `previousConfidence` preserved |
 | Semantic chunks | `{tenantId}:vec:{id}:{seq}` (HASH) | Re-chunked and re-embedded | Attribution/dimensions equal; bytes equal for deterministic providers |
-| NL vectors | `{tenantId}:vecnl:{id}` (HASH) | Not restored | Rebuilt on later event replay/re-index |
+| NL vectors | `{tenantId}:vecnl:{id}` (HASH) | Not restored | No generic semantic re-index or force-replay path exists; recover through the supported original-source republication/re-ingestion path in [Index Rebuild](./index-rebuild.md) |
 
 Vectors are re-derived because export contains provider/model/dimensions attribution but no vector bytes or
 AI-generated NL description. Secret values are never exported: `apiSecretKeyName` is only a secret-store key
@@ -67,7 +67,12 @@ set -euo pipefail
 : "${RETENTION:?set the approved retention policy}"
 : "${QUIESCE_PLAYBOOK:?set the approved deployment-specific quiescence playbook URI/version}"
 : "${QUIESCE_EVIDENCE:?set the access-controlled evidence file written by that playbook}"
-RECOVERY_ID="${RECOVERY_ID:-$(date -u +%Y%m%dT%H%M%SZ)}"
+: "${MAX_QUIESCE_EVIDENCE_AGE_SECONDS:?set the approved maximum evidence age in seconds}"
+export HEXALITH_MEMORIES_ENDPOINT="$MEMORIES_BASE_URL"
+export HEXALITH_MEMORIES_API_TOKEN="$TOKEN"
+RECOVERY_ID="${RECOVERY_ID:-$(date -u +%Y%m%dt%H%M%Sz)}"
+printf '%s\n' "$RECOVERY_ID" | grep -Eq '^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$'
+[ "${#RECOVERY_ID}" -le 220 ]
 BACKUP_WORKDIR="${BACKUP_WORKDIR:-$PWD/backups/$RECOVERY_ID}"
 mkdir -p "$BACKUP_WORKDIR"
 ```
@@ -85,6 +90,12 @@ jq -e --arg playbook "$QUIESCE_PLAYBOOK" \
   '.playbook == $playbook and .intakePaused == true and .activeWorkflows == 0 and
    (.capturedAt | type == "string") and (.resumeOwner | type == "string" and length > 0)' \
   "$QUIESCE_EVIDENCE" >/dev/null
+printf '%s\n' "$MAX_QUIESCE_EVIDENCE_AGE_SECONDS" | grep -Eq '^[1-9][0-9]*$'
+CAPTURED_AT_EPOCH="$(jq -er '.capturedAt | fromdateiso8601' "$QUIESCE_EVIDENCE")"
+NOW_EPOCH="$(date -u +%s)"
+EVIDENCE_AGE_SECONDS=$((NOW_EPOCH - CAPTURED_AT_EPOCH))
+[ "$EVIDENCE_AGE_SECONDS" -ge 0 ]
+[ "$EVIDENCE_AGE_SECONDS" -le "$MAX_QUIESCE_EVIDENCE_AGE_SECONDS" ]
 
 jq -n --arg recoveryId "$RECOVERY_ID" --arg owner "$BACKUP_OWNER" --arg rpo "$RPO" \
   --arg retention "$RETENTION" --arg destination "$BACKUP_DESTINATION" \
@@ -111,13 +122,15 @@ jq -e --arg tenant "$TENANT" \
   "$TENANT_EXPORT" >/dev/null
 sha256sum "$TENANT_EXPORT" > "$TENANT_EXPORT.sha256"
 
-# Case-scoped backup when required by recovery-point policy or the 512 MiB import ceiling.
-CASE_EXPORT="$BACKUP_WORKDIR/$TENANT-$CASE-case-export.json"
-memories export case --tenant "$TENANT" --case "$CASE" --output "$CASE_EXPORT" --allow-absolute-path
-jq -e --arg tenant "$TENANT" --arg caseId "$CASE" \
-  '.manifest.schemaVersion == 1 and .manifest.scope == "case" and
-   .manifest.tenantId == $tenant and .manifest.caseId == $caseId' "$CASE_EXPORT" >/dev/null
-sha256sum "$CASE_EXPORT" > "$CASE_EXPORT.sha256"
+# Optional case-scoped backup when CASE is set by policy or needed for the 512 MiB import ceiling.
+if [ -n "${CASE:-}" ]; then
+  CASE_EXPORT="$BACKUP_WORKDIR/$TENANT-$CASE-case-export.json"
+  memories export case --tenant "$TENANT" --case "$CASE" --output "$CASE_EXPORT" --allow-absolute-path
+  jq -e --arg tenant "$TENANT" --arg caseId "$CASE" \
+    '.manifest.schemaVersion == 1 and .manifest.scope == "case" and
+     .manifest.tenantId == $tenant and .manifest.caseId == $caseId' "$CASE_EXPORT" >/dev/null
+  sha256sum "$CASE_EXPORT" > "$CASE_EXPORT.sha256"
+fi
 ```
 
 For endpoint-only environments, retain the same atomic and validation behavior:
@@ -229,15 +242,63 @@ kubectl -n "$NAMESPACE" get volumesnapshot "$REDIS_SNAPSHOT" "$FALKORDB_SNAPSHOT
   > "$BACKUP_WORKDIR/volume-snapshots.json"
 kubectl -n "$NAMESPACE" get pvc data-redis-stack-0 data-falkordb-0 -o json \
   > "$BACKUP_WORKDIR/source-pvcs.json"
+
+REDIS_SNAPSHOT_CONTENT="$(kubectl -n "$NAMESPACE" get volumesnapshot "$REDIS_SNAPSHOT" \
+  -o jsonpath='{.status.boundVolumeSnapshotContentName}')"
+FALKORDB_SNAPSHOT_CONTENT="$(kubectl -n "$NAMESPACE" get volumesnapshot "$FALKORDB_SNAPSHOT" \
+  -o jsonpath='{.status.boundVolumeSnapshotContentName}')"
+[ -n "$REDIS_SNAPSHOT_CONTENT" ]
+[ -n "$FALKORDB_SNAPSHOT_CONTENT" ]
+kubectl get volumesnapshotcontent "$REDIS_SNAPSHOT_CONTENT" "$FALKORDB_SNAPSHOT_CONTENT" -o json \
+  > "$BACKUP_WORKDIR/volume-snapshot-contents.json"
+jq -e '
+  .items | length == 2 and
+  all(.[]; (.spec.driver | type == "string" and length > 0) and
+           (.status.snapshotHandle | type == "string" and length > 0) and
+           .status.readyToUse == true)
+' "$BACKUP_WORKDIR/volume-snapshot-contents.json" >/dev/null
+
+REDIS_SNAPSHOT_HANDLE="$(jq -er --arg name "$REDIS_SNAPSHOT_CONTENT" \
+  '.items[] | select(.metadata.name == $name) | .status.snapshotHandle' \
+  "$BACKUP_WORKDIR/volume-snapshot-contents.json")"
+FALKORDB_SNAPSHOT_HANDLE="$(jq -er --arg name "$FALKORDB_SNAPSHOT_CONTENT" \
+  '.items[] | select(.metadata.name == $name) | .status.snapshotHandle' \
+  "$BACKUP_WORKDIR/volume-snapshot-contents.json")"
+TENANT_EXPORT_SHA256="$(sha256sum "$TENANT_EXPORT" | awk '{print toupper($1)}')"
+TENANT_EXPORT_NAME="$(basename "$TENANT_EXPORT")"
+jq -n --arg recoveryId "$RECOVERY_ID" --arg redisSnapshotHandle "$REDIS_SNAPSHOT_HANDLE" \
+  --arg falkorDbSnapshotHandle "$FALKORDB_SNAPSHOT_HANDLE" --arg tenantId "$TENANT" \
+  --arg path "$TENANT_EXPORT_NAME" --arg sha256 "$TENANT_EXPORT_SHA256" '
+  {schemaVersion:1,recoveryId:$recoveryId,redisSnapshotHandle:$redisSnapshotHandle,
+   falkorDbSnapshotHandle:$falkorDbSnapshotHandle,
+   exports:[{tenantId:$tenantId,scope:"tenant",restore:true,path:$path,sha256:$sha256}]}
+' > "$BACKUP_WORKDIR/recovery-manifest.json"
+if [ -n "${CASE:-}" ]; then
+  CASE_EXPORT_SHA256="$(sha256sum "$CASE_EXPORT" | awk '{print toupper($1)}')"
+  CASE_EXPORT_NAME="$(basename "$CASE_EXPORT")"
+  MANIFEST_TMP="$(mktemp "$BACKUP_WORKDIR/recovery-manifest.XXXXXX.part")"
+  jq --arg tenantId "$TENANT" --arg caseId "$CASE" --arg path "$CASE_EXPORT_NAME" \
+    --arg sha256 "$CASE_EXPORT_SHA256" '
+    .exports += [{tenantId:$tenantId,scope:"case",caseId:$caseId,restore:false,
+                  path:$path,sha256:$sha256}]
+  ' "$BACKUP_WORKDIR/recovery-manifest.json" > "$MANIFEST_TMP"
+  mv "$MANIFEST_TMP" "$BACKUP_WORKDIR/recovery-manifest.json"
+fi
 ```
 
 If either wait fails, keep intake paused, capture `kubectl describe volumesnapshot`, and have incident command
 either delete both failed recovery-point resources and retry with a new ID or abandon the physical backup.
 Never pair a newly retried snapshot with one from the failed attempt.
 
-Record both snapshot handles, creation timestamps, source PVC UIDs, policy evidence, and logical-export
-checksums together. File-level copies are allowed only through a deployment-owned maintenance-pod playbook
+Record both provider snapshot handles, CSI drivers, `VolumeSnapshotContent` names, creation timestamps, source
+PVC UIDs, policy evidence, and logical-export checksums together. File-level copies are allowed only through a
+deployment-owned maintenance-pod playbook
 mounting a quiesced snapshot read-only; never copy a live AOF directory.
+
+The manifest's `restore` flag selects payloads, while its one tenant-scoped export per tenant remains the
+immutable verification baseline. For a tenant larger than the import ceiling, add every case export, set the
+tenant export to `restore:false`, and mark the complete non-overlapping case set `restore:true`. Validate the
+catalog and upload it atomically with the other recovery-point evidence before resuming intake.
 
 ## Logical restore procedure
 
@@ -254,36 +315,52 @@ submit_and_wait_restore() {
   expected_edges="$(jq -er '.statistics.edgeCount | select(type == "number")' "$export_file")"
   response_headers="$(mktemp)"
   response_body="$(mktemp)"
-  if ! curl -fsS -X POST "$import_url" \
+  if ! http_status="$(curl -sS --fail-with-body -X POST "$import_url" \
       -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-      --data-binary "@$export_file" -D "$response_headers" -o "$response_body"; then
+      --data-binary "@$export_file" -D "$response_headers" -o "$response_body" \
+      -w '%{http_code}')"; then
+    rm -f "$response_headers" "$response_body"
+    return 1
+  fi
+  if [ "$http_status" != 202 ]; then
     rm -f "$response_headers" "$response_body"
     return 1
   fi
 
   instance_id="$(jq -er '.instanceId | select(type == "string" and length > 0)' "$response_body")"
-  status_url="$(jq -er '.statusLocation | select(type == "string" and length > 0)' "$response_body")"
+  status_path="$(jq -er '.statusLocation | select(type == "string" and startswith("/"))' "$response_body")"
+  returned_location="$(tr -d '\r' < "$response_headers" | awk 'tolower($1) == "location:" { print $2 }' | tail -n 1)"
+  [ "$returned_location" = "$status_path" ]
+  status_url="${MEMORIES_BASE_URL%/}$status_path"
+  status_evidence="$BACKUP_WORKDIR/restore-$instance_id-status.json"
   deadline=$(( $(date +%s) + 1800 ))
   status=''
   while [ "$(date +%s)" -lt "$deadline" ]; do
     if ! curl -fsS -H "Authorization: Bearer $TOKEN" "$status_url" -o "$response_body" ||
         ! jq -e --arg instance "$instance_id" '.instanceId == $instance' "$response_body" >/dev/null; then
+      if [ -s "$response_body" ]; then install -m 600 "$response_body" "$status_evidence"; fi
       rm -f "$response_headers" "$response_body"
       return 1
     fi
     status="$(jq -er '.status' "$response_body")"
     case "$status" in
       Completed)
-        jq -e --argjson units "$expected_units" --argjson cases "$expected_cases" \
-          --argjson edges "$expected_edges" \
-          '.skippedRecords == 0 and
-          .restoredMemoryUnits == $units and
-          .restoredCases == $cases and
-          .restoredEdges == $edges' "$response_body" >/dev/null
+        if ! jq -e --argjson units "$expected_units" --argjson cases "$expected_cases" \
+            --argjson edges "$expected_edges" \
+            '.skippedRecords == 0 and
+             .restoredMemoryUnits == $units and
+             .restoredCases == $cases and
+             .restoredEdges == $edges' "$response_body" >/dev/null; then
+          install -m 600 "$response_body" "$status_evidence"
+          rm -f "$response_headers" "$response_body"
+          return 1
+        fi
+        install -m 600 "$response_body" "$status_evidence"
         rm -f "$response_headers" "$response_body"
         return 0
         ;;
       Failed|Canceled|Terminated)
+        install -m 600 "$response_body" "$status_evidence"
         jq -r '{failureCode,failureMessage,failureSuggestion}' "$response_body" >&2
         rm -f "$response_headers" "$response_body"
         return 1
@@ -293,6 +370,7 @@ submit_and_wait_restore() {
   done
 
   printf 'restore %s did not reach a terminal state before the deadline\n' "$instance_id" >&2
+  if [ -s "$response_body" ]; then install -m 600 "$response_body" "$status_evidence"; fi
   rm -f "$response_headers" "$response_body"
   return 1
 }

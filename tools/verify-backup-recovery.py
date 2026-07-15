@@ -181,11 +181,41 @@ def verify_recovery(
             "--",
             "sh",
             "-ec",
-            'export REDISCLI_AUTH="$REDIS_PASSWORD"; redis-cli --no-auth-warning --scan --pattern "$1:vec:*" | wc -l',
+            (
+                'export REDISCLI_AUTH="$REDIS_PASSWORD"; '
+                'redis-cli --no-auth-warning --scan --pattern "$1:vec:*" | '
+                "awk -F: -v tenant=\"$1\" '$1 == tenant && $2 == \"vec\" && "
+                "NF == 4 && $4 ~ /^[0-9]+$/ { count++ } END { print count + 0 }'"
+            ),
             "--",
             tenant_id,
         ),
-        "semantic-chunk count",
+        "active semantic-chunk count",
+    )
+    missing_semantic_units = parse_count(
+        kube(
+            "exec",
+            "redis-stack-0",
+            "--",
+            "sh",
+            "-ec",
+            (
+                'export REDISCLI_AUTH="$REDIS_PASSWORD"; '
+                '{ redis-cli --no-auth-warning --scan --pattern "$1:mu:*" | sed "s/^/M /"; '
+                'redis-cli --no-auth-warning --scan --pattern "$1:vec:*" | sed "s/^/V /"; } | '
+                "awk -v tenant=\"$1\" '"
+                '/^M / { key=substr($0, 3); prefix=tenant ":mu:"; '
+                'units[substr(key, length(prefix) + 1)]=1; next } '
+                '/^V / { key=substr($0, 3); count=split(key, parts, ":"); '
+                'if (count == 4 && parts[1] == tenant && parts[2] == "vec" && '
+                'parts[4] ~ /^[0-9]+$/) delete units[parts[3]] } '
+                'END { missing_semantic_units=0; for (id in units) missing_semantic_units++; '
+                "print missing_semantic_units + 0 }'"
+            ),
+            "--",
+            tenant_id,
+        ),
+        "memory units missing active semantic chunks",
     )
     cases = parse_count(
         kube(
@@ -227,6 +257,10 @@ def verify_recovery(
         raise VerificationError(
             f"semantic-chunk count {semantic_chunks} is below memory-unit count {expected_memory_units}"
         )
+    if missing_semantic_units != 0:
+        raise VerificationError(
+            f"{missing_semantic_units} memory units have no active semantic chunk"
+        )
     if graph_edges != expected_graph_edges:
         raise VerificationError(
             f"graph-edge count mismatch: actual {graph_edges}, expected {expected_graph_edges} "
@@ -249,6 +283,7 @@ def verify_recovery(
             "memoryUnits": memory_units,
             "cases": cases,
             "semanticChunks": semantic_chunks,
+            "memoryUnitsMissingSemanticChunks": missing_semantic_units,
             "totalGraphEdges": graph_edges,
         },
         "persistence": {"redis": redis_health, "falkorDb": falkor_health},
