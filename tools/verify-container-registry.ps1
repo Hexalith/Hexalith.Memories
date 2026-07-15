@@ -88,6 +88,33 @@ function New-RegistryRequest {
 
 try {
     try {
+        $challengeUri = [Uri]::new($registryUri, 'v2/')
+        $request = New-RegistryRequest -Method ([Net.Http.HttpMethod]::Get) -Uri $challengeUri
+        try {
+            $response = $client.Send($request)
+            try {
+                $statusCode = [int]$response.StatusCode
+                if ($statusCode -notin @(200, 401)) {
+                    throw "Container registry authentication negotiation failed with HTTP $statusCode at /v2/."
+                }
+
+                $basicChallenge = @($response.Headers.WwwAuthenticate |
+                        Where-Object { [string]::Equals($_.Scheme, 'Basic', [StringComparison]::OrdinalIgnoreCase) } |
+                        Select-Object -First 1)
+                if ($basicChallenge.Count -ne 1 -or
+                    [string]::IsNullOrWhiteSpace($basicChallenge[0].Parameter) -or
+                    $basicChallenge[0].Parameter -notmatch '(?i)(?:^|,)\s*realm\s*=') {
+                    throw 'Container registry /v2/ did not advertise a Basic WWW-Authenticate realm. Challenge-driven OCI clients would omit credentials from later write requests; ensure the ingress routes /v2/ to Zot without replacing its response headers.'
+                }
+            }
+            finally {
+                $response.Dispose()
+            }
+        }
+        finally {
+            $request.Dispose()
+        }
+
         foreach ($repository in $Repositories) {
             $encodedRepository = ($repository.Split('/') | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/'
             $uploadUri = [Uri]::new($registryUri, "v2/$encodedRepository/blobs/uploads/")
@@ -182,4 +209,4 @@ if ($null -ne $probeFailure) {
     throw $probeFailure
 }
 
-Write-Host "Verified container registry write scope for $($Repositories.Count) repositories at $($registryUri.Authority)."
+Write-Host "Verified container registry Basic authentication negotiation and write scope for $($Repositories.Count) repositories at $($registryUri.Authority)."

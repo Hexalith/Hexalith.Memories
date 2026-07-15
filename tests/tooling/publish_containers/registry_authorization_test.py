@@ -15,9 +15,13 @@ API_KEY = "SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK"
 
 class RegistryState:
     def __init__(self) -> None:
+        self.gets: list[str] = []
+        self.get_authorizations: list[str | None] = []
         self.posts: list[str] = []
         self.deletes: list[str] = []
         self.delete_authorizations: list[str | None] = []
+        self.challenge_header: str | None = 'Basic realm="test-zot"'
+        self.challenge_status = 200
         self.denied_repository: str | None = None
         self.cancel_status = 204
         self.location_origin: str | None = None
@@ -25,6 +29,20 @@ class RegistryState:
 
 def make_handler(state: RegistryState) -> type[BaseHTTPRequestHandler]:
     class RegistryHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
+            state.gets.append(self.path)
+            state.get_authorizations.append(self.headers.get("Authorization"))
+            if self.path != "/v2/":
+                self.send_response(404)
+                self.end_headers()
+                return
+
+            self.send_response(state.challenge_status)
+            self.send_header("Docker-Distribution-Api-Version", "registry/2.0")
+            if state.challenge_header is not None:
+                self.send_header("WWW-Authenticate", state.challenge_header)
+            self.end_headers()
+
         def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler contract
             expected = "Basic " + base64.b64encode(f"{USERNAME}:{API_KEY}".encode()).decode()
             if self.headers.get("Authorization") != expected:
@@ -120,11 +138,37 @@ class RegistryAuthorizationTests(unittest.TestCase):
             result = run_probe(registry.origin)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(["/v2/"], state.gets)
+        self.assertEqual([None], state.get_authorizations)
         self.assertEqual(["memories", "memories-mcp"], state.posts)
         self.assertEqual(["/uploads/memories", "/uploads/memories-mcp"], state.deletes)
         self.assertEqual(2, len([value for value in state.delete_authorizations if value]))
         self.assertNotIn(USERNAME, result.stdout + result.stderr)
         self.assertNotIn(API_KEY, result.stdout + result.stderr)
+
+    def test_missing_basic_challenge_fails_before_opening_upload_sessions(self) -> None:
+        state = RegistryState()
+        state.challenge_header = None
+        with RegistryServer(state) as registry:
+            result = run_probe(registry.origin)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["/v2/"], state.gets)
+        self.assertEqual([None], state.get_authorizations)
+        self.assertEqual([], state.posts)
+        self.assertIn("WWW-Authenticate", result.stdout + result.stderr)
+        self.assertNotIn(USERNAME, result.stdout + result.stderr)
+        self.assertNotIn(API_KEY, result.stdout + result.stderr)
+
+    def test_standard_unauthorized_basic_challenge_is_accepted(self) -> None:
+        state = RegistryState()
+        state.challenge_status = 401
+        with RegistryServer(state) as registry:
+            result = run_probe(registry.origin)
+
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(["/v2/"], state.gets)
+        self.assertEqual(["memories", "memories-mcp"], state.posts)
 
     def test_cross_origin_upload_locations_are_cancelled_without_forwarding_credentials(self) -> None:
         registry_state = RegistryState()
@@ -174,6 +218,7 @@ class RegistryAuthorizationTests(unittest.TestCase):
             result = run_probe(registry.origin, include_credentials=False)
 
         self.assertNotEqual(0, result.returncode)
+        self.assertEqual([], state.gets)
         self.assertEqual([], state.posts)
         self.assertIn("HEXALITH_ZOT_USERNAME", result.stdout + result.stderr)
 
@@ -187,6 +232,7 @@ class RegistryAuthorizationTests(unittest.TestCase):
             )
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual([], state.gets)
         self.assertEqual([], state.posts)
         self.assertIn("deferred from release classification", result.stdout)
 
