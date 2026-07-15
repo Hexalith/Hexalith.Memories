@@ -3,8 +3,8 @@
 ## Purpose and scope
 
 Owner: platform operations. Review cadence: quarterly and after any embedding model, index schema,
-resource request, persistence, or topology change. Last verified: 2026-07-14 at repository revision
-`1553ee6708f644f3a4bc3638d3aaceed682b2371`.
+resource request, persistence, or topology change. Last source and procedure verification: 2026-07-15
+against repository revision `ca0a6266598e0f4231e2ff332d0e2131bfda75c6`.
 
 This runbook provides the measurement-first sizing method required by NFR14. It applies to one
 tenant, a representative case/corpus, Redis Stack, FalkorDB, workflow/state data, and the Server/MCP
@@ -42,7 +42,8 @@ available without measured evidence and a separately reviewed architecture chang
   REDIS_POD=redis-stack-0
   FALKORDB_POD=falkordb-0
   SYNTACTIC_INDEX="${TENANT_ID}:memories:idx"
-  SEMANTIC_INDEX="${TENANT_ID}:memories:vec"
+  RAW_ACTIVE_INDEX="${TENANT_ID}:memories:vec:active"
+  NL_ACTIVE_INDEX="${TENANT_ID}:memories:vec:nl:active"
   RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
   printf 'namespace=%s tenant=%s run=%s\n' "$NAMESPACE" "$TENANT_ID" "$RUN_ID"
   ```
@@ -55,6 +56,42 @@ available without measured evidence and a separately reviewed architecture chang
 - Destructive steps: none are required. Scaling, PVC expansion, model changes, eviction-policy
   changes, index replacement, and data deletion are outside this measurement procedure and require a
   separate approved change.
+
+### Pre-provision reference coefficient
+
+Use the committed synthetic corpus at
+[`tests/Hexalith.Memories.Benchmarks/Data/synthetic-corpus.json`](../../tests/Hexalith.Memories.Benchmarks/Data/synthetic-corpus.json)
+as the repository reference input. It contains 35 units at 768 dimensions. On 2026-07-15 it was loaded
+into the pinned Redis Stack image and the production syntactic, raw HNSW, and natural-language HNSW
+schema shapes at revision `ca0a6266598e0f4231e2ff332d0e2131bfda75c6`. The deterministic reference
+used one raw and one NL vector per unit, reused the committed vector bytes for both vector families,
+used corpus content as the synthetic NL description, and used empty metadata. It is synthetic evidence,
+not a production result.
+
+| Reference measurement | Result |
+|---|---:|
+| Content bytes, average / p50 / p95 | 332 / 340 / 403 |
+| Syntactic hash bytes, average / p50 / p95 | 947 / 950 / 988 |
+| Raw vector hash bytes per stored vector | 3,928 |
+| NL vector hash bytes, average / p50 / p95 | 4,303 / 4,320 / 4,384 |
+| Raw / NL HNSW bytes per indexed vector at 35 vectors | 96,470 / 96,470 |
+| Other index bytes per source unit | 10,367 |
+| Observed allocator/global residual per source unit | 43,160 |
+| Aggregate `used_memory` delta / reference unit | 255,645 bytes |
+
+For an initial estimate, let `U` be source units, `R` stored raw chunk vectors, and `N` stored NL vectors:
+
+```text
+reference Redis bytes = (54,474 × U) + (100,398 × R) + (100,773 × N)
+```
+
+This coefficient is reusable only as a conservative bootstrap anchor for the pinned image, 768 dimensions,
+the current field sets, and content/metadata no larger than the reference distribution. It includes the
+small-corpus HNSW allocation and must not be presented as a linear scale guarantee. For another dimension,
+schema, chunk/vector ratio, metadata distribution, Redis image, or migration target, run the representative
+measurement below before customer-tenant approval. Add measured workflow/state, persistence rewrite,
+FalkorDB, backup/replication, and policy headroom separately. If no valid coefficient exists for the proposed
+shape, stop provisioning rather than substituting another tenant's data or the float32 lower bound.
 
 ## Signals and evidence
 
@@ -106,24 +143,40 @@ persistence copy-on-write/rewrite pressure, backups, and any future replication.
 
 1. Record tenant dimensions and a representative corpus manifest: units, bytes, chunks, vectors,
    cases, graph nodes/edges, provider quota, and the time window.
-2. Capture the rendered resource/PVC configuration and current utilization:
+2. Capture the rendered resource/PVC configuration and point-in-time utilization. The `df` values are
+   actual filesystem usage in KiB; `kubectl get pvc` capacity alone is not used-byte evidence:
 
    ```bash
    kubectl -n "$NAMESPACE" get deploy/memories deploy/memories-mcp \
      statefulset/redis-stack statefulset/falkordb -o yaml
-   kubectl -n "$NAMESPACE" top pod
+   kubectl -n "$NAMESPACE" top pod --containers
    kubectl -n "$NAMESPACE" get pvc data-redis-stack-0 data-falkordb-0
+   kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- df -Pk /data
+   kubectl -n "$NAMESPACE" exec "$FALKORDB_POD" -- df -Pk /var/lib/falkordb/data
+   kubectl -n "$NAMESPACE" get pods -o json | jq -c '
+     [.items[] | {
+       pod: .metadata.name,
+       restarts: ([.status.containerStatuses[]?.restartCount] | add // 0),
+       reasons: [.status.containerStatuses[]?.lastState.terminated.reason]
+     }]'
+   kubectl -n "$NAMESPACE" get events --sort-by=.metadata.creationTimestamp
    ```
+
+   Export the deployed metrics backend for the whole observation window at container granularity. It
+   must cover CPU working set, throttling, memory/RSS, restarts/OOMs, node/storage pressure, and PVC
+   used/capacity. Repeat the snapshot commands at baseline, peak load, persistence rewrite, and stable
+   post-load. If the metrics backend or PVC-used series is unavailable, record NoData and stop capacity
+   approval; an instantaneous `kubectl top` sample is not a substitute.
 
 3. Capture backend baseline through the password already injected into each container:
 
    ```bash
    kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
      'export REDISCLI_AUTH="$REDIS_PASSWORD"; redis-cli --no-auth-warning INFO memory; redis-cli --no-auth-warning INFO persistence'
-   kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'export REDISCLI_AUTH="$REDIS_PASSWORD"; redis-cli --no-auth-warning FT.INFO "$1"' sh "$SYNTACTIC_INDEX"
-   kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'export REDISCLI_AUTH="$REDIS_PASSWORD"; redis-cli --no-auth-warning FT.INFO "$1"' sh "$SEMANTIC_INDEX"
+   for index in "$SYNTACTIC_INDEX" "$RAW_ACTIVE_INDEX" "$NL_ACTIVE_INDEX"; do
+     kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
+       'export REDISCLI_AUTH="$REDIS_PASSWORD"; redis-cli --no-auth-warning FT.INFO "$1"' sh "$index"
+   done
    kubectl -n "$NAMESPACE" exec "$FALKORDB_POD" -- sh -ec \
      'export REDISCLI_AUTH="$FALKORDB_PASSWORD"; redis-cli --no-auth-warning GRAPH.MEMORY USAGE "$1" SAMPLES 100' sh "$TENANT_ID"
    ```
@@ -142,20 +195,38 @@ persistence copy-on-write/rewrite pressure, backups, and any future replication.
 ### 3. Measure deltas
 
 1. Repeat all baseline captures at a stable post-ingestion point.
-2. Sample representative keys without exposing stored content:
+2. Sample a bounded distribution of each key family without exposing stored content. Missing families
+   are recorded as zero/unavailable instead of aborting the remaining collection:
 
    ```bash
-   kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'export REDISCLI_AUTH="$REDIS_PASSWORD"; key=$(redis-cli --no-auth-warning --scan --pattern "$1:mu:*" | head -n 1); test -n "$key"; redis-cli --no-auth-warning MEMORY USAGE "$key"' sh "$TENANT_ID"
-   kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec \
-     'export REDISCLI_AUTH="$REDIS_PASSWORD"; key=$(redis-cli --no-auth-warning --scan --pattern "$1:vec:*" | head -n 1); test -n "$key"; redis-cli --no-auth-warning MEMORY USAGE "$key"' sh "$TENANT_ID"
+   for pattern in "$TENANT_ID:mu:*" "$TENANT_ID:vec:*" "$TENANT_ID:vecnl:*"; do
+     kubectl -n "$NAMESPACE" exec "$REDIS_POD" -- sh -ec '
+       export REDISCLI_AUTH="$REDIS_PASSWORD"
+       pattern="$1"
+       keys="$(redis-cli --no-auth-warning --scan --pattern "$pattern" | head -n 100)"
+       if [ -z "$keys" ]; then
+         printf "sample-unavailable pattern=%s\n" "$pattern"
+       else
+         printf "%s\n" "$keys" | while IFS= read -r key; do
+           redis-cli --no-auth-warning MEMORY USAGE "$key"
+         done
+       fi
+     ' sh "$pattern"
+   done
    ```
+
+   Compute count, average, p50, and p95 from the numeric results for each family. Keep staging key
+   families separate when migration is active; do not mix active and staging coefficients.
 
 3. Calculate per-unit and per-tenant deltas independently:
    `resource delta / added source units`, `resource delta / added stored vectors`, and the absolute
-   tenant delta. Do not divide graph growth only by vector count; retain graph node/edge density.
+   tenant delta. Require both denominators to be greater than zero before division. If another tenant's
+   control measurements or shared-backend idle baseline changes materially, repeat in an isolated window
+   or record and justify the normalization; do not attribute the shared delta to the measured tenant.
+   Do not divide graph growth only by vector count; retain graph node/edge density.
 4. Compare the measured vector/hash/index total with `4 × D × V`. The difference is measured
-   overhead, not evidence that the formula is wrong.
+   overhead only when the measured total is greater than or equal to the lower bound. A smaller result
+   is a count/unit/schema error: reject the worksheet and reconcile it before projection.
 
 ### 4. Exercise persistence headroom
 

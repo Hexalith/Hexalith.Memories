@@ -103,6 +103,25 @@ Story 26.5 is checkpoint-heavy. The implementation remains one story only if eve
   - [x] Run the normal Docker-free Server test project/lane and `dotnet build Hexalith.Memories.slnx --configuration Release -m:1 /nodeReuse:false`; record counts and any legitimate baseline change without copying Story 26.4's old count as a new result.
   - [x] Run `git diff --check`, resolve every Markdown link in the changed set, confirm the file-scope/forbidden-scope contract, and complete every evidence-table owner/status/date cell before moving the story to review.
 
+### Review Findings
+
+- [x] [Review][Patch] [High] Publish a source-backed synthetic reference corpus with reusable measured sizing coefficients for NFR14 pre-provision estimates [`docs/operations/capacity-planning.md:9`]
+- [x] [Review][Patch] [Medium] Last-verified provenance points to a revision where none of the three runbooks existed [`docs/operations/capacity-planning.md:5`]
+- [x] [Review][Patch] [High] Required whole-window Kubernetes and actual PVC-used-byte evidence is not collected by the procedure [`docs/operations/capacity-planning.md:63`]
+- [x] [Review][Patch] [High] Capacity collection omits the natural-language vector family and measures base indexes instead of active migration aliases [`docs/operations/capacity-planning.md:37`]
+- [x] [Review][Patch] [Medium] A single arbitrary Redis key cannot establish the required distributions and the sampling command aborts for an empty family [`docs/operations/capacity-planning.md:145`]
+- [x] [Review][Patch] [Medium] Delta calculations lack guards for zero denominators, shared-backend noise, and totals below the float32 lower bound [`docs/operations/capacity-planning.md:154`]
+- [x] [Review][Patch] [High] Health collection aborts on expected HTTP 503 responses, omits status codes, and samples only one of two Server pods [`docs/operations/incident-response.md:63`]
+- [x] [Review][Patch] [Medium] A complete single-tenant outage without a safe unaffected path has no severity classification [`docs/operations/incident-response.md:20`]
+- [x] [Review][Patch] [Medium] The current restore error inventory and its claimed operator-message source are stale and inconsistent [`docs/operations/incident-response.md:86`]
+- [x] [Review][Patch] [High] Degraded-axis containment relies on voluntary callers and has no composed or fail-closed fallback [`docs/operations/incident-response.md:104`]
+- [x] [Review][Patch] [High] Rollout undo can recreate pods with the same failing mutable ConfigMap or Secret configuration [`docs/operations/incident-response.md:112`]
+- [x] [Review][Patch] [Medium] Consistency inspection defaults to an unrelated canary unit instead of requiring a reported discrepancy ID [`docs/operations/index-rebuild.md:87`]
+- [x] [Review][Patch] [High] Missing natural-language projections have no supported recovery route through Paths A or C despite required all-axis parity [`docs/operations/index-rebuild.md:54`]
+- [x] [Review][Patch] [High] Path C contradicts the clean-target restore contract by describing logical import as additive and safe to abandon [`docs/operations/index-rebuild.md:74`]
+- [x] [Review][Patch] [High] Physical restore's all-tenant blast radius and the runbook's case-level blast radius are not disclosed [`docs/operations/index-rebuild.md:10`]
+- [x] [Review][Patch] [High] Path D permits deletion with merely recorded active workflows and gives no bounded deletion failure/timeout route [`docs/operations/index-rebuild.md:130`]
+
 ## File Scope
 
 Allowed files for this story:
@@ -332,6 +351,7 @@ OpenAI Codex (GPT-5)
 - The Docker-free documentation contract now parses real second-level headings and Markdown links outside code/comments, rejects repository traversal and unresolved targets, guards unfinished/unsafe executable examples, and ties namespace, data-plane resource names, lifecycle routes, emitted metric names, dashboard normalization, and Degraded-to-HTTP-200 semantics to canonical sources. The Release test project builds with zero warnings/errors; the focused new and existing deployment contracts pass 11/11.
 - Final verification completed: the focused contracts pass 11/11; the normal Docker-free Server assembly passes 2,628 with one existing skip and zero failures (2,629 total, five more tests than the pre-change lane); both the Server test project and full Release solution build with zero warnings/errors; `git diff --check`, changed-link resolution, CRLF, 13-file declared scope, and forbidden-scope gates pass. The three dirty `references/Hexalith.EventStore`, `references/Hexalith.FrontComposer`, and `references/Hexalith.Tenants` worktrees pre-date this implementation and remain untouched/uncommitted.
 - All ten owner/status/date rows are complete in the Dev Agent Record checkpoint tracker, the workflow-permitted execution-evidence location; the story-authoring checkpoint table above remains preserved as immutable context for independent review.
+- 2026-07-15 adversarial review chunk 1 closed all 16 findings across capacity planning, incident response, and index rebuild. The source-backed synthetic coefficient, full-window/PVC evidence, active raw/NL index measurement, fail-closed incident containment, current restore errors, clean-target/all-tenant recovery boundaries, NL limitations, and bounded destructive-workflow gates are now explicit. Release Server.Tests build: 0 warnings/errors; focused operational/deployment contracts: 12/12; `git diff --check`: clean. Story status remains `review` because the remaining runbook/navigation/test chunks were deliberately deferred to follow-up review runs.
 
 ### File List
 
@@ -351,4 +371,5 @@ OpenAI Codex (GPT-5)
 
 ## Change Log
 
+- 2026-07-15: Closed adversarial code-review chunk 1 — 16/16 High/Medium findings patched in capacity planning, incident response, and index rebuild; focused contracts pass 12/12.
 - 2026-07-14: Added six source-backed operational runbooks, direct navigation, safe production-aligned backup/recovery procedures, and one Docker-free documentation contract. Completed all focused, Server, Release-build, link, whitespace, and scope gates and moved the story to review.

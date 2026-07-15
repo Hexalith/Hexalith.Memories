@@ -4,7 +4,7 @@
 
 Owner: incident-response lead. Review cadence: quarterly and after every severity 0/1 incident or
 material health, telemetry, deployment, workflow, provider, or recovery change. Last verified:
-2026-07-14 at repository revision `1553ee6708f644f3a4bc3638d3aaceed682b2371`.
+2026-07-15 against repository revision `ca0a6266598e0f4231e2ff332d0e2131bfda75c6`.
 
 This runbook defines first response, containment, recovery routing, verification, and escalation for
 Hexalith.Memories. Classify blast radius before changing anything: one tenant, one case/workflow,
@@ -20,7 +20,7 @@ tenant owners, and do not continue normal diagnosis through exposed data.
 | Severity | Definition | Acknowledge / commander assigned | Communication |
 |---|---|---|---|
 | SEV0 critical | suspected tenant/secret exposure, destructive corruption, or broad unrecoverable loss | 5 minutes / immediately | security, platform, data, product, and affected tenant owners |
-| SEV1 high | all-tenant outage, Dapr/state-store failure, sustained ingestion halt, or imminent data loss | 10 minutes / 10 minutes | platform/data/provider owners and stakeholders every 30 minutes |
+| SEV1 high | all-tenant outage, complete tenant outage with no safe unaffected path, Dapr/state-store failure, sustained ingestion halt, or imminent data loss | 10 minutes / 10 minutes | platform/data/provider owners and stakeholders every 30 minutes |
 | SEV2 medium | tenant- or axis-scoped degradation with a safe unaffected path | 30 minutes / 30 minutes | affected owner; hourly until stable |
 | SEV3 low | bounded defect with workaround and no active loss/security risk | 1 business day / named owner | normal operations channel |
 
@@ -68,15 +68,31 @@ The health contract is structured, not status-code-only:
 - `/health`: union diagnostic; `Healthy` and `Degraded` return 200, `Unhealthy` returns 503.
 - Parse `schemaVersion`, top-level `status`, every entry `status`, and `affectedCapabilities`.
 
-Collect it without exposing the application token:
+Collect it from every Server pod without exposing the application token. `wget -S` emits the HTTP
+status line; the explicit `if` prevents an expected 503 from aborting later endpoints or pods. Keep the
+bounded output in the incident evidence store, not a shared terminal transcript:
 
 ```bash
-kubectl -n "$NAMESPACE" exec deploy/memories -- sh -ec '
-  for path in health alive ready; do
-    wget -qO- --header="dapr-api-token: ${APP_API_TOKEN}" "http://127.0.0.1:8080/${path}"
-    printf "\n"
-  done'
+for pod in $(kubectl -n "$NAMESPACE" get pod \
+  -l app.kubernetes.io/name=memories -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl -n "$NAMESPACE" exec "$pod" -- sh -ec '
+    for path in health alive ready; do
+      output=""
+      if output=$(wget -S -O- --header="dapr-api-token: ${APP_API_TOKEN}" \
+          "http://127.0.0.1:8080/${path}" 2>&1); then
+        exit_code=0
+      else
+        exit_code=$?
+      fi
+      printf "pod=%s path=/%s wgetExit=%s\n%s\n" "$HOSTNAME" "$path" "$exit_code" "$output"
+    done'
+done
 ```
+
+For each pod/path, retain the HTTP status and a parseable JSON body with the required schema fields.
+If the body is absent/malformed, `schemaVersion` is unsupported, or any required entry/capability field
+cannot be interpreted, stop mutations and treat health as unknown/unhealthy until the contract is
+recovered. Do not route recovery from a status line alone.
 
 Useful application signals include `memories.ingestion.documents`, `memories.ingestion.failures`,
 `memories.search.duration`, `memories.rate.limit.rejections`, `memories.pipeline.queue.depth`,
@@ -86,11 +102,14 @@ Useful application signals include `memories.ingestion.documents`, `memories.ing
 For import/restore failures, retain the structured code without the payload. Current families are
 `IMPORT_SCHEMA_VERSION_UNSUPPORTED`, `IMPORT_SCOPE_MISMATCH`, `IMPORT_TENANT_MISMATCH`,
 `IMPORT_CASE_MISMATCH`, `IMPORT_TOO_LARGE`, `IMPORT_ABORTED`, `IMPORT_EMPTY`,
-`IMPORT_MANIFEST_UNREADABLE`, and `RESTORE_STATUS_NOT_FOUND`. For re-ingestion retain
+`IMPORT_MANIFEST_UNREADABLE`, `RESTORE_STATUS_NOT_FOUND`, `RESTORE_TARGET_BUSY`, and
+`RESTORE_TARGET_NOT_CLEAN`. For re-ingestion retain
 `NON_URL_REINGESTION_UNAVAILABLE`; for infrastructure/provider pressure retain
-`DAPR_UNAVAILABLE`, `RATE_LIMIT_EXCEEDED`, and the provider response category. Use
-[`ErrorMessageCatalog`](../../src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs) as the current
-operator-message source rather than inventing an error interpretation.
+`DAPR_UNAVAILABLE`, `RATE_LIMIT_EXCEEDED`, and the provider response category. Use the
+[`ErrorMessageCatalog`](../../src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs) for cataloged
+operator messages. `NON_URL_REINGESTION_UNAVAILABLE` is emitted by
+[`ReIngestionCoordinator`](../../src/Hexalith.Memories.Server/Ingestion/ReIngestionCoordinator.cs) and
+is not currently cataloged; preserve its structured code and escalate instead of inventing guidance.
 
 ## Procedure
 
@@ -101,15 +120,18 @@ operator-message source rather than inventing an error interpretation.
 3. For isolation or secret suspicion, stop the affected ingress/identity/tenant access path, preserve
    logs and authorization evidence, rotate exposed credentials through the secret owner, and escalate
    as SEV0. Do not query other tenants to "compare" data.
-4. Otherwise, start read-only and retain healthy search axes where `/ready` reports only a bounded
-   backend degradation. Notify consumers that no gateway automatically routes on
-   `affectedCapabilities`; callers must avoid the affected axis explicitly.
+4. Otherwise, start read-only. Evaluate every degraded entry and take the union of its
+   `affectedCapabilities`; do not stop after the first matching row. Retain healthy search axes only
+   when an approved ingress/feature control actually blocks every affected flow and a probe proves the
+   block. No gateway automatically routes on `affectedCapabilities`. If caller compliance or the
+   capability mapping cannot be proved, fail closed by pausing the full search/mutation scope rather
+   than advertising partial service.
 
 ### 2. Follow the decision tree
 
 | Observation | Read-only confirmation | Containment and next path |
 |---|---|---|
-| Pod not started within 60 seconds, restart loop, or `/alive` 503 | Pod events, previous logs, image/config/Secret references, startup JSON | Stop rollout; use deployment rollback for stateless image/config faults. Do not delete PVCs. |
+| Pod not started within 60 seconds, restart loop, or `/alive` 503 | Every pod's events, previous logs, image/config/Secret references, startup JSON | Stop rollout. For an image or Pod-template fault, restore the prior rendered workload. For a mutable ConfigMap/Secret reference, reapply its previously approved rendered value through change control and restart the workload; `rollout undo` alone reuses the current external configuration. Do not delete PVCs. |
 | `/ready` 503 with `dapr-sidecar` or `dapr-statestore` unhealthy | Dapr control plane/sidecar health, component errors, state-store reachability | Pause new writes/workflows because orchestration/actor durability is affected; route to deployment/failure recovery. |
 | `/ready` 200 with `redisearch` degraded | Entry capabilities and syntactic/hybrid errors | Disable syntactic-dependent flows; semantic/graph-only service may continue if verified. |
 | `/ready` 200 with `redis-vector` degraded | Entry capabilities, module/index status, semantic errors | Disable semantic/hybrid-semantic flows; syntactic/graph-only service may continue if verified. |
@@ -122,6 +144,7 @@ operator-message source rather than inventing an error interpretation.
 | PVC, RSS, OOM, `noeviction`, AOF/RDB, or rewrite pressure | Kubernetes/PVC metrics plus Redis `INFO memory`/`INFO persistence` | Stop intake/load before writes are rejected or recovery workspace is exhausted; use capacity/backup guidance. |
 | Missing telemetry or dashboard series | OTLP endpoint/exporter logs, collector/scrape health, direct health JSON | Open an observability incident; do not infer service health from missing data. |
 | Import/restore error | Structured error code, manifest scope/version, workflow status, target readiness | Stop retries that could amplify cost; follow backup/restore. Never edit staging, workflow, Redis, or graph state manually. |
+| Multiple or unrecognized degraded entries | Union of every entry's `affectedCapabilities`, direct axis probes, schema version | Apply every matching containment row. If any capability is unknown or cannot be blocked and verified, pause the full request scope and escalate; do not infer an unaffected path. |
 
 ### 3. Recover through the owning procedure
 
@@ -169,8 +192,10 @@ Stop an action when scope expands, a control tenant regresses, evidence contradi
 readiness becomes more severe, queues cease progress, backup verification is missing, or the action
 requires direct state edits. Return to the last safe containment state and escalate.
 
-Stateless rollout rollback uses the prior rendered artifact or `kubectl rollout undo` for the affected
-Deployment. It does not reverse durable state, schemas, indexes, or PVC contents. Durable recovery uses
+Stateless image/Pod-template rollback uses the prior rendered artifact or `kubectl rollout undo` for the
+affected Deployment. A mutable ConfigMap, Secret reference, or external provider setting must be restored
+to its prior approved rendered value separately before pods restart; rollout history does not version those
+objects. Neither route reverses durable state, schemas, indexes, or PVC contents. Durable recovery uses
 retained paired snapshots/logical exports through the linked procedures; PVC deletion is never a normal
 rollback step. Resume intake only after verification and commander approval.
 
