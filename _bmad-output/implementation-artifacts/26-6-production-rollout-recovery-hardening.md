@@ -33,6 +33,7 @@ context:
 - The captured post-run evidence passed `validate-production-deployment-evidence.ps1`.
 - After reconciling main's production-dependency staging, the combined inventory passed: 56/56.
 - Partial-release recovery now rebuilds and reconciles container images from the trusted release tag when the original release commit is behind `main`.
+- The 2026-07-15 registry incident follow-up requires the public `/v2/` path to preserve Zot's Basic `WWW-Authenticate` challenge before write-scope verification can pass; recovery run `29402995649` validated that contract with the release credentials after the ingress correction.
 
 ## File Scope
 
@@ -43,6 +44,9 @@ Allowed files for this story:
 - `tests/tooling/production_deployment_evidence/production_deployment_evidence_test.py` - UPDATE. Cover final-stage evidence enforcement and recovery wiring.
 - `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` - UPDATE. Pin the startup, restoration, cleanup, and evidence contracts.
 - `.github/workflows/recover-partial-release.yml` - ADD. Reconcile missing immutable container tags from an existing trusted release tag.
+- `tools/verify-container-registry.ps1` - UPDATE. Fail closed when the public registry path strips Zot's Basic authentication challenge.
+- `tools/publish-containers.ps1` - UPDATE. Keep the skopeo challenge dependency explicit at the authfile boundary.
+- `tests/tooling/publish_containers/registry_authorization_test.py` - UPDATE. Cover preserved and missing registry challenges without exposing credentials.
 - `docs/dev/release-runbook.md` - UPDATE. Distinguish normal reruns from tagged container-only recovery after `main` advances.
 - `_bmad-output/implementation-artifacts/26-6-production-rollout-recovery-hardening.md` - ADD. Record intent, evidence, and the exact permitted change surface.
 
