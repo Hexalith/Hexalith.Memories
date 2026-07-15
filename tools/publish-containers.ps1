@@ -126,9 +126,10 @@ function Get-FailureText {
 function New-RegistryAuthFile {
     # The docker daemon must not be used for release pushes: this registry allows anonymous
     # read, so zot answers the daemon's unauthenticated GET /v2/ ping with HTTP 200 and the
-    # daemon then never sends credentials on push (project-zot/zot#2928). skopeo negotiates
-    # the per-request auth challenge correctly, and this scoped credential file hands it the
-    # exact bytes that verify-container-registry.ps1 already proved carry write authorization.
+    # daemon then never sends credentials on push (project-zot/zot#2928). skopeo honors the Basic
+    # challenge advertised by Zot at /v2/, and this scoped credential file hands it the exact bytes
+    # that verify-container-registry.ps1 proved carry write authorization. The verifier also fails
+    # closed if an ingress replaces /v2/ with a synthetic response that strips that challenge.
     $username = $env:HEXALITH_ZOT_USERNAME
     $apiKey = $env:HEXALITH_ZOT_API_KEY
     $credentialBytes = [Text.Encoding]::UTF8.GetBytes("$username`:$apiKey")

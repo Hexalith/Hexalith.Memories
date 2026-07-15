@@ -26,10 +26,12 @@ artifacts from a workstation.
   `refs/tags/v1.2.3`. It intentionally does not treat similarly prefixed tags such as
   `v1.2.30` as collisions.
 - Semantic-release runs `tools/verify-container-registry.ps1` as its `verifyReleaseCmd`, before
-  prepare creates release artifacts or a tag can be published. The probe opens and immediately
-  cancels an OCI upload session in both `memories` and `memories-mcp`. A login, `/v2/` response,
-  or read-only catalog request is not proof of push authorization. Every opened probe session must
-  return HTTP 204 when cancelled or the release fails closed.
+  prepare creates release artifacts or a tag can be published. The verifier first requires the
+  unauthenticated `/v2/` response to advertise a Basic `WWW-Authenticate` realm, then opens and
+  immediately cancels an authenticated OCI upload session in both `memories` and `memories-mcp`.
+  The challenge check proves challenge-driven clients can select the authfile credential; the
+  upload probes separately prove write authorization. Every opened probe session must return HTTP
+  204 when cancelled or the release fails closed.
 - `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`.
 - `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It always attempts
   both NuGet and container publication and writes one aggregate release summary.
@@ -41,7 +43,9 @@ artifacts from a workstation.
   to this registry: the registry allows anonymous read, so zot answers the daemon's
   unauthenticated `GET /v2/` ping with HTTP 200, the daemon caches "no auth required", and it then
   never sends credentials on push, failing with `unauthorized: authentication required`
-  (project-zot/zot#2928). skopeo negotiates the auth challenge per request and is unaffected.
+  (project-zot/zot#2928). skopeo uses the Basic challenge preserved by Zot's `/v2/` response and
+  the scoped authfile. It also fails if an ingress replaces that response with a synthetic `200`
+  that omits `WWW-Authenticate`, so the release verifier checks this server-side precondition.
   Remote tag reconciliation compares the archive and remote manifest config digests through the
   same skopeo path. The local side of that comparison is the prebuilt archive manifest's config
   digest (the archives are single-platform), no longer a daemon-loaded image ID.
@@ -338,16 +342,21 @@ those actions can move the published state away from the CI-recorded audit ancho
   validator.
 - If semantic-release fails before publishing, inspect the run logs and fix the repository state or
   release configuration through a pull request.
+- If registry verification reports a missing Basic `WWW-Authenticate` realm, stop before creating
+  a release. Confirm `/v2/` is routed to Zot and that no ingress or health-check sidecar replaces
+  its response. Do not work around the failure by making clients send Basic credentials
+  preemptively.
 - If registry write-scope verification returns HTTP 401 or 403, stop before creating a release.
   An organization or Zot administrator must grant the `HEXALITH_ZOT_USERNAME` principal push
   authorization to both `memories` and `memories-mcp`; rotating a valid credential or proving
   registry login/read access does not repair a repository ACL. Never paste the username, API key,
   or authorization header into an issue or workflow log.
-- If container pushes fail with `unauthorized: authentication required` while write-scope
-  verification passes, a docker-daemon push path has been reintroduced. That path cannot
-  authenticate against this registry (see the `skopeo` publication note above and
-  project-zot/zot#2928); restore the skopeo authfile path in `tools/publish-containers.ps1`
-  instead of rotating credentials or changing registry ACLs.
+- If container pushes fail with `unauthorized: authentication required` after verification passes,
+  inspect Zot logs for the failed request before changing credentials. No `Authorization` header
+  means either `/v2/` challenge headers were changed after preflight, the skopeo authfile path was
+  bypassed, or a docker-daemon push path was reintroduced. An `Authorization` header with HTTP 401
+  or 403 instead points to credential or repository-policy rejection. Preserve the skopeo path and
+  compare the live `/v2/` response with the verifier evidence before choosing a repair.
 - If `tools/release-preflight.ps1` reports that `refs/tags/v<version>` already exists locally or on
   `origin`, stop before publish work starts. The message names the exact conflicting ref. Do not
   delete the remote tag casually; confirm whether it came from an aborted/manual release, record the
