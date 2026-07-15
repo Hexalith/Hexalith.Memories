@@ -315,6 +315,65 @@ public sealed class OperationalRunbookSetTests
         monitoringDoc.ShouldContain("`Degraded` can be HTTP 200", Case.Sensitive);
     }
 
+    [Fact]
+    public void ReviewHardenedRunbooks_KeepLifecycleRolloutAndAlertGates()
+    {
+        string tenantDoc = ReadRepoFile("docs/operations/tenant-onboarding-offboarding.md");
+        Regex.Matches(tenantDoc, Regex.Escape("test \"$HTTP_STATUS\" = 202"), RegexOptions.CultureInvariant)
+            .Count.ShouldBe(2);
+        Regex.Matches(tenantDoc, "RETURNED_LOCATION", RegexOptions.CultureInvariant)
+            .Count.ShouldBeGreaterThanOrEqualTo(6);
+        Regex.Matches(tenantDoc, "POLL_DEADLINE_EPOCH=", RegexOptions.CultureInvariant)
+            .Count.ShouldBe(2);
+        tenantDoc.ShouldContain("dedup:{tenantId}:*", Case.Sensitive);
+        tenantDoc.ShouldContain("{tenantId}:vec:nl:*", Case.Sensitive);
+        tenantDoc.ShouldNotContain("drain or record", Case.Sensitive);
+        tenantDoc.ShouldContain("isolated recovery environment", Case.Sensitive);
+        tenantDoc.ShouldContain("CompensationFailed", Case.Sensitive);
+
+        string deletionActivity = ReadRepoFile(
+            "src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs");
+        deletionActivity.ShouldContain("$\"dedup:{input.TenantId}:*\"", Case.Sensitive);
+        deletionActivity.ShouldContain("GetLegacyNaturalLanguageSemanticKeyPrefix", Case.Sensitive);
+
+        string upgradeDoc = ReadRepoFile("docs/operations/upgrade-migration.md");
+        upgradeDoc.ShouldContain("PREVIOUS_RENDER_SHA256", Case.Sensitive);
+        upgradeDoc.ShouldContain("--dry-run=server", Case.Sensitive);
+        upgradeDoc.ShouldContain("KUBECTL_DIFF_RC", Case.Sensitive);
+        upgradeDoc.ShouldContain("--timeout=\"$ROLLOUT_TIMEOUT\"", Case.Sensitive);
+        upgradeDoc.ShouldContain("complete production render is an all-tenant environment change", Case.Sensitive);
+        upgradeDoc.ShouldContain("kubectl apply` is not atomic", Case.Sensitive);
+        upgradeDoc.ShouldContain("target runtime/backend versions", Case.Sensitive);
+        upgradeDoc.ShouldContain("target data layout", Case.Sensitive);
+        upgradeDoc.ShouldContain("reapply the complete", Case.Sensitive);
+        upgradeDoc.ShouldContain("`PREVIOUS_RENDER` as a stateless rollback", Case.Sensitive);
+        upgradeDoc.ShouldNotContain("structured healthy or explicitly accepted capability state", Case.Sensitive);
+
+        string monitoringDoc = ReadRepoFile("docs/operations/monitoring-alerting-thresholds.md");
+        monitoringDoc.ShouldContain("before workflow completion/indexing", Case.Sensitive);
+        monitoringDoc.ShouldContain("multiply by 60", Case.Sensitive);
+        monitoringDoc.ShouldContain("no accepted/total-request counter", Case.Sensitive);
+        monitoringDoc.ShouldContain("EventId 9153", Case.Sensitive);
+        monitoringDoc.ShouldContain("EventId 9180", Case.Sensitive);
+        monitoringDoc.ShouldContain("access-controlled incident record", Case.Sensitive);
+
+        string alertMatrix = monitoringDoc[
+            monitoringDoc.IndexOf("| Signal / class |", StringComparison.Ordinal)..
+            monitoringDoc.IndexOf("The application counter", StringComparison.Ordinal)];
+        string[] alertRows = alertMatrix
+            .ReplaceLineEndings("\n")
+            .Split('\n')
+            .Where(static line => line.StartsWith("| ", StringComparison.Ordinal)
+                && !line.StartsWith("| Signal / class |", StringComparison.Ordinal)
+                && !line.StartsWith("|---", StringComparison.Ordinal))
+            .ToArray();
+        alertRows.Length.ShouldBe(18);
+        foreach (string row in alertRows)
+        {
+            row.ShouldContain("](", Case.Sensitive, "Every recommended alert row must link its response procedure.");
+        }
+    }
+
     private static string[] GetLevelTwoHeadings(string content)
     {
         var headings = new List<string>();

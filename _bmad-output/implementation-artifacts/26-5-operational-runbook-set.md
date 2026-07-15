@@ -4,7 +4,7 @@ baseline_commit: e574c313ae067b72ac7f69dd3061099c1a425466
 
 # Story 26.5: Operational Runbook Set
 
-Status: review
+Status: in-progress
 
 <!-- Epic 26 — Test, Deployment & Operational Readiness. Documentation-and-contract-test story closing the runbook portion assigned to audit finding A25. Do not change product behavior, deployment manifests, package versions, alert infrastructure, benchmark inputs, or submodule pointers. -->
 
@@ -121,27 +121,27 @@ Story 26.5 is checkpoint-heavy. The implementation remains one story only if eve
 - [x] [Review][Patch] [High] Path C contradicts the clean-target restore contract by describing logical import as additive and safe to abandon [`docs/operations/index-rebuild.md:74`]
 - [x] [Review][Patch] [High] Physical restore's all-tenant blast radius and the runbook's case-level blast radius are not disclosed [`docs/operations/index-rebuild.md:10`]
 - [x] [Review][Patch] [High] Path D permits deletion with merely recorded active workflows and gives no bounded deletion failure/timeout route [`docs/operations/index-rebuild.md:130`]
-- [ ] [Review][Patch] [High] Lifecycle submit snippets can advance without a contract-valid 202, returned Location, and non-empty workflow ID [`docs/operations/tenant-onboarding-offboarding.md:74`]
-- [ ] [Review][Patch] [High] Provisioning and deletion polling are neither executable nor concretely bounded [`docs/operations/tenant-onboarding-offboarding.md:92`]
-- [ ] [Review][Patch] [High] Offboarding absence checks omit deletion-owned dedup and legacy natural-language vector key families [`docs/operations/tenant-onboarding-offboarding.md:147`]
-- [ ] [Review][Patch] [High] Offboarding permits recording active workflows instead of requiring a safe terminal disposition before deletion [`docs/operations/tenant-onboarding-offboarding.md:120`]
-- [ ] [Review][Patch] [High] Single-tenant recovery suggests a shared-backend physical restore without requiring isolated extraction or all-tenant recovery approval [`docs/operations/tenant-onboarding-offboarding.md:181`]
-- [ ] [Review][Patch] [High] Compensation-failed onboarding has no orphan-axis inventory and supported cleanup/recovery procedure [`docs/operations/tenant-onboarding-offboarding.md:177`]
-- [ ] [Review][Patch] [High] Render and diff preflight can destroy or trust an invalid rollback artifact and does not handle render/diff failures safely [`docs/operations/upgrade-migration.md:45`]
-- [ ] [Review][Patch] [High] The documented canary applies the complete production render and defines no partial-apply recovery branch [`docs/operations/upgrade-migration.md:115`]
-- [ ] [Review][Patch] [High] Reapplying the complete previous production render is mislabeled as stateless rollback [`docs/operations/upgrade-migration.md:162`]
-- [ ] [Review][Patch] [Medium] Rollout waits have no bounded timeout or timeout evidence path [`docs/operations/upgrade-migration.md:122`]
-- [ ] [Review][Patch] [High] Completion permits an undefined accepted degraded capability state that bypasses the healthy-canary gate [`docs/operations/upgrade-migration.md:149`]
-- [ ] [Review][Patch] [Medium] Workflow history operations assume Dapr 1.18 instead of the exact discovered runtime and CLI versions [`docs/operations/upgrade-migration.md:63`]
-- [ ] [Review][Patch] [High] Restore rehearsal does not require the exact target versions and data layout for a data-layout migration [`docs/operations/upgrade-migration.md:107`]
-- [ ] [Review][Patch] [High] Search p95 hard-target alerts are not gated by the NFR workload conditions and a qualifying sample floor [`docs/operations/monitoring-alerting-thresholds.md:81`]
-- [ ] [Review][Patch] [High] The ingestion hard-target alert measures scheduled documents rather than completed memory units and leaves the per-second-to-per-minute conversion implicit [`docs/operations/monitoring-alerting-thresholds.md:82`]
-- [ ] [Review][Patch] [Medium] The freshness hard-target alert lacks an executable derived signal and an explicit provider-degradation classification [`docs/operations/monitoring-alerting-thresholds.md:83`]
-- [ ] [Review][Patch] [High] The rate-limit ratio names no real accepted-request denominator [`docs/operations/monitoring-alerting-thresholds.md:87`]
-- [ ] [Review][Patch] [Medium] The ingestion failure ratio counts scheduling outcomes but is presented as end-to-end ingestion failure [`docs/operations/monitoring-alerting-thresholds.md:86`]
-- [ ] [Review][Patch] [Medium] The natural-language retry-stall alert names no source-backed progress signal [`docs/operations/monitoring-alerting-thresholds.md:89`]
-- [ ] [Review][Patch] [Medium] Most alert rows omit the required linked response procedure [`docs/operations/monitoring-alerting-thresholds.md:79`]
-- [ ] [Review][Patch] [Medium] Escalation guidance redacts workflow IDs required for protected Dapr incident correlation [`docs/operations/monitoring-alerting-thresholds.md:150`]
+- [x] [Review][Patch] [High] Lifecycle submit snippets can advance without a contract-valid 202, returned Location, and non-empty workflow ID [`docs/operations/tenant-onboarding-offboarding.md:74`]
+- [x] [Review][Patch] [High] Provisioning and deletion polling are neither executable nor concretely bounded [`docs/operations/tenant-onboarding-offboarding.md:92`]
+- [x] [Review][Patch] [High] Offboarding absence checks omit deletion-owned dedup and legacy natural-language vector key families [`docs/operations/tenant-onboarding-offboarding.md:147`]
+- [x] [Review][Patch] [High] Offboarding permits recording active workflows instead of requiring a safe terminal disposition before deletion [`docs/operations/tenant-onboarding-offboarding.md:120`]
+- [x] [Review][Patch] [High] Single-tenant recovery suggests a shared-backend physical restore without requiring isolated extraction or all-tenant recovery approval [`docs/operations/tenant-onboarding-offboarding.md:181`]
+- [x] [Review][Patch] [High] Compensation-failed onboarding has no orphan-axis inventory and supported cleanup/recovery procedure [`docs/operations/tenant-onboarding-offboarding.md:177`]
+- [x] [Review][Patch] [High] Render and diff preflight can destroy or trust an invalid rollback artifact and does not handle render/diff failures safely [`docs/operations/upgrade-migration.md:45`]
+- [x] [Review][Patch] [High] The documented canary applies the complete production render and defines no partial-apply recovery branch [`docs/operations/upgrade-migration.md:115`]
+- [x] [Review][Patch] [High] Reapplying the complete previous production render is mislabeled as stateless rollback [`docs/operations/upgrade-migration.md:162`]
+- [x] [Review][Patch] [Medium] Rollout waits have no bounded timeout or timeout evidence path [`docs/operations/upgrade-migration.md:122`]
+- [x] [Review][Patch] [High] Completion permits an undefined accepted degraded capability state that bypasses the healthy-canary gate [`docs/operations/upgrade-migration.md:149`]
+- [x] [Review][Patch] [Medium] Workflow history operations assume Dapr 1.18 instead of the exact discovered runtime and CLI versions [`docs/operations/upgrade-migration.md:63`]
+- [x] [Review][Patch] [High] Restore rehearsal does not require the exact target versions and data layout for a data-layout migration [`docs/operations/upgrade-migration.md:107`]
+- [x] [Review][Patch] [High] Search p95 hard-target alerts are not gated by the NFR workload conditions and a qualifying sample floor [`docs/operations/monitoring-alerting-thresholds.md:81`]
+- [x] [Review][Patch] [High] The ingestion hard-target alert measures scheduled documents rather than completed memory units and leaves the per-second-to-per-minute conversion implicit [`docs/operations/monitoring-alerting-thresholds.md:82`]
+- [x] [Review][Patch] [Medium] The freshness hard-target alert lacks an executable derived signal and an explicit provider-degradation classification [`docs/operations/monitoring-alerting-thresholds.md:83`]
+- [x] [Review][Patch] [High] The rate-limit ratio names no real accepted-request denominator [`docs/operations/monitoring-alerting-thresholds.md:87`]
+- [x] [Review][Patch] [Medium] The ingestion failure ratio counts scheduling outcomes but is presented as end-to-end ingestion failure [`docs/operations/monitoring-alerting-thresholds.md:86`]
+- [x] [Review][Patch] [Medium] The natural-language retry-stall alert names no source-backed progress signal [`docs/operations/monitoring-alerting-thresholds.md:89`]
+- [x] [Review][Patch] [Medium] Most alert rows omit the required linked response procedure [`docs/operations/monitoring-alerting-thresholds.md:79`]
+- [x] [Review][Patch] [Medium] Escalation guidance redacts workflow IDs required for protected Dapr incident correlation [`docs/operations/monitoring-alerting-thresholds.md:150`]
 
 ## File Scope
 
@@ -373,6 +373,7 @@ OpenAI Codex (GPT-5)
 - Final verification completed: the focused contracts pass 11/11; the normal Docker-free Server assembly passes 2,628 with one existing skip and zero failures (2,629 total, five more tests than the pre-change lane); both the Server test project and full Release solution build with zero warnings/errors; `git diff --check`, changed-link resolution, CRLF, 13-file declared scope, and forbidden-scope gates pass. The three dirty `references/Hexalith.EventStore`, `references/Hexalith.FrontComposer`, and `references/Hexalith.Tenants` worktrees pre-date this implementation and remain untouched/uncommitted.
 - All ten owner/status/date rows are complete in the Dev Agent Record checkpoint tracker, the workflow-permitted execution-evidence location; the story-authoring checkpoint table above remains preserved as immutable context for independent review.
 - 2026-07-15 adversarial review chunk 1 closed all 16 findings across capacity planning, incident response, and index rebuild. The source-backed synthetic coefficient, full-window/PVC evidence, active raw/NL index measurement, fail-closed incident containment, current restore errors, clean-target/all-tenant recovery boundaries, NL limitations, and bounded destructive-workflow gates are now explicit. Release Server.Tests build: 0 warnings/errors; focused operational/deployment contracts: 12/12; `git diff --check`: clean. Story status remains `review` because the remaining runbook/navigation/test chunks were deliberately deferred to follow-up review runs.
+- 2026-07-16 adversarial review chunk 2 closed all 21 findings across tenant lifecycle, upgrade/migration, and monitoring/alerting. Accepted lifecycle requests and bounded polling now fail closed; deletion verification covers source-owned keys and shared-backend recovery is isolated; rollout/render/rollback are staged and scoped; alerts use semantically valid signals and direct response links. Release Server.Tests build: 0 warnings/errors; focused operational/deployment contracts: 13/13; Docker-free Server lane: 2,661 passed, 1 skipped, 0 failed (2,662 total); `git diff --check` and shell syntax checks: clean. Story status is `in-progress` because chunk 3 (navigation/recovery/test/tracking review) remains pending.
 
 ### File List
 
@@ -392,5 +393,6 @@ OpenAI Codex (GPT-5)
 
 ## Change Log
 
+- 2026-07-16: Closed adversarial code-review chunk 2 — 21/21 High/Medium findings patched across tenant lifecycle, upgrade/migration, and monitoring/alerting; focused contracts pass 13/13 and the Docker-free Server lane passes 2,661 with 1 skipped and 0 failed.
 - 2026-07-15: Closed adversarial code-review chunk 1 — 16/16 High/Medium findings patched in capacity planning, incident response, and index rebuild; focused contracts pass 12/12.
 - 2026-07-14: Added six source-backed operational runbooks, direct navigation, safe production-aligned backup/recovery procedures, and one Docker-free documentation contract. Completed all focused, Server, Release-build, link, whitespace, and scope gates and moved the story to review.
