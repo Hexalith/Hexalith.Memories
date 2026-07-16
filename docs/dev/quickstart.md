@@ -14,7 +14,7 @@ The `memories quickstart` command walks a developer through six steps that isola
 
 Mirrors the README prerequisites but with OS-specific install guides.
 
-### .NET SDK 10.0.300
+### .NET SDK 10.0.302
 
 - **Windows**: download from [dotnet.microsoft.com/download/dotnet/10.0](https://dotnet.microsoft.com/download/dotnet/10.0). Verify with `dotnet --list-sdks`.
 - **macOS**: `brew install --cask dotnet-sdk` or download from the link above. On Apple Silicon, ensure the arm64 build is installed (not x64 under Rosetta).
@@ -34,13 +34,13 @@ Aspire manages the DAPR sidecar for local development, so a DAPR CLI is not requ
 
 ### [1/6] Verifying prerequisites
 
-Runs five sub-checks: Docker daemon (`docker ps`), .NET SDK (`dotnet --list-sdks` — asserts at least one SDK version 10.0.300 or newer), port availability (5000, 6379, 6380, 3500, 50001), OS platform (informational), and DAPR CLI (soft-fail — missing is OK).
+Runs five sub-checks: Docker daemon (`docker ps`), .NET SDK (`dotnet --list-sdks` — asserts at least one SDK version 10.0.302 or newer), port availability (5000, 6379, 6380, 3500, 50001), OS platform (informational), and DAPR CLI (soft-fail — missing is OK).
 
 **Common failures and remediation:**
 
 - `Docker command not found` → install Docker Desktop or ensure `docker` is on PATH.
 - `Docker daemon not reachable` → start Docker Desktop; if already running, restart it.
-- `No .NET SDK 10.0.300 or newer` → install the latest .NET 10 SDK from the link above.
+- `No .NET SDK 10.0.302 or newer` → install the latest .NET 10 SDK from the link above.
 - `Port <N> in use` → find the owner with `lsof -i :<N>` (macOS/Linux) or `netstat -ano | findstr :<N>` (Windows) and stop the conflicting process.
 
 Skip the step with `--skip-prereq-check` when you know the environment is fine (e.g., CI with a pre-bootstrapped stack).

@@ -4,7 +4,7 @@ Date: 2026-07-06
 
 ## Environment
 
-- .NET SDK: 10.0.301
+- .NET SDK: 10.0.302
 - Node.js: v26.4.0
 - npm: 11.18.0
 - Playwright: 1.61.1

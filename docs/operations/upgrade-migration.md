@@ -13,7 +13,7 @@ Stack, FalkorDB, workflow compatibility, Kustomize configuration, Secrets, canar
 backup evidence. Application changes can affect all tenants; backend/schema/data migration can affect
 all data on the shared backend.
 
-Repository pins and image digests are the deployment input. Current pins include .NET SDK 10.0.301,
+Repository pins and image digests are the deployment input. Current pins include .NET SDK 10.0.302,
 Dapr .NET packages 1.18.4, Redis Stack 7.4.0-v8, and FalkorDB 4.12.0. A package pin does not prove the
 cluster runtime/control-plane version. No component version is changed by this runbook.
 

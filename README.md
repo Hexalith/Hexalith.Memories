@@ -9,7 +9,7 @@ The guided quickstart gets you from a fresh clone to a first search result in un
 ### 1. Prerequisites (~30s to verify)
 
 - [Docker Desktop](https://docs.docker.com/desktop/) (WSL2 on Windows; resource allocation on macOS)
-- [.NET SDK 10.0.300](https://dotnet.microsoft.com/download/dotnet/10.0) or newer
+- [.NET SDK 10.0.302](https://dotnet.microsoft.com/download/dotnet/10.0) or newer
 - `git` with submodules support
 
 If any of these fail, see [docs/dev/quickstart.md](docs/dev/quickstart.md) for OS-specific setup notes.
