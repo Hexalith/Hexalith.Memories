@@ -467,7 +467,7 @@ action_items:
   - epic: 18
     action: "Remove the now-stale '#pragma warning disable HXL001' for IngestAsync in tests/Hexalith.Memories.Mcp.Tests/StubMemoriesClient.cs (18.7 review finding L2, post-18.4 stabilization)"
     owner: "Amelia"
-    status: open
+    status: done  # 2026-07-16: already removed by 528fb235; focused Release build passes with 0 warnings and 0 errors.
   - epic: 19
     action: "Cross-link Epic 20 stories 20.1 and 20.2 to the existing auth and tenant-authorization deferred entries instead of creating duplicate backlog homes"
     owner: "Amelia, Winston"

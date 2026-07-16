@@ -295,6 +295,44 @@ public sealed class SearchEndpointContractTests : IDisposable
     }
 
     [Fact]
+    public async Task HybridSearch_Explain_WhenQueryWeightsPartial_ShouldUseLiveDefaultsForOmissions()
+    {
+        StubTenantActive("acme-search");
+        StubFusionWeights(new FusionWeights
+        {
+            SyntacticWeight = 0.7,
+            SemanticWeight = 0.2,
+            NlWeight = 0.05,
+            GraphWeight = 0.05,
+        });
+
+        using WebApplicationFactory<Program> factory = _factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<HybridSearchService>();
+                services.AddSingleton(CreateHybridSearchServiceWithSyntacticResults(MakeSyntacticResult("mu-partial-weight")));
+            });
+        });
+        using HttpClient client = factory.CreateClient();
+
+        using HttpResponseMessage response = await client.GetAsync(
+            "/api/v1/search?tenantId=acme-search&query=weights&axis=hybrid&axes=syntactic&explain=true&syntacticWeight=0.6");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        HybridSearchResult? result = await response.Content.ReadFromJsonAsync<HybridSearchResult>(MemoriesJsonContext.Options);
+        result.ShouldNotBeNull();
+        result.Explanation.ShouldNotBeNull();
+        result.Explanation.WeightsUsed.ShouldBe(new FusionWeights
+        {
+            SyntacticWeight = 0.6,
+            SemanticWeight = 0.35,
+            GraphWeight = 0.35,
+            NlWeight = 0.2,
+        });
+    }
+
+    [Fact]
     public async Task HybridSearch_WhenTenantFusionWeightsCacheWarm_DoesNotReadActorAgain()
     {
         StubTenantActive("acme-search");

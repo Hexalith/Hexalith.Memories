@@ -1,10 +1,10 @@
 ---
-title: 'Close the bmad-spec cross-tenant evidence context gap'
+title: 'Add a fail-closed project-context bridge for bmad-spec'
 type: 'bugfix'
 created: '2026-07-16'
-status: 'draft'
-review_loop_iteration: 1
-baseline_commit: 'c28a1d8ce0459abb713df9f029a028efa578702d'
+status: 'in-progress'
+review_loop_iteration: 2
+baseline_commit: '56faf29454be613a09ca3865b7ba3c9844dc5f9b'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-16-cross-tenant-negative-evidence-refresh.md'
 ---
@@ -37,42 +37,48 @@ context:
 
 ## Code Map
 
-- `.agents/skills/bmad-spec/customize.toml` -- generated default currently points only to `{project-root}/project-context.md`; evidence source, never edit.
-- `.agents/skills/bmad-spec/SKILL.md` -- activation contract that loads resolved persistent facts.
-- `_bmad/custom/bmad-spec.toml` -- new team-owned, update-safe persistent-fact override.
-- `_bmad-output/project-context.md` -- existing authoritative attached-negative-evidence rule at line 77.
-- `tests/tooling/bmad_customization/bmad_customization_test.py` -- resolver-level customization regression tests.
-- `.github/workflows/ci.yml` -- already executes the BMad customization unittest lane.
+- `project-context.md` -- new stable root bridge consumed by the generated normal and fallback fact path; contains no duplicated policy body.
+- `_bmad-output/project-context.md` -- canonical attached-negative-evidence rule and Story 20.2/24.3 anchors.
+- `.agents/skills/bmad-spec/customize.toml` -- generated default that names the root fact; evidence source, never edit.
+- `.agents/skills/bmad-spec/SKILL.md` -- generated activation/fallback contract that consumes persistent file facts; evidence source, never edit.
+- `.agents/skills/bmad-generate-project-context/steps/step-01-discover.md` -- generated discovery contract whose broad context search can see both bridge and canonical files; evidence source, never edit.
+- `_bmad/custom/bmad-generate-project-context.toml` -- new team-owned directive selecting the canonical file for project-context updates.
+- `tests/tooling/bmad_customization/bmad_customization_test.py` -- existing resolver/contract fixture lane, including concurrent team customizations that must be preserved.
+- `.github/workflows/ci.yml` -- already runs the BMad customization unittest lane.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `_bmad/custom/bmad-spec.toml` -- append `file:{project-root}/_bmad-output/project-context.md` under `[workflow].persistent_facts` -- ensure future spec creation receives the durable guard through a refresh-safe customization.
-- [ ] `tests/tooling/bmad_customization/bmad_customization_test.py` -- add a focused `bmad-spec` resolution test that checks the exact fact and existing target -- fail closed on configuration or path drift.
-- [ ] `_bmad-output/implementation-artifacts/spec-cross-tenant-negative-evidence-carry-forward.md` -- record verification results and reviewed file scope without changing the ongoing action status -- attach completion evidence to this governance fix.
+- [ ] `project-context.md` -- add an exact, forwarding-only bridge that requires canonical loading, halts when canonical context is unavailable, and forbids generators from updating the bridge -- make all normal, fallback, and glob consumers fail closed without creating a second policy source.
+- [ ] `_bmad/custom/bmad-generate-project-context.toml` -- add an update-safe `PROJECT_CONTEXT_BRIDGE:` activation directive that selects `_bmad-output/project-context.md` as the only project-context read/update target -- remove generator ambiguity introduced by the root bridge.
+- [ ] `tests/tooling/bmad_customization/bmad_customization_test.py` -- add focused contract coverage for exact bridge content, exact `bmad-spec` fact list, active canonical rule structure and operative clauses, fallback consumption, generator selection, epics guard, and ongoing action -- fail closed on delivery, payload, or writer-selection drift while preserving concurrent test work.
+- [ ] `_bmad-output/implementation-artifacts/spec-cross-tenant-negative-evidence-carry-forward.md` -- attach matrix coverage, baseline-scoped inventory/checks, implementation and owned-patch digests, and reviewed exclusions while leaving the ongoing action `in-progress` -- make completion auditable.
 
 **Acceptance Criteria:**
-- Given the repository has no root `project-context.md`, when `bmad-spec` customization is resolved, then its persistent facts include `file:{project-root}/_bmad-output/project-context.md` and that target exists.
-- Given the generated skill directory may be refreshed, when team customizations are reapplied, then the guard remains supplied exclusively through `_bmad/custom/bmad-spec.toml`.
-- Given the approved cross-tenant carry-forward policy, when this change is completed, then `epics.md`, `_bmad-output/project-context.md`, the Story 20.2/24.3 evidence anchors, and the sprint action remain intact and no unrelated product or submodule file is changed.
-- Given the customization fixture runs, when either the resolved fact or its target is absent, then the focused test fails rather than allowing a scope-sensitive spec to proceed without the guard.
+- Given generated customization resolves normally, when its persistent facts are inspected, then they are a list containing exactly one `file:{project-root}/project-context.md`, whose readable bridge directs agents to canonical project context.
+- Given resolver execution fails, when `bmad-spec` follows its documented generated-default fallback, then the fallback still consumes the same root file fact and reaches the canonical guard through the bridge.
+- Given the bridge remains but the canonical attached-negative-evidence rule or Story 20.2/24.3 anchors drift, when the customization fixture runs, then it fails.
+- Given the bridge is inspected, when its content is compared with the approved forwarding contract, then it matches exactly, contains no project policy body, and requires halt/report behavior when canonical context is unavailable.
+- Given workflows load `**/project-context.md`, when they encounter both bridge and canonical context, then the bridge remains an inert forwarding/control fact and the canonical file remains the only policy source.
+- Given `bmad-generate-project-context` discovers both files, when its resolved activation directive runs, then it selects and updates only `_bmad-output/project-context.md` and never rewrites the root bridge.
+- Given this change is completed, when owned scope is reviewed, then existing epics/project-context guards and the ongoing sprint action remain intact, while generated files, runtime code, submodules, and unrelated concurrent changes remain untouched.
 
 ## Spec Change Log
 
+- 2026-07-16, review loop 1: Parallel review found the success-path team override vanished during `bmad-spec` resolver fallback, leaving scope-sensitive specs fail-open. Human authorization changed the frozen approach to a root forwarding bridge; tasks now test normal resolution, fallback consumption, and canonical payload rather than only file existence. This avoids generated-file edits and policy duplication. KEEP the existing canonical guard, Story 20.2/24.3 anchors, ongoing action status, focused customization lane, and strict unrelated-change boundary.
+- 2026-07-16, review loop 2: Review found the root bridge also enters broad `**/project-context.md` consumers and can be selected by `bmad-generate-project-context`, while substring assertions allowed bridge contradictions and canonical-policy weakening. The plan now treats glob consumers as affected, makes the bridge exact and fail-closed, adds a team-owned canonical-writer directive, protects every operative evidence clause and ongoing governance anchor, and uses baseline-relative scope/digest evidence. This avoids a ruleless bridge becoming the update target or a neutered policy passing CI. KEEP the forwarding design, normal/fallback convergence, generated-file boundary, passing customization lane, and review-loop 1 canonical anchors.
+
 ## Design Notes
 
-This is an evidence-delivery fix, not a new tenant-isolation mechanism. The affected surface is `bmad-spec` activation context. Story 20.2 remains the canonical denial-before-dependency proof and Story 24.3 remains the verifier/tenant-marker fail-closed proof; no product path changes here, so their historical results are referenced rather than rerun as if runtime behavior changed.
+The root bridge is an exact control document, not a second policy source. Normal resolution and resolver fallback use it directly; glob-based workflows may load it alongside canonical context, where its only effect is to identify the canonical file and halt if that file is unavailable. Because project-context generation has singular discovery semantics, a refresh-safe activation directive explicitly pins its writer to `_bmad-output/project-context.md`. Story 20.2 and Story 24.3 remain historical runtime anchors and are not falsely reported as newly rerun.
 
 ## Verification
 
 **Commands:**
 - `python3 -m unittest discover -s tests/tooling/bmad_customization -p "*_test.py"` -- expected: all customization fixtures pass.
-- `uv run _bmad/scripts/resolve_customization.py --skill .agents/skills/bmad-spec --key workflow` -- expected: JSON includes `file:{project-root}/_bmad-output/project-context.md` in `persistent_facts`.
-- `git diff --check -- _bmad/custom/bmad-spec.toml tests/tooling/bmad_customization/bmad_customization_test.py _bmad-output/implementation-artifacts/spec-cross-tenant-negative-evidence-carry-forward.md` -- expected: no whitespace errors and no unrelated paths.
-
-**Superseded results (2026-07-16, review loop 1):**
-- The success-path implementation was reverted after parallel review found that `bmad-spec` drops all team customizations when resolver execution fails and falls back to its generated default. Because the locked intent requires durable delivery while forbidding generated-file edits and requiring approval before moving or duplicating project context, implementation is paused for a human fail-closed design decision.
-- `test_spec_resolves_update_safe_project_context_fact` covers both matrix rows by resolving the generated defaults with the team override, asserting the exact persistent fact, and asserting its target file exists. The full customization lane ran 3 tests with 0 failures.
-- The resolver exited 0 and returned both the generated root fact and `file:{project-root}/_bmad-output/project-context.md`; the team-owned fact therefore survives without editing `.agents/skills/bmad-spec`.
-- Scoped `git diff --check` exited 0 with no output. This task changed only the team override, the focused customization test, and this completion record; unrelated concurrent working-tree changes were preserved.
-- Affected scope-sensitive surface: `bmad-spec` activation context only. Story 20.2 denial-before-dependency and Story 24.3 verifier/tenant-marker evidence remain the canonical runtime anchors; no runtime route, authorization, storage, verifier, or submodule behavior changed, so no product negative test was falsely claimed as rerun.
+- `uv run _bmad/scripts/resolve_customization.py --skill .agents/skills/bmad-spec --key workflow` -- expected: JSON contains exactly one root `project-context.md` persistent fact.
+- `uv run _bmad/scripts/resolve_customization.py --skill .agents/skills/bmad-generate-project-context --key workflow` -- expected: exactly one `PROJECT_CONTEXT_BRIDGE:` directive selecting the canonical writer target.
+- `git diff --check <baseline_commit> -- tests/tooling/bmad_customization/bmad_customization_test.py _bmad-output/implementation-artifacts/spec-cross-tenant-negative-evidence-carry-forward.md` -- expected: no whitespace errors in baseline-relative tracked deltas.
+- `git diff --no-index --check /dev/null project-context.md` and the equivalent command for `_bmad/custom/bmad-generate-project-context.toml` -- expected: content-difference exit 1 with no whitespace-error output.
+- `git diff --name-status <baseline_commit>` plus `git ls-files --others --exclude-standard` -- expected: record the three owned paths and list unrelated submodule/spec exclusions separately.
+- `sha256sum project-context.md _bmad/custom/bmad-generate-project-context.toml` and `git diff <baseline_commit> -- tests/tooling/bmad_customization/bmad_customization_test.py | sha256sum` -- expected: record implementation-file and isolated owned-patch snapshots.

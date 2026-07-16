@@ -191,7 +191,7 @@ public sealed class ExplainSearchApiIntegrationTests
         result.Explanation!.AxisDetails.Count.ShouldBe(1);
         result.Explanation.AxisDetails.ShouldContainKey("graph");
         result.Explanation.WeightsUsed.ShouldNotBeNull();
-        result.Explanation.WeightsUsed!.GraphWeight.ShouldBe(0.2);
+        result.Explanation.WeightsUsed!.GraphWeight.ShouldBe(0.35);
     }
 
     [Fact]

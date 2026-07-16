@@ -30,10 +30,25 @@ public class FusionWeightsSerializationTests
     {
         var weights = new FusionWeights();
 
-        weights.SyntacticWeight.ShouldBe(0.4);
-        weights.SemanticWeight.ShouldBe(0.4);
-        weights.GraphWeight.ShouldBe(0.2);
+        weights.SyntacticWeight.ShouldBe(0.3);
+        weights.SemanticWeight.ShouldBe(0.35);
+        weights.GraphWeight.ShouldBe(0.35);
         weights.NlWeight.ShouldBe(0.2);
+    }
+
+    [Fact]
+    public void DefaultSerialization_ShouldExposeCalibratedLiveDefaults()
+    {
+        var weights = new FusionWeights();
+
+        string json = JsonSerializer.Serialize(weights, MemoriesJsonContext.Options);
+        FusionWeights? deserialized = JsonSerializer.Deserialize<FusionWeights>(json, MemoriesJsonContext.Options);
+
+        json.ShouldContain("\"syntacticWeight\":0.3");
+        json.ShouldContain("\"semanticWeight\":0.35");
+        json.ShouldContain("\"graphWeight\":0.35");
+        json.ShouldContain("\"nlWeight\":0.2");
+        deserialized.ShouldBe(weights);
     }
 
     [Fact]

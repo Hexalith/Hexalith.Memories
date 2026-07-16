@@ -101,6 +101,22 @@ public sealed class PersistenceCompatibilityTests
     }
 
     [Fact]
+    public void FusionWeights_LegacyJsonWithMissingFields_KeepsDurableFallbacks()
+    {
+        const string Json = """
+            {"syntacticWeight":0.1}
+            """;
+
+        StoredFusionWeights stored = Deserialize<StoredFusionWeights>(Json);
+        FusionWeights contract = PersistenceModelMapper.ToContract(stored);
+
+        contract.SyntacticWeight.ShouldBe(0.1);
+        contract.SemanticWeight.ShouldBe(0.4);
+        contract.GraphWeight.ShouldBe(0.2);
+        contract.NlWeight.ShouldBe(0.2);
+    }
+
+    [Fact]
     public void TenantRegistry_LegacyJson_MapsAndRewritesWithoutShapeDrift()
     {
         const string Json = """

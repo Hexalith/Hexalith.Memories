@@ -14,7 +14,8 @@ using Hexalith.Memories.Contracts.V1;
 /// </summary>
 internal static class FusionEngine
 {
-    private const int RrfRankConstant = 60;
+    // k=10 preserves useful top-10 discrimination: rank 10 contributes 11/20 (0.55) of rank 1.
+    private const int RrfRankConstant = 10;
     private const int SyntacticAxis = 0;
     private const int SemanticAxis = 1;
     private const int GraphAxis = 2;

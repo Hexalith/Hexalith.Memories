@@ -232,6 +232,22 @@ public class FusionEngineTests
         results[1].SyntacticScore!.Value.ShouldBeLessThan(1.0);
     }
 
+    [Fact]
+    public void Fuse_TenthRank_ShouldUseCalibratedTopTenContribution()
+    {
+        List<ScoredResult> syntactic = Enumerable.Range(1, 10)
+            .Select(rank => MakeResult($"mu-{rank}", 11 - rank, "syntactic"))
+            .ToList();
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            syntactic, null, null, DefaultWeights, 1000, 200.0);
+
+        FusedScoredResult tenth = results.Single(result => result.MemoryUnitId == "mu-10");
+        tenth.SyntacticScore.ShouldNotBeNull();
+        tenth.SyntacticScore.Value.ShouldBe(11.0 / 20.0, tolerance: 1e-12);
+        tenth.CompositeScore.ShouldBe(11.0 / 20.0, tolerance: 1e-12);
+    }
+
     // 7.11: Semantic contribution is rank-derived rather than raw cosine passthrough
     [Fact]
     public void Fuse_SemanticScore_ShouldUseRankContribution()

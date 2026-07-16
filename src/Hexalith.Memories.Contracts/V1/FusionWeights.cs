@@ -9,13 +9,13 @@ namespace Hexalith.Memories.Contracts.V1;
 public sealed record FusionWeights
 {
     /// <summary>Gets the weight for the syntactic (BM25) search axis.</summary>
-    public double SyntacticWeight { get; init; } = 0.4;
+    public double SyntacticWeight { get; init; } = 0.3;
 
     /// <summary>Gets the weight for the semantic (vector) search axis.</summary>
-    public double SemanticWeight { get; init; } = 0.4;
+    public double SemanticWeight { get; init; } = 0.35;
 
     /// <summary>Gets the weight for the graph (proximity) search axis.</summary>
-    public double GraphWeight { get; init; } = 0.2;
+    public double GraphWeight { get; init; } = 0.35;
 
     /// <summary>Gets the weight for the natural-language semantic search axis.</summary>
     public double NlWeight { get; init; } = 0.2;
