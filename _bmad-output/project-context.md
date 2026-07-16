@@ -87,7 +87,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Build configuration is the style gate** - root `Directory.Build.props` sets warnings as errors; do not silence warnings globally to get a build green.
 - **Analyzer suppressions must stay narrow** - project-specific `NoWarn` entries need justification comments and removal conditions, like the scoped Dapr Conversation suppression.
 - **Keep package versions centralized** - never add `Version` attributes to `.csproj` package references.
-- **Use `.editorconfig` conventions** - 4-space C# indentation, 2-space XML/JSON/YAML indentation, CRLF, UTF-8, final newline, and trimmed whitespace outside Markdown.
+- **Use the repository line-ending policy** - `.gitattributes` is authoritative: Git stores text with LF and materializes CRLF by default, while shell/Bash, Python, YAML, `Dockerfile`, `*.dockerfile`, and `.gitattributes` stay LF; `.editorconfig` mirrors these editor-facing conventions alongside indentation, UTF-8, final-newline, and whitespace rules.
 - **Private fields use `_camelCase`** - follow the repo naming rule; interfaces use `I` prefix; async methods end with `Async`.
 - **Keep public surface documented** - maintain XML docs on public contracts, services, commands, options, and package-facing APIs.
 - **Use explicit composition roots** - register services/extensions in existing composition root patterns; avoid reflection registration unless already established.

@@ -626,7 +626,12 @@ CI: commit → build → test → semantic-release → NuGet publish
 
 All patterns align with **Hexalith.EventStore** conventions. When in doubt, check the [EventStore CLAUDE.md](https://github.com/Hexalith/Hexalith.EventStore/blob/main/CLAUDE.md) for the canonical reference.
 
-### Code Style (from `.editorconfig`)
+### Code Style (from `.gitattributes` and `.editorconfig`)
+
+The root `.gitattributes` is authoritative for Git normalization: text is stored
+with LF in the index and materialized with CRLF in working trees by default.
+Shell/Bash, Python, YAML, `Dockerfile`, `*.dockerfile`, and `.gitattributes`
+remain LF; `.editorconfig` mirrors these editor-facing conventions.
 
 | Rule | Convention | Example |
 |---|---|---|
@@ -636,7 +641,7 @@ All patterns align with **Hexalith.EventStore** conventions. When in doubt, chec
 | Interfaces | `I` prefix | `IGraphQueryBuilder` |
 | Async methods | `Async` suffix | `SearchAsync()`, `IngestAsync()` |
 | Indentation | 4 spaces | — |
-| Line endings | CRLF | — |
+| Line endings | Git index LF; CRLF working tree by default; LF for Unix/tooling exceptions | Root `.gitattributes` and aligned `.editorconfig` |
 | Encoding | UTF-8 | — |
 | Nullable | Enabled globally | `<Nullable>enable</Nullable>` |
 | Implicit usings | Enabled globally | `<ImplicitUsings>enable</ImplicitUsings>` |
@@ -1154,7 +1159,7 @@ results.ShouldNotBeEmpty();
 ### Enforcement Guidelines
 
 **All AI agents MUST:**
-1. Follow `.editorconfig` — the file is the source of truth for code style
+1. Follow `.gitattributes` for line-ending normalization and `.editorconfig` for editor-facing code style
 2. Use `Directory.Packages.props` for all NuGet versions — never in `.csproj`
 3. Use `.slnx` solution format — never create `.sln`
 4. Add `CancellationToken` as last parameter to every async method

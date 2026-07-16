@@ -55,3 +55,18 @@ csharp_indent_braces = false
 # Sort usings
 dotnet_sort_system_directives_first = true
 dotnet_separate_import_directive_groups = false
+
+[*.{sh,bash,py,yaml,yml}]
+end_of_line = lf
+
+[Dockerfile]
+end_of_line = lf
+
+[*.dockerfile]
+end_of_line = lf
+
+[.githooks/*]
+end_of_line = lf
+
+[.gitattributes]
+end_of_line = lf

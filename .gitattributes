@@ -1,0 +1,33 @@
+# Normalize detected text to LF in Git and materialize CRLF by default.
+* text=auto eol=crlf
+
+# Repository metadata and Unix-executed/tooling files stay LF.
+.gitattributes text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+*.dockerfile text eol=lf
+.githooks/* text eol=lf
+
+# Pin the recurring churn source explicitly.
+*.razor text eol=crlf
+*.razor.css text eol=crlf
+
+# Common binary payloads must never be line-ending normalized.
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.pdf binary
+*.png binary
+*.webp binary
+*.zip binary
+
+# Preserve intentional Markdown hard breaks and archived review evidence.
+*.md whitespace=-trailing-space
+_bmad-output/**/*.patch whitespace=-trailing-space
+_bmad-output/**/*.diff whitespace=-trailing-space
+_bmad-output/implementation-artifacts/review-7-2/bundle.txt whitespace=-trailing-space
