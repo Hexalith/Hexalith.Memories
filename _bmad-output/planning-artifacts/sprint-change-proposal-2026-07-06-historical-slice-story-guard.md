@@ -323,3 +323,11 @@ Completion summary:
 - Change scope: moderate process correction.
 - Artifacts modified: story-creation lessons, create-story workflow, create-story template, create-story checklist, code-review Acceptance Auditor, code-review severity triage, and this proposal.
 - Routed to: Developer agent.
+
+## Supersession Note (2026-07-16)
+
+The policy remains approved, but the direct edits under `.agents/skills/**`
+were installation-scoped and were overwritten by a later BMad refresh. The
+update-safe enforcement route is superseded by
+`sprint-change-proposal-2026-07-16-historical-slice-guard-strengthening.md`:
+committed `_bmad/custom/**` overrides plus resolver-level regression coverage.

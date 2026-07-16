@@ -415,7 +415,7 @@ action_items:
   - epic: 0
     action: "Keep cross-tenant negative validation evidence attached to future scope-sensitive changes"
     owner: "Murat, Amelia"
-    status: in-progress  # 2026-07-06: Cross-tenant negative-evidence carry-forward guard added to epics.md and captured in sprint-change-proposal-2026-07-06-cross-tenant-negative-evidence.md; remains active for future scope-sensitive stories.
+    status: in-progress  # 2026-07-16: Guard broadened beyond Epics 20-26 and mirrored in project-context.md by sprint-change-proposal-2026-07-16-cross-tenant-negative-evidence-refresh.md; remains active for every future scope-sensitive change.
   - epic: 17
     action: "Drive Story 2.7 (Evidence Packet Contract Mapping) from review to done so the web surface can render timestamps, NDCG@10, ingestion taxonomy, MCP schema, and freshness metadata instead of unavailable boundaries"
     owner: "Amelia, Winston"

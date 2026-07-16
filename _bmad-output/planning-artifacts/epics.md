@@ -3948,7 +3948,7 @@ Epics 20-26 are added by Sprint Change Proposal 2026-07-04 (Architecture Audit R
 
 **Audit-anchor preflight:** Before any Epic 20-26 story is selected, created, or implemented, re-verify the current code anchors and implementation-state assumptions cited by that story against the repository. Story files must record the re-verification date, moved or renamed anchors, and how the implementation adapts. If an anchor is stale enough to change scope or acceptance evidence, update the story from current code evidence before development begins.
 
-**Cross-tenant negative-evidence carry-forward (2026-07-06):** Any future scope-sensitive Epic 20-26 story must keep cross-tenant negative validation evidence attached to the change instead of treating it as historical proof. Scope-sensitive includes tenant/case route grouping or versioning, endpoint filters, auth or claim normalization, tenant status guards, MCP tool executors, evidence-packet scope metadata, web evidence rendering, tenant verifier logic, key or index routing, graph/search/case attribution, and any refactor that moves those paths. Story files and Dev Agent Records must cite the prior evidence they preserve, including Story 20.2 denial-before-dependency tests and Story 24.3 verifier fail-closed/tenant-marker evidence when those areas are affected, list the impacted surfaces, and include focused negative tests or an explicit accepted blocker. A scope-sensitive story cannot close on happy-path or refactor-green tests alone.
+**Cross-tenant negative-evidence carry-forward (2026-07-06; broadened 2026-07-16):** Any future scope-sensitive story, spec, refactor, fix, review patch, sprint correction, or implementation change—regardless of epic number—must keep cross-tenant negative validation evidence attached to the change instead of treating it as historical proof. Scope-sensitive includes tenant/case route grouping or versioning; endpoint filters or middleware; auth or claim normalization; tenant status guards; MCP tool executors or client calls; evidence-packet scope metadata or restrictive web rendering; tenant verifier logic or tenant markers; key/index/graph routing, actor IDs, storage selectors, or query builders; search/graph/case attribution; export/import or backup/restore; and any refactor that moves those paths. The story/spec and completion or review record must list the impacted surfaces, cite Story 20.2 denial-before-dependency and Story 24.3 verifier fail-closed/tenant-marker evidence when applicable (or link a newer canonical replacement), and record focused negative test names, command, and result. If proof cannot run, record an explicit accepted blocker with owner, consequence, and reopen trigger. A scope-sensitive change cannot close on happy-path, broad-suite, build-only, or refactor-green evidence alone.
 
 ## Epic 20: API Security & Tenant Authorization
 Operator and downstream consumers get an authenticated, tenant-authorized server boundary: every endpoint requires an authenticated principal, tenant access is verified against principal claims (not caller-supplied parameters), the audit identity is trustworthy, MCP cannot run on a development signing key in production, inbound load is bounded per tenant, and audit coverage spans all mutating operations.
@@ -4362,7 +4362,18 @@ So that ingestion does not block threads or spam warnings.
 
 **Given** each indexed document attempts `FT.CREATE` with exception-as-control-flow and `Thread.Sleep` (`IndexSyntacticActivity.cs:55-66,205`),
 **When** documents are indexed,
-**Then** index verification is memoized per tenant per process, `Thread.Sleep` is replaced with `Task.Delay`, and the per-ingest warning is removed. Closes A34.
+**Then** index verification is memoized per tenant, index family, and expected schema per process, `Thread.Sleep` is replaced with `Task.Delay`, and the per-ingest warning is removed
+**And** the readiness verifier inspects existing infrastructure only and never issues `FT.CREATE` or initializes a tenant graph/database.
+
+**Given** an active tenant is missing a required index/database or has incompatible schema,
+**When** an ingestion, indexing, search, graph, CLI, or MCP path checks readiness,
+**Then** it fails before data access with `TENANT_NOT_PROVISIONED`, schema-mismatch, or equivalent structured evidence
+**And** it does not create or repair tenant lifecycle resources on demand.
+
+**Given** Epic 1 or Epic 5 rework is reviewed,
+**When** ownership evidence is collected,
+**Then** `TenantProvisioningWorkflow` remains the sole owner of tenant infrastructure creation
+**And** focused source/architecture guards prove feature paths do not contain create-if-missing behavior. Closes A34 and preserves the Epic 0 ownership invariant.
 
 ### Story 23.8: Workflow Config Determinism
 

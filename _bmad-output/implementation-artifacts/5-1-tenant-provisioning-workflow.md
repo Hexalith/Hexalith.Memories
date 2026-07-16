@@ -2,6 +2,14 @@
 
 Status: done
 
+## Rework Reconciliation Notice
+
+This file preserves the historical transition from indexing-owned `FT.CREATE` calls to tenant-lifecycle ownership. Completed intermediate tasks that mention refactoring `IndexSyntacticActivity` or `IndexSemanticActivity` to issue `FT.CREATE` describe the state at the time and are superseded by Story 23.7.
+
+For any Epic 5 rework, extend the existing `TenantProvisioningWorkflow` and its provisioning, verification, compensation, and status activities. Do not introduce a replacement workflow, direct endpoint creator, indexing/search/graph creator, or create-if-missing fallback. `ProvisionRediSearchActivity`, `ProvisionRedisVectorActivity`, and `ProvisionFalkorDbActivity` remain the tenant infrastructure creation activities orchestrated by that workflow; feature paths validate and consume their output.
+
+Do not reopen Story 5.1 to duplicate the Epic 0 minimum slice. Verify or extend the same lifecycle implementation and preserve rollback plus focused cross-tenant negative evidence.
+
 ## Story
 
 As an operator,

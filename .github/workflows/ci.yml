@@ -197,6 +197,9 @@ jobs:
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
 
+      - name: Run BMad customization fixtures
+        run: python3 -m unittest discover -s tests/tooling/bmad_customization -p "*_test.py"
+
       - name: Run coverage gate fixtures
         run: python3 -m unittest discover -s tests/tooling/coverage_gate -p "*_test.py"
 

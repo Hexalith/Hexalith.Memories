@@ -1,0 +1,36 @@
+# Team-owned historical-slice review guard. This file is merged over generated
+# skill defaults and survives BMad skill refreshes.
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/_bmad/custom/story-scope-guard.md",
+  "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
+]
+
+activation_steps_append = [
+  "HISTORICAL_SLICE_GUARD: During triage, apply the policy's fail-closed severity and routing rules to confirmed historical-template reuse or hidden multi-slice scope.",
+]
+
+[[workflow.review_layers]]
+id = "historical-slice-guard"
+name = "Historical Slice Guard"
+when = 'Only when {review_mode} = "full".'
+instruction = """
+Launch a subagent with no prior conversation context, with this prompt:
+
+> Read `_bmad/custom/story-scope-guard.md`, `{spec_file}`, and the provided
+> diff. Audit whether the story or implementation copied task shape, AC breadth,
+> file breadth, or completion evidence from a historical anti-template; hides
+> independently demonstrable slices in one story; omits the required historical
+> classification/slice-proof record; or closes on internal-only proof where the
+> current artifacts require observable API/CLI/contract/trace/integration or
+> downstream-consumer evidence. Distinguish narrow current-source pattern reuse
+> from whole-story template reuse. Output only actionable Markdown findings.
+> Each finding must cite the violated policy rule, the spec location, the diff
+> evidence, and whether correction is an unambiguous patch or requires a human
+> split decision.
+>
+> Diff:
+> {diff_output}
+"""

@@ -2,6 +2,14 @@
 
 Status: done
 
+## Rework Supersession Notice
+
+This file preserves the historical implementation record for Story 1.5. Its tasks and constraints that instruct indexing activities to call `FT.CREATE`, create indexes on demand, or treat create-if-exists as an indexing concern are superseded by Story 5.1 and Story 23.7.
+
+For any Epic 1 rework, `TenantProvisioningWorkflow` remains the sole owner of RediSearch, Redis Vector, and FalkorDB tenant infrastructure creation. Ingestion/indexing activities may verify existing active infrastructure and write tenant data only. Missing or incompatible infrastructure must fail before writes with `TENANT_NOT_PROVISIONED`, schema-mismatch, or equivalent structured evidence; it must never trigger implicit creation. Graph node/edge writes inside an already-provisioned tenant database are data writes, not permission to create the tenant database lifecycle resource.
+
+Do not reuse this completed broad story as a rework template. Use newly numbered vertical stories and the rework ownership gate in `epics.md`.
+
 ## Story
 
 As a developer,

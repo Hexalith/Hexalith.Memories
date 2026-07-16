@@ -1,0 +1,13 @@
+# Team-owned story creation guard. This file is merged over generated skill
+# defaults and survives BMad skill refreshes.
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/_bmad/custom/story-scope-guard.md",
+  "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
+]
+
+activation_steps_append = [
+  "HISTORICAL_SLICE_GUARD: Apply the team story-scope policy during artifact analysis and final validation. Classify every previous/historical story before reuse; ignore numeric adjacency as a relevance signal; include Historical Context Classification and Slice Proof when prior stories influence the draft; fail closed without ready-for-dev or sprint-status mutation until every anti-template or required-split violation is resolved.",
+]

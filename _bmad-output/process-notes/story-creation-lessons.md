@@ -21,9 +21,17 @@ party-mode review, advanced elicitation, and code-review automation.
 - When epics mark a story as historical completed scope, any reopened,
   reimplemented, or analogous work must be split into newly numbered vertical
   stories with independently observable evidence.
-- Story creation must classify previous-story context as reusable pattern,
-  historical reference only, or anti-template before carrying lessons forward.
+- Story creation must classify every previous or historical story reference as
+  current narrow pattern, historical reference only, or anti-template before
+  carrying anything forward. Numeric adjacency is not evidence of relevance.
+- Reusable implementation details must be re-verified against current source;
+  a historical story's task structure, acceptance-criteria breadth, file list,
+  or completion evidence is never reusable by default.
 - Review must flag a story or implementation that reuses a historical broad
-  slice as a template, hides broad scope behind one story, or accepts internal
-  classes/unit tests as sufficient proof where observable API/CLI/contract,
-  trace, or integration evidence is required.
+  slice as a template, hides independently demonstrable outcomes behind one
+  story, or accepts internal-only proof where observable evidence is required.
+- Enforce this rule through `_bmad/custom/story-scope-guard.md` and committed
+  `_bmad/custom/bmad-{create-story,code-review}.toml` overrides. Do not enforce
+  it by editing generated `.agents/skills/**` files, which updates overwrite.
+- After any BMad skill refresh, run the customization-resolution fixture before
+  the next story creation or review.
