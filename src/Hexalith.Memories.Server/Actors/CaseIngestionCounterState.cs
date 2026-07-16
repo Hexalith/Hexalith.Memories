@@ -7,7 +7,8 @@ namespace Hexalith.Memories.Server.Actors;
 
 /// <summary>Persisted state for <see cref="CaseIngestionCounterActor"/>. <c>LastTransitionId</c> preserves
 /// compatibility with existing actor state; <see cref="AppliedTransitionSequences"/> records a bounded
-/// per-workflow high-water mark so delayed, non-adjacent workflow replay is also idempotent.</summary>
+/// per-workflow high-water mark and <see cref="AppliedTransitionWorkflowOrder"/> records explicit
+/// least-recently-updated order so delayed, non-adjacent workflow replay is also idempotent.</summary>
 internal sealed record CaseIngestionCounterState(
     int Queued,
     int Extracting,
@@ -17,4 +18,7 @@ internal sealed record CaseIngestionCounterState(
 {
     /// <summary>Gets applied sequence high-water marks keyed by workflow instance id.</summary>
     public Dictionary<string, int>? AppliedTransitionSequences { get; init; }
+
+    /// <summary>Gets tracked workflow ids from least to most recently updated.</summary>
+    public string[]? AppliedTransitionWorkflowOrder { get; init; }
 }

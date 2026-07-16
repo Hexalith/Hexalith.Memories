@@ -33,7 +33,8 @@ internal sealed class CaseIngestionCounterLogic
             return state;
         }
 
-        Dictionary<string, int>? appliedSequences = CreateAppliedSequenceSnapshot(state);
+        (Dictionary<string, int>? appliedSequences, List<string>? workflowOrder) =
+            CreateAppliedSequenceSnapshot(state);
         if (TryParseTransitionId(transitionId, out string? workflowInstanceId, out int sequence))
         {
             appliedSequences ??= new Dictionary<string, int>(StringComparer.Ordinal);
@@ -43,11 +44,10 @@ internal sealed class CaseIngestionCounterLogic
                 return state;
             }
 
-            // Dictionary insertion order acts as a compact least-recently-updated queue. Reinsert an
-            // existing workflow before trimming so active workflows survive a busy case's bounded ledger.
-            _ = appliedSequences.Remove(workflowInstanceId);
+            workflowOrder ??= [];
             appliedSequences[workflowInstanceId] = sequence;
-            TrimAppliedSequences(appliedSequences, workflowInstanceId);
+            RefreshWorkflowOrder(workflowOrder, workflowInstanceId);
+            TrimAppliedSequences(appliedSequences, workflowOrder);
         }
 
         int q = state.Queued;
@@ -78,6 +78,7 @@ internal sealed class CaseIngestionCounterLogic
         return new CaseIngestionCounterState(q, e, m, i, transitionId)
         {
             AppliedTransitionSequences = appliedSequences,
+            AppliedTransitionWorkflowOrder = workflowOrder?.ToArray(),
         };
     }
 
@@ -90,14 +91,18 @@ internal sealed class CaseIngestionCounterLogic
         return new(s.Queued, s.Extracting, s.Embedding, s.Indexing);
     }
 
-    private static Dictionary<string, int>? CreateAppliedSequenceSnapshot(CaseIngestionCounterState state)
+    private static (Dictionary<string, int>? AppliedSequences, List<string>? WorkflowOrder)
+        CreateAppliedSequenceSnapshot(CaseIngestionCounterState state)
     {
         Dictionary<string, int>? appliedSequences = state.AppliedTransitionSequences is null
             ? null
             : new Dictionary<string, int>(state.AppliedTransitionSequences, StringComparer.Ordinal);
+        List<string>? workflowOrder = CreateWorkflowOrderSnapshot(state, appliedSequences);
 
         // Actor state written before Story 26.7 has only LastTransitionId. Seed that checkpoint on read so
-        // an older transition is rejected immediately without requiring an eager state migration.
+        // an older transition is rejected immediately without requiring an eager state migration. State
+        // written by the first Story 26.7 implementation lacks explicit order, so LastTransitionId also
+        // reconstructs the only recency fact that version persisted.
         if (TryParseTransitionId(state.LastTransitionId, out string? workflowInstanceId, out int sequence))
         {
             appliedSequences ??= new Dictionary<string, int>(StringComparer.Ordinal);
@@ -106,9 +111,47 @@ internal sealed class CaseIngestionCounterLogic
             {
                 appliedSequences[workflowInstanceId] = sequence;
             }
+
+            workflowOrder ??= [];
+            RefreshWorkflowOrder(workflowOrder, workflowInstanceId);
         }
 
-        return appliedSequences;
+        return (appliedSequences, workflowOrder);
+    }
+
+    private static List<string>? CreateWorkflowOrderSnapshot(
+        CaseIngestionCounterState state,
+        Dictionary<string, int>? appliedSequences)
+    {
+        if (appliedSequences is null)
+        {
+            return null;
+        }
+
+        List<string> workflowOrder = [];
+        HashSet<string> addedWorkflowIds = new(StringComparer.Ordinal);
+        if (state.AppliedTransitionWorkflowOrder is not null)
+        {
+            foreach (string workflowInstanceId in state.AppliedTransitionWorkflowOrder)
+            {
+                if (appliedSequences.ContainsKey(workflowInstanceId)
+                    && addedWorkflowIds.Add(workflowInstanceId))
+                {
+                    workflowOrder.Add(workflowInstanceId);
+                }
+            }
+        }
+
+        // Backward compatibility for state persisted before explicit recency order was introduced.
+        foreach (string workflowInstanceId in appliedSequences.Keys)
+        {
+            if (addedWorkflowIds.Add(workflowInstanceId))
+            {
+                workflowOrder.Add(workflowInstanceId);
+            }
+        }
+
+        return workflowOrder;
     }
 
     private static bool TryParseTransitionId(
@@ -140,14 +183,20 @@ internal sealed class CaseIngestionCounterLogic
         return true;
     }
 
+    private static void RefreshWorkflowOrder(List<string> workflowOrder, string workflowInstanceId)
+    {
+        _ = workflowOrder.Remove(workflowInstanceId);
+        workflowOrder.Add(workflowInstanceId);
+    }
+
     private static void TrimAppliedSequences(
         Dictionary<string, int> appliedSequences,
-        string currentWorkflowInstanceId)
+        List<string> workflowOrder)
     {
         while (appliedSequences.Count > MaxTrackedWorkflowSequences)
         {
-            string oldestWorkflowInstanceId = appliedSequences.Keys
-                .First(id => !string.Equals(id, currentWorkflowInstanceId, StringComparison.Ordinal));
+            string oldestWorkflowInstanceId = workflowOrder[0];
+            workflowOrder.RemoveAt(0);
             _ = appliedSequences.Remove(oldestWorkflowInstanceId);
         }
     }

@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Actors;
 
+using System.Text.Json;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Actors;
 
@@ -102,6 +104,46 @@ public class CaseIngestionCounterLogicTests
     }
 
     [Fact]
+    public void Transition_LegacySerializedStateSeedsReplayWatermark()
+    {
+        const string legacyJson =
+            """{"queued":0,"extracting":1,"embedding":0,"indexing":0,"lastTransitionId":"workflow-a:3"}""";
+        CaseIngestionCounterState legacy = JsonSerializer
+            .Deserialize<CaseIngestionCounterState>(legacyJson, JsonSerializerOptions.Web)
+            .ShouldNotBeNull();
+        CaseIngestionCounterLogic logic = new();
+
+        CaseIngestionCounterState replayed = logic.Transition(legacy, "none", "queued", "workflow-a:2");
+
+        ReferenceEquals(legacy, replayed).ShouldBeTrue();
+        replayed.Queued.ShouldBe(0);
+        replayed.Extracting.ShouldBe(1);
+        replayed.AppliedTransitionSequences.ShouldBeNull();
+        replayed.AppliedTransitionWorkflowOrder.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Transition_SerializedReplayWatermarkPreservesIdempotencyAndOrder()
+    {
+        CaseIngestionCounterLogic logic = new();
+        CaseIngestionCounterState state = logic.Transition(Empty(), "none", "queued", "workflow-a:1");
+        state = logic.Transition(state, "queued", "extracting", "workflow-a:2");
+        state = logic.Transition(state, "none", "queued", "workflow-b:1");
+        string json = JsonSerializer.Serialize(state, JsonSerializerOptions.Web);
+        CaseIngestionCounterState restored = JsonSerializer
+            .Deserialize<CaseIngestionCounterState>(json, JsonSerializerOptions.Web)
+            .ShouldNotBeNull();
+
+        CaseIngestionCounterState replayed = logic.Transition(restored, "none", "queued", "workflow-a:1");
+
+        ReferenceEquals(restored, replayed).ShouldBeTrue();
+        restored.AppliedTransitionSequences.ShouldBe(state.AppliedTransitionSequences);
+        restored.AppliedTransitionWorkflowOrder.ShouldBe(state.AppliedTransitionWorkflowOrder);
+        replayed.Queued.ShouldBe(1);
+        replayed.Extracting.ShouldBe(1);
+    }
+
+    [Fact]
     public void Transition_LedgerIsBoundedAcrossWorkflows()
     {
         CaseIngestionCounterLogic logic = new();
@@ -114,6 +156,37 @@ public class CaseIngestionCounterLogicTests
         state.AppliedTransitionSequences.ShouldNotBeNull();
         state.AppliedTransitionSequences.Count.ShouldBe(256);
         state.AppliedTransitionSequences.ShouldContainKey("workflow-300");
+        state.AppliedTransitionWorkflowOrder.ShouldNotBeNull();
+        state.AppliedTransitionWorkflowOrder.Length.ShouldBe(256);
+        state.AppliedTransitionWorkflowOrder[^1].ShouldBe("workflow-300");
+    }
+
+    [Fact]
+    public void Transition_RefreshedWorkflowAtLedgerLimitSurvivesEviction()
+    {
+        CaseIngestionCounterLogic logic = new();
+        CaseIngestionCounterState state = Empty();
+        for (int index = 1; index <= 256; index++)
+        {
+            state = logic.Transition(state, "none", "queued", $"workflow-{index}:1");
+        }
+
+        state = logic.Transition(state, "queued", "extracting", "workflow-1:2");
+        state = logic.Transition(state, "none", "queued", "workflow-257:1");
+
+        state.AppliedTransitionSequences.ShouldNotBeNull();
+        state.AppliedTransitionSequences.ShouldContainKey("workflow-1");
+        state.AppliedTransitionSequences.ShouldNotContainKey("workflow-2");
+        state.AppliedTransitionWorkflowOrder.ShouldNotBeNull();
+        state.AppliedTransitionWorkflowOrder[0].ShouldBe("workflow-3");
+        state.AppliedTransitionWorkflowOrder[^2].ShouldBe("workflow-1");
+        state.AppliedTransitionWorkflowOrder[^1].ShouldBe("workflow-257");
+
+        CaseIngestionCounterState replayed = logic.Transition(state, "none", "queued", "workflow-1:1");
+
+        ReferenceEquals(state, replayed).ShouldBeTrue();
+        replayed.Queued.ShouldBe(256);
+        replayed.Extracting.ShouldBe(1);
     }
 
     [Fact]

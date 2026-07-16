@@ -4638,6 +4638,8 @@ So that ordinary `main` pushes do not fail on unused credentials and real releas
 
 ### Story 26.7: Restart-Recovery Reliability Gate
 
+**Status:** done
+
 As a reliability maintainer,
 I want restart tests to expose the first terminal failure and prove replay-safe counter/workflow recovery,
 So that NFR17 regressions are actionable and cannot be hidden by timeouts or flaky green runs.
@@ -4661,3 +4663,9 @@ So that NFR17 regressions are actionable and cannot be hidden by timeouts or fla
 **Given** the correction is verified,
 **Then** focused repetition and the full slow integration lane pass,
 **And** evidence is not obtained by raising the timeout, suppressing terminal `Failed`, removing the restart, or weakening zero-loss assertions.
+
+### Review Findings
+
+- [x] [Review][Patch] Replace the Dictionary-order pseudo-LRU so refreshing a workflow actually prevents eviction and delayed replay double-counting [src/Hexalith.Memories.Server/Actors/CaseIngestionCounterLogic.cs:46]
+- [x] [Review][Patch] Add persisted-state serialization compatibility coverage for legacy counter state and the new replay watermark [tests/Hexalith.Memories.Server.Tests/Actors/CaseIngestionCounterLogicTests.cs:92]
+- [x] [Review][Patch] Make the restart gate deterministically fail if nested HTTP resilience retries are reintroduced [tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs:175]
