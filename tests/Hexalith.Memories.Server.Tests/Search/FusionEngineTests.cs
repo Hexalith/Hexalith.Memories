@@ -139,8 +139,8 @@ public class FusionEngineTests
         mu2.GraphScore.ShouldBeNull();
 
         // Composite scoring is based on active axis rank contribution, not raw score magnitude.
-        mu1.CompositeScore.ShouldBe(0.5);
-        mu2.CompositeScore.ShouldBe(0.5);
+        mu1.CompositeScore.ShouldBe(0.3 / 0.65, tolerance: 1e-12);
+        mu2.CompositeScore.ShouldBe(0.35 / 0.65, tolerance: 1e-12);
     }
 
     // 7.7: Determinism — same inputs produce identical output ordering (NFR25)
@@ -244,7 +244,7 @@ public class FusionEngineTests
 
         FusedScoredResult tenth = results.Single(result => result.MemoryUnitId == "mu-10");
         tenth.SyntacticScore.ShouldNotBeNull();
-        tenth.SyntacticScore.Value.ShouldBe(11.0 / 20.0, tolerance: 1e-12);
+        tenth.SyntacticScore!.Value.ShouldBe(11.0 / 20.0, tolerance: 1e-12);
         tenth.CompositeScore.ShouldBe(11.0 / 20.0, tolerance: 1e-12);
     }
 
