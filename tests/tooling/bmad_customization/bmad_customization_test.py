@@ -2,6 +2,7 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -19,6 +20,27 @@ LEDGER_SPEC = (
 POLICY_FACT = "file:{project-root}/_bmad/custom/story-scope-guard.md"
 LEDGER_POLICY_FACT = "file:{project-root}/_bmad/custom/story-phase-ledger.md"
 LESSONS_FACT = "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md"
+SPEC_PROJECT_CONTEXT_FACT = "file:{project-root}/project-context.md"
+ATTACHED_EVIDENCE_MARKER = "Tenant isolation requires attached negative evidence"
+PROJECT_CONTEXT_BRIDGE_MARKER = "PROJECT_CONTEXT_BRIDGE:"
+EXPECTED_PROJECT_CONTEXT_BRIDGE = """# Project Context Bridge
+
+You MUST fully load `_bmad-output/project-context.md` as foundational context
+before proceeding. That canonical file is the only policy source. This bridge
+defines no project rules and MUST NOT be expanded.
+
+If `_bmad-output/project-context.md` is missing or unreadable, HALT and report
+the failure. Do not proceed without the canonical context.
+
+Project-context generators MUST NEVER update this bridge. They MUST read and
+update only `_bmad-output/project-context.md`.
+"""
+EXPECTED_GENERATOR_DIRECTIVE = (
+    "PROJECT_CONTEXT_BRIDGE: Treat "
+    "{project-root}/_bmad-output/project-context.md as the only project-context "
+    "read and update target. Never update or rewrite "
+    "{project-root}/project-context.md; it is the forwarding bridge."
+)
 MARKER = "HISTORICAL_SLICE_GUARD:"
 LEDGER_MARKER = "STORY_PHASE_LEDGER:"
 LEDGER_EQUATION = re.compile(
@@ -56,6 +78,127 @@ def resolve_workflow(skill_name: str) -> dict:
 
 
 class BMadCustomizationTests(unittest.TestCase):
+    def test_cross_tenant_project_context_delivery_contract(self):
+        bridge_path = REPO_ROOT / "project-context.md"
+        self.assertEqual(
+            bridge_path.read_text(encoding="utf-8"),
+            EXPECTED_PROJECT_CONTEXT_BRIDGE,
+        )
+
+        spec_workflow = resolve_workflow("bmad-spec")
+        self.assertEqual(
+            spec_workflow["persistent_facts"],
+            [SPEC_PROJECT_CONTEXT_FACT],
+        )
+
+        spec_skill_dir = REPO_ROOT / ".agents" / "skills" / "bmad-spec"
+        with (spec_skill_dir / "customize.toml").open("rb") as default_file:
+            default_workflow = tomllib.load(default_file)["workflow"]
+        self.assertEqual(
+            default_workflow["persistent_facts"],
+            [SPEC_PROJECT_CONTEXT_FACT],
+        )
+
+        spec_skill_contract = normalize_text(
+            (spec_skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        )
+        self.assertIn(
+            "On failure, read `{skill-root}/customize.toml` directly.",
+            spec_skill_contract,
+        )
+        self.assertIn(
+            "Treat `{workflow.persistent_facts}` as foundational context "
+            "(`file:` entries are loaded).",
+            spec_skill_contract,
+        )
+
+        canonical = (
+            REPO_ROOT / "_bmad-output" / "project-context.md"
+        ).read_text(encoding="utf-8")
+        testing_sections = re.findall(
+            r"(?ms)^### Testing Rules[ \t]*\n(.*?)(?=^### |\Z)",
+            canonical,
+        )
+        self.assertEqual(len(testing_sections), 1)
+        tenant_rules = re.findall(
+            rf"(?m)^- \*\*{re.escape(ATTACHED_EVIDENCE_MARKER)}\*\* - (.+)$",
+            testing_sections[0],
+        )
+        self.assertEqual(len(tenant_rules), 1)
+        tenant_rule = tenant_rules[0]
+        for affected_surface in (
+            "tenant/case routing",
+            "endpoint filters or auth claims",
+            "tenant status",
+            "index/key/graph selection",
+            "actor IDs",
+            "storage/query selectors",
+            "MCP authorization/execution",
+            "evidence scope display",
+            "verifier markers",
+            "attribution",
+            "tenant-scoped data movement",
+        ):
+            self.assertIn(affected_surface, tenant_rule)
+        self.assertIn(
+            "focused cross-tenant denial or fail-closed test names, command, and result",
+            tenant_rule,
+        )
+        self.assertIn("story/spec plus completion or review record", tenant_rule)
+        self.assertIn("Story 20.2 denial-before-dependency", tenant_rule)
+        self.assertIn("Story 24.3 verifier/tenant-marker", tenant_rule)
+        self.assertIn(
+            "accepted blocker with owner, consequence, and reopen trigger",
+            tenant_rule,
+        )
+        self.assertIn(
+            "Do not close on happy-path, broad-suite, build-only, or "
+            "refactor-green evidence alone.",
+            tenant_rule,
+        )
+
+        generator_workflow = resolve_workflow("bmad-generate-project-context")
+        generator_directives = [
+            step
+            for step in generator_workflow["activation_steps_append"]
+            if step.startswith(PROJECT_CONTEXT_BRIDGE_MARKER)
+        ]
+        self.assertEqual(generator_directives, [EXPECTED_GENERATOR_DIRECTIVE])
+
+        epics = (
+            REPO_ROOT / "_bmad-output" / "planning-artifacts" / "epics.md"
+        ).read_text(encoding="utf-8")
+        epics_guards = re.findall(
+            r"(?m)^\*\*Cross-tenant negative-evidence carry-forward "
+            r"\([^)]+\):\*\* (.+)$",
+            epics,
+        )
+        self.assertEqual(len(epics_guards), 1)
+        self.assertIn("Any future scope-sensitive", epics_guards[0])
+        self.assertIn("regardless of epic number", epics_guards[0])
+
+        sprint_status = (
+            REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+        ).read_text(encoding="utf-8")
+        sprint_action = (
+            'action: "Keep cross-tenant negative validation evidence attached to '
+            'future scope-sensitive changes"'
+        )
+        sprint_lines = sprint_status.splitlines()
+        action_indices = [
+            index
+            for index, line in enumerate(sprint_lines)
+            if line.strip() == sprint_action
+        ]
+        self.assertEqual(len(action_indices), 1)
+        action_index = action_indices[0]
+        self.assertEqual(sprint_lines[action_index - 1].strip(), "- epic: 0")
+        self.assertTrue(sprint_lines[action_index + 1].strip().startswith("owner:"))
+        self.assertEqual(
+            sprint_lines[action_index + 2].split("#", 1)[0].strip(),
+            "status: in-progress",
+        )
+
     def test_create_story_resolves_update_safe_historical_slice_gate(self):
         workflow = resolve_workflow("bmad-create-story")
 

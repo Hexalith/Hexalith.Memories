@@ -1,0 +1,8 @@
+# Team-owned writer selection for the canonical project context. This file is
+# merged over generated defaults and survives BMad skill refreshes.
+
+[workflow]
+
+activation_steps_append = [
+  "PROJECT_CONTEXT_BRIDGE: Treat {project-root}/_bmad-output/project-context.md as the only project-context read and update target. Never update or rewrite {project-root}/project-context.md; it is the forwarding bridge.",
+]
