@@ -28,7 +28,7 @@
     <PackageVersion Include="Dapr.AI" Version="1.18.4" />
     <PackageVersion Include="Dapr.AI.Microsoft.Extensions" Version="1.18.4" />
     <!-- Content Extraction -->
-    <PackageVersion Include="Kreuzberg" Version="4.9.9" />
+    <PackageVersion Include="Kreuzberg" Version="4.10.2" />
     <!-- Redis / FalkorDB -->
     <PackageVersion Include="NRedisStack" Version="1.6.0" />
     <PackageVersion Include="NFalkorDB" Version="1.0.6" />
