@@ -52,6 +52,20 @@ public class FusionWeightsSerializationTests
     }
 
     [Fact]
+    public void MissingJsonProperties_ShouldUseCalibratedLiveDefaults()
+    {
+        FusionWeights? empty = JsonSerializer.Deserialize<FusionWeights>("{}", MemoriesJsonContext.Options);
+        FusionWeights? partial = JsonSerializer.Deserialize<FusionWeights>(
+            """
+            {"syntacticWeight":0.6}
+            """,
+            MemoriesJsonContext.Options);
+
+        empty.ShouldBe(new FusionWeights());
+        partial.ShouldBe(new FusionWeights { SyntacticWeight = 0.6 });
+    }
+
+    [Fact]
     public void PropertyNames_ShouldBeCamelCase()
     {
         var original = new FusionWeights();

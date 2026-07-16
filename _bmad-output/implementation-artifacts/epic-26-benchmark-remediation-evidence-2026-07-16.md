@@ -28,12 +28,14 @@ Relevant files:
 |---|---|---|
 | Contracts | `dotnet test tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj -c Release` | 588 passed, 0 failed, 0 skipped |
 | Server | `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Release` | 2,670 passed, 0 failed, 1 established skip |
-| Explain integration | `dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -c Release --filter "FullyQualifiedName~ExplainSearchApiIntegrationTests"` | 8 passed, 0 failed, 0 skipped |
+| Explain integration | `dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Release/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Search.ExplainSearchApiIntegrationTests` | 8 passed, 0 failed, 0 skipped |
 | Solution build | `dotnet build Hexalith.Memories.slnx -c Release --no-restore` | 0 warnings, 0 errors |
 | Benchmark run 1 | `bash tools/test.sh --filter "Category=Benchmark" --configuration Release --no-build --results-directory TestResults/benchmark-run1` | 17 passed, 0 failed, 0 skipped; 8/8 wins |
 | Benchmark run 2 | `bash tools/test.sh --filter "Category=Benchmark" --configuration Release --no-build --results-directory TestResults/benchmark-run2` | 17 passed, 0 failed, 0 skipped; 8/8 wins |
 
 The complete per-query result payloads from run 1 and run 2 matched exactly. Both runs reported `hybridWins=8`, `hybridWinRate=1.0`, and `thesisValidated=true`. TRX evidence is retained under `TestResults/benchmark-run1/Hexalith.Memories.Benchmarks/` and `TestResults/benchmark-run2/Hexalith.Memories.Benchmarks/`; generated result JSON remains ignored build output.
+
+The synthetic corpus uses precomputed vectors. This gate validates deterministic fusion-algorithm behavior on governed fixtures; it does not establish real-world embedding or production relevance quality.
 
 ## Per-query strict comparison
 
@@ -51,3 +53,39 @@ The complete per-query result payloads from run 1 and run 2 matched exactly. Bot
 ## Gate decision
 
 The unchanged PRD benchmark gate passes at 8/8 strict wins, exceeding the required 7/8. Reproducibility and test-inventory gates pass, so the Epic 26 benchmark action and the story/retrospective alignment blocker are resolved.
+
+## Release note
+
+Default production hybrid ranking changes for unconfigured tenants and omitted request weights: RRF now uses `k=10`, with live syntactic/semantic/graph defaults `0.30/0.35/0.35`. Fully explicit request or tenant weights remain authoritative, durable missing-field fallbacks are unchanged, and no migration is required. Explain responses expose the calibrated live defaults. This behavior change requires a `fix(search)` Conventional Commit release signal; `CHANGELOG.md` remains semantic-release generated and is not edited manually.
+
+## Approval-gate revalidation
+
+After Administrator approved the Direct Adjustment, the current shared workspace was independently revalidated without changing any benchmark source:
+
+| Check | Result |
+|---|---|
+| `FusionWeightsSerializationTests` | 7 passed, 0 failed, 0 skipped |
+| `FusionEngineTests`, `PersistenceCompatibilityTests`, `SearchEndpointContractTests`, `ExplainMetadataBuilderTests`, `TenantConfigurationActorTests` | 94 passed, 0 failed, 0 skipped |
+| `ExplainSearchApiIntegrationTests` | 8 passed, 0 failed, 0 skipped |
+| Release solution build | 0 warnings, 0 errors |
+| Approved run 1 | 17 passed, 0 failed, 0 skipped; 8/8 wins |
+| Approved run 2 | 17 passed, 0 failed, 0 skipped; 8/8 wins |
+
+Approved-run TRX evidence is retained under `TestResults/epic-26-approved-run1/Hexalith.Memories.Benchmarks/` and `TestResults/epic-26-approved-run2/Hexalith.Memories.Benchmarks/`. Removing only the expected `runTimestamp`, the complete generated result payloads were identical. This closes Story 26.8 without a PRD or governance change.
+
+## Review-patch revalidation
+
+The three-layer implementation review added fail-closed coverage for partial live-weight JSON defaults, all legacy missing-field fallbacks, deep RRF ranks, and the contributor-facing benchmark status. The approved benchmark inputs and gate remained unchanged.
+
+| Check | Result |
+|---|---|
+| Contracts Release suite | 589 passed, 0 failed, 0 skipped |
+| Server Release suite | 2,670 passed, 0 failed, 1 established skip |
+| Focused server regression classes | 94 passed, 0 failed, 0 skipped |
+| `ExplainSearchApiIntegrationTests` | 8 passed, 0 failed, 0 skipped |
+| Coverage/documentation guard suite | 30 passed, 0 failed |
+| Release solution build | 0 warnings, 0 errors |
+| Review run 1 | 17 passed, 0 failed, 0 skipped; 8/8 wins |
+| Review run 2 | 17 passed, 0 failed, 0 skipped; 8/8 wins |
+
+Review-run TRX evidence is retained under `TestResults/benchmark-review-run1/Hexalith.Memories.Benchmarks/` and `TestResults/benchmark-review-run2/Hexalith.Memories.Benchmarks/`. The complete JSON payload from each independent process was normalized with `jq -cS 'del(.runTimestamp)'` and both produced SHA-256 `458e85aff0174ee065b88b5f95008ece28958b42c97111fcc126468ee2d9de71`. The exact normalized comparison therefore passes.

@@ -227,6 +227,11 @@ class CoverageContractTests(unittest.TestCase):
         self.assertIn("requires Docker", test_readme)
         self.assertIn("TestResults/benchmark", test_readme)
         self.assertIn("benchmark-results.json", test_readme)
+        self.assertIn(
+            "epic-26-benchmark-remediation-evidence-2026-07-16.md",
+            test_readme,
+        )
+        self.assertNotIn("known-red at 6/8", test_readme)
         self.assertNotIn("rather than a dedicated root CI workflow", test_readme)
 
         for project in (

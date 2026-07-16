@@ -4680,3 +4680,32 @@ So that NFR17 regressions are actionable and cannot be hidden by timeouts or fla
 - [x] [Review][Patch] Replace the Dictionary-order pseudo-LRU so refreshing a workflow actually prevents eviction and delayed replay double-counting [src/Hexalith.Memories.Server/Actors/CaseIngestionCounterLogic.cs:46]
 - [x] [Review][Patch] Add persisted-state serialization compatibility coverage for legacy counter state and the new replay watermark [tests/Hexalith.Memories.Server.Tests/Actors/CaseIngestionCounterLogicTests.cs:92]
 - [x] [Review][Patch] Make the restart gate deterministically fail if nested HTTP resilience retries are reintroduced [tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs:175]
+
+### Story 26.8: Benchmark Quality Calibration
+
+**Status:** done
+
+As a product-quality owner,
+I want production hybrid-fusion defaults calibrated against the governed benchmark,
+So that Epic 26 closes by meeting the product thesis without weakening its evidence gates.
+
+**Acceptance Criteria:**
+
+**Given** the fixed eight-query corpus, ground truth, top-10 NDCG scorer, strict `hybrid > best active single axis` rule, 80% threshold, and Redis/Falkor execution,
+**When** production weighted-RRF calibration is applied and the complete Release benchmark runs,
+**Then** all 17 tests pass with none skipped,
+**And** at least 7 of 8 queries are strict hybrid wins,
+**And** the approved calibration target is 8 of 8 wins with no per-query regression.
+
+**Given** two independent complete benchmark runs,
+**When** their per-query results are compared,
+**Then** NDCG@10 metrics and win outcomes are identical.
+
+**Given** explicit weights, persisted legacy weights, missing or empty axes, ties, attribution, score bounds, and NL default-off behavior,
+**When** focused regression tests run,
+**Then** all established compatibility and determinism contracts remain green.
+
+**Given** verified green evidence,
+**When** Epic 26 records are reconciled,
+**Then** historical 6/8 evidence remains intact,
+**And** Story 26.8, the benchmark action, the alignment action, and Epic 26 are marked done.

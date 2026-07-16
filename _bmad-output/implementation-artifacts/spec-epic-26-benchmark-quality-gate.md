@@ -2,8 +2,11 @@
 title: 'Restore Epic 26 Benchmark Quality Gate'
 type: 'bugfix'
 created: '2026-07-16'
-status: 'in-progress'
+status: 'done'
 baseline_commit: '56faf29454be613a09ca3865b7ba3c9844dc5f9b'
+implementation_revisions: ['9c6bbb24', '4598ff4e']
+story: '26.8'
+approved_proposal: '../planning-artifacts/sprint-change-proposal-2026-07-16-epic-26-benchmark-closure.md'
 review_loop_iteration: 0
 context:
   - '{project-root}/_bmad-output/project-context.md'
@@ -48,10 +51,10 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `FusionEngine.cs`, `FusionWeights.cs` -- apply the approved calibration and document its rank-decay rationale.
-- [ ] Focused tests -- pin rank-10 contribution `11/20 = 0.55`, defaults, overrides, legacy persistence, explicit weights, degraded axes, and NL behavior.
-- [ ] Benchmark/evidence -- run the unchanged Release suite twice; retain TRX and a source-controlled per-query summary.
-- [ ] Epic 26 records -- after green evidence, append closure notes and mark the benchmark action, alignment action, and epic row done.
+- [x] `FusionEngine.cs`, `FusionWeights.cs` -- apply the approved calibration and document its rank-decay rationale.
+- [x] Focused tests -- pin rank-10 contribution `11/20 = 0.55`, defaults, overrides, legacy persistence, explicit weights, degraded axes, and NL behavior.
+- [x] Benchmark/evidence -- run the unchanged Release suite twice; retain TRX and a source-controlled per-query summary.
+- [x] Epic 26 records -- after green evidence, append closure notes and mark the benchmark action, alignment action, and epic row done.
 
 **Acceptance Criteria:**
 - Given the fixed benchmark, when the complete Release suite runs, then exactly 17 tests pass with none failed/skipped, `hybridWins=8`, `hybridWinRate=1.0`, and `thesisValidated=true`.
@@ -60,6 +63,9 @@ context:
 - Given verified closure evidence, when trackers reconcile, then historical 6/8 evidence remains intact.
 
 ## Spec Change Log
+
+- 2026-07-16: Linked approved Sprint Change Proposal and canonical Story 26.8; frozen benchmark and reproducibility boundaries remain unchanged.
+- 2026-07-16: Independent approval-gate verification passed; Story 26.8 and Epic 26 closure records reconciled to `done`.
 
 ## Design Notes
 
@@ -70,6 +76,61 @@ Neither change passes alone. Combined, they stay 8/8 for `k=8..16` and nearby we
 **Commands:**
 - `dotnet test tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj -c Release` -- all pass.
 - `dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Release` -- all pass except established skips.
-- `dotnet test tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj -c Release --filter "FullyQualifiedName~ExplainSearchApiIntegrationTests"` -- focused integration passes.
+- `dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Release/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Search.ExplainSearchApiIntegrationTests` -- focused integration passes.
 - `dotnet build Hexalith.Memories.slnx -c Release` -- expected: zero warnings and errors.
 - `bash tools/test.sh --filter "Category=Benchmark" --configuration Release --results-directory TestResults/benchmark` -- expected: 17 passed, 0 failed, 0 skipped; unchanged gate reports 8/8 and reproducibility passes.
+
+## Suggested Review Order
+
+**Ranking calibration**
+
+- Tighter RRF decay restores top-rank discrimination across the governed top-ten candidate window.
+  [`FusionEngine.cs:17`](../../src/Hexalith.Memories.Server/Search/FusionEngine.cs#L17)
+
+- Calibrated live defaults also survive omitted and partially serialized JSON properties.
+  [`FusionWeights.cs:21`](../../src/Hexalith.Memories.Contracts/V1/FusionWeights.cs#L21)
+
+**Compatibility boundaries**
+
+- Architecture pins calibration while separating live behavior from durable legacy fallbacks.
+  [`architecture.md:96`](../planning-artifacts/architecture.md#L96)
+
+- Empty legacy payloads retain historical storage defaults without silent migration.
+  [`PersistenceCompatibilityTests.cs:104`](../../tests/Hexalith.Memories.Server.Tests/Serialization/PersistenceCompatibilityTests.cs#L104)
+
+- Partial request weights keep explicit values and fill omissions from live defaults.
+  [`SearchEndpointContractTests.cs:298`](../../tests/Hexalith.Memories.Server.Tests/Endpoints/SearchEndpointContractTests.cs#L298)
+
+- Explain integration proves clients observe the calibrated graph weight.
+  [`ExplainSearchApiIntegrationTests.cs:194`](../../tests/Hexalith.Memories.IntegrationTests/Search/ExplainSearchApiIntegrationTests.cs#L194)
+
+**Regression and gate proof**
+
+- Deep-rank assertions pin decay beyond the benchmark's rank-ten boundary.
+  [`FusionEngineTests.cs:236`](../../tests/Hexalith.Memories.Server.Tests/Search/FusionEngineTests.cs#L236)
+
+- Serialization tests lock complete, empty, and partial live-default behavior.
+  [`FusionWeightsSerializationTests.cs:40`](../../tests/Hexalith.Memories.Contracts.Tests/V1/FusionWeightsSerializationTests.cs#L40)
+
+- Independent processes produce identical normalized payload hashes and eight strict wins.
+  [`epic-26-benchmark-remediation-evidence-2026-07-16.md:76`](epic-26-benchmark-remediation-evidence-2026-07-16.md#L76)
+
+- Procedural guidance links canonical evidence without embedding stale outcomes.
+  [`README.md:107`](../../tests/README.md#L107)
+
+- Contributor guard prevents known-red benchmark prose from returning.
+  [`coverage_contract_test.py:228`](../../tests/tooling/coverage_gate/coverage_contract_test.py#L228)
+
+**Governance closure**
+
+- Canonical Story 26.8 records the unchanged gate and compatibility contract.
+  [`epics.md:4684`](../planning-artifacts/epics.md#L4684)
+
+- Epic, story, benchmark, and alignment rows converge on done.
+  [`sprint-status.yaml:391`](sprint-status.yaml#L391)
+
+- Retrospective preserves the historical failure before appending verified closure.
+  [`epic-26-retro-2026-07-16.md:206`](epic-26-retro-2026-07-16.md#L206)
+
+- Follow-up retains permanent independent-process CI comparison work.
+  [`deferred-work.md:2196`](deferred-work.md#L2196)

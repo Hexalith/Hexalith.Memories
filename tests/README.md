@@ -106,8 +106,9 @@ input runs must produce identical NDCG@10. Do not hide a failure with a narrower
 Local TRX evidence is written under `TestResults/benchmark`; the quality JSON is written to
 `tests/Hexalith.Memories.Benchmarks/bin/Release/net10.0/benchmark-results.json`. Nightly uploads them
 separately as `nightly-benchmark-trx` and `nightly-benchmark-quality-result`, even when the test step
-fails. The current measured result is truthfully known-red at 6/8 hybrid wins (75%), below the 80%
-requirement; Story 26.4 automates that signal and does not tune retrieval behavior.
+fails. Keep current outcomes out of this procedural guide: the governed result, production calibration,
+per-query scores, reproducibility proof, and synthetic-vector caveat live in
+`_bmad-output/implementation-artifacts/epic-26-benchmark-remediation-evidence-2026-07-16.md`.
 
 ### Debug / investigation
 

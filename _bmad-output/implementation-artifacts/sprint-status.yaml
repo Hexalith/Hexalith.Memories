@@ -388,7 +388,7 @@ development_status:
   epic-25-retrospective: done
 
   # Epic 26: Test, Deployment & Operational Readiness
-  epic-26: in-progress  # 2026-07-16: intentional exception to story/retro completion alignment; closure remains blocked until the 7-of-8 benchmark gate is met or formally changed.
+  epic-26: done  # 2026-07-16: unchanged Release benchmark passed 8/8 strict wins and 17/17 tests twice with exact per-query reproducibility; all stories and the retrospective are done.
   26-1-production-deployment-artifacts: done  # 2026-07-12: chunk-1 review closed 13 release-hardening findings with digest-safe image retries, aggregate release evidence, 113 tooling fixtures, 59 focused C# tests, real SDK archives, and development-settings layer exclusion proof.
   26-2-backup-and-restore: done  # 2026-07-15: operational-runbook review closed — all 15 approved patches applied under the hybrid policy; fail-closed logical/physical procedures plus executable recovery verifier; focused C# 6/0/0 and Python 13/0/0; one representative 512 MiB / ~100K-unit test explicitly deferred. Prior tracking follows. 2026-07-15: integration-evidence review chunk closed — 6 findings patched; AC7 real Aspire fidelity test 1/0/0 and IntegrationTests Release build 0/0. 2026-07-14: final BMad completion gate on 373d893 — Release build 0/0; aggregate unit/contract 4417/1/0; fast Aspire 224/8/0 with AC7 fidelity Passed; slow Aspire 16/0/0 with AC8 controlled-restart zero-loss Passed; File List reconciled. Prior tracking follows. 2026-07-13: dev-story completion gate passed locally — Release build 0/0; unit/contract 4374/1/0; fast Aspire 224/8/0 including AC7 fidelity; slow Aspire 16/0/0 including AC8 controlled-restart zero-loss; nine missing CLI import/restore error mappings fixed and tested. 2026-07-13: code review (bmad-code-review) — 1 High/6 Med/8 Low, 1 dismissed. 4 decisions resolved + 10 patches applied (build 0/0 full solution; 2 new Docker-free tests green; 163 restore/import/graph tests green). HIGH fixed: AC7 fidelity test HGETALL'd the :case:*activity stream → WRONGTYPE before asserting (now excludes activity read-models). Also: skip-and-report for corrupt records (D4), source-vs-target embedding guard (P3), status-GET rate-limit + 503 (P4). Prior 2026-07-13: dev-story complete — import/restore endpoints + durable RestoreWorkflow (byte-exact data plane + re-derived chunked vectors + graph audit-trail reconstruction), MemoriesClient import methods, 23 Docker-free tests + Aspire fidelity test + AC8 zero-loss assertion, backup-restore.md + disaster-recovery.md. 2026-07-12: story context created — import/restore endpoint (mirrors export routes), export→import fidelity integration test (data-plane hashes verbatim + FalkorDB edges; re-derived semantic hashes), backup-restore.md + disaster-recovery.md runbooks. Key finding surfaced: export omits embeddings/NL descriptions → restore must re-embed, not copy.
   26-3-integration-stub-closure: done  # 2026-07-15: adversarial review closed all 12 patch findings; final complete integration 243/8/0, closure matrix 20/8/0, provider failure activity proof 1/0/0, structural guard 12/0/0, verifier unit tests 7/0/0, affected Release builds 0 warnings/errors.
@@ -396,6 +396,7 @@ development_status:
   26-5-operational-runbook-set: done  # 2026-07-16: adversarial review complete; all 54 accepted findings across three chunks closed (17 in chunk 3, 1 dismissed). Final gates: verifier 8/8, focused contracts 15/15, Docker-free Server 2663/1/0, Release solution 0 warnings/errors, shell/Python/diff checks green.
   26-6-zot-release-contract-alignment: done  # 2026-07-16: adversarial review closed all 5 actionable findings; overlap-safe secret redaction, validated registry overrides, env-path/legacy-credential fixtures, and step-bound workflow guards; publisher fixtures 38/38, CLI inventory 57/57, focused Release build 0 warnings/errors. Prior evidence: standard publish-only HEXALITH_ZOT auth, flat memories/memories-mcp repositories, package/preflight fixtures, authenticated live dry-run green.
   26-7-restart-recovery-reliability-gate: done  # 2026-07-16: adversarial review closed all 3 actionable findings; explicit persisted replay recency order, legacy/current serialization coverage, and deterministic URL HttpClient resilience guard; focused tests 20/0/0, full Server.Tests 2668/1/0, Release build 0 warnings/errors. Prior evidence: exact failure isolated as nested HTTP resilience timeout/retries, URL fetch transport retry removed, fail-fast Dapr/counter/log diagnostics retained, bounded replay watermark added; focused restart 3/3 and full slow lane 16/16 green.
+  26-8-benchmark-quality-calibration: done  # 2026-07-16: approved production calibration verified; focused contract 8/8, fusion/persistence/search 94/94, explain integration 8/8, Release build 0 warnings/errors, and two unchanged benchmark runs each 17/17 with 8/8 identical strict-win results.
   epic-26-retrospective: done
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
@@ -443,7 +444,7 @@ action_items:
   - epic: 17
     action: "Keep sprint-status.yaml epic rows aligned with story completion (carry-forward from Epic 16): mark the epic row done when all stories are done and the retro is complete"
     owner: "Amelia"
-    status: in-progress  # 2026-07-16: Epic 26 is intentionally not done despite completed stories/retro; its retrospective keeps closure blocked on the unmet 7-of-8 benchmark gate.
+    status: done  # 2026-07-16: Epic 26 stories/retro are complete and the unchanged benchmark gate passed 8/8 with exact repeated metrics; the epic row is aligned to done.
   - epic: 18
     action: "Add a root .gitattributes (or a recorded accepted-debt entry) to settle repo-wide LF/CRLF; carry-forward from Epic 17 with evidence it caused MEDIUM findings and diff churn in stories 18.4/18.5/18.6"
     owner: "Amelia"
@@ -619,7 +620,7 @@ action_items:
   - epic: 26
     action: "Restore the deterministic benchmark from 6/8 hybrid wins (75%) to the PRD hard line (at least 7/8), without weakening the thesis/reproducibility gates, or obtain an explicit product-governance change; Story 26.4 may complete when the truthful blocking lane lands, but Epic 26 cannot complete while this action remains open"
     owner: "Amelia, Murat, John, Winston"
-    status: open
+    status: done  # 2026-07-16: production RRF k=10 and live defaults 0.30/0.35/0.35 produced 8/8 strict wins; both unchanged Release runs passed 17/17 with identical per-query metrics.
   - epic: 26
     action: "Establish an executable operational-review entry gate that requires realistic execution evidence, exact end-state assertions, fail-closed behavior, complete artifact inventory, and zero unapproved skips before review"
     owner: "Murat, Amelia"

@@ -8,6 +8,29 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <summary>Configures the relative weight of each search axis in hybrid fusion scoring.</summary>
 public sealed record FusionWeights
 {
+    /// <summary>Initializes a new instance with the live fusion defaults.</summary>
+    public FusionWeights()
+    {
+    }
+
+    /// <summary>Initializes a new instance from serialized fusion weights.</summary>
+    /// <param name="syntacticWeight">The syntactic-axis weight.</param>
+    /// <param name="semanticWeight">The semantic-axis weight.</param>
+    /// <param name="graphWeight">The graph-axis weight.</param>
+    /// <param name="nlWeight">The natural-language-axis weight.</param>
+    [System.Text.Json.Serialization.JsonConstructor]
+    internal FusionWeights(
+        double syntacticWeight = 0.3,
+        double semanticWeight = 0.35,
+        double graphWeight = 0.35,
+        double nlWeight = 0.2)
+    {
+        SyntacticWeight = syntacticWeight;
+        SemanticWeight = semanticWeight;
+        GraphWeight = graphWeight;
+        NlWeight = nlWeight;
+    }
+
     /// <summary>Gets the weight for the syntactic (BM25) search axis.</summary>
     public double SyntacticWeight { get; init; } = 0.3;
 

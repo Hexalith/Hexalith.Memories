@@ -2191,3 +2191,7 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 - source_spec: `_bmad-output/implementation-artifacts/spec-fix-release-container-push-unauthorized.md`
   summary: Probe skopeo availability in release-preflight so a missing runner binary fails before NuGet publish and tag creation instead of causing a partial release.
   evidence: Container publish now hard-depends on the runner-preinstalled skopeo; the publish-time tooling-missing check fires only after NuGet packages and the release tag exist. The story spec froze "no touching preflight", so this hardening was out of scope.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-26-benchmark-quality-gate.md`
+  summary: Make independent-process benchmark reproducibility a permanent fail-closed CI comparison.
+  evidence: Story 26.8 retained and compared two independent benchmark processes, but the nightly lane launches one process and its in-process reproducibility check cannot detect process-initialized drift. A future lane should normalize and compare two independently generated result payloads without weakening the existing gate.
