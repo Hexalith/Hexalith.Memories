@@ -1,10 +1,10 @@
-# Sprint Change Proposal - .NET SDK 10.0.300 Pin
+# Sprint Change Proposal - .NET SDK 10.0.302 Pin
 
 **Project:** Hexalith.Memories
 **Date:** 2026-05-18
 **Requested by:** JeromePiquot
 **Workflow:** bmad-correct-course
-**Change trigger:** User directive to use .NET SDK `10.0.300`.
+**Change trigger:** User directive to use .NET SDK `10.0.302`.
 **Mode:** Batch
 **Status:** Implemented as a minor direct adjustment
 
@@ -15,7 +15,7 @@ The repository targets `net10.0`, but the executable SDK pin and onboarding guid
 - `global.json` pinned SDK `10.0.201`.
 - `_bmad-output/project-context.md` told agents to expect `10.0.201`.
 - README and quickstart docs still referenced `.NET 9`.
-- The quickstart prerequisite check accepted any `.NET 9+` SDK, which could pass environments that cannot honor a `10.0.300` repo pin.
+- The quickstart prerequisite check accepted any `.NET 9+` SDK, which could pass environments that cannot honor a `10.0.302` repo pin.
 
 The triggering issue is a tooling/runtime alignment correction, not a product scope change.
 
@@ -26,7 +26,7 @@ The triggering issue is a tooling/runtime alignment correction, not a product sc
 | Item | Status | Finding |
 |---|---|---|
 | 1.1 Triggering story | [N/A] | No single story revealed the issue; the trigger was an explicit user directive. |
-| 1.2 Core problem | [x] | Technical/tooling alignment drift: repo SDK pin and docs did not reflect `10.0.300`. |
+| 1.2 Core problem | [x] | Technical/tooling alignment drift: repo SDK pin and docs did not reflect `10.0.302`. |
 | 1.3 Supporting evidence | [x] | `global.json`, README, quickstart docs, CLI prerequisite code, and project context contained older SDK expectations. |
 | 2.1 Current epic impact | [x] | Epic 15 remains viable; Story 15.6 can proceed with the newer SDK. |
 | 2.2 Epic-level changes | [N/A] | No epic scope or acceptance criteria need to change. |
@@ -43,9 +43,9 @@ The triggering issue is a tooling/runtime alignment correction, not a product sc
 | 4.4 Recommended path | [x] | Direct adjustment. |
 | 5.1-5.5 Proposal components | [x] | Captured in this document. |
 | 6.1-6.2 Review | [x] | Focused tests and full solution build passed. |
-| 6.3 User approval | [x] | Treated as approved by direct instruction: "use .NET 10.0.300". |
+| 6.3 User approval | [x] | Treated as approved by direct instruction: "use .NET 10.0.302". |
 | 6.4 sprint-status.yaml | [N/A] | No epics or stories were added, removed, renumbered, or status-changed. |
-| 6.5 Handoff | [x] | Developer handoff complete; future agents should use SDK `10.0.300` or newer. |
+| 6.5 Handoff | [x] | Developer handoff complete; future agents should use SDK `10.0.302` or newer. |
 
 ### Epic Impact
 
@@ -59,8 +59,8 @@ The active conflict was between repository runtime configuration and onboarding/
 
 The required SDK is now explicit:
 
-- `global.json` pins `10.0.300` with `rollForward=latestFeature`.
-- Quickstart prerequisite logic requires SDK `10.0.300` or newer.
+- `global.json` pins `10.0.302` with `rollForward=latestFeature`.
+- Quickstart prerequisite logic requires SDK `10.0.302` or newer.
 - Documentation and agent context now point to .NET 10 instead of .NET 9.
 
 No package version, TFM, API contract, tenant-isolation behavior, DAPR topology, or release scope changed.
@@ -95,7 +95,7 @@ OLD:
 NEW:
 
 ```json
-"version": "10.0.300"
+"version": "10.0.302"
 ```
 
 Rationale: Make the repository SDK pin match the requested feature band.
@@ -113,7 +113,7 @@ Accept any SDK with major version >= 9.
 NEW:
 
 ```text
-Accept SDK version 10.0.300 or newer.
+Accept SDK version 10.0.302 or newer.
 ```
 
 Rationale: Prevent the quickstart from passing an environment that cannot satisfy the repository SDK pin.
@@ -131,7 +131,7 @@ Install a .NET 9 SDK (or newer) and retry.
 NEW:
 
 ```text
-Install .NET SDK 10.0.300 or newer and retry.
+Install .NET SDK 10.0.302 or newer and retry.
 ```
 
 Rationale: Keep actionable CLI guidance aligned with the actual runtime requirement.
@@ -149,7 +149,7 @@ OLD:
 NEW:
 
 ```text
-.NET SDK 10.0.300 or newer
+.NET SDK 10.0.302 or newer
 ```
 
 Rationale: Keep contributor onboarding and quickstart instructions accurate.
@@ -167,7 +167,7 @@ SDK pinned by global.json to 10.0.201
 NEW:
 
 ```text
-SDK pinned by global.json to 10.0.300
+SDK pinned by global.json to 10.0.302
 ```
 
 Rationale: Ensure future agents use the correct local build expectation.
@@ -180,14 +180,14 @@ Route to: Developer agent for direct implementation.
 
 Implementation tasks:
 
-1. Pin `global.json` to `10.0.300`.
+1. Pin `global.json` to `10.0.302`.
 2. Tighten quickstart SDK prerequisite checks and test coverage.
 3. Update README, quickstart docs, CLI error guidance, and project context.
 4. Verify with focused CLI tests and full solution build.
 
 Success criteria:
 
-- `dotnet --version` resolves to `10.0.300` at the repository root.
+- `dotnet --version` resolves to `10.0.302` at the repository root.
 - Focused quickstart prerequisite tests pass.
 - `dotnet build Hexalith.Memories.slnx --configuration Release` succeeds with zero warnings and zero errors.
 
@@ -195,7 +195,7 @@ Success criteria:
 
 Completed locally on 2026-05-18:
 
-- `dotnet --version` -> `10.0.300`
+- `dotnet --version` -> `10.0.302`
 - `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --filter "FullyQualifiedName~QuickstartPrerequisiteTests"` -> 13 passed, 0 failed, 0 skipped
 - `dotnet build Hexalith.Memories.slnx --configuration Release` -> build succeeded, 0 warnings, 0 errors
 
@@ -203,4 +203,4 @@ Completed locally on 2026-05-18:
 
 Correct course workflow outcome: complete.
 
-Next step: future implementation and validation work should run from the repository root with SDK `10.0.300` or a later compatible .NET 10 feature band.
+Next step: future implementation and validation work should run from the repository root with SDK `10.0.302` or a later compatible .NET 10 feature band.

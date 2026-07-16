@@ -174,7 +174,7 @@ Story 26.2 remains `in-progress` in parallel. Its Aspire fidelity/restart tests 
 
 ### Current technology guidance
 
-- Use the repository pins: .NET SDK `10.0.301` / C# 14, Aspire Hosting Testing `13.4.6`, DAPR/Dapr.Workflow `1.18.4`, Testcontainers `4.13.0`, xUnit v3 `3.2.2`, Shouldly `4.3.0`, and NSubstitute `5.3.0`. Central package management applies; this story needs no new dependency.
+- Use the repository pins: .NET SDK `10.0.302` / C# 14, Aspire Hosting Testing `13.4.6`, DAPR/Dapr.Workflow `1.18.4`, Testcontainers `4.13.0`, xUnit v3 `3.2.2`, Shouldly `4.3.0`, and NSubstitute `5.3.0`. Central package management applies; this story needs no new dependency.
 - Aspire 13.4 exposes resource commands through `ResourceCommandService.ExecuteCommandAsync` and resource state/health waits through `ResourceNotificationService`. Check command results and use cancellation timeouts rather than shelling out to `docker stop` for new fixture behavior.
 - xUnit `FactAttribute.Skip` is the actual skip reason; null means the test runs. This is why the current IntegrationTests attribute is unsafe for a closure story.
 - DAPR retries may exist at workflow and operator-resiliency layers. Keep the test plan explicit about which layer is under test, respect `Retry-After`, and assert durable converged state instead of scheduler-dependent exact attempt counts.

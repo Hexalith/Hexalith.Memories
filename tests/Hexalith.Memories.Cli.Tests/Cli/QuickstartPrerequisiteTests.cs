@@ -70,13 +70,13 @@ public sealed class QuickstartPrerequisiteTests
     public async Task CheckDotnetSdk_Passes_WhenDotnet10FeatureBandPresent()
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n10.0.300\n", string.Empty, TimeSpan.FromMilliseconds(30)));
+        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n10.0.302\n", string.Empty, TimeSpan.FromMilliseconds(30)));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeTrue();
-        result.Diagnostic.ShouldContain("10.0.300");
+        result.Diagnostic.ShouldContain("10.0.302");
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public sealed class QuickstartPrerequisiteTests
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeFalse();
-        result.Diagnostic.ShouldContain("No .NET SDK 10.0.300 or newer");
+        result.Diagnostic.ShouldContain("No .NET SDK 10.0.302 or newer");
     }
 
     [Fact]

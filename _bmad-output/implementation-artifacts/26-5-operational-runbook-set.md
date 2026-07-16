@@ -262,7 +262,7 @@ Forbidden by default:
 
 ### Latest technical information (verified 2026-07-14)
 
-- Repository pins win over current release availability: .NET SDK 10.0.301, Aspire 13.4.6, Dapr .NET packages 1.18.4, Redis Stack 7.4.0-v8, FalkorDB 4.12.0, OpenTelemetry 1.16.0, xUnit v3 3.2.2, and Shouldly 4.3.0. No version change belongs to this story.
+- Repository pins win over current release availability: .NET SDK 10.0.302, Aspire 13.4.6, Dapr .NET packages 1.18.4, Redis Stack 7.4.0-v8, FalkorDB 4.12.0, OpenTelemetry 1.16.0, xUnit v3 3.2.2, and Shouldly 4.3.0. No version change belongs to this story.
 - Dapr's current workflow guidance requires deterministic orchestrators and deliberate workflow version/patch handling; instance-ID reuse behavior changed in Dapr 1.18 and old state may require purge before reuse. Validate the deployed runtime/CRDs and perform incremental supported upgrades; do not infer runtime version from the SDK package alone.
 - Kubernetes version is not pinned in this repository. Record the target cluster/server and kubectl/component skew during upgrade preflight. VolumeSnapshot depends on CSI/controller/CRDs, so retain a logical-export fallback.
 - Redis Stack 7.4.0-v8 is the final Stack line and its maintenance has ended; Redis 8 is an upgrade-planning concern, not permission for an image change. Redis `everysec` AOF can lose roughly one second under catastrophic host loss; document the configured durability boundary honestly.

@@ -62,7 +62,7 @@ context:
 
 ## Design Notes
 
-SDK 10.0.301 writes `RepoTags:["memories:<version>"]` in archive mode even when `ContainerRegistry` is supplied. The verifier already demonstrates the robust pattern: parse `Loaded image:` or `Loaded image ID:`, then tag only when the loaded reference differs from the canonical target.
+SDK 10.0.302 writes `RepoTags:["memories:<version>"]` in archive mode even when `ContainerRegistry` is supplied. The verifier already demonstrates the robust pattern: parse `Loaded image:` or `Loaded image ID:`, then tag only when the loaded reference differs from the canonical target.
 
 ## Verification
 

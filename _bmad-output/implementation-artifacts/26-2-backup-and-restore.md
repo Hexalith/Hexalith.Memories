@@ -154,7 +154,7 @@ Recent commits are all Epic 26.1 deployment work: `a077fd0` release-orchestratio
 
 ### Latest tech / version pins (from `project-context.md`)
 
-.NET 10 / C# 14 (`net10.0`, SDK `10.0.301`); Dapr `1.18.4` (workflows/actors/pubsub/state); Aspire AppHost SDK `13.3.3`, `Aspire.Hosting.Testing` `13.4.6`, `CommunityToolkit.Aspire.Hosting.Dapr` `13.4.0-preview…`; Redis Stack + FalkorDB backends; xUnit v3 `3.2.2`, Shouldly `4.3.0`, NSubstitute `5.3.0`. Central package management — never add `Version=` to `.csproj`; add packages to `Directory.Packages.props` only if genuinely new (prefer reuse — `StackExchange.Redis`, `NFalkorDB`, `NRedisStack` are already referenced by the integration test project).
+.NET 10 / C# 14 (`net10.0`, SDK `10.0.302`); Dapr `1.18.4` (workflows/actors/pubsub/state); Aspire AppHost SDK `13.3.3`, `Aspire.Hosting.Testing` `13.4.6`, `CommunityToolkit.Aspire.Hosting.Dapr` `13.4.0-preview…`; Redis Stack + FalkorDB backends; xUnit v3 `3.2.2`, Shouldly `4.3.0`, NSubstitute `5.3.0`. Central package management — never add `Version=` to `.csproj`; add packages to `Directory.Packages.props` only if genuinely new (prefer reuse — `StackExchange.Redis`, `NFalkorDB`, `NRedisStack` are already referenced by the integration test project).
 
 ### Project Structure Notes
 

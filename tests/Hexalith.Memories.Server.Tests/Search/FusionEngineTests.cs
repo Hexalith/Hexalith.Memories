@@ -139,8 +139,8 @@ public class FusionEngineTests
         mu2.GraphScore.ShouldBeNull();
 
         // Composite scoring is based on active axis rank contribution, not raw score magnitude.
-        mu1.CompositeScore.ShouldBe(0.5);
-        mu2.CompositeScore.ShouldBe(0.5);
+        mu1.CompositeScore.ShouldBe(0.3 / 0.65, tolerance: 1e-12);
+        mu2.CompositeScore.ShouldBe(0.35 / 0.65, tolerance: 1e-12);
     }
 
     // 7.7: Determinism — same inputs produce identical output ordering (NFR25)
@@ -230,6 +230,30 @@ public class FusionEngineTests
         results[0].SyntacticScore.ShouldNotBeNull();
         results[0].SyntacticScore!.Value.ShouldBe(1.0);
         results[1].SyntacticScore!.Value.ShouldBeLessThan(1.0);
+    }
+
+    [Fact]
+    public void Fuse_DeepRanks_ShouldUseCalibratedContributionDecay()
+    {
+        List<ScoredResult> syntactic = Enumerable.Range(1, 1000)
+            .Select(rank => MakeResult($"mu-{rank}", 1001 - rank, "syntactic"))
+            .ToList();
+
+        IReadOnlyList<FusedScoredResult> results = FusionEngine.Fuse(
+            syntactic, null, null, DefaultWeights, 1000, 200.0);
+
+        foreach ((int rank, double expected) in new[]
+        {
+            (10, 11.0 / 20.0),
+            (100, 11.0 / 110.0),
+            (1000, 11.0 / 1010.0),
+        })
+        {
+            FusedScoredResult result = results.Single(item => item.MemoryUnitId == $"mu-{rank}");
+            result.SyntacticScore.ShouldNotBeNull();
+            result.SyntacticScore!.Value.ShouldBe(expected, tolerance: 1e-12);
+            result.CompositeScore.ShouldBe(expected, tolerance: 1e-12);
+        }
     }
 
     // 7.11: Semantic contribution is rank-derived rather than raw cosine passthrough

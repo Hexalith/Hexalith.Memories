@@ -445,6 +445,35 @@ When completed history or external traceability prevents renumbering, execution 
 | Story 8.3 | reserved-non-mvp | Phase 2 data export (FR71). The Epic 8 MVP sequence intentionally continues with 8.4 and 8.5. Story-status / file-scope tooling must treat `8.3` as `reserved-non-mvp`, not a missing MVP story. |
 | Stories 12.7 / 12.8 | optional / conditional | S11-FB / S11-FC follow-ups; created only if their re-open trigger actually fires (do not scaffold speculatively). |
 
+### Non-Story Implementation Artifact Policy
+
+`development_status` is the registry for epics, stories defined in this
+document, and retrospectives. A file does not become a story merely because its
+name begins with an `Epic-Story`-shaped numeric prefix.
+
+A one-shot artifact is permitted only for a bounded, zero-blast-radius
+correction completed and reviewed in one workflow execution. Its canonical
+trace must declare `route: 'one-shot'` and `status: 'done'` in valid frontmatter.
+It remains outside `development_status`, does not lift, hold, reopen, or close an
+epic, and is listed separately from registered stories when a retrospective
+uses it as supporting evidence.
+
+This convention applies prospectively from 2026-07-16 and expressly ratifies
+the historical 19.5 trace that triggered it. Older `route: 'one-shot'` traces
+may retain their historical metadata, but they do not establish precedent and
+do not override the lifecycle of any registered story they support.
+
+If the work needs a draft, in-progress, review, dependency, or multi-session
+lifecycle, route it through a normal plan/code/review spec whose frontmatter
+self-tracks that lifecycle. If the work belongs to an epic, changes epic scope
+or acceptance criteria, or affects epic completion, register it as a story in
+this document and `development_status` before implementation continues.
+
+Generated story-automator, orchestration, review, and test-output files are
+supporting evidence. They inherit the lifecycle of the canonical registered
+story, normal spec, or one-shot trace that references them and do not receive
+individual sprint-status rows.
+
 ## Epic List
 
 ### Phase: MVP — Foundation Gate
@@ -4680,3 +4709,32 @@ So that NFR17 regressions are actionable and cannot be hidden by timeouts or fla
 - [x] [Review][Patch] Replace the Dictionary-order pseudo-LRU so refreshing a workflow actually prevents eviction and delayed replay double-counting [src/Hexalith.Memories.Server/Actors/CaseIngestionCounterLogic.cs:46]
 - [x] [Review][Patch] Add persisted-state serialization compatibility coverage for legacy counter state and the new replay watermark [tests/Hexalith.Memories.Server.Tests/Actors/CaseIngestionCounterLogicTests.cs:92]
 - [x] [Review][Patch] Make the restart gate deterministically fail if nested HTTP resilience retries are reintroduced [tests/Hexalith.Memories.IntegrationTests/Ingestion/PipelinePersistenceIntegrationTests.cs:175]
+
+### Story 26.8: Benchmark Quality Calibration
+
+**Status:** done
+
+As a product-quality owner,
+I want production hybrid-fusion defaults calibrated against the governed benchmark,
+So that Epic 26 closes by meeting the product thesis without weakening its evidence gates.
+
+**Acceptance Criteria:**
+
+**Given** the fixed eight-query corpus, ground truth, top-10 NDCG scorer, strict `hybrid > best active single axis` rule, 80% threshold, and Redis/Falkor execution,
+**When** production weighted-RRF calibration is applied and the complete Release benchmark runs,
+**Then** all 17 tests pass with none skipped,
+**And** at least 7 of 8 queries are strict hybrid wins,
+**And** the approved calibration target is 8 of 8 wins with no per-query regression.
+
+**Given** two independent complete benchmark runs,
+**When** their per-query results are compared,
+**Then** NDCG@10 metrics and win outcomes are identical.
+
+**Given** explicit weights, persisted legacy weights, missing or empty axes, ties, attribution, score bounds, and NL default-off behavior,
+**When** focused regression tests run,
+**Then** all established compatibility and determinism contracts remain green.
+
+**Given** verified green evidence,
+**When** Epic 26 records are reconciled,
+**Then** historical 6/8 evidence remains intact,
+**And** Story 26.8, the benchmark action, the alignment action, and Epic 26 are marked done.
