@@ -1,0 +1,12 @@
+# Team-owned story phase ledger guard. This file is merged over generated skill
+# defaults and survives BMad skill refreshes.
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/_bmad/custom/story-phase-ledger.md",
+]
+
+activation_steps_append = [
+  "STORY_PHASE_LEDGER: Select exactly one policy mode before editing. Story-bound gap-closure must resolve the governing story from the explicit request or sprint context and halt before changes when unresolved; create the policy-adoption baseline first when the story predates this policy; read the latest chronological row plus the create baseline; capture comparable pre/post discovery; then append qa-gap-closure with runner-derived phase and cumulative deltas, named units, scope, totals, external same-lane deltas, and command or complete blocker; repair stale count prose only in policy-permitted sections; add every QA-touched test, document, summary, and workflow artifact to the cumulative File List using declared baseline and name-status evidence; and fail closed until File List reconciliation succeeds. Standalone QA is allowed only when no governing story exists and the work is not represented as story gap-closure; keep the test summary authoritative and state exactly `story phase ledger: N/A — standalone QA`.",
+]
