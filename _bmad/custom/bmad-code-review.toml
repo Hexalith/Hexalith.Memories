@@ -6,10 +6,12 @@
 persistent_facts = [
   "file:{project-root}/_bmad/custom/story-scope-guard.md",
   "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
+  "file:{project-root}/_bmad/custom/story-phase-ledger.md",
 ]
 
 activation_steps_append = [
   "HISTORICAL_SLICE_GUARD: During triage, apply the policy's fail-closed severity and routing rules to confirmed historical-template reuse or hidden multi-slice scope.",
+  "STORY_PHASE_LEDGER: For full or spec review, apply the shared policy to the auditor's findings and selected actions. Route unambiguous row, count, stale-reference, or File List repairs to patch and ambiguous scope or exclusions to decision_needed. After review actions and patches but before status synchronization, require explicit evidence that every in-scope review chunk is complete; independently re-run comparable discovery; append code-review with the review-patch phase delta (including +0), cumulative story and external same-lane deltas, exact command or complete blocker, and cumulative File List reconciliation with baseline/name-status evidence. Fail closed before done while any chunk, required row, count mismatch, stale total, evidence gap required for agreement, or unaccounted in-scope file remains.",
 ]
 
 [[workflow.review_layers]]
@@ -30,6 +32,35 @@ Launch a subagent with no prior conversation context, with this prompt:
 > Each finding must cite the violated policy rule, the spec location, the diff
 > evidence, and whether correction is an unambiguous patch or requires a human
 > split decision.
+>
+> Diff:
+> {diff_output}
+"""
+
+[[workflow.review_layers]]
+id = "story-phase-ledger"
+name = "Story Phase Ledger Auditor"
+when = 'Only when {review_mode} = "full".'
+instruction = """
+Launch a subagent with no prior conversation context, with this prompt:
+
+> Read `_bmad/custom/story-phase-ledger.md`, `{spec_file}`, and the provided
+> reviewed diff. Audit the presence and chronological order of required phase
+> rows; phase and cumulative same-unit count arithmetic; runner-derived totals
+> against available live discovery evidence; reviewed-diff paths against the
+> cumulative story File List; stale count statements in permitted story-record
+> sections; and exact command, blocker, owner, consequence, and reopen trigger
+> whenever discovery could not run. The current code-review row is appended by
+> the parent workflow after selected actions, so do not report that row as
+> missing during this pre-triage audit. Route unambiguous ledger and File List
+> repairs to `patch`; route ambiguous scope or exclusion ownership to
+> `decision_needed`. Treat any missing required row, count mismatch, unresolved
+> evidence needed for agreement, stale total, or unaccounted in-scope path as a
+> fail-closed blocker for `done`. Output only actionable Markdown findings with
+> the violated policy rule, spec location, diff evidence, and route.
+> If the review is chunked, also require explicit evidence that every in-scope
+> chunk is complete; an intermediate chunk cannot finalize the ledger or mark
+> the story done.
 >
 > Diff:
 > {diff_output}

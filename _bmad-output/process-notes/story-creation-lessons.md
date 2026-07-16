@@ -35,3 +35,16 @@ party-mode review, advanced elicitation, and code-review automation.
   it by editing generated `.agents/skills/**` files, which updates overwrite.
 - After any BMad skill refresh, run the customization-resolution fixture before
   the next story creation or review.
+
+## L10 - Story Phase Records Are Cumulative Handoff Contracts
+
+- `create-story` owns the runner-derived baseline and initial cumulative File
+  List; `dev-story` records the actual implementation delta against it.
+- Story-bound `qa-gap-closure` recalculates cumulative counts and File List
+  membership from the development handoff instead of appending stale prose.
+- `code-review` independently verifies live counts, same-unit arithmetic, and
+  cumulative File List completeness after any selected review patches.
+- Each phase appends its own canonical Change Log row and stops status
+  advancement when required evidence, counts, or in-scope paths disagree.
+- Keep enforcement update-safe in committed `_bmad/custom` policies and
+  resolver fixtures. Generated `.agents/skills/**` files remain untouched.
