@@ -976,12 +976,13 @@ public class MemoriesClient
     /// when the unit is present in at least one backend.
     /// </summary>
     /// <param name="tenantId">The tenant identifier.</param>
-    /// <param name="memoryUnitId">The memory unit identifier (must match the ULID pattern).</param>
+    /// <param name="memoryUnitId">The opaque memory unit identifier, passed exactly as returned by Memories.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The inspection result.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="tenantId"/> or <paramref name="memoryUnitId"/> is blank.</exception>
     /// <exception cref="MemoriesRemoteException">
-    /// Thrown with a 400 <c>INVALID_MEMORY_UNIT_ID</c> envelope on malformed IDs or
-    /// 404 <c>MEMORY_UNIT_NOT_FOUND</c> when the unit is absent from all three backends.
+    /// Thrown with a 404 <c>MEMORY_UNIT_NOT_FOUND</c> envelope when the unit is absent
+    /// from all three backends, or for another non-success server response.
     /// </exception>
     public virtual async Task<ConsistencyInspectionResult> InspectConsistencyAsync(
         string tenantId,

@@ -5,7 +5,7 @@ date: '2026-06-23'
 sections_completed: ['discovery', 'technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules']
 existing_patterns_found: 18
 status: 'complete'
-rule_count: 92
+rule_count: 94
 optimized_for_llm: true
 ---
 
@@ -67,6 +67,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### Testing Rules
 
+- **Contract-document guards are structure-aware and anti-corruption checked** - bind table guarantees to normalized exact rows/cells with count or uniqueness ties, bind narrative claims to their exact ATX section, and reject leaked `content`/`invoke`/`parameter`/`tool_call` markup through the shared assertion-neutral test helper; do not let whole-document vocabulary satisfy an authoritative contract.
 - **Use xUnit v3 + Shouldly** - write assertions with `ShouldBe`, `ShouldNotBeNull`, `Should.Throw`, and `Should.ThrowAsync`; avoid raw `Assert.*`.
 - **Use NSubstitute for mocks** - follow existing substitute setup/verification style for services, workflow contexts, actors, HTTP abstractions, and Dapr-facing collaborators.
 - **Test names are descriptive PascalCase** - keep method names behavior-focused, e.g. `RunAsync_InvalidTenantId_ThrowsArgumentException`.
@@ -123,6 +124,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Never break contract JSON shape casually** - contract changes can affect CLI, MCP, REST, Web, tests, package consumers, and semantic-release impact.
 - **Never bypass structured errors** - external-facing failures should map to `ErrorResponse`, actionable CLI guidance, MCP structured errors, or evidence packet restrictive/degraded states.
 - **Never expose secrets** - redact tokens and provider credentials in CLI output, MCP responses, telemetry, logs, UI rendering, and test snapshots.
+- **Never hide or over-close the access-telemetry retention residual** - keep `20.5-A41-ACCESS-TELEMETRY-RETENTION` carried forward and its sprint action open until bounded retention/TTL is implemented and validated or an explicit accepted-debt disposition records a named approver/owner, scope, rationale, risk/consequence, compensating controls, and a time-bounded review/expiry date or measurable reopen trigger. Until then, describe A41 as partially closed.
 - **Never turn a degraded backend into total service failure unless required** - search, evidence, MCP, and health behavior should preserve graceful degradation where the architecture allows it.
 - **Never bypass existing formatter/router paths** - CLI output must remain format-selectable and testable.
 - **Never copy legacy Fluent tokens into new UI** - use FrontComposer, Fluent UI V5 components, and Fluent 2 tokens; track legacy token cleanup as migration debt.

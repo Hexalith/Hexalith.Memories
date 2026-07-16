@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Infrastructure;
 
 using System.Globalization;
+using System.Text;
 
 using Hexalith.Memories.Server.Activities.Indexing;
 
@@ -161,9 +162,9 @@ internal static class IndexSchemaDefinitions
     /// <summary>Builds a Redis SCAN pattern for all raw semantic chunk hashes for a base memory unit.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
     /// <param name="memoryUnitId">The base memory-unit identifier.</param>
-    /// <returns>The Redis key pattern.</returns>
+    /// <returns>The Redis key pattern with the identifier escaped as a glob literal.</returns>
     public static string BuildSemanticChunkKeyPattern(string tenantId, string memoryUnitId)
-        => BuildSemanticKey(tenantId, memoryUnitId) + ":*";
+        => EscapeRedisGlobLiteral(BuildSemanticKey(tenantId, memoryUnitId)) + ":*";
 
     /// <summary>Story 9.2: Gets the Redis Vector natural-language semantic index name for a tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
@@ -663,6 +664,22 @@ internal static class IndexSchemaDefinitions
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
         return memoryUnitId;
+    }
+
+    private static string EscapeRedisGlobLiteral(string value)
+    {
+        var escaped = new StringBuilder(value.Length);
+        foreach (char character in value)
+        {
+            if (character is '*' or '?' or '[' or ']' or '\\')
+            {
+                _ = escaped.Append('\\');
+            }
+
+            _ = escaped.Append(character);
+        }
+
+        return escaped.ToString();
     }
 
     private static string ValidateMigrationVersion(string version)

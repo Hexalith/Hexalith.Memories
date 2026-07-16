@@ -405,6 +405,10 @@ internal sealed class ConsistencyStubClient : MemoriesClient
 
     public ConsistencyRepairRequest? LastRepairRequest { get; private set; }
 
+    public string? LastInspectionTenantId { get; private set; }
+
+    public string? LastInspectionMemoryUnitId { get; private set; }
+
     public ConsistencyInspectionResult InspectionResponse { get; set; } = new(
         "tenant-stub",
         "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
@@ -459,6 +463,9 @@ internal sealed class ConsistencyStubClient : MemoriesClient
     public override Task<ConsistencyInspectionResult> InspectConsistencyAsync(
         string tenantId, string memoryUnitId, CancellationToken ct)
     {
+        LastInspectionTenantId = tenantId;
+        LastInspectionMemoryUnitId = memoryUnitId;
+
         if (InspectionException is not null)
         {
             throw InspectionException;

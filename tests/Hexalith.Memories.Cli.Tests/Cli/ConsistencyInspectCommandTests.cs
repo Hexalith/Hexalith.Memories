@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Cli.Tests.Cli;
 
+using System.CommandLine;
 using System.Net;
 
 using Hexalith.Memories.Cli.Commands;
@@ -23,16 +24,48 @@ public sealed class ConsistencyInspectCommandTests
     [Fact]
     public async Task Run_HappyPath_PrintsInspectionResult()
     {
+        const string opaqueId = " Wf-File_Instance-7 ";
         ConsistencyStubClient stub = new();
         (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
             ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
 
-        int exit = await InvokeAsync(services, ["inspect", "--tenant", "acme", "--id", ValidUlid]);
+        int exit = await InvokeAsync(services, ["inspect", "--tenant", "acme", "--id", opaqueId]);
 
         exit.ShouldBe(CliExitCodes.Success);
         stdout.ToString().ShouldContain("Recommendation:");
         stdout.ToString().ShouldContain("NoOp");
         stderr.ToString().ShouldBeEmpty();
+        stub.LastInspectionTenantId.ShouldBe("acme");
+        stub.LastInspectionMemoryUnitId.ShouldBe(opaqueId);
+    }
+
+    [Fact]
+    public static void Build_IdOption_DescribesOpaqueExactValueContract()
+    {
+        ConsistencyStubClient stub = new();
+        (IServiceProvider services, _, _) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        Command command = ConsistencyInspectCommand.Build(services);
+        Option idOption = command.Options.Single(option => option.Name == "--id");
+        string description = idOption.Description.ShouldNotBeNull();
+
+        description.ShouldBe("Opaque memory unit identifier; pass the exact value returned by Memories.");
+        description.ShouldNotContain("ULID", Shouldly.Case.Insensitive);
+        description.ShouldNotContain("GUID", Shouldly.Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task Run_BlankId_ReturnsPlumbingError()
+    {
+        ConsistencyStubClient stub = new();
+        (IServiceProvider services, _, StringWriter stderr) =
+            ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
+
+        int exit = await InvokeAsync(services, ["inspect", "--tenant", "acme", "--id", "   "]);
+
+        exit.ShouldBe(CliExitCodes.Plumbing);
+        stderr.ToString().ShouldContain("INVALID_INPUT");
     }
 
     [Fact]
@@ -60,7 +93,10 @@ public sealed class ConsistencyInspectCommandTests
         {
             InspectionException = new MemoriesRemoteException(
                 HttpStatusCode.BadRequest,
-                new ErrorResponse("INVALID_MEMORY_UNIT_ID", "bad", "use ULID")),
+                new ErrorResponse(
+                    "INVALID_MEMORY_UNIT_ID",
+                    "bad",
+                    "Pass the exact non-blank MemoryUnitId returned by Memories; do not reformat it.")),
         };
         (IServiceProvider services, StringWriter stdout, StringWriter stderr) =
             ConsistencyVerifyCommandTests.BuildServices(OutputFormat.Human, stub);
@@ -68,7 +104,10 @@ public sealed class ConsistencyInspectCommandTests
         int exit = await InvokeAsync(services, ["inspect", "--tenant", "acme", "--id", ValidUlid]);
 
         exit.ShouldBe(CliExitCodes.DomainError);
-        stderr.ToString().ShouldContain("INVALID_MEMORY_UNIT_ID");
+        string output = stderr.ToString();
+        output.ShouldContain("INVALID_MEMORY_UNIT_ID");
+        output.ShouldNotContain("ULID", Shouldly.Case.Insensitive);
+        output.ShouldNotContain("GUID", Shouldly.Case.Insensitive);
     }
 
     private static async Task<int> InvokeAsync(IServiceProvider services, string[] args)

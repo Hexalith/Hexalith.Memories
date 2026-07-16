@@ -11,7 +11,7 @@ namespace Hexalith.Memories.Contracts.V1;
 /// <c>RepairPlanCalculator</c> and tells the operator (or the repair workflow) what
 /// corrective action would converge the unit.
 /// </summary>
-/// <param name="MemoryUnitId">The memory unit identifier (ULID).</param>
+/// <param name="MemoryUnitId">The opaque memory unit identifier.</param>
 /// <param name="SyntacticPresent">Whether the unit is present on the syntactic axis.</param>
 /// <param name="SemanticPresent">Whether the unit is present on the semantic axis.</param>
 /// <param name="GraphPresent">Whether the unit is present on the graph axis.</param>

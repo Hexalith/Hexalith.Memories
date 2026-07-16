@@ -12,7 +12,7 @@ namespace Hexalith.Memories.Contracts.V1;
 /// the endpoint returns 404 with an <see cref="ErrorResponse"/>.
 /// </summary>
 /// <param name="TenantId">The tenant identifier.</param>
-/// <param name="MemoryUnitId">The memory unit identifier (ULID).</param>
+/// <param name="MemoryUnitId">The opaque memory unit identifier.</param>
 /// <param name="SyntacticPresent">Whether the unit is present on the syntactic axis.</param>
 /// <param name="SemanticPresent">Whether the unit is present on the semantic axis.</param>
 /// <param name="GraphPresent">Whether the unit is present on the graph axis.</param>

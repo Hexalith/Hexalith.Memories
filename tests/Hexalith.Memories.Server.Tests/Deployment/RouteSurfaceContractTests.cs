@@ -13,6 +13,7 @@ using System.Text.RegularExpressions;
 
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.ServiceDefaults.Health;
+using Hexalith.Memories.TestHelpers.Documentation;
 
 using Shouldly;
 
@@ -40,10 +41,6 @@ public sealed class RouteSurfaceContractTests
     private static readonly Regex MappedRouteRegex =
         new(@"app\.Map(Get|Post|Put|Delete|Patch)\(\s*MemoriesRoutes\.([A-Za-z0-9_]+)\s*,", RegexOptions.Compiled);
 
-    // Matches a documented route row's backtick-wrapped `METHOD /api/v1/…` code span.
-    private static readonly Regex DocumentedApiRowRegex =
-        new(@"`(?:GET|POST|PUT|DELETE|PATCH) (/api/v1/[^`]+)`", RegexOptions.Compiled);
-
     [Fact]
     public void RouteSurfaceDoc_Exists()
     {
@@ -52,7 +49,7 @@ public sealed class RouteSurfaceContractTests
     }
 
     [Fact]
-    public void EveryMappedApiRoute_IsDocumented()
+    public void EveryMappedApiRoute_IsDocumentedExactlyOnceInRestTable()
     {
         // Forward tie (code → doc): derive the route list from source so a newly added endpoint that is not
         // documented fails the build, rather than relying on a hand-maintained literal list. The assertion
@@ -60,15 +57,21 @@ public sealed class RouteSurfaceContractTests
         // mentions a path substring (e.g. the Dapr `method/api/v1/…` operation example) cannot satisfy it — only
         // a real method+path table row can.
         string routeSources = ReadMappedRouteSources();
-        string doc = ReadDoc();
+        var document = new MarkdownContractDocument(ReadDoc());
+        document.GetTableHeader("REST `/api/v1/*` operation surface").ShouldBe(["Area", "Method + path", "Purpose"]);
+        IReadOnlyList<IReadOnlyList<string>> rows = document.GetTableRows("REST `/api/v1/*` operation surface");
 
-        IReadOnlyList<(string Verb, string Path)> mappedRoutes = ExtractMappedRoutes(routeSources);
+        IReadOnlyList<(string Verb, string Path)> mappedRoutes = ExtractMappedRoutes(routeSources)
+            .Where(static route => route.Path.StartsWith("/api/v1/", System.StringComparison.Ordinal))
+            .ToArray();
         mappedRoutes.Count.ShouldBeGreaterThan(0, "Failed to extract any app.MapX route literal from Program.cs or decomposed endpoint files — the extraction regex or marker walk is broken.");
+        mappedRoutes.Distinct().Count().ShouldBe(mappedRoutes.Count, "Each source route must be registered exactly once before it can be tied uniquely to the contract table.");
 
         foreach ((string verb, string path) in mappedRoutes)
         {
-            string documentedSpan = $"`{verb.ToUpperInvariant()} {path}`";
-            doc.ShouldContain(documentedSpan, Case.Sensitive, $"Mapped route '{verb.ToUpperInvariant()} {path}' from Program.cs or decomposed endpoint files is not documented as a row in {DocRelativePath}. Add it to the route-surface table.");
+            string documentedCell = $"`{verb.ToUpperInvariant()} {path}`";
+            rows.Count(row => row.Count == 3 && string.Equals(row[1], documentedCell, System.StringComparison.Ordinal))
+                .ShouldBe(1, $"Mapped route '{verb.ToUpperInvariant()} {path}' must occur exactly once as the Method + path cell in {DocRelativePath}.");
         }
     }
 
@@ -78,14 +81,18 @@ public sealed class RouteSurfaceContractTests
         // Count tie: defends against silent omission (fewer rows than routes) AND phantom rows (more rows
         // than routes). Both counts are emitted so the Change Log delta is visible on failure.
         string routeSources = ReadMappedRouteSources();
-        string doc = ReadDoc();
+        IReadOnlyList<IReadOnlyList<string>> rows = new MarkdownContractDocument(ReadDoc())
+            .GetTableRows("REST `/api/v1/*` operation surface");
 
         int sourceApiRouteCount = ExtractMappedRoutes(routeSources).Count(r => r.Path.StartsWith("/api/v1/", System.StringComparison.Ordinal));
-        int documentedApiRowCount = DocumentedApiRowRegex.Matches(doc).Count;
+        int documentedApiRowCount = rows.Count;
 
         documentedApiRowCount.ShouldBe(
             sourceApiRouteCount,
             $"Documented /api/v1/ route rows ({documentedApiRowCount}) must equal the mapped /api/v1/ route literals in Program.cs and decomposed endpoint files ({sourceApiRouteCount}). Reconcile the route-surface table in {DocRelativePath}.");
+
+        new MarkdownContractDocument(ReadDoc()).GetSection("Automated enforcement")
+            .ShouldContain($"currently **{sourceApiRouteCount}**", Case.Sensitive, "The narrative route count must stay tied to the source-derived count.");
     }
 
     [Fact]
@@ -137,11 +144,17 @@ public sealed class RouteSurfaceContractTests
         string program = ReadRepoFile("src", "Hexalith.Memories.Server", "Program.cs");
         program.ShouldContain("MapSubscribeHandler(", Case.Sensitive, "Program.cs must keep app.MapSubscribeHandler() that emits the /dapr/subscribe discovery route.");
 
-        string doc = ReadDoc();
-        doc.ShouldContain("POST /events/ingest", Case.Sensitive, $"{DocRelativePath} must document the pub/sub delivery route POST /events/ingest.");
-        doc.ShouldContain("/dapr/subscribe", Case.Sensitive, $"{DocRelativePath} must document the subscription-discovery route /dapr/subscribe.");
-        doc.ShouldContain(EventIngestionController.PubSubName, Case.Sensitive, $"{DocRelativePath} must document the pub/sub component name '{EventIngestionController.PubSubName}'.");
-        doc.ShouldContain(EventIngestionController.TopicEnvVar, Case.Sensitive, $"{DocRelativePath} must document the topic env var '{EventIngestionController.TopicEnvVar}'.");
+        var document = new MarkdownContractDocument(ReadDoc());
+        document.GetTableHeader("Pub/sub event-intake operation surface")
+            .ShouldBe(["Operation", "Method + path", "Authoritative source", "Notes"]);
+        IReadOnlyList<IReadOnlyList<string>> rows = document.GetTableRows("Pub/sub event-intake operation surface");
+        rows.Count.ShouldBe(2);
+        rows[0].ShouldBe(["Subscription discovery", "`GET /dapr/subscribe`", "`app.MapSubscribeHandler()` — `Program.cs`", "Framework-emitted; advertises the topic + route `/events/ingest` on component `pubsub`."]);
+        rows[1].ShouldBe(["Pub/sub delivery", "`POST /events/ingest`", "`EventIngestionController` — `[Route(\"events\")]` + `[HttpPost(\"ingest\")]`", "CloudEvents intake; content types `application/json`, `application/cloudevents+json`. Topic resolved from `MEMORIES_EVENTSTORE_TOPIC` on component `pubsub`."]);
+        rows.SelectMany(static row => row).Count(cell => cell.Contains(EventIngestionController.PubSubName, System.StringComparison.Ordinal))
+            .ShouldBeGreaterThan(0, $"{DocRelativePath} must publish the pub/sub component name in the pub/sub table.");
+        rows.SelectMany(static row => row).Count(cell => cell.Contains(EventIngestionController.TopicEnvVar, System.StringComparison.Ordinal))
+            .ShouldBeGreaterThan(0, $"{DocRelativePath} must publish the topic env var in the pub/sub table.");
     }
 
     [Fact]
@@ -153,10 +166,13 @@ public sealed class RouteSurfaceContractTests
         // ../dev/health-checks.md cross-links, and the References section, so a bare ShouldContain would still
         // pass even if the health table itself were deleted. Requiring the `<path>` | `HealthEndpointPaths.<Name>`
         // row form closes that doc-side-deletion gap while still catching a code-side path rename.
-        string doc = ReadDoc();
-        doc.ShouldContain($"`{HealthEndpointPaths.Health}` | `HealthEndpointPaths.Health`", Case.Sensitive, $"{DocRelativePath} must document the aggregate-health probe path '{HealthEndpointPaths.Health}' in the health table row tied to HealthEndpointPaths.Health.");
-        doc.ShouldContain($"`{HealthEndpointPaths.Alive}` | `HealthEndpointPaths.Alive`", Case.Sensitive, $"{DocRelativePath} must document the liveness probe path '{HealthEndpointPaths.Alive}' in the health table row tied to HealthEndpointPaths.Alive.");
-        doc.ShouldContain($"`{HealthEndpointPaths.Ready}` | `HealthEndpointPaths.Ready`", Case.Sensitive, $"{DocRelativePath} must document the readiness probe path '{HealthEndpointPaths.Ready}' in the health table row tied to HealthEndpointPaths.Ready.");
+        var document = new MarkdownContractDocument(ReadDoc());
+        document.GetTableHeader("Health and infrastructure probes").ShouldBe(["Probe", "Path", "Constant", "Semantics"]);
+        IReadOnlyList<IReadOnlyList<string>> rows = document.GetTableRows("Health and infrastructure probes");
+        rows.Count.ShouldBe(3);
+        rows[0].ShouldBe(["Aggregate health", $"`{HealthEndpointPaths.Health}`", "`HealthEndpointPaths.Health`", "Surfaces every registered health check."]);
+        rows[1].ShouldBe(["Liveness", $"`{HealthEndpointPaths.Alive}`", "`HealthEndpointPaths.Alive`", "Runs only checks tagged `live`."]);
+        rows[2].ShouldBe(["Readiness", $"`{HealthEndpointPaths.Ready}`", "`HealthEndpointPaths.Ready`", "Runs only checks tagged `ready`."]);
     }
 
     [Fact]
@@ -169,8 +185,8 @@ public sealed class RouteSurfaceContractTests
         program.ShouldNotContain("/process", Case.Sensitive, "A '/process' route literal appeared in Program.cs or decomposed endpoint files — the route-surface refutation in the doc is now false and must be reconciled.");
         controller.ShouldNotContain("/process", Case.Sensitive, "A '/process' route literal appeared in EventIngestionController.cs — the route-surface refutation in the doc is now false and must be reconciled.");
 
-        string doc = ReadDoc();
-        doc.ShouldContain("No `/process` operation exists", Case.Sensitive, $"{DocRelativePath} must keep the explicit '/process' refutation section.");
+        string section = new MarkdownContractDocument(ReadDoc()).GetSection("No `/process` operation exists");
+        section.ShouldContain("no `/process` operation anywhere", Case.Insensitive, $"{DocRelativePath} must keep the explicit '/process' refutation in its owning section.");
     }
 
     [Fact]
@@ -180,9 +196,9 @@ public sealed class RouteSurfaceContractTests
         string mcpProgram = ReadRepoFile("src", "Hexalith.Memories.Mcp", "Program.cs");
         mcpProgram.ShouldContain("MapMcp(\"/mcp\")", Case.Sensitive, "Mcp/Program.cs must keep app.MapMcp(\"/mcp\") — the MCP transport route.");
 
-        string doc = ReadDoc();
-        doc.ShouldContain("/mcp", Case.Sensitive, $"{DocRelativePath} must document the MCP transport route /mcp.");
-        doc.ShouldContain("memories-mcp", Case.Sensitive, $"{DocRelativePath} must document that /mcp runs under the separate 'memories-mcp' app-id, not the 'memories' ACL target.");
+        string section = new MarkdownContractDocument(ReadDoc()).GetSection("MCP transport surface (separate app-id)");
+        section.ShouldContain("POST /mcp", Case.Sensitive, $"{DocRelativePath} must document the MCP transport route in its owning section.");
+        section.ShouldContain("memories-mcp", Case.Sensitive, $"{DocRelativePath} must document the MCP app-id in its owning section.");
     }
 
     [Fact]
@@ -192,9 +208,9 @@ public sealed class RouteSurfaceContractTests
         // forward + count ties above enforce method + path; this guards the Dapr operation-semantics half so
         // the section an ACL author translates each row through cannot be silently deleted. It asserts the
         // canonical service-invocation form and the worked translation example (previously review-enforced).
-        string doc = ReadDoc();
-        doc.ShouldContain("/v1.0/invoke/memories/method/", Case.Sensitive, $"{DocRelativePath} must document the Dapr service-invocation operation mapping (/v1.0/invoke/memories/method/<path>) that satisfies AC2's 'Dapr operation semantics'.");
-        doc.ShouldContain("method/api/v1/search", Case.Sensitive, $"{DocRelativePath} must keep the worked Dapr-operation translation example (operation 'method/api/v1/search') so an ACL author can map a table row to an operation.");
+        string section = new MarkdownContractDocument(ReadDoc()).GetSection("Dapr ACL framing and operation semantics");
+        section.ShouldContain("/v1.0/invoke/memories/method/", Case.Sensitive, $"{DocRelativePath} must document the Dapr service-invocation mapping in its owning section.");
+        section.ShouldContain("method/api/v1/search", Case.Sensitive, $"{DocRelativePath} must keep the worked Dapr-operation translation example in its owning section.");
     }
 
     [Fact]
@@ -203,9 +219,9 @@ public sealed class RouteSurfaceContractTests
         // AC4 requires an explicit statement that domain modules publish CloudEvents to DAPR rather than
         // invoking the Memories REST ingestion routes for event streams. The pub/sub route/constant tie above
         // does not assert this sentence, so guard both halves of the required AC4 claim here.
-        string doc = ReadDoc();
-        doc.ShouldContain("publish CloudEvents to DAPR", Case.Sensitive, $"{DocRelativePath} must state that domain modules publish CloudEvents to DAPR (AC4).");
-        doc.ShouldContain("REST ingestion routes for event streams", Case.Sensitive, $"{DocRelativePath} must state that domain modules do NOT invoke the Memories REST ingestion routes for event streams (AC4).");
+        string section = new MarkdownContractDocument(ReadDoc()).GetSection("Pub/sub event-intake operation surface");
+        section.ShouldContain("publish CloudEvents to DAPR", Case.Sensitive, $"{DocRelativePath} must state the AC4 publish path in its owning section.");
+        section.ShouldContain("REST ingestion routes for event streams", Case.Sensitive, $"{DocRelativePath} must state the AC4 negative claim in its owning section.");
     }
 
     [Fact]
@@ -219,9 +235,25 @@ public sealed class RouteSurfaceContractTests
         routeSources.ShouldContain("X-Memories-API-Experimental", Case.Sensitive, "Program.cs or decomposed endpoint files must keep stamping the X-Memories-API-Experimental header on the experimental Handlers routes.");
         routeSources.ShouldContain("HXL002", Case.Sensitive, "Program.cs or decomposed endpoint files must keep the HXL002 experimental marker for the Handlers routes.");
 
-        string doc = ReadDoc();
-        doc.ShouldContain("X-Memories-API-Experimental: HXL002", Case.Sensitive, $"{DocRelativePath} must document the X-Memories-API-Experimental: HXL002 response header for the experimental Handlers routes.");
-        doc.ShouldContain("Experimental (`HXL002`)", Case.Sensitive, $"{DocRelativePath} must keep marking the two Handlers rows Experimental (`HXL002`).");
+        var document = new MarkdownContractDocument(ReadDoc());
+        string restSection = document.GetSection("REST `/api/v1/*` operation surface");
+        restSection.ShouldContain("X-Memories-API-Experimental: HXL002", Case.Sensitive, $"{DocRelativePath} must document the HXL002 response header in the REST section.");
+
+        IReadOnlyList<IReadOnlyList<string>> handlerRows = document
+            .GetTableRows("REST `/api/v1/*` operation surface")
+            .Where(static row => row[0] == "Handlers")
+            .ToArray();
+        handlerRows.Count.ShouldBe(2);
+        handlerRows[0].ShouldBe(["Handlers", "`GET /api/v1/handlers`", "Inspect the registered-handler snapshot. **Experimental (`HXL002`).**"]);
+        handlerRows[1].ShouldBe(["Handlers", "`GET /api/v1/tenants/{tenantId}/handlers/mismatches`", "Detect handler routing mismatches. **Experimental (`HXL002`).**"]);
+    }
+
+    [Fact]
+    public void RouteSurfaceDoc_ContainsNoLeakedToolCallMarkup()
+    {
+        IReadOnlyList<string> diagnostics = ContractDocumentGuard.FindLeakedToolCallMarkup(ReadDoc());
+
+        diagnostics.ShouldBeEmpty($"{DocRelativePath} contains leaked tool-call markup: {string.Join("; ", diagnostics)}");
     }
 
     private static IReadOnlyList<(string Verb, string Path)> ExtractMappedRoutes(string program)

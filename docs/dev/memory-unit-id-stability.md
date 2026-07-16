@@ -8,7 +8,7 @@ This document is the authoritative description of **when a `MemoryUnitId` is sta
 - **Origin:** MEM-6 (Parties consumer integration intake, Sprint Change Proposal 2026-05-27).
 - **Coupling:** Contract-coupled with **Story 18.5** — the source-URI lookup endpoint is the authoritative consumer resolution path; this document specifies the lifetime guarantee that lookup relies on.
 
-> **Code is the source of truth.** Every claim below is mirrored from the authoritative source file named in its section. A content-asserting drift-guard test (see [Automated enforcement](#automated-enforcement)) fails the build if the documented guarantee diverges from the code paths that build, read, and write the source-URI dedup record.
+> **Code is the source of truth.** Every claim below is mirrored from the authoritative source file named in its section. A structure-aware drift-guard test (see [Automated enforcement](#automated-enforcement)) fails the build if the documented guarantee diverges from the code paths that build, read, and write the source-URI dedup record.
 
 ---
 
@@ -79,6 +79,14 @@ Downstream consumers SHOULD resolve the current id through the Story 18.5 lookup
 - **Client:** `MemoriesClient.LookupMemoryUnitIdBySourceUriAsync(tenantId, caseId, sourceUri, ct)` — returns `string?` (`null` on a structured 404 miss; throws for other non-success statuses, never silently a miss).
 - **Route:** `GET /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri?sourceUri=...` — a deterministic keyed read over the permanent dedup record, **not** a free-text search.
 
+After resolution, operators MAY inspect that unit through
+`MemoriesClient.InspectConsistencyAsync` or `GET
+/api/v1/tenants/{tenantId}/consistency/inspect/{memoryUnitId}`. Pass the resolved
+`MemoryUnitId` exactly: do not trim, case-fold, parse, or reformat it. The inspect
+route remains a single URL-escaped path segment; opaque identifier semantics do
+not promise slash-bearing or unrestricted URL grammar. See the
+[consistency operator guide](./consistency.md) for inspection and repair behavior.
+
 ### When to key/dedup by `sourceUri` instead of only `MemoryUnitId`
 
 Retain or recompute the **source identity** (`tenantId`, `caseId`, `sourceUri`) and resolve the id on demand when the consumer must survive:
@@ -95,12 +103,13 @@ The Parties-side **"decision D1"** label (raised in the consumer intake) is **un
 
 ## Automated enforcement
 
-A content-asserting drift-guard test protects this contract:
+A structure-aware drift-guard test protects this contract:
 [`tests/Hexalith.Memories.Server.Tests/Ingestion/MemoryUnitIdStabilityContractTests.cs`](../../tests/Hexalith.Memories.Server.Tests/Ingestion/MemoryUnitIdStabilityContractTests.cs). It runs on every build (plain `[Fact]`s, no Docker/fixture, repo-root marker walk) and enforces:
 
-- **Doc presence + mandatory claims:** this document exists and contains the guarantee key form `dedup:{tenantId}:{caseId}:{sha256(sourceUri)}`, the TTL-less marker `expiry: null`, the lookup method `LookupMemoryUnitIdBySourceUriAsync`, the token-record form `dedup:{tenantId}:{caseId}:tok:{sha256(token)}`, and the opaque/not-source-derived/not-ULID claims.
+- **Exact rows and sections:** the four-row identity table must keep complete normalized opaque/not-source-derived/not-ULID rows. Lifetime, failure, token, lookup, and D1 claims must remain inside their exact owning sections; the companion table-free `ingest-contract.md` guarantees are section-bounded the same way.
 - **Doc ↔ code tie (the anti-drift guard):** `SaveDedupKeyActivity.cs` still writes `expiry: null` with `When.NotExists`; `DedupKeyBuilder.cs` still builds `dedup:{tenantId}:{caseId}:` for the source-URI key and keeps the `:tok:` namespace for the token key; `SourceUriMemoryUnitLookup.cs` still resolves via `DedupKeyBuilder.BuildKey`. A code-side change to any of these fails the build unless this document is reconciled.
 - **D1 clarification tie:** this document keeps the statement that Parties "decision D1" is **not** Memories Architecture Decision D1 (FalkorDB for MVP).
+- **Anti-corruption check:** both this document and `ingest-contract.md` reject leaked `content`, `invoke`, `parameter`, or `tool_call` markup through the shared assertion-neutral helper.
 
 The id-generation, duplicate short-circuit, and dual permanent-record behaviors are additionally covered by `Workflows/IngestionWorkflowTests.cs`, the token-key shape by `Activities/Ingestion/DedupKeyBuilderTests.cs`, the TTL-less first-writer-wins write by `Activities/Ingestion/SaveDedupKeyActivityTests.cs`, and the lookup read by `Ingestion/SourceUriMemoryUnitLookupTests.cs`.
 
@@ -111,6 +120,7 @@ The id-generation, duplicate short-circuit, and dual permanent-record behaviors 
 - [`./ingest-contract.md`](./ingest-contract.md) — Story 18.4 stable ingest contract; token precedence and the augment-never-replace rule.
 - [`../operations/route-surface.md`](../operations/route-surface.md) — Story 18.5 `GET .../memory-units/by-source-uri` route row.
 - [`./public-surface-stability.md`](./public-surface-stability.md) — companion Story 18.1 additive-only stability posture.
+- [`./consistency.md`](./consistency.md) — exact-value consistency inspection and repair guidance.
 - `src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` — `ResolveMemoryUnitId`; duplicate short-circuit; permanent source-URI and token-keyed dedup writes.
 - `src/Hexalith.Memories.Server/Activities/Ingestion/DedupKeyBuilder.cs` — `BuildKey` (`dedup:{tenantId}:{caseId}:{sha256(sourceUri)}`) and `BuildTokenKey` (`:tok:`).
 - `src/Hexalith.Memories.Server/Activities/Ingestion/CheckIdempotencyActivity.cs` — token precedence, source-URI fallback, transient-reservation exclusion.

@@ -83,8 +83,10 @@ before implementation is scheduled.
   - ID: 20.5-A41-ACCESS-TELEMETRY-RETENTION
   - Status: carried-forward
   - Source story: 20-5-inbound-rate-limiting-quotas-and-audit-completeness
-  - Target artifact: docs/operations/rate-limiting.md and the future access-telemetry storage/purge implementation
-  - Re-open trigger: before A41 is marked fully closed, implement and document bounded access-telemetry retention or approve a named retention exception.
+  - Backlog home: Epic 27, Stories 27.1-27.3. Scheduling does not satisfy the resolution gate.
+  - Target artifacts: `docs/dev/telemetry.md`, the Story 27.1 architecture decision, the selected access-telemetry sink/storage deployment and purge implementation, and focused lifecycle/tenant-privacy tests, or this entry updated to a complete explicit accepted-debt disposition.
+  - Resolution gate: Keep this entry `carried-forward` and the matching sprint action `open` until bounded retention/TTL is implemented, documented, and validated, or accepted debt records a named approver and owner, affected storage/scope, rationale, risk and consequence, compensating controls, and a time-bounded review/expiry date or measurable reopen trigger.
+  - Re-open/claim trigger: Review before any claim that A41 is fully closed, before any production-retention assurance is made, and at the accepted-debt review/expiry trigger if that path is selected.
   - Rationale: Inbound quotas and audit completeness are implemented in Story 20.5; access telemetry retention remains unaddressed and is carried forward to avoid falsely closing the A41 retention requirement. Owner: operations maintainer / security remediation owner.
 
 ## Story 19.1 Classification Sweep (2026-06-30)
@@ -2207,3 +2209,15 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 - source_spec: `_bmad-output/implementation-artifacts/spec-one-shot-artifact-tracking.md`
   summary: Resolve opaque-ID error-code and mixed GUID-form fallback contradictions before implementing the consistency-inspect proposal.
   evidence: Blind review found that the concurrent proposal both preserves and changes the unknown-ID error contract and omits the mixed GUID-N/GUID-D backend case that can suppress fallback; this is outside the one-shot tracking correction.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-contract-doc-drift-guard-hardening.md`
+  summary: Generalize positive route discovery beyond Program.cs and top-level `Endpoints/*Endpoints.cs` files so nested endpoint files, controllers, and differently named registration files cannot evade the route-surface guard.
+  evidence: Review confirmed the approved hardening preserves the pre-existing route-source scope; a future endpoint outside that scope would not enter the source-derived route count or exact-row tie.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-contract-doc-drift-guard-hardening.md`
+  summary: Generalize the `/process` negative route scan across every production host and controller source so an unexpected route cannot evade the refutation guard by appearing outside the currently enumerated files.
+  evidence: Review confirmed the existing negative check reads Server Program/decomposed endpoint sources plus EventIngestionController only; broader production-source discovery predates and exceeds this contract-document hardening change.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-consistency-inspect-opaque-id-contract.md`
+  summary: Align the repository's OpenTelemetry core packages with the versions imported by the current Hexalith.Builds pointer so the exact working tree restores and builds again.
+  evidence: Exact-tree restore/build fails with NU1605 because Hexalith.Builds@8e0e2da imports OTLP exporter and hosting 1.17.0 while Directory.Packages.props pins OpenTelemetry core 1.16.0; the opaque-ID change neither caused nor is authorized to alter that concurrent dependency state.

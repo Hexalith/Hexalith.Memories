@@ -40,6 +40,14 @@ state.
 | Repair | `POST /api/v1/tenants/{tenantId}/consistency/repair` | Accepts optional `batchSize` + `includeUnrepairable` | `memories consistency repair --yes` CLI | `202 Accepted` with `workflowInstanceId` |
 | Repair status | `GET /api/v1/tenants/{tenantId}/consistency/repair/{instanceId}` | Instance id must start with `repair-consistency-{tenantId}-` | CLI `--wait`; operator polling | `200 OK` with `ConsistencyWorkflowState` |
 
+For inspect, pass the exact non-blank `MemoryUnitId` returned by ingest or the
+source-URI lookup. Do not trim, case-fold, parse, or otherwise reformat it before
+the first request. `MemoryUnitId` is opaque, so callers must not infer ULID/GUID
+syntax or ordering from it. The existing route still carries one URL-escaped path
+segment; opacity does not promise slash-bearing or unrestricted URL grammar. See
+the authoritative [MemoryUnitId stability contract](./memory-unit-id-stability.md)
+for identifier lifetime and resolution guidance.
+
 Typical latency: probe time per unit is ~1–2 ms per backend. A tenant with N units
 takes ~3·N·2 ms = ~6N ms total (bounded by the batch fan-out). Expected wall-clock
 duration table:
@@ -269,6 +277,8 @@ The following are explicitly NOT delivered by Story 8.2:
 
 ## See also
 
+- [memory-unit-id-stability.md](./memory-unit-id-stability.md) — authoritative
+  opaque identifier, lifetime, and source-URI resolution contract.
 - [health-checks.md](./health-checks.md) — `/ready`, `/alive`, `/health` probe
   contract.
 - [telemetry.md](./telemetry.md) — access telemetry, rolling counters,

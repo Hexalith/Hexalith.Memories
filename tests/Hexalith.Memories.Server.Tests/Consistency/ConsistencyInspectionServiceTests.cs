@@ -22,7 +22,7 @@ using StackExchange.Redis;
 
 /// <summary>
 /// Story 8.2 — AC #3 (per-unit inspection) + Risk #4 (Cypher-injection guard via
-/// memory-unit ID validation/canonicalization). Covers the full 6-test inventory in AC #9.
+/// parameterized graph queries). Covers the full 6-test inventory in AC #9.
 /// </summary>
 public class ConsistencyInspectionServiceTests
 {
@@ -53,23 +53,86 @@ public class ConsistencyInspectionServiceTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("not-a-ulid")]
-    [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7W8X")] // 25 chars
-    [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7W8X9A")] // 27 chars
-    [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7W8X9; DROP GRAPH")] // injection attempt
-    [InlineData("01HM5Q9WXGK6T8Q4Z5Y6V7I8U9")] // contains I and U which are excluded
-    [InlineData("{e8b1d6c2-7e3f-4a21-9f2d-3c4e5a6b7c80}")] // GUID with braces (rejected)
-    [InlineData("e8b1d6c2_7e3f_4a21_9f2d_3c4e5a6b7c80")] // underscores instead of hyphens
-    public async Task InspectAsync_MalformedMemoryUnitId_ThrowsArgumentException(string malformedId)
+    public async Task InspectAsync_BlankMemoryUnitId_ThrowsArgumentExceptionWithoutProbing(string blankId)
     {
         IGraphQueryBuilder builder = Substitute.For<IGraphQueryBuilder>();
         ConsistencyInspectionService service = CreateService(builder: builder);
 
         await Should.ThrowAsync<ArgumentException>(
-            () => service.InspectAsync(TestTenantId, malformedId, CancellationToken.None));
+            () => service.InspectAsync(TestTenantId, blankId, CancellationToken.None));
 
-        // Risk #4 guard: the query builder must NOT be called before regex validation passes.
         builder.DidNotReceive().BuildCheckMemoryUnitExists(Arg.Any<string>());
+    }
+
+    [Fact]
+    public async Task InspectAsync_OpaqueExactHit_ProbesAndReturnsExactIdentifier()
+    {
+        const string opaqueId = "wf-file-instance-7";
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
+                Arg.Any<CommandFlags>())
+            .Returns(CreateSyntacticEntries());
+
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ConsistencyInspectionService service = CreateService(redisDb, builder);
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, opaqueId, CancellationToken.None);
+
+        result.MemoryUnitId.ShouldBe(opaqueId);
+        await redisDb.Received(1).HashGetAllAsync(
+            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
+            Arg.Any<CommandFlags>());
+        await redisDb.Received(1).HashGetAllAsync(
+            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
+            Arg.Any<CommandFlags>());
+        await redisDb.Received(1).HashGetAllAsync(
+            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(TestTenantId, opaqueId)),
+            Arg.Any<CommandFlags>());
+        builder.Received(1).BuildCheckMemoryUnitExists(opaqueId);
+    }
+
+    [Fact]
+    public async Task InspectAsync_OpaqueMiss_ProbesExactIdentifierOnceAndThrowsKeyNotFoundException()
+    {
+        const string opaqueId = "missing-opaque-unit";
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ConsistencyInspectionService service = CreateService(redisDb, builder);
+
+        await Should.ThrowAsync<KeyNotFoundException>(
+            () => service.InspectAsync(TestTenantId, opaqueId, CancellationToken.None));
+
+        await redisDb.Received(1).HashGetAllAsync(
+            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
+            Arg.Any<CommandFlags>());
+        await redisDb.Received(1).HashGetAllAsync(
+            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
+            Arg.Any<CommandFlags>());
+        await redisDb.Received(1).HashGetAllAsync(
+            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(TestTenantId, opaqueId)),
+            Arg.Any<CommandFlags>());
+        builder.Received(1).BuildCheckMemoryUnitExists(opaqueId);
+    }
+
+    [Fact]
+    public async Task InspectAsync_OpaqueIdCollidingWithAnotherUnitsChunk_DoesNotReportForeignSemanticData()
+    {
+        const string opaqueId = "wf-file:0";
+        const string collidingBaseId = "wf-file";
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
+                Arg.Any<CommandFlags>())
+            .Returns(CreateSemanticEntries(collidingBaseId));
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ConsistencyInspectionService service = CreateService(redisDb, builder);
+
+        await Should.ThrowAsync<KeyNotFoundException>(
+            () => service.InspectAsync(TestTenantId, opaqueId, CancellationToken.None));
     }
 
     [Theory]
@@ -90,7 +153,33 @@ public class ConsistencyInspectionServiceTests
     }
 
     [Fact]
-    public async Task InspectAsync_LegacyGuidNFormat_CanonicalizesToStoredDFormat()
+    public async Task InspectAsync_LegacyGuidNFormat_ExactHitWinsWithoutAliasProbe()
+    {
+        const string exactGuidN = "E8B1D6C27E3F4A219F2D3C4E5A6B7C80";
+        const string guidDAlias = "e8b1d6c2-7e3f-4a21-9f2d-3c4e5a6b7c80";
+
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, exactGuidN)),
+                Arg.Any<CommandFlags>())
+            .Returns(CreateSyntacticEntries());
+
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ConsistencyInspectionService service = CreateService(redisDb, builder);
+
+        ConsistencyInspectionResult result = await service.InspectAsync(TestTenantId, exactGuidN, CancellationToken.None);
+
+        result.MemoryUnitId.ShouldBe(exactGuidN);
+        await redisDb.DidNotReceive().HashGetAllAsync(
+            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, guidDAlias)),
+            Arg.Any<CommandFlags>());
+        builder.Received(1).BuildCheckMemoryUnitExists(exactGuidN);
+        builder.DidNotReceive().BuildCheckMemoryUnitExists(guidDAlias);
+    }
+
+    [Fact]
+    public async Task InspectAsync_LegacyGuidNFormat_ExactMissFallsBackToStoredDFormat()
     {
         const string storedGuid = "e8b1d6c2-7e3f-4a21-9f2d-3c4e5a6b7c80";
         const string legacyAlias = "E8B1D6C27E3F4A219F2D3C4E5A6B7C80";
@@ -121,9 +210,49 @@ public class ConsistencyInspectionServiceTests
 
         result.MemoryUnitId.ShouldBe(storedGuid);
         await redisDb.Received(1).HashGetAllAsync(
+            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, legacyAlias)),
+            Arg.Any<CommandFlags>());
+        await redisDb.Received(1).HashGetAllAsync(
             Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, storedGuid)),
             Arg.Any<CommandFlags>());
+        builder.Received(1).BuildCheckMemoryUnitExists(legacyAlias);
         builder.Received(1).BuildCheckMemoryUnitExists(storedGuid);
+    }
+
+    [Fact]
+    public static void GraphQueryBuilder_AdversarialOpaqueIdentifier_UsesParameterMapWithoutChangingQueryText()
+    {
+        const string adversarialId = "wf-file-instance-7'}) MATCH (n) RETURN n";
+        var builder = new GraphQueryBuilder();
+
+        (string opaqueQuery, IDictionary<string, object> opaqueParameters) =
+            builder.BuildCheckMemoryUnitExists(adversarialId);
+        (string baselineQuery, _) = builder.BuildCheckMemoryUnitExists("baseline-id");
+
+        opaqueQuery.ShouldBe(baselineQuery);
+        opaqueQuery.ShouldNotContain(adversarialId, Shouldly.Case.Sensitive);
+        opaqueParameters["id"].ShouldBe(adversarialId);
+    }
+
+    [Fact]
+    public async Task InspectAsync_AdversarialOpaqueIdentifier_BackendFailurePropagatesUnchanged()
+    {
+        const string adversarialId = "wf-file-instance-7'}) MATCH (n) RETURN n";
+        var expected = new RedisConnectionException(ConnectionFailureType.UnableToConnect, "backend unavailable");
+        IDatabase redisDb = Substitute.For<IDatabase>();
+        redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
+        redisDb.HashGetAllAsync(
+                Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, adversarialId)),
+                Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<HashEntry[]>(expected));
+        IGraphQueryBuilder builder = CreateMockBuilder();
+        ConsistencyInspectionService service = CreateService(redisDb, builder);
+
+        RedisConnectionException actual = await Should.ThrowAsync<RedisConnectionException>(
+            () => service.InspectAsync(TestTenantId, adversarialId, CancellationToken.None));
+
+        actual.ShouldBeSameAs(expected);
+        builder.Received(1).BuildCheckMemoryUnitExists(adversarialId);
     }
 
     [Fact]
@@ -288,6 +417,18 @@ public class ConsistencyInspectionServiceTests
             Substitute.For<ILogger<ConsistencyInspectionService>>());
     }
 
+    private static ConsistencyInspectionService CreateService(IDatabase redisDb, IGraphQueryBuilder builder)
+    {
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+
+        return new ConsistencyInspectionService(
+            redis,
+            CreateFalkorMultiplexer(nodeExists: false),
+            builder,
+            Substitute.For<ILogger<ConsistencyInspectionService>>());
+    }
+
     private static bool IsTenantSyntacticKey(RedisKey key)
         => IndexSchemaDefinitions.TryParseSyntacticMemoryUnitId(TestTenantId, key, out string _);
 
@@ -355,10 +496,10 @@ public class ConsistencyInspectionServiceTests
         return [.. entries];
     }
 
-    private static HashEntry[] CreateSemanticEntries() =>
+    private static HashEntry[] CreateSemanticEntries(string memoryUnitId = ValidUlid) =>
     [
         new("embedding", new byte[1536 * sizeof(float)]),
-        new("memoryUnitId", ValidUlid),
+        new("memoryUnitId", memoryUnitId),
         new("caseId", "case-1"),
     ];
 

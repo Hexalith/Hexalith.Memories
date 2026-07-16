@@ -163,14 +163,14 @@ internal static class ConsistencyEndpoints
                 return Results.BadRequest(new ErrorResponse(
                     "INVALID_MEMORY_UNIT_ID",
                     ex.Message,
-                    "Memory unit IDs must be 26-character Crockford-base32 ULIDs or GUIDs (hyphenated or 32-hex)."));
+                    "Pass the exact non-blank MemoryUnitId returned by ingest or source-URI lookup; do not parse or reformat it."));
             }
             catch (KeyNotFoundException ex)
             {
                 return Results.NotFound(new ErrorResponse(
                     "MEMORY_UNIT_NOT_FOUND",
                     ex.Message,
-                    "Run 'memories consistency verify' to audit the tenant or verify the ID via the ingest system."));
+                    "Pass the exact non-blank MemoryUnitId returned by ingest or source-URI lookup; do not parse or reformat it."));
             }
             catch (RedisException ex)
             {

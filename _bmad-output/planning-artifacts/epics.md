@@ -382,7 +382,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - FR64: Epic 7 — Metadata origin tracking display
 - FR65: Epic 1 — `ingested_by` field
 - FR66: Epic 5 — Partial results on backend failure
-- FR67: Epic 7 — Search/access telemetry; reinforced by Epic 20 for audit completeness
+- FR67: Epic 7 — Search/access telemetry; reinforced by Epic 20 for audit emission. A41 access-telemetry retention remains governed by `20.5-A41-ACCESS-TELEMETRY-RETENTION`.
 - FR68: Epic 1 — Configure Google embedding provider for MVP with an extensible provider/model/dimensions/rate-limit shape. OpenAI, Mistral, Ollama, and custom runtime providers are post-MVP provider expansion work unless explicitly pulled forward by sprint change.
 - FR69: Epic 5 — Per-tenant rate limits
 - FR70: Epic 5 — Track embedding model per unit
@@ -598,7 +598,7 @@ Maintainers can convert active `open` and `carried-forward` deferred-work entrie
 ### Epic 20: API Security & Tenant Authorization
 Authenticated, tenant-authorized server boundary; trustworthy audit identity; MCP production-key hardening; inbound rate limiting; complete audit emission.
 **Lifecycle label:** Operational Readiness / Security Hardening
-**Driven by:** Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation) — closes A1, A2, A6, A20, A31, A41
+**Driven by:** Sprint Change Proposal 2026-07-04 (Architecture Audit Remediation) — closes A1, A2, A6, A20, A31, and A41's request-limiting/audit-emission slices; the retention residual remains carried forward
 **FRs reinforced:** FR44, FR67
 
 ### Epic 21: Data Integrity, Consistency & Migration Safety
@@ -636,6 +636,12 @@ Production deployment artifacts, backup/restore, integration-stub closure, cover
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A23, A24, A25, A42
 **FRs covered:** FR71
 **FR71 scope note:** This epic covers backup/restore and disaster-recovery readiness. Broader application-facing portable export remains Phase 2 unless explicitly sprint-selected.
+
+### Epic 27: Access Telemetry Lifecycle Hardening
+Operators can configure and verify a bounded lifecycle for access telemetry through one explicitly owned write-only sink/store without weakening audit emission, tenant/privacy boundaries, or the PRD compliance boundary.
+**Lifecycle label:** Operational Readiness / Security and Observability Hardening
+**Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation)
+**FRs reinforced:** FR67
 
 ---
 
@@ -3977,12 +3983,14 @@ Epics 20-26 are added by Sprint Change Proposal 2026-07-04 (Architecture Audit R
 
 **Audit-anchor preflight:** Before any Epic 20-26 story is selected, created, or implemented, re-verify the current code anchors and implementation-state assumptions cited by that story against the repository. Story files must record the re-verification date, moved or renamed anchors, and how the implementation adapts. If an anchor is stale enough to change scope or acceptance evidence, update the story from current code evidence before development begins.
 
+**A41 access-telemetry retention residual (2026-07-16):** Epic 20 and Story 20.5 close only A41's request-limiting and audit-emission slices. `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains `carried-forward`, and its retrospective action remains `open`, until either bounded retention/TTL is implemented and validated or an explicit accepted-debt disposition records a named approver/owner, scope, rationale, risk/consequence, compensating controls, and a time-bounded review/expiry date or measurable reopen trigger. No artifact may claim A41 fully closed before that gate is met. This guard does not reopen completed Epic 20 or schedule implementation by itself.
+
 **Cross-tenant negative-evidence carry-forward (2026-07-06; broadened 2026-07-16):** Any future scope-sensitive story, spec, refactor, fix, review patch, sprint correction, or implementation change—regardless of epic number—must keep cross-tenant negative validation evidence attached to the change instead of treating it as historical proof. Scope-sensitive includes tenant/case route grouping or versioning; endpoint filters or middleware; auth or claim normalization; tenant status guards; MCP tool executors or client calls; evidence-packet scope metadata or restrictive web rendering; tenant verifier logic or tenant markers; key/index/graph routing, actor IDs, storage selectors, or query builders; search/graph/case attribution; export/import or backup/restore; and any refactor that moves those paths. The story/spec and completion or review record must list the impacted surfaces, cite Story 20.2 denial-before-dependency and Story 24.3 verifier fail-closed/tenant-marker evidence when applicable (or link a newer canonical replacement), and record focused negative test names, command, and result. If proof cannot run, record an explicit accepted blocker with owner, consequence, and reopen trigger. A scope-sensitive change cannot close on happy-path, broad-suite, build-only, or refactor-green evidence alone.
 
 ## Epic 20: API Security & Tenant Authorization
 Operator and downstream consumers get an authenticated, tenant-authorized server boundary: every endpoint requires an authenticated principal, tenant access is verified against principal claims (not caller-supplied parameters), the audit identity is trustworthy, MCP cannot run on a development signing key in production, inbound load is bounded per tenant, and audit coverage spans all mutating operations.
 **Lifecycle label:** Operational Readiness / Security Hardening
-**Driven by:** Sprint Change Proposal 2026-07-04 — closes A1, A2, A6, A20, A31, A41
+**Driven by:** Sprint Change Proposal 2026-07-04 — closes A1, A2, A6, A20, A31, and A41's request-limiting/audit-emission slices; the retention residual remains carried forward
 **FRs reinforced:** FR44, FR67 · **NFRs reinforced:** NFR8, NFR11
 
 ### Story 20.1: Server Authentication Foundation
@@ -4055,7 +4063,7 @@ So that one tenant cannot saturate the service and every mutating operation is a
 
 **Given** `AccessTelemetryLog` currently omits lifecycle events,
 **When** tenant create/delete/status/embedding-config, case-member add/remove, annotation, and deletion operations run,
-**Then** each emits an audit event. Closes A41.
+**Then** each emits an audit event. This closes A41's request-limiting and audit-emission slices; `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward.
 
 ### Story 20.6: RediSearch Query-Injection Hardening
 
@@ -4738,3 +4746,77 @@ So that Epic 26 closes by meeting the product thesis without weakening its evide
 **When** Epic 26 records are reconciled,
 **Then** historical 6/8 evidence remains intact,
 **And** Story 26.8, the benchmark action, the alignment action, and Epic 26 are marked done.
+
+## Epic 27: Access Telemetry Lifecycle Hardening
+
+Operators can configure and verify a bounded lifecycle for access telemetry through one explicitly owned write-only sink/store without weakening audit emission, tenant/privacy boundaries, or the PRD compliance boundary.
+
+**Lifecycle label:** Operational Readiness / Security and Observability Hardening.
+
+**Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation).
+
+**Sequencing gate:** Story 27.1 is decision-first. Stories 27.2 and 27.3 must not implement or claim a sink/store before its ownership, topology, failure, retention, purge, and validation contract is ratified.
+
+### Story 27.1: Access-Telemetry Retention Ownership Decision (Decision-First)
+
+As an architect and operator,
+I want one ratified access-telemetry lifecycle contract,
+So that implementation has an owned, deployable, and testable target.
+
+**Acceptance Criteria:**
+
+**Given** access telemetry currently reaches JSON console and optional OTLP export without a repository-owned bounded lifecycle,
+**When** the decision evaluates external OTLP storage, a dedicated write-only store, and any file/volume alternative,
+**Then** it selects one design and records ownership, topology, multi-replica write behavior, durability boundary, retention default/range, expiry/purge semantics, clock source, failure/backpressure policy, recovery, observability, privacy/tenant boundary, capacity assumptions, and rollback.
+
+**Given** the production Server has two replicas and a read-only root filesystem,
+**When** the decision is ratified,
+**Then** no local-file approach is accepted without durable shared or per-replica storage, concurrency-safe rotation, pod-rescheduling behavior, and executable purge evidence; no unspecified external default is treated as a policy.
+
+**Given** the PRD calls this infrastructure telemetry,
+**When** the contract states its assurance boundary,
+**Then** it does not claim tamper evidence, append-only integrity, legal compliance, or certified audit retention.
+
+### Story 27.2: Bounded Retention/TTL and Purge Implementation
+
+As an operator,
+I want the ratified access-telemetry sink/store to enforce a bounded lifecycle,
+So that emitted access records do not grow without limit.
+
+**Acceptance Criteria:**
+
+**Given** Story 27.1's ratified contract,
+**When** Server and deployment configuration are applied,
+**Then** access events enter the selected write-only sink/store with the documented bounded duration and expiry/purge behavior, while existing required audit emission remains continuous.
+
+**Given** valid, invalid, missing, minimum, and maximum lifecycle settings,
+**When** the host starts in Development and Production,
+**Then** configuration validation follows the ratified fail-closed/degraded policy and never silently falls back to unbounded retention.
+
+**Given** two Server writers, restart/rescheduling, backpressure, and temporary sink/store failure,
+**When** access events are emitted,
+**Then** behavior matches the ratified delivery and recovery contract and low-cardinality health/metrics expose loss or degradation without secrets, raw content, or unbounded tenant labels.
+
+**Given** two authorized tenant contexts and rejected/unknown scope,
+**When** records are written, expired, purged, and inspected through any supported operational seam,
+**Then** tenant/privacy boundaries fail closed and focused cross-tenant negative tests name the affected storage, routing, and evidence surfaces.
+
+### Story 27.3: Retention Verification, Operations Runbook, and A41 Close-Out
+
+As a security reviewer,
+I want executable lifecycle evidence and one coordinated close-out,
+So that A41 closes only after the policy works in the deployment shape.
+
+**Acceptance Criteria:**
+
+**Given** a short test retention window and a production-shaped deployment,
+**When** old and new access events cross the expiry boundary across at least two Server writers and a controlled restart,
+**Then** focused evidence proves expired records are unavailable/purged, newer records remain, required audit emission continues, and tenant/privacy negative checks pass.
+
+**Given** the ratified production duration,
+**When** operators deploy, monitor, change, or roll back the policy,
+**Then** telemetry, deployment-configuration, capacity, monitoring, incident, and recovery documentation identifies the owner, configuration, defaults, storage impact, purge verification, alarms, rollback, and assurance limits.
+
+**Given** all implementation and documentation evidence passes,
+**When** A41 is closed,
+**Then** `20.5-A41-ACCESS-TELEMETRY-RETENTION` is reconciled from `carried-forward`, the matching sprint action is closed, architecture and all A41 summaries cite the evidence, and Epic 20/Story 20.5 remain historical `done` records rather than being reopened.

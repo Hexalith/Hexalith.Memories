@@ -67,10 +67,11 @@ The assembly-name and root-namespace half is enforced by a sibling runtime guard
 It reflects over a stable public type from each assembly and asserts the assembly simple name is
 `Hexalith.Memories.Server` / `Hexalith.Memories.Mcp` and the root namespace prefix still holds — so a project
 rename or an added `<AssemblyName>` / `<RootNamespace>` override fails the build's test lane (also no Docker).
-
-Only the **PackageId** half remains review-enforced — it is a pack-time NuGet property and is not reflectable
-from a built assembly. Any PR that renames the Mcp `PackageId` must add a breaking-change note and a
-`BREAKING CHANGE:` footer for the published package.
+The same guard requires exactly two complete normalized rows in the contract table, ties their Aspire-symbol
+cells to the generated metadata types, reads the Server project source to pin `IsPackable=false`, and reads
+the MCP project source to pin `PackageId=Hexalith.Memories.Mcp`. It also rejects leaked tool-call markup
+through the shared contract-document guard. A PackageId rename therefore fails executable evidence and still
+requires a breaking-change note plus a semantic-release `BREAKING CHANGE:` footer.
 
 ## References
 

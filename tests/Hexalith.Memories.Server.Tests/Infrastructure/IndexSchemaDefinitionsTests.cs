@@ -33,6 +33,11 @@ public class IndexSchemaDefinitionsTests
             .ShouldBe("tenant-a:vec:mu-1:3");
 
     [Fact]
+    public void BuildSemanticChunkKeyPattern_GlobMetacharacters_EscapesIdentifierAsLiteral()
+        => IndexSchemaDefinitions.BuildSemanticChunkKeyPattern("tenant-a", @"mu*?[x]\")
+            .ShouldBe(@"tenant-a:vec:mu\*\?\[x\]\\:*");
+
+    [Fact]
     public void BuildNaturalLanguageSemanticKey_ReturnsDisjointTenantScopedVectorHashKey()
         => IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1")
             .ShouldBe("tenant-a:vecnl:mu-1");

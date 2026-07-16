@@ -13,6 +13,7 @@ using System.Text.Json;
 
 using Hexalith.Memories.Client.Rest;
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.TestHelpers.Documentation;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -30,8 +31,8 @@ using Shouldly;
 /// <c>IMemoriesClient</c> interface appears — and (c) run the documented seams as worked examples so they are proven,
 /// not asserted: the <c>HttpClient</c> handler boundary, its <c>IHttpClientFactory</c>/DI registration half, subclass
 /// override of a stable <c>virtual</c>, and subclass override of an <c>[Experimental]</c> member. The
-/// <c>BaseAddress</c> passthrough (doc §4) and the companion-doc cross-links (AC6) are tied to code too. All doc
-/// assertions are EOL-agnostic substring checks.
+/// <c>BaseAddress</c> passthrough (doc §4) and the companion-doc cross-links (AC6) are tied to code too. Narrative
+/// claims are bound to their exact owning sections and the shared anti-corruption guard rejects leaked tool markup.
 /// </summary>
 public sealed class MemoriesClientMockabilityContractTests
 {
@@ -50,38 +51,40 @@ public sealed class MemoriesClientMockabilityContractTests
     public void Doc_ReaffirmsD9_AndExplicitlyDeclinesIMemoriesClient()
     {
         // AC1 — D9 is reaffirmed and IMemoriesClient is explicitly declined (no interface introduced).
-        string doc = ReadDoc();
+        string section = ReadDocument().GetSection("1. Architecture Decision D9 — concrete class, no interface");
 
-        doc.ShouldContain("D9", Shouldly.Case.Sensitive, $"{DocRelativePath} must reaffirm Architecture Decision D9.");
-        doc.ShouldContain("abstraction tax", Shouldly.Case.Sensitive, $"{DocRelativePath} must state D9's rationale (avoid the abstraction tax).");
-        doc.ShouldContain("IMemoriesClient", Shouldly.Case.Sensitive, $"{DocRelativePath} must name the IMemoriesClient interface it declines to add.");
-        doc.ShouldContain("declines to add", Shouldly.Case.Sensitive, $"{DocRelativePath} must record that this story declines to add IMemoriesClient.");
+        section.ShouldContain("D9", Shouldly.Case.Sensitive);
+        section.ShouldContain("abstraction tax", Shouldly.Case.Sensitive);
+        section.ShouldContain("IMemoriesClient", Shouldly.Case.Sensitive);
+        section.ShouldContain("declines to add", Shouldly.Case.Sensitive);
     }
 
     [Fact]
     public void Doc_DocumentsBothSupportedSeams()
     {
         // AC1 + AC2 + AC3 — both seams are named: the HttpClient/IHttpClientFactory boundary and subclass override.
-        string doc = ReadDoc();
+        string section = ReadDocument().GetSection("2. Supported mock seams");
 
-        doc.ShouldContain("HttpClient", Shouldly.Case.Sensitive, $"{DocRelativePath} must document the HttpClient boundary seam.");
-        doc.ShouldContain("IHttpClientFactory", Shouldly.Case.Sensitive, $"{DocRelativePath} must document the IHttpClientFactory boundary seam.");
-        doc.ShouldContain("StubMemoriesClient", Shouldly.Case.Sensitive, $"{DocRelativePath} must name StubMemoriesClient as the in-repo subclass-seam proof.");
-        doc.ShouldContain("ProbingMemoriesClient", Shouldly.Case.Sensitive, $"{DocRelativePath} must name Parties' ProbingMemoriesClient as the consumer subclass-seam use case.");
+        section.ShouldContain("HttpClient", Shouldly.Case.Sensitive);
+        section.ShouldContain("IHttpClientFactory", Shouldly.Case.Sensitive);
+        section.ShouldContain("StubMemoriesClient", Shouldly.Case.Sensitive);
+        section.ShouldContain("ProbingMemoriesClient", Shouldly.Case.Sensitive);
     }
 
     [Fact]
     public void Doc_StatesNonSealedVirtualGuaranteeAndBreakingChangeRule()
     {
         // AC2 — the non-sealed/virtual guarantee plus the D9-escape-hatch breaking-change rule.
-        string doc = ReadDoc();
+        string guarantee = ReadDocument().GetSection("3. Stability guarantee and breaking-change rule");
+        string baseAddress = ReadDocument().GetSection("4. The `BaseAddress` passthrough is outside the mock seam");
 
-        doc.ShouldContain("non-sealed", Shouldly.Case.Sensitive, $"{DocRelativePath} must guarantee MemoriesClient stays a non-sealed class.");
-        doc.ShouldContain("virtual", Shouldly.Case.Sensitive, $"{DocRelativePath} must guarantee the public API methods stay virtual.");
-        doc.ShouldContain("breaking change", Shouldly.Case.Sensitive, $"{DocRelativePath} must state that sealing the class or removing virtual is a breaking change.");
-        doc.ShouldContain("escape hatch", Shouldly.Case.Sensitive, $"{DocRelativePath} must state the D9 escape hatch (extract IMemoriesClient) is required for such a change.");
-        doc.ShouldContain("sprint change", Shouldly.Case.Sensitive, $"{DocRelativePath} must require a sprint change for the breaking change, not a quiet refactor.");
-        doc.ShouldContain("BaseAddress", Shouldly.Case.Sensitive, $"{DocRelativePath} must note the non-virtual BaseAddress passthrough is outside the mock seam.");
+        guarantee.ShouldContain("non-sealed", Shouldly.Case.Sensitive);
+        guarantee.ShouldContain("virtual", Shouldly.Case.Sensitive);
+        guarantee.ShouldContain("breaking change", Shouldly.Case.Sensitive);
+        guarantee.ShouldContain("escape hatch", Shouldly.Case.Sensitive);
+        guarantee.ShouldContain("sprint change", Shouldly.Case.Sensitive);
+        baseAddress.ShouldContain("BaseAddress", Shouldly.Case.Sensitive);
+        baseAddress.ShouldContain("intentionally not part of the mockable surface", Shouldly.Case.Sensitive);
     }
 
     [Fact]
@@ -245,26 +248,20 @@ public sealed class MemoriesClientMockabilityContractTests
         // AC6 — doc cohesion: the contract cross-links its companion stability docs so a consumer can navigate the
         // full surface (host names, member-level [Experimental], ingest, memory-unit id). Keeps the companions
         // discoverable and guards the cross-link set against silent removal.
-        string doc = ReadDoc();
+        string references = ReadDocument().GetSection("References");
 
-        doc.ShouldContain("public-surface-stability.md", Shouldly.Case.Sensitive, $"{DocRelativePath} must cross-link the Story 18.1 host-name stability companion.");
-        doc.ShouldContain("experimental-apis.md", Shouldly.Case.Sensitive, $"{DocRelativePath} must cross-link the member-level [Experimental] companion.");
-        doc.ShouldContain("ingest-contract.md", Shouldly.Case.Sensitive, $"{DocRelativePath} must cross-link the Story 18.4 ingest contract companion.");
-        doc.ShouldContain("memory-unit-id-stability.md", Shouldly.Case.Sensitive, $"{DocRelativePath} must cross-link the Story 18.6 memory-unit id stability companion.");
+        references.ShouldContain("public-surface-stability.md", Shouldly.Case.Sensitive);
+        references.ShouldContain("experimental-apis.md", Shouldly.Case.Sensitive);
+        references.ShouldContain("ingest-contract.md", Shouldly.Case.Sensitive);
+        references.ShouldContain("memory-unit-id-stability.md", Shouldly.Case.Sensitive);
     }
 
     [Fact]
     public void Doc_ContainsNoLeakedToolCallArtifacts()
     {
-        // Regression guard: the content asserts above only check that mandatory claims are PRESENT — they do
-        // not notice extra junk. A doc-generation step can leak tool-authoring markup (e.g. stray </content> /
-        // </invoke> tags) into the published deliverable; this fails the build the moment that happens so the
-        // authoritative contract stays free of non-content artifacts.
-        string doc = ReadDoc();
+        IReadOnlyList<string> diagnostics = ContractDocumentGuard.FindLeakedToolCallMarkup(ReadDoc());
 
-        doc.Contains("</invoke>", StringComparison.Ordinal).ShouldBeFalse($"{DocRelativePath} must not contain a leaked </invoke> tool-call artifact.");
-        doc.Contains("</content>", StringComparison.Ordinal).ShouldBeFalse($"{DocRelativePath} must not contain a leaked </content> tool-call artifact.");
-        doc.Contains("<parameter", StringComparison.Ordinal).ShouldBeFalse($"{DocRelativePath} must not contain a leaked <parameter ...> tool-call artifact.");
+        diagnostics.ShouldBeEmpty($"{DocRelativePath} contains leaked tool-call markup: {string.Join("; ", diagnostics)}");
     }
 
     private static MemoriesClient CreateScriptedClient(HttpStatusCode status, string body)
@@ -280,6 +277,8 @@ public sealed class MemoriesClientMockabilityContractTests
     }
 
     private static string ReadDoc() => File.ReadAllText(ResolveDocPath());
+
+    private static MarkdownContractDocument ReadDocument() => new(ReadDoc());
 
     private static string ResolveDocPath()
         => Path.Combine(ResolveRepoRoot(), "docs", "dev", "client-mockability.md");

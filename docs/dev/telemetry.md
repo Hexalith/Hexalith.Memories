@@ -22,6 +22,12 @@ per-tenant custom metrics (NFR29), and per-tenant audit events for every search 
 | Production — Datadog   | Datadog Agent         | `OTEL_EXPORTER_OTLP_ENDPOINT=http://dd-agent:4318`             |
 | Production — Honeycomb | Honeycomb ingest      | `OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io:443`     |
 
+These Production examples are optional export routes only. They do not name or
+configure an access-record retention backend. Current shipped access telemetry
+still reaches JSON console and, when configured, OTLP. The ratified but not yet
+implemented lifecycle target is defined by
+[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md).
+
 CLI-side telemetry is **opt-in** — set `HEXALITH_MEMORIES_OTEL_ENDPOINT` or pass `--telemetry` to any
 `memories` subcommand to export CLI spans.
 
@@ -113,6 +119,14 @@ EventId bank: **7500-7599** (success 7501-7509, error 7511-7519).
 }
 ```
 
+The example reflects the current contract, including a known privacy deviation:
+search can place raw `query` and `subject` values in `queryParams`, and the
+source-URI lookup can place raw `sourceUri` there. Do not persist or replay those
+raw values. ADR 27.1-001 requires Story 27.2 to sanitize typed logger state
+before enqueue: query length is bucketed, subject becomes a presence flag, and
+source URI becomes a bounded source-kind value. That target is not implemented
+by this decision story.
+
 ### Versioning policy
 
 - **Additive** field additions keep `schemaVersion = 1`. Consumers MUST ignore unknown fields.
@@ -138,31 +152,40 @@ Search queries may contain privacy-sensitive terms on regulated tenants. The ded
 events to a separate sink, distinct from operational logs consumed by sysadmins for general
 deployment troubleshooting.
 
-Example `appsettings.Production.json`:
+The category remains useful for log filtering and routing, but stdout is not a
+lossless storage seam. `AddJsonConsole` writes a JSON outer envelope while the
+record-valued `@AuditEvent` state is rendered through `ToString()`; its
+`QueryParams` structure cannot be recovered. A lifecycle provider must consume
+the typed `AccessTelemetryEvent` logger state. Do not treat console rotation,
+an unspecified collector, or a file under the Server root or `/tmp` as the
+retention implementation.
 
-```jsonc
-{
-    "Logging": {
-        "LogLevel": {
-            "Default": "Information",
-            "Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory": "Information",
-        },
-        "Console": {
-            "LogLevel": {
-                "Hexalith.Memories.Server.Telemetry.AccessTelemetryCategory": "None",
-            },
-        },
-        // Direct the audit category to a dedicated JSON file sink via your log pipeline of choice
-        // (Serilog, Seq, filebeat, fluentd). The structured JSON produced by AddJsonConsole is the
-        // canonical form; route it per your org policy.
-    },
-}
-```
+### Retention lifecycle status
+
+Routing `AccessTelemetryCategory` to a file, collector, or external sink does
+not configure retention by itself. Memories currently emits events but does not
+yet own or enforce a deployed TTL/purge policy.
+
+[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md) ratifies the target:
+a dedicated Redis 7.4 access-telemetry workload, separate from domain Redis and
+Hexalith.EventStore, with two persisted data members plus Sentinel, a 24-hour
+Production default (allowed range 1 hour-7 days), atomic Redis-time expiry,
+bounded non-blocking buffering, separate write/lifecycle/inspection credentials,
+privacy-safe markers and buckets, and explicit capacity, durability, recovery,
+and rollback boundaries. Story 27.2 implements it; Story 27.3 supplies
+Production-shaped two-writer, restart/rescheduling, deterministic age, purge,
+newer-record preservation, failure, emission-continuity, and tenant/privacy
+evidence plus the runbook.
+
+`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action
+remains open. ADR acceptance and story scheduling are not lifecycle evidence.
+The boundary is bounded infrastructure telemetry only: no tamper evidence,
+append-only integrity, legal compliance, or certified audit retention.
 
 ### Log-level config gate
 
-For high-traffic tenants, operators throttle to `Warning` to keep error events (7511-7515) flowing
-while suppressing successful-operation events (7501-7505). **Trade-off:** losing `ok`-outcome audit
+For high-traffic tenants, operators throttle to `Warning` to keep error events (7511-7519) flowing
+while suppressing successful-operation events (7501-7509). **Trade-off:** losing `ok`-outcome audit
 trail for successes. Regulated tenants MUST keep the default (`Information`) and scale the log
 pipeline instead.
 
@@ -178,11 +201,12 @@ pipeline instead.
 
 ### What happens when OTLP is down
 
-The OTLP exporter is **non-blocking** — endpoint unavailability (connection refused, DNS failure,
-HTTP 5xx) silently drops spans. CLI / Server user-visible behavior is unchanged. If you enable
-telemetry but see no traces in the collector, check collector health first; do NOT suspect
-Memories-side retry / buffering logic (there is none by design — the collector is responsible for
-ingest resilience).
+The current OTLP exporter is **non-blocking** — endpoint unavailability
+(connection refused, DNS failure, HTTP 5xx) can drop exported telemetry while
+CLI / Server user-visible behavior remains unchanged. There is no shipped
+Memories-side persistent OTLP buffer. ADR 27.1-001 deliberately keeps optional
+OTLP and JSON-console emission intact while adding a separate bounded lifecycle
+target; until Story 27.2 lands, that target supplies no retry or retention.
 
 ---
 
@@ -243,7 +267,7 @@ dot-separated instrument names above.
 
 ---
 
-## Audit log volume estimates
+## Access telemetry volume estimates
 
 Back-of-envelope (MVP assumptions):
 
@@ -252,11 +276,19 @@ Back-of-envelope (MVP assumptions):
 | Event size              | ~300 bytes (compact JSON)                     |
 | Search rate per tenant  | 10 req/s (high end)                           |
 | Active tenants per node | 10                                            |
-| Nodes                   | 1 (single-node dev); scales with tenant count |
+| Production Server replicas | 2                                           |
 
-Per-node volume: 10 × 10 × 300 B = **30 KB/s** audit log throughput ≈ 2.5 GB/day per node.
-`AddJsonConsole` is async in the default `ILogger` pipeline — does not block the request path. Log
-pipeline throughput is the operator's responsibility; Memories does NOT throttle.
+Per-replica volume: 10 × 10 × 300 B = **30 KB/s** access-event throughput,
+about 2.5 GB/day. The committed two-replica Production shape is therefore about
+5 GB/day raw at this high-end estimate before keys, AOF, fragmentation,
+replication, and rewrite workspace. ADR 27.1-001 uses a conservative 2.0 storage
+factor and requires capacity admission, warning/critical thresholds, and
+`noeviction`; these are target values, not current behavior.
+
+Current JSON-console logging does not provide a persistent queue, capacity
+policy, or purge. Story 27.2's target provider must use bounded non-blocking
+enqueue so sink failure cannot escape into or indefinitely block a business
+request.
 
 ---
 

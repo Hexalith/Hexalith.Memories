@@ -28,7 +28,7 @@ public static class ConsistencyInspectCommand
 Inspect consistency for a single memory unit across all three backends.
 
 Example:
-    memories consistency inspect --tenant acme --id 01HM5Q9WXGK6T8Q4Z5Y6V7W8X9
+    memories consistency inspect --tenant acme --id wf-file-instance-7
 """;
 
     /// <summary>Builds the <c>inspect</c> subcommand.</summary>
@@ -44,7 +44,7 @@ Example:
 
         var idOption = new Option<string>("--id")
         {
-            Description = "Memory unit identifier (26-char Crockford-base32 ULID or legacy GUID).",
+            Description = "Opaque memory unit identifier; pass the exact value returned by Memories.",
             Required = true,
         };
 

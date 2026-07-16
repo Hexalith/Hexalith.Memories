@@ -6,8 +6,10 @@
 namespace Hexalith.Memories.Server.Tests.Deployment;
 
 using System.IO;
+using System.Linq;
 
 using Hexalith.Memories.EventStore;
+using Hexalith.Memories.TestHelpers.Documentation;
 
 using Shouldly;
 
@@ -30,41 +32,76 @@ public sealed class DeploymentConfigurationContractTests
     }
 
     [Fact]
-    public void DeploymentConfigurationDoc_ContainsAllCanonicalLiterals()
+    public void DeploymentConfigurationDoc_HasExactContractTablesAndRowCounts()
     {
-        string content = ReadDoc();
+        var document = new MarkdownContractDocument(ReadDoc());
+        IReadOnlyList<IReadOnlyList<string>> otlp = document.GetTableRows("OTLP telemetry export");
+        IReadOnlyList<IReadOnlyList<string>> sidecars = document.GetTableRows("Dapr sidecar ports");
+        IReadOnlyList<IReadOnlyList<string>> environment = document.GetTableRows("Required runtime environment");
+        IReadOnlyList<IReadOnlyList<string>> pubSub = document.GetTableRows("Pub/sub event-intake deployment surface");
+        IReadOnlyList<IReadOnlyList<string>> backends = document.GetTableRows("Backend and dashboard ports (for completeness)");
 
-        // Every canonical literal a downstream operator fills must remain documented (Case.Sensitive so a
-        // case-only drift such as `pubSub` or `Pubsub` is also caught).
-        string[] canonicalLiterals =
+        document.GetTableHeader("OTLP telemetry export").ShouldBe(["Variable", "Authoritative source", "Semantics"]);
+        document.GetTableHeader("Dapr sidecar ports").ShouldBe(["Service", "Dapr app-id", "HTTP port", "gRPC port", "Authoritative source"]);
+        document.GetTableHeader("Required runtime environment").ShouldBe(["Variable / key", "Default", "Source-of-truth", "Env-only or appsettings?"]);
+        document.GetTableHeader("Pub/sub event-intake deployment surface").ShouldBe(["Element", "Value", "Authoritative source"]);
+        document.GetTableHeader("Backend and dashboard ports (for completeness)").ShouldBe(["Component", "Port", "Notes"]);
+
+        otlp.Count.ShouldBe(1);
+        sidecars.Count.ShouldBe(2);
+        environment.Count.ShouldBe(7);
+        pubSub.Count.ShouldBe(6);
+        backends.Count.ShouldBe(4);
+
+        otlp.Select(static row => row[0]).ShouldBe(["`OTEL_EXPORTER_OTLP_ENDPOINT`"]);
+        sidecars[0].ShouldBe(["Memories Server", "`memories` (default; override with `MEMORIES_DAPR_APP_ID`)", "`3500`", "`50001`", "`AppHost/Program.cs` (`ResolveDaprAppId`, sidecar options)"]);
+        sidecars[1].ShouldBe(["Memories MCP", "`memories-mcp`", "`3600`", "`50101`", "`AppHost/Program.cs` (offset so the MCP sidecar does not collide with the Server sidecar)"]);
+        environment.Select(static row => row[0]).ShouldBe(
         [
-            "OTEL_EXPORTER_OTLP_ENDPOINT",
-            "3500",
-            "50001",
-            "3600",
-            "50101",
-            "PUBSUB_REDIS_HOST",
-            "PUBSUB_REDIS_PASSWORD",
-            "MEMORIES_EVENTSTORE_TOPIC",
-            "memories-events",
-            "ConnectionStrings__redis",
-            "ConnectionStrings__falkordb",
-            "pubsub",
-            "EventStoreIntegration:Routing:SourceToTenantMap",
-            "/dapr/subscribe",
-            "POST /events/ingest",
-            "6379",
-            "6380",
-            "18888",
-            "18889",
-            "MEMORIES_DAPR_APP_ID",
-            "memories-mcp",
-        ];
-
-        foreach (string literal in canonicalLiterals)
-        {
-            content.ShouldContain(literal, Case.Sensitive, $"Canonical deploy-config literal '{literal}' must remain documented in {DocRelativePath}.");
-        }
+            "`EnableKeycloak`",
+            "`PUBSUB_REDIS_HOST`",
+            "`PUBSUB_REDIS_PASSWORD`",
+            "`MEMORIES_EVENTSTORE_TOPIC`",
+            "`ConnectionStrings__redis`",
+            "`ConnectionStrings__falkordb`",
+            "`MEMORIES_DAPR_APP_ID`",
+        ]);
+        environment.Single(static row => row[0] == "`MEMORIES_EVENTSTORE_TOPIC`").ShouldBe(
+        [
+            "`MEMORIES_EVENTSTORE_TOPIC`",
+            "`memories-events` (AppHost-injected convention; **required downstream** — see note)",
+            "`EventIngestionController.TopicEnvVar`; value injected by `AppHost/Program.cs`",
+            "**Env-only**; **required in a downstream overlay** — there is no runtime fallback (see note below). Mirrors config `EventStoreIntegration:Routing:Topic`.",
+        ]);
+        pubSub.Select(static row => row[0]).ShouldBe(
+        [
+            "Pub/sub component name",
+            "Topic env var",
+            "Source→tenant routing key",
+            "Subscription-discovery route",
+            "Delivery route",
+            "Server sidecar ports (subscription + delivery)",
+        ]);
+        pubSub.Select(static row => row[1]).ShouldBe(
+        [
+            "`pubsub`",
+            "`MEMORIES_EVENTSTORE_TOPIC`",
+            "`EventStoreIntegration:Routing:SourceToTenantMap`",
+            "`/dapr/subscribe`",
+            "`POST /events/ingest`",
+            "`3500` (HTTP) / `50001` (gRPC)",
+        ]);
+        pubSub.Select(static row => row[2]).ShouldBe(
+        [
+            "`EventIngestionController.PubSubName`; `deploy/dapr/components/pubsub.yaml` `metadata.name`; `TenantEventRoutingOptions.PubSubName` (a validator forces config `EventStoreIntegration:Routing:PubSubName` to equal this).",
+            "`EventIngestionController.TopicEnvVar` (default value `memories-events`).",
+            "`TenantEventRoutingOptions.SourceToTenantMap` — a longest-prefix, case-insensitive `Dictionary<string,string>` (empty `{}` by default).",
+            "Emitted by `MapSubscribeHandler()` in the Server host; advertises the topic resolved from `MEMORIES_EVENTSTORE_TOPIC` on component `pubsub`.",
+            "`EventIngestionController` (`[Route(\"events\")]` + `[HttpPost(\"ingest\")]`).",
+            "See [Dapr sidecar ports](#dapr-sidecar-ports). Dapr reaches the Server through these to read `/dapr/subscribe` and deliver to `/events/ingest`.",
+        ]);
+        backends.Select(static row => row[0]).ShouldBe(["Redis Stack", "FalkorDB", "Aspire dashboard", "Aspire dashboard OTLP receiver"]);
+        backends.Select(static row => row[1]).ShouldBe(["`6379`", "`6380`", "`18888`", "`18889`"]);
     }
 
     [Fact]
@@ -74,9 +111,10 @@ public sealed class DeploymentConfigurationContractTests
         EventIngestionController.TopicEnvVar.ShouldBe("MEMORIES_EVENTSTORE_TOPIC", "Topic env var constant must not drift.");
         EventIngestionController.PubSubName.ShouldBe("pubsub", "Pub/sub component name constant must not drift.");
 
-        string content = ReadDoc();
-        content.ShouldContain(EventIngestionController.TopicEnvVar, Case.Sensitive, $"Doc must publish the {nameof(EventIngestionController.TopicEnvVar)} constant value.");
-        content.ShouldContain(EventIngestionController.PubSubName, Case.Sensitive, $"Doc must publish the {nameof(EventIngestionController.PubSubName)} constant value.");
+        IReadOnlyList<string> topicRow = ReadContractRow("Topic env var", "Pub/sub event-intake deployment surface");
+        topicRow[1].ShouldBe($"`{EventIngestionController.TopicEnvVar}`");
+        IReadOnlyList<string> pubSubRow = ReadContractRow("Pub/sub component name", "Pub/sub event-intake deployment surface");
+        pubSubRow[1].ShouldBe($"`{EventIngestionController.PubSubName}`");
     }
 
     [Fact]
@@ -90,8 +128,8 @@ public sealed class DeploymentConfigurationContractTests
         // fails the build.
         new TenantEventRoutingOptions().PubSubName.ShouldBe("pubsub", "TenantEventRoutingOptions.PubSubName default must not drift from the documented component name.");
 
-        string content = ReadDoc();
-        content.ShouldContain(new TenantEventRoutingOptions().PubSubName, Case.Sensitive, "Doc must publish the TenantEventRoutingOptions.PubSubName default value.");
+        ReadContractRow("Pub/sub component name", "Pub/sub event-intake deployment surface")[1]
+            .ShouldBe($"`{new TenantEventRoutingOptions().PubSubName}`");
     }
 
     [Fact]
@@ -102,77 +140,102 @@ public sealed class DeploymentConfigurationContractTests
         // text so a code-side rename of the default fails the build, and keep the reconciliation note
         // (mentioning the `memories-server` projection) from being silently dropped from the doc.
         string appHost = ReadRepoFile("src", "Hexalith.Memories.AppHost", "Program.cs");
-        appHost.ShouldContain("return \"memories\";", Case.Sensitive, "ResolveDaprAppId in AppHost/Program.cs must keep returning the documented default app-id 'memories'.");
+        ShouldHaveExactSourceLine(appHost, "return \"memories\";", "ResolveDaprAppId in AppHost/Program.cs must keep returning the documented default app-id 'memories'.");
 
-        string doc = ReadDoc();
-        doc.ShouldContain("`memories`", Case.Sensitive, "Doc must document the real Server Dapr app-id default `memories` (the value ResolveDaprAppId emits).");
-        doc.ShouldContain("memories-server", Case.Sensitive, "Doc must retain the reconciliation note that the architecture projection `memories-server` differs from the real default.");
+        string sidecarSection = new MarkdownContractDocument(ReadDoc()).GetSection("Dapr sidecar ports");
+        sidecarSection.ShouldContain("`memories`", Case.Sensitive, "The Dapr sidecar section must document the real Server app-id default.");
+        sidecarSection.ShouldContain("memories-server", Case.Sensitive, "The Dapr sidecar section must retain the architecture-projection reconciliation note.");
     }
 
     [Fact]
     public void DeploymentConfigurationDoc_LiteralsMatchAuthoritativeSourceFiles()
     {
-        string doc = ReadDoc();
-
         // OTLP exporter env gate (no C# constant — assert the literal in both the source and the doc).
         string serviceDefaults = ReadRepoFile("src", "Hexalith.Memories.ServiceDefaults", "Extensions.cs");
-        ShouldAppearInBoth("OTEL_EXPORTER_OTLP_ENDPOINT", doc, serviceDefaults, "src/Hexalith.Memories.ServiceDefaults/Extensions.cs");
+        IReadOnlyList<string> otlpRow = ReadContractRow("`OTEL_EXPORTER_OTLP_ENDPOINT`", "OTLP telemetry export");
+        ShouldAppearInBoth("OTEL_EXPORTER_OTLP_ENDPOINT", otlpRow, serviceDefaults, "src/Hexalith.Memories.ServiceDefaults/Extensions.cs");
 
         // The doc names the hosted service that logs the Production-empty-endpoint warning; tie that name to
         // its authoritative source so a rename of the warning service does not silently rot the doc.
-        ShouldAppearInBoth("OtlpExporterWarningHostedService", doc, serviceDefaults, "src/Hexalith.Memories.ServiceDefaults/Extensions.cs");
+        ShouldAppearInBoth("OtlpExporterWarningHostedService", otlpRow, serviceDefaults, "src/Hexalith.Memories.ServiceDefaults/Extensions.cs");
 
         // Dapr sidecar ports, topic value, connection-string keys, MCP app-id, and the app-id override var.
         string appHost = ReadRepoFile("src", "Hexalith.Memories.AppHost", "Program.cs");
-        string[] appHostLiterals =
-        [
-            "3500",
-            "50001",
-            "3600",
-            "50101",
-            "memories-events",
-            "ConnectionStrings__redis",
-            "ConnectionStrings__falkordb",
-            "memories-mcp",
-            "MEMORIES_DAPR_APP_ID",
-        ];
-        foreach (string literal in appHostLiterals)
-        {
-            ShouldAppearInBoth(literal, doc, appHost, "src/Hexalith.Memories.AppHost/Program.cs");
-        }
+        IReadOnlyList<string> serverSidecar = ReadContractRow("Memories Server", "Dapr sidecar ports");
+        IReadOnlyList<string> mcpSidecar = ReadContractRow("Memories MCP", "Dapr sidecar ports");
+        ShouldAppearInBoth("3500", serverSidecar, appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+        ShouldAppearInBoth("50001", serverSidecar, appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+        ShouldAppearInBoth("3600", mcpSidecar, appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+        ShouldAppearInBoth("50101", mcpSidecar, appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+        ShouldAppearInBoth("memories-mcp", mcpSidecar, appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+        ShouldAppearInBoth("MEMORIES_DAPR_APP_ID", serverSidecar, appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+
+        ShouldHaveExactSourceLine(appHost, "appId: daprAppId,", "The Server sidecar must use the resolved documented Dapr app-id.");
+        ShouldHaveExactSourceLine(appHost, "httpPort: 3500,", "The Server sidecar HTTP port assignment must match its contract row.");
+        ShouldHaveExactSourceLine(appHost, "grpcPort: 50001,", "The Server sidecar gRPC port assignment must match its contract row.");
+        ShouldHaveExactSourceLine(appHost, "appId: \"memories-mcp\",", "The MCP sidecar app-id assignment must match its contract row.");
+        ShouldHaveExactSourceLine(appHost, "httpPort: 3600,", "The MCP sidecar HTTP port assignment must match its contract row.");
+        ShouldHaveExactSourceLine(appHost, "grpcPort: 50101,", "The MCP sidecar gRPC port assignment must match its contract row.");
+        ShouldHaveExactSourceLine(appHost, "server = server.WithEnvironment(\"MEMORIES_EVENTSTORE_TOPIC\", \"memories-events\");", "The AppHost topic assignment must match the topic-default contract row.");
+
+        ShouldAppearInBoth("memories-events", ReadContractRow("`MEMORIES_EVENTSTORE_TOPIC`", "Required runtime environment"), appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+        ShouldAppearInBoth("ConnectionStrings__redis", ReadContractRow("`ConnectionStrings__redis`", "Required runtime environment"), appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+        ShouldAppearInBoth("ConnectionStrings__falkordb", ReadContractRow("`ConnectionStrings__falkordb`", "Required runtime environment"), appHost, "src/Hexalith.Memories.AppHost/Program.cs");
+        ShouldAppearInBoth("MEMORIES_DAPR_APP_ID", ReadContractRow("`MEMORIES_DAPR_APP_ID`", "Required runtime environment"), appHost, "src/Hexalith.Memories.AppHost/Program.cs");
 
         // Pub/sub redis interpolation variables (YAML-only — no C# constant).
         string pubSubComponent = ReadRepoFile("deploy", "dapr", "components", "pubsub.yaml");
-        ShouldAppearInBoth("PUBSUB_REDIS_HOST", doc, pubSubComponent, "deploy/dapr/components/pubsub.yaml");
-        ShouldAppearInBoth("PUBSUB_REDIS_PASSWORD", doc, pubSubComponent, "deploy/dapr/components/pubsub.yaml");
+        ShouldAppearInBoth("PUBSUB_REDIS_HOST", ReadContractRow("`PUBSUB_REDIS_HOST`", "Required runtime environment"), pubSubComponent, "deploy/dapr/components/pubsub.yaml");
+        ShouldAppearInBoth("PUBSUB_REDIS_PASSWORD", ReadContractRow("`PUBSUB_REDIS_PASSWORD`", "Required runtime environment"), pubSubComponent, "deploy/dapr/components/pubsub.yaml");
 
         // Pub/sub component name: the doc references the yaml metadata.name; assert it is still `pubsub` so a
         // rename of the Dapr component (which would break every consumer subscription) fails the build.
-        pubSubComponent.ShouldContain("name: pubsub", Case.Sensitive, "The Dapr pub/sub component metadata.name in deploy/dapr/components/pubsub.yaml must remain 'pubsub' to match the documented component name.");
+        ShouldHaveExactSourceLine(pubSubComponent, "name: pubsub", "The Dapr pub/sub component metadata.name must remain 'pubsub' to match its contract row.");
 
         // Source→tenant routing option name; the option itself is tied to code here.
         string routingOptions = ReadRepoFile("src", "Hexalith.Memories.EventStore", "TenantEventRoutingOptions.cs");
-        ShouldAppearInBoth("SourceToTenantMap", doc, routingOptions, "src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs");
+        IReadOnlyList<string> routingRow = ReadContractRow("Source→tenant routing key", "Pub/sub event-intake deployment surface");
+        ShouldAppearInBoth("SourceToTenantMap", routingRow, routingOptions, "src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs");
 
         // The colon-joined config-section prefix the routing options bind from: tied to the binding call so
         // the documented `EventStoreIntegration:Routing:*` keys cannot diverge from the section code reads.
         string integrationExtensions = ReadRepoFile("src", "Hexalith.Memories.EventStore", "EventStoreIntegrationServiceCollectionExtensions.cs");
-        ShouldAppearInBoth("EventStoreIntegration:Routing", doc, integrationExtensions, "src/Hexalith.Memories.EventStore/EventStoreIntegrationServiceCollectionExtensions.cs");
+        ShouldAppearInBoth("EventStoreIntegration:Routing", routingRow, integrationExtensions, "src/Hexalith.Memories.EventStore/EventStoreIntegrationServiceCollectionExtensions.cs");
 
         // Ingest delivery route attributes: the doc derives `POST /events/ingest` from these attributes, so
         // tie the attribute strings to the controller source to catch a route rename.
         string ingestionController = ReadRepoFile("src", "Hexalith.Memories.EventStore", "EventIngestionController.cs");
-        ShouldAppearInBoth("[Route(\"events\")]", doc, ingestionController, "src/Hexalith.Memories.EventStore/EventIngestionController.cs");
-        ShouldAppearInBoth("[HttpPost(\"ingest\")]", doc, ingestionController, "src/Hexalith.Memories.EventStore/EventIngestionController.cs");
+        IReadOnlyList<string> deliveryRow = ReadContractRow("Delivery route", "Pub/sub event-intake deployment surface");
+        ShouldAppearInBoth("[Route(\"events\")]", deliveryRow, ingestionController, "src/Hexalith.Memories.EventStore/EventIngestionController.cs");
+        ShouldAppearInBoth("[HttpPost(\"ingest\")]", deliveryRow, ingestionController, "src/Hexalith.Memories.EventStore/EventIngestionController.cs");
     }
 
-    private static void ShouldAppearInBoth(string literal, string doc, string source, string sourceName)
+    [Fact]
+    public void DeploymentConfigurationDoc_ContainsNoLeakedToolCallMarkup()
+    {
+        IReadOnlyList<string> diagnostics = ContractDocumentGuard.FindLeakedToolCallMarkup(ReadDoc());
+
+        diagnostics.ShouldBeEmpty($"{DocRelativePath} contains leaked tool-call markup: {string.Join("; ", diagnostics)}");
+    }
+
+    private static void ShouldAppearInBoth(string literal, IReadOnlyList<string> contractRow, string source, string sourceName)
     {
         source.ShouldContain(literal, Case.Sensitive, $"'{literal}' must remain in its authoritative source {sourceName}.");
-        doc.ShouldContain(literal, Case.Sensitive, $"'{literal}' is documented in {DocRelativePath} but no longer present in {sourceName} — or vice versa; reconcile the deploy-config contract.");
+        string.Join('\n', contractRow).ShouldContain(literal, Case.Sensitive, $"'{literal}' must remain in its authoritative table row in {DocRelativePath}; reconcile it with {sourceName}.");
     }
 
+    private static void ShouldHaveExactSourceLine(string source, string expectedLine, string message)
+        => source.Replace("\r\n", "\n", System.StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n')
+            .Count(line => string.Equals(line.Trim(), expectedLine, System.StringComparison.Ordinal))
+            .ShouldBe(1, message);
+
     private static string ReadDoc() => File.ReadAllText(ResolveDocPath());
+
+    private static IReadOnlyList<string> ReadContractRow(string key, string heading)
+        => new MarkdownContractDocument(ReadDoc()).GetTableRows(heading)
+            .Single(row => string.Equals(row[0], key, System.StringComparison.Ordinal));
 
     private static string ResolveDocPath()
         => Path.Combine(ResolveRepoRoot(), "docs", "operations", "deployment-configuration.md");

@@ -196,6 +196,16 @@ validation as required release hygiene.
 
 ## Tests
 
+Published contract-document guards must assert authoritative structure, not whole-document vocabulary.
+For Markdown tables, bind guarantees to normalized complete rows or exact adjacent cells and add row-count
+or uniqueness checks where omission, duplication, or phantom rows could otherwise pass. Bind narrative-only
+claims to their exact owning ATX section; a bare whole-document `ShouldContain` requires an explicit reason.
+
+Every published contract-document guard must also reject raw leaked tool-call markup through the shared
+`ContractDocumentGuard` helper. The shared scanner covers opening, closing, attributed, incomplete, and
+mixed-case `content`, `invoke`, `parameter`, and `tool_call` tags while allowing ordinary Markdown, HTML,
+code spans, and fenced examples.
+
 Run the fast local confidence path before opening a PR. This path does not require Docker or DAPR
 sidecars:
 

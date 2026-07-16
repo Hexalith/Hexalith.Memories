@@ -98,7 +98,7 @@ public class MemoriesClientConsistencyTests
     public async Task InspectConsistencyAsync_200Response_DeserializesInspectionResult()
     {
         const string TenantId = "tenant-1";
-        const string MemoryUnitId = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9";
+        const string MemoryUnitId = "Wf File%?#[]*";
 
         ConsistencyInspectionResult expected = new(
             TenantId,
@@ -118,7 +118,7 @@ public class MemoriesClientConsistencyTests
             HttpStatusCode.OK,
             body,
             expectedMethod: HttpMethod.Get,
-            expectedPath: $"/api/v1/tenants/{TenantId}/consistency/inspect/{MemoryUnitId}");
+            expectedPath: $"/api/v1/tenants/{TenantId}/consistency/inspect/{Uri.EscapeDataString(MemoryUnitId)}");
 
         ConsistencyInspectionResult result = await client.InspectConsistencyAsync(
             TenantId, MemoryUnitId, CancellationToken.None);
@@ -126,6 +126,18 @@ public class MemoriesClientConsistencyTests
         result.Recommendation.ShouldBe(ConsistencyRepairRecommendation.ReIndexGraph);
         result.SyntacticDetail.ShouldNotBeNull();
         result.GraphDetail.ShouldBeNull();
+        result.MemoryUnitId.ShouldBe(MemoryUnitId);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task InspectConsistencyAsync_BlankMemoryUnitId_ThrowsArgumentException(string blankId)
+    {
+        MemoriesClient client = CreateClient(HttpStatusCode.OK);
+
+        await Should.ThrowAsync<ArgumentException>(
+            () => client.InspectConsistencyAsync("tenant-1", blankId, CancellationToken.None));
     }
 
     [Fact]

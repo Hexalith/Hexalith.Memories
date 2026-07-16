@@ -195,30 +195,9 @@ public sealed class ConsistencyEndpointTests : IDisposable
     }
 
     [Fact]
-    public async Task GetInspect_MalformedMemoryUnitId_Returns400WithInvalidMemoryUnitId()
+    public async Task GetInspect_UnknownOpaqueMemoryUnit_Returns404WithExactValueRecoveryGuidance()
     {
-        _factory.StubTenantActive("acme-consistency");
-        _factory.InspectionService
-            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new ArgumentException("Memory unit ID 'not-a-ulid' must be a 26-character Crockford-base32 ULID or a GUID (D or N format)."));
-
-        using HttpClient client = _factory.CreateClient();
-
-        HttpResponseMessage response = await client.GetAsync(
-            "/api/v1/tenants/acme-consistency/consistency/inspect/01HM5Q9WXGK6T8Q4Z5Y6V7W8XI", // invalid char 'I'
-            CancellationToken.None);
-
-        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        ErrorResponse? error = await response.Content
-            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
-        error.ShouldNotBeNull();
-        error.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
-        error.Suggestion.ShouldContain("ULID", Shouldly.Case.Insensitive);
-    }
-
-    [Fact]
-    public async Task GetInspect_UnknownMemoryUnit_Returns404WithMemoryUnitNotFound()
-    {
+        const string opaqueId = "wf-file-instance-7";
         _factory.StubTenantActive("acme-consistency");
         _factory.InspectionService
             .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
@@ -227,7 +206,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync(
-            $"/api/v1/tenants/acme-consistency/consistency/inspect/{ValidUlid}",
+            $"/api/v1/tenants/acme-consistency/consistency/inspect/{opaqueId}",
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -235,21 +214,54 @@ public sealed class ConsistencyEndpointTests : IDisposable
             .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
         error.ShouldNotBeNull();
         error.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
+        error.Suggestion.ShouldContain("exact non-blank MemoryUnitId", Shouldly.Case.Sensitive);
+        error.Suggestion.ShouldNotContain("ULID", Shouldly.Case.Insensitive);
+        error.Suggestion.ShouldNotContain("GUID", Shouldly.Case.Insensitive);
+        await _factory.InspectionService.Received(1).InspectAsync(
+            "acme-consistency",
+            opaqueId,
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task GetInspect_KnownMemoryUnit_Returns200WithDetail()
+    public async Task GetInspect_InvalidCallableInput_Returns400WithExactValueRecoveryGuidance()
     {
+        const string opaqueId = "Wf-File_Instance-7";
+        _factory.StubTenantActive("acme-consistency");
+        _factory.InspectionService
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new ArgumentException("Memory unit identifier is invalid."));
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            $"/api/v1/tenants/acme-consistency/consistency/inspect/{opaqueId}",
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("INVALID_MEMORY_UNIT_ID");
+        error.Suggestion.ShouldContain("exact non-blank MemoryUnitId", Shouldly.Case.Sensitive);
+        error.Suggestion.ShouldNotContain("ULID", Shouldly.Case.Insensitive);
+        error.Suggestion.ShouldNotContain("GUID", Shouldly.Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task GetInspect_KnownOpaqueMemoryUnit_ForwardsAndReturnsExactIdentifier()
+    {
+        const string opaqueId = "Wf File%?#[]*";
         _factory.StubTenantActive("acme-consistency");
         ConsistencyInspectionResult stubResult = new(
             "acme-consistency",
-            ValidUlid,
+            opaqueId,
             SyntacticPresent: true,
             SemanticPresent: true,
             GraphPresent: true,
             SyntacticDetail: new ConsistencySyntacticDetail(
                 "hash", DateTimeOffset.UtcNow, "file:///sample.md", "file", "case-1", "gemini", "gemini-embedding-001"),
-            SemanticDetail: new ConsistencySemanticDetail(768, IndexSchemaDefinitions.BuildSemanticKey("acme-consistency", ValidUlid)),
+            SemanticDetail: new ConsistencySemanticDetail(768, IndexSchemaDefinitions.BuildSemanticKey("acme-consistency", opaqueId)),
             GraphDetail: new ConsistencyGraphDetail(2, 1, 1),
             Recommendation: ConsistencyRepairRecommendation.NoOp,
             CheckedAt: DateTimeOffset.UtcNow);
@@ -260,7 +272,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         using HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync(
-            $"/api/v1/tenants/acme-consistency/consistency/inspect/{ValidUlid}",
+            $"/api/v1/tenants/acme-consistency/consistency/inspect/{Uri.EscapeDataString(opaqueId)}",
             CancellationToken.None);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -273,6 +285,33 @@ public sealed class ConsistencyEndpointTests : IDisposable
         body.SyntacticDetail.ShouldNotBeNull();
         body.SemanticDetail.ShouldNotBeNull();
         body.GraphDetail.ShouldNotBeNull();
+        body.MemoryUnitId.ShouldBe(opaqueId);
+        await _factory.InspectionService.Received(1).InspectAsync(
+            "acme-consistency",
+            opaqueId,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetInspect_BackendUnavailable_Preserves503ErrorMapping()
+    {
+        const string opaqueId = "wf-file-instance-7";
+        _factory.StubTenantActive("acme-consistency");
+        _factory.InspectionService
+            .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+
+        using HttpClient client = _factory.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync(
+            $"/api/v1/tenants/acme-consistency/consistency/inspect/{opaqueId}",
+            CancellationToken.None);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        ErrorResponse? error = await response.Content
+            .ReadFromJsonAsync<ErrorResponse>(cancellationToken: CancellationToken.None);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("BACKEND_UNAVAILABLE");
     }
 
     [Fact]

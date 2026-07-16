@@ -406,6 +406,13 @@ development_status:
   26-8-benchmark-quality-calibration: done  # 2026-07-16: approved production calibration verified; focused contract 8/8, fusion/persistence/search 94/94, explain integration 8/8, Release build 0 warnings/errors, and two unchanged benchmark runs each 17/17 with 8/8 identical strict-win results.
   epic-26-retrospective: done
 
+  # Epic 27: Access Telemetry Lifecycle Hardening
+  epic-27: in-progress
+  27-1-access-telemetry-retention-ownership-decision: review
+  27-2-bounded-retention-ttl-and-purge-implementation: backlog
+  27-3-retention-verification-operations-runbook-and-a41-close-out: backlog
+  epic-27-retrospective: optional
+
 # Action items recorded from epic retrospectives. status: open | in-progress | done
 action_items:
   - epic: 0
@@ -463,7 +470,7 @@ action_items:
   - epic: 18
     action: "Generalize the drift-guard hardening lessons: prefer table-row-form anchors over bare ShouldContain substrings, and add an anti-corruption assertion (no leaked tool-call markup) to contract-doc guard tests"
     owner: "Amelia, Murat"
-    status: open
+    status: done  # 2026-07-16: review-hardened shared structure/markup guards cover seven Story 18 docs; focused Server 49/0/0, CLI 14/0/0, Integration 5/0/0; baseline-pinned Release build 0 warnings/errors. Current unpinned restore is separately blocked by concurrent Hexalith.Builds@802ddce OTLP 1.17/core 1.16 drift; see sprint-change-proposal-2026-07-16-contract-doc-drift-guard-hardening.md.
   - epic: 18
     action: "Give the parked carry-forwards real backlog homes: MEM-2-ASPIRATE (aspirate emission), MEM-3-OPENAPI (OpenAPI generation), the real-Redis two-thread race test, the Dapr-sidecar pub/sub smoke, and the 18.4 token-anchoring edge — each scheduled as a story or accepted with rationale in deferred-work.md"
     owner: "Amelia"
@@ -487,7 +494,7 @@ action_items:
   - epic: 19
     action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 planning when stories 21.9 and 21.10 are created"
     owner: "Winston, Amelia, Murat"
-    status: open
+    status: done  # 2026-07-05 (Stories 21.9/21.10): 15.3-RV15/RV16/RV27 mapped to fail-closed active-target start/resume/completion behavior and migration coverage; Epic 21 retrospective confirms completion.
   - epic: 19
     action: "Define the tracking convention for one-shot artifacts like 19-5-ci-submodule-metadata-cleanup.md"
     owner: "Amelia"
@@ -495,7 +502,7 @@ action_items:
   - epic: 20
     action: "Keep 20.5-A41-ACCESS-TELEMETRY-RETENTION visible until a retention/TTL mechanism or explicit accepted-debt disposition is implemented"
     owner: "Amelia, Murat"
-    status: open
+    status: open  # 2026-07-16: Approved implementation is registered in Epic 27 by sprint-change-proposal-2026-07-16-access-telemetry-retention-implementation.md; scheduling is not closure, so this remains open until bounded retention/TTL is implemented and validated or explicit accepted debt satisfies the recorded disposition fields.
   - epic: 20
     action: "Carry the Story 19.4 migration-marker target-consistency cluster into Epic 21 story creation, especially 21.9 and 21.10"
     owner: "Winston, Amelia, Murat"
@@ -515,7 +522,7 @@ action_items:
   - epic: 21
     action: "Reconcile the consistency inspect opaque-ID contract across docs and API messaging"
     owner: "Paige, Amelia"
-    status: open
+    status: open  # 2026-07-16: implementation and focused validation are complete, but the approved exact-tree Release gate remains blocked by concurrent Hexalith.Builds@8e0e2da OTLP 1.17/core 1.16 drift; baseline-pinned Release build is green.
   - epic: 21
     action: "Preserve EventStore command-boundary and projection workflow guards while Epic 22 changes retrieval and case attribution code"
     owner: "Amelia, Winston, Murat"

@@ -8,7 +8,7 @@ This document is the authoritative description of **how a downstream test mocks 
 - **Origin:** MEM-7 (Parties consumer integration intake, Sprint Change Proposal 2026-05-27).
 - **Coupling:** Independent of other Epic 18 stories. Companion to the host-name stability contract ([`./public-surface-stability.md`](./public-surface-stability.md), Story 18.1) and the member-level `[Experimental]` surface ([`./experimental-apis.md`](./experimental-apis.md)). Those cover the **host project/assembly/namespace names** and **member-level `[Experimental]` diagnostics**; this document covers the **type-shape mock seam** (non-sealed / `virtual` / no-interface).
 
-> **Code is the source of truth.** Every claim below is mirrored from `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs` and proven by runnable tests, not asserted in prose. A reflection + content drift-guard test (see [Automated enforcement](#automated-enforcement)) fails the build the moment `MemoriesClient` is sealed, a public method loses `virtual`, or an `IMemoriesClient` interface appears.
+> **Code is the source of truth.** Every claim below is mirrored from `src/Hexalith.Memories.Client.Rest/MemoriesClient.cs` and proven by runnable tests, not asserted in prose. A reflection + structure-aware drift-guard test (see [Automated enforcement](#automated-enforcement)) fails the build the moment `MemoriesClient` is sealed, a public method loses `virtual`, or an `IMemoriesClient` interface appears.
 
 ---
 
@@ -92,9 +92,10 @@ It is a trivial read-through to the injected `HttpClient` and is **intentionally
 
 A drift-guard test ties this contract to the code: [`tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientMockabilityContractTests.cs`](../../tests/Hexalith.Memories.Cli.Tests/ClientRest/MemoriesClientMockabilityContractTests.cs). It runs on every build (plain `[Fact]`s, no Docker/fixture, repo-root marker walk over `Hexalith.Memories.slnx`) and enforces:
 
-- **Doc presence + mandatory claims:** this document exists and names `D9`, the `HttpClient` / `IHttpClientFactory` seam, the non-sealed/`virtual` guarantee, the explicit decline of `IMemoriesClient`, the breaking-change rule, and the `ProbingMemoriesClient` / `StubMemoriesClient` proofs. Assertions are EOL-agnostic substring checks, so the document's line endings do not affect the guard.
+- **Exact section ownership:** D9, supported seams, stability/breaking-change, `BaseAddress`, and companion-link claims must remain inside their exact owning ATX sections. LF and CRLF are normalized by the shared parser; vocabulary elsewhere in the document cannot satisfy the guard.
 - **Reflection guard (code → contract tie):** `typeof(MemoriesClient)` is `IsPublic`, **not** `IsSealed`, implements no interface named `IMemoriesClient`, and the `Hexalith.Memories.Client.Rest` assembly exports no public `IMemoriesClient`. Every public, declared, non-special-name instance method is `IsVirtual && !IsFinal` (the offending method name is emitted on failure). The build fails the instant the class is sealed or a public method loses `virtual`.
 - **Worked examples (seams proven, not asserted):** a `[Fact]` drives the `HttpClient`-boundary seam through a `TestDelegatingHandler`-scripted `HttpClient` and asserts the typed result; a second `[Fact]` subclasses `MemoriesClient`, overrides one `virtual` method, and asserts the override dispatches — proving the `ProbingMemoriesClient` shape compiles and runs.
+- **Anti-corruption check:** rejects leaked `content`, `invoke`, `parameter`, or `tool_call` markup through the shared assertion-neutral helper.
 
 The subclass seam is additionally exercised by `tests/Hexalith.Memories.Mcp.Tests/StubMemoriesClient.cs` and the MCP tool tests that consume it, and the `HttpClient` seam by the full `tests/Hexalith.Memories.Cli.Tests/ClientRest/*` suite.
 

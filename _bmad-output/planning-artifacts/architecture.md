@@ -224,7 +224,7 @@ The Memories Server is a **trusted component** with access to all tenant embeddi
 
 **Growth-phase security:**
 - Memory unit optional `classification` field — schema-present in MVP, not enforced. Enables Phase 4 LLM context redaction without schema migration.
-- Access telemetry to separate write-only store — MVP: structured log file. Growth: dedicated audit store.
+- Access telemetry lifecycle — current behavior is JSON-console emission plus optional OTLP export, with no repository-owned bounded lifecycle. [ADR 27.1-001](../../docs/dev/adr-27.1-001-access-telemetry-lifecycle.md) ratifies a separate Redis 7.4 write-only access-telemetry workload: two persisted data members plus Sentinel, typed-state sanitization, atomic server-clock expiry, a 24-hour Production default (1 hour-7 days), bounded non-blocking buffering, separate writer/lifecycle/inspection authorities, and explicit durability and rollback boundaries. Story 27.2 implements that target; Story 27.3 provides Production-shaped expiry/purge, failure, restart, tenant/privacy, and runbook evidence. `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains open until that evidence passes or an explicit accepted-debt disposition satisfies the recorded closure gate. This is bounded infrastructure telemetry, not tamper-evident, append-only, legally compliant, or certified audit retention.
 - Explain output as decorator on search results (not separate query path) — ensures Phase 4 ACL filtering applies equally to results and explain metadata.
 
 ### Testability Architecture

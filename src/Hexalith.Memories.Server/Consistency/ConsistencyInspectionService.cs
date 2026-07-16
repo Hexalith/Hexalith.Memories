@@ -30,11 +30,10 @@ using StackExchange.Redis;
 /// <para>
 /// Activities cannot be invoked directly from a minimal-API handler (they require DAPR
 /// runtime plumbing). Factoring the probe into a service lets both paths use identical
-/// logic — including the memory-unit ID guard/canonicalizer (Risk #4) and the
-/// <c>RepairPlanCalculator</c> mapping.
+/// backend-presence logic and the <c>RepairPlanCalculator</c> mapping.
 /// </para>
 /// <para>
-/// The service throws <see cref="ArgumentException"/> for malformed memory-unit IDs (400
+/// The service throws <see cref="ArgumentException"/> for blank memory-unit IDs (400
 /// at the HTTP boundary) and <see cref="KeyNotFoundException"/> when all three backends
 /// report absent (404 at the HTTP boundary). Both exceptions are documented intentional
 /// control flow — not bugs.
@@ -66,10 +65,10 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
     /// Probes the three backends for a single memory unit and returns a full inspection result.
     /// </summary>
     /// <param name="tenantId">The tenant identifier.</param>
-    /// <param name="memoryUnitId">The memory unit identifier (accepted ULID or legacy GUID shape).</param>
+    /// <param name="memoryUnitId">The opaque memory unit identifier, passed exactly as returned by Memories.</param>
     /// <param name="ct">Cancellation token. Observed by all three probes.</param>
     /// <returns>The inspection result when at least one backend reports the unit.</returns>
-    /// <exception cref="ArgumentException">Thrown when either identifier is malformed.</exception>
+    /// <exception cref="ArgumentException">Thrown when either identifier is blank or the tenant identifier is malformed.</exception>
     /// <exception cref="KeyNotFoundException">Thrown when all three backends report absent.</exception>
     /// <exception cref="OperationCanceledException">Thrown when <paramref name="ct"/> is cancelled.</exception>
     public virtual async Task<ConsistencyInspectionResult> InspectAsync(
@@ -78,21 +77,47 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
         CancellationToken ct)
     {
         TenantIdGuard.Validate(tenantId);
-        string normalizedMemoryUnitId = NormalizeMemoryUnitId(memoryUnitId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
 
+        ct.ThrowIfCancellationRequested();
+
+        ConsistencyInspectionResult? result = await ProbeCandidateAsync(tenantId, memoryUnitId, ct).ConfigureAwait(false);
+        if (result is not null)
+        {
+            return result;
+        }
+
+        if (TryGetGuidDAlias(memoryUnitId, out string guidDAlias))
+        {
+            result = await ProbeCandidateAsync(tenantId, guidDAlias, ct).ConfigureAwait(false);
+            if (result is not null)
+            {
+                return result;
+            }
+        }
+
+        throw new KeyNotFoundException(
+            $"Memory unit '{memoryUnitId}' not found in any backend for tenant '{tenantId}'.");
+    }
+
+    private async Task<ConsistencyInspectionResult?> ProbeCandidateAsync(
+        string tenantId,
+        string memoryUnitId,
+        CancellationToken ct)
+    {
         ct.ThrowIfCancellationRequested();
 
         IDatabase redisDb = _redis.GetDatabase();
 
-        string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, normalizedMemoryUnitId);
-        string vectorKey = IndexSchemaDefinitions.BuildSemanticKey(tenantId, normalizedMemoryUnitId);
-        string? chunkVectorKey = await FindFirstSemanticChunkKeyAsync(tenantId, normalizedMemoryUnitId, ct).ConfigureAwait(false);
-        string naturalLanguageVectorKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, normalizedMemoryUnitId);
+        string syntacticKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId);
+        string vectorKey = IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId);
+        string? chunkVectorKey = await FindFirstSemanticChunkKeyAsync(tenantId, memoryUnitId, ct).ConfigureAwait(false);
+        string naturalLanguageVectorKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, memoryUnitId);
 
         Task<HashEntry[]> syntacticTask = redisDb.HashGetAllAsync(syntacticKey);
         Task<HashEntry[]> semanticTask = redisDb.HashGetAllAsync(chunkVectorKey ?? vectorKey);
         Task<HashEntry[]> naturalLanguageSemanticTask = redisDb.HashGetAllAsync(naturalLanguageVectorKey);
-        Task<(bool Exists, ConsistencyGraphDetail? Detail)> graphTask = ProbeGraphAsync(tenantId, normalizedMemoryUnitId, ct);
+        Task<(bool Exists, ConsistencyGraphDetail? Detail)> graphTask = ProbeGraphAsync(tenantId, memoryUnitId, ct);
 
         HashEntry[] syntacticEntries = await syntacticTask.WaitAsync(ct).ConfigureAwait(false);
         HashEntry[] semanticEntries = await semanticTask.WaitAsync(ct).ConfigureAwait(false);
@@ -100,13 +125,12 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
         (bool graphExists, ConsistencyGraphDetail? graphDetail) = await graphTask.ConfigureAwait(false);
 
         bool syntacticPresent = syntacticEntries.Length > 0;
-        bool semanticPresent = semanticEntries.Length > 0;
+        bool semanticPresent = EntriesBelongToMemoryUnit(semanticEntries, memoryUnitId);
         bool naturalLanguageSemanticPresent = naturalLanguageSemanticEntries.Length > 0;
 
         if (!syntacticPresent && !semanticPresent && !graphExists && !naturalLanguageSemanticPresent)
         {
-            throw new KeyNotFoundException(
-                $"Memory unit '{normalizedMemoryUnitId}' not found in any backend for tenant '{tenantId}'.");
+            return null;
         }
 
         ConsistencySyntacticDetail? syntacticDetail = syntacticPresent
@@ -138,7 +162,7 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
         LogInspection(
             _logger,
             tenantId,
-            normalizedMemoryUnitId,
+            memoryUnitId,
             syntacticPresent,
             semanticPresent,
             graphExists,
@@ -146,7 +170,7 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
 
         return new ConsistencyInspectionResult(
             tenantId,
-            normalizedMemoryUnitId,
+            memoryUnitId,
             syntacticPresent,
             semanticPresent,
             graphExists,
@@ -164,19 +188,29 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
         };
     }
 
+    private static bool TryGetGuidDAlias(string memoryUnitId, out string guidDAlias)
+    {
+        if (memoryUnitId.Length == 32 && LegacyGuidRegex().IsMatch(memoryUnitId))
+        {
+            guidDAlias = Guid.ParseExact(memoryUnitId, "N").ToString("D");
+            return true;
+        }
+
+        guidDAlias = string.Empty;
+        return false;
+    }
+
     /// <summary>
-    /// Validates that a memory unit identifier is a Crockford-base32 ULID (preferred) or a
-    /// legacy GUID (hyphenated D-format or 32-char N-format). Both shapes are safe to
-    /// interpolate into Cypher parameter maps — Risk #4 (Cypher-injection surface).
+    /// Preserves the legacy repair-seam validation for Crockford-base32 ULID and GUID identifiers.
     /// </summary>
     /// <param name="memoryUnitId">Candidate identifier.</param>
     /// <exception cref="ArgumentException">
     /// Thrown when the identifier matches neither the ULID nor a GUID pattern.
     /// </exception>
     /// <remarks>
-    /// ULIDs are the preferred shape (generated by the ingest path for new units). Legacy
-    /// units created via the <c>IngestionWorkflow</c> <c>context.NewGuid()</c> fallback
-    /// remain inspectable/repairable — the operator-facing APIs accept either shape.
+    /// <c>InspectAsync</c> accepts opaque non-blank identifiers and does not call this method.
+    /// <c>RepairUnitActivity</c> retains the existing normalization behavior through
+    /// <see cref="NormalizeMemoryUnitId"/>.
     /// </remarks>
     public static void ValidateMemoryUnitIdFormat(string memoryUnitId)
         => _ = NormalizeMemoryUnitId(memoryUnitId);
@@ -376,6 +410,13 @@ public partial class ConsistencyInspectionService : IConsistencyInspectionServic
 
         return map;
     }
+
+    private static bool EntriesBelongToMemoryUnit(HashEntry[] entries, string memoryUnitId)
+        => entries.Length > 0
+            && string.Equals(
+                GetValue(HashEntriesToMap(entries), "memoryUnitId"),
+                memoryUnitId,
+                StringComparison.Ordinal);
 
     private static string GetValue(Dictionary<string, string> map, string key)
         => map.TryGetValue(key, out string? value) ? value : string.Empty;

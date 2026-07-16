@@ -130,20 +130,21 @@ The variable names, the pub/sub component name, the topic env var, and the Dapr 
 
 ## Automated enforcement
 
-A content-asserting drift-guard test protects this contract:
+A structure-aware drift-guard test protects this contract:
 [`tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs`](../../tests/Hexalith.Memories.Server.Tests/Deployment/DeploymentConfigurationContractTests.cs). It runs on every build (plain `[Fact]`s, no Docker/fixture) and:
 
-- **Bidirectional constant tie (code rename OR doc rename fails the build):** asserts `EventIngestionController.TopicEnvVar == "MEMORIES_EVENTSTORE_TOPIC"`, `EventIngestionController.PubSubName == "pubsub"`, and the runtime-bindable `TenantEventRoutingOptions.PubSubName` default `pubsub`, AND that this document contains those same values. A rename on either side breaks the build.
+- **Exact table scope:** parses the OTLP, sidecar, runtime-environment, pub/sub, and backend-port tables under their exact headings and requires data-row counts `1/2/7/6/4`. Canonical variables, services, ports, and operations must occupy their expected normalized cells; matching prose elsewhere cannot satisfy the guard.
+- **Bidirectional constant tie (code rename OR doc rename fails the build):** asserts `EventIngestionController.TopicEnvVar == "MEMORIES_EVENTSTORE_TOPIC"`, `EventIngestionController.PubSubName == "pubsub"`, and the runtime-bindable `TenantEventRoutingOptions.PubSubName` default `pubsub`, AND that authoritative table cells carry those values. A rename on either side breaks the build.
 - **Server app-id default tie:** asserts `ResolveDaprAppId` in `src/Hexalith.Memories.AppHost/Program.cs` still returns the default app-id `memories`, and that this document both documents `memories` and retains the `memories-server` reconciliation note.
-- **Source ↔ doc cross-checks (test-enforced):** for literals with no C# constant, the test reads the authoritative source file via the same repo-root marker walk and asserts the literal appears in **both** source and this document:
+- **Source ↔ table-cell cross-checks (test-enforced):** for literals with no C# constant, the test reads the authoritative source file via the same repo-root marker walk and asserts the literal appears in **both** source and an authoritative table cell:
   - `OTEL_EXPORTER_OTLP_ENDPOINT` and the Production-empty warning service `OtlpExporterWarningHostedService` — `src/Hexalith.Memories.ServiceDefaults/Extensions.cs`.
   - Sidecar ports `3500`, `50001`, `3600`, `50101`; topic value `memories-events`; `ConnectionStrings__redis`, `ConnectionStrings__falkordb`; app-ids `memories-mcp` and `MEMORIES_DAPR_APP_ID` — `src/Hexalith.Memories.AppHost/Program.cs`.
   - `PUBSUB_REDIS_HOST`, `PUBSUB_REDIS_PASSWORD`, and the component `metadata.name` `pubsub` — `deploy/dapr/components/pubsub.yaml`.
   - `SourceToTenantMap` — `src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs`.
   - the config-section prefix `EventStoreIntegration:Routing` — `src/Hexalith.Memories.EventStore/EventStoreIntegrationServiceCollectionExtensions.cs`.
   - the ingest route attributes `[Route("events")]` and `[HttpPost("ingest")]` — `src/Hexalith.Memories.EventStore/EventIngestionController.cs`.
-- **Doc-presence (test-enforced):** the routing key `EventStoreIntegration:Routing:SourceToTenantMap` and the subscription-discovery route `/dapr/subscribe` are asserted present in this document. The delivery route `POST /events/ingest` is additionally source-tied through its controller route attributes above.
-- **Review-enforced (not reflectable):** the backend/dashboard ports `6379`, `6380`, `18888`, `18889` are architecture-projection values; they are asserted present in this document but their authoritative form lives in `architecture.md`, so divergence is caught by review, not by the test. The exact composition of the route surface (`/dapr/subscribe`, `POST /events/ingest`) is additionally guarded by `tests/Hexalith.Memories.Server.Tests/EventStoreIntegration/DocumentationCompletenessTests.cs` against `../dev/eventstore-integration.md`.
+- **Anti-corruption check:** rejects leaked `content`, `invoke`, `parameter`, or `tool_call` markup through the shared assertion-neutral helper.
+- **Review-enforced source meaning:** backend/dashboard ports `6379`, `6380`, `18888`, `18889` must occupy the four exact table rows, while their architecture-projection meaning remains review-enforced because the source of truth is `architecture.md`.
 
 ## Production artifact ownership
 
