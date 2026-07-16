@@ -396,7 +396,7 @@ development_status:
   26-5-operational-runbook-set: done  # 2026-07-16: adversarial review complete; all 54 accepted findings across three chunks closed (17 in chunk 3, 1 dismissed). Final gates: verifier 8/8, focused contracts 15/15, Docker-free Server 2663/1/0, Release solution 0 warnings/errors, shell/Python/diff checks green.
   26-6-zot-release-contract-alignment: done  # 2026-07-16: adversarial review closed all 5 actionable findings; overlap-safe secret redaction, validated registry overrides, env-path/legacy-credential fixtures, and step-bound workflow guards; publisher fixtures 38/38, CLI inventory 57/57, focused Release build 0 warnings/errors. Prior evidence: standard publish-only HEXALITH_ZOT auth, flat memories/memories-mcp repositories, package/preflight fixtures, authenticated live dry-run green.
   26-7-restart-recovery-reliability-gate: done  # 2026-07-16: adversarial review closed all 3 actionable findings; explicit persisted replay recency order, legacy/current serialization coverage, and deterministic URL HttpClient resilience guard; focused tests 20/0/0, full Server.Tests 2668/1/0, Release build 0 warnings/errors. Prior evidence: exact failure isolated as nested HTTP resilience timeout/retries, URL fetch transport retry removed, fail-fast Dapr/counter/log diagnostics retained, bounded replay watermark added; focused restart 3/3 and full slow lane 16/16 green.
-  epic-26-retrospective: optional
+  epic-26-retrospective: done
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
 action_items:
@@ -595,7 +595,7 @@ action_items:
   - epic: 25
     action: "Add a pre-story verify-epic-AC-against-code step to story creation so planning counts and claims are reconciled before implementation (60 literals, no Client.Rest, double authorization were all false against code)"
     owner: "Amelia, John"
-    status: open
+    status: in-progress  # 2026-07-16 (Epic 26): stories reconciled stale premises during implementation, but story creation still lacks an enforced pre-story AC-vs-code step.
   - epic: 25
     action: "Add a submodule-pointer scope guard on the commit/CI lane so a story excluding submodule edits cannot advance root submodule pointers (25.3 8e92fe7; 25.4 94eb4c8/376096d)"
     owner: "Amelia, Winston"
@@ -603,7 +603,7 @@ action_items:
   - epic: 25
     action: "Move release-package and topology-drift validation onto the PR ci.yml lane (pack plus -PackageDirectory, publish_nuget/release_packages fixtures), not just release.yml; coordinate with Epic 26.4"
     owner: "Amelia, Murat"
-    status: open
+    status: done  # 2026-07-16 (Epic 26): Story 26.4 added PR package/topology enforcement and the associated tooling fixtures.
   - epic: 25
     action: "Carry a BREAKING CHANGE footer onto the Epic 25 release PR for the 25.3 TraverseAsync reorder and the 25.4 api/v1 plus CLR renames before semantic-release runs"
     owner: "Amelia"
@@ -611,12 +611,32 @@ action_items:
   - epic: 25
     action: "Convert Epic 25 latent residuals into explicit backlog or accepted-debt entries with owner and reopen trigger: rate-limiter shutdown race (25.4), MCP exception-logging gap (25.6), 25.4 backend-vocabulary test-pin, and a fail-closed trust-surface decision for the 25.7 confidence/freshness leak"
     owner: "Amelia, Winston, Sally, Murat"
-    status: open
+    status: done  # 2026-07-16 (Epic 26): all four residuals are recorded in deferred-work.md with evidence and reopen conditions.
   - epic: 25
     action: "Turn the propagated review-discipline convention (File List completeness, constant-tied drift guards) into an executable pre-review gate; merges the still-open Epic 24 checklist item"
     owner: "Amelia, Murat"
     status: open
   - epic: 26
     action: "Restore the deterministic benchmark from 6/8 hybrid wins (75%) to the PRD hard line (at least 7/8), without weakening the thesis/reproducibility gates, or obtain an explicit product-governance change; Story 26.4 may complete when the truthful blocking lane lands, but Epic 26 cannot complete while this action remains open"
-    owner: "John, Winston, Amelia"
+    owner: "Amelia, Murat, John, Winston"
+    status: open
+  - epic: 26
+    action: "Establish an executable operational-review entry gate that requires realistic execution evidence, exact end-state assertions, fail-closed behavior, complete artifact inventory, and zero unapproved skips before review"
+    owner: "Murat, Amelia"
+    status: open
+  - epic: 26
+    action: "Repair Epic 26 traceability so the epic context includes Stories 26.6 and 26.7 and canonical story, frontmatter, sprint-status, and action-ledger records agree"
+    owner: "Paige, John"
+    status: open
+  - epic: 26
+    action: "Complete the carried repository-governance controls: enforce or formally accept root line-ending policy and reject or explicitly annotate undeclared root-submodule pointer changes"
+    owner: "Amelia, Winston"
+    status: open
+  - epic: 26
+    action: "Preserve the Epic 25 breaking-change obligation by recording the api/v1, CLR rename, and TraverseAsync changes with the required breaking-change signal before semantic release"
+    owner: "Amelia, John"
+    status: open
+  - epic: 26
+    action: "Reassess the eight accepted integration skips, representative large-restore boundary proof, and deployment-hardening residuals so each retains an owner, disposition, and executable reopen trigger"
+    owner: "Murat, Winston, John"
     status: open
