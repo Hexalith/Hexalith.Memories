@@ -13,24 +13,25 @@ context:
 
 ## Intent
 
-**Problem:** The approved repository-lifetime cross-tenant negative-evidence guard is present in `epics.md`, `_bmad-output/project-context.md`, and sprint status, and the main story/development/review workflows load it. `bmad-spec` is the exception: its generated default references only a nonexistent root `project-context.md`, so future specs can miss the guard that the approved proposal explicitly applies to specs.
+**Problem:** The approved repository-lifetime cross-tenant negative-evidence guard is present in `epics.md`, `_bmad-output/project-context.md`, and sprint status. `bmad-spec` references a nonexistent root `project-context.md`; a team-only customization can repair normal resolution but disappears when resolver execution fails and the skill falls back to generated defaults, so future specs can still miss the guard.
 
-**Approach:** Add an update-safe team customization that appends the real `_bmad-output/project-context.md` as a `bmad-spec` persistent fact, and cover the resolved customization with the existing tooling test lane.
+**Approach:** Add a root `project-context.md` forwarding bridge to the canonical `_bmad-output/project-context.md`, making both normal and resolver-fallback activation safe without editing generated files or duplicating policy content. Cover the resolved default, bridge contract, canonical guard payload, and fallback consumption contract in the existing tooling test lane.
 
 ## Boundaries & Constraints
 
-**Always:** Keep the customization in `_bmad/custom`, where it survives generated skill refreshes; preserve the existing repository-lifetime rule, its Story 20.2 denial-before-dependency anchor, its Story 24.3 verifier/tenant-marker anchor, and the ongoing `in-progress` action; prove both that the resolved fact is present and that its target file exists.
+**Always:** Keep `_bmad-output/project-context.md` canonical and make the root file a forwarding bridge only; preserve the existing repository-lifetime rule, its Story 20.2 denial-before-dependency anchor, its Story 24.3 verifier/tenant-marker anchor, and the ongoing `in-progress` action; prove the generated default resolves to the readable bridge, the bridge directs agents to the canonical file, the canonical guard payload remains intact, and the documented fallback still consumes persistent facts.
 
-**Ask First:** Any proposal to replace the shared `bmad-spec` default, move or duplicate `project-context.md`, add a general evidence-attachment validator, or change the action from `in-progress` to `done`.
+**Ask First:** Any proposal to replace the shared `bmad-spec` default, move or duplicate the canonical project-context content, add a general evidence-attachment validator, or change the action from `in-progress` to `done`.
 
-**Never:** Edit generated `.agents/skills/bmad-spec` files; rewrite the approved sprint-change proposal or completed stories; claim that historical integration evidence passed where Story 24.3 records it as blocked; touch product runtime code, tenant routing, authentication, storage, the existing dirty `references/Hexalith.EventStore` submodule, or unrelated customizations.
+**Never:** Edit generated `.agents/skills/bmad-spec` files; copy the canonical policy body into the root bridge; rewrite the approved sprint-change proposal or completed stories; claim that historical integration evidence passed where Story 24.3 records it as blocked; touch product runtime code, tenant routing, authentication, storage, submodules, or unrelated customizations.
 
 ## I/O & Edge-Case Matrix
 
 | Scenario | Input / State | Expected Output / Behavior | Error Handling |
 |----------|--------------|---------------------------|----------------|
-| Resolved customization | Team override plus generated `bmad-spec` defaults | Persistent facts contain the real `_bmad-output/project-context.md` path and its file exists | Unit test fails if the fact or target disappears |
-| Generated skill refresh | `.agents/skills/bmad-spec` is regenerated | Team-owned override continues to inject the guard without editing generated files | Resolver fixture exposes merge or path regressions |
+| Normal resolution | Generated `bmad-spec` defaults resolve successfully | Root persistent fact names an existing bridge that directs agents to canonical project context | Unit test fails if the fact, bridge, or canonical target disappears |
+| Resolver fallback | Customization resolution fails and `bmad-spec` reads generated defaults | The same root bridge still directs activation to canonical project context | Contract test fails if fallback or persistent-fact consumption is removed |
+| Canonical policy drift | Bridge and canonical file exist but the attached-evidence rule or anchors are removed | CI rejects the change before future specs lose the guard | Payload assertion fails on the stable rule and Story 20.2/24.3 anchors |
 
 </frozen-after-approval>
 
