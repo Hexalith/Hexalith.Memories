@@ -7,6 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RAZOR_PATTERNS = ("*.razor", "*.razor.css")
 LF_PATTERNS = (
+    ".gitattributes",
     "*.sh",
     "*.bash",
     "*.py",
@@ -15,6 +16,17 @@ LF_PATTERNS = (
     "Dockerfile",
     "*.dockerfile",
     ".githooks/*",
+)
+LF_ATTRIBUTE_PROBES = (
+    ".gitattributes",
+    "policy-probe.sh",
+    "policy-probe.bash",
+    "policy-probe.py",
+    "policy-probe.yml",
+    "policy-probe.yaml",
+    "Dockerfile",
+    "policy-probe.dockerfile",
+    ".githooks/policy-probe",
 )
 BINARY_PATTERNS = ("*.gif", "*.ico", "*.jpeg", "*.jpg", "*.pdf", "*.png", "*.webp", "*.zip")
 
@@ -98,6 +110,11 @@ class LineEndingPolicyTests(unittest.TestCase):
             self.assertEqual("set", attributes[path]["text"], path)
             self.assertEqual("lf", attributes[path]["eol"], path)
             self.assertEqual("i/lf", index_eols[path], path)
+
+        probe_attributes = attributes_for(list(LF_ATTRIBUTE_PROBES))
+        for path in LF_ATTRIBUTE_PROBES:
+            self.assertEqual("set", probe_attributes[path]["text"], path)
+            self.assertEqual("lf", probe_attributes[path]["eol"], path)
 
     def test_declared_binary_payloads_disable_text_normalization(self) -> None:
         paths = tracked_paths(*BINARY_PATTERNS)

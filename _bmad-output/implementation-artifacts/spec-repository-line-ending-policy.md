@@ -72,19 +72,21 @@ context:
 
 The root policy deliberately keeps repository history/index text canonical as LF while preserving the established CRLF working-tree convention. Explicit LF exceptions protect Unix execution and cross-platform tooling; explicit Razor rules make the recurrent failure mode directly testable. The one-time broad mechanical diff must remain reviewable through content-equivalence evidence.
 
-Whitespace attributes disable only trailing-space diagnostics for Markdown, archived `_bmad-output/**/*.patch`/`_bmad-output/**/*.diff` review evidence, and the exact historical `review-7-2/bundle.txt` artifact. This aligns Markdown with `.editorconfig`'s `trim_trailing_whitespace = false`, prevents pre-existing evidence whitespace from invalidating the EOL-only normalization check, and leaves source-file whitespace checks active.
+Whitespace attributes only suppress diagnostics for intentional trailing spaces in Markdown, archived `_bmad-output/**/*.patch`/`_bmad-output/**/*.diff` review evidence, and the exact historical `review-7-2/bundle.txt` artifact. They do not prove byte or content preservation; the CR-insensitive baseline-versus-index manifest and raw declared-binary hash comparison provide that proof. Source-file whitespace checks remain active.
 
 Verification covered 4,035 pre-existing non-submodule index entries with zero unexpected CR-insensitive mismatches and byte-identical declared binaries. Fresh checkouts under conflicting local Git settings produced `i/lf w/crlf` Razor files and `i/lf w/lf` tooling files; a controlled Razor edit yielded one hunk with one added and one removed line. The exact cached whitespace check and shell syntax checks passed, the Release solution build completed with zero warnings/errors, and the focused Web suite passed 492/0/0.
+
+Post-review revalidation used detached clean `HEAD` tree `bcd30d317e971cc51136f60eb7010a12b71b2d31` with every root-declared submodule checked out at its recorded gitlink. The committed line-ending policy tests passed 4/4, the Release solution build passed with zero warnings/errors, and the focused Web suite passed 492/0/0.
 
 ## Verification
 
 **Commands:**
-- `git check-attr text eol -- src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor.css tools/test.sh tools/check-story-file-scope.py .github/workflows/ci.yml` -- expected: Razor is `text/eol=crlf`; tooling is `text/eol=lf`.
-- `git check-attr text eol -- .githooks/pre-commit .githooks/commit-msg` -- expected: both extensionless executable hooks are `text/eol=lf`.
+- `git check-attr text eol -- src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor src/Hexalith.Memories.Web/Components/Evidence/MemoriesEvidenceCockpit.razor.css .gitattributes .githooks/pre-commit .githooks/commit-msg tools/test.sh tools/check-story-file-scope.py .github/workflows/ci.yml probes/example.bash probes/example.yaml probes/Dockerfile probes/example.dockerfile` -- expected: Razor is `text/eol=crlf`; every tracked or synthetic LF-exception class is `text/eol=lf`.
 - `git ls-files --eol '*.razor' '*.razor.css'` -- expected after a fresh checkout: every entry is `i/lf w/crlf attr/text eol=crlf`.
 - `git -c core.whitespace=cr-at-eol diff --cached --check` -- expected: no whitespace or conflict-marker errors.
-- `bash -n tools/test.sh tools/verify-cli-pack.sh .githooks/pre-commit .githooks/commit-msg` -- expected: all LF-preserved scripts and hooks parse successfully.
-- `python3 -m unittest discover -s tests/tooling/line_endings -p "*_test.py"` -- expected: the CI-enforced attribute and normalized-index contract passes.
+- `bash -n tools/test.sh tools/verify-cli-pack.sh` -- expected: both LF-preserved Bash scripts parse successfully.
+- `sh -n .githooks/pre-commit .githooks/commit-msg` -- expected: both LF-preserved POSIX hooks parse successfully.
+- `python3 -m unittest discover -s tests/tooling/line_endings -p "*_test.py"` -- expected: the CI-enforced attribute, index-normalization, checkout-matrix, binary, and localized-diff contract passes.
 - `dotnet build Hexalith.Memories.slnx --configuration Release` -- expected: success.
 - `dotnet test tests/Hexalith.Memories.Web.Tests/Hexalith.Memories.Web.Tests.csproj --configuration Release` -- expected: success, using the documented built-assembly xUnit v3 fallback if the test host is environment-blocked.
 
@@ -126,4 +128,4 @@ Verification covered 4,035 pre-existing non-submodule index entries with zero un
   [`ci.yml:203`](../../.github/workflows/ci.yml#L203)
 
 - Tests cover attributes, index normalization, checkout matrices, binaries, and localized diffs.
-  [`line_ending_policy_test.py:76`](../../tests/tooling/line_endings/line_ending_policy_test.py#L76)
+  [`line_ending_policy_test.py:88`](../../tests/tooling/line_endings/line_ending_policy_test.py#L88)
