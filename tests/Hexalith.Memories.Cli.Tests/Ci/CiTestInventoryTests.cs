@@ -289,13 +289,14 @@ public sealed partial class CiTestInventoryTests
         string repoRoot = GetRepoRoot();
         string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "release.yml"));
         string releasePreflight = File.ReadAllText(Path.Combine(repoRoot, "tools", "release-preflight.ps1"));
+        ReleaseWorkflowStep semanticRelease = GetReleaseWorkflowStep("Run semantic-release");
 
         workflow.ShouldNotContain("docker/login-action");
         workflow.ShouldNotContain("CONTAINER_REGISTRY_USERNAME");
         workflow.ShouldNotContain("CONTAINER_REGISTRY_PASSWORD");
-        workflow.ShouldContain("HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}");
-        workflow.ShouldContain("HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}");
-        workflow.ShouldContain("HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}");
+        semanticRelease.Environment["HEXALITH_ZOT_REGISTRY"].ShouldBe("${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}");
+        semanticRelease.Environment["HEXALITH_ZOT_USERNAME"].ShouldBe("${{ secrets.HEXALITH_ZOT_USERNAME }}");
+        semanticRelease.Environment["HEXALITH_ZOT_API_KEY"].ShouldBe("${{ secrets.HEXALITH_ZOT_API_KEY }}");
         workflow.ShouldNotContain("HEXALITH_RELEASE_CLASSIFICATION_ONLY");
         releasePreflight.ShouldContain("$env:HEXALITH_RELEASE_CLASSIFICATION_ONLY = 'true'");
     }
@@ -378,6 +379,8 @@ public sealed partial class CiTestInventoryTests
         publishContainers.ShouldContain("repository = \"$RepositoryPrefix-mcp\"");
         publishContainers.ShouldContain("HEXALITH_ZOT_USERNAME");
         publishContainers.ShouldContain("HEXALITH_ZOT_API_KEY");
+        publishContainers.ShouldNotContain("CONTAINER_REGISTRY_USERNAME");
+        publishContainers.ShouldNotContain("CONTAINER_REGISTRY_PASSWORD");
         publishContainers.ShouldContain("New-RegistryAuthFile");
         publishContainers.ShouldContain("partial-publish");
         publishContainers.ShouldContain("publish-summary.json");
@@ -956,8 +959,10 @@ public sealed partial class CiTestInventoryTests
             string? continueOnError = null;
             string? run = null;
             string? uses = null;
+            Dictionary<string, string> environment = new(StringComparer.Ordinal);
             List<string> runBlockLines = [];
             bool inRunBlock = false;
+            bool inEnvironment = false;
 
             i++;
             while (i < lines.Length)
@@ -987,6 +992,32 @@ public sealed partial class CiTestInventoryTests
                     inRunBlock = false;
                 }
 
+                if (inEnvironment)
+                {
+                    if (string.IsNullOrWhiteSpace(body))
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (body.StartsWith(BodyIndent + "  ", StringComparison.Ordinal))
+                    {
+                        string environmentEntry = body.Trim();
+                        int separator = environmentEntry.IndexOf(':');
+                        if (separator > 0)
+                        {
+                            string key = environmentEntry[..separator].Trim();
+                            string value = StripQuotes(environmentEntry[(separator + 1)..].Trim());
+                            environment[key] = value;
+                        }
+
+                        i++;
+                        continue;
+                    }
+
+                    inEnvironment = false;
+                }
+
                 string trimmed = body.TrimStart();
                 if (trimmed.StartsWith("shell:", StringComparison.Ordinal))
                 {
@@ -1003,6 +1034,10 @@ public sealed partial class CiTestInventoryTests
                 else if (trimmed.StartsWith("uses:", StringComparison.Ordinal))
                 {
                     uses = trimmed["uses:".Length..].Trim();
+                }
+                else if (string.Equals(trimmed, "env:", StringComparison.Ordinal))
+                {
+                    inEnvironment = true;
                 }
                 else if (trimmed.StartsWith("run:", StringComparison.Ordinal))
                 {
@@ -1027,6 +1062,7 @@ public sealed partial class CiTestInventoryTests
                 ContinueOnError: continueOnError,
                 Run: run,
                 Uses: uses,
+                Environment: environment,
                 RunBlock: string.Join('\n', runBlockLines)));
         }
 
@@ -1146,6 +1182,7 @@ public sealed partial class CiTestInventoryTests
         string? ContinueOnError,
         string? Run,
         string? Uses,
+        Dictionary<string, string> Environment,
         string RunBlock);
 
     private static int CountOccurrences(string haystack, string needle)

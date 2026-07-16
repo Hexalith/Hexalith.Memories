@@ -267,6 +267,7 @@ def run_publish(
     env: dict[str, str],
     *,
     push: bool,
+    registry: str | None = "registry.test",
     kubectl_exit: int = 0,
     kubectl_warning: str = "",
     extra_arguments: list[str] | None = None,
@@ -279,11 +280,11 @@ def run_publish(
         str(SCRIPT),
         "-Version",
         VERSION,
-        "-Registry",
-        "registry.test",
         "-OutputDirectory",
         str(output),
     ]
+    if registry is not None:
+        invocation.extend(["-Registry", registry])
     if push:
         invocation.append("-Push")
     if extra_arguments:
@@ -329,6 +330,55 @@ def assert_authenticated_calls_use_scoped_authfile(test: unittest.TestCase, root
 
 
 class PublishContainersTests(unittest.TestCase):
+    def test_registry_environment_override_drives_push_and_render_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            registry = "registry.env.test:5443"
+            env["HEXALITH_ZOT_REGISTRY"] = registry
+            env["EXPECTED_ZOT_REGISTRY"] = registry
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True, registry=None)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            expected_images = [
+                f"{registry}/memories:{VERSION}",
+                f"{registry}/memories-mcp:{VERSION}",
+            ]
+            self.assertEqual(expected_images, copy_references(root))
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual(registry, summary["source"])
+            self.assertEqual(expected_images, [image["image"] for image in summary["images"]])
+            deployment = (output / "production-deployment.yaml").read_text(encoding="utf-8-sig")
+            for image in expected_images:
+                self.assertIn(image, deployment)
+            assert_authenticated_calls_use_scoped_authfile(self, root)
+
+    def test_invalid_registry_override_fails_before_build_or_push(self) -> None:
+        invalid_registries = [
+            "https://registry.test",
+            "registry.test/path",
+            "registry.test/",
+            "registry test",
+            "registry.test:70000",
+            "user@registry.test",
+        ]
+        for registry in invalid_registries:
+            with self.subTest(registry=registry), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                _, env = prepare_environment(root)
+                output = root / "artifacts"
+
+                result = run_publish(output, env, push=False, registry=registry)
+
+                self.assertNotEqual(0, result.returncode)
+                combined = result.stdout + result.stderr
+                self.assertIn("HEXALITH_ZOT_REGISTRY", combined)
+                self.assertIn("registry host with an optional port", combined)
+                self.assertEqual([], command_log(root))
+
     def test_build_creates_both_archives_with_exact_publish_arguments(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -501,6 +551,52 @@ class PublishContainersTests(unittest.TestCase):
             self.assertTrue(all(image["disposition"] == "authentication-failed" for image in summary["images"]))
             self.assertIn("HEXALITH_ZOT_USERNAME", result.stdout + result.stderr)
             self.assertEqual([], skopeo_calls(root))
+
+    def test_legacy_credentials_do_not_satisfy_push_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            _, env = prepare_environment(root)
+            env.pop("HEXALITH_ZOT_USERNAME")
+            env.pop("HEXALITH_ZOT_API_KEY")
+            env["CONTAINER_REGISTRY_USERNAME"] = "LEGACY_USERNAME_SHOULD_NOT_BE_USED"
+            env["CONTAINER_REGISTRY_PASSWORD"] = "LEGACY_PASSWORD_SHOULD_NOT_BE_USED"
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("publish-failed", summary["status"])
+            self.assertTrue(all(image["disposition"] == "authentication-failed" for image in summary["images"]))
+            self.assertEqual([], skopeo_calls(root))
+            serialized = result.stdout + result.stderr + json.dumps(summary)
+            self.assertNotIn(env["CONTAINER_REGISTRY_USERNAME"], serialized)
+            self.assertNotIn(env["CONTAINER_REGISTRY_PASSWORD"], serialized)
+
+    def test_redaction_handles_overlapping_zot_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            username = "OVERLAPPING_ZOT_SECRET"
+            api_key = f"{username}_API_KEY_REMAINDER_SHOULD_NOT_LEAK"
+            denial = {
+                "exitCode": 1,
+                "stderr": f"unauthorized credentials {username} {api_key}",
+            }
+            _, env = prepare_environment(root, {"server": [denial], "mcp": [denial]})
+            env["HEXALITH_ZOT_USERNAME"] = username
+            env["HEXALITH_ZOT_API_KEY"] = api_key
+            output = root / "artifacts"
+            prepare_archives(output)
+
+            result = run_publish(output, env, push=True)
+
+            self.assertNotEqual(0, result.returncode)
+            summary = json.loads((output / "publish-summary.json").read_text(encoding="utf-8-sig"))
+            serialized = result.stdout + result.stderr + json.dumps(summary)
+            self.assertNotIn(username, serialized)
+            self.assertNotIn(api_key, serialized)
+            self.assertNotIn("API_KEY_REMAINDER_SHOULD_NOT_LEAK", serialized)
 
     def test_push_without_skopeo_fails_before_any_push_work(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -24,6 +24,18 @@ if (-not $PSBoundParameters.ContainsKey('Registry') -and
     $Registry = $env:HEXALITH_ZOT_REGISTRY
 }
 
+$registryUri = $null
+if ($Registry -cne $Registry.Trim() -or
+    $Registry -match '\s' -or
+    -not [Uri]::TryCreate("https://$Registry/", [UriKind]::Absolute, [ref]$registryUri) -or
+    $registryUri.HostNameType -eq [UriHostNameType]::Unknown -or
+    -not [string]::IsNullOrEmpty($registryUri.UserInfo) -or
+    $registryUri.AbsolutePath -ne '/' -or
+    -not [string]::IsNullOrEmpty($registryUri.Query) -or
+    -not [string]::IsNullOrEmpty($registryUri.Fragment)) {
+    throw "Registry '$Registry' is invalid. HEXALITH_ZOT_REGISTRY must be a registry host with an optional port and no scheme, path, credentials, query, fragment, or whitespace."
+}
+
 # Build metadata (+meta) is a valid semver suffix but an invalid OCI/Docker image tag character,
 # so it is rejected here rather than flowing into -p:ContainerImageTag / docker tag / kind load.
 if ($Version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
@@ -63,17 +75,22 @@ function Protect-LogText {
     param([AllowEmptyString()][string]$Text)
 
     $sanitized = $Text
-    foreach ($secretName in @(
-        'GITHUB_TOKEN',
-        'GH_TOKEN',
-        'CR_PAT',
-        'NUGET_API_KEY',
-        'HEXALITH_ZOT_USERNAME',
-        'HEXALITH_ZOT_API_KEY')) {
-        $secret = [Environment]::GetEnvironmentVariable($secretName)
-        if (-not [string]::IsNullOrWhiteSpace($secret)) {
-            $sanitized = $sanitized.Replace($secret, '***', [StringComparison]::Ordinal)
+    $secretValues = @(
+        foreach ($secretName in @(
+            'GITHUB_TOKEN',
+            'GH_TOKEN',
+            'CR_PAT',
+            'NUGET_API_KEY',
+            'HEXALITH_ZOT_USERNAME',
+            'HEXALITH_ZOT_API_KEY')) {
+            $secret = [Environment]::GetEnvironmentVariable($secretName)
+            if (-not [string]::IsNullOrWhiteSpace($secret)) {
+                $secret
+            }
         }
+    )
+    foreach ($secret in @($secretValues | Select-Object -Unique | Sort-Object -Property Length -Descending)) {
+        $sanitized = $sanitized.Replace($secret, '***', [StringComparison]::Ordinal)
     }
 
     return $sanitized.Trim()
