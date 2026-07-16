@@ -5,7 +5,7 @@ date: '2026-06-23'
 sections_completed: ['discovery', 'technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules']
 existing_patterns_found: 18
 status: 'complete'
-rule_count: 91
+rule_count: 92
 optimized_for_llm: true
 ---
 
@@ -105,6 +105,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Do not label refactors as features** - internal reshaping without public capability should be `refactor`, not `feat`.
 - **`tools/release-packages.json` controls publish scope** - package additions/removals must update this file and related release tests/scripts.
 - **Verify before handoff/commit** - run focused tests for small changes; run `dotnet build` and broader tests for shared contracts, workflows, storage, MCP, Web, release, or tenant-isolation changes.
+- **Keep one-shot traces out of story accounting** - a bounded one-shot artifact self-identifies with `route: one-shot` and `status: done` and receives no `development_status` row. Use a normal spec for multi-stage non-epic work; register epic-owned work in both `epics.md` and `development_status` before implementation. Generated automation artifacts are supporting evidence only. This convention applies prospectively from 2026-07-16; older one-shot traces retain historical metadata but do not establish precedent.
 - **Respect root-declared `references/` submodule policy** - initialize/update only root-declared submodules under `references/` by default; never use recursive submodule updates unless the user explicitly asks for nested submodules.
 - **Do not modify submodule contents casually** - shared dependencies such as `references/Hexalith.Commons`, `references/Hexalith.EventStore`, `references/Hexalith.AI.Tools`, `references/Hexalith.Tenants`, and `references/Hexalith.FrontComposer` require explicit intent and separate submodule commits.
 - **Keep dependency bumps deliberate** - update `Directory.Packages.props` with comments when versions are pinned for advisories, prerelease dependencies, or cross-package compatibility.
@@ -147,4 +148,4 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Review periodically for outdated rules.
 - Remove rules that become obvious over time.
 
-Last Updated: 2026-06-23
+Last Updated: 2026-07-16

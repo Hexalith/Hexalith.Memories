@@ -23,6 +23,13 @@
 #   - review: Ready for code review (via Dev code-review workflow)
 #   - done: Story completed
 #
+# Non-Story Artifact Tracking:
+#   - development_status is reserved for registered epics, stories, and retrospectives
+#   - a one-shot completion trace self-identifies with route: one-shot and status: done; it receives no development_status row and does not affect epic completion
+#   - multi-stage non-epic work self-tracks through normal spec frontmatter; epic-owned work must be registered in epics.md and development_status
+#   - generated story-automator, orchestration, review, and test-output files are evidence owned by a canonical story/spec/one-shot artifact, not independent status rows
+#   - this convention applies prospectively from 2026-07-16; older one-shot traces retain historical metadata but do not establish precedent or override a registered story lifecycle
+#
 # Retrospective Status:
 #   - optional: Can be completed but not required
 #   - done: Retrospective has been completed
@@ -484,7 +491,7 @@ action_items:
   - epic: 19
     action: "Define the tracking convention for one-shot artifacts like 19-5-ci-submodule-metadata-cleanup.md"
     owner: "Amelia"
-    status: open
+    status: done  # 2026-07-16: epics.md, sprint-status workflow notes, and project context now define one-shot traces as self-tracked completion evidence outside development_status; multi-stage or epic-owned work must use the normal spec/story lifecycle, and generated automation artifacts inherit their canonical owner's status.
   - epic: 20
     action: "Keep 20.5-A41-ACCESS-TELEMETRY-RETENTION visible until a retention/TTL mechanism or explicit accepted-debt disposition is implemented"
     owner: "Amelia, Murat"
@@ -504,7 +511,7 @@ action_items:
   - epic: 20
     action: "Define a tracking convention for one-shot or story-automator artifacts that sit outside registered story rows"
     owner: "Amelia"
-    status: open
+    status: done  # 2026-07-16: epics.md, sprint-status workflow notes, and project context now define one-shot traces as self-tracked completion evidence outside development_status; multi-stage or epic-owned work must use the normal spec/story lifecycle, and generated automation artifacts inherit their canonical owner's status.
   - epic: 21
     action: "Reconcile the consistency inspect opaque-ID contract across docs and API messaging"
     owner: "Paige, Amelia"

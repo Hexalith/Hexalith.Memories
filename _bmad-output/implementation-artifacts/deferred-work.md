@@ -2195,3 +2195,15 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 - source_spec: `_bmad-output/implementation-artifacts/spec-epic-26-benchmark-quality-gate.md`
   summary: Make independent-process benchmark reproducibility a permanent fail-closed CI comparison.
   evidence: Story 26.8 retained and compared two independent benchmark processes, but the nightly lane launches one process and its in-process reproducibility check cannot detect process-initialized drift. A future lane should normalize and compare two independently generated result payloads without weakening the existing gate.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-one-shot-artifact-tracking.md`
+  summary: Reconcile the access-telemetry retention deferred-entry schema, accepted-debt validation, and proposal wording before using that evidence to close A41.
+  evidence: Blind review found non-canonical `Target artifacts:` and `Re-open/claim trigger:` labels, a validator that accepts incomplete debt metadata, and contradictory proposed/applied and open-action wording in the concurrent A41 artifacts; these issues predate and are outside the one-shot tracking correction.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-one-shot-artifact-tracking.md`
+  summary: Reconcile the architecture's structured access-log storage claim with the documented JSON-console telemetry implementation.
+  evidence: Blind review found that `architecture.md` describes a structured log file while `docs/dev/telemetry.md` documents console emission plus an operator-selected external pipeline; this unrelated documentation conflict predates the one-shot tracking correction.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-one-shot-artifact-tracking.md`
+  summary: Resolve opaque-ID error-code and mixed GUID-form fallback contradictions before implementing the consistency-inspect proposal.
+  evidence: Blind review found that the concurrent proposal both preserves and changes the unknown-ID error contract and omits the mixed GUID-N/GUID-D backend case that can suppress fallback; this is outside the one-shot tracking correction.

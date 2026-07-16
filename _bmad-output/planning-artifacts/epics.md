@@ -445,6 +445,35 @@ When completed history or external traceability prevents renumbering, execution 
 | Story 8.3 | reserved-non-mvp | Phase 2 data export (FR71). The Epic 8 MVP sequence intentionally continues with 8.4 and 8.5. Story-status / file-scope tooling must treat `8.3` as `reserved-non-mvp`, not a missing MVP story. |
 | Stories 12.7 / 12.8 | optional / conditional | S11-FB / S11-FC follow-ups; created only if their re-open trigger actually fires (do not scaffold speculatively). |
 
+### Non-Story Implementation Artifact Policy
+
+`development_status` is the registry for epics, stories defined in this
+document, and retrospectives. A file does not become a story merely because its
+name begins with an `Epic-Story`-shaped numeric prefix.
+
+A one-shot artifact is permitted only for a bounded, zero-blast-radius
+correction completed and reviewed in one workflow execution. Its canonical
+trace must declare `route: 'one-shot'` and `status: 'done'` in valid frontmatter.
+It remains outside `development_status`, does not lift, hold, reopen, or close an
+epic, and is listed separately from registered stories when a retrospective
+uses it as supporting evidence.
+
+This convention applies prospectively from 2026-07-16 and expressly ratifies
+the historical 19.5 trace that triggered it. Older `route: 'one-shot'` traces
+may retain their historical metadata, but they do not establish precedent and
+do not override the lifecycle of any registered story they support.
+
+If the work needs a draft, in-progress, review, dependency, or multi-session
+lifecycle, route it through a normal plan/code/review spec whose frontmatter
+self-tracks that lifecycle. If the work belongs to an epic, changes epic scope
+or acceptance criteria, or affects epic completion, register it as a story in
+this document and `development_status` before implementation continues.
+
+Generated story-automator, orchestration, review, and test-output files are
+supporting evidence. They inherit the lifecycle of the canonical registered
+story, normal spec, or one-shot trace that references them and do not receive
+individual sprint-status rows.
+
 ## Epic List
 
 ### Phase: MVP — Foundation Gate
