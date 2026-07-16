@@ -13,7 +13,7 @@
   <ItemGroup>
     <!-- Local OpenTelemetry packages not supplied by Hexalith.Builds stay aligned with the
          imported 1.16.x OpenTelemetry stack. -->
-    <PackageVersion Include="OpenTelemetry" Version="1.16.0" />
+    <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
     <!-- Story 8.5: StackExchange.Redis OTEL instrumentation. Prerelease `-beta.N` tag accepted
          explicitly per ADR-8.5-001 (b); upgrade-on-GA trigger tracked in deferred-work.md. -->
     <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.16.0-beta.1" />
