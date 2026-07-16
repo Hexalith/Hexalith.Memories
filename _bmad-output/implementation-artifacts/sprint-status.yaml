@@ -407,7 +407,7 @@ action_items:
   - epic: 0
     action: "Preserve TenantProvisioningWorkflow as the sole owner of tenant infrastructure creation during Epic 1 and Epic 5 rework"
     owner: "Winston, Amelia"
-    status: open
+    status: done  # 2026-07-16: Historical Story 1.5/5.1 rework notices and Story 23.7 planning AC now pin workflow-only creation; focused ownership/readiness/provisioning tests passed 40/40.
   - epic: 0
     action: "Strengthen story creation and review checks so historical broad slices are not reused as templates"
     owner: "Amelia, Murat"

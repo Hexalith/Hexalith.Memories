@@ -1,7 +1,8 @@
 ---
 project: memories
 date: 2026-07-16
-status: approved
+status: approved-implemented
+approved_by: Administrator
 review_mode: batch
 change_scope: minor
 change_trigger: Preserve TenantProvisioningWorkflow as the sole owner of tenant infrastructure creation during Epic 1 and Epic 5 rework
@@ -11,7 +12,7 @@ change_trigger: Preserve TenantProvisioningWorkflow as the sole owner of tenant 
 
 ## 1. Issue Summary
 
-Epic 0 retrospective action item 2 requires future Epic 1 and Epic 5 rework to preserve `TenantProvisioningWorkflow` as the sole owner of RediSearch, Redis Vector, and FalkorDB tenant infrastructure creation. The action remains `open` in `sprint-status.yaml`.
+Epic 0 retrospective action item 2 requires future Epic 1 and Epic 5 rework to preserve `TenantProvisioningWorkflow` as the sole owner of RediSearch, Redis Vector, and FalkorDB tenant infrastructure creation. At proposal time, the action remained `open` in `sprint-status.yaml`; the approved correction has now been applied and the action is `done`.
 
 The product and architecture direction is already correct:
 
@@ -206,7 +207,7 @@ Do not reopen Story 5.1 to duplicate the Epic 0 minimum slice. Verify or extend 
   - epic: 0
     action: "Preserve TenantProvisioningWorkflow as the sole owner of tenant infrastructure creation during Epic 1 and Epic 5 rework"
     owner: "Winston, Amelia"
-    status: done  # 2026-07-16: Historical Story 1.5/5.1 rework notices and Story 23.7 planning AC now pin workflow-only creation; existing ownership guard retained.
+    status: done  # 2026-07-16: Historical Story 1.5/5.1 rework notices and Story 23.7 planning AC now pin workflow-only creation; focused ownership/readiness/provisioning tests passed 40/40.
 ```
 
 **Rationale:** Closes the retrospective commitment only after the approved safeguards are present. No epic or story delivery status changes.
@@ -297,9 +298,9 @@ Architect reviewer:
 
 - [x] 6.1 Applicable checklist items completed; approval-dependent items remain identified.
 - [x] 6.2 Proposal checked for consistency with current planning and implementation evidence.
-- [!] 6.3 Explicit user approval pending.
-- [!] 6.4 Sprint status action-item closure pending approval and application; no epic/story row changes required.
-- [!] 6.5 Final handoff confirmation pending approval.
+- [x] 6.3 Explicit user approval received from Administrator on 2026-07-16.
+- [x] 6.4 Approved story/planning safeguards applied and the Epic 0 sprint action closed; no epic/story row changed.
+- [x] 6.5 Minor-scope Developer implementation and Architect ownership-boundary verification completed through focused repository evidence and tests.
 
 ## Workflow Execution Log
 
@@ -312,3 +313,5 @@ Architect reviewer:
 | 2026-07-16 | Direct Adjustment selected | Proposed |
 | 2026-07-16 | Sprint Change Proposal written | Awaiting approval |
 | 2026-07-16 | User approval received | Approved |
+| 2026-07-16 | Story 1.5/5.1 notices, Story 23.7 AC, and sprint action updated | Complete |
+| 2026-07-16 | Ownership, readiness, provisioning, verification, and compensation tests | Passed 40/40 |
