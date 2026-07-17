@@ -21,6 +21,7 @@
     <!-- Direct pin clears the MessagePack 2.5.192 transitive vulnerability advisory (NU1903)
          pulled in via CommunityToolkit.Aspire.Hosting.Dapr; mirrors the AppHost pin. -->
     <PackageReference Include="MessagePack" />
+    <PackageReference Include="OpenTelemetry" />
   </ItemGroup>
 
   <ItemGroup>
