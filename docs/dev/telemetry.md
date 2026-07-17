@@ -24,8 +24,8 @@ per-tenant custom metrics (NFR29), and per-tenant audit events for every search 
 
 These Production examples are optional export routes only. They do not name or
 configure an access-record retention backend. Current shipped access telemetry
-still reaches JSON console and, when configured, OTLP. The proposed, review-
-blocked lifecycle target is defined by
+still reaches JSON console and, when configured, OTLP. The accepted but not yet
+implemented lifecycle target is defined by
 [ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md).
 
 CLI-side telemetry is **opt-in** — set `HEXALITH_MEMORIES_OTEL_ENDPOINT` or pass `--telemetry` to any
@@ -166,14 +166,17 @@ Routing `AccessTelemetryCategory` to a file, collector, or external sink does
 not configure retention by itself. Memories currently emits events but does not
 yet own or enforce a deployed TTL/purge policy.
 
-[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md) proposes the target:
+[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md) accepts the target:
 a dedicated Redis 7.4 access-telemetry workload, separate from domain Redis and
-Hexalith.EventStore, with two persisted data members plus Sentinel, a proposed
+Hexalith.EventStore, with two persisted data members plus Sentinel, a ratified
 24-hour Production default (allowed range 1 hour-7 days), millisecond Redis-time
-expiry, bounded active purge and persisted-file compaction, non-blocking
-buffering, separate write/lifecycle/inspection credentials, and versioned
-privacy-safe markers. The ADR is `Proposed`, not ratified; Stories 27.2 and 27.3
-remain blocked until the all-nine-operation capacity calculation is approved.
+expiry, continuously signed independent-UTC clock attestations, fenced
+active/passive lifecycle control, synchronous cohort-specific purge, bounded
+controller-triggered persisted-file compaction, non-blocking buffering,
+separate write/lifecycle/compaction/inspection credentials, and versioned
+privacy-safe markers. The ADR is `Accepted`; Stories 27.2 and 27.3 are unblocked
+to implement and verify it. Acceptance is a design gate, not shipped lifecycle
+behavior.
 
 `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action
 remains open. ADR proposal or acceptance and story scheduling are not lifecycle evidence.
@@ -285,16 +288,21 @@ Back-of-envelope (MVP assumptions):
 | Production Server replicas | 2                                           |
 
 This search-only estimate yields 30 KB/s and about 2.5 GB/day per replica, or
-about 5 GB/day across the committed two-replica Production shape before keys,
-indexes, AOF/RDB, fragmentation, replication, purge, outage buffering, and
-rewrite workspace. It is not an all-nine-operation capacity calculation and
-must not size memory, PVCs, retention, or cost. ADR 27.1-001 stays `Proposed`
-until reproducible cluster/per-replica rates, average and high-percentile
-sanitized sizes, lifecycle overhead, purge workload, outage budget, headroom,
-and cost are ratified.
+about 5 GB/day across the committed two-replica Production shape. It remains
+historical context and is not used to size the lifecycle target.
+
+ADR 27.1-001 now owns the accepted all-nine-operation admission envelope: a
+250 events/s cluster ceiling over explicit per-family inputs, deterministic
+average/P95 sanitized fixture sizes, a capped 1,024-byte payload, Redis
+key/index/expiry and 1.50 fragmentation budgets, AOF/RDB rewrite workspace,
+queue and outage recovery, and purge catch-up. At the 7-day maximum, the
+projection consumes 324.44 GiB of 512 GiB configured Redis memory (63.37%) and
+576.78 GiB of a 1.5 TiB PVC per data member (37.55%). Kustomize must recalculate
+and reserve more capacity before increasing any family ceiling; it cannot use
+the old search-only estimate or silently undersize the accepted footprint.
 
 Current JSON-console logging does not provide a persistent queue, capacity
-policy, or purge. After the capacity gate closes, Story 27.2's target provider
+policy, or purge. Under the accepted capacity gate, Story 27.2's target provider
 must use bounded non-blocking enqueue so sink failure cannot escape into or
 indefinitely block a business request.
 

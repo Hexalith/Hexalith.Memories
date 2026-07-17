@@ -4,20 +4,20 @@
 
 | Field | Proposed value |
 | :---- | :-------------- |
-| Status | Proposed — review-blocked pending the capacity evidence below |
-| Decision date | 2026-07-16 |
+| Status | Accepted |
+| Decision date | 2026-07-17 |
 | Approver | Administrator |
 | Architecture owner | Hexalith.Memories maintainers |
 | Operational lifecycle owner | Hexalith Platform Operations |
 | Affected deployment | Production Kubernetes deployment owned by Kustomize |
 | Selected family | Repository-owned dedicated write-only telemetry store |
 | Selected technology | A separate Redis 7.4 access-telemetry workload using `redis/redis-stack-server:7.4.0-v8@sha256:798ab84d9f266936b034ab11c4d04a2b8e4b441884c5aa7d17ac951eefdf742a` |
-| Implementation gate | Stories 27.2 and 27.3 remain blocked until the all-nine-operation capacity recalculation is ratified; after that, both stories must implement and verify this contract before A41 can close |
+| Implementation gate | Stories 27.2 and 27.3 are unblocked to implement and verify this accepted contract; neither implementation start nor ADR acceptance closes A41 |
 
-This proposal defines a lifecycle target but is not ratified or implemented.
+This accepted decision defines a lifecycle target but does not implement it.
 Current JSON-console emission and optional OTLP export remain the only shipped
-paths. Story 27.2 cannot start until the capacity gate is satisfied and this ADR
-returns to `Accepted`.
+paths. Story 27.2 implements the target; Story 27.3 verifies it in the
+Production shape and owns the evidence-backed A41 close-out gate.
 
 ## Verified Current State
 
@@ -51,15 +51,15 @@ returns to `Accepted`.
 | Failure and backpressure | Requires Collector queue size, retry age, WAL, overflow, and backend policy. Official guidance identifies full queues and Collector crashes as loss cases without persistent storage. | A bounded in-process queue, bounded retry age, Redis `noeviction`, and non-throwing logger-provider behavior can be owned and tested in Story 27.2. | File I/O, disk pressure, rotation races, and read-only-root failures would need a custom non-blocking provider and storage monitor. |
 | Observability | Collector and Loki metrics exist, but the exact accepted-to-purged lifecycle and `NoData` contract are not repository-owned. | The application and lifecycle verifier can expose the required bounded signal set and Redis/PVC health without high-cardinality labels. | Custom queue, disk, rotation, per-replica, and purge instrumentation is required. |
 | Privacy and tenant boundary | Collector processors could sanitize fields, but sending raw values before processing expands the privacy boundary. | Sanitization happens before enqueue; separate writer, lifecycle, and inspector ACLs keep the Server write-only. | Plain files increase inspection and accidental disclosure surface; per-node access controls and deletion evidence are unresolved. |
-| Capacity and operating cost | Adds Collector, Loki, and object storage; capacity and cost are not presently sized or approved. | Adds two Redis data Pods with PVCs and three small Sentinel Pods. The proposed 24-hour default and 7-day maximum remain unratified until the required all-nine-operation capacity evidence is available. | Adds durable shared or per-replica volumes plus rotation/purge agents; cost is lower only if the unresolved correctness work is ignored. |
+| Capacity and operating cost | Adds Collector, Loki, and object storage; capacity and cost are not presently sized or approved. | Adds two 512-GiB Redis data members with 1.5-TiB PVCs and three small Sentinel Pods. The ratified all-nine-operation envelope is 250 events/s cluster-wide; the 7-day projection uses 63.37% of configured Redis memory and 37.55% of each PVC including rewrite workspace. | Adds durable shared or per-replica volumes plus rotation/purge agents; cost is lower only if the unresolved correctness work is ignored. |
 | Rollback | Removing a collector route can preserve console output, but queued/backend data ownership remains unspecified. | Disable the provider and roll back the Server while Redis continues expiring retained keys; never delete the store automatically. | Rolling back writers/rotators can strand files and stop purge unless another owner remains deployed. |
-| Hard-gate result | Rejected: named products, but no repository-owned deployable retention contract. | Provisionally selected: lifecycle semantics are concrete, but the capacity hard gate remains open and blocks ratification. | Rejected: fails the current two-replica, read-only-root, rescheduling, rotation, and executable-purge gates. |
+| Hard-gate result | Rejected: named products, but no repository-owned deployable retention contract. | Selected: lifecycle semantics, all-nine-operation capacity, resource cost, ownership, and bounded recovery gates are ratified below. | Rejected: fails the current two-replica, read-only-root, rescheduling, rotation, and executable-purge gates. |
 
 ## Selected Design and Rejected Alternatives
 
-The provisionally selected design is a dedicated Redis 7.4 access-telemetry
-workload, separate from the domain Redis and from Hexalith.EventStore. After
-the capacity gate is ratified, Story 27.2 will deploy one
+The selected design is a dedicated Redis 7.4 access-telemetry workload,
+separate from the domain Redis and from Hexalith.EventStore. Story 27.2 will
+deploy one
 primary data Pod, one replica data Pod, and a three-Pod Sentinel quorum. Each
 data Pod owns a persistent volume; the Server receives only a dedicated writer
 credential. The implementation uses typed `AccessTelemetryEvent` state and one
@@ -71,11 +71,12 @@ The workload does not use Search, Vector, Dapr state, pub/sub, or domain data;
 the existing image is selected to avoid introducing an unreviewed image supply
 chain in Story 27.2. A later image simplification requires its own validation.
 
-The deployment shape proposed by this decision is two Redis data Pods, two
+The deployment shape accepted by this decision is two Redis data Pods, two
 production PVCs, and three small Sentinel Pods. That footprint buys independent
 credentials, persistence, failover, atomic per-record TTL, and executable
-lifecycle evidence. Its memory and PVC sizes are not accepted until the capacity
-gate closes, and it must not be reduced by sharing the domain Redis.
+lifecycle evidence. Each data member has 512 GiB configured Redis memory inside
+a 640-GiB Pod memory limit and one 1.5-TiB PVC. It must not be reduced by
+sharing the domain Redis.
 
 The Collector-plus-Loki option is rejected because the repository owns neither
 deployment nor backend retention, and adding an endpoint would repeat the
@@ -112,6 +113,29 @@ rollout gate fails when three eligible failure domains are unavailable, because
 placing two Sentinels on one node would let one node failure remove the majority
 required to authorize failover.
 
+A data-member `PodDisruptionBudget` sets `minAvailable: 1`, and rollout
+automation permits only one voluntary data-member disruption at a time. Before
+allowing a second voluntary disruption, the surviving or rebuilt replica must
+report `master_link_status:up`, `master_sync_in_progress:0`, replication lag no
+greater than 2 seconds, a successful AOF fsync, the accepted function-library
+fingerprint, clock health, and an available Sentinel quorum. Failure of any gate
+leaves the second disruption blocked; an operator cannot waive it as routine
+maintenance evidence.
+
+The lifecycle controller is a two-replica Deployment spread by hostname and
+zone, with a `PodDisruptionBudget` of `minAvailable: 1`. It is active/passive:
+Kubernetes Lease `access-telemetry-lifecycle-leader` elects one mutating leader,
+and a Redis control function converts each acquired Lease UID/resourceVersion
+into a monotonically increasing fencing epoch. Every purge, marker-rotation,
+and compaction mutation carries that epoch; Redis rejects a stale epoch. The
+standby performs read-only health observation. Controller state is reconstructible
+from the expiry index plus versioned `access:control:v1:*` cohort, compaction,
+rotation, and clock-attestation checkpoints in Redis. After restart or leader
+loss, the new leader reacquires an epoch and resumes incomplete work
+idempotently. Graceful termination stops new cohorts, checkpoints the current
+cohort, and relinquishes the Lease; duplicate controllers cannot mutate under
+the same or a stale epoch.
+
 This workload is not a Dapr state store, pub/sub broker, vector index, domain
 read model, or Hexalith.EventStore resource. It has an independent connection
 string, Redis ACL file, Kubernetes Secrets, PVC capacity, alerts, and lifecycle
@@ -132,15 +156,17 @@ Authorities are deliberately separate:
 
 | Authority | Owner | Allowed scope |
 | :-------- | :---- | :------------ |
-| `access-telemetry-writer` | Memories Server | Connect, health ping, invoke only the versioned atomic write function for `access:v1:*` and the exact `access:expiry:v1` index key, and use `WAITAOF`; it cannot `GET`, `SCAN`, inspect, change configuration, or delete records. |
-| `access-telemetry-lifecycle` | Hexalith Platform Operations lifecycle controller | Read the expiry index and invoke only the versioned purge/reconciliation function for due `access:v1:*` records; it cannot change arbitrary Redis configuration or access domain Redis. |
+| `access-telemetry-writer` | Memories Server | Connect, health ping, call Redis `TIME`, invoke only the versioned write/marker-ack functions for `access:v1:*`, the exact `access:expiry:v1` index, and its own bounded writer-ack keys, and use `WAITAOF`; it cannot `GET`, `SCAN`, inspect, change configuration, or delete records. |
+| `access-telemetry-lifecycle` | Hexalith Platform Operations lifecycle controller | Read the expiry index and versioned control checkpoints and invoke only the fenced purge/reconciliation, leader, clock, and marker-rotation functions for due `access:v1:*` records; it cannot change arbitrary Redis configuration or access domain Redis. |
+| `access-telemetry-compactor` | Elected lifecycle-controller leader | Use `INFO persistence`, `BGREWRITEAOF`, and `BGSAVE` through a separately mounted credential, plus fenced compaction checkpoints; it cannot read record payloads, write event keys, or change Redis configuration. |
 | `access-telemetry-inspector` | Authorized Hexalith Platform Operations responders | Read sanitized records and lifecycle metadata under `access:v1:*`; it cannot write, extend TTL, delete, or change configuration. |
 | Redis administration | Hexalith Platform Operations | Manage Sentinel, ACLs, persistence, capacity, backup-free recovery, and emergency isolation; this credential is never mounted into the Server. |
 
-The provisional operating footprint is two Redis data Pods and three 128-MiB
-Sentinel Pods. The previously proposed 16-GiB memory and 32-GiB PVC values are
-planning placeholders, not ratified deployment inputs. Memory and PVC sizes for
-every allowed retention value require the capacity evidence below.
+The accepted operating footprint is two Redis data Pods, each requesting 8
+vCPU with a 640-GiB memory limit and 512 GiB configured Redis memory, two
+1.5-TiB PVCs, three 128-MiB Sentinel Pods, and two 256-MiB lifecycle-controller Pods.
+The earlier 16-GiB memory and 32-GiB PVC values remain rejected planning
+placeholders. The capacity evidence below is the deployment input.
 
 ## Multi-Replica Write and Durability Boundary
 
@@ -152,25 +178,34 @@ shared-file or rotation race.
 
 The versioned Redis Functions library is loaded by the administrator before the
 workload becomes eligible and is persisted in AOF/RDB and replicated to the
-replica. The writer ACL allows only `FCALL` of the named atomic write function
-over its write-only key patterns. The function validates the emission timestamp
-against Redis `TIME`, then atomically writes the sanitized payload with absolute
-expiry and adds the key to `access:expiry:v1`.
+replica. The writer ACL allows only `TIME` and `FCALL` of named atomic write and
+marker-ack functions over its write-only key patterns. The write function
+validates the emission timestamp against Redis `TIME`, then atomically writes
+the sanitized payload with absolute expiry and adds the key to
+`access:expiry:v1`.
 
-When the record key is absent, the function creates it. When the key already
-exists, the function compares the exact payload bytes, absolute expiry, and
-expiry-index score. An exact match is an idempotent retry. Any difference
+The writer submits a canonical immutable envelope that excludes
+`acceptedAtUtc`; Redis creates that field from the same `TIME` sample only for
+the first accepted write. The function persists both the completed record and
+the SHA-256 digest of the submitted envelope. When the record key already
+exists, it compares the submitted envelope digest, absolute expiry, and
+expiry-index score, not newly generated acceptance time. An exact match is an
+idempotent retry and returns the original `acceptedAtUtc`. Any difference
 returns `record_id_conflict`, never overwrites or extends the existing record,
 drops the incoming item, and makes lifecycle health unhealthy because it
 indicates a record-identity or producer defect.
 
 Both data Pods enable AOF with `appendfsync everysec`; RDB snapshots are enabled
 for restart speed but are not the acknowledgement boundary. The primary uses
-`min-replicas-to-write 1` and `min-replicas-max-lag 2`. After each write batch,
-the provider issues `WAITAOF 1 1 1500` on the same connection and marks those
-records `persisted` only when both the primary and its one replica report the
-batch fsynced to AOF. A timeout is an unconfirmed attempt and remains eligible
-for bounded retry.
+`min-replicas-to-write 1` and `min-replicas-max-lag 2`. The worker retains each
+per-record function result: only `created` and `idempotent` results are
+acknowledgement candidates; rejected or conflicting records are terminal and
+never reported as persisted. After the batch, the provider issues
+`WAITAOF 1 1 1500` on the same connection. It marks the candidate records
+`persisted` only when both the primary and its one replica report that batch
+fsynced to AOF. A timeout marks none of the candidates persisted; they remain
+eligible for bounded retry, which returns idempotent results if the first
+attempt reached Redis.
 
 The durability boundary is the two retained PVCs. Within that boundary, the
 acknowledged loss window is **0 seconds for any single Server Pod, Redis data
@@ -182,27 +217,62 @@ explicitly outside this boundary. The system makes no zero-loss claim for such
 failures. Sentinel promotes the only eligible replica after a primary failure;
 the returning member is rebuilt from the surviving primary.
 
+The zero-loss claim requires Production-shaped evidence, not configuration
+inspection alone. Story 27.3 must persist a manifest of acknowledged record
+IDs, canonical-envelope hashes, and absolute expiries; then separately destroy
+and simulate corruption of each current primary PVC after `WAITAOF`, force
+promotion from the surviving PVC, and compare every manifest entry byte-for-byte
+and expiry-for-expiry. It must provision an explicitly approved replacement
+claim, complete full replica catch-up and the disruption gate, repeat with the
+opposite ordinal, and prove new acknowledged writes survive. Any missing,
+changed, or extended record invalidates the zero-loss boundary.
+
 Every Redis data member and Memories Server writer must remain within 1 second
 of an independent UTC reference and within 1 second of every other participating
 member. Platform Operations owns a node time-synchronization monitor backed by
-at least three approved upstream time sources. Story 27.2 adds an
-`access-telemetry-clock-preflight` Kubernetes Job that queries that monitor,
-each Redis member's `TIME`, and each candidate Server writer's UTC clock after
-the Pods are running. Kustomize declares the Job, but the measured Job result is
-the gate: rollout automation and Server readiness wait for its successful,
-signed result and fail closed when the reference is unavailable or any bound is
-exceeded.
+at least three approved upstream time sources. Each Server exposes only on its
+private management port an mTLS-protected
+`/internal/access-telemetry/clock` endpoint. It echoes a supplied nonce and
+returns the Pod UID, process-start identifier, and current Unix milliseconds;
+the default-deny NetworkPolicy permits only the lifecycle controller to call it.
 
-The provider repeats the Server-to-Redis comparison every minute. A runtime
-violation makes lifecycle health unhealthy, rejects persistence with bounded
-reason `producer_clock_skew` or `redis_clock_skew`, and leaves the business
-service and existing JSON-console/optional-OTLP emission running; it never
-silently stores a timestamp whose lifecycle cannot be proven. Promotion
-evidence records the independent reference plus old and new primary `TIME`
-values and their deltas. Retention and purge evidence collected during a
-violation is invalid and must be rerun after clock health is restored. A
-clock-bound violation is an incident because Redis expiry itself is wall-clock
-based and cannot be repaired after premature expiry.
+Story 27.2 adds an `access-telemetry-clock-preflight` Kubernetes Job and keeps
+the same logic running in the elected lifecycle controller once per minute. The
+controller obtains a signed independent-reference token over mTLS, samples both
+Redis members with `TIME`, and samples every ready Server writer through that
+private endpoint. It emits canonical JSON containing schema version, unique
+measurement ID, rollout UID, nonce, sampled/expiry times, the independent token
+and its three-source quorum, all Pod UIDs/process IDs/Redis ordinals and measured
+milliseconds, every computed delta, result, signer key ID, and signature. The
+controller signs with its Platform Operations workload identity; consumers
+verify both that signature and the nested independent-reference signature.
+
+The accepted payload is stored atomically in the
+`access-telemetry-clock-attestation` Kubernetes Lease annotation. Server service
+accounts receive only `get`/`watch` on that one Lease. An attestation expires no
+later than 90 seconds after sampling, is bound to the current rollout and exact
+Pod identities, and is rejected if its measurement ID or sampled time does not
+advance, its nonce or identity set differs, either signature is invalid, or the
+independent reference is unavailable. These freshness, identity, and monotonic
+rules prevent replay. The preflight Job must publish one accepted attestation
+before lifecycle writes are enabled; it does **not** gate business readiness.
+Static configuration errors and reachable remote mismatches still fail Server
+startup, but a correctly configured unavailable sink or clock monitor leaves
+business readiness available while lifecycle health fails closed.
+
+Each writer watches the Lease, calls Redis `TIME` before every write batch, and
+requires a fresh accepted attestation covering its Pod and both Redis members.
+The controller continuously refreshes the independent comparison every minute;
+a pairwise Server-to-Redis comparison alone is never sufficient. A missing,
+stale, or violating attestation makes lifecycle health unhealthy, rejects
+persistence with bounded reason `clock_attestation_unavailable`,
+`producer_clock_skew`, or `redis_clock_skew`, and leaves the business service
+and existing JSON-console/optional-OTLP emission running. Promotion triggers an
+immediate fresh attestation recording the independent reference plus old and
+new primary `TIME` values and deltas. Retention and purge evidence collected
+during a violation is invalid and must be rerun after clock health is restored.
+A clock-bound violation is an incident because Redis expiry itself is
+wall-clock based and cannot be repaired after premature expiry.
 
 ## Retention, Expiry, Purge, and Clock
 
@@ -226,32 +296,36 @@ short duration only through test composition, never Production configuration.
 Age begins at `AccessTelemetryEvent.Timestamp`, the event-emission instant,
 preserved to Unix-millisecond precision.
 Redis `TIME` is authoritative for acceptance and expiry enforcement. Emission
-timestamps more than 2 minutes in the future are rejected as
+timestamps more than 1 second in the future are rejected as
 `future_clock_skew`. Records whose emission time plus retention is already due
 are rejected as `stale_before_acceptance`. A late record within the window gets
 only its remaining lifetime; acceptance and retry never reset its age. An
-emission timestamp up to 2 minutes ahead is accepted with its declared expiry,
-making 2 minutes the maximum clock-skew extension.
+emission timestamp no more than 1 second ahead is accepted with its declared
+expiry, making 1 second the only clock-skew extension. This is the same bound as
+the continuous writer/member/reference clock gate; there is no separate
+two-minute exception.
 
 At `PXAT`, Redis treats the record as logically absent. Redis active expiry and
-the five-minute lifecycle sweep perform keyspace reclamation. The expiry index
-score is the absolute expiry timestamp in Unix milliseconds. Each purge-function
+the five-minute lifecycle sweep perform keyspace reclamation. The dedicated
+workload sets `lazyfree-lazy-expire no`, `lazyfree-lazy-server-del no`, and
+`lazyfree-lazy-user-del no`; cohort completion never depends on the
+workload-global `lazyfree_pending_objects` gauge. The expiry-index score is the
+absolute expiry timestamp in Unix milliseconds. Each fenced purge-function
 invocation obtains Redis `TIME` itself, selects at most 512 due entries, invokes
-`UNLINK` only for records with a score at or before that time, and removes only
-those due entries from the index. It never selects or rewrites a newer record.
-Because `UNLINK` removes a key from the keyspace before Redis reclaims its memory
-on a lazy-free thread, key/index absence alone is namespace purge, not completed
-physical memory reclamation.
+synchronous `DEL` only for records with a score at or before that time, and
+removes only those due entries from the index. It never selects or rewrites a
+newer record.
 
-The dedicated workload enables and samples `lazyfree_pending_objects`. The
-lifecycle controller records an expiry when a due key becomes logically absent,
-records namespace purge when the key and index member are gone, and records the
-required `purged` lifecycle state only after the cohort's namespace purge is
-complete and the dedicated workload's lazy-free backlog has returned to zero.
-Both namespace removal and lazy-free completion must occur no later than 15
-minutes after logical expiry while the health gate is healthy. Each cohort is
-timestamped when `UNLINK` is issued; a nonzero lazy-free backlog at that
-cohort's deadline is unhealthy and physical reclamation cannot be claimed.
+The function records a cohort ID, fencing epoch, candidate count, synchronous
+delete count, already-absent count, index-removal count, start/end Redis times,
+and terminal result in `access:control:v1:purge:<cohortId>`. Because both active
+expiry and explicit `DEL` use synchronous deallocation in this workload, a
+successful function return proves Redis object-memory reclamation for that
+exact candidate cohort; it does not claim allocator RSS was returned to the
+operating system. The controller records `expired` for logical absence and
+`purged` only after the cohort checkpoint proves every candidate is absent and
+its index member removed. That cohort-specific proof must complete no later
+than 15 minutes after logical expiry while the health gate is healthy.
 
 The controller measures every function round trip against a 100-millisecond
 execution budget and resumes due work after a bounded 25-to-100-millisecond
@@ -259,29 +333,117 @@ backoff. A budget overrun or an oldest due entry older than 15 minutes makes
 lifecycle health unhealthy; catch-up continues resumably without increasing the
 512-entry limit.
 
-The 15-minute purge bound covers Redis keyspace/index removal and lazy-free
-allocator completion.
+The 15-minute purge bound covers synchronous Redis key/index object removal.
 AOF rewrite and RDB snapshot replacement have a separate 24-hour compaction
 bound: at least one successful AOF rewrite and one replacement RDB snapshot
-that postdate each purged cohort must complete within 24 hours. The lifecycle
-controller monitors both completion timestamps. A missed compaction bound is
-unhealthy and means on-disk reclamation cannot be claimed even when active keys
-are gone. Story 27.3 must verify active purge and persisted-file compaction as
-separate evidence.
+that postdate each purged cohort must complete within 24 hours. The elected
+controller leader owns the separate `access-telemetry-compactor` credential.
+It coalesces completed cohorts behind the earliest uncompacted cohort, invokes
+`BGREWRITEAOF` and then `BGSAVE` when Redis reports no conflicting persistence
+job, and stores the requested/start/completion timestamps and Redis persistence
+identifiers in a fenced `access:control:v1:compaction` checkpoint. On failure or
+leader restart, it reconstructs the earliest uncompacted cohort and retries
+with bounded backoff; a stale leader cannot trigger or complete a checkpoint.
+A missed compaction bound is unhealthy and means on-disk reclamation cannot be
+claimed even when active keys are gone. Story 27.3 must verify active purge and
+controller-triggered persisted-file compaction as separate evidence.
 
-The existing 5 GB/day estimate is search-only planning input, not capacity
-evidence. It cannot ratify memory, PVC, retention, or operating cost. Before this
-ADR can return to `Accepted`, a reproducible all-nine-operation calculation must
-state cluster and per-replica event rates, average and high-percentile sanitized
-record sizes, retention window, key/index/AOF/RDB/fragmentation overhead, purge
-throughput, queue and outage budget, rewrite workspace, headroom, and cost. The
-calculation must size each allowed retention value and prove the 512-record
-purge policy can restore the 15-minute active-purge bound after the accepted
-outage scenario. Deployment validation then rejects a retention/capacity pair
-whose projected steady state exceeds 50% of PVC or 70% of configured Redis
-memory. Capacity warns at 70%, is critical at 80%, and sets lifecycle health
-unhealthy at 90%; `maxmemory-policy noeviction` forbids silent deletion of newer
-records.
+The existing 5 GB/day estimate is search-only planning input and is not used in
+the accepted calculation. The all-nine-operation inputs, per-family fixture
+measurements, overhead budgets, retention projections, outage recovery, and
+approved resource cost are ratified in the next section. Deployment validation
+rejects a retention/capacity pair whose projection exceeds 50% of PVC or 70% of
+configured Redis memory. Capacity warns at 70%, is critical at 80%, and sets
+lifecycle health unhealthy at 90%; `maxmemory-policy noeviction` forbids silent
+deletion of newer records.
+
+## Capacity Evidence and Admission Envelope
+
+Administrator ratifies this owner-approved admission envelope for the committed
+two-Server Production shape. It is a capacity contract, not an assertion that
+current traffic already reaches every ceiling. The search input preserves the
+existing high-end assumption of 10 requests/s for each of 10 active tenants on
+each replica. Hexalith Platform Operations approves explicit ceilings for the
+other eight families so every audited operation is represented. Kustomize must
+declare these nine inputs; raising any family or the cluster total requires the
+same calculation with an equal or larger resource reservation before rollout.
+
+### Operation Envelope
+
+| Operation | Per-replica events/s | Cluster events/s | Average sanitized bytes | P95 sanitized bytes |
+| :-------- | -------------------: | ---------------: | ----------------------: | ------------------: |
+| search | 100 | 200 | 867.8 | 893 |
+| ingest | 3 | 6 | 833.8 | 859 |
+| traverse | 5 | 10 | 810.8 | 836 |
+| case-access | 8 | 16 | 788.8 | 814 |
+| delete | 1 | 2 | 770.8 | 796 |
+| tenant-lifecycle | 0.1 | 0.2 | 732.8 | 758 |
+| tenant-config | 0.4 | 0.8 | 730.8 | 756 |
+| case-member | 2 | 4 | 771.8 | 797 |
+| annotation | 5.5 | 11 | 809.8 | 835 |
+
+The measurement fixture is executable through
+`AccessTelemetryRetentionDecisionTests`. For each family it serializes 100
+compact UTF-8 records under the allowlisted persisted schema: 90 success and 10
+bounded `internal_dependency_failure` records, fixed-length ULID/HMAC/W3C
+identifiers and envelope hashes, both optional markers where the family permits them, and the
+largest approved bounded parameter combination for that family. Average is the
+arithmetic mean and P95 is nearest-rank item 95. These are deterministic
+contract-fixture measurements rather than sampled Production percentiles. The
+provider rejects a serialized persisted payload over 1,024 bytes, so the
+capacity calculation remains bounded even when the fixture mix changes.
+
+Every retained event receives a 1,536-byte per-record Redis memory budget:
+1,024 bytes for the capped payload and 512 bytes for the key, dictionary/string
+objects, absolute-expiry metadata, and expiry-index member/score. A 1.50
+fragmentation multiplier covers allocator and data-structure variation. Each
+event also receives a 4,096-byte per-record PVC budget covering the live AOF and
+RDB representation, one simultaneous rewrite/snapshot workspace, incremental
+AOF tail, and safety margin. Story 27.2 must measure `MEMORY USAGE`, AOF, RDB,
+and fragmentation with the same fixture and may reduce neither budget; an
+observed excess requires capacity increase or a new decision, not optimistic
+recalculation.
+
+For any configured retention `H` from 1 through 168 hours, the formulas are:
+
+- events = `250 × 3,600 × H`;
+- Redis memory = `events × 1,536 × 1.50 / 2^30` GiB, or `1.9312 × H` GiB;
+- PVC including rewrite workspace = `events × 4,096 / 2^30` GiB, or
+  `3.4332 × H` GiB.
+
+### Retention Sizing
+
+| Retention | Retained events | Redis memory per data member | PVC workspace per data member | 512-GiB memory utilization | 1.5-TiB PVC utilization |
+| :-------- | --------------: | ---------------------------: | ----------------------------: | -------------------------: | -----------------------: |
+| 1 hour | 900,000 | 1.93 GiB | 3.43 GiB | 0.38% | 0.22% |
+| 24 hours | 21,600,000 | 46.35 GiB | 82.40 GiB | 9.05% | 5.36% |
+| 7 days | 151,200,000 | 324.44 GiB | 576.78 GiB | 63.37% | 37.55% |
+
+The maximum is below both admission gates: 63.37% is below 70% of 512 GiB,
+and 37.55% is below 50% of the 1.5 TiB PVC. The approved operating-cost envelope
+is therefore two 8-vCPU/640-GiB data Pods with 512 GiB configured Redis memory
+each, two 1.5-TiB encrypted retained PVCs, three 128-MiB Sentinel Pods, and two
+256-MiB lifecycle-controller Pods. This provider-neutral schedulable reservation is the
+cost ceiling accepted by the approver and Platform Operations; a deployment
+whose infrastructure quote cannot fund it must reduce retention within the
+allowed range or obtain a revised decision, never silently undersize it.
+
+The two Server queues are sized independently. At 125 events/s per replica,
+the 8,192-record limit is reached after 65.5 seconds and consumes only 12 MiB at
+the 1,536-byte budget, so it binds before the 64-MiB byte limit. The accepted
+writer failure scenario is therefore a 60-second writer-sink outage. On
+recovery, a conservative 256-record batch per 1.5-second `WAITAOF` timeout
+processes 170.7 events/s per replica; after new traffic, 45.7 events/s remains
+to drain 7,500 queued records in 164.2 seconds. The oldest record is persisted
+within 224.2 seconds of emission, below the five-minute retry-age cap.
+
+For purge, the accepted scenario is a 10-minute lifecycle-controller outage
+while all 250 events/s continue, creating 150,000 due entries. One 512-record
+invocation per 100-millisecond execution budget plus the maximum 100-millisecond
+backoff yields 2,560 records/second. After concurrent arrivals, net catch-up is
+2,310 records/second and drains the backlog in 65 seconds. Oldest-due age is
+therefore at most 11 minutes 5 seconds, below the 15-minute active-purge bound.
+Story 27.3 must reproduce both outage calculations in the deployed shape.
 
 ## Failure, Backpressure, Recovery, and Capacity
 
@@ -298,7 +460,10 @@ suppress success events before the lifecycle provider sees them. This rule is
 provider/category scoped, not tenant scoped: a single Server category cannot
 apply different logging thresholds to different tenants.
 
-The worker batches at most 256 records or 1 MiB. Retry uses exponential backoff
+The worker batches at most 256 records or 1 MiB. Because the persisted-schema
+gate caps each canonical record at 1,024 UTF-8 bytes, the record bodies total at
+most 256 KiB; the implementation must also measure RESP framing and reject a
+batch before its complete encoded command exceeds 1 MiB. Retry uses exponential backoff
 with full jitter from 100 milliseconds to 5 seconds, capped by 5 minutes from
 event emission and by the record's absolute expiry. Shutdown receives 5 seconds
 to flush. Anything remaining is dropped as `shutdown_timeout`; no local disk
@@ -316,14 +481,16 @@ business operation.
 
 Production configuration validity is different from sink availability. Static
 validation of retention, queue limits, endpoint shape, required credential and
-certificate references, expected Redis minimum version, and the versioned
-function-library fingerprint completes before serving requests. A missing or
+certificate references, exact Redis 7.4.0/image digest, contract epoch, and the
+versioned function-library fingerprint completes before serving requests. A missing or
 malformed static value fails startup.
 
-Remote validation authenticates, verifies TLS identity, checks the Redis
-version, confirms the exact persisted/replicated function-library fingerprint,
-and proves the writer ACL. When Redis is reachable during startup, any remote
-mismatch fails startup. When Redis is unreachable, those facts are
+Remote validation authenticates, verifies TLS identity, requires Redis
+`redis_version:7.4.0`, confirms Kustomize admission attested the exact selected
+image digest, confirms the exact persisted/replicated function-library
+fingerprint, and proves the writer ACL includes only the accepted functions,
+key patterns, `TIME`, `PING`, and `WAITAOF`. When Redis is reachable during
+startup, any remote mismatch fails startup. When Redis is unreachable, those facts are
 indeterminate rather than presumed valid: the business service starts,
 JSON-console and optional OTLP emission continue, lifecycle health is
 `Unhealthy` with reason `remote_validation_pending`, and the bounded queue and
@@ -335,9 +502,16 @@ ACL then transitions the provider to terminal `configuration_invalid`, drops
 queued and new lifecycle items with that bounded reason, stops connection/write
 retries, and raises an operator alert; it never changes a business response.
 Correction requires an explicit Server restart so startup validation is rerun.
+Every new physical connection after disconnect must repeat TLS identity, Redis
+7.4.0, ACL, and function-fingerprint validation before any write. A change to
+the declared contract epoch, image attestation, credential Secret generation,
+certificate generation, or function fingerprint drains the connection pool and
+forces the same validation. A mismatch after reconnect or epoch change enters
+terminal `configuration_invalid`; mere unreachability continues bounded retry.
 A validated sink that later becomes unavailable instead follows the ordinary
-bounded queue/retry policy and may recover automatically. Startup never waits
-indefinitely for Redis and never falls back to local disk.
+bounded queue/retry policy and may recover automatically only after successful
+revalidation. Startup never waits indefinitely for Redis and never falls back
+to local disk.
 
 ## Observability
 
@@ -348,13 +522,13 @@ Hexalith Platform Operations owns these signals. The counter
 code-owned finite enum. Accepted means a typed event passed schema, timestamp,
 and privacy validation; persisted means the `WAITAOF` boundary passed; failed
 is an individual sink attempt; dropped is terminal; expired is logical absence;
-purged means key/index removal plus completed lazy-free memory reclamation for
-the recorded cohort.
+purged means the fenced cohort checkpoint proves synchronous key/index object
+removal for every candidate.
 
 Additional gauges are queue records, queue bytes, oldest queued age, Redis
 connectivity, Sentinel primary availability, AOF health, replica fsync lag,
-memory and PVC utilization, expiry-index depth, oldest due age, and
-`lazyfree_pending_objects`. Health has `Healthy`, `Degraded`, `Unhealthy`, and
+memory and PVC utilization, expiry-index depth, oldest due age, purge-cohort
+completion age, and earliest uncompacted cohort age. Health has `Healthy`, `Degraded`, `Unhealthy`, and
 `NoData`. Health aggregation first evaluates configuration, validation, clock,
 connectivity, persistence, capacity, purge, and compaction. `Unhealthy` takes
 precedence over `Degraded`, which takes precedence over data-presence
@@ -378,6 +552,7 @@ The persisted JSON schema is allowlisted:
 | Persisted field | Policy |
 | :-------------- | :----- |
 | `recordId`, `schemaVersion`, `eventId` | Generated/bounded identifiers and schema fields. |
+| `envelopeHash` | Lowercase SHA-256 of the canonical immutable envelope excluding `acceptedAtUtc` and `envelopeHash`; used for exact retry comparison. |
 | `emittedAtUtc`, `acceptedAtUtc`, `expiresAtUtc` | UTC lifecycle timestamps; acceptance comes from Redis time. |
 | `operationType`, `outcome`, `errorCode` | Values validated against bounded catalogs. |
 | `markerKeyId` | Bounded non-secret identifier for the lifecycle marker key used to derive this record's markers. |
@@ -387,17 +562,91 @@ The persisted JSON schema is allowlisted:
 | `resultCount`, `durationMs` | Non-negative bounded numeric values. |
 | `traceId`, `spanId` | Validated W3C identifiers for authorized operational correlation. |
 
+### Persisted Schema Bounds
+
+Version 1 is canonical UTF-8 JSON under RFC 8785 ordering and number rules,
+with no insignificant whitespace and exactly the allowlisted fields above.
+Optional `userMarker`, `caseMarker`, `resultCount`, and `errorCode` are encoded
+as JSON `null`, not omitted; `queryParams` is always an object. Unknown,
+duplicate, incorrectly cased, non-scalar, or noncanonical fields fail closed.
+The complete serialized record must be at most 1,024 UTF-8 bytes.
+
+- `schemaVersion` is integer `1`; readers reject every other version. A field,
+  bound, or version change requires a new accepted decision, dual-version
+  reader/inspector tests for the maximum retention window, and an explicit
+  retirement gate. Unknown fields are never silently ignored.
+- `recordId` is a 26-character uppercase Crockford ULID. `eventId` is exactly
+  7501-7509 for `ok` and the corresponding 7511-7519 value for `error`.
+  `operationType` is exactly `search`, `ingest`, `traverse`, `case-access`,
+  `delete`, `tenant-lifecycle`, `tenant-config`, `case-member`, or `annotation`.
+  `outcome` is `ok` or `error`.
+- `errorCode` is `null` for `ok`; error inputs map to exactly one of
+  `invalid_input`, `not_found`, `forbidden`, `conflict`, `cancelled`,
+  `dependency_unavailable`, `rate_limited`, `internal_dependency_failure`,
+  `internal_failure`, or `unknown`. Raw exception type/message and arbitrary
+  producer codes are never persisted.
+- `markerKeyId` matches `[a-z0-9][a-z0-9-]{0,31}`. HMAC markers are exactly 64
+  lowercase hexadecimal characters; only `tenantMarker` may instead be the
+  literal `__rejected__`. `traceId` is 32 and `spanId` is 16 lowercase
+  hexadecimal characters. `envelopeHash` is 64 lowercase hexadecimal
+  characters.
+- All timestamps use the fixed UTC millisecond form
+  `yyyy-MM-ddTHH:mm:ss.fffZ`. `durationMs` is an integer from 0 through
+  86,400,000; `resultCount` is `null` or an integer from 0 through 1,000,000.
+  Floating-point values, negative values, and numeric strings are rejected.
+- `queryParams` contains at most six lexicographically ordered keys, with only
+  the per-operation keys and values in the following table. No free text,
+  nested object, array, URI, identifier, or unlisted enum is accepted.
+- At 256 records, the 1,024-byte record cap leaves at least 768 KiB of the
+  1-MiB command limit for framing; Story 27.2 rejects a batch before its
+  complete encoded command exceeds 1 MiB.
+
+#### Query Parameter Bounds
+
+| Operation | Exact bounded `queryParams` contract |
+| :-------- | :----------------------------------- |
+| `search` | `axis`: `lexical`, `semantic`, `hybrid`; `caseScope`: `single`, `all-authorized`; `explain`: boolean; `limitBucket`: `1-10`, `11-25`, `26-50`, `51-100`; `queryLengthBucket`: `0`, `1-32`, `33-128`, `129-256`, `257-1024`, `1025+`; `weightProfile`: `lexical`, `semantic`, `balanced`. |
+| `ingest` | `batchSizeBucket`: `1`, `2-10`, `11-100`, `101-256`; `contentKind`: `document`, `text`, `image`, `audio`, `unknown`; `contentLengthBucket`: `0`, `1-64KiB`, `64KiB-1MiB`, `1-10MiB`, `10MiB+`; `sourceKind`: `upload`, `url`, `directory`, `text`, `unknown`. |
+| `traverse` | `depthBucket`: `1`, `2`, `3`, `4`, `5`; `direction`: `in`, `out`, `both`; `edgeTypeCount`: integer `0..16`; `includeGaps`: boolean. |
+| `case-access` | `accessKind`: `case`, `memory-unit`, `relation`; `projection`: `summary`, `detail`. |
+| `delete` | `cascade`: boolean; `targetKind`: `case`, `memory-unit`, `relation`, `annotation`. |
+| `tenant-lifecycle` | `action`: `provision`, `suspend`, `resume`, `delete`; `resourceCountBucket`: `0`, `1`, `2-3`, `4-8`, `9+`. |
+| `tenant-config` | `action`: `create`, `update`, `delete`; `changedFieldCountBucket`: `0`, `1`, `2-3`, `4-8`, `9+`. |
+| `case-member` | `action`: `add`, `update`, `remove`; `role`: `reader`, `editor`, `owner`. |
+| `annotation` | `action`: `create`, `update`, `delete`; `annotationKind`: `note`, `correction`, `warning`; `subjectPresent`: boolean. |
+
+The immutable envelope consists of every persisted field except
+`acceptedAtUtc` and `envelopeHash`. The writer canonicalizes and hashes it;
+Redis recomputes and verifies the hash, supplies `acceptedAtUtc` once, and
+persists the completed canonical record. At 256 records, the 1,024-byte record
+cap leaves at least 768 KiB of the 1-MiB command limit for framing; Story 27.2
+must enforce both the per-record and fully encoded batch limits.
+
 The marker secret is separate from Redis credentials and domain secrets. Raw
 tenant, user, case, query, subject, source URI, payload, token, authorization
 header, credential, exception, and unbounded metadata values are prohibited.
 Schema rejection is fail closed for persistence and does not alter the request.
-Marker rotation activates one new writer key while retaining previous
-verification keys from the final successful record written with each old key
-for the 7-day maximum retention, plus the accepted 2-minute future-skew window,
-plus the 15-minute active purge grace: at least 7 days 17 minutes. Rotation does
-not start that overlap clock until old-key queue/retry work has drained or
-expired. Every persisted marker carries `markerKeyId`; missing or unknown key
-identifiers fail inspection closed and make lifecycle health unhealthy.
+Marker rotation is a fenced two-phase protocol stored under
+`access:control:v1:marker-rotation`. First, the controller stages a new Secret
+generation and key ID while the old ID remains active. Both currently ready
+writer Pod UIDs must load the generation and acknowledge it through the
+marker-ack function. The controller then publishes a quiesce generation: every
+writer atomically switches new events to the new key, acknowledges the switch,
+and drains or expires all old-key queue/retry work. Redis records the last
+successful write time for each key ID. Only after both exact Pod UIDs report no
+old-key work may the fenced controller commit retirement; the Redis write
+function then rejects the retired generation, preventing a stale or restarted
+writer from adding a late old-key record. Missing writers, lost acknowledgements,
+or leader change block and resumably reconstruct the rotation rather than
+guessing completion.
+
+Previous verification keys remain available from their Redis-recorded final
+successful write for the 7-day maximum retention, plus the accepted 1-second
+future-skew bound, plus the 15-minute active purge grace: at least 7 days,
+15 minutes, and 1 second. A restarted writer must load the current committed
+generation before enabling lifecycle writes. Every persisted marker carries
+`markerKeyId`; missing, retired-for-write, or unknown key identifiers fail
+closed and make lifecycle health unhealthy.
 
 The Server has no read or arbitrary-delete authority. There is no tenant-facing
 read API. Authorized inspection uses the separate inspector credential and
@@ -449,49 +698,63 @@ any named regulation.
 
 ## Story 27.2 Implementation Handoff
 
-Story 27.2 remains blocked until the capacity gate closes and this ADR returns
-to `Accepted`. It then owns this exact implementation map:
+Story 27.2 is unblocked by this accepted decision and owns this exact
+implementation map:
 
 1. Add options and Production startup validation for enablement, explicit
    1-hour-to-7-day retention, queue/retry/flush limits, capacity inputs,
-   Sentinel endpoint, certificates, credentials, Redis 7.2 minimum, and the
-   persisted/replicated Redis Functions library fingerprint.
+   Sentinel endpoint, certificates, credentials, the exact Redis 7.4.0 version
+   and selected image digest, contract epoch, and the persisted/replicated
+   Redis Functions library fingerprint. Revalidate identity, ACL, version,
+   image attestation, and fingerprint before writes on every reconnect or
+   contract-epoch change.
 2. Add a typed `AccessTelemetryEvent` logger provider, sanitizer, bounded queue,
    provider-specific `Information` filter, worker, stable ULID record identity,
-   Redis-time validation, atomic write-plus-expiry/index function,
-   payload/expiry conflict detection, `WAITAOF` acknowledgement, bounded retry,
-   and non-throwing failure isolation. Do not parse stdout.
-3. Add the allowlisted persisted schema, `markerKeyId`, and versioned HMAC key
-   ring with overlap measured from the final old-key write through maximum
-   retention, accepted future skew, and purge grace. Prove raw `query`,
-   `subject`, and `sourceUri` never enter queue or Redis payloads.
+   Redis-time validation, canonical envelope/hash, Redis-owned acceptance time,
+   atomic write-plus-expiry/index function, retry-safe conflict detection,
+   per-result batch tracking, `WAITAOF` acknowledgement, bounded retry, and
+   non-throwing failure isolation. Enforce the 1,024-byte record and complete
+   1-MiB encoded-batch limits. Do not parse stdout.
+3. Add the exact Version 1 catalogs, encodings, field/query bounds,
+   `markerKeyId`, and versioned HMAC key ring. Implement the fenced staged,
+   quiesced, all-writer-acknowledged rotation barrier and retain old verification
+   keys from the Redis-recorded final write through maximum retention, the
+   one-second future-skew bound, and purge grace. Prove raw `query`, `subject`,
+   and `sourceUri` never enter queue or Redis payloads.
 4. Add the complete accepted/rejected/enqueued/persisted/retried/failed/dropped/
    expired/purged counter, bounded reason catalog, gauges, health states, and
    `NoData` behavior without high-cardinality labels.
 5. Add the independent Kustomize Redis primary/replica/Sentinel resources,
    stable StatefulSet/PVC identity, the validated `access-telemetry-retain`
    StorageClass, required data/Sentinel failure-domain spreading, AOF/RDB and
-   lazy-free monitoring, `noeviction`, function-scoped ACL roles, TLS-only
-   links, default-deny NetworkPolicy, encrypted Secrets/PVC evidence, capacity
-   validation, the measured clock-preflight Job, probes, and lifecycle
-   controller. Do not reuse domain Redis, Dapr state, pub/sub, or
-   Hexalith.EventStore.
+   synchronous purge configuration, `noeviction`, exact function/command-scoped
+   ACL roles including writer `TIME`, TLS-only links, default-deny NetworkPolicy,
+   encrypted Secrets/PVC evidence, capacity validation, data/controller
+   disruption budgets and catch-up gates, the private writer-clock endpoint,
+   signed preflight Job/Lease protocol, probes, and two-replica fenced
+   active/passive lifecycle controller with resumable control checkpoints and
+   controller-triggered AOF/RDB compaction. Do not reuse domain Redis, Dapr
+   state, pub/sub, or Hexalith.EventStore.
 6. Add unit and integration tests for two concurrent writers, idempotent retry,
-   record-ID conflict, Redis `TIME`, independent UTC and Server/member clock
-   bounds, skew/late arrival, exact millisecond expiry, 512-record purge
-   catch-up/newer preservation, lazy-free completion, queue overflow, retry
-   exhaustion, shutdown, AOF/replica acknowledgement, failover, capacity,
-   provider-specific filtering, invalid configuration, startup sink
-   unavailability followed by valid and invalid first connections, health-state
-   precedence, and provider exception isolation.
+   Redis-owned acceptance time, record-ID conflict, Redis `TIME`, continuous
+   signed independent-UTC attestations and replay/freshness/identity negatives,
+   Server/member clock bounds, one-second skew/late arrival, exact millisecond
+   expiry, fenced 512-record synchronous purge catch-up/newer preservation,
+   leader failover/reconstruction, marker-rotation barriers, controller-triggered
+   compaction, queue overflow, retry exhaustion, shutdown, per-result batch
+   acknowledgement, AOF/replica acknowledgement, failover, disruption catch-up,
+   capacity, provider-specific filtering, invalid configuration, startup sink
+   unavailability followed by valid and invalid first connections, reconnect
+   and contract-epoch revalidation, health-state precedence, and provider
+   exception isolation.
 7. Attach focused cross-tenant denial and privacy-negative results using the
    named Story 20.2 and Story 24.3 guards from the privacy section. No happy-path
    or broad-suite result substitutes for that negative evidence.
 
 ## Story 27.3 Verification and Operations Handoff
 
-After ratification and Story 27.2 implementation, Story 27.3 must supply
-Production-shaped evidence and the operations contract:
+After Story 27.2 implementation, Story 27.3 must supply Production-shaped
+evidence and the operations contract:
 
 1. Start two Server writers against the dedicated workload and prove unique,
    sanitized records persist through the `WAITAOF` boundary without duplicate
@@ -500,18 +763,26 @@ Production-shaped evidence and the operations contract:
    controller; reschedule each Redis data Pod and prove its PVC reattaches.
    Exercise one data-node failure and each independent Sentinel-node failure,
    then promotion and recovery, while JSON-console and optional OTLP emission
-   continue.
+   continue. Separately destroy and corrupt each primary PVC after acknowledged
+   writes, recover every manifest record and exact expiry from the survivor,
+   rebuild an approved replacement, pass replica catch-up, and repeat with the
+   opposite ordinal before accepting the zero-loss claim.
 3. Use deterministic emitted timestamps and Redis time to prove the minimum,
    default, maximum, late-arrival, future-skew, member-clock, promotion-delta,
-   and already-expired bounds. Prove millisecond logical expiry, bounded
-   512-record catch-up, namespace and lazy-free purge within 15 minutes,
-   AOF/RDB compaction within 24 hours, expiry-index cleanup, and preservation of
-   records whose expiry is later.
+   continuous independent-attestation freshness/replay/identity, and
+   already-expired bounds. Prove millisecond logical expiry, bounded fenced
+   512-record catch-up, cohort-specific synchronous purge within 15 minutes,
+   controller-triggered AOF/RDB compaction within 24 hours, expiry-index cleanup,
+   controller restart reconstruction, and preservation of records whose expiry
+   is later.
 4. Exercise Redis outage, Sentinel unavailability, queue/byte exhaustion,
    `WAITAOF` timeout, AOF failure, `noeviction`/memory pressure, PVC pressure,
-   malformed configuration, bad credentials, function mismatch, pending remote
-   validation, retry-age exhaustion, and shutdown timeout. Verify business
-   requests never receive a provider exception.
+   malformed configuration, bad credentials, wrong image/version, ACL or
+   function mismatch, pending remote validation, reconnect/contract-epoch
+   revalidation, stale leader fencing, retry-age exhaustion, and shutdown
+   timeout. Verify business requests and business readiness remain available
+   during correctly configured sink/clock unavailability and never receive a
+   provider exception.
 5. Prove the full lifecycle signal set, capacity thresholds, bounded labels,
    health transitions, alerts, and `NoData` semantics from accepted through
    physical purge.

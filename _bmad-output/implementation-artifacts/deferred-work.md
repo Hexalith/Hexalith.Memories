@@ -2221,3 +2221,9 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 - source_spec: `_bmad-output/implementation-artifacts/spec-consistency-inspect-opaque-id-contract.md`
   summary: Align the repository's OpenTelemetry core packages with the versions imported by the current Hexalith.Builds pointer so the exact working tree restores and builds again.
   evidence: Exact-tree restore/build fails with NU1605 because Hexalith.Builds@8e0e2da imports OTLP exporter and hosting 1.17.0 while Directory.Packages.props pins OpenTelemetry core 1.16.0; the opaque-ID change neither caused nor is authorized to alter that concurrent dependency state.
+
+## Deferred from: code review of 27-1-access-telemetry-retention-ownership-decision (2026-07-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md`
+  summary: Reconcile raw privacy-sensitive state on the preserved JSON-console and optional OTLP routes with the bounded lifecycle target.
+  evidence: Search and source-URI events can already expose raw query, subject, or source URI values through the existing logging routes. Story 27.1 documents that pre-existing deviation and sanitizes only the proposed Redis lifecycle path; a later scope decision must choose sanitization before provider fan-out or explicit category exclusion from durable external routes.

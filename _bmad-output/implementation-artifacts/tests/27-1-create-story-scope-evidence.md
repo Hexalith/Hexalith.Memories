@@ -67,7 +67,10 @@ import yaml
 status = yaml.safe_load(Path(
     "_bmad-output/implementation-artifacts/sprint-status.yaml"
 ).read_text())["development_status"]
-assert status["epic-27"] == "in-progress"
+assert status["epic-27"] in {
+    "in-progress",
+    "done",
+}
 assert status["27-1-access-telemetry-retention-ownership-decision"] in {
     "ready-for-dev",
     "in-progress",

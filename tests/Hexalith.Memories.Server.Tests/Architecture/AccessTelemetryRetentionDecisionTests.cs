@@ -5,15 +5,17 @@
 
 namespace Hexalith.Memories.Server.Tests.Architecture;
 
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 
 using Hexalith.Memories.TestHelpers.Documentation;
 
 using Shouldly;
 
 /// <summary>
-/// Story 27.1 structure-aware guards for the proposed access-telemetry lifecycle decision.
+/// Story 27.1 structure-aware guards for the accepted access-telemetry lifecycle decision.
 /// </summary>
 public sealed class AccessTelemetryRetentionDecisionTests
 {
@@ -22,14 +24,13 @@ public sealed class AccessTelemetryRetentionDecisionTests
     private const string TelemetryRelativePath = "docs/dev/telemetry.md";
 
     [Fact]
-    public void Adr_OptionsTable_ProposesExactlyOneFamilyAndEvaluatesAllThree()
+    public void Adr_OptionsTable_RatifiesExactlyOneFamilyAndEvaluatesAllThree()
     {
         MarkdownContractDocument adr = ReadDocument(AdrRelativePath);
         IReadOnlyList<IReadOnlyList<string>> metadata = adr.GetTableRows("Status and Decision Metadata");
         IReadOnlyList<IReadOnlyList<string>> options = adr.GetTableRows("Options Evaluated");
 
-        GetRow(metadata, "Status").ShouldBe(
-            ["Status", "Proposed — review-blocked pending the capacity evidence below"]);
+        GetRow(metadata, "Status").ShouldBe(["Status", "Accepted"]);
         GetRow(metadata, "Selected family").ShouldBe(
             ["Selected family", "Repository-owned dedicated write-only telemetry store"]);
         GetRow(metadata, "Selected technology").ShouldBe(
@@ -38,7 +39,7 @@ public sealed class AccessTelemetryRetentionDecisionTests
             "A separate Redis 7.4 access-telemetry workload using `redis/redis-stack-server:7.4.0-v8@sha256:798ab84d9f266936b034ab11c4d04a2b8e4b441884c5aa7d17ac951eefdf742a`",
         ]);
         GetRow(metadata, "Implementation gate")[1].ShouldContain(
-            "Stories 27.2 and 27.3 remain blocked until the all-nine-operation capacity recalculation is ratified",
+            "Stories 27.2 and 27.3 are unblocked to implement and verify this accepted contract",
             Case.Sensitive);
         adr.GetTableHeader("Options Evaluated").ShouldBe(
         [
@@ -72,9 +73,9 @@ public sealed class AccessTelemetryRetentionDecisionTests
 
         IReadOnlyList<string> hardGate = GetRow(options, "Hard-gate result");
         hardGate[1].ShouldStartWith("Rejected:");
-        hardGate[2].ShouldStartWith("Provisionally selected:");
+        hardGate[2].ShouldStartWith("Selected:");
         hardGate[3].ShouldStartWith("Rejected:");
-        hardGate.Skip(1).Count(static cell => cell.Contains("selected:", StringComparison.Ordinal)).ShouldBe(1);
+        hardGate.Skip(1).Count(static cell => cell.StartsWith("Selected:", StringComparison.Ordinal)).ShouldBe(1);
     }
 
     [Fact]
@@ -90,6 +91,7 @@ public sealed class AccessTelemetryRetentionDecisionTests
             "Ownership and Topology",
             "Multi-Replica Write and Durability Boundary",
             "Retention, Expiry, Purge, and Clock",
+            "Capacity Evidence and Admission Envelope",
             "Failure, Backpressure, Recovery, and Capacity",
             "Observability",
             "Privacy and Tenant Boundary",
@@ -117,11 +119,31 @@ public sealed class AccessTelemetryRetentionDecisionTests
         topology.ShouldContain("`ReadWriteOnce` persistent volume claim", Case.Sensitive);
         topology.ShouldContain("`access-telemetry-retain` StorageClass", Case.Sensitive);
         topology.ShouldContain("`reclaimPolicy: Retain`", Case.Sensitive);
-        topology.ShouldContain("`volumeBindingMode: WaitForFirstConsumer`", Case.Sensitive);
         topology.ShouldContain("independent connection string", Case.Sensitive);
+        topology.ShouldContain("A data-member `PodDisruptionBudget` sets `minAvailable: 1`", Case.Sensitive);
+        topology.ShouldContain("Before allowing a second voluntary disruption", Case.Sensitive);
+        topology.ShouldContain("two-replica Deployment", Case.Sensitive);
+        topology.ShouldContain("active/passive", Case.Sensitive);
+        topology.ShouldContain("monotonically increasing fencing epoch", Case.Sensitive);
+        topology.ShouldContain("resumes incomplete work idempotently", Case.Sensitive);
         topology.ShouldContain("Every client, replication, and Sentinel link is TLS-only", Case.Sensitive);
         topology.ShouldContain("default-deny namespace `NetworkPolicy`", Case.Sensitive);
         topology.ShouldContain("CSI-backed encryption at rest", Case.Sensitive);
+
+        IReadOnlyList<IReadOnlyList<string>> authorities = adr.GetTableRows("Ownership and Topology");
+        authorities.Select(static row => row[0]).ShouldBe(
+        [
+            "`access-telemetry-writer`",
+            "`access-telemetry-lifecycle`",
+            "`access-telemetry-compactor`",
+            "`access-telemetry-inspector`",
+            "Redis administration",
+        ]);
+        GetRow(authorities, "`access-telemetry-writer`")[2].ShouldContain("call Redis `TIME`", Case.Sensitive);
+        GetRow(authorities, "`access-telemetry-writer`")[2].ShouldContain("cannot `GET`, `SCAN`, inspect", Case.Sensitive);
+        GetRow(authorities, "`access-telemetry-lifecycle`")[2].ShouldContain("fenced purge/reconciliation", Case.Sensitive);
+        GetRow(authorities, "`access-telemetry-compactor`")[2].ShouldContain("`BGREWRITEAOF`, and `BGSAVE`", Case.Sensitive);
+        GetRow(authorities, "`access-telemetry-inspector`")[2].ShouldContain("cannot write, extend TTL, delete", Case.Sensitive);
 
         string durability = NormalizeWhitespace(adr.GetSection("Multi-Replica Write and Durability Boundary"));
         durability.ShouldContain("`WAITAOF 1 1 1500`", Case.Sensitive);
@@ -132,10 +154,15 @@ public sealed class AccessTelemetryRetentionDecisionTests
         durability.ShouldContain("within 1 second of an independent UTC reference", Case.Sensitive);
         durability.ShouldContain("within 1 second of every other participating member", Case.Sensitive);
         durability.ShouldContain("`access-telemetry-clock-preflight` Kubernetes Job", Case.Sensitive);
-        durability.ShouldContain("each candidate Server writer's UTC clock", Case.Sensitive);
-        durability.ShouldContain("repeats the Server-to-Redis comparison every minute", Case.Sensitive);
-        durability.ShouldContain("Promotion evidence records the independent reference plus old and new primary `TIME` values", Case.Sensitive);
-        durability.ShouldContain("Any difference returns `record_id_conflict`", Case.Sensitive);
+        durability.ShouldContain("`/internal/access-telemetry/clock` endpoint", Case.Sensitive);
+        durability.ShouldContain("`access-telemetry-clock-attestation` Kubernetes Lease", Case.Sensitive);
+        durability.ShouldContain("expires no later than 90 seconds after sampling", Case.Sensitive);
+        durability.ShouldContain("does **not** gate business readiness", Case.Sensitive);
+        durability.ShouldContain("continuously refreshes the independent comparison every minute", Case.Sensitive);
+        durability.ShouldContain("Promotion triggers an immediate fresh attestation", Case.Sensitive);
+        durability.ShouldContain("not newly generated acceptance time", Case.Sensitive);
+        durability.ShouldContain("marks none of the candidates persisted", Case.Sensitive);
+        durability.ShouldContain("destroy and simulate corruption of each current primary PVC", Case.Sensitive);
 
         string failure = NormalizeWhitespace(adr.GetSection("Failure, Backpressure, Recovery, and Capacity"));
         failure.ShouldContain("8,192-record limit", Case.Sensitive);
@@ -149,6 +176,9 @@ public sealed class AccessTelemetryRetentionDecisionTests
             Case.Sensitive);
         failure.ShouldContain("transitions the provider to terminal `configuration_invalid`", Case.Sensitive);
         failure.ShouldContain("Correction requires an explicit Server restart", Case.Sensitive);
+        failure.ShouldContain("requires Redis `redis_version:7.4.0`", Case.Sensitive);
+        failure.ShouldContain("Every new physical connection after disconnect", Case.Sensitive);
+        failure.ShouldContain("contract epoch", Case.Sensitive);
         failure.ShouldContain("provider-specific `Information` filter", Case.Sensitive);
         failure.ShouldContain("a global category filter must not suppress success events", Case.Sensitive);
 
@@ -157,6 +187,18 @@ public sealed class AccessTelemetryRetentionDecisionTests
         rollback.ShouldContain(
             "Rollback never deletes the Redis workload, PVCs, credentials, or retained records automatically.",
             Case.Sensitive);
+
+        string handoff = NormalizeWhitespace(adr.GetSection("Story 27.2 Implementation Handoff"));
+        handoff.ShouldContain("is unblocked by this accepted decision", Case.Sensitive);
+        handoff.ShouldContain("exact Redis 7.4.0 version and selected image digest", Case.Sensitive);
+        handoff.ShouldContain("per-result batch tracking", Case.Sensitive);
+        handoff.ShouldContain("fenced staged, quiesced, all-writer-acknowledged rotation barrier", Case.Sensitive);
+        handoff.ShouldContain("complete accepted/rejected/enqueued/persisted/retried/failed/dropped/", Case.Sensitive);
+        handoff.ShouldContain("expired/purged counter", Case.Sensitive);
+        handoff.ShouldContain("two-replica fenced active/passive lifecycle controller", Case.Sensitive);
+        handoff.ShouldContain("continuous signed independent-UTC attestations", Case.Sensitive);
+        handoff.ShouldContain("reconnect and contract-epoch revalidation", Case.Sensitive);
+        handoff.ShouldContain("named Story 20.2 and Story 24.3 guards", Case.Sensitive);
     }
 
     [Fact]
@@ -168,6 +210,8 @@ public sealed class AccessTelemetryRetentionDecisionTests
         GetRow(retention, "Production default").ShouldBe(["Production default", "24 hours"]);
         GetRow(retention, "Allowed minimum").ShouldBe(["Allowed minimum", "1 hour"]);
         GetRow(retention, "Allowed maximum").ShouldBe(["Allowed maximum", "7 days"]);
+        GetRow(retention, "Configuration owner").ShouldBe(
+            ["Configuration owner", "Kustomize through `AccessTelemetryLifecycle__Retention`"]);
         GetRow(retention, "Authoritative clock").ShouldBe(
             ["Authoritative clock", "Redis primary `TIME`, interpreted as UTC"]);
         GetRow(retention, "Logical expiry").ShouldBe(
@@ -180,14 +224,88 @@ public sealed class AccessTelemetryRetentionDecisionTests
         section.ShouldContain("fail Production startup before serving requests", Case.Sensitive);
         section.ShouldContain("No code path substitutes an unbounded TTL", Case.Sensitive);
         section.ShouldContain("never reset its age", Case.Sensitive);
+        section.ShouldContain("timestamps more than 1 second in the future are rejected", Case.Sensitive);
+        section.ShouldContain("there is no separate two-minute exception", Case.Sensitive);
         section.ShouldContain("selects at most 512 due entries", Case.Sensitive);
         section.ShouldContain("100-millisecond execution budget", Case.Sensitive);
-        section.ShouldContain("`lazyfree_pending_objects`", Case.Sensitive);
-        section.ShouldContain("namespace purge, not completed physical memory reclamation", Case.Sensitive);
-        section.ShouldContain("lazy-free completion must occur no later than 15 minutes", Case.Sensitive);
+        section.ShouldContain("invokes synchronous `DEL`", Case.Sensitive);
+        section.ShouldContain("never depends on the workload-global `lazyfree_pending_objects` gauge", Case.Sensitive);
+        section.ShouldContain("proves Redis object-memory reclamation for that exact candidate cohort", Case.Sensitive);
+        section.ShouldContain("`access:control:v1:purge:<cohortId>`", Case.Sensitive);
         section.ShouldContain("separate 24-hour compaction bound", Case.Sensitive);
+        section.ShouldContain("invokes `BGREWRITEAOF` and then `BGSAVE`", Case.Sensitive);
+        section.ShouldContain("reconstructs the earliest uncompacted cohort", Case.Sensitive);
+        section.ShouldNotContain("invokes `UNLINK`", Case.Sensitive);
         section.ShouldNotContain("TBD", Case.Sensitive);
         section.ShouldNotContain("backend default", Case.Sensitive);
+
+        IReadOnlyList<IReadOnlyList<string>> operationCapacity =
+            adr.GetTableRows("Operation Envelope");
+        operationCapacity.Select(static row => row[0]).ShouldBe(
+        [
+            "search",
+            "ingest",
+            "traverse",
+            "case-access",
+            "delete",
+            "tenant-lifecycle",
+            "tenant-config",
+            "case-member",
+            "annotation",
+        ]);
+
+        decimal clusterRate = operationCapacity.Sum(static row => ParseDecimal(row[2]));
+        clusterRate.ShouldBe(250.0m);
+        foreach (IReadOnlyList<string> row in operationCapacity)
+        {
+            ParseDecimal(row[1]).ShouldBe(ParseDecimal(row[2]) / 2m);
+            (decimal average, int p95) = MeasureSanitizedFixture(row[0]);
+            average.ShouldBe(ParseDecimal(row[3]));
+            p95.ShouldBe(decimal.ToInt32(ParseDecimal(row[4])));
+            p95.ShouldBeLessThanOrEqualTo(893);
+        }
+
+        IReadOnlyList<IReadOnlyList<string>> retentionSizing = adr.GetTableRows("Retention Sizing");
+        GetRow(retentionSizing, "1 hour").ShouldBe(
+            ["1 hour", "900,000", "1.93 GiB", "3.43 GiB", "0.38%", "0.22%"]);
+        GetRow(retentionSizing, "24 hours").ShouldBe(
+            ["24 hours", "21,600,000", "46.35 GiB", "82.40 GiB", "9.05%", "5.36%"]);
+        GetRow(retentionSizing, "7 days").ShouldBe(
+            ["7 days", "151,200,000", "324.44 GiB", "576.78 GiB", "63.37%", "37.55%"]);
+
+        string capacity = NormalizeWhitespace(adr.GetSection("Capacity Evidence and Admission Envelope"));
+        capacity.ShouldContain("1,536-byte per-record Redis memory budget", Case.Sensitive);
+        capacity.ShouldContain("1.50 fragmentation multiplier", Case.Sensitive);
+        capacity.ShouldContain("4,096-byte per-record PVC budget", Case.Sensitive);
+        capacity.ShouldContain("512 GiB configured Redis memory", Case.Sensitive);
+        capacity.ShouldContain("1.5 TiB PVC", Case.Sensitive);
+        capacity.ShouldContain("60-second writer-sink outage", Case.Sensitive);
+        capacity.ShouldContain("10-minute lifecycle-controller outage", Case.Sensitive);
+        capacity.ShouldContain("2,560 records/second", Case.Sensitive);
+        capacity.ShouldContain("2,310 records/second", Case.Sensitive);
+        capacity.ShouldContain("approved operating-cost envelope", Case.Sensitive);
+
+        string schema = NormalizeWhitespace(adr.GetSection("Persisted Schema Bounds"));
+        schema.ShouldContain("RFC 8785", Case.Sensitive);
+        schema.ShouldContain("at most 1,024 UTF-8 bytes", Case.Sensitive);
+        schema.ShouldContain("`schemaVersion` is integer `1`", Case.Sensitive);
+        schema.ShouldContain("error inputs map to exactly one of", Case.Sensitive);
+        schema.ShouldContain("at most six lexicographically ordered keys", Case.Sensitive);
+        schema.ShouldContain("complete encoded command exceeds 1 MiB", Case.Sensitive);
+
+        IReadOnlyList<IReadOnlyList<string>> queryBounds = adr.GetTableRows("Query Parameter Bounds");
+        queryBounds.Select(static row => row[0]).ShouldBe(
+        [
+            "`search`",
+            "`ingest`",
+            "`traverse`",
+            "`case-access`",
+            "`delete`",
+            "`tenant-lifecycle`",
+            "`tenant-config`",
+            "`case-member`",
+            "`annotation`",
+        ]);
     }
 
     [Fact]
@@ -238,8 +356,8 @@ public sealed class AccessTelemetryRetentionDecisionTests
         string retention = NormalizeWhitespace(telemetry.GetSection("Retention lifecycle status"));
         retention.ShouldContain("[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md)", Case.Sensitive);
         retention.ShouldContain("dedicated Redis 7.4 access-telemetry workload", Case.Sensitive);
-        retention.ShouldContain("The ADR is `Proposed`, not ratified", Case.Sensitive);
-        retention.ShouldContain("Stories 27.2 and 27.3 remain blocked", Case.Sensitive);
+        retention.ShouldContain("The ADR is `Accepted`", Case.Sensitive);
+        retention.ShouldContain("Stories 27.2 and 27.3 are unblocked", Case.Sensitive);
 
         string routing = NormalizeWhitespace(telemetry.GetSection("Audit log routing recipe"));
         routing.ShouldContain("typed `AccessTelemetryEvent` logger state", Case.Sensitive);
@@ -260,8 +378,10 @@ public sealed class AccessTelemetryRetentionDecisionTests
 
         string volume = NormalizeWhitespace(telemetry.GetSection("Access telemetry volume estimates"));
         volume.ShouldContain("two-replica Production shape", Case.Sensitive);
-        volume.ShouldContain("It is not an all-nine-operation capacity calculation", Case.Sensitive);
-        volume.ShouldContain("must not size memory, PVCs, retention, or cost", Case.Sensitive);
+        volume.ShouldContain("all-nine-operation admission envelope", Case.Sensitive);
+        volume.ShouldContain("250 events/s cluster ceiling", Case.Sensitive);
+        volume.ShouldContain("512 GiB configured Redis memory", Case.Sensitive);
+        volume.ShouldContain("1.5 TiB PVC per data member", Case.Sensitive);
     }
 
     [Fact]
@@ -283,9 +403,12 @@ public sealed class AccessTelemetryRetentionDecisionTests
         privacy.ShouldContain("Raw tenant, user, case, query, subject, source URI", Case.Sensitive);
         privacy.ShouldContain("Every persisted marker carries `markerKeyId`", Case.Sensitive);
         privacy.ShouldContain(
-            "from the final successful record written with each old key for the 7-day maximum retention, plus the accepted 2-minute future-skew window, plus the 15-minute active purge grace",
+            "from their Redis-recorded final successful write for the 7-day maximum retention, plus the accepted 1-second future-skew bound, plus the 15-minute active purge grace",
             Case.Sensitive);
-        privacy.ShouldContain("at least 7 days 17 minutes", Case.Sensitive);
+        privacy.ShouldContain("at least 7 days, 15 minutes, and 1 second", Case.Sensitive);
+        privacy.ShouldContain("fenced two-phase protocol", Case.Sensitive);
+        privacy.ShouldContain("Both currently ready writer Pod UIDs", Case.Sensitive);
+        privacy.ShouldContain("Redis write function then rejects the retired generation", Case.Sensitive);
         privacy.ShouldContain("Story 20.2 guards", Case.Sensitive);
         privacy.ShouldContain("Story 24.3 verifier guards", Case.Sensitive);
 
@@ -305,12 +428,23 @@ public sealed class AccessTelemetryRetentionDecisionTests
             Case.Sensitive);
         observability.ShouldContain("`Unhealthy` takes precedence over `Degraded`", Case.Sensitive);
         observability.ShouldContain("A disconnected or unvalidated sink with no events is therefore `Unhealthy`, never `NoData`", Case.Sensitive);
-        observability.ShouldContain("`lazyfree_pending_objects`", Case.Sensitive);
+        observability.ShouldContain("fenced cohort checkpoint proves synchronous key/index object removal", Case.Sensitive);
 
-        NormalizeWhitespace(adr.GetSection("Story 27.2 Implementation Handoff")).ShouldContain("two concurrent writers", Case.Sensitive);
-        NormalizeWhitespace(adr.GetSection("Story 27.3 Verification and Operations Handoff")).ShouldContain(
-            "A41 deferred entry and action close-out",
-            Case.Sensitive);
+        string implementationHandoff = NormalizeWhitespace(adr.GetSection("Story 27.2 Implementation Handoff"));
+        implementationHandoff.ShouldContain("two concurrent writers", Case.Sensitive);
+        implementationHandoff.ShouldContain("private writer-clock endpoint", Case.Sensitive);
+        implementationHandoff.ShouldContain("controller-triggered AOF/RDB compaction", Case.Sensitive);
+        implementationHandoff.ShouldContain("named Story 20.2 and Story 24.3 guards", Case.Sensitive);
+
+        string verificationHandoff = NormalizeWhitespace(adr.GetSection("Story 27.3 Verification and Operations Handoff"));
+        verificationHandoff.ShouldContain("prove unique, sanitized records persist through the `WAITAOF` boundary", Case.Sensitive);
+        verificationHandoff.ShouldContain("destroy and corrupt each primary PVC", Case.Sensitive);
+        verificationHandoff.ShouldContain("continuous independent-attestation freshness/replay/identity", Case.Sensitive);
+        verificationHandoff.ShouldContain("business readiness remain available", Case.Sensitive);
+        verificationHandoff.ShouldContain("full lifecycle signal set", Case.Sensitive);
+        verificationHandoff.ShouldContain("inspection least privilege", Case.Sensitive);
+        verificationHandoff.ShouldContain("Publish the operations runbook", Case.Sensitive);
+        verificationHandoff.ShouldContain("A41 deferred entry and action close-out", Case.Sensitive);
         NormalizeWhitespace(telemetry.GetSection("Retention lifecycle status")).ShouldContain(
             "`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action remains open",
             Case.Sensitive);
@@ -324,6 +458,123 @@ public sealed class AccessTelemetryRetentionDecisionTests
         IReadOnlyList<IReadOnlyList<string>> rows,
         string firstCell)
         => rows.Single(row => string.Equals(row[0], firstCell, StringComparison.Ordinal));
+
+    private static decimal ParseDecimal(string value)
+        => decimal.Parse(value, NumberStyles.Number, CultureInfo.InvariantCulture);
+
+    private static (decimal Average, int P95) MeasureSanitizedFixture(string operation)
+    {
+        SortedDictionary<string, object?> queryParams = CreateBoundedQueryParams(operation);
+        bool hasCaseMarker = operation is not "tenant-lifecycle" and not "tenant-config";
+        bool hasResultCount = operation is "search" or "traverse" or "case-access";
+        int successEventId = operation switch
+        {
+            "search" => 7501,
+            "ingest" => 7502,
+            "traverse" => 7503,
+            "case-access" => 7504,
+            "delete" => 7505,
+            "tenant-lifecycle" => 7506,
+            "tenant-config" => 7507,
+            "case-member" => 7508,
+            "annotation" => 7509,
+            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Unknown access operation."),
+        };
+
+        int[] sizes = Enumerable.Range(0, 100)
+            .Select(index =>
+            {
+                bool isError = index >= 90;
+                var record = new SortedDictionary<string, object?>
+                {
+                    ["acceptedAtUtc"] = "2026-07-17T12:34:56.812Z",
+                    ["caseMarker"] = hasCaseMarker ? new string('c', 64) : null,
+                    ["durationMs"] = 9999,
+                    ["emittedAtUtc"] = "2026-07-17T12:34:56.789Z",
+                    ["envelopeHash"] = new string('f', 64),
+                    ["errorCode"] = isError ? "internal_dependency_failure" : null,
+                    ["eventId"] = isError ? successEventId + 10 : successEventId,
+                    ["expiresAtUtc"] = "2026-07-18T12:34:56.789Z",
+                    ["markerKeyId"] = "mk-2026a",
+                    ["operationType"] = operation,
+                    ["outcome"] = isError ? "error" : "ok",
+                    ["queryParams"] = queryParams,
+                    ["recordId"] = "01K0ABCDEFGHIJKLMNOPQRSTUV",
+                    ["resultCount"] = hasResultCount ? 100 : null,
+                    ["schemaVersion"] = 1,
+                    ["spanId"] = new string('e', 16),
+                    ["tenantMarker"] = new string('a', 64),
+                    ["traceId"] = new string('d', 32),
+                    ["userMarker"] = new string('b', 64),
+                };
+
+                return JsonSerializer.SerializeToUtf8Bytes(record).Length;
+            })
+            .Order()
+            .ToArray();
+
+        return (sizes.Sum() / 100m, sizes[94]);
+    }
+
+    private static SortedDictionary<string, object?> CreateBoundedQueryParams(string operation)
+        => operation switch
+        {
+            "search" => new()
+            {
+                ["axis"] = "hybrid",
+                ["caseScope"] = "single",
+                ["explain"] = true,
+                ["limitBucket"] = "51-100",
+                ["queryLengthBucket"] = "257-1024",
+                ["weightProfile"] = "balanced",
+            },
+            "ingest" => new()
+            {
+                ["batchSizeBucket"] = "1",
+                ["contentKind"] = "document",
+                ["contentLengthBucket"] = "1-10MiB",
+                ["sourceKind"] = "url",
+            },
+            "traverse" => new()
+            {
+                ["depthBucket"] = "5",
+                ["direction"] = "both",
+                ["edgeTypeCount"] = 3,
+                ["includeGaps"] = true,
+            },
+            "case-access" => new()
+            {
+                ["accessKind"] = "memory-unit",
+                ["projection"] = "detail",
+            },
+            "delete" => new()
+            {
+                ["cascade"] = true,
+                ["targetKind"] = "case",
+            },
+            "tenant-lifecycle" => new()
+            {
+                ["action"] = "provision",
+                ["resourceCountBucket"] = "4-8",
+            },
+            "tenant-config" => new()
+            {
+                ["action"] = "update",
+                ["changedFieldCountBucket"] = "4-8",
+            },
+            "case-member" => new()
+            {
+                ["action"] = "add",
+                ["role"] = "editor",
+            },
+            "annotation" => new()
+            {
+                ["action"] = "create",
+                ["annotationKind"] = "correction",
+                ["subjectPresent"] = true,
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Unknown access operation."),
+        };
 
     private static MarkdownContractDocument ReadDocument(string relativePath)
         => new(ReadRepoFile(relativePath));
