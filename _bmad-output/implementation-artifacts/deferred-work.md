@@ -2226,4 +2226,8 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 
 - source_spec: `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md`
   summary: Reconcile raw privacy-sensitive state on the preserved JSON-console and optional OTLP routes with the bounded lifecycle target.
-  evidence: Search and source-URI events can already expose raw query, subject, or source URI values through the existing logging routes. Story 27.1 documents that pre-existing deviation and sanitizes only the proposed Redis lifecycle path; a later scope decision must choose sanitization before provider fan-out or explicit category exclusion from durable external routes.
+  evidence: Search and source-URI events can already expose raw query, subject, or source URI values through the existing logging routes. Story 27.1 documents that pre-existing deviation and sanitizes only the accepted Dapr lifecycle path; a later scope decision must choose sanitization before provider fan-out or explicit category exclusion from durable external routes.
+
+- source_spec: `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md`
+  summary: Restate or intentionally retire the `docs/operations/rate-limiting.md` documentation obligation dropped from the `20.5-A41-ACCESS-TELEMETRY-RETENTION` target-artifact list.
+  evidence: The concurrent A41-entry rewrite in commit `8bb0708a` (sprint-change-proposal scope, not Story 27.1) replaced the old `Target artifact: docs/operations/rate-limiting.md and the future access-telemetry storage/purge implementation` line with a new target list that omits rate-limiting.md entirely, leaving that file's documentation obligation without a stated disposition. The fourth code-review pass of Story 27.1 (2026-07-17) surfaced the orphaned obligation; ownership belongs to the A41/Story 27.3 close-out coordination, not this decision story.

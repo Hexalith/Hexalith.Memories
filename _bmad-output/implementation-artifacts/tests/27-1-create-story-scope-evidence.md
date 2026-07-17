@@ -48,6 +48,12 @@ The following `sprint-status.yaml` content existed in the declared baseline snap
 - the A41 action comment that keeps the action `open`;
 - every other sprint-status line outside the two story-owned keys shown in the scoped diff.
 
+Post-baseline committed exclusions are also user-owned and outside Story 27.1:
+
+- the Epic 28 registration (`epic-28`, Story 28.1, and its retrospective) added by the approved 2026-07-17 course correction;
+- the Epic 18 contract-document action-item transition and Epic 19 migration-marker action-item transition;
+- later comments or state changes on any action item other than the Story 27.1 story/epic workflow keys.
+
 ## Reproducible Monotonic-Status Verification
 
 The create-stage values above are frozen by the post-create SHA and scoped diff.
@@ -74,6 +80,7 @@ assert status["epic-27"] in {
 assert status["27-1-access-telemetry-retention-ownership-decision"] in {
     "ready-for-dev",
     "in-progress",
+    "blocked",
     "review",
     "done",
 }

@@ -167,16 +167,19 @@ not configure retention by itself. Memories currently emits events but does not
 yet own or enforce a deployed TTL/purge policy.
 
 [ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md) accepts the target:
-a dedicated Redis 7.4 access-telemetry workload, separate from domain Redis and
-Hexalith.EventStore, with two persisted data members plus Sentinel, a ratified
-24-hour Production default (allowed range 1 hour-7 days), millisecond Redis-time
-expiry, continuously signed independent-UTC clock attestations, fenced
-active/passive lifecycle control, synchronous cohort-specific purge, bounded
-controller-triggered persisted-file compaction, non-blocking buffering,
-separate write/lifecycle/compaction/inspection credentials, and versioned
-privacy-safe markers. The ADR is `Accepted`; Stories 27.2 and 27.3 are unblocked
-to implement and verify it. Acceptance is a design gate, not shipped lifecycle
-behavior.
+a container-service-neutral, Dapr-only access-telemetry lifecycle service. The
+Memories process uses Dapr service invocation and has no Redis, Kubernetes, or
+other backend/orchestrator API. A fixed-ID Dapr actor owns serialized writes,
+durable state/reminders, expiry buckets, purge checkpoints, and dynamic marker
+rotation. Dapr state, configuration, and secrets components sit behind a
+fail-closed behavioral capability gate; a separate Dapr-invoked clock service
+provides signed independent-UTC attestations with one consistent one-second
+bound. The 24-hour Production default remains configurable from 1 hour through
+7 days. Millisecond logical expiry and portable Dapr delete evidence are
+separate from component-specific physical-reclamation evidence collected by
+the selected deployment adapter outside the application API. The ADR is
+`Accepted`; Stories 27.2 and 27.3 are unblocked to implement and verify it.
+Acceptance is a design gate, not shipped lifecycle behavior.
 
 `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action
 remains open. ADR proposal or acceptance and story scheduling are not lifecycle evidence.
@@ -197,6 +200,11 @@ filter would prevent success events from reaching every provider and is invalid
 when lifecycle retention is enabled. Regulated access-record retention therefore
 scales the bounded lifecycle pipeline; it is never implemented by globally
 filtering away successful operations.
+
+Until Story 27.2 ships, console and optional OTLP are the only emitted routes.
+A regulated deployment relying on that interim trail must retain `Information`
+for `AccessTelemetryCategory`, or explicitly accept that a provider-specific
+`Warning` filter suppresses every successful-operation record on that route.
 
 ---
 
@@ -292,14 +300,16 @@ about 5 GB/day across the committed two-replica Production shape. It remains
 historical context and is not used to size the lifecycle target.
 
 ADR 27.1-001 now owns the accepted all-nine-operation admission envelope: a
-250 events/s cluster ceiling over explicit per-family inputs, deterministic
-average/P95 sanitized fixture sizes, a capped 1,024-byte payload, Redis
-key/index/expiry and 1.50 fragmentation budgets, AOF/RDB rewrite workspace,
-queue and outage recovery, and purge catch-up. At the 7-day maximum, the
-projection consumes 324.44 GiB of 512 GiB configured Redis memory (63.37%) and
-576.78 GiB of a 1.5 TiB PVC per data member (37.55%). Kustomize must recalculate
-and reserve more capacity before increasing any family ceiling; it cannot use
-the old search-only estimate or silently undersize the accepted footprint.
+250 events/s cluster ceiling over explicit per-family inputs, representative
+deterministic average/P95 fixture sizes, and an authoritative 1,024-byte
+serialized-record cap. At the 7-day maximum the envelope contains 151,200,000
+records and at most 144.20 GiB of canonical payload. That is not a physical
+storage quote. The selected Dapr component adapter must measure record/index
+amplification, durability replication, transaction-log or tombstone overhead,
+actor/control state, and reclamation workspace; reserve steady and peak
+headroom; and attach cost and physical-reclamation evidence before rollout.
+Increasing the cluster ceiling or replica-derived traffic requires a new
+calculation and cannot silently undersize the selected component.
 
 Current JSON-console logging does not provide a persistent queue, capacity
 policy, or purge. Under the accepted capacity gate, Story 27.2's target provider
