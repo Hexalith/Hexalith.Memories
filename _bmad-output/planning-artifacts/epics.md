@@ -4820,3 +4820,60 @@ So that A41 closes only after the policy works in the deployment shape.
 **Given** all implementation and documentation evidence passes,
 **When** A41 is closed,
 **Then** `20.5-A41-ACCESS-TELEMETRY-RETENTION` is reconciled from `carried-forward`, the matching sprint action is closed, architecture and all A41 summaries cite the evidence, and Epic 20/Story 20.5 remain historical `done` records rather than being reopened.
+
+## Epic 28: Owner-Approved EventStore Runtime Adoption
+
+Memories source and package modes converge on the exact EventStore runtime identity authorized by
+EventStore Story 1.20 while preserving the existing zero-code DAPR ingestion contract.
+
+**Lifecycle label:** Operational Readiness / EventStore Dependency Adoption.
+
+**Activation gate:** Epic 28 remains backlog and Story 28.1 has no implementation file until
+EventStore Story 1.20 durably records `final_decision: available`,
+`authorize_consumer_migration: true`, a 40-hex `tested_runtime_sha`, named owner approval, and the
+approved package version and SHA-256 inventory. A current tag, repository HEAD, or unapproved package
+version is insufficient.
+
+### Story 28.1: Adopt Owner-Approved EventStore Runtime Identity
+
+**Status:** backlog. **Owner:** Memories Maintainer + EventStore Maintainer.
+
+As a Memories maintainer,
+I want source and package modes aligned to the owner-approved EventStore runtime identity,
+So that zero-code event ingestion is tested against one auditable dependency contract.
+
+**Given** EventStore Story 1.20 remains blocked, non-authorizing, incomplete, or lacks any required
+source/package/approval identity,
+**When** Memories backlog selection runs,
+**Then** this story remains `backlog`, no EventStore or Builds gitlink is changed, and no existing
+ingestion, projection, or deployment topology is redesigned.
+
+**Given** Story 1.20 authorizes migration and names the approved EventStore source SHA,
+**When** Debug/source mode is adopted,
+**Then** `references/Hexalith.EventStore` gitlink and checkout both equal that SHA, the EventStore
+submodule is not edited, and only Memories-root-declared submodules are initialized.
+
+**Given** Story 1.20 names the approved 14-package version and hashes,
+**When** Release/package mode restores from an isolated cache,
+**Then** `Hexalith.EventStore.Client`, `Hexalith.EventStore.Aspire`, and every resolved
+`Hexalith.EventStore*` asset use that exact version, fetched package bytes match the approved hashes,
+no EventStore project reference enters the Release asset graph, and the selected `Hexalith.Builds`
+gitlink already exposes that version.
+
+**Given** Memories' existing EventStore integration,
+**When** dependency adoption is implemented,
+**Then** it preserves `AddMemoriesServerServices()` → `AddServerEventStoreIntegration()` →
+`AddMemoriesEventStoreIntegration()`, `UseCloudEvents()`, `MapControllers()`,
+`MapSubscribeHandler()`, `/events/ingest`, the `pubsub` component, and
+`MEMORIES_EVENTSTORE_TOPIC` without introducing direct REST ingestion for domain event streams.
+
+**Given** source and package identities are aligned,
+**When** validation runs,
+**Then** Debug/source and Release/package builds pass, exact Client/Aspire assets are proven, focused
+EventStore/Server contract tests pass, and a real DAPR publish proves a persisted and searchable
+memory result while duplicate replay is ignored.
+
+**Given** adoption exposes a behavioral incompatibility,
+**When** it cannot be resolved without changing the zero-code ingestion contract or topology,
+**Then** this story fails closed and routes that behavior change to a separately approved
+compatibility story rather than expanding silently.
