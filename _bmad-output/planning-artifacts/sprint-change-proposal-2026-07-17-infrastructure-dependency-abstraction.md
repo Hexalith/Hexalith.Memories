@@ -50,7 +50,7 @@
 
 ### Section 6 — Final Review and Handoff
 
-- **6.1–6.2** — [x] Done (this document). **6.3** — [ ] Action-needed (awaiting user approval). **6.4** — [!] Action-needed (add tracking spec; no epic add/remove/renumber). **6.5** — [x] Handoff plan below.
+- **6.1–6.2** — [x] Done (this document). **6.3** — [x] **Approved 2026-07-17** with the **F6 *migrate* variant** (migrate the pure KV/set stores to Dapr state; keep the atomic-reserve dedup store direct). Routing decision: **create tracking spec only** — no source code modified this session. **6.4** — [x] Tracking spec created: `_bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md`; no epic add/remove/renumber (`sprint-status.yaml` unchanged unless the team elects to make this epic-owned). **6.5** — [x] Handoff plan below.
 
 ---
 
@@ -89,7 +89,7 @@ The genuine residuals are enumerated in Section 4.
 
 **Selected path: Direct Adjustment (Option 1) + governance note.** Rationale: the invariant already largely holds; the residuals are localized literals and one placement nuance. Fix them in place, make one policy decision explicit (F6), and codify the invariant so it stays enforced.
 
-- **Effort:** Low–Medium (est. ~1.0–1.5 dev-days incl. tests; F1 is the bulk because of the test-pinned static registry).
+- **Effort:** Medium (est. ~1.5–2.0 dev-days incl. tests; F1 and the F6 store migration are the bulk — F1 because of the test-pinned static registry, F6 because migrating the KV/set stores to Dapr state needs idempotency + duplicate/late-write coverage).
 - **Risk:** Low. All changes are additive/behavior-preserving; no contract shape change (`TenantEmbeddingConfig` V1 fields unchanged), no rollback.
 - **Timeline impact:** None to MVP. Fits a single focused spec.
 - **Trade-offs considered:** "Push behind abstraction" for search/vector/graph was **declined by user** in favor of "Isolate + Aspire-wire"; the audit confirms those clients are already isolated and Aspire-injected, so no action is required there.
@@ -225,8 +225,11 @@ private static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration 
   - `src/Hexalith.Memories.EventStore/RedisPreflightDedupStore.cs:16,41-45` — `StringSet(..., When.NotExists)` atomic reservation + TTL, "fails OPEN".
   - `src/Hexalith.Memories.EventStore/RedisAggregateCaseMappingStore.cs:19,33` — aggregate→case mapping.
   - `src/Hexalith.Memories.EventStore/RedisObservedEventTypeStore.cs:60,95` — observed-event-type set, pipelined batches.
-- **Analysis:** all use the **injected** keyed connection (no endpoint leak) and rely on **Redis-native atomic primitives the Dapr state API does not cleanly expose** — `StringSet When.NotExists` for lock/dedup reservation, TTL/`KeyExpire`, hash fields, pipelined batches, Lua `ScriptEvaluate`. `EventStore` is a **boundary project**, so this is not a product-code leak; the only open question is Dapr building-block choice.
-- **Recommended action:** **Accept-and-document** (do not migrate). Write a short ADR recording that these three stores deliberately use direct Redis because their atomic-reserve / TTL / pipeline semantics are load-bearing and not portably expressible via the Dapr state building block; add a one-line comment at each site pointing to the ADR. (If a future requirement removes the atomicity dependency, revisit migrating the pure KV mapping/set to `statestore`.)
+- **Analysis:** all use the **injected** keyed connection (no endpoint leak) and rely on Redis primitives; the open question is Dapr building-block choice. `EventStore` is a **boundary project**, so this is not a product-code leak — but the intent is to prefer the Dapr state building block wherever Redis-native atomicity is *not* load-bearing.
+- **Recommended action (APPROVED VARIANT — migrate):** **Split the three stores by whether Redis-native atomicity is load-bearing.**
+  - **Migrate to the Dapr state store (`statestore`):** `RedisAggregateCaseMappingStore` (aggregate→case KV mapping) and `RedisObservedEventTypeStore` (observed-event-type set). Both are idempotent, at-least-once-safe KV/set writes with no cross-key atomicity requirement — a clean Dapr state fit. Model the set as per-type keys (`{tenant}||observedtype||{type}`) or an ETag-guarded collection; use `SaveBulkStateAsync` / state transactions for batch writes. Preserve idempotency and late/duplicate-write safety (project-context: Dapr pub/sub is at-least-once and unordered — handlers must be idempotent) and add duplicate/late-write tests.
+  - **Keep direct (with ADR justification):** `RedisPreflightDedupStore` — its `StringSet(..., When.NotExists)` atomic check-and-set + TTL + fail-OPEN behavior is not portably expressible via the Dapr state API.
+  - Write a short ADR recording the split (why the dedup reservation stays direct; why the mapping/set move to Dapr state) and add a one-line pointer comment at each site.
 
 ### Group E — Consistency / labeling / cleanup (cosmetic, prevent future false-flags)
 
@@ -267,7 +270,7 @@ private static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration 
 | A1 | Config-drive Ollama default endpoint/OIDC (remove `llm.tache.ai` / `auth.tache.ai` / client-id / scope literals); add options binding + regression guard test | F1 | Developer | High |
 | A2 | Config-drive Google embedding base URL (remove `const ApiBaseUrl`) | F2 | Developer | Medium |
 | A3 | Relocate keyed `IConnectionMultiplexer` construction to ServiceDefaults **or** adopt Aspire `AddKeyedRedisClient`; keep guard + keyed names; add AppHost boot smoke test | F5 | Developer | Medium |
-| A4 | Write ADR accepting direct-Redis for the 3 KV EventStore stores; add pointer comments | F6 | Developer + Architect | Decision |
+| A4 | Migrate the 2 pure KV/set EventStore stores (`RedisAggregateCaseMappingStore`, `RedisObservedEventTypeStore`) to the Dapr state store; keep `RedisPreflightDedupStore` direct (atomic-reserve/TTL); ADR records the split; add duplicate/late-write tests | F6 | Developer + Architect | Medium |
 | A5 | Source CLI default endpoint + OTLP dev endpoint from config defaults | F3, F4 | Developer | Low |
 | A6 | Label Dapr-platform token env reads; move MCP app-id + EventStore topic to `IConfiguration`/`IOptions`; confirm/schedule `RedisPlaceholder` removal | F7, F8, F9 | Developer | Low |
 | A7 | Add Decision Registry D30 + sanctioned exceptions to `architecture.md`; add invariant rule to `project-context.md` | F10 | Developer + Architect | Medium |
