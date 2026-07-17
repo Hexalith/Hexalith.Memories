@@ -6,7 +6,7 @@ creation_scope_evidence: _bmad-output/implementation-artifacts/tests/27-1-create
 
 # Story 27.1: Access Telemetry Retention Ownership Decision (Decision-First)
 
-Status: review
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -42,10 +42,10 @@ so that implementation has an owned, deployable, and testable target.
   - [x] Record the evidence-weighted recommendation—currently a dedicated Redis access-telemetry workload with atomic TTL assignment—as a recommendation until the owner, default/range, privacy policy, durability boundary, and operating cost are ratified. Do not present it as the decision merely because Redis is already used elsewhere.
   - [x] If no candidate satisfies every hard gate, leave the ADR proposed, mark this story blocked during implementation, and do not start Stories 27.2 or 27.3.
 
-- [x] Task 3 - Ratify the complete lifecycle contract in one canonical ADR (AC: 1, 2, 3)
-  - [x] Create `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` with status, date, approver, architecture owner, operational lifecycle owner, affected deployment, selected family/technology, rejected alternatives, and explicit implementation gate.
+- [ ] Task 3 - Complete the lifecycle contract and ratify it only after every hard gate passes (AC: 1, 2, 3)
+  - [x] Create `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` with status, date, approver, architecture owner, operational lifecycle owner, affected deployment, proposed family/technology, rejected alternatives, and explicit implementation gate.
   - [x] Define the writer-to-sink topology, separate resource/credential boundary, two-replica key or record uniqueness, concurrency semantics, acknowledgement point, persistence mode, restart/rescheduling behavior, and exact acknowledged loss window.
-  - [x] Ratify a production retention default and allowed minimum/maximum with units, capacity rationale, and configuration ownership. Missing, malformed, below-minimum, above-maximum, or silently unbounded values must have explicit startup behavior.
+  - [ ] Ratify a production retention default and allowed minimum/maximum with units, all-nine-operation capacity evidence, and configuration ownership. Missing, malformed, below-minimum, above-maximum, or silently unbounded values must have explicit startup behavior.
   - [x] Define whether age begins at event emission or backend acceptance, the authoritative UTC clock, late-arrival and clock-skew treatment, logical expiry, physical reclamation, purge cadence/grace, and preservation of newer records.
   - [x] Define bounded queue capacity, retry/backoff and maximum age, shutdown flush limit, overflow/drop reasons, outage behavior, recovery/drain, disk/space exhaustion behavior, and whether invalid configuration fails startup. No telemetry-provider exception may escape into a business request.
   - [x] Define low-cardinality accepted/rejected/enqueued/persisted/retried/failed/dropped/expired/purged and health signals, their owner and `NoData` meaning, and capacity thresholds. Tenant, user, case, unit, query, or source values must not become metric labels.
@@ -53,16 +53,16 @@ so that implementation has an owned, deployable, and testable target.
   - [x] Define rollback so existing JSON console/optional OTLP emission remains intact, retained records continue expiring, persistent storage is not deleted automatically, and a rollback to the old image is explicitly degraded rather than an acceptable steady state.
   - [x] State the assurance boundary verbatim: bounded infrastructure telemetry only; no tamper evidence, append-only integrity, legal compliance, or certified audit retention.
 
-- [x] Task 4 - Project the ratified decision without pretending it is implemented (AC: 1, 2, 3)
-  - [x] Update `_bmad-output/planning-artifacts/architecture.md` to replace the stale “MVP: structured log file” placeholder with the selected, ratified lifecycle target and a link to the canonical ADR.
-  - [x] Update `docs/dev/telemetry.md` to distinguish current JSON-console/optional-OTLP emission from the ratified target, link the ADR, remove stale five-operation/one-node assumptions, and identify any current privacy deviation without claiming it is already fixed.
+- [x] Task 4 - Project the proposed decision without pretending it is ratified or implemented (AC: 1, 2, 3)
+  - [x] Update `_bmad-output/planning-artifacts/architecture.md` to replace the stale “MVP: structured log file” placeholder with the selected, proposed lifecycle target and a link to the canonical ADR.
+  - [x] Update `docs/dev/telemetry.md` to distinguish current JSON-console/optional-OTLP emission from the proposed target, link the ADR, remove stale five-operation/one-node assumptions, and identify any current privacy deviation without claiming it is already fixed.
   - [x] Keep `20.5-A41-ACCESS-TELEMETRY-RETENTION` `carried-forward` and its matching action `open`. Do not edit the deferred ledger merely to imply progress; Story 27.3 owns evidence-backed closure coordination.
   - [x] Do not change production source, application settings, package references, Kubernetes/AppHost resources, deployment configuration tables, or operations runbooks in this decision story. Those belong to Stories 27.2 and 27.3.
   - [x] Record an exact Story 27.2 implementation map and Story 27.3 production-shaped verification map in the ADR, including two writers, restart/rescheduling, deterministic age bounds, purge, newer-record preservation, emission continuity, failure modes, and tenant/privacy negatives.
 
 - [x] Task 5 - Add executable decision-drift guards (AC: 1, 2, 3)
   - [x] Add `tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs` using the existing repository-root and Markdown contract-document seams.
-  - [x] Add six focused facts: exactly one family is ratified and all three are evaluated; every required lifecycle field is present; retention is bounded and has no silent unbounded fallback; production two-replica/read-only-root facts and file hard gates remain explicit; architecture/telemetry/ADR are cross-linked and do not retain the stale structured-log-file claim; assurance/A41/privacy/downstream-story boundaries and the accepted/rejected/enqueued/persisted/retried/failed/dropped/expired/purged signal set remain explicit.
+  - [x] Add six focused facts: exactly one family is proposed and all three are evaluated; every required lifecycle field is present; retention is bounded and has no silent unbounded fallback; production two-replica/read-only-root facts and file hard gates remain explicit; architecture/telemetry/ADR are cross-linked and do not retain the stale structured-log-file claim; assurance/A41/privacy/downstream-story boundaries and the accepted/rejected/enqueued/persisted/retried/failed/dropped/expired/purged signal set remain explicit.
   - [x] Make guards structure-aware by reading exact headings/table rows. Avoid brittle whole-document substring counts or accepting required vocabulary from unrelated sections.
   - [x] Keep these as decision-document guards only. Provider, TTL, queue, Redis integration, multi-writer, restart, purge, and cross-tenant runtime tests belong to Stories 27.2 and 27.3.
 
@@ -73,9 +73,38 @@ so that implementation has an owned, deployable, and testable target.
   - [x] If the current OpenTelemetry 1.16.0/OTLP exporter 1.17.0 downgrade error persists, report it as a pre-existing build blocker. Do not turn Story 27.1 into a package-upgrade story or claim a fresh-build result from an older binary.
   - [x] Reconcile the File List and the canonical phase ledger before moving the story beyond `in-progress`; no planned test count may be reported as actual.
 
+### Review Findings
+
+- [x] [Review][Patch] [High] Return the ADR to `Proposed` and block Stories 27.2/27.3 until the all-nine-operation capacity recalculation satisfies the ratification gate [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:182`]
+- [x] [Review][Patch] [High] Keep the 15-minute active key/index purge bound and add a monitored, verified 24-hour AOF/RDB compaction bound [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:127`]
+- [x] [Review][Patch] [High] Require Redis members to remain within 1 second UTC, block rollout and mark lifecycle unhealthy when exceeded, record promotion clock deltas, and reject purge evidence during violations [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:142`]
+- [x] [Review][Patch] [High] Process at most 512 due records per purge script, enforce a 100 ms observed execution budget, and resume with bounded backoff until oldest-due age is within 15 minutes [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:173`]
+- [x] [Review][Patch] [Medium] Correct the options matrix's contradictory `7-day default` wording [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:53`]
+- [x] [Review][Patch] [High] Define correctly configured sink unavailability during Server startup as bounded degraded operation [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:218`]
+- [x] [Review][Patch] [Medium] Replace second-precision `EXAT` with millisecond-precision `PXAT` throughout the contract [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:154`]
+- [x] [Review][Patch] [Medium] Add marker-key versioning and retain verification keys through maximum retention plus purge grace [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:254`]
+- [x] [Review][Patch] [High] Make the options guard verify every required lifecycle row and three nonblank candidate evaluations [`tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs:25`]
+- [x] [Review][Patch] [Medium] Guard the selected Redis technology, exact image digest, and projection consistency [`tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs:31`]
+- [x] [Review][Patch] [Medium] Guard the five-minute retry-age and absolute-expiry caps independently of five-second limits [`tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs:90`]
+- [x] [Review][Patch] [Medium] Guard the complete bounded metric-label contract instead of only the literal `tenant_id` [`tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs:194`]
+- [x] [Review][Patch] [Medium] Make create-story scope verification survive valid later status transitions [`_bmad-output/implementation-artifacts/tests/27-1-create-story-scope-evidence.md:51`]
+- [x] [Review][Patch] [High] Remove unsupported anti-template completion evidence claiming a comprehensive developer guide [`_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md:306`]
+- [x] [Review][Patch] [High] Record the exact comparable diagnostic build and pre/post discovery commands behind the `2,145 -> 2,151` ledger delta [`_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md:326`]
+- [x] [Review][Patch] [High] Make the Sentinel and persistent-volume topology executable by spreading Sentinels across independent failure domains and naming the StatefulSet identity, StorageClass/PV reclaim owner, binding/access modes, and topology constraints [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:89`]
+- [x] [Review][Patch] [High] Replace the non-executable Kustomize clock preflight with a runtime gate against an independent UTC reference, and apply the bound to Server emission clocks as well as Redis members [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:148`]
+- [x] [Review][Patch] [Medium] Stop treating `UNLINK` as completed physical memory reclamation: use a bounded synchronous deletion path or monitor lazy-free allocator completion separately [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:186`]
+- [x] [Review][Patch] [High] Define the post-start configuration-invalid transition when Redis was unreachable during startup and the first connection later reveals invalid credentials, version, or function-library fingerprint [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:246`]
+- [x] [Review][Patch] [Medium] Define lifecycle-health precedence so an unavailable or unhealthy sink cannot be masked by the `NoData` state [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:270`]
+- [x] [Review][Patch] [High] Complete the privacy boundary with TLS for client, replication, and Sentinel links, namespace NetworkPolicy isolation, and explicit persistent-volume encryption ownership [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:281`]
+- [x] [Review][Patch] [Medium] Retain old marker verification keys from the final old-key write for maximum retention plus accepted future skew and purge grace [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:303`]
+- [x] [Review][Patch] [Medium] Reject `record_id_conflict` when an existing record key has payload bytes or absolute expiry different from the alleged retry [`docs/dev/adr-27.1-001-access-telemetry-lifecycle.md:124`]
+- [x] [Review][Patch] [High] Isolate lifecycle-provider filtering from the documented category-level `Warning` throttle so success records still reach the retention target [`docs/dev/telemetry.md:183`]
+- [x] [Review][Patch] [Medium] Expand the six decision guards to preserve the exact durability scope, absolute clock gate, privacy warning, architecture assurance/A41 projection, and newly repaired topology, startup, health, purge, and security clauses [`tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs:102`]
+- [x] [Review][Patch] [Medium] Repair the phase ledger by updating the stale canonical-blocker consequence/reopen trigger, linking the dev-story cell to its exact discovery commands, and labeling the `2,697` execution results as xUnit test cases [`_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md:198,374-375`]
+
 ## Dev Notes
 
-Story 27.1 is the architecture/operator decision gate for Epic 27. Its one deliverable is a ratified, owned, deployable, and testable lifecycle contract. Story 27.2 implements that contract. Story 27.3 supplies production-shaped expiry/purge evidence, the operations runbook, and coordinated A41 close-out. Completing or scheduling 27.1 alone cannot close the residual. [Source: _bmad-output/planning-artifacts/epics.md#Story-27.1; _bmad-output/planning-artifacts/sprint-change-proposal-2026-07-16-access-telemetry-retention-implementation.md]
+Story 27.1 is the architecture/operator decision gate for Epic 27. Its one deliverable is a ratified, owned, deployable, and testable lifecycle contract. The current Redis design remains `Proposed` until the all-nine-operation capacity evidence passes; Stories 27.2 and 27.3 are blocked until then. After ratification, Story 27.2 implements the contract and Story 27.3 supplies production-shaped expiry/purge evidence, the operations runbook, and coordinated A41 close-out. Completing or scheduling 27.1 alone cannot close the residual. [Source: _bmad-output/planning-artifacts/epics.md#Story-27.1; _bmad-output/planning-artifacts/sprint-change-proposal-2026-07-16-access-telemetry-retention-implementation.md]
 
 ### Discovery Results
 
@@ -177,10 +206,10 @@ DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Test
 
 It failed during restore with `NU1605`: `OpenTelemetry.Exporter.OpenTelemetryProtocol 1.17.0` requires `OpenTelemetry >= 1.17.0`, while the repository directly pins `OpenTelemetry 1.16.0`.
 
-- **Canonical discovery status:** blocked; do not subtract a later count from the 2,132 observational inventory.
+- **Canonical discovery status:** blocked; do not subtract a later count from the 2,132 observational inventory. The unchanged-pin diagnostic lane separately produced comparable current-source evidence for the six-method story delta.
 - **Blocker owner:** the shared `Hexalith.Builds` dependency-pin maintainer together with the Memories build maintainer.
-- **Consequence:** current source cannot produce a trusted test-count baseline or verify the six new decision guards; no fresh-build or actual test-delta claim is permitted.
-- **Measurable reopen trigger:** the shared OTLP exporter and local OpenTelemetry core pins resolve compatibly and the exact Release build above exits `0`; before adding tests, rerun the exact `-list methods` commands and record that fresh count as the canonical pre-change baseline.
+- **Consequence:** the repository cannot produce an unsuppressed canonical Release build or canonical discovery total. The diagnostic build and method delta remain explicitly noncanonical; they verify the current-source guards without replacing the blocked canonical lane.
+- **Measurable reopen trigger:** after the shared OTLP exporter and local OpenTelemetry core pins resolve compatibly, run the exact unsuppressed Release build above and the same xUnit `-list methods` discovery against its output. Record the canonical post-review method set and compare its fully qualified names with the diagnostic post-review set; do not invent or reconstruct a canonical pre-change total.
 
 Existing Release-artifact focused observations gathered during analysis:
 
@@ -207,24 +236,24 @@ These noncanonical observations show that the existing artifact is runnable; the
 
 ### Slice Proof
 
-Story 27.1 has one independently demonstrable outcome: one ratified lifecycle decision artifact that supplies an owned, deployable, and testable target. The matrix, ownership, topology, retention, failure, privacy, capacity, and rollback clauses are facets of that single decision.
+Story 27.1 has one independently demonstrable outcome: one ratified lifecycle decision artifact that supplies an owned, deployable, and testable target. The current artifact is a review-hardened proposal, not that completed outcome, until its all-nine-operation capacity gate passes. The matrix, ownership, topology, retention, failure, privacy, capacity, and rollback clauses are facets of that single decision.
 
 The split is deliberate and must remain visible:
 
 - Story 27.1 decides and synchronizes the contract; no runtime lifecycle behavior is claimed.
-- Story 27.2 implements the selected sink/store, configuration validation, bounded expiry/purge, failure behavior, observability, and privacy-safe payload path.
-- Story 27.3 supplies production-shaped evidence, the runbook, and coordinated A41 close-out.
+- Story 27.2 remains blocked until ratification, then implements the selected sink/store, configuration validation, bounded expiry/purge, failure behavior, observability, and privacy-safe payload path.
+- Story 27.3 remains blocked until ratification, then supplies production-shaped evidence, the runbook, and coordinated A41 close-out.
 - Story 20.5 remains historical `done`; its emission and rate-limit behavior must not be undone.
 
-Completion evidence for 27.1 is the accepted ADR, synchronized architecture/telemetry text, six passing decision guards, and an explicit downstream handoff. A sink implementation, broad deployment package, operations runbook, or A41 closure would be a separate independently demonstrable outcome and is therefore out of this slice.
+Completion evidence for 27.1 remains an accepted ADR backed by all-nine-operation capacity evidence, synchronized architecture/telemetry text, six passing decision guards, and an explicit downstream handoff. The first item is still open. A sink implementation, broad deployment package, operations runbook, or A41 closure would be a separate independently demonstrable outcome and is therefore out of this slice.
 
 ### Expected File Touches During Implementation
 
 Required:
 
-- `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` - canonical ratified decision and downstream contract.
+- `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` - canonical proposed decision and blocked downstream contract until capacity ratification.
 - `_bmad-output/planning-artifacts/architecture.md` - replace the stale temporary gate with the selected target and ADR link.
-- `docs/dev/telemetry.md` - reconcile current emission, ratified target, capacity/privacy drift, and assurance boundary.
+- `docs/dev/telemetry.md` - reconcile current emission, proposed target, capacity/privacy drift, and assurance boundary.
 - `tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs` - six structure-aware decision guards.
 - `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md` - Dev Agent Record, test evidence, completion notes, phase ledger, and cumulative File List.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` - workflow status only.
@@ -285,7 +314,9 @@ Codex GPT-5
 
 ### Debug Log References
 
-- 2026-07-16: Task 6 reproduced the canonical isolated Release-build `NU1605` blocker with the exact story command: OTLP exporter 1.17.0 requires OpenTelemetry core >=1.17.0 while the repository pins 1.16.0. A clearly noncanonical diagnostic fallback restored and built the unchanged pinned graph with `NoWarn=NU1605;DAPR_CONVERSATION;EXTEXP0001;xUnit1051` (the latter three preserve existing project suppressions when the global fallback property replaces `NoWarn`) and completed with 0 warnings/0 errors. The current-source decision class passed 6/0/0; the seven named telemetry regression classes passed 80/0/0; the full Server assembly passed 2,697 total with 0 errors, 0 failures, and one existing skip. Final discovery remained Server 2,151, Architecture 24, Telemetry 141. `git diff --check` passed. File List reconciliation used `git status --short -- docs/dev/adr-27.1-001-access-telemetry-lifecycle.md _bmad-output/planning-artifacts/architecture.md docs/dev/telemetry.md tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs _bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md _bmad-output/implementation-artifacts/sprint-status.yaml _bmad-output/implementation-artifacts/tests/27-1-create-story-scope-evidence.md`; all seven declared paths matched, while pre-existing same-file architecture/telemetry residual edits and unrelated sprint-status entries remain excluded.
+- 2026-07-16: The second code-review pass applied all 11 accepted patches. It made Redis/Sentinel/PV topology executable; replaced the declarative-only clock check with a measured independent-UTC rollout/runtime gate covering Redis and Server writers; separated logical purge from lazy-free memory reclamation; defined first-connection configuration-invalid behavior, health precedence, TLS/network/storage privacy controls, marker overlap, idempotency conflicts, and provider-specific lifecycle filtering; expanded all six decision guards; and repaired the phase ledger. The pre-review and post-review diagnostic assemblies discovered the same Server 2,151, Architecture 24, Telemetry 141, and story-class 6 methods, so this pass added +0 methods and the cumulative story delta remains +6. The canonical build still stops at the pre-existing `NU1605`; the diagnostic build passed with 0 warnings/0 errors, the focused class passed 6/0/0 xUnit test cases, and the full diagnostic lane reported 2,697 xUnit test cases, 1 unrelated failure, and 1 skip. Exact commands and artifact hashes are in `Second Code-Review Verification Commands`.
+- 2026-07-16: Code review resolved four design decisions and applied all 15 accepted patches. The ADR returned to `Proposed`; Stories 27.2/27.3 are blocked until all-nine-operation capacity evidence supports ratification. The review added millisecond `PXAT`, one-second Redis clock discipline, bounded 512-record/100-ms purge batches, separate 15-minute active purge and monitored 24-hour persistence-compaction bounds, startup degraded-mode behavior, marker-key rotation, stronger document guards, and monotonic status verification. The canonical Release build still stops at the pre-existing `NU1605`. The unchanged-pin diagnostic build completed with 0 warnings/0 errors, the focused decision class passed 6/0/0 xUnit test cases, and discovery remained Server 2,151, Architecture 24, Telemetry 141 methods, so the review-patch method delta is +0 and the cumulative story method delta remains +6. The full diagnostic Server assembly reported 2,697 xUnit test cases, 1 unrelated failure, and 1 skip in `ContractDocumentGuardTests.GetSection_LfAndCrLf_IncludesSubordinatesAndStopsAtPeerHeading`; the focused method reproduced that out-of-scope line-ending assertion failure. The exact build and discovery commands are recorded below.
+- 2026-07-16: Task 6 reproduced the canonical isolated Release-build `NU1605` blocker with the exact story command: OTLP exporter 1.17.0 requires OpenTelemetry core >=1.17.0 while the repository pins 1.16.0. A clearly noncanonical diagnostic fallback restored and built the unchanged pinned graph with `NoWarn=NU1605;DAPR_CONVERSATION;EXTEXP0001;xUnit1051` (the latter three preserve existing project suppressions when the global fallback property replaces `NoWarn`) and completed with 0 warnings/0 errors. The current-source decision class passed 6/0/0 xUnit test cases; the seven named telemetry regression classes passed 80/0/0 xUnit test cases; the full Server assembly passed 2,697 xUnit test cases with 0 errors, 0 failures, and one existing skip. Final discovery remained Server 2,151, Architecture 24, Telemetry 141 methods. `git diff --check` passed. File List reconciliation used `git status --short -- docs/dev/adr-27.1-001-access-telemetry-lifecycle.md _bmad-output/planning-artifacts/architecture.md docs/dev/telemetry.md tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs _bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md _bmad-output/implementation-artifacts/sprint-status.yaml _bmad-output/implementation-artifacts/tests/27-1-create-story-scope-evidence.md`; all seven declared paths matched, while pre-existing same-file architecture/telemetry residual edits and unrelated sprint-status entries remain excluded.
 - 2026-07-16: Task 5 added exactly six structure-aware xUnit facts over exact ADR/architecture/telemetry sections and tables plus the shared tool-markup anti-corruption guard. A controlled `Accepted` to `Proposed` mutation established RED (6 total, 5 failed); after restoring the ratified status and normalizing section whitespace, GREEN passed 6/0/0. Comparable no-restore Release discovery moved Server methods 2,145 -> 2,151 and Architecture methods 18 -> 24; Telemetry remained 141, for an actual Story 27.1 phase delta of +6 methods.
 - 2026-07-16: Task 4 projected the accepted target into the existing dirty architecture and telemetry documents without overwriting their concurrent Epic 27 residual edits. The stale structured-file, five-operation, one-node, lossless-stdout, and operator-owned-retention assumptions are removed; current JSON/optional-OTLP behavior, current raw-value deviation, not-yet-implemented target, downstream handoffs, and open A41 boundary are explicit. No runtime source, settings, package, deployment resource, operations runbook, or deferred-work entry was changed by this story.
 - 2026-07-16: Task 3 ratified ADR 27.1-001 with 14 canonical sections, a 24-hour Production default (1 hour-7 days), Redis `TIME`/`EXAT`, five-minute sweep and 15-minute purge grace, two-PVC `WAITAOF` durability boundary, explicit simultaneous-storage loss boundary, 8,192-record/64-MiB queue, five-minute retry age, five-second shutdown flush, low-cardinality lifecycle signals, separate writer/lifecycle/inspector authorities, HMAC markers and raw-value bucketing, capacity admission, rollback, and the required bounded-infrastructure-telemetry assurance statement.
@@ -297,13 +328,95 @@ Codex GPT-5
 - 2026-07-16: An unprovenanced xUnit Release artifact listed 2,132 Server methods (`Architecture` 18; `Telemetry` 141), so it is retained as observational inventory only. Canonical current-source discovery is blocked by the pre-existing OpenTelemetry 1.16.0 versus OTLP exporter 1.17.0 `NU1605` mismatch and must be rerun after the owned dependency-pin correction.
 - 2026-07-16: Create-story scope changed only this story record and the exact Epic 27/story status lines in `sprint-status.yaml`; unrelated dirty-worktree changes remain user-owned and excluded.
 
+### Dev-Story Diagnostic Discovery Commands
+
+The dev-story diagnostic lane used the same runner, assembly, scope, and
+configuration before and after adding the six decision methods. The exact
+diagnostic build command was:
+
+```bash
+DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --disable-build-servers -m:1 /nr:false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -p:NoWarn=NU1605%3BDAPR_CONVERSATION%3BEXTEXP0001%3BxUnit1051
+```
+
+The pre-change and post-change discovery snapshots used the same command shape;
+only the output file name identified the chronological snapshot:
+
+```bash
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -list methods > /tmp/story-27-1-server-tests-pre.txt
+rg -c '^Hexalith\.Memories\.Server\.Tests\.' /tmp/story-27-1-server-tests-pre.txt
+rg -c '^Hexalith\.Memories\.Server\.Tests\.Architecture\.' /tmp/story-27-1-server-tests-pre.txt
+rg -c '^Hexalith\.Memories\.Server\.Tests\.Telemetry\.' /tmp/story-27-1-server-tests-pre.txt
+
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -list methods > /tmp/story-27-1-server-tests-post.txt
+rg -c '^Hexalith\.Memories\.Server\.Tests\.' /tmp/story-27-1-server-tests-post.txt
+rg -c '^Hexalith\.Memories\.Server\.Tests\.Architecture\.' /tmp/story-27-1-server-tests-post.txt
+rg -c '^Hexalith\.Memories\.Server\.Tests\.Telemetry\.' /tmp/story-27-1-server-tests-post.txt
+```
+
+The resulting comparable method totals were Server `2,145 -> 2,151`,
+Architecture `18 -> 24`, and Telemetry `141 -> 141`. This is explicitly the
+diagnostic suppressed-pin lane; it does not replace the canonical `NU1605`
+blocker record.
+
+### Second Code-Review Verification Commands
+
+The pre-review existing Release assembly had SHA-256
+`5e111081fbe25023f28b86362a91bf8953eac34b1b590e28b76945b8a0bf44ef`;
+after the diagnostic rebuild and accepted patches it had SHA-256
+`405d0fdcfce34f079d67d44767d26890d0b785f6e8ec9838ba34ac5a96e69209`.
+Both chronological snapshots used this exact in-memory discovery command:
+
+```bash
+DISCOVERY="$(DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -list methods)"
+printf '%s\n' "$DISCOVERY" | rg -c '^Hexalith\.Memories\.Server\.Tests\.'
+printf '%s\n' "$DISCOVERY" | rg -c '^Hexalith\.Memories\.Server\.Tests\.Architecture\.'
+printf '%s\n' "$DISCOVERY" | rg -c '^Hexalith\.Memories\.Server\.Tests\.Telemetry\.'
+printf '%s\n' "$DISCOVERY" | rg -c '^Hexalith\.Memories\.Server\.Tests\.Architecture\.AccessTelemetryRetentionDecisionTests\.'
+```
+
+Both snapshots returned Server `2,151`, Architecture `24`, Telemetry `141`,
+and `AccessTelemetryRetentionDecisionTests` `6` methods: review-patch delta
+`+0`, cumulative story delta `+6`, and external same-lane delta `+0`.
+
+The canonical build was rerun exactly and stopped at the known `NU1605`:
+
+```bash
+DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --disable-build-servers -m:1 /nr:false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0
+```
+
+The unchanged-pin diagnostic build completed with 0 warnings and 0 errors:
+
+```bash
+DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --disable-build-servers -m:1 /nr:false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -p:NoWarn=NU1605%3BDAPR_CONVERSATION%3BEXTEXP0001%3BxUnit1051
+```
+
+The focused decision class passed 6/0/0 xUnit test cases:
+
+```bash
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryRetentionDecisionTests -parallel none -noLogo
+```
+
+The full diagnostic Server lane used the same assembly and returned 2,697
+xUnit test cases, 1 unrelated failure, and 1 skip:
+
+```bash
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -parallel none -noLogo
+```
+
+The exact focused reproduction also failed 1/1 in the concurrent
+contract-document line-ending guard, outside Story 27.1:
+
+```bash
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -method Hexalith.Memories.Server.Tests.Documentation.ContractDocumentGuardTests.GetSection_LfAndCrLf_IncludesSubordinatesAndStopsAtPeerHeading -parallel none -noLogo
+```
+
 ### Completion Notes List
 
-- Task 6 complete: canonical fresh build remains blocked by the pre-existing OpenTelemetry `NU1605`; the explicit unchanged-pin diagnostic fallback built cleanly, the 6 decision guards, 80 telemetry regressions, and 2,697-test full Server assembly are green, `git diff --check` passed, and the cumulative File List reconciles 7/7.
-- Task 5 complete: six decision-only drift guards passed 6/0/0 and increased the comparable Server/Architecture method inventory by exactly six without adding provider, Redis, TTL, queue, purge, multi-writer, restart, or cross-tenant runtime behavior.
-- Task 4 complete: architecture and telemetry now distinguish shipped emission from the accepted target, link the canonical ADR, keep A41 open, and hand Stories 27.2/27.3 exact implementation and Production-verification obligations.
-- Tasks 1-3 complete: current state and producer privacy were reverified, all three permitted families were evaluated, and the dedicated Redis lifecycle contract was accepted with concrete ownership, bounds, failure semantics, privacy controls, capacity, and downstream gates.
-- Ultimate context engine analysis completed - comprehensive developer guide created.
+- Second code review complete: all 11 accepted patches are applied and verified without adding test methods. The story and ADR intentionally remain `in-progress`/`Proposed`; Stories 27.2/27.3 remain blocked because all-nine-operation capacity evidence, the ratification gate itself, is still absent.
+- Task 6 current review evidence: the canonical fresh build remains blocked by the pre-existing OpenTelemetry `NU1605`; the explicit unchanged-pin diagnostic fallback built with 0 warnings/0 errors, and the six decision guards passed 6/0/0 xUnit test cases. The full diagnostic Server lane reported 2,697 xUnit test cases, 1 unrelated failure, and 1 skip in `ContractDocumentGuardTests.GetSection_LfAndCrLf_IncludesSubordinatesAndStopsAtPeerHeading`. The broad-lane owner is the concurrent contract-document drift-guard work; rerun when that exact method and then the full Server assembly pass. Scoped `git diff --check` passed, and the cumulative File List reconciles 7/7.
+- Task 5 complete: six review-hardened decision-only drift guards passed 6/0/0 and increased the comparable Server/Architecture method inventory by exactly six without adding provider, Redis, TTL, queue, purge, multi-writer, restart, or cross-tenant runtime behavior.
+- Task 4 complete: architecture and telemetry now distinguish shipped emission from the proposed target, link the canonical ADR, keep A41 open, and block Stories 27.2/27.3 pending all-nine-operation capacity ratification.
+- Tasks 1-3 produced a concrete dedicated-Redis lifecycle proposal; code review returned the ADR to `Proposed` because its capacity evidence did not satisfy the all-nine-operation ratification gate.
 - Story 27.1 created as a strict decision-first architecture/operator slice with one canonical ADR target and six planned structure-aware guards.
 - Current source, two-replica production topology, privacy deviation, A41 boundary, package-build blocker, current technical guidance, history classification, and downstream story split are captured.
 - No production code, dependency, application setting, deployment artifact, runbook, or A41/deferred-ledger status was changed during story creation.
@@ -323,4 +436,6 @@ Codex GPT-5
 | Date | Phase | Change | Test count | File List reconciliation |
 | :--- | :---- | :----- | :--------- | :----------------------- |
 | 2026-07-16 | create-story | Created Story 27.1; moved Epic 27 from `backlog` to `in-progress` and Story 27.1 from `backlog` to `ready-for-dev`; no implementation performed. | Actual +0; cumulative +0; planned +6 decision-guard methods. Canonical discovery blocked by the owned `NU1605` pin mismatch; the exact command, owner, consequence, and reopen trigger are in Test Baseline. Noncanonical observation only: 2,132 methods (`Architecture` 18; `Telemetry` 141); do not use it for delta. | matched 3/3 against the create-story scope manifest and the declared pre-create snapshot; exact owned-line diff, name-status set, hashes, verification commands, and same-file exclusions are recorded in `_bmad-output/implementation-artifacts/tests/27-1-create-story-scope-evidence.md`. |
-| 2026-07-16 | dev-story | Accepted ADR 27.1-001, synchronized architecture/operator telemetry truth, added six structure-aware decision guards, completed validation, and moved Story 27.1 to `review`; no runtime lifecycle implementation or A41 closure was claimed. | Actual +6; cumulative +6. Comparable current-source diagnostic discovery: Server 2,145 -> 2,151, Architecture 18 -> 24, Telemetry 141 -> 141; external same-lane delta +0. Canonical fresh discovery remains blocked by the exact pre-existing `NU1605`; the older 2,132 observation is unprovenanced and excluded. | matched 7/7 against the cumulative File List using the exact scoped `git status --short --` command in Task 6 evidence and the create-story scope manifest; pre-existing same-file architecture/telemetry residual edits and unrelated sprint-status entries are named exclusions; no conditional file was added. |
+| 2026-07-16 | dev-story | Accepted ADR 27.1-001, synchronized architecture/operator telemetry truth, added six structure-aware decision guards, completed validation, and moved Story 27.1 to `review`; no runtime lifecycle implementation or A41 closure was claimed. | Actual +6 methods; cumulative +6 methods. Comparable current-source diagnostic discovery: Server 2,145 -> 2,151 methods, Architecture 18 -> 24 methods, Telemetry 141 -> 141 methods; external same-lane delta +0 methods. Exact build and discovery commands: `Dev-Story Diagnostic Discovery Commands`. Canonical fresh discovery remains blocked by the exact pre-existing `NU1605`; the older 2,132-method observation is unprovenanced and excluded. | matched 7/7 against the cumulative File List using the exact scoped `git status --short --` command in Task 6 evidence and the create-story scope manifest; pre-existing same-file architecture/telemetry residual edits and unrelated sprint-status entries are named exclusions; no conditional file was added. |
+| 2026-07-16 | code-review | Resolved four design decisions and applied all 15 accepted patches; returned ADR 27.1-001 and the story to `Proposed`/`in-progress`, with Stories 27.2/27.3 blocked until all-nine-operation capacity evidence supports ratification. | Review-patch delta +0 methods; cumulative story delta +6 methods; external same-lane delta +0 methods. Diagnostic discovery remains Server 2,151, Architecture 24, Telemetry 141 methods. The exact comparable build/discovery commands are in `Dev-Story Diagnostic Discovery Commands`. Canonical Release build is blocked by the pre-existing `NU1605`; diagnostic build passed 0 warnings/0 errors and the focused class passed 6/0/0 xUnit test cases. Full diagnostic Server lane: 2,697 xUnit test cases, 1 unrelated failure, 1 skip; rerun after `ContractDocumentGuardTests.GetSection_LfAndCrLf_IncludesSubordinatesAndStopsAtPeerHeading` is repaired by its owning lane. | matched 7/7 against baseline `119c0a49` with the scoped `git diff --name-status`; the user confirmed this complete single Story 27.1 chunk, and no conditional file was added. |
+| 2026-07-16 | code-review | Applied all 11 accepted second-pass patches across executable topology, absolute clock gating, lazy-free purge evidence, delayed configuration validation, health precedence, transport/network/storage privacy, marker overlap, retry conflict handling, lifecycle-provider filtering, decision guards, and ledger evidence. ADR 27.1-001 remains `Proposed` and the story remains `in-progress` pending the unchanged all-nine-operation capacity gate. | Review-patch delta +0 methods; cumulative story delta +6 methods; external same-lane delta +0 methods. Pre/post discovery remained Server 2,151, Architecture 24, Telemetry 141, and story class 6 methods. Exact commands: `Second Code-Review Verification Commands`. Canonical build blocked at the known `NU1605`; diagnostic build passed 0 warnings/0 errors; focused class passed 6/0/0 xUnit test cases; full lane reported 2,697 xUnit test cases, 1 unrelated failure, and 1 skip, with the exact failing method recorded in that command section. | matched 7/7 against baseline `119c0a49` with exact scoped `git diff --name-status`; scoped `git diff --check` passed; the user confirmed the complete Story 27.1 chunk, and no conditional file was added. |
