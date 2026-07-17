@@ -24,8 +24,8 @@ per-tenant custom metrics (NFR29), and per-tenant audit events for every search 
 
 These Production examples are optional export routes only. They do not name or
 configure an access-record retention backend. Current shipped access telemetry
-still reaches JSON console and, when configured, OTLP. The ratified but not yet
-implemented lifecycle target is defined by
+still reaches JSON console and, when configured, OTLP. The proposed, review-
+blocked lifecycle target is defined by
 [ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md).
 
 CLI-side telemetry is **opt-in** — set `HEXALITH_MEMORIES_OTEL_ENDPOINT` or pass `--telemetry` to any
@@ -166,28 +166,34 @@ Routing `AccessTelemetryCategory` to a file, collector, or external sink does
 not configure retention by itself. Memories currently emits events but does not
 yet own or enforce a deployed TTL/purge policy.
 
-[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md) ratifies the target:
+[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md) proposes the target:
 a dedicated Redis 7.4 access-telemetry workload, separate from domain Redis and
-Hexalith.EventStore, with two persisted data members plus Sentinel, a 24-hour
-Production default (allowed range 1 hour-7 days), atomic Redis-time expiry,
-bounded non-blocking buffering, separate write/lifecycle/inspection credentials,
-privacy-safe markers and buckets, and explicit capacity, durability, recovery,
-and rollback boundaries. Story 27.2 implements it; Story 27.3 supplies
-Production-shaped two-writer, restart/rescheduling, deterministic age, purge,
-newer-record preservation, failure, emission-continuity, and tenant/privacy
-evidence plus the runbook.
+Hexalith.EventStore, with two persisted data members plus Sentinel, a proposed
+24-hour Production default (allowed range 1 hour-7 days), millisecond Redis-time
+expiry, bounded active purge and persisted-file compaction, non-blocking
+buffering, separate write/lifecycle/inspection credentials, and versioned
+privacy-safe markers. The ADR is `Proposed`, not ratified; Stories 27.2 and 27.3
+remain blocked until the all-nine-operation capacity calculation is approved.
 
 `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action
-remains open. ADR acceptance and story scheduling are not lifecycle evidence.
+remains open. ADR proposal or acceptance and story scheduling are not lifecycle evidence.
 The boundary is bounded infrastructure telemetry only: no tamper evidence,
 append-only integrity, legal compliance, or certified audit retention.
 
 ### Log-level config gate
 
-For high-traffic tenants, operators throttle to `Warning` to keep error events (7511-7519) flowing
-while suppressing successful-operation events (7501-7509). **Trade-off:** losing `ok`-outcome audit
-trail for successes. Regulated tenants MUST keep the default (`Information`) and scale the log
-pipeline instead.
+Logging filters are provider/category scoped, not tenant scoped. A single
+`AccessTelemetryCategory` threshold cannot suppress one tenant while retaining
+another tenant's events. Operators may configure provider-specific `Warning`
+filters for console or OTLP to keep error events (7511-7519) while suppressing
+successful-operation events (7501-7509) on those routes.
+
+Story 27.2's lifecycle provider must independently keep
+`AccessTelemetryCategory` at `Information`. A global category-level `Warning`
+filter would prevent success events from reaching every provider and is invalid
+when lifecycle retention is enabled. Regulated access-record retention therefore
+scales the bounded lifecycle pipeline; it is never implemented by globally
+filtering away successful operations.
 
 ---
 
@@ -278,17 +284,19 @@ Back-of-envelope (MVP assumptions):
 | Active tenants per node | 10                                            |
 | Production Server replicas | 2                                           |
 
-Per-replica volume: 10 × 10 × 300 B = **30 KB/s** access-event throughput,
-about 2.5 GB/day. The committed two-replica Production shape is therefore about
-5 GB/day raw at this high-end estimate before keys, AOF, fragmentation,
-replication, and rewrite workspace. ADR 27.1-001 uses a conservative 2.0 storage
-factor and requires capacity admission, warning/critical thresholds, and
-`noeviction`; these are target values, not current behavior.
+This search-only estimate yields 30 KB/s and about 2.5 GB/day per replica, or
+about 5 GB/day across the committed two-replica Production shape before keys,
+indexes, AOF/RDB, fragmentation, replication, purge, outage buffering, and
+rewrite workspace. It is not an all-nine-operation capacity calculation and
+must not size memory, PVCs, retention, or cost. ADR 27.1-001 stays `Proposed`
+until reproducible cluster/per-replica rates, average and high-percentile
+sanitized sizes, lifecycle overhead, purge workload, outage budget, headroom,
+and cost are ratified.
 
 Current JSON-console logging does not provide a persistent queue, capacity
-policy, or purge. Story 27.2's target provider must use bounded non-blocking
-enqueue so sink failure cannot escape into or indefinitely block a business
-request.
+policy, or purge. After the capacity gate closes, Story 27.2's target provider
+must use bounded non-blocking enqueue so sink failure cannot escape into or
+indefinitely block a business request.
 
 ---
 

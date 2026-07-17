@@ -48,7 +48,11 @@ The following `sprint-status.yaml` content existed in the declared baseline snap
 - the A41 action comment that keeps the action `open`;
 - every other sprint-status line outside the two story-owned keys shown in the scoped diff.
 
-## Reproducible Current-State Verification
+## Reproducible Monotonic-Status Verification
+
+The create-stage values above are frozen by the post-create SHA and scoped diff.
+This current-state check intentionally accepts only valid forward workflow
+transitions, so it remains reproducible after development and review.
 
 ```bash
 git status --short -- \
@@ -64,8 +68,15 @@ status = yaml.safe_load(Path(
     "_bmad-output/implementation-artifacts/sprint-status.yaml"
 ).read_text())["development_status"]
 assert status["epic-27"] == "in-progress"
-assert status["27-1-access-telemetry-retention-ownership-decision"] == "ready-for-dev"
+assert status["27-1-access-telemetry-retention-ownership-decision"] in {
+    "ready-for-dev",
+    "in-progress",
+    "review",
+    "done",
+}
 PY
 ```
 
-The declared pre-create SHA, exact before-values, scoped diff, exclusions, and current-state command together distinguish Story 27.1 changes from concurrent edits in the same YAML file.
+The declared pre-create SHA, exact before-values, scoped diff, exclusions, and
+monotonic-status command together distinguish Story 27.1 changes from concurrent
+edits in the same YAML file.
