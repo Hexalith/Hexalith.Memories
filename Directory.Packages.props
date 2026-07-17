@@ -13,13 +13,13 @@
   <ItemGroup>
     <!-- Local OpenTelemetry packages not supplied by Hexalith.Builds stay aligned with the
          imported 1.16.x OpenTelemetry stack. -->
-    <PackageVersion Include="OpenTelemetry" Version="1.16.0" />
+    <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
     <!-- Story 8.5: StackExchange.Redis OTEL instrumentation. Prerelease `-beta.N` tag accepted
          explicitly per ADR-8.5-001 (b); upgrade-on-GA trigger tracked in deferred-work.md. -->
     <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.16.0-beta.1" />
     <!-- Story 7.5: in-memory OTLP exporter for Tier-2 trace-propagation tests. Bumped to 1.15.3
          alongside the rest of the OTel core/exporter stack (Story 10.1 NU1902 sweep). -->
-    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.16.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.17.0" />
     <!-- Story 10.1: Model Context Protocol C# SDK 1.4.1 (Microsoft-collaboration release).
          Used by Hexalith.Memories.Mcp to host the LLM-agent tool surface over Streamable HTTP. -->
     <PackageVersion Update="ModelContextProtocol" Version="1.4.1" />

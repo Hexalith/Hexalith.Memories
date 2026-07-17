@@ -17,6 +17,7 @@
     <PackageReference Include="Hexalith.EventStore.Aspire" Condition="'$(HexalithEventStoreFromSource)' != 'true'" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.Dapr" />
     <PackageReference Include="MessagePack" />
+    <PackageReference Include="OpenTelemetry" />
   </ItemGroup>
 
 </Project>
