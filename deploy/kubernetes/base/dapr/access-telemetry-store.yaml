@@ -17,7 +17,14 @@ spec:
       value: "true"
     - name: queryIndexes
       value: |
-        [{"name":"expiryMinute","type":"NUMERIC"}]
+        [
+          {
+            "name": "expiryMinute",
+            "indexes": [
+              { "key": "expiryMinute", "type": "NUMERIC" }
+            ]
+          }
+        ]
 auth:
   secretStore: access-telemetry-secrets
 scopes:

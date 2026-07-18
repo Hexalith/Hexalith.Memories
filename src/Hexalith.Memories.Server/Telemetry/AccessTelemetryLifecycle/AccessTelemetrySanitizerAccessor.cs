@@ -19,4 +19,7 @@ internal sealed class AccessTelemetrySanitizerAccessor
         ArgumentNullException.ThrowIfNull(sanitizer);
         Volatile.Write(ref _current, sanitizer);
     }
+
+    /// <summary>Removes key material immediately when a terminal validation change closes writes.</summary>
+    public void Clear() => Volatile.Write(ref _current, null);
 }

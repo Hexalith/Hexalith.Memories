@@ -8,7 +8,6 @@ namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.Contracts.V1;
@@ -94,6 +93,7 @@ internal sealed class AccessTelemetrySanitizer
             {
                 return false;
             }
+            ValidateSourceValueTypes(source.OperationType, source.QueryParams);
 
             bool rejectedTenant = string.Equals(source.TenantId, "__rejected__", StringComparison.Ordinal) ||
                 string.IsNullOrWhiteSpace(source.TenantId);
@@ -139,7 +139,7 @@ internal sealed class AccessTelemetrySanitizer
         }
     }
 
-    private static string BucketByteLength(int length)
+    private static string BucketByteLength(long length)
         => length switch
         {
             0 => "0",
@@ -212,21 +212,23 @@ internal sealed class AccessTelemetrySanitizer
     private static string ClassifyEventOutcome(string? value)
         => value?.ToLowerInvariant() switch
         {
+            null => "not-applicable",
             "accepted" => "accepted",
             "duplicate" => "duplicate",
             "rejected" => "rejected",
-            _ => "not-applicable",
+            _ => "unknown",
         };
 
     private static string ClassifyWorkflowState(string? value)
         => value?.ToLowerInvariant() switch
         {
+            null => "not-applicable",
             "pending" => "pending",
             "running" => "running",
             "completed" => "completed",
             "failed" => "failed",
             "terminated" => "terminated",
-            _ => "not-applicable",
+            _ => "unknown",
         };
 
     private static string ClassifyUri(string? sourceUri)
@@ -284,13 +286,21 @@ internal sealed class AccessTelemetrySanitizer
             return defaultValue;
         }
 
-        return value switch
+        return value is int result
+            ? result
+            : throw new AccessTelemetryContractException("query_params_value_invalid");
+    }
+
+    private static long GetLong(IReadOnlyDictionary<string, object?> values, string name, long defaultValue)
+    {
+        if (!values.TryGetValue(name, out object? value) || value is null)
         {
-            int result => result,
-            long result when result is >= int.MinValue and <= int.MaxValue => (int)result,
-            JsonElement element when element.TryGetInt32(out int result) => result,
-            _ => throw new AccessTelemetryContractException("query_params_value_invalid"),
-        };
+            return defaultValue;
+        }
+
+        return value is long result
+            ? result
+            : throw new AccessTelemetryContractException("query_params_value_invalid");
     }
 
     private static string? GetString(IReadOnlyDictionary<string, object?> values, string name)
@@ -365,16 +375,66 @@ internal sealed class AccessTelemetrySanitizer
     }
 
     private static double ReadDouble(object? value)
-        => value switch
+        => value is double result ? result : double.NaN;
+
+    private static void ValidateSourceValueTypes(
+        string operation,
+        IReadOnlyDictionary<string, object?> values)
+    {
+        switch (operation)
         {
-            double result => result,
-            float result => result,
-            decimal result => (double)result,
-            int result => result,
-            long result => result,
-            JsonElement element when element.TryGetDouble(out double result) => result,
-            _ => double.NaN,
-        };
+            case "search":
+                RequireSourceType<string>(values, "axis", "axes", "query", "sourceType", "subject");
+                RequireSourceType<int>(values, "attributeFilterCount", "maxResults", "metadataFilterCount", "offset", "tokenBudget");
+                RequireSourceType<bool>(values, "explain");
+                RequireSourceType<double>(values, "graphWeight", "nlWeight", "semanticWeight", "syntacticWeight");
+                break;
+            case "ingest":
+                RequireSourceType<string>(values, "aggregateType", "cloudEventId", "cloudEventType", "contentType", "eventOutcome", "sourceType");
+                RequireSourceType<long>(values, "bytes");
+                break;
+            case "traverse":
+                RequireSourceType<int>(values, "depth", "tokenBudget");
+                RequireSourceType<string>(values, "edgeTypes", "startNodeId");
+                break;
+            case "case-access":
+                RequireSourceType<string>(values, "memoryUnitId", "sourceUri");
+                break;
+            case "delete":
+                RequireSourceType<string>(values, "memoryUnitIdPrefix", "operation");
+                break;
+            case "tenant-lifecycle":
+                RequireSourceType<string>(values, "operation", "state", "workflowInstanceIdPrefix");
+                break;
+            case "tenant-config":
+                RequireSourceType<string[]>(values, "changedFields");
+                RequireSourceType<int>(values, "fieldCount");
+                RequireSourceType<bool>(values, "forceReindex");
+                RequireSourceType<string>(values, "operation");
+                break;
+            case "case-member":
+                RequireSourceType<string>(values, "memberIdPrefix", "operation");
+                break;
+            case "annotation":
+                RequireSourceType<string>(values, "memoryUnitIdPrefix", "operation");
+                break;
+            default:
+                throw new AccessTelemetryContractException("operation_invalid");
+        }
+    }
+
+    private static void RequireSourceType<T>(
+        IReadOnlyDictionary<string, object?> values,
+        params string[] keys)
+    {
+        foreach (string key in keys)
+        {
+            if (values.TryGetValue(key, out object? value) && value is not null && value is not T)
+            {
+                throw new AccessTelemetryContractException("query_params_value_invalid");
+            }
+        }
+    }
 
     private static IReadOnlyDictionary<string, object?> TransformQueryParams(AccessTelemetryEvent source, bool rejectedTenant)
         => source.OperationType switch
@@ -386,8 +446,8 @@ internal sealed class AccessTelemetrySanitizer
             "delete" => TransformDelete(source),
             "tenant-lifecycle" => TransformTenantLifecycle(source),
             "tenant-config" => TransformTenantConfig(source),
-            "case-member" => new SortedDictionary<string, object?>(StringComparer.Ordinal) { ["action"] = GetString(source.QueryParams, "operation")?.Contains("remove", StringComparison.Ordinal) == true ? "remove" : "add", ["role"] = "unknown" },
-            "annotation" => new SortedDictionary<string, object?>(StringComparer.Ordinal) { ["action"] = "create", ["annotationKind"] = "unknown" },
+            "case-member" => TransformCaseMember(source),
+            "annotation" => TransformAnnotation(source),
             _ => throw new AccessTelemetryContractException("operation_invalid"),
         };
 
@@ -404,7 +464,12 @@ internal sealed class AccessTelemetrySanitizer
 
     private static IReadOnlyDictionary<string, object?> TransformDelete(AccessTelemetryEvent source)
     {
-        string operation = GetString(source.QueryParams, "operation") ?? "memory-unit-delete";
+        string operation = GetString(source.QueryParams, "operation") ?? throw new AccessTelemetryContractException("operation_invalid");
+        if (operation is not ("memory-unit-delete" or "case-delete" or "tenant-delete"))
+        {
+            throw new AccessTelemetryContractException("operation_invalid");
+        }
+
         return new SortedDictionary<string, object?>(StringComparer.Ordinal)
         {
             ["cascade"] = operation is "case-delete" or "tenant-delete",
@@ -417,7 +482,7 @@ internal sealed class AccessTelemetrySanitizer
         {
             ["caseScope"] = rejectedTenant ? "rejected-or-unknown" : source.CaseId is null ? "tenant" : "case",
             ["contentKind"] = ClassifyContentKind(GetString(source.QueryParams, "contentType")),
-            ["contentLengthBucket"] = BucketByteLength(Math.Max(0, GetInt(source.QueryParams, "bytes", 0))),
+            ["contentLengthBucket"] = BucketByteLength(GetLong(source.QueryParams, "bytes", 0)),
             ["eventOutcome"] = ClassifyEventOutcome(GetString(source.QueryParams, "eventOutcome")),
             ["sourceKind"] = ClassifySourceKind(GetString(source.QueryParams, "sourceType")),
         };
@@ -438,20 +503,60 @@ internal sealed class AccessTelemetrySanitizer
     }
 
     private static IReadOnlyDictionary<string, object?> TransformTenantConfig(AccessTelemetryEvent source)
-        => new SortedDictionary<string, object?>(StringComparer.Ordinal)
+    {
+        string configKind = GetString(source.QueryParams, "operation") switch
+        {
+            "embedding-config-update" => "embedding",
+            "display-name-update" => "display-name",
+            _ => throw new AccessTelemetryContractException("operation_invalid"),
+        };
+        return new SortedDictionary<string, object?>(StringComparer.Ordinal)
         {
             ["action"] = "update",
             ["changedFieldCountBucket"] = BucketFieldCount(GetInt(source.QueryParams, "fieldCount", 0)),
-            ["configKind"] = GetString(source.QueryParams, "operation")?.Contains("display", StringComparison.OrdinalIgnoreCase) == true ? "display-name" : "embedding",
+            ["configKind"] = configKind,
             ["forceReindex"] = GetBool(source.QueryParams, "forceReindex", false),
         };
+    }
 
     private static IReadOnlyDictionary<string, object?> TransformTenantLifecycle(AccessTelemetryEvent source)
         => new SortedDictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["action"] = GetString(source.QueryParams, "operation") switch { "tenant-provision-status" => "provision-status", "tenant-deletion-status" => "deletion-status", _ => "provision" },
+            ["action"] = GetString(source.QueryParams, "operation") switch
+            {
+                "tenant-create" => "provision",
+                "tenant-provision-status" => "provision-status",
+                "tenant-deletion-status" => "deletion-status",
+                _ => throw new AccessTelemetryContractException("operation_invalid"),
+            },
             ["workflowState"] = ClassifyWorkflowState(GetString(source.QueryParams, "state")),
         };
+
+    private static IReadOnlyDictionary<string, object?> TransformCaseMember(AccessTelemetryEvent source)
+        => new SortedDictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["action"] = GetString(source.QueryParams, "operation") switch
+            {
+                "case-member-add" => "add",
+                "case-member-remove" => "remove",
+                _ => throw new AccessTelemetryContractException("operation_invalid"),
+            },
+            ["role"] = "unknown",
+        };
+
+    private static IReadOnlyDictionary<string, object?> TransformAnnotation(AccessTelemetryEvent source)
+    {
+        if (GetString(source.QueryParams, "operation") != "annotation-create")
+        {
+            throw new AccessTelemetryContractException("operation_invalid");
+        }
+
+        return new SortedDictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["action"] = "create",
+            ["annotationKind"] = "unknown",
+        };
+    }
 
     private static IReadOnlyDictionary<string, object?> TransformTraverse(AccessTelemetryEvent source, bool rejectedTenant)
     {
@@ -497,7 +602,7 @@ internal sealed class AccessTelemetrySanitizer
 
     private static void ValidateCaseAndResult(AccessTelemetryEvent source, string? caseMarker)
     {
-        bool rejected = source.TenantId == "__rejected__";
+        bool rejected = source.TenantId == "__rejected__" || string.IsNullOrWhiteSpace(source.TenantId);
         if (!rejected && source.OperationType is "case-access" or "case-member" or "annotation" && caseMarker is null)
         {
             throw new AccessTelemetryContractException("case_marker_required");
@@ -507,6 +612,18 @@ internal sealed class AccessTelemetrySanitizer
         if (resultRequired != source.ResultCount.HasValue || source.ResultCount is < 0 or > 1_000_000)
         {
             throw new AccessTelemetryContractException("result_count_invalid");
+        }
+
+        string? deleteOperation = source.OperationType == "delete" ? GetString(source.QueryParams, "operation") : null;
+        if (!rejected && source.OperationType == "delete" &&
+            ((deleteOperation == "tenant-delete") != (caseMarker is null)))
+        {
+            throw new AccessTelemetryContractException("case_marker_invalid");
+        }
+
+        if (!rejected && source.OperationType is "tenant-lifecycle" or "tenant-config" && caseMarker is not null)
+        {
+            throw new AccessTelemetryContractException("case_marker_invalid");
         }
     }
 

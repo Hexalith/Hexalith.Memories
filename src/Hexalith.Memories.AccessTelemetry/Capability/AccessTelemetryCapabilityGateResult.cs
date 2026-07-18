@@ -12,4 +12,5 @@ internal sealed record AccessTelemetryCapabilityGateResult(
     bool AllowsWrites,
     bool BusinessReadinessAvailable,
     AccessTelemetryHealthState Health,
-    AccessTelemetryReason Reason);
+    AccessTelemetryReason Reason,
+    DateTimeOffset? ValidUntilUtc = null);

@@ -6,4 +6,7 @@
 namespace Hexalith.Memories.AccessTelemetry.Contracts;
 
 /// <summary>Bounded trusted-clock verification result.</summary>
-public sealed record ClockAttestationValidationResult(bool IsValid, AccessTelemetryReason Reason);
+public sealed record ClockAttestationValidationResult(
+    bool IsValid,
+    AccessTelemetryReason Reason,
+    long? TrustedUnixMilliseconds = null);

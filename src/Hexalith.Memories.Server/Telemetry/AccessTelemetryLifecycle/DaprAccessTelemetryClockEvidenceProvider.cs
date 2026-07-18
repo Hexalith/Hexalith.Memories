@@ -18,19 +18,20 @@ internal sealed class DaprAccessTelemetryClockEvidenceProvider : IAccessTelemetr
     private readonly TimeProvider _timeProvider;
     private readonly string _serviceInstanceId;
     private readonly string _processEpoch;
+    private readonly BoundedNonceReplayCache _replayCache = new(8192);
 
     /// <summary>Initializes one Server process clock-evidence client.</summary>
     public DaprAccessTelemetryClockEvidenceProvider(
         HttpClient httpClient,
         AccessTelemetryOptions options,
         TimeProvider timeProvider,
-        MonotonicRecordIdGenerator ids)
+        AccessTelemetryWriterIdentity identity)
     {
         _httpClient = httpClient;
         _options = options;
         _timeProvider = timeProvider;
-        _serviceInstanceId = ids.NewId();
-        _processEpoch = ids.NewId();
+        _serviceInstanceId = identity.ServiceInstanceId;
+        _processEpoch = identity.ProcessEpoch;
     }
 
     /// <inheritdoc/>
@@ -63,10 +64,11 @@ internal sealed class DaprAccessTelemetryClockEvidenceProvider : IAccessTelemetr
                 request.ComponentProfileHash,
                 request.Nonce,
                 request.RequestingProcessEpoch,
-                request.RequestingServiceInstanceId),
+                request.RequestingServiceInstanceId,
+                SignerKeyEpoch: _options.ClockSignerKeyEpoch),
             Convert.FromBase64String(_options.AttestationVerificationKey),
             _timeProvider.GetUtcNow(),
-            new BoundedNonceReplayCache(1));
+            _replayCache);
         if (!validation.IsValid)
         {
             throw new AccessTelemetryContractException("clock_untrusted");

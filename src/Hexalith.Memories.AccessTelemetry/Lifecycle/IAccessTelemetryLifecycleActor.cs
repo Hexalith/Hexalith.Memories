@@ -10,13 +10,13 @@ using Dapr.Actors;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 
 /// <summary>Fixed-ID serialized lifecycle mutation authority.</summary>
-internal interface IAccessTelemetryLifecycleActor : IActor
+public interface IAccessTelemetryLifecycleActor : IActor
 {
     /// <summary>Writes one bounded batch.</summary>
     Task<AccessTelemetryWriteBatchResponse> WriteBatchAsync(AccessTelemetryWriteBatchRequest request);
 
     /// <summary>Records one bounded writer heartbeat.</summary>
-    Task HeartbeatAsync(WriterHeartbeat heartbeat);
+    Task<WriterHeartbeatResponse> HeartbeatAsync(WriterHeartbeatRequest request);
 
     /// <summary>Executes one bounded purge turn.</summary>
     Task PurgeAsync();

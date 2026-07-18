@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 
+using Dapr.Client;
+
 using Hexalith.Memories.AccessTelemetry.Clock;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.ServiceDefaults;
@@ -8,22 +10,30 @@ using Hexalith.Memories.ServiceDefaults.Security;
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults(configureRedisInstrumentation: false);
+builder.Services.AddSingleton<DaprClient>(_ => new DaprClientBuilder().Build());
 builder.Services.AddHttpClient("authenticated-utc");
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
 builder.Services.AddSingleton<MonotonicRecordIdGenerator>();
-builder.Services.AddSingleton<ECDsa>(_ =>
+builder.Services.AddSingleton<ECDsa>(services =>
 {
-    string? encoded = Environment.GetEnvironmentVariable("ACCESS_TELEMETRY_CLOCK_SIGNING_KEY_PKCS8");
+    string secretStore = builder.Configuration["Clock:SecretStoreName"] ?? AccessTelemetryOptions.RequiredSecretStoreName;
+    string secretName = builder.Configuration["Clock:SigningKeySecretName"] ?? "access-telemetry-clock-key";
+    Dictionary<string, string> secret = services.GetRequiredService<DaprClient>()
+        .GetSecretAsync(secretStore, secretName)
+        .ConfigureAwait(false)
+        .GetAwaiter()
+        .GetResult();
+    _ = secret.TryGetValue("signing-key-pkcs8", out string? encoded);
+    if (string.IsNullOrWhiteSpace(encoded))
+    {
+        _ = secret.TryGetValue(secretName, out encoded);
+    }
+
     ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     if (string.IsNullOrWhiteSpace(encoded))
     {
-        if (builder.Environment.IsProduction())
-        {
-            key.Dispose();
-            throw new InvalidOperationException("Production clock signing key was not injected from the clock-only secret authority.");
-        }
-
-        return key;
+        key.Dispose();
+        throw new InvalidOperationException("Clock signing material is unavailable from the scoped Dapr secret authority.");
     }
 
     key.ImportPkcs8PrivateKey(Convert.FromBase64String(encoded), out int bytesRead);
@@ -49,6 +59,16 @@ foreach (IConfigurationSection source in builder.Configuration.GetSection("Clock
         sourceId,
         endpoint,
         token));
+}
+
+if (!builder.Environment.IsProduction() && builder.Configuration.GetValue<bool>("Clock:AllowDevelopmentSources"))
+{
+    foreach (string sourceId in new[] { "development-utc-a", "development-utc-b", "development-utc-c" })
+    {
+        builder.Services.AddSingleton<IAuthenticatedUtcSource>(services => new DevelopmentAuthenticatedUtcSource(
+            sourceId,
+            services.GetRequiredService<TimeProvider>()));
+    }
 }
 
 builder.Services.AddSingleton<ClockAttestationService>();

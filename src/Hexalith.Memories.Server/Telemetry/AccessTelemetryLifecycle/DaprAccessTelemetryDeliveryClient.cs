@@ -14,7 +14,8 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 internal sealed class DaprAccessTelemetryDeliveryClient(
     HttpClient httpClient,
     IAccessTelemetryClockEvidenceProvider clockEvidence,
-    AccessTelemetryOptions options) : IAccessTelemetryDeliveryClient
+    AccessTelemetryOptions options,
+    AccessTelemetryWriterIdentity identity) : IAccessTelemetryDeliveryClient
 {
     /// <inheritdoc/>
     public async Task<AccessTelemetryWriteBatchResponse> SendAsync(
@@ -28,6 +29,8 @@ internal sealed class DaprAccessTelemetryDeliveryClient(
             ConfigurationEpoch = options.ConfigurationEpoch,
             ComponentProfileHash = options.ComponentProfileHash,
             ClockAttestation = attestation,
+            RequestingProcessEpoch = identity.ProcessEpoch,
+            RequestingServiceInstanceId = identity.ServiceInstanceId,
             Records = records,
         };
         long started = Stopwatch.GetTimestamp();
@@ -37,9 +40,19 @@ internal sealed class DaprAccessTelemetryDeliveryClient(
                 "v1/access-telemetry/write",
                 request,
                 cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<AccessTelemetryWriteBatchResponse>(cancellationToken).ConfigureAwait(false)
+            AccessTelemetryWriteBatchResponse bounded = await response.Content.ReadFromJsonAsync<AccessTelemetryWriteBatchResponse>(cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("The lifecycle service returned an empty bounded response.");
+            if (!response.IsSuccessStatusCode && bounded.Reason is not (
+                AccessTelemetryReason.ConfigurationInvalid or
+                AccessTelemetryReason.RecordIdConflict or
+                AccessTelemetryReason.SchemaMismatch or
+                AccessTelemetryReason.Expired or
+                AccessTelemetryReason.ClockUntrusted))
+            {
+                response.EnsureSuccessStatusCode();
+            }
+
+            return bounded;
         }
         finally
         {

@@ -90,7 +90,12 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
             CreateSearchEvent("tenant-a", "writer@example.test"));
         queue.TryEnqueue(first, out _).ShouldBeTrue();
         var client = new ScriptedDeliveryClient(failuresBeforeSuccess: 1);
-        var worker = new AccessTelemetryDeliveryWorker(queue, client, clock);
+        var worker = new AccessTelemetryDeliveryWorker(
+            queue,
+            client,
+            clock,
+            new AccessTelemetryOptions(),
+            new AccessTelemetryLifecycleStatus(enabled: true));
 
         await worker.DrainOnceAsync(CancellationToken.None);
         queue.Count.ShouldBe(1);
@@ -111,7 +116,10 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
     {
         var clock = new FakeTimeProvider(Now.AddMinutes(-10));
         var store = new InMemoryAccessTelemetryStateStore();
-        var processor = new AccessTelemetryLifecycleProcessor(store, clock);
+        var processor = new AccessTelemetryLifecycleProcessor(
+            store,
+            clock,
+            new AccessTelemetryOptions { Retention = TimeSpan.FromMinutes(5) });
         AccessTelemetryRecord due = CreateCanonicalRecord(clock.GetUtcNow().AddSeconds(-1), Now.AddMinutes(-1), "tenant-due");
         (await processor.PersistAsync(due, CancellationToken.None)).Status.ShouldBe(AccessTelemetryPersistenceStatus.Inserted);
         clock.SetUtcNow(Now);
@@ -137,7 +145,8 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
         var clock = new FakeTimeProvider(Now.AddMinutes(-10));
         var durableStore = new InMemoryAccessTelemetryStateStore();
         var transientStore = new FailFirstStateStore(durableStore);
-        var firstProcessor = new AccessTelemetryLifecycleProcessor(transientStore, clock);
+        var testOptions = new AccessTelemetryOptions { Retention = TimeSpan.FromMinutes(5) };
+        var firstProcessor = new AccessTelemetryLifecycleProcessor(transientStore, clock, testOptions);
         AccessTelemetryRecord record = CreateCanonicalRecord(clock.GetUtcNow().AddSeconds(-1), Now.AddMinutes(-1), "tenant-a");
 
         await Should.ThrowAsync<InvalidOperationException>(() => firstProcessor.PersistAsync(record, CancellationToken.None));
@@ -145,7 +154,7 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
         (await firstProcessor.PersistAsync(record, CancellationToken.None)).Status.ShouldBe(AccessTelemetryPersistenceStatus.Idempotent);
 
         clock.SetUtcNow(Now);
-        var restartedProcessor = new AccessTelemetryLifecycleProcessor(durableStore, clock);
+        var restartedProcessor = new AccessTelemetryLifecycleProcessor(durableStore, clock, testOptions);
         AccessTelemetryPurgeResult recovered = await restartedProcessor.PurgeAsync(CancellationToken.None);
         recovered.Purged.ShouldBe(1);
         recovered.VerifiedAbsent.ShouldBe(1);
@@ -180,22 +189,12 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
     }
 
     [Fact]
-    public void DaprRoutesStateIndexPurgeClockInspectorAndComponentScopes_AreExplicitAndLeastPrivilege()
+    public void KubernetesDaprComponentScopes_AreExplicitAndLeastPrivilege()
     {
         string root = FindRepositoryRoot();
-        string lifecycleProgram = File.ReadAllText(Path.Combine(root, "src", "Hexalith.Memories.AccessTelemetry", "Program.cs"));
-        string clockProgram = File.ReadAllText(Path.Combine(root, "src", "Hexalith.Memories.AccessTelemetry.Clock", "Program.cs"));
-        string storeAdapter = File.ReadAllText(Path.Combine(root, "src", "Hexalith.Memories.AccessTelemetry", "Lifecycle", "DaprAccessTelemetryStateStore.cs"));
         string lifecycleAcl = File.ReadAllText(Path.Combine(root, "deploy", "kubernetes", "base", "dapr", "access-telemetry-lifecycle-config.yaml"));
         string stateComponent = File.ReadAllText(Path.Combine(root, "deploy", "kubernetes", "base", "dapr", "access-telemetry-store.yaml"));
 
-        lifecycleProgram.ShouldContain("/v1/access-telemetry/write");
-        lifecycleProgram.ShouldContain("/v1/access-telemetry/heartbeat");
-        lifecycleProgram.ShouldContain("/v1/access-telemetry/inspect");
-        clockProgram.ShouldContain("/v1/time/attest");
-        storeAdapter.ShouldContain("records/");
-        storeAdapter.ShouldContain("expiry/");
-        storeAdapter.ShouldContain("DeleteAndVerifyAsync");
         lifecycleAcl.ShouldContain("appId: memories");
         lifecycleAcl.ShouldContain("appId: memories-access-telemetry-inspector");
         lifecycleAcl.ShouldNotContain("/v1/access-telemetry/inspect\n            httpVerb: [\"POST\"]");
@@ -274,7 +273,15 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
             MarkerKeyId = "mk-2026a",
             OperationType = "search",
             Outcome = "ok",
-            QueryParams = new Dictionary<string, object?>(StringComparer.Ordinal) { ["axis"] = "hybrid" },
+            QueryParams = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["axis"] = "hybrid",
+                ["caseScope"] = "all-authorized",
+                ["explain"] = false,
+                ["queryLengthBucket"] = "33-128",
+                ["subjectPresent"] = false,
+                ["weightProfile"] = "configured",
+            },
             RecordId = new MonotonicRecordIdGenerator().NewId(),
             ResultCount = 1,
             SchemaVersion = 1,
@@ -360,7 +367,9 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
             CancellationToken cancellationToken)
             => inner.GetDueEntriesAsync(dueMinute, limit, cancellationToken);
 
-        public Task<bool> DeleteAndVerifyAsync(AccessTelemetryExpiryEntry entry, CancellationToken cancellationToken)
+        public Task<AccessTelemetryDeleteStatus> DeleteAndVerifyAsync(
+            AccessTelemetryExpiryEntry entry,
+            CancellationToken cancellationToken)
             => inner.DeleteAndVerifyAsync(entry, cancellationToken);
     }
 

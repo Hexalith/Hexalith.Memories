@@ -409,7 +409,7 @@ development_status:
   # Epic 27: Access Telemetry Lifecycle Hardening
   epic-27: in-progress
   27-1-access-telemetry-retention-ownership-decision: done
-  27-2-bounded-retention-ttl-and-purge-implementation: review
+  27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-retention-verification-operations-runbook-and-a41-close-out: in-progress
   epic-27-retrospective: optional
 

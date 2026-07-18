@@ -23,8 +23,14 @@ public sealed class LifecycleActorCheckpointTests
     public async Task PersistAsync_WritesRecordAndExpiryIndexAtomicallyWithCeilingTtl()
     {
         var store = new InMemoryAccessTelemetryStateStore();
-        var processor = new AccessTelemetryLifecycleProcessor(store, new FakeTimeProvider(Now));
-        AccessTelemetryRecord record = CreateRecord(Now.AddMilliseconds(-200), Now.AddSeconds(3600.1));
+        var processor = new AccessTelemetryLifecycleProcessor(
+            store,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions { Retention = TimeSpan.FromSeconds(3600.1) });
+        AccessTelemetryRecord record = Rehash(CreateRecord(Now, Now.AddHours(10)) with
+        {
+            AcceptedAtUtc = Format(Now.AddMinutes(-5)),
+        });
 
         AccessTelemetryPersistenceResult result = await processor.PersistAsync(record, CancellationToken.None);
 
@@ -33,6 +39,10 @@ public sealed class LifecycleActorCheckpointTests
         store.RecordCount.ShouldBe(1);
         store.IndexCount.ShouldBe(1);
         store.LastTransactionOperationCount.ShouldBe(2);
+        AccessTelemetryRecord persisted = store.GetRecord(record.RecordId)!;
+        persisted.AcceptedAtUtc.ShouldBe(Format(Now));
+        persisted.ExpiresAtUtc.ShouldBe("2026-07-18T11:00:00.100Z");
+        persisted.EnvelopeHash.ShouldNotBe(record.EnvelopeHash);
     }
 
     [Fact]
@@ -55,21 +65,27 @@ public sealed class LifecycleActorCheckpointTests
     public async Task PersistAsync_SameIdWithDifferentEnvelopeOrExpiry_ReturnsConflict()
     {
         var store = new InMemoryAccessTelemetryStateStore();
-        var processor = new AccessTelemetryLifecycleProcessor(store, new FakeTimeProvider(Now));
+        var processor = new AccessTelemetryLifecycleProcessor(
+            store,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions { Retention = TimeSpan.FromHours(1) });
         AccessTelemetryRecord first = CreateRecord(Now.AddSeconds(-1), Now.AddHours(1));
         AccessTelemetryRecord changed = Rehash(first with { DurationMs = first.DurationMs + 1 });
-        AccessTelemetryRecord extended = Rehash(first with { ExpiresAtUtc = Format(Now.AddHours(2)) });
+        var extendedProcessor = new AccessTelemetryLifecycleProcessor(
+            store,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions { Retention = TimeSpan.FromHours(2) });
 
         await processor.PersistAsync(first, CancellationToken.None);
 
         (await processor.PersistAsync(changed, CancellationToken.None)).Reason.ShouldBe(AccessTelemetryReason.RecordIdConflict);
-        (await processor.PersistAsync(extended, CancellationToken.None)).Reason.ShouldBe(AccessTelemetryReason.RecordIdConflict);
+        (await extendedProcessor.PersistAsync(first, CancellationToken.None)).Reason.ShouldBe(AccessTelemetryReason.RecordIdConflict);
         processor.Health.ShouldBe(AccessTelemetryHealthState.Unhealthy);
     }
 
     [Theory]
     [InlineData(1001, 3600, AccessTelemetryReason.ClockUntrusted)]
-    [InlineData(-1000, -1, AccessTelemetryReason.Expired)]
+    [InlineData(-3_600_001, -1, AccessTelemetryReason.Expired)]
     public async Task PersistAsync_FutureOrExpiredSource_FailsClosed(
         int emissionOffsetMilliseconds,
         int expiryOffsetSeconds,
@@ -77,7 +93,8 @@ public sealed class LifecycleActorCheckpointTests
     {
         var processor = new AccessTelemetryLifecycleProcessor(
             new InMemoryAccessTelemetryStateStore(),
-            new FakeTimeProvider(Now));
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions { Retention = TimeSpan.FromHours(1) });
         AccessTelemetryRecord record = CreateRecord(
             Now.AddMilliseconds(emissionOffsetMilliseconds),
             Now.AddSeconds(expiryOffsetSeconds));
@@ -93,16 +110,19 @@ public sealed class LifecycleActorCheckpointTests
     {
         var store = new InMemoryAccessTelemetryStateStore();
         var clock = new FakeTimeProvider(Now.AddMinutes(-10));
-        var processor = new AccessTelemetryLifecycleProcessor(store, clock);
+        var processor = new AccessTelemetryLifecycleProcessor(
+            store,
+            clock,
+            new AccessTelemetryOptions { Retention = TimeSpan.FromMinutes(5) });
         AccessTelemetryRecord due = CreateRecord(clock.GetUtcNow().AddSeconds(-1), Now.AddMinutes(-1));
+        await processor.PersistAsync(due, CancellationToken.None);
+        clock.SetUtcNow(Now);
         AccessTelemetryRecord newer = CreateRecord(clock.GetUtcNow().AddSeconds(-1), Now.AddMinutes(10)) with
         {
             RecordId = new MonotonicRecordIdGenerator().NewId(),
         };
         newer = Rehash(newer);
-        await processor.PersistAsync(due, CancellationToken.None);
         await processor.PersistAsync(newer, CancellationToken.None);
-        clock.SetUtcNow(Now);
 
         AccessTelemetryPurgeResult result = await processor.PurgeAsync(CancellationToken.None);
 
@@ -118,7 +138,10 @@ public sealed class LifecycleActorCheckpointTests
     {
         var store = new InMemoryAccessTelemetryStateStore();
         var insertionClock = new FakeTimeProvider(Now.AddHours(-2));
-        var processor = new AccessTelemetryLifecycleProcessor(store, insertionClock);
+        var processor = new AccessTelemetryLifecycleProcessor(
+            store,
+            insertionClock,
+            new AccessTelemetryOptions { Retention = TimeSpan.FromHours(1) });
         var ids = new MonotonicRecordIdGenerator();
         for (int index = 0; index < 513; index++)
         {
@@ -135,6 +158,36 @@ public sealed class LifecycleActorCheckpointTests
         result.Processed.ShouldBe(512);
         result.HasMore.ShouldBeTrue();
         store.RecordCount.ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData((int)AccessTelemetryDeleteStatus.StaleIndex, AccessTelemetryHealthState.Healthy)]
+    [InlineData((int)AccessTelemetryDeleteStatus.VerificationFailed, AccessTelemetryHealthState.Unhealthy)]
+    public async Task PurgeAsync_CountsOnlyVerifiedAbsenceAndSurfacesVerificationFailure(
+        int deleteStatusValue,
+        AccessTelemetryHealthState expectedHealth)
+    {
+        AccessTelemetryDeleteStatus deleteStatus = (AccessTelemetryDeleteStatus)deleteStatusValue;
+        AccessTelemetryRecord record = CreateRecord(Now.AddHours(-2), Now.AddHours(-1));
+        var entry = new AccessTelemetryExpiryEntry(
+            record.RecordId,
+            AccessTelemetryExpiryIndex.GetExpiryMinute(Now.AddHours(-1)),
+            AccessTelemetryExpiryIndex.GetShard(record.RecordId),
+            record.EnvelopeHash,
+            Format(Now.AddHours(-1)));
+        var processor = new AccessTelemetryLifecycleProcessor(
+            new ScriptedDeleteStateStore(entry, deleteStatus),
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions { Retention = TimeSpan.FromHours(1) });
+
+        AccessTelemetryPurgeResult result = await processor.PurgeAsync(CancellationToken.None);
+
+        result.Processed.ShouldBe(1);
+        result.Purged.ShouldBe(0);
+        result.VerifiedAbsent.ShouldBe(0);
+        result.LastExpiryMinute.ShouldBe(entry.ExpiryMinute);
+        result.LastExpiryShard.ShouldBe(entry.Shard);
+        processor.Health.ShouldBe(expectedHealth);
     }
 
     [Fact]
@@ -211,7 +264,15 @@ public sealed class LifecycleActorCheckpointTests
             MarkerKeyId = "mk-2026a",
             OperationType = "search",
             Outcome = "ok",
-            QueryParams = new Dictionary<string, object?>(StringComparer.Ordinal) { ["axis"] = "hybrid" },
+            QueryParams = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["axis"] = "hybrid",
+                ["caseScope"] = "all-authorized",
+                ["explain"] = false,
+                ["queryLengthBucket"] = "33-128",
+                ["subjectPresent"] = true,
+                ["weightProfile"] = "configured",
+            },
             RecordId = new MonotonicRecordIdGenerator().NewId(),
             ResultCount = 1,
             SchemaVersion = 1,
@@ -239,4 +300,27 @@ public sealed class LifecycleActorCheckpointTests
             OldKeyQueueCount = queued,
             LeaseExpiresAtUnixMilliseconds = leaseExpiry,
         };
+
+    private sealed class ScriptedDeleteStateStore(
+        AccessTelemetryExpiryEntry entry,
+        AccessTelemetryDeleteStatus deleteStatus) : IAccessTelemetryStateStore
+    {
+        public Task<AccessTelemetryStoreWriteStatus> WriteRecordAndIndexAsync(
+            AccessTelemetryRecord record,
+            AccessTelemetryExpiryEntry expiryEntry,
+            int ttlInSeconds,
+            CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<AccessTelemetryExpiryEntry>> GetDueEntriesAsync(
+            long dueMinute,
+            int limit,
+            CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<AccessTelemetryExpiryEntry>>([entry]);
+
+        public Task<AccessTelemetryDeleteStatus> DeleteAndVerifyAsync(
+            AccessTelemetryExpiryEntry expiryEntry,
+            CancellationToken cancellationToken)
+            => Task.FromResult(deleteStatus);
+    }
 }

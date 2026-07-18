@@ -75,6 +75,8 @@ spec:
                 secretKeyRef:
                   name: access-telemetry-clock-key
                   key: verification-public-key
+            - name: AccessTelemetryLifecycle__ClockSignerKeyEpoch
+              value: unconfigured
             - name: AccessTelemetryLifecycle__CapabilityEvidence__ExactVersionPinned
               value: "false"
           resources:
@@ -148,7 +150,7 @@ spec:
         dapr.io/sidecar-memory-limit: 256Mi
     spec:
       serviceAccountName: memories-access-telemetry-clock
-      automountServiceAccountToken: false
+      automountServiceAccountToken: true
       securityContext:
         seccompProfile:
           type: RuntimeDefault
@@ -173,11 +175,10 @@ spec:
                   key: token
             - name: DAPR_API_TOKEN_MODE
               value: enabled
-            - name: ACCESS_TELEMETRY_CLOCK_SIGNING_KEY_PKCS8
-              valueFrom:
-                secretKeyRef:
-                  name: access-telemetry-clock-key
-                  key: signing-key-pkcs8
+            - name: Clock__SecretStoreName
+              value: access-telemetry-secrets
+            - name: Clock__SigningKeySecretName
+              value: access-telemetry-clock-key
             - name: Clock__SignerKeyEpoch
               value: unconfigured
             - name: Clock__Sources__0__Id

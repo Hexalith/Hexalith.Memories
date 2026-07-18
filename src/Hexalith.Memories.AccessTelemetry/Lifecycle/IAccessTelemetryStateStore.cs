@@ -24,5 +24,5 @@ internal interface IAccessTelemetryStateStore
         CancellationToken cancellationToken);
 
     /// <summary>Deletes a record, verifies strong absence, and removes its expiry entry.</summary>
-    Task<bool> DeleteAndVerifyAsync(AccessTelemetryExpiryEntry entry, CancellationToken cancellationToken);
+    Task<AccessTelemetryDeleteStatus> DeleteAndVerifyAsync(AccessTelemetryExpiryEntry entry, CancellationToken cancellationToken);
 }

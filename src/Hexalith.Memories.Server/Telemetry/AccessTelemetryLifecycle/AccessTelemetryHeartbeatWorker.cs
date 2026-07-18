@@ -12,28 +12,48 @@ internal sealed class AccessTelemetryHeartbeatWorker(
     IAccessTelemetryHeartbeatClient client,
     AccessTelemetryOptions options,
     AccessTelemetryWriterIdentity identity,
+    BoundedAccessTelemetryQueue queue,
+    AccessTelemetryLifecycleStatus status,
     TimeProvider timeProvider) : BackgroundService
 {
     /// <summary>Gets the fixed writer heartbeat cadence.</summary>
     public static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(10);
 
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(30);
+    private string _activeGeneration = options.MarkerKeyGeneration;
 
     /// <summary>Sends one heartbeat for focused verification.</summary>
-    internal Task SendOnceAsync(CancellationToken cancellationToken)
+    internal async Task SendOnceAsync(CancellationToken cancellationToken)
     {
         DateTimeOffset now = timeProvider.GetUtcNow();
-        return client.SendAsync(
+        WriterHeartbeatResponse response = await client.SendAsync(
             new WriterHeartbeat
             {
                 DeploymentId = options.DeploymentId,
                 ServiceInstanceId = identity.ServiceInstanceId,
                 ProcessEpoch = identity.ProcessEpoch,
                 MarkerKeyGeneration = options.MarkerKeyGeneration,
-                OldKeyQueueCount = 0,
+                OldKeyQueueCount = string.Equals(_activeGeneration, options.MarkerKeyGeneration, StringComparison.Ordinal)
+                    ? 0
+                    : queue.CountByMarkerKey(_activeGeneration),
                 LeaseExpiresAtUnixMilliseconds = now.Add(LeaseDuration).ToUnixTimeMilliseconds(),
             },
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        if (!response.Accepted)
+        {
+            if (response.Reason is AccessTelemetryReason.ConfigurationInvalid or AccessTelemetryReason.RecordIdConflict)
+            {
+                status.PublishTerminal(response.Reason);
+            }
+            else
+            {
+                status.Publish(AccessTelemetryHealthState.Unhealthy, response.Reason);
+            }
+
+            return;
+        }
+
+        _activeGeneration = response.ActiveGeneration;
     }
 
     /// <inheritdoc/>
@@ -51,6 +71,7 @@ internal sealed class AccessTelemetryHeartbeatWorker(
             }
             catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
             {
+                status.Publish(AccessTelemetryHealthState.Degraded, AccessTelemetryReason.DependencyUnavailable);
                 ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Failed, AccessTelemetryReason.DependencyUnavailable);
             }
 

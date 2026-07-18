@@ -29,8 +29,12 @@ internal static class AccessTelemetryLifecycleMetrics
 
     /// <summary>Records one bounded lifecycle transition.</summary>
     public static void Record(AccessTelemetryRecordState state, AccessTelemetryReason reason)
+        => Record(1, state, reason);
+
+    /// <summary>Records a bounded number of identical lifecycle transitions.</summary>
+    public static void Record(long count, AccessTelemetryRecordState state, AccessTelemetryReason reason)
         => Records.Add(
-            1,
+            count,
             new KeyValuePair<string, object?>("state", ToState(state)),
             new KeyValuePair<string, object?>("reason", ToReason(reason)));
 

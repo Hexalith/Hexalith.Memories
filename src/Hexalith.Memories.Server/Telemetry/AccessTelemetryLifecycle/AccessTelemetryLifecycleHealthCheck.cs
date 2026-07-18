@@ -10,7 +10,10 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 /// <summary>Reports lifecycle health separately from business readiness.</summary>
-internal sealed class AccessTelemetryLifecycleHealthCheck(AccessTelemetryLifecycleStatus status) : IHealthCheck
+internal sealed class AccessTelemetryLifecycleHealthCheck(
+    AccessTelemetryLifecycleStatus status,
+    AccessTelemetryOptions options,
+    TimeProvider timeProvider) : IHealthCheck
 {
     /// <inheritdoc/>
     public Task<HealthCheckResult> CheckHealthAsync(
@@ -20,6 +23,13 @@ internal sealed class AccessTelemetryLifecycleHealthCheck(AccessTelemetryLifecyc
         ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
         AccessTelemetryLifecycleStatusSnapshot current = status.Current;
+        AccessTelemetryHealthState effectiveHealth = current.Health;
+        if (options.Enabled && effectiveHealth == AccessTelemetryHealthState.Healthy &&
+            (current.LastAcceptedOrRejectedUtc is null || timeProvider.GetUtcNow() - current.LastAcceptedOrRejectedUtc >= TimeSpan.FromMinutes(15)))
+        {
+            effectiveHealth = AccessTelemetryHealthState.NoData;
+        }
+
         IReadOnlyDictionary<string, object> details = new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["cause"] = Cause(current.Reason),
@@ -27,10 +37,11 @@ internal sealed class AccessTelemetryLifecycleHealthCheck(AccessTelemetryLifecyc
             ["owner"] = "Hexalith Platform Operations",
             ["nextAction"] = NextAction(current.Reason),
         };
-        HealthCheckResult result = current.Health switch
+        HealthCheckResult result = effectiveHealth switch
         {
             AccessTelemetryHealthState.Unhealthy => HealthCheckResult.Unhealthy("Access telemetry lifecycle is fail-closed.", data: details),
             AccessTelemetryHealthState.Degraded => HealthCheckResult.Degraded("Access telemetry lifecycle validation is pending.", data: details),
+            AccessTelemetryHealthState.NoData => HealthCheckResult.Healthy("Access telemetry lifecycle has no data in the bounded window.", data: details),
             _ => HealthCheckResult.Healthy("Access telemetry lifecycle gate is healthy.", data: details),
         };
         return Task.FromResult(result);

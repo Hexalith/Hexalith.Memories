@@ -1,5 +1,6 @@
 using Dapr.Actors;
 using Dapr.Actors.Client;
+using Dapr.Client;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Capability;
@@ -17,14 +18,14 @@ builder.AddServiceDefaults(configureRedisInstrumentation: false);
 AccessTelemetryOptions configuredOptions = builder.Configuration
     .GetSection(AccessTelemetryOptions.SectionName)
     .Get<AccessTelemetryOptions>() ?? new AccessTelemetryOptions();
-AccessTelemetryOptionsValidationResult optionsValidation = AccessTelemetryOptionsValidator.Validate(
+var runtimeGate = new AccessTelemetryRuntimeGate();
+AccessTelemetryOptionsValidationResult initialValidation = AccessTelemetryOptionsValidator.Validate(
     configuredOptions,
     builder.Environment.EnvironmentName);
-AccessTelemetryOptions runtimeOptions = optionsValidation.EffectiveRetention is null
-    ? configuredOptions
-    : configuredOptions with { Retention = optionsValidation.EffectiveRetention };
-var runtimeGate = new AccessTelemetryRuntimeGate();
-if (runtimeOptions.Enabled && !optionsValidation.IsValid)
+bool awaitsDaprRetention = configuredOptions.Enabled &&
+    configuredOptions.RetentionSource == RetentionConfigurationSource.DaprConfiguration &&
+    configuredOptions.Retention is null;
+if (configuredOptions.Enabled && !initialValidation.IsValid && !awaitsDaprRetention)
 {
     runtimeGate.Publish(new AccessTelemetryCapabilityGateResult(
         false,
@@ -38,17 +39,31 @@ _ = builder.Services.AddOpenTelemetry().WithMetrics(metrics =>
     metrics.AddMeter(Hexalith.Memories.AccessTelemetry.Observability.AccessTelemetryLifecycleMetrics.MeterName));
 builder.Services.AddActors(options => options.Actors.RegisterActor<AccessTelemetryLifecycleActor>());
 builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+builder.Services.AddSingleton<MonotonicRecordIdGenerator>();
 builder.Services.AddSingleton<IAccessTelemetryStateStore, DaprAccessTelemetryStateStore>();
+builder.Services.AddSingleton<AccessTelemetryProcessorStatus>();
 builder.Services.AddTransient<AccessTelemetryLifecycleProcessor>();
-builder.Services.AddSingleton(runtimeOptions);
+builder.Services.AddSingleton(configuredOptions);
+builder.Services.AddSingleton<AccessTelemetryRuntimeOptionsProvider>();
 builder.Services.AddSingleton(runtimeGate);
 builder.Services.AddSingleton<IAccessTelemetryRuntimeGate>(services => services.GetRequiredService<AccessTelemetryRuntimeGate>());
 builder.Services.AddSingleton(builder.Configuration
     .GetSection($"{AccessTelemetryOptions.SectionName}:CapabilityEvidence")
     .Get<AccessTelemetryCapabilityEvidenceOptions>() ?? new AccessTelemetryCapabilityEvidenceOptions());
 builder.Services.AddSingleton<AccessTelemetryCapabilityProbeRunner>();
-if (runtimeOptions.Enabled && optionsValidation.IsValid)
+foreach (string capability in AccessTelemetryCapabilityProbeRunner.RequiredCapabilities)
 {
+    builder.Services.AddSingleton<IAccessTelemetryCapabilityProbe>(services => new DaprAccessTelemetryCapabilityProbe(
+        capability,
+        services.GetRequiredService<DaprClient>(),
+        services.GetRequiredService<AccessTelemetryRuntimeOptionsProvider>(),
+        services.GetRequiredService<MonotonicRecordIdGenerator>(),
+        services.GetRequiredService<TimeProvider>(),
+        services.GetRequiredService<ILogger<DaprAccessTelemetryCapabilityProbe>>()));
+}
+if (configuredOptions.Enabled)
+{
+    builder.Services.AddHostedService<AccessTelemetryLifecycleConfigurationHostedService>();
     builder.Services.AddHostedService<AccessTelemetryCapabilityProbeHostedService>();
 }
 
@@ -58,15 +73,10 @@ _ = builder.Services.AddHealthChecks().AddCheck<AccessTelemetryRuntimeHealthChec
     tags: ["ready"],
     timeout: TimeSpan.FromSeconds(3));
 builder.Services.AddSingleton<IAccessTelemetryClockGate>(services =>
-{
-    string encodedKey = builder.Configuration["AccessTelemetryLifecycle:AttestationVerificationKey"] ?? string.Empty;
-    byte[] key = string.IsNullOrWhiteSpace(encodedKey) ? [] : Convert.FromBase64String(encodedKey);
-    return new AccessTelemetryClockGate(
-        builder.Configuration["AccessTelemetryLifecycle:DeploymentId"] ?? "unconfigured",
-        builder.Configuration["AccessTelemetryLifecycle:ComponentProfileHash"] ?? "unconfigured",
-        key,
-        services.GetRequiredService<TimeProvider>());
-});
+    new AccessTelemetryClockGate(
+        services.GetRequiredService<AccessTelemetryRuntimeOptionsProvider>(),
+        services.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<ILifecycleClockEvidenceProvider, DaprLifecycleClockEvidenceProvider>();
 
 WebApplication app = builder.Build();
 
@@ -86,14 +96,30 @@ app.MapPost("/v1/access-telemetry/write", async (
 }).AllowAnonymous();
 
 app.MapPost("/v1/access-telemetry/heartbeat", async (
-    WriterHeartbeat heartbeat,
+    WriterHeartbeatRequest request,
     IActorProxyFactory proxyFactory) =>
 {
     IAccessTelemetryLifecycleActor actor = proxyFactory.CreateActorProxy<IAccessTelemetryLifecycleActor>(
         new ActorId("global"),
         nameof(AccessTelemetryLifecycleActor));
-    await actor.HeartbeatAsync(heartbeat).ConfigureAwait(false);
-    return Results.NoContent();
+    WriterHeartbeatResponse response = await actor.HeartbeatAsync(request).ConfigureAwait(false);
+    return response.Accepted ? Results.Ok(response) : Results.BadRequest(response);
+}).AllowAnonymous();
+
+app.MapPost("/v1/access-telemetry/validate", (
+    AccessTelemetryRuntimeValidationRequest request,
+    IAccessTelemetryRuntimeGate gate,
+    AccessTelemetryRuntimeOptionsProvider optionsProvider) =>
+{
+    AccessTelemetryOptions current = optionsProvider.Current;
+    AccessTelemetryCapabilityGateResult decision = gate.Current;
+    bool exact = optionsProvider.IsReady &&
+        string.Equals(request.ConfigurationEpoch, current.ConfigurationEpoch, StringComparison.Ordinal) &&
+        string.Equals(request.ComponentProfileHash, current.ComponentProfileHash, StringComparison.Ordinal);
+    var response = new AccessTelemetryRuntimeValidationResponse(
+        exact && decision.AllowsWrites,
+        exact ? decision.Reason : AccessTelemetryReason.ConfigurationInvalid);
+    return Results.Ok(response);
 }).AllowAnonymous();
 
 app.MapGet("/v1/access-telemetry/inspect", async (IActorProxyFactory proxyFactory) =>

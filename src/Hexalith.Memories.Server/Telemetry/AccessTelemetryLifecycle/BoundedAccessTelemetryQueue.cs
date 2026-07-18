@@ -11,7 +11,7 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 internal sealed class BoundedAccessTelemetryQueue
 {
     private readonly Queue<AccessTelemetryQueuedRecord> _records = [];
-    private readonly Lock _gate = new();
+    private readonly object _gate = new();
     private readonly int _recordLimit;
     private readonly int _byteLimit;
     private int _byteCount;
@@ -39,22 +39,20 @@ internal sealed class BoundedAccessTelemetryQueue
 
     /// <summary>Gets the queued canonical byte count.</summary>
     public int ByteCount
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _byteCount;
-            }
-        }
-    }
+        => Volatile.Read(ref _byteCount);
 
     /// <summary>Attempts to enqueue without waiting and drops the new record at either bound.</summary>
     public bool TryEnqueue(AccessTelemetryRecord record, out AccessTelemetryReason reason)
     {
         ArgumentNullException.ThrowIfNull(record);
         byte[] canonical = AccessTelemetryCanonicalizer.CanonicalizeRecord(record);
-        lock (_gate)
+        if (!Monitor.TryEnter(_gate))
+        {
+            reason = AccessTelemetryReason.QueueFull;
+            return false;
+        }
+
+        try
         {
             if (_records.Count >= _recordLimit || canonical.Length > _byteLimit - _byteCount)
             {
@@ -66,6 +64,46 @@ internal sealed class BoundedAccessTelemetryQueue
             _byteCount += canonical.Length;
             reason = AccessTelemetryReason.None;
             return true;
+        }
+        finally
+        {
+            Monitor.Exit(_gate);
+        }
+    }
+
+    /// <summary>Removes matching records while preserving the FIFO order of all survivors.</summary>
+    public int RemoveWhere(Func<AccessTelemetryRecord, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        lock (_gate)
+        {
+            int removed = 0;
+            int originalCount = _records.Count;
+            for (int index = 0; index < originalCount; index++)
+            {
+                AccessTelemetryQueuedRecord queued = _records.Dequeue();
+                if (predicate(queued.Record))
+                {
+                    _byteCount -= queued.CanonicalBytes;
+                    removed++;
+                }
+                else
+                {
+                    _records.Enqueue(queued);
+                }
+            }
+
+            return removed;
+        }
+    }
+
+    /// <summary>Counts records produced with the specified marker-key generation.</summary>
+    public int CountByMarkerKey(string markerKeyId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(markerKeyId);
+        lock (_gate)
+        {
+            return _records.Count(record => string.Equals(record.Record.MarkerKeyId, markerKeyId, StringComparison.Ordinal));
         }
     }
 

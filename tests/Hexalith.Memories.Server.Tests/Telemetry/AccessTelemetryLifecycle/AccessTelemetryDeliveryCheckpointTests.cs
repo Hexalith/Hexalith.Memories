@@ -5,6 +5,10 @@
 
 namespace Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle;
 
+using System.Diagnostics;
+using System.Net;
+using System.Net.Http.Json;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -25,6 +29,72 @@ using AccessTelemetryEvent = Hexalith.Memories.Contracts.V1.AccessTelemetryEvent
 public sealed class AccessTelemetryDeliveryCheckpointTests
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
+
+    public static IEnumerable<object[]> OperationEvents()
+    {
+        yield return [LogLevel.Information, new EventId(7501), CreateSearchEvent()];
+        yield return [LogLevel.Information, new EventId(7502), CreateEvent(7502, "ingest", null, null, new Dictionary<string, object?>
+        {
+            ["bytes"] = 42L,
+            ["contentType"] = "text/plain",
+            ["eventOutcome"] = "accepted",
+            ["sourceType"] = "file",
+        })];
+        yield return [LogLevel.Information, new EventId(7503), CreateEvent(7503, "traverse", null, 2, new Dictionary<string, object?>
+        {
+            ["depth"] = 3,
+            ["edgeTypes"] = "references,depends-on",
+            ["startNodeId"] = "raw-node-id",
+            ["tokenBudget"] = 100,
+        })];
+        yield return [LogLevel.Information, new EventId(7504), CreateEvent(7504, "case-access", "case-a", 1, new Dictionary<string, object?>
+        {
+            ["memoryUnitId"] = "raw-memory-unit",
+        })];
+        yield return [LogLevel.Information, new EventId(7505), CreateEvent(7505, "delete", "case-a", null, new Dictionary<string, object?>
+        {
+            ["memoryUnitIdPrefix"] = "raw-prefix",
+            ["operation"] = "memory-unit-delete",
+        })];
+        yield return [LogLevel.Information, new EventId(7506), CreateEvent(7506, "tenant-lifecycle", null, null, new Dictionary<string, object?>
+        {
+            ["operation"] = "tenant-create",
+            ["state"] = "pending",
+            ["workflowInstanceIdPrefix"] = "raw-prefix",
+        })];
+        yield return [LogLevel.Information, new EventId(7507), CreateEvent(7507, "tenant-config", null, null, new Dictionary<string, object?>
+        {
+            ["changedFields"] = new[] { "displayName" },
+            ["fieldCount"] = 1,
+            ["forceReindex"] = false,
+            ["operation"] = "display-name-update",
+        })];
+        yield return [LogLevel.Information, new EventId(7508), CreateEvent(7508, "case-member", "case-a", null, new Dictionary<string, object?>
+        {
+            ["memberIdPrefix"] = "raw-prefix",
+            ["operation"] = "case-member-add",
+        })];
+        yield return [LogLevel.Information, new EventId(7509), CreateEvent(7509, "annotation", "case-a", null, new Dictionary<string, object?>
+        {
+            ["memoryUnitIdPrefix"] = "raw-prefix",
+            ["operation"] = "annotation-create",
+        })];
+    }
+
+    [Theory]
+    [MemberData(nameof(OperationEvents))]
+    public void Sanitizer_AllNineOperationFamilies_ProduceCanonicalBoundedRecords(
+        LogLevel level,
+        EventId eventId,
+        AccessTelemetryEvent source)
+    {
+        bool accepted = CreateSanitizer().TrySanitize(level, eventId, source, out AccessTelemetryRecord? record, out AccessTelemetryReason reason);
+
+        accepted.ShouldBeTrue(reason.ToString());
+        record.ShouldNotBeNull();
+        record.OperationType.ShouldBe(source.OperationType);
+        AccessTelemetryCanonicalizer.CanonicalizeRecord(record).Length.ShouldBeLessThanOrEqualTo(AccessTelemetryOptions.MaximumRecordBytes);
+    }
 
     [Fact]
     public void Sanitizer_TransformsRawFieldsIntoBoundedMarkersAndCatalogs()
@@ -81,6 +151,45 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
     }
 
     [Fact]
+    public void Sanitizer_BlankTenantPreservesRejectedScopeEvidenceWithoutCorrelationMarkers()
+    {
+        AccessTelemetryEvent source = CreateSearchEvent() with { TenantId = "  ", CaseId = "case-secret" };
+
+        CreateSanitizer().TrySanitize(
+            LogLevel.Information,
+            new EventId(7501),
+            source,
+            out AccessTelemetryRecord? record,
+            out AccessTelemetryReason reason).ShouldBeTrue(reason.ToString());
+
+        record.ShouldNotBeNull();
+        record.TenantMarker.ShouldBe("__rejected__");
+        record.CaseMarker.ShouldBeNull();
+        record.UserMarker.ShouldBeNull();
+        record.QueryParams["caseScope"].ShouldBe("rejected-or-unknown");
+    }
+
+    [Fact]
+    public void Sanitizer_WrongTypedStateAndUnknownActionSubtype_FailClosed()
+    {
+        AccessTelemetryEvent wrongType = CreateEvent(7502, "ingest", null, null, new Dictionary<string, object?>
+        {
+            ["bytes"] = 42,
+            ["contentType"] = "text/plain",
+            ["sourceType"] = "file",
+        });
+        AccessTelemetryEvent unknownAction = CreateEvent(7505, "delete", "case-a", null, new Dictionary<string, object?>
+        {
+            ["operation"] = "invented-delete",
+        });
+
+        CreateSanitizer().TrySanitize(LogLevel.Information, new EventId(7502), wrongType, out _, out AccessTelemetryReason wrongTypeReason).ShouldBeFalse();
+        CreateSanitizer().TrySanitize(LogLevel.Information, new EventId(7505), unknownAction, out _, out AccessTelemetryReason actionReason).ShouldBeFalse();
+        wrongTypeReason.ShouldBe(AccessTelemetryReason.SchemaMismatch);
+        actionReason.ShouldBe(AccessTelemetryReason.SchemaMismatch);
+    }
+
+    [Fact]
     public void Provider_CapturesTypedStateOnlyForExactCategorySeverityAndTuple()
     {
         var queue = new BoundedAccessTelemetryQueue(8, 8192);
@@ -94,6 +203,25 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         rejectedCategory.Log(LogLevel.Information, new EventId(7501), CreateSearchEvent(), null, static (_, _) => "ignored");
 
         queue.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Provider_RecordsAcceptedOrRejectedActivityAtAdmissionTime()
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        var accessor = new AccessTelemetrySanitizerAccessor();
+        accessor.Publish(CreateSanitizer());
+        var status = new AccessTelemetryLifecycleStatus(enabled: true);
+        using var provider = new AccessTelemetryLifecycleLoggerProvider(
+            queue,
+            accessor,
+            status,
+            new FakeTimeProvider(Now));
+        ILogger logger = provider.CreateLogger(typeof(AccessTelemetryCategory).FullName!);
+
+        logger.Log(LogLevel.Information, new EventId(7501), CreateSearchEvent(), null, static (_, _) => "ignored");
+
+        status.Current.LastAcceptedOrRejectedUtc.ShouldBe(Now);
     }
 
     [Fact]
@@ -128,6 +256,36 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         secondReason.ShouldBe(AccessTelemetryReason.QueueFull);
         queue.Count.ShouldBe(1);
         queue.ByteCount.ShouldBe(bytes);
+    }
+
+    [Fact]
+    public async Task Queue_AdmissionReturnsImmediatelyWhenAnotherThreadOwnsTheGate()
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        object gate = typeof(BoundedAccessTelemetryQueue)
+            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(queue)!;
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        Task holder = Task.Run(() =>
+        {
+            lock (gate)
+            {
+                entered.Set();
+                release.Wait();
+            }
+        });
+        entered.Wait();
+
+        var stopwatch = Stopwatch.StartNew();
+        bool accepted = queue.TryEnqueue(Sanitize(CreateSearchEvent()), out AccessTelemetryReason reason);
+        stopwatch.Stop();
+        release.Set();
+        await holder;
+
+        accepted.ShouldBeFalse();
+        reason.ShouldBe(AccessTelemetryReason.QueueFull);
+        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromMilliseconds(500));
     }
 
     [Fact]
@@ -181,7 +339,12 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
         client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
             .Returns(new AccessTelemetryWriteBatchResponse { Accepted = 256, Rejected = 0, Reason = AccessTelemetryReason.None });
-        var worker = new AccessTelemetryDeliveryWorker(queue, client, new FakeTimeProvider(Now));
+        var worker = new AccessTelemetryDeliveryWorker(
+            queue,
+            client,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions(),
+            new AccessTelemetryLifecycleStatus(enabled: true));
 
         await worker.DrainOnceAsync(CancellationToken.None);
 
@@ -189,6 +352,127 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
             Arg.Is<IReadOnlyList<AccessTelemetryRecord>>(records => records!.Count == 256),
             Arg.Any<CancellationToken>());
         queue.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Worker_RemovesNonPrefixExpiryAndThenAcknowledgesTheSurvivingFifoBatch()
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        AccessTelemetryRecord first = Reidentify(template with { ExpiresAtUtc = Format(Now.AddHours(1)) });
+        AccessTelemetryRecord expired = Reidentify(template with { ExpiresAtUtc = Format(Now.AddMilliseconds(-1)) });
+        AccessTelemetryRecord third = Reidentify(template with { ExpiresAtUtc = Format(Now.AddHours(1)) });
+        queue.TryEnqueue(first, out _).ShouldBeTrue();
+        queue.TryEnqueue(expired, out _).ShouldBeTrue();
+        queue.TryEnqueue(third, out _).ShouldBeTrue();
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(new AccessTelemetryWriteBatchResponse { Accepted = 2, Rejected = 0, Reason = AccessTelemetryReason.None });
+        var worker = CreateWorker(queue, client);
+
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        await client.Received(1).SendAsync(
+            Arg.Is<IReadOnlyList<AccessTelemetryRecord>>(records =>
+                records != null && records.Count == 2 && records[0].RecordId == first.RecordId && records[1].RecordId == third.RecordId),
+            Arg.Any<CancellationToken>());
+        queue.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Worker_PartialAcknowledgementAdvancesPrefixAndRetriesOnlyTheRemainder()
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        foreach (int index in Enumerable.Range(0, 3))
+        {
+            _ = index;
+            queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        }
+
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new AccessTelemetryWriteBatchResponse { Accepted = 1, Rejected = 2, Reason = AccessTelemetryReason.DependencyUnavailable },
+                new AccessTelemetryWriteBatchResponse { Accepted = 2, Rejected = 0, Reason = AccessTelemetryReason.None });
+        var worker = CreateWorker(queue, client);
+
+        await worker.DrainOnceAsync(CancellationToken.None);
+        queue.Count.ShouldBe(2);
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        queue.Count.ShouldBe(0);
+        await client.Received(2).SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Worker_HonorsConfiguredBatchLimitAndStopsAfterTerminalConflict()
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        foreach (int index in Enumerable.Range(0, 3))
+        {
+            _ = index;
+            queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        }
+
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(new AccessTelemetryWriteBatchResponse { Accepted = 0, Rejected = 2, Reason = AccessTelemetryReason.RecordIdConflict });
+        var worker = new AccessTelemetryDeliveryWorker(
+            queue,
+            client,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions { BatchRecordLimit = 2, BatchByteLimit = 8192 },
+            new AccessTelemetryLifecycleStatus(enabled: true));
+
+        await worker.DrainOnceAsync(CancellationToken.None);
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        var stopwatch = Stopwatch.StartNew();
+        await worker.StopAsync(CancellationToken.None);
+        stopwatch.Stop();
+
+        await client.Received(1).SendAsync(
+            Arg.Is<IReadOnlyList<AccessTelemetryRecord>>(records => records != null && records.Count == 2),
+            Arg.Any<CancellationToken>());
+        queue.Count.ShouldBe(3);
+        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task DaprDeliveryClient_ReturnsBoundedTerminalErrorBodyBeforeHttpSuccessEnforcement()
+    {
+        var httpClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        {
+            Content = JsonContent.Create(new AccessTelemetryWriteBatchResponse
+            {
+                Accepted = 0,
+                Rejected = 1,
+                Reason = AccessTelemetryReason.ConfigurationInvalid,
+            }),
+        }))
+        {
+            BaseAddress = new Uri("http://dapr.test/"),
+        };
+        IAccessTelemetryClockEvidenceProvider clock = Substitute.For<IAccessTelemetryClockEvidenceProvider>();
+        clock.GetAsync(Arg.Any<CancellationToken>()).Returns(CreateAttestation());
+        var client = new DaprAccessTelemetryDeliveryClient(
+            httpClient,
+            clock,
+            new AccessTelemetryOptions
+            {
+                ConfigurationEpoch = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+                ComponentProfileHash = new string('a', 64),
+            },
+            new AccessTelemetryWriterIdentity(new MonotonicRecordIdGenerator()));
+
+        AccessTelemetryWriteBatchResponse response = await client.SendAsync(
+            [Sanitize(CreateSearchEvent())],
+            CancellationToken.None);
+
+        response.Reason.ShouldBe(AccessTelemetryReason.ConfigurationInvalid);
+        response.Rejected.ShouldBe(1);
     }
 
     [Fact]
@@ -201,7 +485,20 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
             DeploymentId = "deployment-a",
             MarkerKeyGeneration = "mk-2026a",
         };
-        var worker = new AccessTelemetryHeartbeatWorker(client, options, identity, new FakeTimeProvider(Now));
+        client.SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>())
+            .Returns(new WriterHeartbeatResponse
+            {
+                Accepted = true,
+                Reason = AccessTelemetryReason.None,
+                ActiveGeneration = options.MarkerKeyGeneration,
+            });
+        var worker = new AccessTelemetryHeartbeatWorker(
+            client,
+            options,
+            identity,
+            new BoundedAccessTelemetryQueue(8, 8192),
+            new AccessTelemetryLifecycleStatus(enabled: true),
+            new FakeTimeProvider(Now));
 
         await worker.SendOnceAsync(CancellationToken.None);
 
@@ -215,6 +512,33 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
                 heartbeat.LeaseExpiresAtUnixMilliseconds == Now.AddSeconds(30).ToUnixTimeMilliseconds()),
             Arg.Any<CancellationToken>());
         AccessTelemetryHeartbeatWorker.HeartbeatInterval.ShouldBe(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task HeartbeatWorker_TerminalConfigurationResponseCannotBeOverwritten()
+    {
+        IAccessTelemetryHeartbeatClient client = Substitute.For<IAccessTelemetryHeartbeatClient>();
+        client.SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>())
+            .Returns(new WriterHeartbeatResponse
+            {
+                Accepted = false,
+                Reason = AccessTelemetryReason.ConfigurationInvalid,
+                ActiveGeneration = "mk-2026a",
+            });
+        var status = new AccessTelemetryLifecycleStatus(enabled: true);
+        var worker = new AccessTelemetryHeartbeatWorker(
+            client,
+            new AccessTelemetryOptions { DeploymentId = "deployment-a", MarkerKeyGeneration = "mk-2026a" },
+            new AccessTelemetryWriterIdentity(new MonotonicRecordIdGenerator()),
+            new BoundedAccessTelemetryQueue(8, 8192),
+            status,
+            new FakeTimeProvider(Now));
+
+        await worker.SendOnceAsync(CancellationToken.None);
+        status.Publish(AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None);
+
+        status.Current.Health.ShouldBe(AccessTelemetryHealthState.Unhealthy);
+        status.Current.Reason.ShouldBe(AccessTelemetryReason.ConfigurationInvalid);
     }
 
     private static AccessTelemetrySanitizer CreateSanitizer()
@@ -236,6 +560,59 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         return record!;
     }
 
+    private static AccessTelemetryDeliveryWorker CreateWorker(
+        BoundedAccessTelemetryQueue queue,
+        IAccessTelemetryDeliveryClient client)
+        => new(
+            queue,
+            client,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions(),
+            new AccessTelemetryLifecycleStatus(enabled: true));
+
+    private static AccessTelemetryRecord Reidentify(AccessTelemetryRecord record)
+    {
+        AccessTelemetryRecord identified = record with
+        {
+            RecordId = new MonotonicRecordIdGenerator().NewId(),
+            EnvelopeHash = string.Empty,
+        };
+        return identified with { EnvelopeHash = AccessTelemetryCanonicalizer.CalculateEnvelopeHash(identified) };
+    }
+
+    private static string Format(DateTimeOffset value)
+        => value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static SignedClockAttestation CreateAttestation()
+        => new()
+        {
+            DeploymentId = "deployment-a",
+            AppId = "memories",
+            ServiceInstanceId = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XB",
+            ProcessEpoch = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XC",
+            ComponentProfileHash = new string('a', 64),
+            RequestingProcessEpoch = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+            RequestingServiceInstanceId = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XA",
+            Nonce = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XD",
+            NotBeforeUnixMilliseconds = Now.AddMilliseconds(-10).ToUnixTimeMilliseconds(),
+            NotAfterUnixMilliseconds = Now.AddMilliseconds(10).ToUnixTimeMilliseconds(),
+            IssuedAtUnixMilliseconds = Now.ToUnixTimeMilliseconds(),
+            ExpiresAtUnixMilliseconds = Now.AddSeconds(30).ToUnixTimeMilliseconds(),
+            SignerKeyEpoch = "clock-key-1",
+            Signature = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
+        };
+
+    private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(responseFactory(request));
+        }
+    }
+
     private static AccessTelemetryEvent CreateSearchEvent()
         => new()
         {
@@ -253,6 +630,27 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
                 ["explain"] = true,
             },
             ResultCount = 4,
+            DurationMs = 12,
+            Outcome = "ok",
+            ErrorCode = null,
+        };
+
+    private static AccessTelemetryEvent CreateEvent(
+        int eventId,
+        string operation,
+        string? caseId,
+        int? resultCount,
+        IReadOnlyDictionary<string, object?> queryParams)
+        => new()
+        {
+            EventId = eventId,
+            Timestamp = "2026-07-18T09:59:59.000+00:00",
+            TenantId = "tenant-a",
+            OperationType = operation,
+            CaseId = caseId,
+            User = "alice@example.test",
+            QueryParams = queryParams,
+            ResultCount = resultCount,
             DurationMs = 12,
             Outcome = "ok",
             ErrorCode = null,

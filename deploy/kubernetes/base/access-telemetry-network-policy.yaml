@@ -24,6 +24,10 @@ spec:
         - protocol: TCP
           port: 6379
     - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: memories-access-telemetry-clock
+    - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: dapr-system
@@ -51,6 +55,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: memories
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: memories-access-telemetry
   egress:
     - ports:
         - protocol: TCP

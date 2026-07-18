@@ -10,29 +10,38 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 /// <summary>Signature and exact deployment/app/profile gate for lifecycle mutations.</summary>
 internal sealed class AccessTelemetryClockGate : IAccessTelemetryClockGate
 {
-    private readonly string _deploymentId;
-    private readonly string _componentProfileHash;
-    private readonly byte[] _publicKey;
+    private readonly AccessTelemetryRuntimeOptionsProvider _optionsProvider;
     private readonly TimeProvider _timeProvider;
     private readonly BoundedNonceReplayCache _replayCache = new(8192);
 
     /// <summary>Initializes the lifecycle mutation clock gate.</summary>
     public AccessTelemetryClockGate(
-        string deploymentId,
-        string componentProfileHash,
-        byte[] publicKey,
+        AccessTelemetryRuntimeOptionsProvider optionsProvider,
         TimeProvider timeProvider)
     {
-        _deploymentId = deploymentId;
-        _componentProfileHash = componentProfileHash;
-        _publicKey = publicKey;
+        _optionsProvider = optionsProvider;
         _timeProvider = timeProvider;
     }
 
     /// <inheritdoc/>
-    public ClockAttestationValidationResult Validate(SignedClockAttestation attestation)
+    public ClockAttestationValidationResult Validate(
+        SignedClockAttestation attestation,
+        string expectedAppId,
+        string expectedProcessEpoch,
+        string expectedServiceInstanceId)
     {
-        if (!string.Equals(attestation.AppId, "memories", StringComparison.Ordinal))
+        if (!string.Equals(attestation.AppId, expectedAppId, StringComparison.Ordinal))
+        {
+            return new ClockAttestationValidationResult(false, AccessTelemetryReason.ClockUntrusted);
+        }
+
+        AccessTelemetryOptions options = _optionsProvider.Current;
+        byte[] publicKey;
+        try
+        {
+            publicKey = Convert.FromBase64String(options.AttestationVerificationKey);
+        }
+        catch (FormatException)
         {
             return new ClockAttestationValidationResult(false, AccessTelemetryReason.ClockUntrusted);
         }
@@ -40,13 +49,14 @@ internal sealed class AccessTelemetryClockGate : IAccessTelemetryClockGate
         return ClockAttestationVerifier.Verify(
             attestation,
             new ClockAttestationValidationContext(
-                _deploymentId,
-                "memories",
-                _componentProfileHash,
+                options.DeploymentId,
+                expectedAppId,
+                options.ComponentProfileHash,
                 attestation.Nonce,
-                attestation.RequestingProcessEpoch,
-                attestation.RequestingServiceInstanceId),
-            _publicKey,
+                expectedProcessEpoch,
+                expectedServiceInstanceId,
+                SignerKeyEpoch: options.ClockSignerKeyEpoch),
+            publicKey,
             _timeProvider.GetUtcNow(),
             _replayCache);
     }

@@ -11,5 +11,5 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 internal interface IAccessTelemetryHeartbeatClient
 {
     /// <summary>Sends one bounded writer lease heartbeat.</summary>
-    Task SendAsync(WriterHeartbeat heartbeat, CancellationToken cancellationToken);
+    Task<WriterHeartbeatResponse> SendAsync(WriterHeartbeat heartbeat, CancellationToken cancellationToken);
 }

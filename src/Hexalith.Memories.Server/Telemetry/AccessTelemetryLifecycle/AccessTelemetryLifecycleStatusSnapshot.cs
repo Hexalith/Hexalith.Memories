@@ -10,4 +10,5 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 /// <summary>Bounded lifecycle-only health state.</summary>
 internal sealed record AccessTelemetryLifecycleStatusSnapshot(
     AccessTelemetryHealthState Health,
-    AccessTelemetryReason Reason);
+    AccessTelemetryReason Reason,
+    DateTimeOffset? LastAcceptedOrRejectedUtc = null);

@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Eventing;
@@ -14,7 +17,10 @@ using Hexalith.Memories.AppHost;
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 HexalithEventStoreSecurityResources? security = builder.AddHexalithEventStoreSecurity();
 string secretsFile = EnsureSecretsFile();
+AccessTelemetryDevelopmentSecrets accessTelemetryDevelopmentSecrets = EnsureAccessTelemetryDevelopmentSecrets(secretsFile);
 string daprConfigPath = ResolveDaprConfigPath();
+string accessTelemetryClockDaprConfigPath = ResolveAccessTelemetryDaprConfigPath("access-telemetry-clock-config.yaml");
+string accessTelemetryLifecycleDaprConfigPath = ResolveAccessTelemetryDaprConfigPath("access-telemetry-lifecycle-config.yaml");
 string daprAppId = ResolveDaprAppId();
 string redisConfigPath = ResolveRedisConfigPath();
 string redisVolumeName = ResolveRedisVolumeName();
@@ -250,9 +256,20 @@ server = security is null
     ? PropagateJwtBearerAuthenticationEnvironment(server)
     : server.WithJwtBearerSecurity(security);
 
-// Story 27.2: the portable lifecycle topology is present locally but disabled until the exact
-// component profile has behavioral evidence. Story 27.3 owns Production adapter certification.
-server = server.WithEnvironment("AccessTelemetryLifecycle__Enabled", "false");
+// Story 27.2: run the portable Development topology with generated local-only keys and behavioral probes.
+// Production remains separately disabled until Story 27.3 certifies its exact adapter.
+server = server
+    .WithEnvironment("AccessTelemetryLifecycle__Enabled", "true")
+    .WithEnvironment("AccessTelemetryLifecycle__RetentionSource", "DevelopmentDefault")
+    .WithEnvironment("AccessTelemetryLifecycle__DeploymentId", "development")
+    .WithEnvironment("AccessTelemetryLifecycle__ConfigurationEpoch", "01J00000000000000000000000")
+    .WithEnvironment("AccessTelemetryLifecycle__ComponentProfileHash", new string('a', 64))
+    .WithEnvironment("AccessTelemetryLifecycle__AttestationVerificationKey", accessTelemetryDevelopmentSecrets.VerificationPublicKey)
+    .WithEnvironment("AccessTelemetryLifecycle__ClockSignerKeyEpoch", "development-clock-key")
+    .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyReference", "access-telemetry-marker-key")
+    .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyGeneration", "development-key-1")
+    .WithEnvironment("AccessTelemetryLifecycle__CapacityEvidenceId", "development-capacity-probe")
+    .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationEvidenceId", "development-reclamation-hook");
 
 IResourceBuilder<ProjectResource> accessTelemetryClock = builder
     .AddProject<Projects.Hexalith_Memories_AccessTelemetry_Clock>(
@@ -264,10 +281,18 @@ IResourceBuilder<ProjectResource> accessTelemetryClock = builder
             appId: "memories-access-telemetry-clock",
             httpPort: 3800,
             grpcPort: 50301,
-            configPath: daprConfigPath,
+            configPath: accessTelemetryClockDaprConfigPath,
             placementHostAddress: daprPlacementHostAddress,
             schedulerHostAddress: daprSchedulerHostAddress));
-    });
+        _ = sidecar.WithReference(accessTelemetrySecrets);
+    })
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+    .WithEnvironment("DOTNET_ENVIRONMENT", "Development")
+    .WithEnvironment("Clock__SecretStoreName", "access-telemetry-secrets")
+    .WithEnvironment("Clock__SigningKeySecretName", "access-telemetry-clock-key")
+    .WithEnvironment("Clock__SignerKeyEpoch", "development-clock-key")
+    .WithEnvironment("Clock__AllowDevelopmentSources", "true")
+    .WaitFor(accessTelemetrySecrets);
 
 IResourceBuilder<ProjectResource> accessTelemetry = builder
     .AddProject<Projects.Hexalith_Memories_AccessTelemetry>(
@@ -279,15 +304,29 @@ IResourceBuilder<ProjectResource> accessTelemetry = builder
             appId: "memories-access-telemetry",
             httpPort: 3700,
             grpcPort: 50201,
-            configPath: daprConfigPath,
+            configPath: accessTelemetryLifecycleDaprConfigPath,
             placementHostAddress: daprPlacementHostAddress,
             schedulerHostAddress: daprSchedulerHostAddress));
         _ = sidecar.WithReference(accessTelemetryStore);
         _ = sidecar.WithReference(accessTelemetrySecrets);
         _ = sidecar.WithReference(accessTelemetryConfig);
     })
-    .WithEnvironment("AccessTelemetryLifecycle__Enabled", "false")
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
+    .WithEnvironment("DOTNET_ENVIRONMENT", "Development")
+    .WithEnvironment("AccessTelemetryLifecycle__Enabled", "true")
+    .WithEnvironment("AccessTelemetryLifecycle__RetentionSource", "DevelopmentDefault")
+    .WithEnvironment("AccessTelemetryLifecycle__DeploymentId", "development")
+    .WithEnvironment("AccessTelemetryLifecycle__ConfigurationEpoch", "01J00000000000000000000000")
+    .WithEnvironment("AccessTelemetryLifecycle__ComponentProfileHash", new string('a', 64))
+    .WithEnvironment("AccessTelemetryLifecycle__AttestationVerificationKey", accessTelemetryDevelopmentSecrets.VerificationPublicKey)
+    .WithEnvironment("AccessTelemetryLifecycle__ClockSignerKeyEpoch", "development-clock-key")
+    .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyReference", "access-telemetry-marker-key")
+    .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyGeneration", "development-key-1")
+    .WithEnvironment("AccessTelemetryLifecycle__CapacityEvidenceId", "development-capacity-probe")
+    .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationEvidenceId", "development-reclamation-hook")
+    .WithEnvironment("AccessTelemetryLifecycle__CapabilityEvidence__ExactVersionPinned", "true")
     .WaitFor(redis)
+    .WaitFor(accessTelemetryClock)
     .WaitFor(accessTelemetryStore)
     .WaitFor(accessTelemetrySecrets)
     .WaitFor(accessTelemetryConfig);
@@ -297,10 +336,10 @@ accessTelemetry = accessTelemetry
     .WithReference(accessTelemetryStore)
     .WithReference(accessTelemetrySecrets)
     .WithReference(accessTelemetryConfig);
+accessTelemetryClock = accessTelemetryClock.WithReference(accessTelemetrySecrets);
 #pragma warning restore CS0618
 
-_ = accessTelemetryClock;
-_ = accessTelemetry;
+server = server.WaitFor(accessTelemetry).WaitFor(accessTelemetryClock);
 
 _ = server;
 
@@ -390,6 +429,50 @@ static string EnsureSecretsFile()
     return secretsFile;
 }
 
+static AccessTelemetryDevelopmentSecrets EnsureAccessTelemetryDevelopmentSecrets(string secretsFile)
+{
+    JsonObject root;
+    try
+    {
+        root = JsonNode.Parse(File.ReadAllText(secretsFile)) as JsonObject
+            ?? throw new InvalidOperationException("The local Dapr secrets file must contain a JSON object.");
+    }
+    catch (JsonException exception)
+    {
+        throw new InvalidOperationException("The local Dapr secrets file contains invalid JSON.", exception);
+    }
+
+    if (root["access-telemetry-marker-key"] is null)
+    {
+        root["access-telemetry-marker-key"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+    }
+
+    string signingKey;
+    if (root["access-telemetry-clock-key"]?.GetValue<string>() is string configured && !string.IsNullOrWhiteSpace(configured))
+    {
+        signingKey = configured;
+    }
+    else
+    {
+        using ECDsa generated = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        signingKey = Convert.ToBase64String(generated.ExportPkcs8PrivateKey());
+        root["access-telemetry-clock-key"] = signingKey;
+    }
+
+    using ECDsa clockKey = ECDsa.Create();
+    clockKey.ImportPkcs8PrivateKey(Convert.FromBase64String(signingKey), out int bytesRead);
+    if (bytesRead == 0)
+    {
+        throw new InvalidOperationException("The local access-telemetry clock signing key is malformed.");
+    }
+
+    File.WriteAllText(
+        secretsFile,
+        root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
+    TryRestrictSecretFilePermissions(secretsFile);
+    return new AccessTelemetryDevelopmentSecrets(Convert.ToBase64String(clockKey.ExportSubjectPublicKeyInfo()));
+}
+
 static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, string secretsFile)
 {
     // Story 15.6 code review: sweep stale per-PID directories before creating ours. ProcessExit
@@ -474,6 +557,7 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
         scopes:
           - memories
           - memories-access-telemetry
+          - memories-access-telemetry-clock
         """);
 
     return new GeneratedDaprComponentPaths(
@@ -680,6 +764,8 @@ static void WriteDaprRedisComponentFiles(
               value: "2s"
             - name: actorStateStore
               value: "true"
+        scopes:
+          - memories
         """);
 
     File.WriteAllText(
@@ -707,7 +793,7 @@ static void WriteDaprRedisComponentFiles(
 
     File.WriteAllText(
         accessTelemetryStorePath,
-        $"""
+        $$"""
         apiVersion: dapr.io/v1alpha1
         kind: Component
         metadata:
@@ -717,11 +803,21 @@ static void WriteDaprRedisComponentFiles(
           version: v1
           metadata:
             - name: redisHost
-              value: "{redisHost}"
+              value: "{{redisHost}}"
             - name: redisPassword
               value: ""
             - name: actorStateStore
               value: "true"
+            - name: queryIndexes
+              value: |
+                [
+                  {
+                    "name": "expiryMinute",
+                    "indexes": [
+                      { "key": "expiryMinute", "type": "NUMERIC" }
+                    ]
+                  }
+                ]
         scopes:
           - memories-access-telemetry
         """);
@@ -770,6 +866,19 @@ static string ResolveDaprConfigPath()
     {
         throw new FileNotFoundException(
             "DAPR configuration not found. Ensure deploy/dapr/config.yaml exists.",
+            configPath);
+    }
+
+    return configPath;
+}
+
+static string ResolveAccessTelemetryDaprConfigPath(string fileName)
+{
+    string configPath = Path.Combine(RepositoryRootLocator.Resolve(), "deploy", "dapr", fileName);
+    if (!File.Exists(configPath))
+    {
+        throw new FileNotFoundException(
+            $"Access-telemetry Dapr configuration '{fileName}' was not found.",
             configPath);
     }
 
@@ -1133,6 +1242,8 @@ internal sealed record GeneratedDaprComponentPaths(
     string AccessTelemetryStore,
     string AccessTelemetrySecrets,
     string AccessTelemetryConfig);
+
+internal sealed record AccessTelemetryDevelopmentSecrets(string VerificationPublicKey);
 
 /// <summary>
 /// Story 15.6 code review: signals a Redis readiness probe failure that should NOT be retried —

@@ -15,6 +15,16 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAccessTelemetryStateStore
 {
     private const string StoreName = AccessTelemetryOptions.RequiredStateStoreName;
+    private static readonly IReadOnlyDictionary<string, string> PartitionMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["partitionKey"] = "access-telemetry",
+    };
+    private static readonly IReadOnlyDictionary<string, string> QueryMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["contentType"] = "application/json",
+        ["partitionKey"] = "access-telemetry",
+        ["queryIndexName"] = "expiryMinute",
+    };
     private static readonly StateOptions StrongFirstWrite = new()
     {
         Concurrency = ConcurrencyMode.FirstWrite,
@@ -29,22 +39,36 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
         CancellationToken cancellationToken)
     {
         string recordKey = GetRecordKey(record.RecordId);
-        ReadOnlyMemory<byte> existingBytes = await daprClient.GetByteStateAsync(
+        (AccessTelemetryRecord? existing, string recordEtag) = await daprClient.GetStateAndETagAsync<AccessTelemetryRecord>(
             StoreName,
             recordKey,
             ConsistencyMode.Strong,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (!existingBytes.IsEmpty)
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        if (existing is not null)
         {
-            AccessTelemetryRecord existing = AccessTelemetryCanonicalizer.ParseCanonicalRecord(existingBytes.Span);
+            _ = AccessTelemetryCanonicalizer.CanonicalizeRecord(existing);
             return string.Equals(existing.EnvelopeHash, record.EnvelopeHash, StringComparison.Ordinal) &&
                 string.Equals(existing.ExpiresAtUtc, record.ExpiresAtUtc, StringComparison.Ordinal)
                     ? AccessTelemetryStoreWriteStatus.Idempotent
                     : AccessTelemetryStoreWriteStatus.Conflict;
         }
 
+        string indexKey = GetIndexKey(expiryEntry);
+        (AccessTelemetryExpiryEntry? existingIndex, string indexEtag) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryEntry>(
+            StoreName,
+            indexKey,
+            ConsistencyMode.Strong,
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        if (existingIndex is not null)
+        {
+            return AccessTelemetryStoreWriteStatus.Conflict;
+        }
+
         IReadOnlyDictionary<string, string> ttlMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["partitionKey"] = "access-telemetry",
             ["ttlInSeconds"] = ttlInSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
         IReadOnlyList<StateTransactionRequest> operations =
@@ -53,18 +77,21 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
                 recordKey,
                 AccessTelemetryCanonicalizer.CanonicalizeRecord(record),
                 StateOperationType.Upsert,
+                string.IsNullOrEmpty(recordEtag) ? null : recordEtag,
                 metadata: ttlMetadata,
                 options: StrongFirstWrite),
             new(
-                GetIndexKey(expiryEntry),
+                indexKey,
                 JsonSerializer.SerializeToUtf8Bytes(expiryEntry),
                 StateOperationType.Upsert,
-                metadata: ttlMetadata,
+                string.IsNullOrEmpty(indexEtag) ? null : indexEtag,
+                metadata: PartitionMetadata,
                 options: StrongFirstWrite),
         ];
         await daprClient.ExecuteStateTransactionAsync(
             StoreName,
             operations,
+            PartitionMetadata,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return AccessTelemetryStoreWriteStatus.Inserted;
     }
@@ -84,6 +111,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
         StateQueryResponse<AccessTelemetryExpiryEntry> response = await daprClient.QueryStateAsync<AccessTelemetryExpiryEntry>(
             StoreName,
             query,
+            QueryMetadata,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return response.Results
             .Where(static item => item.Data is not null && item.Key.StartsWith("expiry/", StringComparison.Ordinal))
@@ -92,30 +120,97 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
     }
 
     /// <inheritdoc/>
-    public async Task<bool> DeleteAndVerifyAsync(AccessTelemetryExpiryEntry entry, CancellationToken cancellationToken)
+    public async Task<AccessTelemetryDeleteStatus> DeleteAndVerifyAsync(AccessTelemetryExpiryEntry entry, CancellationToken cancellationToken)
     {
         string recordKey = GetRecordKey(entry.RecordId);
-        await daprClient.DeleteStateAsync(
-            StoreName,
-            recordKey,
-            StrongFirstWrite,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        ReadOnlyMemory<byte> remaining = await daprClient.GetByteStateAsync(
+        (AccessTelemetryRecord? record, string recordEtag) = await daprClient.GetStateAndETagAsync<AccessTelemetryRecord>(
             StoreName,
             recordKey,
             ConsistencyMode.Strong,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (!remaining.IsEmpty)
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        string indexKey = GetIndexKey(entry);
+        (_, string indexEtag) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryEntry>(
+            StoreName,
+            indexKey,
+            ConsistencyMode.Strong,
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        if (record is not null &&
+            (!string.Equals(record.EnvelopeHash, entry.EnvelopeHash, StringComparison.Ordinal) ||
+                !string.Equals(record.ExpiresAtUtc, entry.ExpiresAtUtc, StringComparison.Ordinal)))
         {
-            return false;
+            await DeleteIndexAsync(indexKey, indexEtag, cancellationToken).ConfigureAwait(false);
+            return AccessTelemetryDeleteStatus.StaleIndex;
         }
 
-        await daprClient.DeleteStateAsync(
+        List<StateTransactionRequest> operations = [];
+        if (record is not null)
+        {
+            operations.Add(new StateTransactionRequest(
+                recordKey,
+                null,
+                StateOperationType.Delete,
+                recordEtag,
+                PartitionMetadata,
+                StrongFirstWrite));
+        }
+
+        operations.Add(new StateTransactionRequest(
+            indexKey,
+            null,
+            StateOperationType.Delete,
+            string.IsNullOrEmpty(indexEtag) ? null : indexEtag,
+            PartitionMetadata,
+            StrongFirstWrite));
+        await daprClient.ExecuteStateTransactionAsync(
             StoreName,
-            GetIndexKey(entry),
-            StrongFirstWrite,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        return true;
+            operations,
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        (AccessTelemetryRecord? remaining, _) = await daprClient.GetStateAndETagAsync<AccessTelemetryRecord>(
+            StoreName,
+            recordKey,
+            ConsistencyMode.Strong,
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        (AccessTelemetryExpiryEntry? remainingIndex, _) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryEntry>(
+            StoreName,
+            indexKey,
+            ConsistencyMode.Strong,
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        if (remaining is not null || remainingIndex is not null)
+        {
+            return AccessTelemetryDeleteStatus.VerificationFailed;
+        }
+
+        return record is null ? AccessTelemetryDeleteStatus.AlreadyAbsent : AccessTelemetryDeleteStatus.Deleted;
+    }
+
+    private async Task DeleteIndexAsync(string indexKey, string indexEtag, CancellationToken cancellationToken)
+    {
+        await daprClient.ExecuteStateTransactionAsync(
+            StoreName,
+            [new StateTransactionRequest(
+                indexKey,
+                null,
+                StateOperationType.Delete,
+                string.IsNullOrEmpty(indexEtag) ? null : indexEtag,
+                PartitionMetadata,
+                StrongFirstWrite)],
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        (AccessTelemetryExpiryEntry? remaining, _) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryEntry>(
+            StoreName,
+            indexKey,
+            ConsistencyMode.Strong,
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        if (remaining is not null)
+        {
+            throw new InvalidOperationException("The stale lifecycle expiry index could not be strongly verified absent.");
+        }
     }
 
     private static string GetIndexKey(AccessTelemetryExpiryEntry entry)

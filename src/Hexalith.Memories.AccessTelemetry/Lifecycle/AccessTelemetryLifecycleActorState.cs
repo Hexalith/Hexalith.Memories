@@ -42,4 +42,10 @@ internal sealed record AccessTelemetryLifecycleActorState
 
     /// <summary>Gets the durable staged marker-key rotation protocol.</summary>
     public MarkerKeyRotationState? MarkerKeyRotation { get; init; }
+
+    /// <summary>Gets the durable fail-closed lifecycle health.</summary>
+    public AccessTelemetryHealthState Health { get; init; } = AccessTelemetryHealthState.Healthy;
+
+    /// <summary>Gets the durable bounded lifecycle health reason.</summary>
+    public AccessTelemetryReason HealthReason { get; init; } = AccessTelemetryReason.None;
 }

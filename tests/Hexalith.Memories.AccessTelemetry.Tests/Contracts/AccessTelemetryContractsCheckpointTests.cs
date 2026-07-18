@@ -85,6 +85,18 @@ public sealed class AccessTelemetryContractsCheckpointTests
     }
 
     [Fact]
+    public void Validate_UndefinedRetentionSource_FailsClosed()
+    {
+        AccessTelemetryOptionsValidationResult result = AccessTelemetryOptionsValidator.Validate(
+            ValidOptions() with { RetentionSource = (RetentionConfigurationSource)999 },
+            "Development");
+
+        result.IsValid.ShouldBeFalse();
+        result.Reason.ShouldBe(AccessTelemetryReason.ConfigurationInvalid);
+        result.AllowsLifecycleWrites.ShouldBeFalse();
+    }
+
+    [Fact]
     public void Canonicalizer_ProducesDeterministicExplicitNullJsonAndEnvelopeHash()
     {
         AccessTelemetryRecord record = CreateRecord();
@@ -96,6 +108,10 @@ public sealed class AccessTelemetryContractsCheckpointTests
             {
                 ["weightProfile"] = "configured",
                 ["axis"] = "hybrid",
+                ["caseScope"] = "all-authorized",
+                ["explain"] = false,
+                ["queryLengthBucket"] = "33-128",
+                ["subjectPresent"] = true,
             },
         });
 
@@ -140,6 +156,35 @@ public sealed class AccessTelemetryContractsCheckpointTests
                 "{\"acceptedAtUtc\"",
                 "{ \"acceptedAtUtc\"",
                 StringComparison.Ordinal))));
+    }
+
+    [Fact]
+    public void Canonicalizer_EnforcesExactTupleCatalogCorrelationAndNullabilityRules()
+    {
+        AccessTelemetryRecord valid = CreateRecord();
+
+        Should.Throw<AccessTelemetryContractException>(() => AccessTelemetryCanonicalizer.CanonicalizeRecord(
+            valid with { EventId = 7502 }));
+        Should.Throw<AccessTelemetryContractException>(() => AccessTelemetryCanonicalizer.CanonicalizeRecord(
+            valid with { Outcome = "partial", ErrorCode = "unknown" }));
+        Should.Throw<AccessTelemetryContractException>(() => AccessTelemetryCanonicalizer.CanonicalizeRecord(
+            valid with { TraceId = null }));
+        Should.Throw<AccessTelemetryContractException>(() => AccessTelemetryCanonicalizer.CanonicalizeRecord(
+            valid with { ResultCount = null }));
+        Should.Throw<AccessTelemetryContractException>(() => AccessTelemetryCanonicalizer.CanonicalizeRecord(
+            valid with
+            {
+                QueryParams = new Dictionary<string, object?>(valid.QueryParams, StringComparer.Ordinal)
+                {
+                    ["axis"] = "invented-axis",
+                },
+            }));
+        Should.Throw<AccessTelemetryContractException>(() => AccessTelemetryCanonicalizer.CanonicalizeRecord(
+            valid with
+            {
+                TenantMarker = "__rejected__",
+                UserMarker = new string('b', 64),
+            }));
     }
 
     [Fact]
@@ -188,6 +233,10 @@ public sealed class AccessTelemetryContractsCheckpointTests
             QueryParams = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["axis"] = "hybrid",
+                ["caseScope"] = "all-authorized",
+                ["explain"] = false,
+                ["queryLengthBucket"] = "33-128",
+                ["subjectPresent"] = true,
                 ["weightProfile"] = "configured",
             },
             ResultCount = 10,

@@ -17,13 +17,15 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
     private readonly bool _categoryMatches;
     private readonly BoundedAccessTelemetryQueue _queue;
     private readonly AccessTelemetrySanitizerAccessor _sanitizerAccessor;
+    private readonly AccessTelemetryLifecycleStatus? _status;
+    private readonly TimeProvider? _timeProvider;
 
     /// <summary>Initializes a category-bound lifecycle logger.</summary>
     public AccessTelemetryLifecycleLogger(
         string categoryName,
         BoundedAccessTelemetryQueue queue,
         AccessTelemetrySanitizer sanitizer)
-        : this(categoryName, queue, CreateAccessor(sanitizer))
+        : this(categoryName, queue, CreateAccessor(sanitizer), null, null)
     {
     }
 
@@ -32,10 +34,23 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
         string categoryName,
         BoundedAccessTelemetryQueue queue,
         AccessTelemetrySanitizerAccessor sanitizerAccessor)
+        : this(categoryName, queue, sanitizerAccessor, null, null)
+    {
+    }
+
+    /// <summary>Initializes a category-bound lifecycle logger with health activity tracking.</summary>
+    public AccessTelemetryLifecycleLogger(
+        string categoryName,
+        BoundedAccessTelemetryQueue queue,
+        AccessTelemetrySanitizerAccessor sanitizerAccessor,
+        AccessTelemetryLifecycleStatus? status,
+        TimeProvider? timeProvider)
     {
         _categoryMatches = string.Equals(categoryName, RequiredCategory, StringComparison.Ordinal);
         _queue = queue;
         _sanitizerAccessor = sanitizerAccessor;
+        _status = status;
+        _timeProvider = timeProvider;
     }
 
     /// <inheritdoc/>
@@ -63,6 +78,11 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
         try
         {
             AccessTelemetryEvent? source = ExtractTypedState(state);
+            if (source is not null && _status is not null && _timeProvider is not null)
+            {
+                _status.RecordActivity(_timeProvider.GetUtcNow());
+            }
+
             AccessTelemetrySanitizer? sanitizer = _sanitizerAccessor.Current;
             if (source is not null && sanitizer is not null && sanitizer.TrySanitize(logLevel, eventId, source, out AccessTelemetryRecord? record, out _))
             {

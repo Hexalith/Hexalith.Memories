@@ -12,6 +12,8 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Observability;
 using Hexalith.Memories.AccessTelemetry.Tests.Observability;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Shouldly;
 
 /// <summary>Story 27.2 C5 checkpoint for capability, authority, and observability gates.</summary>
@@ -87,6 +89,27 @@ public sealed class CapabilityAndObservabilityCheckpointTests
 
         result.AllowsWrites.ShouldBeTrue();
         runtimeGate.Current.ShouldBe(result);
+    }
+
+    [Fact]
+    public void RuntimeGate_ClosesImmediatelyWhenPublishedEvidenceExpires()
+    {
+        DateTimeOffset now = new(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
+        var clock = new FakeTimeProvider(now);
+        var runtimeGate = new AccessTelemetryRuntimeGate(clock);
+        runtimeGate.Publish(new AccessTelemetryCapabilityGateResult(
+            true,
+            true,
+            AccessTelemetryHealthState.Healthy,
+            AccessTelemetryReason.None,
+            now.AddSeconds(30)));
+
+        runtimeGate.Current.AllowsWrites.ShouldBeTrue();
+        clock.Advance(TimeSpan.FromSeconds(30));
+
+        runtimeGate.Current.AllowsWrites.ShouldBeFalse();
+        runtimeGate.Current.Reason.ShouldBe(AccessTelemetryReason.CapabilityUnproven);
+        runtimeGate.Current.BusinessReadinessAvailable.ShouldBeTrue();
     }
 
     [Theory]

@@ -22,6 +22,11 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
     IHostEnvironment environment) : BackgroundService
 {
     private const string RetentionConfigurationKey = "retentionSeconds";
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(10);
+    private string? _publishedFingerprint;
+    private string? _publishedMarkerKeyHash;
+    private string? _publishedMarkerKeyGeneration;
+    private bool _validatedOnce;
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -34,8 +39,16 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                 AccessTelemetryOptionsValidationResult validation = AccessTelemetryOptionsValidator.Validate(options, environment.EnvironmentName);
                 if (!validation.IsValid || validation.EffectiveRetention is null)
                 {
+                    if (_validatedOnce)
+                    {
+                        sanitizerAccessor.Clear();
+                        status.PublishTerminal(AccessTelemetryReason.ConfigurationInvalid);
+                        return;
+                    }
+
                     status.Publish(AccessTelemetryHealthState.Unhealthy, AccessTelemetryReason.ConfigurationInvalid);
-                    return;
+                    await Task.Delay(RefreshInterval, timeProvider, stoppingToken).ConfigureAwait(false);
+                    continue;
                 }
 
                 Dictionary<string, string> secret = await daprClient.GetSecretAsync(
@@ -44,19 +57,67 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                     cancellationToken: stoppingToken).ConfigureAwait(false);
                 if (!secret.TryGetValue(options.MarkerKeyReference, out string? encodedMarkerKey) || string.IsNullOrWhiteSpace(encodedMarkerKey))
                 {
+                    if (_validatedOnce)
+                    {
+                        sanitizerAccessor.Clear();
+                        status.PublishTerminal(AccessTelemetryReason.ConfigurationInvalid);
+                        return;
+                    }
+
                     status.Publish(AccessTelemetryHealthState.Unhealthy, AccessTelemetryReason.ConfigurationInvalid);
-                    return;
+                    await Task.Delay(RefreshInterval, timeProvider, stoppingToken).ConfigureAwait(false);
+                    continue;
                 }
 
                 byte[] markerKey = Convert.FromBase64String(encodedMarkerKey);
-                sanitizerAccessor.Publish(new AccessTelemetrySanitizer(
-                    markerKey,
-                    options.MarkerKeyGeneration,
-                    timeProvider,
-                    recordIds,
-                    validation.EffectiveRetention.Value));
+                AccessTelemetryRuntimeValidationResponse remote = await ValidateRemoteAsync(options, stoppingToken).ConfigureAwait(false);
+                if (!remote.AllowsWrites)
+                {
+                    status.Publish(
+                        remote.Reason == AccessTelemetryReason.ConfigurationInvalid
+                            ? AccessTelemetryHealthState.Unhealthy
+                            : AccessTelemetryHealthState.Degraded,
+                        remote.Reason);
+                    if (_validatedOnce && remote.Reason == AccessTelemetryReason.ConfigurationInvalid)
+                    {
+                        sanitizerAccessor.Clear();
+                        status.PublishTerminal(AccessTelemetryReason.ConfigurationInvalid);
+                        return;
+                    }
+
+                    await Task.Delay(RefreshInterval, timeProvider, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                string markerKeyHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(markerKey));
+                if (_validatedOnce &&
+                    !string.Equals(markerKeyHash, _publishedMarkerKeyHash, StringComparison.Ordinal) &&
+                    string.Equals(options.MarkerKeyGeneration, _publishedMarkerKeyGeneration, StringComparison.Ordinal))
+                {
+                    sanitizerAccessor.Clear();
+                    status.PublishTerminal(AccessTelemetryReason.ConfigurationInvalid);
+                    return;
+                }
+
+                string fingerprint = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{options.ConfigurationEpoch}|{options.ComponentProfileHash}|{options.MarkerKeyGeneration}|{validation.EffectiveRetention.Value.Ticks}|{markerKeyHash}");
+                if (!string.Equals(fingerprint, _publishedFingerprint, StringComparison.Ordinal))
+                {
+                    sanitizerAccessor.Publish(new AccessTelemetrySanitizer(
+                        markerKey,
+                        options.MarkerKeyGeneration,
+                        timeProvider,
+                        recordIds,
+                        validation.EffectiveRetention.Value));
+                    _publishedFingerprint = fingerprint;
+                    _publishedMarkerKeyHash = markerKeyHash;
+                    _publishedMarkerKeyGeneration = options.MarkerKeyGeneration;
+                }
+
+                _validatedOnce = true;
                 status.Publish(AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None);
-                return;
+                await Task.Delay(RefreshInterval, timeProvider, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -65,7 +126,14 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
             catch (Exception exception) when (exception is FormatException or ArgumentException or OverflowException)
             {
                 status.Publish(AccessTelemetryHealthState.Unhealthy, AccessTelemetryReason.ConfigurationInvalid);
-                return;
+                if (_validatedOnce)
+                {
+                    sanitizerAccessor.Clear();
+                    status.PublishTerminal(AccessTelemetryReason.ConfigurationInvalid);
+                    return;
+                }
+
+                await Task.Delay(RefreshInterval, timeProvider, stoppingToken).ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
             {
@@ -73,6 +141,23 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                 await Task.Delay(TimeSpan.FromSeconds(5), timeProvider, stoppingToken).ConfigureAwait(false);
             }
         }
+    }
+
+    private async Task<AccessTelemetryRuntimeValidationResponse> ValidateRemoteAsync(
+        AccessTelemetryOptions options,
+        CancellationToken cancellationToken)
+    {
+        var request = new AccessTelemetryRuntimeValidationRequest(
+            options.ConfigurationEpoch,
+            options.ComponentProfileHash);
+#pragma warning disable CS0618 // DaprClient 1.18 typed service invocation is obsolete without a native typed helper.
+        return await daprClient.InvokeMethodAsync<AccessTelemetryRuntimeValidationRequest, AccessTelemetryRuntimeValidationResponse>(
+            HttpMethod.Post,
+            options.LifecycleAppId,
+            "v1/access-telemetry/validate",
+            request,
+            cancellationToken).ConfigureAwait(false);
+#pragma warning restore CS0618
     }
 
     private async Task<AccessTelemetryOptions> ResolveRetentionAsync(CancellationToken cancellationToken)

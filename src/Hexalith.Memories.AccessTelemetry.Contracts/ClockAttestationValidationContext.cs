@@ -12,4 +12,7 @@ public sealed record ClockAttestationValidationContext(
     string ComponentProfileHash,
     string Nonce,
     string RequestingProcessEpoch,
-    string RequestingServiceInstanceId);
+    string RequestingServiceInstanceId,
+    string? ClockServiceInstanceId = null,
+    string? ClockProcessEpoch = null,
+    string? SignerKeyEpoch = null);

@@ -5,10 +5,12 @@
 
 namespace Hexalith.Memories.AccessTelemetry.Lifecycle;
 
+using System.Text.Json.Serialization;
+
 /// <summary>Portable minute/shard expiry-index entry.</summary>
 internal sealed record AccessTelemetryExpiryEntry(
-    string RecordId,
-    long ExpiryMinute,
-    int Shard,
-    string EnvelopeHash,
-    string ExpiresAtUtc);
+    [property: JsonPropertyName("recordId")] string RecordId,
+    [property: JsonPropertyName("expiryMinute")] long ExpiryMinute,
+    [property: JsonPropertyName("shard")] int Shard,
+    [property: JsonPropertyName("envelopeHash")] string EnvelopeHash,
+    [property: JsonPropertyName("expiresAtUtc")] string ExpiresAtUtc);

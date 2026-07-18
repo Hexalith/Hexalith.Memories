@@ -28,7 +28,13 @@ public static class ClockAttestationVerifier
                 !string.Equals(attestation.ComponentProfileHash, expected.ComponentProfileHash, StringComparison.Ordinal) ||
                 !string.Equals(attestation.Nonce, expected.Nonce, StringComparison.Ordinal) ||
                 !string.Equals(attestation.RequestingProcessEpoch, expected.RequestingProcessEpoch, StringComparison.Ordinal) ||
-                !string.Equals(attestation.RequestingServiceInstanceId, expected.RequestingServiceInstanceId, StringComparison.Ordinal))
+                !string.Equals(attestation.RequestingServiceInstanceId, expected.RequestingServiceInstanceId, StringComparison.Ordinal) ||
+                expected.ClockServiceInstanceId is not null && !string.Equals(attestation.ServiceInstanceId, expected.ClockServiceInstanceId, StringComparison.Ordinal) ||
+                expected.ClockProcessEpoch is not null && !string.Equals(attestation.ProcessEpoch, expected.ClockProcessEpoch, StringComparison.Ordinal) ||
+                expected.SignerKeyEpoch is not null && !string.Equals(attestation.SignerKeyEpoch, expected.SignerKeyEpoch, StringComparison.Ordinal) ||
+                !IsUlid(attestation.ServiceInstanceId) || !IsUlid(attestation.ProcessEpoch) ||
+                !IsUlid(attestation.RequestingProcessEpoch) || !IsUlid(attestation.RequestingServiceInstanceId) ||
+                string.IsNullOrWhiteSpace(attestation.SignerKeyEpoch) || attestation.SignerKeyEpoch.Length > 32)
             {
                 return Invalid();
             }
@@ -55,7 +61,10 @@ public static class ClockAttestationVerifier
             }
 
             return replayCache.TryAdd(attestation.Nonce)
-                ? new ClockAttestationValidationResult(true, AccessTelemetryReason.None)
+                ? new ClockAttestationValidationResult(
+                    true,
+                    AccessTelemetryReason.None,
+                    attestation.NotBeforeUnixMilliseconds + ((attestation.NotAfterUnixMilliseconds - attestation.NotBeforeUnixMilliseconds) / 2))
                 : Invalid();
         }
         catch (Exception exception) when (exception is CryptographicException or FormatException or ArgumentException)
@@ -66,4 +75,8 @@ public static class ClockAttestationVerifier
 
     private static ClockAttestationValidationResult Invalid()
         => new(false, AccessTelemetryReason.ClockUntrusted);
+
+    private static bool IsUlid(string value)
+        => value.Length == 26 && value.All(static character =>
+            character is >= '0' and <= '9' or >= 'A' and <= 'H' or >= 'J' and <= 'N' or >= 'P' and <= 'T' or >= 'V' and <= 'Z');
 }

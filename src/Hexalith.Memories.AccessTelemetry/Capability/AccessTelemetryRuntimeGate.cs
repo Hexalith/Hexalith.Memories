@@ -10,14 +10,34 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 /// <summary>Restart-scoped terminal runtime gate updated only by the capability probe runner.</summary>
 internal sealed class AccessTelemetryRuntimeGate : IAccessTelemetryRuntimeGate
 {
+    private readonly TimeProvider _timeProvider;
     private AccessTelemetryCapabilityGateResult _current = new(
         false,
         true,
         AccessTelemetryHealthState.Unhealthy,
         AccessTelemetryReason.CapabilityUnproven);
 
+    /// <summary>Initializes a fail-closed gate using the supplied clock.</summary>
+    public AccessTelemetryRuntimeGate(TimeProvider? timeProvider = null)
+    {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
+
     /// <inheritdoc/>
-    public AccessTelemetryCapabilityGateResult Current => Volatile.Read(ref _current);
+    public AccessTelemetryCapabilityGateResult Current
+    {
+        get
+        {
+            AccessTelemetryCapabilityGateResult current = Volatile.Read(ref _current);
+            return current.AllowsWrites && current.ValidUntilUtc <= _timeProvider.GetUtcNow()
+                ? new AccessTelemetryCapabilityGateResult(
+                    false,
+                    true,
+                    AccessTelemetryHealthState.Unhealthy,
+                    AccessTelemetryReason.CapabilityUnproven)
+                : current;
+        }
+    }
 
     /// <summary>Publishes one immutable exact-profile decision.</summary>
     public void Publish(AccessTelemetryCapabilityGateResult decision)

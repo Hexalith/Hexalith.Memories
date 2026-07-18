@@ -33,6 +33,11 @@ public static partial class AccessTelemetryOptionsValidator
 
         bool production = string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
         List<string> errors = [];
+        if (!Enum.IsDefined(options.RetentionSource))
+        {
+            errors.Add("RetentionSource is invalid.");
+        }
+
         TimeSpan? retention = options.Retention;
         if (!production && retention is null && options.RetentionSource == RetentionConfigurationSource.DevelopmentDefault)
         {
@@ -64,6 +69,7 @@ public static partial class AccessTelemetryOptionsValidator
         RequireMatch(options.ConfigurationEpoch, UlidRegex(), nameof(options.ConfigurationEpoch), errors);
         RequireMatch(options.ComponentProfileHash, LowerHex64Regex(), nameof(options.ComponentProfileHash), errors);
         RequireNonblank(options.AttestationVerificationKey, nameof(options.AttestationVerificationKey), errors);
+        RequireMatch(options.ClockSignerKeyEpoch, KeyIdRegex(), nameof(options.ClockSignerKeyEpoch), errors);
         RequireNonblank(options.MarkerKeyReference, nameof(options.MarkerKeyReference), errors);
         RequireMatch(options.MarkerKeyGeneration, KeyIdRegex(), nameof(options.MarkerKeyGeneration), errors);
         RequireNonblank(options.CapacityEvidenceId, nameof(options.CapacityEvidenceId), errors);

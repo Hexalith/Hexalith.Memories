@@ -11,6 +11,7 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 internal sealed class ClockAttestationService
 {
     private static readonly TimeSpan EvidenceLifetime = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan SourceTimeout = TimeSpan.FromSeconds(2);
     private readonly IReadOnlyList<IAuthenticatedUtcSource> _sources;
     private readonly IClockAttestationSigner _signer;
     private readonly TimeProvider _timeProvider;
@@ -25,6 +26,10 @@ internal sealed class ClockAttestationService
         MonotonicRecordIdGenerator ids)
     {
         _sources = sources?.ToArray() ?? throw new ArgumentNullException(nameof(sources));
+        if (_sources.Count is < 3 or > 9 || _sources.Select(static source => source.SourceId).Distinct(StringComparer.Ordinal).Count() != _sources.Count)
+        {
+            throw new ClockAttestationException(AccessTelemetryReason.ClockUntrusted);
+        }
         _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         ArgumentNullException.ThrowIfNull(ids);
@@ -39,26 +44,25 @@ internal sealed class ClockAttestationService
     {
         ArgumentNullException.ThrowIfNull(request);
         AuthenticatedUtcSample[] samples = (await Task.WhenAll(
-            _sources.Select(source => source.GetUtcSampleAsync(cancellationToken))).ConfigureAwait(false))
-            .Where(static sample => sample.Authenticated && sample.NotBefore <= sample.NotAfter)
-            .GroupBy(static sample => sample.SourceId, StringComparer.Ordinal)
-            .Select(static group => group.Single())
+            _sources.Select(source => TryGetSampleAsync(source, cancellationToken))).ConfigureAwait(false))
+            .Where(static sample => sample is not null && sample.Authenticated && sample.NotBefore <= sample.NotAfter)
+            .Select(static sample => sample!)
             .ToArray();
-        if (samples.Length < 3)
+        int majority = Math.Max(3, (_sources.Count / 2) + 1);
+        if (samples.Length < majority)
         {
             throw new ClockAttestationException(AccessTelemetryReason.ClockUntrusted);
         }
 
-        long[] lower = samples.Select(static sample => sample.NotBefore.ToUnixTimeMilliseconds()).Order().ToArray();
-        long[] upper = samples.Select(static sample => sample.NotAfter.ToUnixTimeMilliseconds()).Order().ToArray();
-        long majorityLower = lower[lower.Length / 2];
-        long majorityUpper = upper[upper.Length / 2];
-        if (majorityLower > majorityUpper || majorityUpper - majorityLower > 250)
+        (long majorityLower, long majorityUpper)? interval = FindMajorityInterval(samples, majority);
+        if (interval is null)
         {
             throw new ClockAttestationException(AccessTelemetryReason.ClockUntrusted);
         }
 
-        long issued = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+        long majorityLower = interval.Value.majorityLower;
+        long majorityUpper = interval.Value.majorityUpper;
+        long issued = majorityLower + ((majorityUpper - majorityLower) / 2);
         SignedClockAttestation unsigned = new()
         {
             DeploymentId = request.DeploymentId,
@@ -80,5 +84,58 @@ internal sealed class ClockAttestationService
         {
             Signature = Convert.ToBase64String(_signer.Sign(ClockAttestationCanonicalizer.Canonicalize(unsigned))),
         };
+    }
+
+    private static (long majorityLower, long majorityUpper)? FindMajorityInterval(
+        IReadOnlyList<AuthenticatedUtcSample> samples,
+        int required)
+    {
+        (long Lower, long Upper)? best = null;
+        int[] selected = new int[required];
+        Search(0, 0);
+        return best is null ? null : (best.Value.Lower, best.Value.Upper);
+
+        void Search(int start, int depth)
+        {
+            if (depth == required)
+            {
+                long lower = selected.Max(index => samples[index].NotBefore.ToUnixTimeMilliseconds());
+                long upper = selected.Min(index => samples[index].NotAfter.ToUnixTimeMilliseconds());
+                if (lower <= upper && upper - lower <= 250 &&
+                    (best is null || upper - lower < best.Value.Upper - best.Value.Lower))
+                {
+                    best = (lower, upper);
+                }
+
+                return;
+            }
+
+            for (int index = start; index <= samples.Count - (required - depth); index++)
+            {
+                selected[depth] = index;
+                Search(index + 1, depth + 1);
+            }
+        }
+    }
+
+    private static async Task<AuthenticatedUtcSample?> TryGetSampleAsync(
+        IAuthenticatedUtcSource source,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(SourceTimeout);
+        try
+        {
+            AuthenticatedUtcSample sample = await source.GetUtcSampleAsync(timeout.Token).ConfigureAwait(false);
+            return string.Equals(sample.SourceId, source.SourceId, StringComparison.Ordinal) ? sample : null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            return null;
+        }
     }
 }

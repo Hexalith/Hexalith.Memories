@@ -37,7 +37,7 @@ internal static class AccessTelemetryCapabilityGate
             !string.IsNullOrWhiteSpace(profile.PhysicalReclamationEvidenceId) &&
             (!production || !profile.IsAlpha || allowAlpha);
         return passed
-            ? new AccessTelemetryCapabilityGateResult(true, true, AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None)
+            ? new AccessTelemetryCapabilityGateResult(true, true, AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None, profile.ValidUntilUtc)
             : new AccessTelemetryCapabilityGateResult(false, true, AccessTelemetryHealthState.Unhealthy, AccessTelemetryReason.CapabilityUnproven);
     }
 }

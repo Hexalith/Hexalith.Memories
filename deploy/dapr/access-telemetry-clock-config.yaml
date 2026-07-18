@@ -1,17 +1,13 @@
+# Self-hosted development keeps secret scopes but omits invocation ACLs because authenticated caller identities
+# require Sentry/mTLS. Kubernetes applies the workload-specific clock allow-list.
 apiVersion: dapr.io/v1alpha1
 kind: Configuration
 metadata:
   name: memories-access-telemetry-clock-config
 spec:
   secrets:
-    scopes: []
-  accessControl:
-    defaultAction: deny
-    trustDomain: public
-    policies:
-      - appId: memories
-        defaultAction: deny
-        operations:
-          - name: /v1/time/attest
-            httpVerb: ["POST"]
-            action: allow
+    scopes:
+      - storeName: access-telemetry-secrets
+        defaultAccess: deny
+        allowedSecrets:
+          - access-telemetry-clock-key

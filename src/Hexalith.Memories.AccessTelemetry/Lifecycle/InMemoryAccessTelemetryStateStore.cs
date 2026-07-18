@@ -50,6 +50,15 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         }
     }
 
+    /// <summary>Gets one retained record for deterministic lifecycle verification.</summary>
+    public AccessTelemetryRecord? GetRecord(string recordId)
+    {
+        lock (_gate)
+        {
+            return _records.GetValueOrDefault(recordId);
+        }
+    }
+
     /// <inheritdoc/>
     public Task<AccessTelemetryStoreWriteStatus> WriteRecordAndIndexAsync(
         AccessTelemetryRecord record,
@@ -98,19 +107,24 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
     }
 
     /// <inheritdoc/>
-    public Task<bool> DeleteAndVerifyAsync(AccessTelemetryExpiryEntry entry, CancellationToken cancellationToken)
+    public Task<AccessTelemetryDeleteStatus> DeleteAndVerifyAsync(AccessTelemetryExpiryEntry entry, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            _ = _records.Remove(entry.RecordId);
-            bool absent = !_records.ContainsKey(entry.RecordId);
-            if (absent)
+            if (_records.TryGetValue(entry.RecordId, out AccessTelemetryRecord? record) &&
+                (!string.Equals(record.EnvelopeHash, entry.EnvelopeHash, StringComparison.Ordinal) ||
+                    !string.Equals(record.ExpiresAtUtc, entry.ExpiresAtUtc, StringComparison.Ordinal)))
             {
                 _ = _entries.Remove(GetEntryKey(entry));
+                return Task.FromResult(AccessTelemetryDeleteStatus.StaleIndex);
             }
 
-            return Task.FromResult(absent);
+            bool existed = _records.Remove(entry.RecordId);
+            _ = _entries.Remove(GetEntryKey(entry));
+            return Task.FromResult(existed
+                ? AccessTelemetryDeleteStatus.Deleted
+                : AccessTelemetryDeleteStatus.AlreadyAbsent);
         }
     }
 

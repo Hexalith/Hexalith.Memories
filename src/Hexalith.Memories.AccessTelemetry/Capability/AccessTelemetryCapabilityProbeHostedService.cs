@@ -10,28 +10,39 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 /// <summary>Runs exact-profile probes before the first write in each process/configuration epoch.</summary>
 internal sealed class AccessTelemetryCapabilityProbeHostedService(
     AccessTelemetryCapabilityProbeRunner runner,
-    AccessTelemetryOptions options,
+    Hexalith.Memories.AccessTelemetry.Lifecycle.AccessTelemetryRuntimeOptionsProvider optionsProvider,
     AccessTelemetryCapabilityEvidenceOptions evidence,
-    IHostEnvironment environment) : IHostedService
+    IHostEnvironment environment,
+    TimeProvider timeProvider) : BackgroundService
 {
     /// <inheritdoc/>
-    public async Task StartAsync(CancellationToken cancellationToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var context = new AccessTelemetryCapabilityProbeContext
+        while (!stoppingToken.IsCancellationRequested)
         {
-            ComponentProfileHash = options.ComponentProfileHash,
-            ExactVersionPinned = evidence.ExactVersionPinned,
-            DaprOnlyBoundary = true,
-            Production = environment.IsProduction(),
-            AllowAlpha = options.AllowAlphaComponent,
-            IsAlpha = options.ComponentIsAlpha,
-            CapacityEvidenceId = options.CapacityEvidenceId,
-            PhysicalReclamationEvidenceId = options.PhysicalReclamationEvidenceId,
-            ValidUntilUtc = evidence.ValidUntilUtc,
-        };
-        _ = await runner.RunAsync(context, cancellationToken).ConfigureAwait(false);
-    }
+            if (optionsProvider.IsReady)
+            {
+                AccessTelemetryOptions options = optionsProvider.Current;
+                DateTimeOffset now = timeProvider.GetUtcNow();
+                DateTimeOffset validUntil = evidence.ValidUntilUtc == default && !environment.IsProduction()
+                    ? now.AddMinutes(1)
+                    : evidence.ValidUntilUtc;
+                var context = new AccessTelemetryCapabilityProbeContext
+                {
+                    ComponentProfileHash = options.ComponentProfileHash,
+                    ExactVersionPinned = evidence.ExactVersionPinned || !environment.IsProduction(),
+                    DaprOnlyBoundary = true,
+                    Production = environment.IsProduction(),
+                    AllowAlpha = options.AllowAlphaComponent,
+                    IsAlpha = options.ComponentIsAlpha,
+                    CapacityEvidenceId = options.CapacityEvidenceId,
+                    PhysicalReclamationEvidenceId = options.PhysicalReclamationEvidenceId,
+                    ValidUntilUtc = validUntil,
+                };
+                _ = await runner.RunAsync(context, stoppingToken).ConfigureAwait(false);
+            }
 
-    /// <inheritdoc/>
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+            await Task.Delay(TimeSpan.FromSeconds(30), timeProvider, stoppingToken).ConfigureAwait(false);
+        }
+    }
 }

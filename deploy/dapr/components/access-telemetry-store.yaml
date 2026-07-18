@@ -16,6 +16,13 @@ spec:
       value: "true"
     - name: queryIndexes
       value: |
-        [{"name":"expiryMinute","type":"NUMERIC"}]
+        [
+          {
+            "name": "expiryMinute",
+            "indexes": [
+              { "key": "expiryMinute", "type": "NUMERIC" }
+            ]
+          }
+        ]
 scopes:
   - memories-access-telemetry

@@ -17,6 +17,12 @@ public sealed record AccessTelemetryWriteBatchRequest
     /// <summary>Gets signed trusted-clock evidence.</summary>
     public required SignedClockAttestation ClockAttestation { get; init; }
 
+    /// <summary>Gets the authenticated writer process epoch expected in the attestation.</summary>
+    public required string RequestingProcessEpoch { get; init; }
+
+    /// <summary>Gets the authenticated writer service-instance identity expected in the attestation.</summary>
+    public required string RequestingServiceInstanceId { get; init; }
+
     /// <summary>Gets at most 256 canonical records.</summary>
     public required IReadOnlyList<AccessTelemetryRecord> Records { get; init; }
 }

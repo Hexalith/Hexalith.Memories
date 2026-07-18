@@ -11,5 +11,9 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 internal interface IAccessTelemetryClockGate
 {
     /// <summary>Validates one context-bound single-use attestation.</summary>
-    ClockAttestationValidationResult Validate(SignedClockAttestation attestation);
+    ClockAttestationValidationResult Validate(
+        SignedClockAttestation attestation,
+        string expectedAppId,
+        string expectedProcessEpoch,
+        string expectedServiceInstanceId);
 }

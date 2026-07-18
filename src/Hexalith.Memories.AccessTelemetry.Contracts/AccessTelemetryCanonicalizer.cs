@@ -50,6 +50,33 @@ public static partial class AccessTelemetryCanonicalizer
         "annotation",
     };
 
+    private static readonly IReadOnlyDictionary<string, int> SuccessEventIds = new Dictionary<string, int>(StringComparer.Ordinal)
+    {
+        ["search"] = 7501,
+        ["ingest"] = 7502,
+        ["traverse"] = 7503,
+        ["case-access"] = 7504,
+        ["delete"] = 7505,
+        ["tenant-lifecycle"] = 7506,
+        ["tenant-config"] = 7507,
+        ["case-member"] = 7508,
+        ["annotation"] = 7509,
+    };
+
+    private static readonly HashSet<string> ErrorCodes = new(StringComparer.Ordinal)
+    {
+        "invalid_input",
+        "not_found",
+        "forbidden",
+        "conflict",
+        "cancelled",
+        "dependency_unavailable",
+        "rate_limited",
+        "internal_dependency_failure",
+        "internal_failure",
+        "unknown",
+    };
+
     /// <summary>Serializes the complete canonical record with explicit nulls.</summary>
     /// <param name="record">Record to serialize.</param>
     /// <returns>Canonical UTF-8 JSON.</returns>
@@ -234,7 +261,15 @@ public static partial class AccessTelemetryCanonicalizer
             throw new AccessTelemetryContractException("operation_or_outcome_invalid");
         }
 
-        if (record.EventId is < 7501 or > 7519 || record.EventId == 7510 || record.DurationMs is < 0 or > 86_400_000)
+        int successEventId = SuccessEventIds[record.OperationType];
+        bool tupleValid = record.Outcome switch
+        {
+            "ok" => record.EventId == successEventId,
+            "partial" => record.OperationType == "search" && record.EventId == 7501,
+            "error" => record.EventId == successEventId + 10,
+            _ => false,
+        };
+        if (!tupleValid || record.DurationMs is < 0 or > 86_400_000)
         {
             throw new AccessTelemetryContractException("event_or_duration_invalid");
         }
@@ -253,28 +288,29 @@ public static partial class AccessTelemetryCanonicalizer
             throw new AccessTelemetryContractException("marker_or_trace_invalid");
         }
 
-        if (record.QueryParams.Count > 6)
+        if ((record.TraceId is null) != (record.SpanId is null))
         {
-            throw new AccessTelemetryContractException("query_params_count_invalid");
+            throw new AccessTelemetryContractException("trace_pair_invalid");
         }
 
-        foreach ((string key, object? value) in record.QueryParams)
+        if (record.TenantMarker == "__rejected__" &&
+            (record.UserMarker is not null || record.CaseMarker is not null || record.TraceId is not null || record.SpanId is not null))
         {
-            if (!QueryKeyRegex().IsMatch(key) || key.Length > 32 || value is not (null or string or bool or int))
-            {
-                throw new AccessTelemetryContractException("query_params_field_invalid");
-            }
-
-            if (value is string text && text.Length > 64)
-            {
-                throw new AccessTelemetryContractException("query_params_value_invalid");
-            }
+            throw new AccessTelemetryContractException("rejected_correlation_invalid");
         }
 
-        if (record.Outcome == "ok" && record.ErrorCode is not null)
+        if (record.Outcome == "ok" ? record.ErrorCode is not null : record.ErrorCode is null || !ErrorCodes.Contains(record.ErrorCode))
         {
             throw new AccessTelemetryContractException("error_code_invalid");
         }
+
+        if (record.Outcome == "partial" && record.ErrorCode != "dependency_unavailable")
+        {
+            throw new AccessTelemetryContractException("error_code_invalid");
+        }
+
+        ValidateCaseAndResult(record);
+        ValidateQueryParams(record.OperationType, record.QueryParams);
 
         if (requireEnvelopeHash)
         {
@@ -285,6 +321,139 @@ public static partial class AccessTelemetryCanonicalizer
             {
                 throw new AccessTelemetryContractException("envelope_hash_invalid");
             }
+        }
+    }
+
+    private static void ValidateCaseAndResult(AccessTelemetryRecord record)
+    {
+        bool rejected = record.TenantMarker == "__rejected__";
+        bool resultRequired = record.OperationType switch
+        {
+            "search" => record.Outcome is "ok" or "partial",
+            "traverse" or "case-access" => record.Outcome == "ok",
+            _ => false,
+        };
+        if (resultRequired != record.ResultCount.HasValue)
+        {
+            throw new AccessTelemetryContractException("result_count_invalid");
+        }
+
+        if (rejected)
+        {
+            return;
+        }
+
+        bool caseRequired = record.OperationType is "case-access" or "case-member" or "annotation" ||
+            (record.OperationType == "delete" && GetRequiredStringValue(record.QueryParams, "targetKind") != "tenant");
+        bool caseForbidden = record.OperationType is "tenant-lifecycle" or "tenant-config" ||
+            (record.OperationType == "delete" && GetRequiredStringValue(record.QueryParams, "targetKind") == "tenant");
+        if ((caseRequired && record.CaseMarker is null) || (caseForbidden && record.CaseMarker is not null))
+        {
+            throw new AccessTelemetryContractException("case_marker_invalid");
+        }
+    }
+
+    private static void ValidateQueryParams(string operation, IReadOnlyDictionary<string, object?> values)
+    {
+        switch (operation)
+        {
+            case "search":
+                RequireExactKeys(values, "axis", "caseScope", "explain", "queryLengthBucket", "subjectPresent", "weightProfile");
+                RequireString(values, "axis", "syntactic", "semantic", "graph", "natural-language", "hybrid", "graph-scoped-syntactic", "graph-scoped-semantic", "unknown");
+                RequireString(values, "caseScope", "single", "all-authorized", "rejected-or-unknown");
+                RequireBool(values, "explain");
+                RequireString(values, "queryLengthBucket", "0", "1-32", "33-128", "129-256", "257-1024", "1025+");
+                RequireBool(values, "subjectPresent");
+                RequireString(values, "weightProfile", "configured", "request-override", "invalid");
+                break;
+            case "ingest":
+                RequireExactKeys(values, "caseScope", "contentKind", "contentLengthBucket", "eventOutcome", "sourceKind");
+                RequireString(values, "caseScope", "case", "tenant", "rejected-or-unknown");
+                RequireString(values, "contentKind", "document", "text", "image", "audio", "unknown");
+                RequireString(values, "contentLengthBucket", "0", "1-64KiB", "64KiB-1MiB", "1-10MiB", "10MiB+");
+                RequireString(values, "eventOutcome", "not-applicable", "accepted", "duplicate", "rejected", "unknown");
+                RequireString(values, "sourceKind", "file", "url", "event", "command", "projection", "discussion", "annotation", "unknown");
+                break;
+            case "traverse":
+                RequireExactKeys(values, "caseScope", "depthBucket", "direction", "edgeTypeCount", "includeGaps");
+                RequireString(values, "caseScope", "single", "all-authorized", "rejected-or-unknown");
+                RequireString(values, "depthBucket", "0", "1", "2", "3", "4", "5", "6-10", "invalid");
+                RequireString(values, "direction", "out");
+                RequireInt(values, "edgeTypeCount", 0, 16);
+                RequireBool(values, "includeGaps", requiredValue: false);
+                break;
+            case "case-access":
+                RequireExactKeys(values, "accessKind", "projection", "sourceKind");
+                RequireString(values, "accessKind", "memory-unit-id", "source-uri");
+                RequireString(values, "projection", "detail");
+                RequireString(values, "sourceKind", "url", "file", "other", "unknown", "not-applicable");
+                break;
+            case "delete":
+                RequireExactKeys(values, "cascade", "targetKind");
+                RequireBool(values, "cascade");
+                RequireString(values, "targetKind", "memory-unit", "case", "tenant");
+                break;
+            case "tenant-lifecycle":
+                RequireExactKeys(values, "action", "workflowState");
+                RequireString(values, "action", "provision", "provision-status", "deletion-status");
+                RequireString(values, "workflowState", "not-applicable", "pending", "running", "completed", "failed", "terminated", "unknown");
+                break;
+            case "tenant-config":
+                RequireExactKeys(values, "action", "changedFieldCountBucket", "configKind", "forceReindex");
+                RequireString(values, "action", "update");
+                RequireString(values, "changedFieldCountBucket", "0", "1", "2-3", "4-8", "9+");
+                RequireString(values, "configKind", "embedding", "display-name");
+                RequireBool(values, "forceReindex");
+                break;
+            case "case-member":
+                RequireExactKeys(values, "action", "role");
+                RequireString(values, "action", "add", "remove");
+                RequireString(values, "role", "unknown");
+                break;
+            case "annotation":
+                RequireExactKeys(values, "action", "annotationKind");
+                RequireString(values, "action", "create");
+                RequireString(values, "annotationKind", "unknown");
+                break;
+            default:
+                throw new AccessTelemetryContractException("operation_invalid");
+        }
+    }
+
+    private static void RequireExactKeys(IReadOnlyDictionary<string, object?> values, params string[] expected)
+    {
+        if (values.Count != expected.Length || expected.Any(key => !values.ContainsKey(key)))
+        {
+            throw new AccessTelemetryContractException("query_params_field_invalid");
+        }
+    }
+
+    private static string GetRequiredStringValue(IReadOnlyDictionary<string, object?> values, string key)
+        => values.TryGetValue(key, out object? value) && value is string text
+            ? text
+            : throw new AccessTelemetryContractException("query_params_value_invalid");
+
+    private static void RequireString(IReadOnlyDictionary<string, object?> values, string key, params string[] allowed)
+    {
+        if (!allowed.Contains(GetRequiredStringValue(values, key), StringComparer.Ordinal))
+        {
+            throw new AccessTelemetryContractException("query_params_value_invalid");
+        }
+    }
+
+    private static void RequireBool(IReadOnlyDictionary<string, object?> values, string key, bool? requiredValue = null)
+    {
+        if (!values.TryGetValue(key, out object? value) || value is not bool flag || requiredValue is bool expected && flag != expected)
+        {
+            throw new AccessTelemetryContractException("query_params_value_invalid");
+        }
+    }
+
+    private static void RequireInt(IReadOnlyDictionary<string, object?> values, string key, int minimum, int maximum)
+    {
+        if (!values.TryGetValue(key, out object? value) || value is not int number || number < minimum || number > maximum)
+        {
+            throw new AccessTelemetryContractException("query_params_value_invalid");
         }
     }
 

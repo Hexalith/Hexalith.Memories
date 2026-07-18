@@ -25,6 +25,9 @@ spec:
           - name: /v1/access-telemetry/heartbeat
             httpVerb: ["POST"]
             action: allow
+          - name: /v1/access-telemetry/validate
+            httpVerb: ["POST"]
+            action: allow
       - appId: memories-access-telemetry-inspector
         namespace: hexalith-memories
         trustDomain: public

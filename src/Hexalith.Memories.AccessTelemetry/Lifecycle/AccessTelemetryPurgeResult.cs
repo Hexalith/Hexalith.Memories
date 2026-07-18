@@ -10,4 +10,6 @@ internal sealed record AccessTelemetryPurgeResult(
     int Processed,
     int Purged,
     int VerifiedAbsent,
-    bool HasMore);
+    bool HasMore,
+    long? LastExpiryMinute = null,
+    int? LastExpiryShard = null);

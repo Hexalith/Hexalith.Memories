@@ -101,6 +101,9 @@ public sealed record AccessTelemetryOptions
     /// <summary>Gets the attestation verification public key.</summary>
     public string AttestationVerificationKey { get; init; } = string.Empty;
 
+    /// <summary>Gets the expected bounded clock signer-key epoch.</summary>
+    public string ClockSignerKeyEpoch { get; init; } = "development-clock-key";
+
     /// <summary>Gets the Dapr marker-secret reference.</summary>
     public string MarkerKeyReference { get; init; } = string.Empty;
 
