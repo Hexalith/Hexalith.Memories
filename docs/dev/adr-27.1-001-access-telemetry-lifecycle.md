@@ -450,6 +450,151 @@ or metrics. The persisted JSON schema is allowlisted:
 | `resultCount`, `durationMs` | Non-negative bounded numeric values. |
 | `traceId`, `spanId` | Validated W3C identifiers for authorized operational correlation. |
 
+### Story 27.2 C1 Mapping Ratification
+
+The current logger contract exposes more states than the accepted persisted V1
+text can represent. The reconciliation below is the proposed complete mapping.
+It is deliberately inactive until both named decision owners ratify it. On
+ratification it replaces every conflicting outcome, nullable-field, and
+`queryParams` clause under **Persisted Schema Bounds** and **Query Parameter
+Bounds**. Until then the runtime persistence gate remains closed and no provider,
+writer, lifecycle service, or deployment topology may be enabled.
+
+| Decision field | Recorded value |
+| :------------- | :------------- |
+| Mapping version | Story 27.2 C1 source-to-persisted V1 reconciliation, 2026-07-18 |
+| Administrator decision | pending |
+| Architecture owner decision | pending — Hexalith.Memories maintainers |
+| Runtime persistence gate | closed pending both ratifications and green structure guards |
+| Scope | One persisted schema and one lifecycle family; no split or replan trigger found |
+
+#### Source Event Mapping
+
+The provider consumes the typed `AccessTelemetryEvent` value together with the
+actual `EventId` and `LogLevel` delivered to `ILoggerProvider`. It accepts only
+these exact combinations. An event-ID, severity, operation, or outcome mismatch
+rejects the lifecycle copy as `schema_mismatch`; it never guesses a family.
+
+| Source operation | Success/partial event ID | Required level | Error event ID | Required level | Proposed persisted outcome rule |
+| :--------------- | -----------------------: | :------------- | -------------: | :------------- | :------------------------------ |
+| `search` | 7501 | `Information` | 7511 | `Warning` | 7501 + `ok` -> `ok`; 7501 + `partial` -> `partial`; 7511 + `error` -> `error` |
+| `ingest` | 7502 | `Information` | 7512 | `Warning` | 7502 + `ok` -> `ok`; 7512 + `error` -> `error` |
+| `traverse` | 7503 | `Information` | 7513 | `Warning` | 7503 + `ok` -> `ok`; 7513 + `error` -> `error` |
+| `case-access` | 7504 | `Information` | 7514 | `Warning` | 7504 + `ok` -> `ok`; 7514 + `error` -> `error` |
+| `delete` | 7505 | `Information` | 7515 | `Warning` | 7505 + `ok` -> `ok`; 7515 + `error` -> `error` |
+| `tenant-lifecycle` | 7506 | `Information` | 7516 | `Warning` | 7506 + `ok` -> `ok`; 7516 + `error` -> `error` |
+| `tenant-config` | 7507 | `Information` | 7517 | `Warning` | 7507 + `ok` -> `ok`; 7517 + `error` -> `error` |
+| `case-member` | 7508 | `Information` | 7518 | `Warning` | 7508 + `ok` -> `ok`; 7518 + `error` -> `error` |
+| `annotation` | 7509 | `Information` | 7519 | `Warning` | 7509 + `ok` -> `ok`; 7519 + `error` -> `error` |
+
+`partial` is currently valid only for search event 7501 and is emitted for a
+successful result with one or more degraded hybrid axes. It remains an
+Information-level success-family event, retains `resultCount`, and maps
+`HYBRID_DEGRADED` to bounded error code `dependency_unavailable`. Any other
+partial combination is rejected as `schema_mismatch` until separately ratified.
+
+#### Typed State Mapping
+
+Every public property of the frozen logger state has one deterministic rule.
+Generated lifecycle fields (`recordId`, `markerKeyId`, `acceptedAtUtc`,
+`expiresAtUtc`, and `envelopeHash`) are not copied from logger state.
+
+| `AccessTelemetryEvent` source field | Proposed persisted destination | Total mapping rule |
+| :---------------------------------- | :----------------------------- | :----------------- |
+| `schemaVersion` | `schemaVersion` | Require integer `1`; reject every other value. |
+| `eventId` | `eventId` | Require the exact operation/outcome/level tuple in **Source Event Mapping**. |
+| `timestamp` | `emittedAtUtc` | Parse invariantly as an offset-bearing timestamp, convert to UTC, truncate rather than round sub-millisecond ticks, and emit `yyyy-MM-ddTHH:mm:ss.fffZ`; blank, offset-free, or invalid input is rejected without a clock fallback. |
+| `tenantId` | `tenantMarker` | `__rejected__`, blank, or invalid scope becomes the sole synthetic marker `__rejected__`; otherwise canonicalize the accepted tenant ID and HMAC it with the active marker key and tenant domain separator. |
+| `operationType` | `operationType` | Require one exact ordinal operation in **Source Event Mapping**. |
+| `caseId` | `caseMarker` plus bounded `caseScope`/`targetKind` | Apply **Case, Result, and Nullable Mapping**; no raw or prefixed case identifier is persisted. |
+| `user` | `userMarker` | When `tenantMarker` is `__rejected__`, persist null. Otherwise HMAC a non-blank value, including `anonymous`, with the user domain separator; blank becomes null. |
+| `queryParams` | `queryParams` | Read only the exact current per-operation source-key set in **Query Parameter Source Mapping**, transform allowlisted values, and drop the named raw fields. An unlisted, wrong-case, duplicate, or wrong-typed source key rejects the lifecycle copy. The source dictionary is never serialized directly. |
+| `resultCount` | `resultCount` | Apply **Case, Result, and Nullable Mapping** and require integer `0..1,000,000` when present. |
+| `durationMs` | `durationMs` | Require integer `0..86,400,000`; reject rather than clamp any other value. |
+| `outcome` | `outcome` | Apply the exact tuple rule in **Source Event Mapping**; no case folding or fallback. |
+| `errorCode` | `errorCode` | `ok` requires null; `partial` and `error` use **Error Code Mapping**. Source text is never copied. |
+| `traceId` | `traceId` | Persist null only when both trace and span are null; otherwise require a lowercase 32-hex W3C trace ID paired with a valid span ID. |
+| `spanId` | `spanId` | Persist null only when both trace and span are null; otherwise require a lowercase 16-hex W3C span ID paired with a valid trace ID. |
+
+#### Case, Result, and Nullable Mapping
+
+`tenantMarker = __rejected__` always forces `userMarker`, `caseMarker`,
+`traceId`, and `spanId` to null. Only `tenantMarker` may carry that sentinel.
+For an accepted tenant, the following rules are exhaustive:
+
+| Operation | Source `caseId` and proposed `caseMarker` rule | Proposed bounded scope/target rule | Proposed `resultCount` rule |
+| :-------- | :------------------------------------------ | :--------------------------------- | :-------------------------- |
+| `search` | Non-blank -> HMAC; null -> null. | `caseScope=single` when present; `caseScope=all-authorized` when null; rejected/unknown scope uses `caseScope=rejected-or-unknown`. | Required for `ok`/`partial`; null for `error`. |
+| `ingest` | Non-blank -> HMAC; null is allowed only for the current EventStore ingestion adapter and remains null. | `caseScope=case` when present; otherwise `caseScope=tenant`. | Always null. |
+| `traverse` | Non-blank -> HMAC; null -> null. | `caseScope=single` when present; `caseScope=all-authorized` when null; rejected/unknown scope uses `caseScope=rejected-or-unknown`. | Required for `ok`; null for `error`. |
+| `case-access` | A non-blank case ID is required and HMACed. | No additional scope field; the operation is case-scoped. | Required for `ok`; null for `error`. |
+| `delete` | Non-blank -> HMAC; null is allowed only for source operation `tenant-delete`. | `targetKind=memory-unit`, `case`, or `tenant`; only `tenant` permits null. | Always null. |
+| `tenant-lifecycle` | Must be null. | Action is tenant-scoped. | Always null. |
+| `tenant-config` | Must be null. | Action is tenant-scoped. | Always null. |
+| `case-member` | A non-blank case ID is required and HMACed. | Action is case-scoped. | Always null. |
+| `annotation` | A non-blank case ID is required and HMACed. | Action is case-scoped. | Always null. |
+
+Any combination outside this table is rejected as `schema_mismatch`; it is not
+silently converted to an all-tenant or all-case scope.
+
+#### Error Code Mapping
+
+The sanitizer trims and compares the source code in memory using ordinal
+uppercase rules, then emits only one bounded V1 value. Rules are evaluated in
+the order below. The final row makes the mapping total without persisting,
+logging, hashing, or returning the source value, exception type/message, or
+response content.
+
+| Proposed persisted `errorCode` | Ordered source-code rule |
+| :----------------------------- | :----------------------- |
+| `invalid_input` | `INVALID_*`, `MISSING_*`, `PAGINATION_LIMIT_EXCEEDED`, `BATCH_TOO_LARGE`, or `NESTED_ANNOTATION_NOT_ALLOWED` |
+| `not_found` | `NOT_FOUND`, `*_NOT_FOUND`, or `UNKNOWN_SOURCE` |
+| `forbidden` | `FORBIDDEN`, `*_FORBIDDEN`, `AUTO_CREATE_DISABLED`, or `DIRECTORY_INGESTION_DISABLED` |
+| `conflict` | `CONFLICT`, `*_CONFLICT`, `CASE_MISMATCH`, `*_DELETING`, `*_PROVISIONING`, `MEMBER_LIMIT_EXCEEDED`, `CASE_CAP_EXCEEDED`, or `MEMORY_UNIT_NOT_INDEXED` |
+| `cancelled` | `CANCELLED` or `REQUEST_CANCELLED` |
+| `dependency_unavailable` | `DAPR_UNAVAILABLE`, `BACKEND_UNAVAILABLE`, `ALL_BACKENDS_UNAVAILABLE`, `GRAPH_UNAVAILABLE`, `GRAPH_TIMEOUT`, `LOOKUP_BACKEND_UNAVAILABLE`, `BATCH_TRACKING_UNAVAILABLE`, `TENANT_UNAVAILABLE`, `TENANT_FAILED`, `HYBRID_DEGRADED`, or any `*_TIMEOUT` |
+| `rate_limited` | `RATE_LIMITED`, `TOO_MANY_REQUESTS`, or `HTTP_429` |
+| `internal_dependency_failure` | `SCHEDULE_FAILED` or `BATCH_SCHEDULING_FAILED` |
+| `internal_failure` | `UNHANDLED_EXCEPTION`, `HTTP_500`, `HTTP_502`, or `HTTP_503` |
+| `unknown` | Null, blank, `UNKNOWN`, any unmatched source code, or a source code longer than 128 characters |
+
+#### Query Parameter Source Mapping
+
+The current source-key lists are unions across all emitters for each operation.
+Missing keys use only the bounded default named below. No raw identifier,
+free-text value, URI, array, arbitrary enum, offset, token budget, or numeric
+weight is copied.
+
+| Operation | Exact current source keys | Proposed exact persisted keys | Proposed transformations and explicit drops |
+| :-------- | :------------------------ | :---------------------------- | :------------------------------------------ |
+| `search` | `axis`, `axes`, `attributeFilterCount`, `explain`, `graphWeight`, `maxResults`, `metadataFilterCount`, `nlWeight`, `offset`, `query`, `semanticWeight`, `sourceType`, `subject`, `syntacticWeight`, `tokenBudget` | `axis`, `caseScope`, `explain`, `queryLengthBucket`, `subjectPresent`, `weightProfile` | `nl` -> `natural-language`; accepted axis catalog is `syntactic`, `semantic`, `graph`, `natural-language`, `hybrid`, `graph-scoped-syntactic`, `graph-scoped-semantic`, `unknown`. Null `caseId` maps as above. `query` length and subject presence are bucketed. `weightProfile` is `configured` when all four weights are null, `request-override` when any supplied combination is finite, non-negative, and has a positive enabled-axis total, otherwise `invalid`. Drop `axes`, both filter counts, `maxResults`, `offset`, `sourceType`, `tokenBudget`, and all numeric weights after classification. |
+| `ingest` | `aggregateType`, `bytes`, `cloudEventId`, `cloudEventType`, `contentType`, `eventOutcome`, `sourceType` | `caseScope`, `contentKind`, `contentLengthBucket`, `eventOutcome`, `sourceKind` | Map source kind to `file`, `url`, `event`, `command`, `projection`, `discussion`, `annotation`, or `unknown`; MIME family to `document`, `text`, `image`, `audio`, or `unknown`; byte length to `0`, `1-64KiB`, `64KiB-1MiB`, `1-10MiB`, or `10MiB+`; event outcome to `not-applicable`, `accepted`, `duplicate`, `rejected`, or `unknown`. Drop CloudEvent and aggregate identifiers. |
+| `traverse` | `depth`, `edgeTypes`, `startNodeId`, `tokenBudget` | `caseScope`, `depthBucket`, `direction`, `edgeTypeCount`, `includeGaps` | Depth bucket is `0`, `1`, `2`, `3`, `4`, `5`, `6-10`, or `invalid`; count at most 16 comma-separated edge-type tokens without storing them; current direction is constant `out` and current `includeGaps` is false. Drop start-node ID and token budget. |
+| `case-access` | `memoryUnitId`, `sourceUri` | `accessKind`, `projection`, `sourceKind` | `accessKind` is `memory-unit-id` or `source-uri`; current projection is `detail`; source URI scheme maps to `url`, `file`, `other`, or `unknown`, and is `not-applicable` for ID lookup. Drop the memory-unit ID and URI. |
+| `delete` | `memoryUnitIdPrefix`, `operation` | `cascade`, `targetKind` | Map `memory-unit-delete` -> false/`memory-unit`, `case-delete` -> true/`case`, and `tenant-delete` -> true/`tenant`; drop the identifier prefix. |
+| `tenant-lifecycle` | `operation`, `state`, `workflowInstanceIdPrefix` | `action`, `workflowState` | Map `tenant-create`, `tenant-provision-status`, and `tenant-deletion-status` to `provision`, `provision-status`, and `deletion-status`; workflow state maps to `not-applicable`, `pending`, `running`, `completed`, `failed`, `terminated`, or `unknown`. Drop the workflow prefix. |
+| `tenant-config` | `changedFields`, `fieldCount`, `forceReindex`, `operation` | `action`, `changedFieldCountBucket`, `configKind`, `forceReindex` | Current action is `update`; config kind is `embedding` or `display-name`; field count maps to `0`, `1`, `2-3`, `4-8`, or `9+`; drop the `changedFields` array. |
+| `case-member` | `memberIdPrefix`, `operation` | `action`, `role` | Map current operations to `add` or `remove`; current typed state does not carry role, so persist bounded `unknown`; drop the member prefix. |
+| `annotation` | `memoryUnitIdPrefix`, `operation` | `action`, `annotationKind` | Current action is `create`; current typed state does not carry annotation kind, so persist bounded `unknown`; drop the memory-unit prefix. |
+
+The proposal keeps the existing six-key maximum and the 1,024-byte record
+ceiling. Re-running the deterministic 90-success/10-error fixture with the
+proposed exact keys produces the following reviewable, non-Production sizing
+values; the canonical **Operation Envelope** table is updated only after
+ratification.
+
+| Operation | Proposed representative average sanitized bytes | Proposed representative P95 sanitized bytes |
+| :-------- | -----------------------------------------------: | -------------------------------------------: |
+| search | 874.8 | 900 |
+| ingest | 856.8 | 882 |
+| traverse | 831.8 | 857 |
+| case-access | 806.8 | 832 |
+| delete | 770.8 | 796 |
+| tenant-lifecycle | 738.8 | 764 |
+| tenant-config | 775.8 | 801 |
+| case-member | 772.8 | 798 |
+| annotation | 784.8 | 810 |
+
 ### Persisted Schema Bounds
 
 Version 1 is canonical UTF-8 JSON under RFC 8785 ordering, escaping, and number

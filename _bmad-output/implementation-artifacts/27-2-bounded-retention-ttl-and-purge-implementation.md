@@ -312,6 +312,10 @@ If development discovers multiple adapter implementations, a tenant-facing inspe
 
 ### Debug Log References
 
+- 2026-07-18: C1 preflight reconciled all nine `AccessTelemetryLog` families and all 14 frozen `AccessTelemetryEvent` properties against current emitters. Added the proposed total mapping under ADR section `Story 27.2 C1 Mapping Ratification`; both decision-owner rows remain pending and runtime persistence remains closed.
+- 2026-07-18: Comparable pre-development Server.Tests evidence: exact Release build command from **Testing Baseline and Planned Delta** succeeded with 0 warnings/errors; `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -list methods` discovered 1,548 xUnit methods (Architecture 24, Telemetry 141, decision guards 6), sorted method-set SHA-256 `98440744599bf454ee991a3cad39f69dee9185f6d1fe86106223638c3a194ae2`; focused decision guards passed 6/6 before and after the proposal edit.
+- 2026-07-18: During validation, an external `git pull --tags origin main` advanced `references/Hexalith.EventStore` from parent-pinned `4ff224bc` to `3796e27e` at 09:03:38 +0200. This submodule pointer drift is unrelated, unowned by Story 27.2, preserved, and excluded from story scope.
+
 ### Completion Notes List
 
 - 2026-07-17: Created implementation-ready Story 27.2 from the accepted Dapr-only ADR, current source/deployment state, whole planning artifacts, official Dapr/.NET guidance, git history, and the repository's historical-slice/phase-ledger policies.
