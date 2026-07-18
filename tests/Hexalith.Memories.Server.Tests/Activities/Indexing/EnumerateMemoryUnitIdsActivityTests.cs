@@ -173,7 +173,7 @@ public class EnumerateMemoryUnitIdsActivityTests
         server.IsConnected.Returns(true);
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
+                Arg.Is<RedisValue>(v => v!.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -181,7 +181,7 @@ public class EnumerateMemoryUnitIdsActivityTests
             .Returns(OperationCanceledAsyncEnumerable());
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
+                Arg.Is<RedisValue>(v => v!.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -211,7 +211,7 @@ public class EnumerateMemoryUnitIdsActivityTests
         server.IsConnected.Returns(true);
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
+                Arg.Is<RedisValue>(v => v!.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -219,7 +219,7 @@ public class EnumerateMemoryUnitIdsActivityTests
             .Returns(ThrowingAsyncEnumerable());
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
+                Arg.Is<RedisValue>(v => v!.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -270,7 +270,7 @@ public class EnumerateMemoryUnitIdsActivityTests
 
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
+                Arg.Is<RedisValue>(v => v!.ToString() == IndexSchemaDefinitions.GetSyntacticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),
@@ -279,7 +279,7 @@ public class EnumerateMemoryUnitIdsActivityTests
 
         server.KeysAsync(
                 Arg.Any<int>(),
-                Arg.Is<RedisValue>(v => v.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
+                Arg.Is<RedisValue>(v => v!.ToString() == IndexSchemaDefinitions.GetSemanticKeyPrefix(TestTenantId) + "*"),
                 Arg.Any<int>(),
                 Arg.Any<long>(),
                 Arg.Any<int>(),

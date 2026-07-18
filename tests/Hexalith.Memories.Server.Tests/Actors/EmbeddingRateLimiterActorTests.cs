@@ -37,7 +37,7 @@ public class EmbeddingRateLimiterActorTests
 
         await stateManager.Received().SetStateAsync(
             "rateState",
-            Arg.Is<RateLimitState>(s => s.Remaining == 1499 && s.CeilingPerMinute == 1500),
+            Arg.Is<RateLimitState>(s => s!.Remaining == 1499 && s.CeilingPerMinute == 1500),
             Arg.Any<CancellationToken>());
     }
 
@@ -104,7 +104,7 @@ public class EmbeddingRateLimiterActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "rateState",
-            Arg.Is<RateLimitState>(s => s.Remaining == 200 && s.CeilingPerMinute == 200),
+            Arg.Is<RateLimitState>(s => s!.Remaining == 200 && s.CeilingPerMinute == 200),
             Arg.Any<CancellationToken>());
     }
 
@@ -123,7 +123,7 @@ public class EmbeddingRateLimiterActorTests
         // Assert — remaining clamped to new ceiling
         await stateManager.Received().SetStateAsync(
             "rateState",
-            Arg.Is<RateLimitState>(s => s.CeilingPerMinute == 100 && s.Remaining == 100),
+            Arg.Is<RateLimitState>(s => s!.CeilingPerMinute == 100 && s.Remaining == 100),
             Arg.Any<CancellationToken>());
     }
 
@@ -142,7 +142,7 @@ public class EmbeddingRateLimiterActorTests
         // Assert — remaining unchanged (50 < 200)
         await stateManager.Received().SetStateAsync(
             "rateState",
-            Arg.Is<RateLimitState>(s => s.CeilingPerMinute == 200 && s.Remaining == 50),
+            Arg.Is<RateLimitState>(s => s!.CeilingPerMinute == 200 && s.Remaining == 50),
             Arg.Any<CancellationToken>());
     }
 
@@ -158,7 +158,7 @@ public class EmbeddingRateLimiterActorTests
         allowed.ShouldBeTrue();
         await stateManager.Received(1).SetStateAsync(
             "rateState",
-            Arg.Is<RateLimitState>(s => s.CeilingPerMinute == 100 && s.Remaining == 99),
+            Arg.Is<RateLimitState>(s => s!.CeilingPerMinute == 100 && s.Remaining == 99),
             Arg.Any<CancellationToken>());
     }
 
@@ -173,7 +173,7 @@ public class EmbeddingRateLimiterActorTests
         allowed.ShouldBeTrue();
         await stateManager.Received(1).SetStateAsync(
             "rateState",
-            Arg.Is<RateLimitState>(s => s.CeilingPerMinute == 100 && s.Remaining == 99),
+            Arg.Is<RateLimitState>(s => s!.CeilingPerMinute == 100 && s.Remaining == 99),
             Arg.Any<CancellationToken>());
     }
 
@@ -189,7 +189,7 @@ public class EmbeddingRateLimiterActorTests
         allowed.ShouldBeFalse();
         await stateManager.Received(1).SetStateAsync(
             "rateState",
-            Arg.Is<RateLimitState>(s => s.CeilingPerMinute == 1 && s.Remaining == 0),
+            Arg.Is<RateLimitState>(s => s!.CeilingPerMinute == 1 && s.Remaining == 0),
             Arg.Any<CancellationToken>());
     }
 
@@ -211,7 +211,7 @@ public class EmbeddingRateLimiterActorTests
         await stateManager.Received().SetStateAsync(
             "rateState",
             Arg.Is<RateLimitState>(s =>
-                s.Remaining == 0 &&
+                s!.Remaining == 0 &&
                 s.CeilingPerMinute == 1500 &&
                 s.WindowStart.AddMinutes(1) >= before.AddSeconds(29) &&
                 s.WindowStart.AddMinutes(1) <= DateTime.UtcNow.AddSeconds(31)),
@@ -236,7 +236,7 @@ public class EmbeddingRateLimiterActorTests
         await stateManager.Received().SetStateAsync(
             "rateState",
             Arg.Is<RateLimitState>(s =>
-                s.Remaining == 0 &&
+                s!.Remaining == 0 &&
                 s.WindowStart.AddMinutes(1) >= before &&
                 s.WindowStart.AddMinutes(1) <= DateTime.UtcNow.AddSeconds(2)),
             Arg.Any<CancellationToken>());

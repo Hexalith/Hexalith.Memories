@@ -54,18 +54,18 @@ public sealed class IndexSemanticChunksActivityTests
         await db.Received(1).HashSetAsync(
             IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "mu-1", 0),
             Arg.Is<HashEntry[]>(entries =>
-                HasEntry(entries, "tenantId", "tenant-a")
-                && HasEntry(entries, "memoryUnitId", "mu-1")
-                && HasEntry(entries, "caseId", "case-1")
-                && HasEntry(entries, "chunkSequence", 0)
-                && HasEntry(entries, "chunkText", "first chunk")),
+                HasEntry(entries!, "tenantId", "tenant-a")
+                && HasEntry(entries!, "memoryUnitId", "mu-1")
+                && HasEntry(entries!, "caseId", "case-1")
+                && HasEntry(entries!, "chunkSequence", 0)
+                && HasEntry(entries!, "chunkText", "first chunk")),
             Arg.Any<CommandFlags>());
         await db.Received(1).HashSetAsync(
             IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "mu-1", 1),
             Arg.Is<HashEntry[]>(entries =>
-                HasEntry(entries, "tenantId", "tenant-a")
-                && HasEntry(entries, "chunkSequence", 1)
-                && HasEntry(entries, "chunkText", "second chunk")),
+                HasEntry(entries!, "tenantId", "tenant-a")
+                && HasEntry(entries!, "chunkSequence", 1)
+                && HasEntry(entries!, "chunkText", "second chunk")),
             Arg.Any<CommandFlags>());
     }
 

@@ -74,7 +74,7 @@ public sealed class IngestionEndpointE2ETests : IDisposable
         await _scheduler.Received(1).ScheduleAsync(
             instanceId,
             Arg.Is<IngestionInput>(input =>
-                input.TenantId == TenantId &&
+                input!.TenantId == TenantId &&
                 input.CaseId == CaseId &&
                 input.SourceType == SourceType.File &&
                 input.SourceUri == request.SourceUri &&
@@ -123,7 +123,7 @@ public sealed class IngestionEndpointE2ETests : IDisposable
         capturedTraceContext.TraceState.ShouldBe(traceState);
         await _scheduler.Received(1).ScheduleAsync(
             Arg.Any<string>(),
-            Arg.Is<IngestionInput>(input => input.TraceContext == null),
+            Arg.Is<IngestionInput>(input => input!.TraceContext == null),
             Arg.Any<CancellationToken>());
     }
 

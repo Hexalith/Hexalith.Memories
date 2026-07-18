@@ -49,16 +49,16 @@ public class IndexSyntacticActivityTests
         await db.Received(1).HashSetAsync(
             IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
             Arg.Is<HashEntry[]>(entries =>
-                HasEntry(entries, "content", input.Content)
-                && HasEntry(entries, "sourceUri", input.SourceUri)
-                && HasEntry(entries, "sourceUriText", input.SourceUri)
-                && HasEntry(entries, "sourceType", "file")
-                && HasEntry(entries, "sourceTypeText", "file")
-                && HasEntry(entries, "metadataText", "priority urgent human")
-                && HasEntry(entries, "attributeTags", "priority=urgent")
-                && HasEntry(entries, "metadataJson", JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options))
-                && HasEntry(entries, "ingestedBy", input.IngestedBy)
-                && HasEntry(entries, "ingestedAt", input.IngestedAt.ToString("o"))),
+                HasEntry(entries!, "content", input.Content)
+                && HasEntry(entries!, "sourceUri", input.SourceUri)
+                && HasEntry(entries!, "sourceUriText", input.SourceUri)
+                && HasEntry(entries!, "sourceType", "file")
+                && HasEntry(entries!, "sourceTypeText", "file")
+                && HasEntry(entries!, "metadataText", "priority urgent human")
+                && HasEntry(entries!, "attributeTags", "priority=urgent")
+                && HasEntry(entries!, "metadataJson", JsonSerializer.Serialize(input.Metadata, MemoriesJsonContext.Options))
+                && HasEntry(entries!, "ingestedBy", input.IngestedBy)
+                && HasEntry(entries!, "ingestedAt", input.IngestedAt.ToString("o"))),
             Arg.Any<CommandFlags>());
     }
 
@@ -79,7 +79,7 @@ public class IndexSyntacticActivityTests
 
         // Assert
         await db.Received(1).HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("test-tenant", "test-mu-001")),
+            Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("test-tenant", "test-mu-001")),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
     }
@@ -114,7 +114,7 @@ public class IndexSyntacticActivityTests
 
         await db.Received(1).HashSetAsync(
             IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
-            Arg.Is<HashEntry[]>(entries => HasEntry(entries, "content", "resolved content")),
+            Arg.Is<HashEntry[]>(entries => HasEntry(entries!, "content", "resolved content")),
             Arg.Any<CommandFlags>());
     }
 
@@ -172,8 +172,8 @@ public class IndexSyntacticActivityTests
         await db.Received(1).HashSetAsync(
             IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, input.MemoryUnitId),
             Arg.Is<HashEntry[]>(entries =>
-                HasEntry(entries, "embeddingModel", "gemini-embedding-001")
-                && HasEntry(entries, "embeddingProvider", input.EmbeddingProvider)),
+                HasEntry(entries!, "embeddingModel", "gemini-embedding-001")
+                && HasEntry(entries!, "embeddingProvider", input.EmbeddingProvider)),
             Arg.Any<CommandFlags>());
     }
 
@@ -200,7 +200,7 @@ public class IndexSyntacticActivityTests
 
         db.Received().Execute(
             "FT.ALTER",
-            Arg.Is<object[]>(args => args.Length == 5
+            Arg.Is<object[]>(args => args!.Length == 5
                 && args[0].ToString() == IndexSchemaDefinitions.GetSyntacticIndexName("test-tenant")
                 && args[1].ToString() == "SCHEMA"
                 && args[2].ToString() == "ADD"

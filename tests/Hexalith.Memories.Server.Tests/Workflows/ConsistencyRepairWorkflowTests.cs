@@ -69,7 +69,7 @@ public class ConsistencyRepairWorkflowTests
         result.RepairedCount.ShouldBe(0);
         await context.DidNotReceive().CallActivityAsync<ConsistencyResult>(
             nameof(VerifyConsistencyActivity),
-            Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == "nl:mu-1"),
+            Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId == "nl:mu-1"),
             Arg.Any<WorkflowTaskOptions>());
         await context.DidNotReceive().CallActivityAsync<RepairActionRecord>(
             nameof(RepairUnitActivity),
@@ -302,7 +302,7 @@ public class ConsistencyRepairWorkflowTests
         _ = context.Received().CallActivityAsync<RepairActionRecord>(
             nameof(RepairUnitActivity),
             Arg.Any<RepairUnitInput>(),
-            Arg.Is<WorkflowTaskOptions>(o => o.RetryPolicy != null && o.RetryPolicy.MaxNumberOfAttempts > 1));
+            Arg.Is<WorkflowTaskOptions>(o => o!.RetryPolicy != null && o.RetryPolicy.MaxNumberOfAttempts > 1));
     }
 
     private static WorkflowContext CreateContext()
@@ -328,7 +328,7 @@ public class ConsistencyRepairWorkflowTests
     {
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
-                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == unitId),
+                Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId == unitId),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(result);
     }

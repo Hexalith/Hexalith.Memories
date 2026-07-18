@@ -161,7 +161,7 @@ public sealed class ReIngestionEndpointE2ETests : IDisposable
     private void StubCaseExists()
         => _factory.RedisDatabase
             .HashGetAllAsync(
-                Arg.Is<RedisKey>(key => key.ToString() == $"{TenantId}:case:{CaseId}"),
+                Arg.Is<RedisKey>(key => key!.ToString() == $"{TenantId}:case:{CaseId}"),
                 Arg.Any<CommandFlags>())
             .Returns(
             [

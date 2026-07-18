@@ -24,7 +24,7 @@ public class DeleteTenantDataKeysActivityTests
         IDatabase db = Substitute.For<IDatabase>();
         db.Database.Returns(0);
         db.KeyDeleteAsync(Arg.Any<RedisKey[]>(), Arg.Any<CommandFlags>())
-            .Returns(callInfo => (long)((RedisKey[])callInfo[0]).Length);
+            .Returns(callInfo => (long)((RedisKey[])callInfo[0]!).Length);
 
         IServer server = Substitute.For<IServer>();
         server.IsConnected.Returns(true);
@@ -51,7 +51,7 @@ public class DeleteTenantDataKeysActivityTests
         {
             _ = server.Received(1).KeysAsync(0, pattern.Key, 1000, Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CommandFlags>());
             await db.Received(1).KeyDeleteAsync(
-                Arg.Is<RedisKey[]>(keys => keys.Select(static k => k.ToString()).SequenceEqual(new[] { pattern.Value })),
+                Arg.Is<RedisKey[]>(keys => keys!.Select(static k => k.ToString()).SequenceEqual(new[] { pattern.Value })),
                 Arg.Any<CommandFlags>());
         }
     }

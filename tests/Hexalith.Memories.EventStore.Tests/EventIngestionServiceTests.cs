@@ -376,7 +376,7 @@ public sealed class EventIngestionServiceTests
         await maintenance.Received(1).ApplyEntryChangedAsync(
             "tenants-index",
             "tenant:t-1",
-            Arg.Is<SearchIndexEntryChanged>(e => e.AggregateId == "t-1" && e.Text == "Acme t-1" && e.Attributes["status"] == "Active"),
+            Arg.Is<SearchIndexEntryChanged>(e => e!.AggregateId == "t-1" && e.Text == "Acme t-1" && e.Attributes["status"] == "Active"),
             "case-1",
             Arg.Any<CancellationToken>());
 
@@ -408,7 +408,7 @@ public sealed class EventIngestionServiceTests
         result.Outcome.ShouldBe(EventIngestionOutcome.Accepted);
         await maintenance.Received(1).ApplyEntryRemovedAsync(
             "tenants-index",
-            Arg.Is<SearchIndexEntryRemoved>(e => e.AggregateId == "t-9"),
+            Arg.Is<SearchIndexEntryRemoved>(e => e!.AggregateId == "t-9"),
             Arg.Any<CancellationToken>());
         await scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
     }

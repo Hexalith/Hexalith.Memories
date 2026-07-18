@@ -64,7 +64,7 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).ExecuteStateTransactionAsync(
             "statestore",
             Arg.Is<IReadOnlyList<StateTransactionRequest>>(ops =>
-                ops.Count == 2
+                ops!.Count == 2
                 && ops[0].Key == "tenant-registry-acme"
                 && ops[0].OperationType == StateOperationType.Upsert
                 && ops[0].ETag == string.Empty
@@ -234,7 +234,7 @@ public class TenantRegistryServiceTests
             "statestore",
             "tenant-registry-tenant-1",
             Arg.Is<StoredTenantRegistryEntry>(t =>
-                t.Tenant.Status == TenantStatus.Active
+                t!.Tenant.Status == TenantStatus.Active
                 && t.WorkflowInstanceId == null
                 && t.LastUpdated > existing.LastUpdated),
             "etag-1",
@@ -294,7 +294,7 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).ExecuteStateTransactionAsync(
             "statestore",
             Arg.Is<IReadOnlyList<StateTransactionRequest>>(ops =>
-                ops.Count == 2
+                ops!.Count == 2
                 && ops[0].Key == "tenant-registry-acme"
                 && ops[0].OperationType == StateOperationType.Upsert
                 && ops[0].ETag == "etag-entry"
@@ -389,7 +389,7 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).TrySaveStateAsync(
             "statestore",
             "tenant-registry-tenant-1",
-            Arg.Is<StoredTenantRegistryEntry>(entry => entry.WorkflowInstanceId == "workflow-new"),
+            Arg.Is<StoredTenantRegistryEntry>(entry => entry!.WorkflowInstanceId == "workflow-new"),
             "etag-1",
             cancellationToken: Arg.Any<CancellationToken>());
     }
@@ -444,7 +444,7 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).TrySaveStateAsync(
             "statestore",
             "tenant-registry-tenant-1",
-            Arg.Is<StoredTenantRegistryEntry>(t => t.Tenant.Status == TenantStatus.Deleting && t.WorkflowInstanceId == "delete-tenant-1-abc"),
+            Arg.Is<StoredTenantRegistryEntry>(t => t!.Tenant.Status == TenantStatus.Deleting && t.WorkflowInstanceId == "delete-tenant-1-abc"),
             "etag-1",
             cancellationToken: Arg.Any<CancellationToken>());
     }
@@ -763,7 +763,7 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).ExecuteStateTransactionAsync(
             "statestore",
             Arg.Is<IReadOnlyList<StateTransactionRequest>>(ops =>
-                ops.Count == 2
+                ops!.Count == 2
                 && ops[0].Key == "tenant-registry-tenant-1"
                 && ops[0].OperationType == StateOperationType.Delete
                 && ops[0].ETag == "etag-entry"
@@ -801,7 +801,7 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).ExecuteStateTransactionAsync(
             "statestore",
             Arg.Is<IReadOnlyList<StateTransactionRequest>>(ops =>
-                ops.Count == 1
+                ops!.Count == 1
                 && ops[0].Key == "tenant-registry-index"
                 && Deserialize<List<string>>(ops[0]).SequenceEqual(new[] { "tenant-2" })),
             null!,
@@ -908,7 +908,7 @@ public class TenantRegistryServiceTests
         await daprClient.Received(1).TrySaveStateAsync(
             "statestore",
             "tenant-registry-acme",
-            Arg.Is<StoredTenantRegistryEntry>(e => e.Tenant.DisplayName == "Acme Inc" && e.LastUpdated > existing.LastUpdated),
+            Arg.Is<StoredTenantRegistryEntry>(e => e!.Tenant.DisplayName == "Acme Inc" && e.LastUpdated > existing.LastUpdated),
             "etag-42",
             cancellationToken: Arg.Any<CancellationToken>());
 

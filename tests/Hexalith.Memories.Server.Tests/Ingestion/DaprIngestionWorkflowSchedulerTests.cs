@@ -41,7 +41,7 @@ public sealed class DaprIngestionWorkflowSchedulerTests
         instanceId.ShouldBe("instance-1");
         await registry.Received(1).TrackAsync(
             Arg.Is<IngestionWorkflowInFlightEntry>(entry =>
-                entry.TenantId == "tenant-a" && entry.InstanceId == "instance-1"),
+                entry!.TenantId == "tenant-a" && entry.InstanceId == "instance-1"),
             Arg.Any<CancellationToken>());
     }
 
@@ -64,7 +64,7 @@ public sealed class DaprIngestionWorkflowSchedulerTests
 
         await registry.Received(1).TrackAsync(
             Arg.Is<IngestionWorkflowInFlightEntry>(entry =>
-                entry.TenantId == "tenant-a" && entry.InstanceId == "instance-1"),
+                entry!.TenantId == "tenant-a" && entry.InstanceId == "instance-1"),
             Arg.Any<CancellationToken>());
         await registry.Received(1).RemoveAsync("instance-1", Arg.Any<CancellationToken>());
     }

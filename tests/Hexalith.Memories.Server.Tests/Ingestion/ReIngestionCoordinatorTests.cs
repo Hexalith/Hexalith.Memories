@@ -89,7 +89,7 @@ public class ReIngestionCoordinatorTests
         await scheduler.Received().ScheduleAsync(
             "mu-url",
             Arg.Is<IngestionInput>(input =>
-                input.SourceType == SourceType.Url
+                input!.SourceType == SourceType.Url
                 && input.PayloadReference == null
                 && input.ContentBytes == null));
     }
@@ -118,7 +118,7 @@ public class ReIngestionCoordinatorTests
         await scheduler.Received().ScheduleAsync(
             "mu-1",
             Arg.Is<IngestionInput>(input =>
-                input.TenantId == "tenant-1"
+                input!.TenantId == "tenant-1"
                 && input.CaseId == "case-1"
                 && input.SourceUri == record.SourceUri
                 && input.SourceType == SourceType.File
@@ -161,7 +161,7 @@ public class ReIngestionCoordinatorTests
         await scheduler.Received().ScheduleAsync(
             "mu-event",
             Arg.Is<IngestionInput>(input =>
-                input.SourceType == SourceType.Event
+                input!.SourceType == SourceType.Event
                 && input.SourceUri == record.SourceUri
                 && input.PayloadReference == sourceReference
                 && input.ContentBytes == null
@@ -211,7 +211,7 @@ public class ReIngestionCoordinatorTests
         await scheduler.Received().ScheduleAsync(
             "mu-event",
             Arg.Is<IngestionInput>(input =>
-                input.SourceType == SourceType.Event
+                input!.SourceType == SourceType.Event
                 && input.SourceUri == sourceUri
                 && input.PayloadReference == sourceReference
                 && input.ContentBytes == null));

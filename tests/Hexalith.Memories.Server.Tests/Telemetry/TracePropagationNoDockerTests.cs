@@ -198,7 +198,7 @@ public sealed class TracePropagationNoDockerTests : IDisposable
         _factory.DaprClient
             .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
-                Arg.Is<string>(key => key.Contains(tenantId, StringComparison.Ordinal)),
+                Arg.Is<string>(key => key!.Contains(tenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
                 Arg.Any<System.Collections.Generic.IReadOnlyDictionary<string, string>?>(),
                 Arg.Any<CancellationToken>())

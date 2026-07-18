@@ -119,7 +119,7 @@ public class CorpusStatisticsActorTests
         // Assert
         await stateManager.Received(1).SetStateAsync(
             "corpusStats",
-            Arg.Is<CorpusStatistics>(s => s.DocumentCount == 100 && Math.Abs(s.AverageDocumentLength - 5242.88) < 0.01),
+            Arg.Is<CorpusStatistics>(s => s!.DocumentCount == 100 && Math.Abs(s.AverageDocumentLength - 5242.88) < 0.01),
             Arg.Any<CancellationToken>());
     }
 

@@ -59,7 +59,7 @@ public class TenantDeletionWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
             Arg.Is<TenantStatusUpdateInput>(i =>
-                i.TenantId == TestTenantId
+                i!.TenantId == TestTenantId
                 && i.Status == TenantStatus.Deleting
                 && i.WorkflowInstanceId == TestWorkflowInstanceId),
             Arg.Any<WorkflowTaskOptions>());
@@ -162,7 +162,7 @@ public class TenantDeletionWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
             Arg.Is<TenantStatusUpdateInput>(i =>
-                i.Status == TenantStatus.Failed
+                i!.Status == TenantStatus.Failed
                 && i.WorkflowInstanceId == TestWorkflowInstanceId),
             Arg.Any<WorkflowTaskOptions>());
     }
@@ -180,7 +180,7 @@ public class TenantDeletionWorkflowTests
         context.CallActivityAsync<bool>(
                 nameof(UpdateTenantStatusActivity),
                 Arg.Is<TenantStatusUpdateInput>(i =>
-                    i.Status == TenantStatus.Deleting
+                    i!.Status == TenantStatus.Deleting
                     && i.WorkflowInstanceId == TestWorkflowInstanceId),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(true);
@@ -191,7 +191,7 @@ public class TenantDeletionWorkflowTests
         context.CallActivityAsync<bool>(
                 nameof(UpdateTenantStatusActivity),
                 Arg.Is<TenantStatusUpdateInput>(i =>
-                    i.Status == TenantStatus.Failed
+                    i!.Status == TenantStatus.Failed
                     && i.WorkflowInstanceId == TestWorkflowInstanceId),
                 Arg.Any<WorkflowTaskOptions>())
             .Throws(CreateTaskFailedException("Status update failed"));
@@ -242,7 +242,7 @@ public class TenantDeletionWorkflowTests
         // Should NOT call UpdateTenantStatusActivity to set Deleting (already Deleting)
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
-            Arg.Is<TenantStatusUpdateInput>(i => i.Status == TenantStatus.Deleting),
+            Arg.Is<TenantStatusUpdateInput>(i => i!.Status == TenantStatus.Deleting),
             Arg.Any<WorkflowTaskOptions>());
         logger.Messages.ShouldContain(message => message.Contains("DeletionResumed", StringComparison.Ordinal));
     }
@@ -307,7 +307,7 @@ public class TenantDeletionWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
             Arg.Is<TenantStatusUpdateInput>(i =>
-                i.Status == TenantStatus.Failed
+                i!.Status == TenantStatus.Failed
                 && i.WorkflowInstanceId == TestWorkflowInstanceId),
             Arg.Any<WorkflowTaskOptions>());
         logger.Messages.ShouldContain(message => message.Contains("DeletionFailed", StringComparison.Ordinal));

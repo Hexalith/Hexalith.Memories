@@ -45,7 +45,7 @@ public class MemoryUnitDeletionProjectionWorkflowTests
             context.CallActivityAsync<bool>(
                 nameof(RecordCaseActivityActivity),
                 Arg.Is<CaseActivityInput>(i =>
-                    i.TenantId == Input.TenantId
+                    i!.TenantId == Input.TenantId
                     && i.CaseId == Input.CaseId
                     && i.EventType == CaseActivityEventType.MemoryUnitDeleted
                     && i.MemoryUnitId == Input.MemoryUnitId),

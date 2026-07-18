@@ -78,13 +78,13 @@ public class ConsistencyVerificationWorkflowTests
 
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
-                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('c')),
+                Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId.StartsWith('c')),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, true, true));
 
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
-                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('n')),
+                Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId.StartsWith('n')),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, true, true)
             {
@@ -95,7 +95,7 @@ public class ConsistencyVerificationWorkflowTests
 
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
-                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('i')),
+                Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId.StartsWith('i')),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, false, true));
 
@@ -134,7 +134,7 @@ public class ConsistencyVerificationWorkflowTests
             ConsistencyResult capturedProbe = probe;
             context.CallActivityAsync<ConsistencyResult>(
                     nameof(VerifyConsistencyActivity),
-                    Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == capturedId),
+                    Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId == capturedId),
                     Arg.Any<WorkflowTaskOptions>())
                 .Returns(capturedProbe);
         }
@@ -240,13 +240,13 @@ public class ConsistencyVerificationWorkflowTests
 
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
-                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('d')),
+                Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId.StartsWith('d')),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, false, true));
 
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
-                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('n')),
+                Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId.StartsWith('n')),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, true, true)
             {
@@ -285,13 +285,13 @@ public class ConsistencyVerificationWorkflowTests
 
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
-                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('d')),
+                Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId.StartsWith('d')),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, false, true));
 
         context.CallActivityAsync<ConsistencyResult>(
                 nameof(VerifyConsistencyActivity),
-                Arg.Is<ConsistencyInput>(i => i.MemoryUnitId.StartsWith('n')),
+                Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId.StartsWith('n')),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(new ConsistencyResult(true, true, true)
             {
@@ -325,17 +325,17 @@ public class ConsistencyVerificationWorkflowTests
             SetEnumeration(context, ids);
             context.CallActivityAsync<ConsistencyResult>(
                     nameof(VerifyConsistencyActivity),
-                    Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == "a"),
+                    Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId == "a"),
                     Arg.Any<WorkflowTaskOptions>())
                 .Returns(new ConsistencyResult(true, true, true));
             context.CallActivityAsync<ConsistencyResult>(
                     nameof(VerifyConsistencyActivity),
-                    Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == "b"),
+                    Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId == "b"),
                     Arg.Any<WorkflowTaskOptions>())
                 .Returns(new ConsistencyResult(true, false, true));
             context.CallActivityAsync<ConsistencyResult>(
                     nameof(VerifyConsistencyActivity),
-                    Arg.Is<ConsistencyInput>(i => i.MemoryUnitId == "c"),
+                    Arg.Is<ConsistencyInput>(i => i!.MemoryUnitId == "c"),
                     Arg.Any<WorkflowTaskOptions>())
                 .Returns(new ConsistencyResult(false, false, false));
 

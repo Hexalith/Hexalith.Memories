@@ -37,7 +37,7 @@ public class TenantProvisioningWorkflowTests
         await context.Received().CallActivityAsync<TenantInfo>(
             nameof(InitializeTenantRegistryActivity),
             Arg.Is<InitializeTenantRegistryInput>(i =>
-                i.TenantId == input.TenantId
+                i!.TenantId == input.TenantId
                 && i.DisplayName == input.DisplayName
                 && i.WorkflowInstanceId == TestInstanceId),
             Arg.Any<WorkflowTaskOptions>());
@@ -45,7 +45,7 @@ public class TenantProvisioningWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
             Arg.Is<TenantStatusUpdateInput>(i =>
-                i.TenantId == input.TenantId
+                i!.TenantId == input.TenantId
                 && i.Status == TenantStatus.Active
                 && i.WorkflowInstanceId == TestInstanceId),
             Arg.Any<WorkflowTaskOptions>());
@@ -78,7 +78,7 @@ public class TenantProvisioningWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(UpdateTenantStatusActivity),
             Arg.Is<TenantStatusUpdateInput>(i =>
-                i.TenantId == input.TenantId
+                i!.TenantId == input.TenantId
                 && i.Status == TenantStatus.Failed
                 && i.WorkflowInstanceId == TestInstanceId),
             Arg.Any<WorkflowTaskOptions>());

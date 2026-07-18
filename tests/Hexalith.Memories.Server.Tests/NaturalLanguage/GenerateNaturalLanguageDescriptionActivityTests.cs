@@ -122,9 +122,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
     public async Task DaprException_ThrowsUnavailableException()
     {
         DaprConversationClient client = Substitute.For<DaprConversationClient>(
-            null,
+            null!,
             new HttpClient(),
-            null);
+            null!);
         client.ConverseAsync(
             Arg.Any<IReadOnlyList<ConversationInput>>(),
             Arg.Any<ConversationOptions>(),
@@ -147,9 +147,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
     public async Task RpcException_ThrowsUnavailableException()
     {
         DaprConversationClient client = Substitute.For<DaprConversationClient>(
-            null,
+            null!,
             new HttpClient(),
-            null);
+            null!);
         client.ConverseAsync(
             Arg.Any<IReadOnlyList<ConversationInput>>(),
             Arg.Any<ConversationOptions>(),
@@ -171,9 +171,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
     public async Task Timeout_ThrowsUnavailableException()
     {
         DaprConversationClient client = Substitute.For<DaprConversationClient>(
-            null,
+            null!,
             new HttpClient(),
-            null);
+            null!);
 
         // Simulate a real LLM hang: await the caller-supplied token so the activity's own timeout
         // cts triggers the OperationCanceledException. This exercises the production catch filter
@@ -205,9 +205,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
     public async Task HttpRequestException_ThrowsUnavailableException()
     {
         DaprConversationClient client = Substitute.For<DaprConversationClient>(
-            null,
+            null!,
             new HttpClient(),
-            null);
+            null!);
         client.ConverseAsync(
             Arg.Any<IReadOnlyList<ConversationInput>>(),
             Arg.Any<ConversationOptions>(),
@@ -286,7 +286,7 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
         await client.Received(1).ConverseAsync(
             Arg.Any<IReadOnlyList<ConversationInput>>(),
             Arg.Is<ConversationOptions>(options =>
-                options.Temperature.HasValue
+                options!.Temperature.HasValue
                 && Math.Abs(options.Temperature.Value - 0.1d) < 0.0001d),
             Arg.Any<CancellationToken>());
     }
@@ -366,9 +366,9 @@ public sealed class GenerateNaturalLanguageDescriptionActivityTests
     private static DaprConversationClient CreateClientReturning(string content, string? model)
     {
         DaprConversationClient client = Substitute.For<DaprConversationClient>(
-            null,
+            null!,
             new HttpClient(),
-            null);
+            null!);
 
         ResultMessage message = new(content);
         ConversationResultChoice choice = new(null, 0, message);

@@ -65,7 +65,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.Provider == "google" && c.Model == "gemini-embedding-001"),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.Provider == "google" && c.Model == "gemini-embedding-001"),
             Arg.Any<CancellationToken>());
     }
 
@@ -137,7 +137,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.Dimensions == 1536 && !c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.Dimensions == 1536 && !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -186,7 +186,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.ReindexRequired && c.Provider == "ollama" && c.Model == "qwen3-embedding:4b"),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.ReindexRequired && c.Provider == "ollama" && c.Model == "qwen3-embedding:4b"),
             Arg.Any<CancellationToken>());
     }
 
@@ -205,7 +205,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.RateLimitPerMinute == 1000),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.RateLimitPerMinute == 1000),
             Arg.Any<CancellationToken>());
     }
 
@@ -239,7 +239,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.BaseUrl == "https://other-llm.tache.ai" && c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.BaseUrl == "https://other-llm.tache.ai" && c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -260,7 +260,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.BaseUrl == "https://llm.tache.ai" && !c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.BaseUrl == "https://llm.tache.ai" && !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -279,7 +279,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.BaseUrl == "https://llm.tache.ai" && !c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.BaseUrl == "https://llm.tache.ai" && !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -298,7 +298,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.BaseUrl == "https://LLM.TACHE.AI" && !c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.BaseUrl == "https://LLM.TACHE.AI" && !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -320,7 +320,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.AuthMode == "OIDC-CLIENT-CREDENTIALS" && !c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.AuthMode == "OIDC-CLIENT-CREDENTIALS" && !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -343,7 +343,7 @@ public class TenantConfigurationActorTests
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
             Arg.Is<StoredTenantEmbeddingConfig>(c =>
-                c.OidcTokenEndpoint == "https://auth2.tache.ai/realms/tache/protocol/openid-connect/token" &&
+                c!.OidcTokenEndpoint == "https://auth2.tache.ai/realms/tache/protocol/openid-connect/token" &&
                 !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
@@ -363,7 +363,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.OidcClientId == "other-client" && !c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.OidcClientId == "other-client" && !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -386,7 +386,7 @@ public class TenantConfigurationActorTests
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
             Arg.Is<StoredTenantEmbeddingConfig>(c =>
-                c.ApiSecretKeyName == "memories-embedding-client-secret-2" &&
+                c!.ApiSecretKeyName == "memories-embedding-client-secret-2" &&
                 !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
@@ -406,7 +406,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.OidcScope == "openid profile" && !c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.OidcScope == "openid profile" && !c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -443,7 +443,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => c.RateLimitPerMinute == 1000 && c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => c!.RateLimitPerMinute == 1000 && c.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -543,7 +543,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => !c.ReindexRequired),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => !c!.ReindexRequired),
             Arg.Any<CancellationToken>());
     }
 
@@ -563,7 +563,7 @@ public class TenantConfigurationActorTests
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
             Arg.Is<StoredTenantEmbeddingConfig>(c =>
-                c.Provider == "ollama" &&
+                c!.Provider == "ollama" &&
                 c.AuthMode == "oidc-client-credentials" &&
                 !c.ReindexRequired),
             Arg.Any<CancellationToken>());
@@ -584,7 +584,7 @@ public class TenantConfigurationActorTests
         // Assert
         await stateManager.Received().SetStateAsync(
             "embeddingConfig",
-            Arg.Is<StoredTenantEmbeddingConfig>(c => HasOllamaOidcMetadata(PersistenceModelMapper.ToContract(c))),
+            Arg.Is<StoredTenantEmbeddingConfig>(c => HasOllamaOidcMetadata(PersistenceModelMapper.ToContract(c!))),
             Arg.Any<CancellationToken>());
     }
 

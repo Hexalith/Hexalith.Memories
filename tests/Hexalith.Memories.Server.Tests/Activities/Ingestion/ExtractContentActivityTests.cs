@@ -91,7 +91,7 @@ public class ExtractContentActivityTests
         result.ExtractedContent.ShouldBeEmpty();
         result.ExtractedContentReference.ShouldBe(extractedReference);
         await client.Received(1).ExtractAsync(
-            Arg.Is<ExtractionInput>(effective => effective.ContentBytes.SequenceEqual(sourceBytes)),
+            Arg.Is<ExtractionInput>(effective => effective!.ContentBytes.SequenceEqual(sourceBytes)),
             Arg.Any<CancellationToken>());
         await payloadStore.Received(1).SaveAsync(
             "test-tenant",

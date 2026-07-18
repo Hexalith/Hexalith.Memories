@@ -373,10 +373,10 @@ public class GenerateEmbeddingActivityTests
         await activity.RunAsync(context, new EmbeddingInput(TenantId, TestText));
 
         actorProxyFactory.Received(1).CreateActorProxy<IEmbeddingRateLimiterActor>(
-            Arg.Is<ActorId>(id => id.ToString() == TenantId),
+            Arg.Is<ActorId>(id => id!.ToString() == TenantId),
             "EmbeddingRateLimiterActor");
         actorProxyFactory.Received(1).CreateActorProxy<ITenantConfigurationActor>(
-            Arg.Is<ActorId>(id => id.ToString() == TenantId),
+            Arg.Is<ActorId>(id => id!.ToString() == TenantId),
             "TenantConfigurationActor");
     }
 

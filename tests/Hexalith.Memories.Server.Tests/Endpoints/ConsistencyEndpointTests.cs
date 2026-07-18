@@ -124,7 +124,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
 
         await _factory.WorkflowService.Received(1).ScheduleVerificationAsync(
             Arg.Is<string>(id => id == workflowInstanceId),
-            Arg.Is<ConsistencyVerificationInput>(input => input.TenantId == "acme-consistency" && input.BatchSize == 250),
+            Arg.Is<ConsistencyVerificationInput>(input => input!.TenantId == "acme-consistency" && input.BatchSize == 250),
             Arg.Any<CancellationToken>());
     }
 
@@ -353,7 +353,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
 
         await _factory.WorkflowService.Received(1).ScheduleRepairAsync(
             Arg.Is<string>(id => id == workflowInstanceId),
-            Arg.Is<ConsistencyRepairInput>(input => input.TenantId == "acme-consistency" && input.BatchSize == 125 && input.IncludeUnrepairable),
+            Arg.Is<ConsistencyRepairInput>(input => input!.TenantId == "acme-consistency" && input.BatchSize == 125 && input.IncludeUnrepairable),
             Arg.Any<CancellationToken>());
     }
 
@@ -465,7 +465,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
             DaprClient
                 .GetStateAsync<StoredTenantRegistryEntry?>(
                     StoreName,
-                    Arg.Is<string>(k => k.Contains(tenantId, StringComparison.Ordinal)),
+                    Arg.Is<string>(k => k!.Contains(tenantId, StringComparison.Ordinal)),
                     Arg.Any<ConsistencyMode?>(),
                     Arg.Any<IReadOnlyDictionary<string, string>?>(),
                     Arg.Any<CancellationToken>())

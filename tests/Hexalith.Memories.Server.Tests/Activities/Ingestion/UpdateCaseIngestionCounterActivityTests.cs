@@ -27,7 +27,7 @@ public class UpdateCaseIngestionCounterActivityTests
         IActorProxyFactory factory = Substitute.For<IActorProxyFactory>();
         ICaseIngestionCounterActor proxy = Substitute.For<ICaseIngestionCounterActor>();
         factory.CreateActorProxy<ICaseIngestionCounterActor>(
-            Arg.Is<ActorId>(a => a.GetId() == "tenantA:caseB"),
+            Arg.Is<ActorId>(a => a!.GetId() == "tenantA:caseB"),
             nameof(CaseIngestionCounterActor)).Returns(proxy);
 
         UpdateCaseIngestionCounterActivity activity = new(factory, NullLogger<UpdateCaseIngestionCounterActivity>.Instance);

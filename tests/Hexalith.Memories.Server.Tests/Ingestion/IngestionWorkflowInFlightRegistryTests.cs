@@ -122,7 +122,7 @@ public sealed class IngestionWorkflowInFlightRegistryTests
 
         await db.Received(1).SortedSetRemoveAsync(
             RedisIngestionWorkflowInFlightRegistry.RegistryKey,
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new[] { matchingMember })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new[] { matchingMember })),
             Arg.Any<CommandFlags>());
         await db.Received(1).HashDeleteAsync(
             RedisIngestionWorkflowInFlightRegistry.InstanceMemberLookupKey,

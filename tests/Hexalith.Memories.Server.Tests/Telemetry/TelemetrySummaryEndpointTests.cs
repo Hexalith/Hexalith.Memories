@@ -77,7 +77,7 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
         _factory.DaprClient
             .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
-                Arg.Is<string>(k => k.Contains(TenantId, StringComparison.Ordinal)),
+                Arg.Is<string>(k => k!.Contains(TenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
                 Arg.Any<System.Collections.Generic.IReadOnlyDictionary<string, string>?>(),
                 Arg.Any<CancellationToken>())
@@ -128,7 +128,7 @@ public sealed class TelemetrySummaryEndpointTests : IDisposable
         _factory.DaprClient
             .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
-                Arg.Is<string>(k => k.Contains(TenantId, StringComparison.Ordinal)),
+                Arg.Is<string>(k => k!.Contains(TenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
                 Arg.Any<System.Collections.Generic.IReadOnlyDictionary<string, string>?>(),
                 Arg.Any<CancellationToken>())

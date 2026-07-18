@@ -33,7 +33,7 @@ public class CaseIngestionCounterActorTests
 
         await state.Received().SetStateAsync(
             StateName,
-            Arg.Is<CaseIngestionCounterState>(s => s.Queued == 1 && s.LastTransitionId == "t1"),
+            Arg.Is<CaseIngestionCounterState>(s => s!.Queued == 1 && s.LastTransitionId == "t1"),
             Arg.Any<CancellationToken>());
         logger.Entries.ShouldContain(entry => entry.EventId.Id == 6307 && entry.Message.Contains("t1", StringComparison.Ordinal));
     }
@@ -97,7 +97,7 @@ public class CaseIngestionCounterActorTests
         await state.Received().SetStateAsync(
             StateName,
             Arg.Is<CaseIngestionCounterState>(s =>
-                s.Queued == 0 && s.Extracting == 0 && s.Embedding == 0 && s.Indexing == 0 && s.LastTransitionId == null),
+                s!.Queued == 0 && s.Extracting == 0 && s.Embedding == 0 && s.Indexing == 0 && s.LastTransitionId == null),
             Arg.Any<CancellationToken>());
     }
 

@@ -71,7 +71,7 @@ public class ConsistencyInspectionServiceTests
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
+                Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
                 Arg.Any<CommandFlags>())
             .Returns(CreateSyntacticEntries());
 
@@ -82,13 +82,13 @@ public class ConsistencyInspectionServiceTests
 
         result.MemoryUnitId.ShouldBe(opaqueId);
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
+            Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
             Arg.Any<CommandFlags>());
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
+            Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
             Arg.Any<CommandFlags>());
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(TestTenantId, opaqueId)),
+            Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(TestTenantId, opaqueId)),
             Arg.Any<CommandFlags>());
         builder.Received(1).BuildCheckMemoryUnitExists(opaqueId);
     }
@@ -106,13 +106,13 @@ public class ConsistencyInspectionServiceTests
             () => service.InspectAsync(TestTenantId, opaqueId, CancellationToken.None));
 
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
+            Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, opaqueId)),
             Arg.Any<CommandFlags>());
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
+            Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
             Arg.Any<CommandFlags>());
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(TestTenantId, opaqueId)),
+            Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(TestTenantId, opaqueId)),
             Arg.Any<CommandFlags>());
         builder.Received(1).BuildCheckMemoryUnitExists(opaqueId);
     }
@@ -125,7 +125,7 @@ public class ConsistencyInspectionServiceTests
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
+                Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, opaqueId)),
                 Arg.Any<CommandFlags>())
             .Returns(CreateSemanticEntries(collidingBaseId));
         IGraphQueryBuilder builder = CreateMockBuilder();
@@ -161,7 +161,7 @@ public class ConsistencyInspectionServiceTests
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, exactGuidN)),
+                Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, exactGuidN)),
                 Arg.Any<CommandFlags>())
             .Returns(CreateSyntacticEntries());
 
@@ -172,7 +172,7 @@ public class ConsistencyInspectionServiceTests
 
         result.MemoryUnitId.ShouldBe(exactGuidN);
         await redisDb.DidNotReceive().HashGetAllAsync(
-            Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, guidDAlias)),
+            Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, guidDAlias)),
             Arg.Any<CommandFlags>());
         builder.Received(1).BuildCheckMemoryUnitExists(exactGuidN);
         builder.DidNotReceive().BuildCheckMemoryUnitExists(guidDAlias);
@@ -188,11 +188,11 @@ public class ConsistencyInspectionServiceTests
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns([]);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, storedGuid)),
+                Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, storedGuid)),
                 Arg.Any<CommandFlags>())
             .Returns(CreateSyntacticEntries());
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, storedGuid)),
+                Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSemanticKey(TestTenantId, storedGuid)),
                 Arg.Any<CommandFlags>())
             .Returns([]);
 
@@ -210,10 +210,10 @@ public class ConsistencyInspectionServiceTests
 
         result.MemoryUnitId.ShouldBe(storedGuid);
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, legacyAlias)),
+            Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, legacyAlias)),
             Arg.Any<CommandFlags>());
         await redisDb.Received(1).HashGetAllAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, storedGuid)),
+            Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, storedGuid)),
             Arg.Any<CommandFlags>());
         builder.Received(1).BuildCheckMemoryUnitExists(legacyAlias);
         builder.Received(1).BuildCheckMemoryUnitExists(storedGuid);
@@ -242,7 +242,7 @@ public class ConsistencyInspectionServiceTests
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
         redisDb.HashGetAllAsync(
-                Arg.Is<RedisKey>(key => key.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, adversarialId)),
+                Arg.Is<RedisKey>(key => key!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey(TestTenantId, adversarialId)),
                 Arg.Any<CommandFlags>())
             .Returns(Task.FromException<HashEntry[]>(expected));
         IGraphQueryBuilder builder = CreateMockBuilder();

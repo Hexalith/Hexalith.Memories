@@ -130,14 +130,14 @@ public class HybridSearchServiceTests
             query, MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
 
         await syntactic.Received(1)(Arg.Is<SearchQuery>(q =>
-            q.Query == query.Query
+            q!.Query == query.Query
             && q.CaseId == query.CaseId
             && q.SourceTypeFilter == query.SourceTypeFilter
             && q.MetadataQuery == query.MetadataQuery
             && q.CloudEventSubject == query.CloudEventSubject
             && q.AttributeFilters == query.AttributeFilters));
         await semantic.Received(1)(Arg.Is<SearchQuery>(q =>
-                q.Query == query.Query
+                q!.Query == query.Query
                 && q.CaseId == query.CaseId
                 && q.SourceTypeFilter == query.SourceTypeFilter
                 && q.MetadataQuery == query.MetadataQuery
@@ -276,12 +276,12 @@ public class HybridSearchServiceTests
 
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
         semantic(
-                Arg.Is<SearchQuery>(q => q.Offset == 0 && q.MaxResults == 2),
+                Arg.Is<SearchQuery>(q => q!.Offset == 0 && q.MaxResults == 2),
                 Arg.Any<TenantEmbeddingConfig>(),
                 Arg.Any<CancellationToken>())
             .Returns(MakeSearchResult([], 4, true));
         semantic(
-                Arg.Is<SearchQuery>(q => q.Offset == 2 && q.MaxResults == 2),
+                Arg.Is<SearchQuery>(q => q!.Offset == 2 && q.MaxResults == 2),
                 Arg.Any<TenantEmbeddingConfig>(),
                 Arg.Any<CancellationToken>())
             .Returns(MakeSearchResult([MakeResult("mu-2", 0.80, "semantic")], 4, true));
@@ -294,11 +294,11 @@ public class HybridSearchServiceTests
         result.Results.Count.ShouldBe(2);
         result.Results.ShouldContain(r => r.MemoryUnitId == "mu-2");
         await semantic.Received(1)(
-            Arg.Is<SearchQuery>(q => q.Offset == 0 && q.MaxResults == 2),
+            Arg.Is<SearchQuery>(q => q!.Offset == 0 && q.MaxResults == 2),
             Arg.Any<TenantEmbeddingConfig>(),
             Arg.Any<CancellationToken>());
         await semantic.Received(1)(
-            Arg.Is<SearchQuery>(q => q.Offset == 2 && q.MaxResults == 2),
+            Arg.Is<SearchQuery>(q => q!.Offset == 2 && q.MaxResults == 2),
             Arg.Any<TenantEmbeddingConfig>(),
             Arg.Any<CancellationToken>());
     }
@@ -321,7 +321,7 @@ public class HybridSearchServiceTests
             MakeQuery(maxResults: 3, offset: 5), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
 
         await semantic.Received(1)(
-            Arg.Is<SearchQuery>(q => q.Offset == 0 && q.MaxResults == 8),
+            Arg.Is<SearchQuery>(q => q!.Offset == 0 && q.MaxResults == 8),
             Arg.Any<TenantEmbeddingConfig>(),
             Arg.Any<CancellationToken>());
 
@@ -349,7 +349,7 @@ public class HybridSearchServiceTests
             MakeQuery(maxResults: 10, offset: 150), MakeEmbeddingConfig(), null, 2, DefaultWeights, axes, CancellationToken.None);
 
         await semantic.Received(1)(
-            Arg.Is<SearchQuery>(q => q.Offset == 0 && q.MaxResults == 160),
+            Arg.Is<SearchQuery>(q => q!.Offset == 0 && q.MaxResults == 160),
             Arg.Any<TenantEmbeddingConfig>(),
             Arg.Any<CancellationToken>());
         hybridResult.TotalCount.ShouldBe(160);

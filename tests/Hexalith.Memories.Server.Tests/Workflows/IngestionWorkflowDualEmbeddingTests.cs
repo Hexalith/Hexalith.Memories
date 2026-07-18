@@ -65,7 +65,7 @@ public class IngestionWorkflowDualEmbeddingTests
         // Second GenerateEmbeddingActivity call carries the NL content kind.
         await context.Received().CallActivityAsync<EmbeddingResult>(
             nameof(GenerateEmbeddingActivity),
-            Arg.Is<EmbeddingInput>(e => e.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+            Arg.Is<EmbeddingInput>(e => e!.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -97,7 +97,7 @@ public class IngestionWorkflowDualEmbeddingTests
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
             Arg.Is<IndexInput>(i =>
-                i.Metadata.ContainsKey("event.naturalLanguageEmbeddingStatus")
+                i!.Metadata.ContainsKey("event.naturalLanguageEmbeddingStatus")
                 && i.Metadata["event.naturalLanguageEmbeddingStatus"].Value == NaturalLanguageEmbeddingStatus.Queued.ToString()),
             Arg.Any<WorkflowTaskOptions>());
 
@@ -166,7 +166,7 @@ public class IngestionWorkflowDualEmbeddingTests
 
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
-            Arg.Is<IndexInput>(i => !i.Metadata.ContainsKey("event.naturalLanguageDescription")),
+            Arg.Is<IndexInput>(i => !i!.Metadata.ContainsKey("event.naturalLanguageDescription")),
             Arg.Any<WorkflowTaskOptions>());
 
         IngestionInput input2 = CreateEventInput() with
@@ -183,7 +183,7 @@ public class IngestionWorkflowDualEmbeddingTests
         await context2.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
             Arg.Is<IndexInput>(i =>
-                i.Metadata.ContainsKey("event.naturalLanguageDescription")
+                i!.Metadata.ContainsKey("event.naturalLanguageDescription")
                 && i.Metadata["event.naturalLanguageDescription"].Value == "A business action happened."),
             Arg.Any<WorkflowTaskOptions>());
     }
@@ -204,7 +204,7 @@ public class IngestionWorkflowDualEmbeddingTests
                 string.Empty));
         context.CallActivityAsync<EmbeddingResult>(
                 nameof(GenerateEmbeddingActivity),
-                Arg.Is<EmbeddingInput>(i => i.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+                Arg.Is<EmbeddingInput>(i => i!.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(
                 Task.FromException<EmbeddingResult>(rateLimitFailure),
@@ -220,8 +220,8 @@ public class IngestionWorkflowDualEmbeddingTests
         await context.Received(1).CreateTimer(TimeSpan.FromSeconds(45), CancellationToken.None);
         await context.Received(2).CallActivityAsync<EmbeddingResult>(
             nameof(GenerateEmbeddingActivity),
-            Arg.Is<EmbeddingInput>(i => i.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
-            Arg.Is<WorkflowTaskOptions>(options => options.RetryPolicy == null));
+            Arg.Is<EmbeddingInput>(i => i!.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+            Arg.Is<WorkflowTaskOptions>(options => options!.RetryPolicy == null));
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexNaturalLanguageSemanticActivity),
             Arg.Any<NaturalLanguageIndexInput>(),
@@ -249,7 +249,7 @@ public class IngestionWorkflowDualEmbeddingTests
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
             Arg.Is<IndexInput>(i =>
-                i.Metadata.ContainsKey("event.naturalLanguageDescription")
+                i!.Metadata.ContainsKey("event.naturalLanguageDescription")
                 && i.Metadata["event.naturalLanguageDescription"].Value == "A business action happened."),
             Arg.Any<WorkflowTaskOptions>());
     }
@@ -317,7 +317,7 @@ public class IngestionWorkflowDualEmbeddingTests
             }));
         context.CallActivityAsync<EmbeddingResult>(
                 nameof(GenerateEmbeddingActivity),
-                Arg.Is<EmbeddingInput>(i => i.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+                Arg.Is<EmbeddingInput>(i => i!.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(_ => Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "openai", 3)
             {

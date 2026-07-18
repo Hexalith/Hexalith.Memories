@@ -33,11 +33,11 @@ public sealed class TenantEmbeddingConfigProviderTests
 
         IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
         actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
-                Arg.Is<ActorId>(id => id.ToString() == "tenant-a"),
+                Arg.Is<ActorId>(id => id!.ToString() == "tenant-a"),
                 nameof(TenantConfigurationActor))
             .Returns(tenantAActor);
         actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
-                Arg.Is<ActorId>(id => id.ToString() == "tenant-b"),
+                Arg.Is<ActorId>(id => id!.ToString() == "tenant-b"),
                 nameof(TenantConfigurationActor))
             .Returns(tenantBActor);
 
@@ -134,7 +134,7 @@ public sealed class TenantEmbeddingConfigProviderTests
     {
         IActorProxyFactory actorProxyFactory = Substitute.For<IActorProxyFactory>();
         actorProxyFactory.CreateActorProxy<ITenantConfigurationActor>(
-                Arg.Is<ActorId>(id => id.ToString() == tenantId),
+                Arg.Is<ActorId>(id => id!.ToString() == tenantId),
                 nameof(TenantConfigurationActor))
             .Returns(actor);
         return actorProxyFactory;

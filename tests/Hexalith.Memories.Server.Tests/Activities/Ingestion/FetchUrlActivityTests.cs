@@ -76,7 +76,7 @@ public class FetchUrlActivityTests
             "tenant-a",
             "mu-1",
             WorkflowPayloadKind.FetchedUrlBytes,
-            Arg.Is<ReadOnlyMemory<byte>>(payload => payload.ToArray().SequenceEqual(fetchedBytes)),
+            Arg.Is<ReadOnlyMemory<byte>>(payload => payload!.ToArray().SequenceEqual(fetchedBytes)),
             null,
             Arg.Any<CancellationToken>());
     }

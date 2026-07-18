@@ -69,13 +69,13 @@ public sealed class RestoreReindexUnitActivityTests
             3,
             CancellationToken.None);
         await client.Received(1).GenerateBatchAsync(
-            Arg.Is<IReadOnlyList<string>>(values => values.Count == 1 && values[0] == "hello world"),
+            Arg.Is<IReadOnlyList<string>>(values => values!.Count == 1 && values[0] == "hello world"),
             "acme",
             Arg.Any<TenantEmbeddingConfig>(),
             CancellationToken.None);
         await db.Received(1).HashSetAsync(
             "acme:vec:mu-1:0",
-            Arg.Is<HashEntry[]>(entries => HasExactSemanticFields(entries)));
+            Arg.Is<HashEntry[]>(entries => HasExactSemanticFields(entries!)));
     }
 
     [Fact]

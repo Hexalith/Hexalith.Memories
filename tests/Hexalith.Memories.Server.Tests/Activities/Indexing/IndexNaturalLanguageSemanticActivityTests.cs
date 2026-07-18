@@ -40,7 +40,7 @@ public class IndexNaturalLanguageSemanticActivityTests
         result.TenantId.ShouldBe("tenant-a");
 
         await db.Received(1).HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-001")),
+            Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-001")),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
     }

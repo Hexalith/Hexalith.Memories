@@ -51,7 +51,7 @@ public sealed class IngestionPayloadClaimCheckTests
             "test-tenant",
             "mu-1",
             WorkflowPayloadKind.SourceBytes,
-            Arg.Is<ReadOnlyMemory<byte>>(payload => payload.ToArray().SequenceEqual(contentBytes)),
+            Arg.Is<ReadOnlyMemory<byte>>(payload => payload!.ToArray().SequenceEqual(contentBytes)),
             "source",
             Arg.Any<CancellationToken>());
     }

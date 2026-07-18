@@ -44,8 +44,8 @@ public class IndexSemanticActivityTests
         result.TenantId.ShouldBe(input.TenantId);
 
         await db.Received(1).HashSetAsync(
-            Arg.Is<RedisKey>(k => k.ToString() == IndexSchemaDefinitions.BuildSemanticKey("test-tenant", "test-mu-001")),
-            Arg.Is<HashEntry[]>(entries => HasEntry(entries, "tenantId", "test-tenant")),
+            Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSemanticKey("test-tenant", "test-mu-001")),
+            Arg.Is<HashEntry[]>(entries => HasEntry(entries!, "tenantId", "test-tenant")),
             Arg.Any<CommandFlags>());
     }
 
@@ -205,7 +205,7 @@ public class IndexSemanticActivityTests
 
         db.Received().Execute(
             "FT.ALTER",
-            Arg.Is<object[]>(args => args.Length == 5
+            Arg.Is<object[]>(args => args!.Length == 5
                 && args[0].ToString() == IndexSchemaDefinitions.GetSemanticIndexName("test-tenant")
                 && args[1].ToString() == "SCHEMA"
                 && args[2].ToString() == "ADD"

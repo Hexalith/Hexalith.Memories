@@ -113,7 +113,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         await db.Received(1).HashSetAsync(
             FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
             "mu-1",
-            Arg.Is<RedisValue>(value => value.ToString().Contains("\"memoryUnitId\":\"mu-1\"", StringComparison.Ordinal)),
+            Arg.Is<RedisValue>(value => value!.ToString().Contains("\"memoryUnitId\":\"mu-1\"", StringComparison.Ordinal)),
             Arg.Any<When>(),
             Arg.Any<CommandFlags>());
         CountSortedSetAddCalls(db, FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"), "mu-1")
@@ -157,7 +157,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
             .Returns([new RedisValue("mu-1"), new RedisValue("mu-2")]);
         db.HashGetAsync(
             FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "mu-1", "mu-2" })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "mu-1", "mu-2" })),
             Arg.Any<CommandFlags>())
             .Returns([new RedisValue("not json"), new RedisValue(FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(valid))]);
         FailedNaturalLanguageEmbeddingRegistry registry = CreateRegistry(db);
@@ -169,11 +169,11 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         records[0].MemoryUnitId.ShouldBe("mu-2");
         await db.Received(1).SortedSetRemoveAsync(
             FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "mu-1" })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "mu-1" })),
             Arg.Any<CommandFlags>());
         await db.Received(1).HashDeleteAsync(
             FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "mu-1" })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "mu-1" })),
             Arg.Any<CommandFlags>());
     }
 
@@ -229,7 +229,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         _ = tx.Received(1).SortedSetRemoveAsync(
             FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"),
             Arg.Is<RedisValue[]>(values =>
-                values.SequenceEqual(new RedisValue[] { "mu-1", legacyJson })),
+                values!.SequenceEqual(new RedisValue[] { "mu-1", legacyJson })),
             Arg.Any<CommandFlags>());
         _ = tx.Received(1).HashDeleteAsync(
             FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
@@ -406,7 +406,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
             .Returns([new RedisValue("old-mu")]);
         db.HashGetAsync(
             FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "old-mu" })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "old-mu" })),
             Arg.Any<CommandFlags>())
             .Returns([new RedisValue(FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(oldRecord))]);
         FailedNaturalLanguageEmbeddingRegistry registry = CreateRegistry(
@@ -417,16 +417,16 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
 
         await db.Received(1).SortedSetRemoveAsync(
             FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "old-mu" })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "old-mu" })),
             Arg.Any<CommandFlags>());
         await db.Received(1).HashDeleteAsync(
             FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "old-mu" })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "old-mu" })),
             Arg.Any<CommandFlags>());
         await db.Received(1).HashSetAsync(
             FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey("tenant-a"),
             "old-mu",
-            Arg.Is<RedisValue>(value => value.ToString().Contains("\"memoryUnitId\":\"old-mu\"", StringComparison.Ordinal)),
+            Arg.Is<RedisValue>(value => value!.ToString().Contains("\"memoryUnitId\":\"old-mu\"", StringComparison.Ordinal)),
             Arg.Any<When>(),
             Arg.Any<CommandFlags>());
         CountSortedSetAddCalls(db, FailedNaturalLanguageEmbeddingRegistry.DeadKey("tenant-a"), "old-mu")
@@ -466,11 +466,11 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         dead.ShouldBeTrue();
         await db.Received(1).SortedSetRemoveAsync(
             FailedNaturalLanguageEmbeddingRegistry.DeadKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "old-mu" })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "old-mu" })),
             Arg.Any<CommandFlags>());
         await db.Received(1).HashDeleteAsync(
             FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "old-mu" })),
+            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "old-mu" })),
             Arg.Any<CommandFlags>());
     }
 

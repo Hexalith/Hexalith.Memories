@@ -154,20 +154,20 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<ExtractionResult>(
             nameof(ExtractContentActivity),
             Arg.Is<ExtractionInput>(i =>
-                i.ContentBytes.Length == 0
+                i!.ContentBytes.Length == 0
                 && i.PayloadReference == sourceReference
                 && i.MemoryUnitId == memoryUnitId),
             Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<ChunkEmbeddingBatchResult>(
             nameof(GenerateChunkEmbeddingsActivity),
             Arg.Is<EmbeddingInput>(i =>
-                i.ContentText == string.Empty
+                i!.ContentText == string.Empty
                 && i.ContentReference == extractedReference),
             Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
             Arg.Is<IndexInput>(i =>
-                i.Content == string.Empty
+                i!.Content == string.Empty
                 && i.ContentReference == extractedReference
                 && i.EmbeddingVector.Length == 0
                 && i.EmbeddingVectorReference == chunkVectorReference),
@@ -175,7 +175,7 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSemanticChunksActivity),
             Arg.Is<SemanticChunkIndexInput>(i =>
-                i.Chunks[0].Text == string.Empty
+                i!.Chunks[0].Text == string.Empty
                 && i.Chunks[0].TextReference == chunkTextReference
                 && i.Chunks[0].Vector.Length == 0
                 && i.Chunks[0].VectorReference == chunkVectorReference),
@@ -183,7 +183,7 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(CleanupWorkflowPayloadsActivity),
             Arg.Is<CleanupWorkflowPayloadsInput>(i =>
-                i.References.Contains(sourceReference)
+                i!.References.Contains(sourceReference)
                 && i.References.Contains(extractedReference)
                 && i.References.Contains(chunkTextReference)
                 && i.References.Contains(chunkVectorReference)),
@@ -204,11 +204,11 @@ public class IngestionWorkflowTests
         result.MemoryUnitId.ShouldBe(TestGuid.ToString());
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
-            Arg.Is<IndexInput>(index => index.MemoryUnitId == TestGuid.ToString()),
+            Arg.Is<IndexInput>(index => index!.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
-            Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == TestGuid.ToString()),
+            Arg.Is<DedupKeyInput>(dedup => dedup!.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -226,11 +226,11 @@ public class IngestionWorkflowTests
         result.MemoryUnitId.ShouldBe("01KPWY6F9QVEA2H6TT8Z1VJX6P");
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
-            Arg.Is<IndexInput>(index => index.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
+            Arg.Is<IndexInput>(index => index!.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
             Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
-            Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
+            Arg.Is<DedupKeyInput>(dedup => dedup!.MemoryUnitId == "01KPWY6F9QVEA2H6TT8Z1VJX6P"),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -254,11 +254,11 @@ public class IngestionWorkflowTests
         result.MemoryUnitId.ShouldBe(instanceId);
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
-            Arg.Is<IndexInput>(index => index.MemoryUnitId == instanceId),
+            Arg.Is<IndexInput>(index => index!.MemoryUnitId == instanceId),
             Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
-            Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == instanceId),
+            Arg.Is<DedupKeyInput>(dedup => dedup!.MemoryUnitId == instanceId),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -283,7 +283,7 @@ public class IngestionWorkflowTests
         result.MemoryUnitId.ShouldNotBe(TestGuid.ToString());
         await context.Received().CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
-            Arg.Is<DedupKeyInput>(dedup => dedup.MemoryUnitId == dedupInstanceId),
+            Arg.Is<DedupKeyInput>(dedup => dedup!.MemoryUnitId == dedupInstanceId),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -717,7 +717,7 @@ public class IngestionWorkflowTests
 
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
-            Arg.Is<IndexInput>(i => i.EmbeddingModel == "gemini-embedding-001"),
+            Arg.Is<IndexInput>(i => i!.EmbeddingModel == "gemini-embedding-001"),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -753,7 +753,7 @@ public class IngestionWorkflowTests
 
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexSyntacticActivity),
-            Arg.Is<IndexInput>(i => i.EmbeddingModel == "gemini-embedding-001"),
+            Arg.Is<IndexInput>(i => i!.EmbeddingModel == "gemini-embedding-001"),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -778,7 +778,7 @@ public class IngestionWorkflowTests
         await context.Received(2).CallActivityAsync<ChunkEmbeddingBatchResult>(
             nameof(GenerateChunkEmbeddingsActivity),
             Arg.Any<EmbeddingInput>(),
-            Arg.Is<WorkflowTaskOptions>(options => options.RetryPolicy == null));
+            Arg.Is<WorkflowTaskOptions>(options => options!.RetryPolicy == null));
         await context.Received(1).CreateTimer(TimeSpan.FromSeconds(90), CancellationToken.None);
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(PersistFailedUnitActivity),
@@ -829,7 +829,7 @@ public class IngestionWorkflowTests
         await context.DidNotReceive().CreateTimer(Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>());
         await context.Received().CallActivityAsync<bool>(
             nameof(PersistFailedUnitActivity),
-            Arg.Is<FailedUnitInput>(f => f.Stage == "embedding"),
+            Arg.Is<FailedUnitInput>(f => f!.Stage == "embedding"),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -866,10 +866,10 @@ public class IngestionWorkflowTests
         await context.Received(6).CallActivityAsync<ChunkEmbeddingBatchResult>(
             nameof(GenerateChunkEmbeddingsActivity),
             Arg.Any<EmbeddingInput>(),
-            Arg.Is<WorkflowTaskOptions>(options => options.RetryPolicy == null));
+            Arg.Is<WorkflowTaskOptions>(options => options!.RetryPolicy == null));
         await context.Received().CallActivityAsync<bool>(
             nameof(PersistFailedUnitActivity),
-            Arg.Is<FailedUnitInput>(f => f.Stage == "embedding"),
+            Arg.Is<FailedUnitInput>(f => f!.Stage == "embedding"),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -886,7 +886,7 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<IndexResult>(
             nameof(IndexGraphActivity),
             Arg.Is<IndexInput>(i =>
-                i.IngestedBy == input.IngestedBy &&
+                i!.IngestedBy == input.IngestedBy &&
                 i.IngestedAt == new DateTimeOffset(TestTimestamp, TimeSpan.Zero)),
             Arg.Any<WorkflowTaskOptions>());
     }
@@ -951,7 +951,7 @@ public class IngestionWorkflowTests
         await context.Received(1).CallActivityAsync<bool>(
             nameof(CleanupWorkflowPayloadsActivity),
             Arg.Is<CleanupWorkflowPayloadsInput>(i =>
-                i.TenantId == input.TenantId
+                i!.TenantId == input.TenantId
                 && i.MemoryUnitId == memoryUnitId
                 && i.References.Count == 1
                 && i.References[0] == sourceReference),
@@ -973,7 +973,7 @@ public class IngestionWorkflowTests
 
         await context.Received().CallActivityAsync<IdempotencyResult>(
             nameof(CheckIdempotencyActivity),
-            Arg.Is<IdempotencyInput>(i => i.IdempotencyToken == "idem-xyz"),
+            Arg.Is<IdempotencyInput>(i => i!.IdempotencyToken == "idem-xyz"),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -1015,11 +1015,11 @@ public class IngestionWorkflowTests
         // pointing at the SAME MemoryUnitId.
         await context.Received(1).CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
-            Arg.Is<DedupKeyInput>(d => d.DedupKey == sourceKey && d.MemoryUnitId == TestGuid.ToString()),
+            Arg.Is<DedupKeyInput>(d => d!.DedupKey == sourceKey && d.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
         await context.Received(1).CallActivityAsync<DedupKeySaveResult>(
             nameof(SaveDedupKeyActivity),
-            Arg.Is<DedupKeyInput>(d => d.DedupKey == tokenKey && d.MemoryUnitId == TestGuid.ToString()),
+            Arg.Is<DedupKeyInput>(d => d!.DedupKey == tokenKey && d.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -1065,16 +1065,16 @@ public class IngestionWorkflowTests
         result.NaturalLanguageEmbeddingStatus.ShouldBe(NaturalLanguageEmbeddingStatus.NotApplicable);
         context.Received().SetCustomStatus("duplicate");
         await context.Received().CallActivityAsync<bool>(
-            nameof(CleanupSyntacticActivity), Arg.Is<CleanupInput>(i => i.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
+            nameof(CleanupSyntacticActivity), Arg.Is<CleanupInput>(i => i!.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<bool>(
-            nameof(CleanupSemanticActivity), Arg.Is<CleanupInput>(i => i.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
+            nameof(CleanupSemanticActivity), Arg.Is<CleanupInput>(i => i!.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
         await context.Received().CallActivityAsync<bool>(
-            nameof(CleanupGraphActivity), Arg.Is<CleanupInput>(i => i.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
+            nameof(CleanupGraphActivity), Arg.Is<CleanupInput>(i => i!.MemoryUnitId == TestGuid.ToString()), Arg.Any<WorkflowTaskOptions>());
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>());
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(RecordCaseActivityActivity),
-            Arg.Is<CaseActivityInput>(i => i.EventType == CaseActivityEventType.MemoryUnitIngested));
+            Arg.Is<CaseActivityInput>(i => i!.EventType == CaseActivityEventType.MemoryUnitIngested));
     }
 
     [Fact]
@@ -1090,12 +1090,12 @@ public class IngestionWorkflowTests
         SetupHappyPathActivities(context, input);
         context.CallActivityAsync<DedupKeySaveResult>(
                 nameof(SaveDedupKeyActivity),
-                Arg.Is<DedupKeyInput>(i => i.DedupKey == sourceKey),
+                Arg.Is<DedupKeyInput>(i => i!.DedupKey == sourceKey),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(DedupKeySaveResult.Saved(TestGuid.ToString()));
         context.CallActivityAsync<DedupKeySaveResult>(
                 nameof(SaveDedupKeyActivity),
-                Arg.Is<DedupKeyInput>(i => i.DedupKey == tokenKey),
+                Arg.Is<DedupKeyInput>(i => i!.DedupKey == tokenKey),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(DedupKeySaveResult.DuplicateExisting("mu-token-winner"));
         context.CallActivityAsync<bool>(nameof(ReleaseDedupKeyIfOwnedActivity), Arg.Any<DedupKeyInput>(), Arg.Any<WorkflowTaskOptions>())
@@ -1114,7 +1114,7 @@ public class IngestionWorkflowTests
         result.MemoryUnitId.ShouldBe("mu-token-winner");
         await context.Received(1).CallActivityAsync<bool>(
             nameof(ReleaseDedupKeyIfOwnedActivity),
-            Arg.Is<DedupKeyInput>(i => i.DedupKey == sourceKey && i.MemoryUnitId == TestGuid.ToString()),
+            Arg.Is<DedupKeyInput>(i => i!.DedupKey == sourceKey && i.MemoryUnitId == TestGuid.ToString()),
             Arg.Any<WorkflowTaskOptions>());
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(PersistFailedUnitActivity), Arg.Any<FailedUnitInput>(), Arg.Any<WorkflowTaskOptions>());
@@ -1148,7 +1148,7 @@ public class IngestionWorkflowTests
 
         await context.Received().CallActivityAsync<ExtractionResult>(
             nameof(ExtractContentActivity),
-            Arg.Is<ExtractionInput>(ei => ei.TenantId == input.TenantId),
+            Arg.Is<ExtractionInput>(ei => ei!.TenantId == input.TenantId),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -1171,7 +1171,7 @@ public class IngestionWorkflowTests
 
         await context.Received().CallActivityAsync<UrlFetchResult>(
             nameof(FetchUrlActivity),
-            Arg.Is<FetchUrlInput>(fi => fi.TenantId == input.TenantId),
+            Arg.Is<FetchUrlInput>(fi => fi!.TenantId == input.TenantId),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -1406,7 +1406,7 @@ public class IngestionWorkflowTests
             });
         context.CallActivityAsync<EmbeddingResult>(
                 nameof(GenerateEmbeddingActivity),
-                Arg.Is<EmbeddingInput>(i => i.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
+                Arg.Is<EmbeddingInput>(i => i!.ContentKind == EmbeddingContentKind.NaturalLanguageDescription),
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(_ =>
             {
@@ -1522,7 +1522,7 @@ public class IngestionWorkflowTests
             nameof(ExtractContentActivity),
             Arg.Any<ExtractionInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
-                options.RetryPolicy != null
+                options!.RetryPolicy != null
                 && options.RetryPolicy.MaxNumberOfAttempts == 5
                 && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(2)
                 && options.RetryPolicy.BackoffCoefficient == 1.5
@@ -1531,7 +1531,7 @@ public class IngestionWorkflowTests
             nameof(GenerateChunkEmbeddingsActivity),
             Arg.Any<EmbeddingInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
-                options.RetryPolicy == null));
+                options!.RetryPolicy == null));
     }
 
     [Fact]
@@ -1579,7 +1579,7 @@ public class IngestionWorkflowTests
             nameof(ExtractContentActivity),
             Arg.Any<ExtractionInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
-                options.RetryPolicy != null
+                options!.RetryPolicy != null
                 && options.RetryPolicy.MaxNumberOfAttempts == 4
                 && options.RetryPolicy.FirstRetryInterval == TimeSpan.FromSeconds(7)
                 && options.RetryPolicy.BackoffCoefficient == 1.25
@@ -1664,7 +1664,7 @@ public class IngestionWorkflowTests
             nameof(GenerateChunkEmbeddingsActivity),
             Arg.Any<EmbeddingInput>(),
             Arg.Is<WorkflowTaskOptions>(options =>
-                options.RetryPolicy == null));
+                options!.RetryPolicy == null));
         await context.Received(4).CreateTimer(Arg.Any<TimeSpan>(), CancellationToken.None);
     }
 
@@ -1708,10 +1708,10 @@ public class IngestionWorkflowTests
 
         await context.Received().CallActivityAsync<bool>(
             nameof(RecordCaseActivityActivity),
-            Arg.Is<CaseActivityInput>(c => c.EventType == CaseActivityEventType.IngestionFailed));
+            Arg.Is<CaseActivityInput>(c => c!.EventType == CaseActivityEventType.IngestionFailed));
         await context.Received().CallActivityAsync<bool>(
             nameof(PersistFailedUnitActivity),
-            Arg.Is<FailedUnitInput>(f => f.Stage == "indexing"),
+            Arg.Is<FailedUnitInput>(f => f!.Stage == "indexing"),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -1809,7 +1809,7 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(PersistFailedUnitActivity),
             Arg.Is<FailedUnitInput>(f =>
-                f.SourcePayloadReference == sourceReference
+                f!.SourcePayloadReference == sourceReference
                 && f.Metadata != null
                 && f.Metadata["source"].Value == "upload"
                 && f.CausationId == "cause-1"
@@ -1818,7 +1818,7 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(CleanupWorkflowPayloadsActivity),
             Arg.Is<CleanupWorkflowPayloadsInput>(i =>
-                !i.References.Contains(sourceReference)
+                !i!.References.Contains(sourceReference)
                 && i.References.Contains(extractedReference)
                 && i.References.Contains(chunkTextReference)
                 && i.References.Contains(chunkVectorReference)),
@@ -1928,7 +1928,7 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(PersistFailedUnitActivity),
             Arg.Is<FailedUnitInput>(f =>
-                f.MemoryUnitId == memoryUnitId
+                f!.MemoryUnitId == memoryUnitId
                 && f.SourceType == SourceType.Event
                 && f.SourcePayloadReference == sourceReference
                 && f.Metadata != null
@@ -1937,7 +1937,7 @@ public class IngestionWorkflowTests
         await context.Received().CallActivityAsync<bool>(
             nameof(CleanupWorkflowPayloadsActivity),
             Arg.Is<CleanupWorkflowPayloadsInput>(i =>
-                i.MemoryUnitId == memoryUnitId
+                i!.MemoryUnitId == memoryUnitId
                 && !i.References.Contains(sourceReference)
                 && i.References.Contains(extractedReference)
                 && i.References.Contains(chunkTextReference)
@@ -1996,7 +1996,7 @@ public class IngestionWorkflowTests
                 Arg.Any<WorkflowTaskOptions>())
             .Returns(ci =>
             {
-                capturedTransitions.Add(ci.Arg<CounterTransitionInput>());
+                capturedTransitions.Add(ci.Arg<CounterTransitionInput>()!);
                 return Task.FromResult(true);
             });
 

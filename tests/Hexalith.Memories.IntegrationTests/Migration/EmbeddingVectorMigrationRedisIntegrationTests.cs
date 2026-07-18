@@ -115,7 +115,7 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             (await db.KeyExistsAsync(ActiveMarkerKey(tenantB))).ShouldBeFalse();
             (await AnyKeyWithPrefixAsync(IndexSchemaDefinitions.GetSemanticStagingKeyPrefix(tenantB, ownerId))).ShouldBeFalse();
             (await AnyKeyWithPrefixAsync(IndexSchemaDefinitions.GetNaturalLanguageSemanticStagingKeyPrefix(tenantB, ownerId))).ShouldBeFalse();
-            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == target.Dimensions), forceReindex: false);
+            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c!.Dimensions == target.Dimensions), forceReindex: false);
         }
         finally
         {
@@ -292,8 +292,8 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             (await db.KeyExistsAsync(LockKey(tenantId))).ShouldBeFalse();
             Dictionary<string, string> marker = await ReadHashAsync(db, ActiveMarkerKey(tenantId));
             marker["status"].ShouldBe(MigrationMarkerStatus.Aborted);
-            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == target.Dimensions), forceReindex: false);
-            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == 768), forceReindex: false);
+            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c!.Dimensions == target.Dimensions), forceReindex: false);
+            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c!.Dimensions == 768), forceReindex: false);
         }
         finally
         {
@@ -349,8 +349,8 @@ public sealed class EmbeddingVectorMigrationRedisIntegrationTests
             (await db.KeyExistsAsync(LockKey(tenantId))).ShouldBeFalse();
             Dictionary<string, string> marker = await ReadHashAsync(db, ActiveMarkerKey(tenantId));
             marker["status"].ShouldBe(MigrationMarkerStatus.RolledBack);
-            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == target.Dimensions), forceReindex: false);
-            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c.Dimensions == 768), forceReindex: false);
+            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c!.Dimensions == target.Dimensions), forceReindex: false);
+            await actor.Received(1).SetEmbeddingConfigAsync(Arg.Is<TenantEmbeddingConfig>(c => c!.Dimensions == 768), forceReindex: false);
         }
         finally
         {

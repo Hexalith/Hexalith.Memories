@@ -58,7 +58,7 @@ public class GenerateChunkEmbeddingsActivityTests
         result.Chunks[1].Text.ShouldBe("ijklmnop");
         result.Chunks[1].Vector.ShouldBe([0f, 1f, 0f]);
         await embeddingClient.Received(1).GenerateBatchAsync(
-            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "abcdefgh", "ijklmnop" })),
+            Arg.Is<IReadOnlyList<string>>(texts => texts!.SequenceEqual(new[] { "abcdefgh", "ijklmnop" })),
             "tenant-a",
             config,
             Arg.Any<CancellationToken>());
@@ -94,12 +94,12 @@ public class GenerateChunkEmbeddingsActivityTests
 
         result.Chunks.Select(static c => c.Text).ShouldBe(["abcd", "efgh", "ijkl"]);
         await embeddingClient.Received(1).GenerateBatchAsync(
-            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "abcd", "efgh" })),
+            Arg.Is<IReadOnlyList<string>>(texts => texts!.SequenceEqual(new[] { "abcd", "efgh" })),
             "tenant-a",
             config,
             Arg.Any<CancellationToken>());
         await embeddingClient.Received(1).GenerateBatchAsync(
-            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "ijkl" })),
+            Arg.Is<IReadOnlyList<string>>(texts => texts!.SequenceEqual(new[] { "ijkl" })),
             "tenant-a",
             config,
             Arg.Any<CancellationToken>());
@@ -174,7 +174,7 @@ public class GenerateChunkEmbeddingsActivityTests
         chunk.TextReference.ShouldBe(textReference);
         chunk.VectorReference.ShouldBe(vectorReference);
         await embeddingClient.Received(1).GenerateBatchAsync(
-            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "abcdefgh" })),
+            Arg.Is<IReadOnlyList<string>>(texts => texts!.SequenceEqual(new[] { "abcdefgh" })),
             "tenant-a",
             config,
             Arg.Any<CancellationToken>());
@@ -243,12 +243,12 @@ public class GenerateChunkEmbeddingsActivityTests
         }
 
         await embeddingClient.Received(1).GenerateBatchAsync(
-            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "abcd", "efgh" })),
+            Arg.Is<IReadOnlyList<string>>(texts => texts!.SequenceEqual(new[] { "abcd", "efgh" })),
             "tenant-a",
             config,
             Arg.Any<CancellationToken>());
         await embeddingClient.Received(1).GenerateBatchAsync(
-            Arg.Is<IReadOnlyList<string>>(texts => texts.SequenceEqual(new[] { "ijkl" })),
+            Arg.Is<IReadOnlyList<string>>(texts => texts!.SequenceEqual(new[] { "ijkl" })),
             "tenant-a",
             config,
             Arg.Any<CancellationToken>());

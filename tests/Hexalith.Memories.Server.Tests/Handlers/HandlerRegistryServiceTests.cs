@@ -245,7 +245,7 @@ public sealed class HandlerRegistryServiceTests
         client
             .GetStateAsync<StoredTenantRegistryEntry?>(
                 Arg.Any<string>(),
-                Arg.Is<string>(s => s.Contains(tenantId, StringComparison.Ordinal)),
+                Arg.Is<string>(s => s!.Contains(tenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
                 Arg.Any<IReadOnlyDictionary<string, string>>(),
                 Arg.Any<CancellationToken>())

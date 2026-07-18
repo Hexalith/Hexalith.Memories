@@ -107,7 +107,7 @@ public class RestoreDataPlaneActivityTests
         await fixture.TargetGuard.Received(1).EnsureCleanAsync("acme", null, CancellationToken.None);
         await fixture.StagingStore.Received().AppendReindexIdsAsync(
             Arg.Any<string>(),
-            Arg.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "mu-1", "mu-2" })),
+            Arg.Is<IReadOnlyList<string>>(ids => ids!.SequenceEqual(new[] { "mu-1", "mu-2" })),
             CancellationToken.None);
     }
 
@@ -219,7 +219,7 @@ public class RestoreDataPlaneActivityTests
 
         exception.Code.ShouldBe("RESTORE_LEASE_LOST");
         await fixture.RedisDatabase.DidNotReceive().HashSetAsync(
-            Arg.Is<RedisKey>(key => key.ToString().StartsWith("acme:mu:", StringComparison.Ordinal)),
+            Arg.Is<RedisKey>(key => key!.ToString().StartsWith("acme:mu:", StringComparison.Ordinal)),
             Arg.Any<HashEntry[]>(),
             Arg.Any<CommandFlags>());
     }

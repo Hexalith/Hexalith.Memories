@@ -43,7 +43,7 @@ public class CaseCreationProjectionWorkflowTests
             context.CallActivityAsync<bool>(
                 nameof(RecordCaseActivityActivity),
                 Arg.Is<CaseActivityInput>(i =>
-                    i.TenantId == Input.TenantId
+                    i!.TenantId == Input.TenantId
                     && i.CaseId == Input.CaseId
                     && i.EventType == CaseActivityEventType.CaseCreated),
                 Arg.Any<WorkflowTaskOptions>());
@@ -86,7 +86,7 @@ public class CaseCreationProjectionWorkflowTests
 
         await context.Received(1).CallActivityAsync<bool>(
             nameof(CleanupCaseProjectionActivity),
-            Arg.Is<CaseProjectionCleanupInput>(i => i.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
+            Arg.Is<CaseProjectionCleanupInput>(i => i!.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
             Arg.Any<WorkflowTaskOptions>());
     }
 
@@ -110,7 +110,7 @@ public class CaseCreationProjectionWorkflowTests
         // surfaces the failed instance instead of leaving a partially projected case.
         await context.Received(1).CallActivityAsync<bool>(
             nameof(CleanupCaseProjectionActivity),
-            Arg.Is<CaseProjectionCleanupInput>(i => i.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
+            Arg.Is<CaseProjectionCleanupInput>(i => i!.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
             Arg.Any<WorkflowTaskOptions>());
     }
 

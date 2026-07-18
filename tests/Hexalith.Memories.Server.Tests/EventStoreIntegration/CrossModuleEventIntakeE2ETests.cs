@@ -52,12 +52,12 @@ public sealed class CrossModuleEventIntakeE2ETests : System.IDisposable
         // accepts and differentiates both module streams end-to-end.
         _factory.Router
             .ResolveAsync(
-                Arg.Is<CloudEventEnvelope>(e => e.Source.StartsWith("hexalith/tenants", StringComparison.OrdinalIgnoreCase)),
+                Arg.Is<CloudEventEnvelope>(e => e!.Source.StartsWith("hexalith/tenants", StringComparison.OrdinalIgnoreCase)),
                 Arg.Any<CancellationToken>())
             .Returns(TenantEventRouteResolution.Accepted(new TenantEventRoute("tenant-events", "tenant-events:case", "Tenants")));
         _factory.Router
             .ResolveAsync(
-                Arg.Is<CloudEventEnvelope>(e => e.Source.StartsWith("hexalith/parties", StringComparison.OrdinalIgnoreCase)),
+                Arg.Is<CloudEventEnvelope>(e => e!.Source.StartsWith("hexalith/parties", StringComparison.OrdinalIgnoreCase)),
                 Arg.Any<CancellationToken>())
             .Returns(TenantEventRouteResolution.Accepted(new TenantEventRoute("party-events", "party-events:case", "Parties")));
         _factory.PreflightDedup

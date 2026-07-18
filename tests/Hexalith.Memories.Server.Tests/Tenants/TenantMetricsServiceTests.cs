@@ -282,12 +282,12 @@ public class TenantMetricsServiceTests
                 RedisResult.Create(new RedisValue("num_docs")),
                 RedisResult.Create(new RedisValue(docs.ToString(CultureInfo.InvariantCulture))),
             ]);
-            db.ExecuteAsync("FT.INFO", Arg.Is<object[]>(a => a.Length > 0 && (string)a[0] == indexName))
+            db.ExecuteAsync("FT.INFO", Arg.Is<object[]>(a => a!.Length > 0 && (string)a[0] == indexName))
                 .Returns(Task.FromResult(ok));
         }
         else
         {
-            db.ExecuteAsync("FT.INFO", Arg.Is<object[]>(a => a.Length > 0 && (string)a[0] == indexName))
+            db.ExecuteAsync("FT.INFO", Arg.Is<object[]>(a => a!.Length > 0 && (string)a[0] == indexName))
                 .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Redis down"));
         }
     }

@@ -539,7 +539,7 @@ public class TenantIsolationVerifierTests
     private static void SetupIndexInfo(IDatabase db, string indexName, RedisResult info)
     {
         db.ExecuteAsync(Arg.Is("FT.INFO"), Arg.Is<object[]>(args =>
-                args.Length > 0 && string.Equals(args[0].ToString(), indexName, StringComparison.Ordinal)))
+                args!.Length > 0 && string.Equals(args[0].ToString(), indexName, StringComparison.Ordinal)))
             .Returns(info);
     }
 

@@ -101,9 +101,9 @@ public class VerifyTenantActivityTests
 
     private static void ConfigureFtInfo(IDatabase db, string indexName, RedisResult result)
     {
-        db.ExecuteAsync(Arg.Is<string>(cmd => cmd == "FT.INFO"), Arg.Is<object[]>(args => args.Length == 1 && args[0] != null && args[0].ToString() == indexName))
+        db.ExecuteAsync(Arg.Is<string>(cmd => cmd == "FT.INFO"), Arg.Is<object[]>(args => args!.Length == 1 && args[0] != null && args[0].ToString() == indexName))
             .Returns(result);
-        db.ExecuteAsync(Arg.Is<string>(cmd => cmd == "FT.INFO"), Arg.Is<ICollection<object>>(args => args.Count == 1 && args.First().ToString() == indexName), Arg.Any<CommandFlags>())
+        db.ExecuteAsync(Arg.Is<string>(cmd => cmd == "FT.INFO"), Arg.Is<ICollection<object>>(args => args!.Count == 1 && args.First().ToString() == indexName), Arg.Any<CommandFlags>())
             .Returns(result);
     }
 

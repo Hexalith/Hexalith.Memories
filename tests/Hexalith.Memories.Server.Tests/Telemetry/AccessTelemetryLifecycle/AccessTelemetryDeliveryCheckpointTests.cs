@@ -186,7 +186,7 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         await worker.DrainOnceAsync(CancellationToken.None);
 
         await client.Received(1).SendAsync(
-            Arg.Is<IReadOnlyList<AccessTelemetryRecord>>(records => records.Count == 256),
+            Arg.Is<IReadOnlyList<AccessTelemetryRecord>>(records => records!.Count == 256),
             Arg.Any<CancellationToken>());
         queue.Count.ShouldBe(1);
     }
@@ -207,7 +207,7 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
 
         await client.Received(1).SendAsync(
             Arg.Is<WriterHeartbeat>(heartbeat =>
-                heartbeat.DeploymentId == "deployment-a" &&
+                heartbeat!.DeploymentId == "deployment-a" &&
                 heartbeat.ServiceInstanceId == identity.ServiceInstanceId &&
                 heartbeat.ProcessEpoch == identity.ProcessEpoch &&
                 heartbeat.MarkerKeyGeneration == "mk-2026a" &&

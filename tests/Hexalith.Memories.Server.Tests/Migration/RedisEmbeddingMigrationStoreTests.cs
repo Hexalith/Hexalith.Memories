@@ -380,10 +380,10 @@ public class RedisEmbeddingMigrationStoreTests
         db.Received(1).Execute("FT.DROPINDEX", IndexSchemaDefinitions.GetSemanticStagingIndexName("tenant-a", "version-1"));
         db.Received(1).Execute("FT.DROPINDEX", IndexSchemaDefinitions.GetNaturalLanguageSemanticStagingIndexName("tenant-a", "version-1"));
         await db.Received(1).KeyDeleteAsync(
-            Arg.Is<RedisKey[]>(keys => keys.Contains(rawStagingKey)),
+            Arg.Is<RedisKey[]>(keys => keys!.Contains(rawStagingKey)),
             Arg.Any<CommandFlags>());
         await db.Received(1).KeyDeleteAsync(
-            Arg.Is<RedisKey[]>(keys => keys.Contains(naturalLanguageStagingKey)),
+            Arg.Is<RedisKey[]>(keys => keys!.Contains(naturalLanguageStagingKey)),
             Arg.Any<CommandFlags>());
         markerWrites.Count.ShouldBe(2);
         markerWrites.ShouldAllBe(entries => HasEntry(entries, "status", MigrationMarkerStatus.Aborted));

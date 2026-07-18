@@ -66,7 +66,7 @@ public class GenerateEmbeddingActivityConfigTests
         // Assert
         await embeddingClient.Received(1).GenerateAsync(
             TestText, TenantId,
-            Arg.Is<TenantEmbeddingConfig>(c => c.Model == "gemini-embedding-001"),
+            Arg.Is<TenantEmbeddingConfig>(c => c!.Model == "gemini-embedding-001"),
             Arg.Any<CancellationToken>());
     }
 

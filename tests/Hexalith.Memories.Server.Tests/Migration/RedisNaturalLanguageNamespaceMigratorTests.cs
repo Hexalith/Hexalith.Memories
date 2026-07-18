@@ -34,9 +34,9 @@ public class RedisNaturalLanguageNamespaceMigratorTests
         await db.Received(1).HashSetAsync(
             (RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1"),
             Arg.Is<HashEntry[]>(entries =>
-                entries.Any(e => e.Name == "embedding")
-                && entries.Any(e => e.Name == "embeddingProvider" && e.Value == "openai")
-                && entries.Any(e => e.Name == "embeddingDimensions" && e.Value == "1536")),
+                entries!.Any(e => e.Name == "embedding")
+                && entries!.Any(e => e.Name == "embeddingProvider" && e.Value == "openai")
+                && entries!.Any(e => e.Name == "embeddingDimensions" && e.Value == "1536")),
             Arg.Any<CommandFlags>());
         await db.Received(1).KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>());
     }

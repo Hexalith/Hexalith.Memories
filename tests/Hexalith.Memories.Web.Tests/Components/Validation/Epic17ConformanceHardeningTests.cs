@@ -7,8 +7,10 @@ namespace Hexalith.Memories.Web.Tests.Components.Validation;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 using Shouldly;
@@ -55,15 +57,12 @@ public sealed class Epic17ConformanceHardeningTests
     [Fact]
     public void PackageLock_DirectoryPackagesProps_PinsTheAuthoritativeFluentUiVersion()
     {
-        // AC6: component API choices follow the centrally pinned Fluent UI V5 RC, not the incompatible
-        // Fluent UI MCP documentation target. The pin lives in Directory.Packages.props, never per-project.
-        string props = File.ReadAllText(Path.Combine(RepositoryRoot(), "Directory.Packages.props"));
-
-        Regex.IsMatch(
-            props,
-            $@"<PackageVersion\s+(?:Include|Update)=""{Regex.Escape(FluentPackageId)}""\s+Version=""{Regex.Escape(PinnedFluentVersion)}""")
-            .ShouldBeTrue(
-                $"Directory.Packages.props must pin {FluentPackageId} to {PinnedFluentVersion} (the Epic 17 authoritative version).");
+        // AC6: component API choices follow the centrally evaluated Fluent UI V5 RC, not the incompatible
+        // Fluent UI MCP documentation target. The consumer wrapper imports the shared authority and never
+        // duplicates its PackageVersion items locally.
+        EvaluatedPackageVersion(FluentPackageId).ShouldBe(
+            PinnedFluentVersion,
+            $"The shared catalog must pin {FluentPackageId} to the Epic 17 authoritative version.");
     }
 
     [Fact]
@@ -153,5 +152,35 @@ public sealed class Epic17ConformanceHardeningTests
             $"Directory.Packages.props was not found at the resolved repository root '{root.FullName}'.");
 
         return root.FullName;
+    }
+
+    private static string EvaluatedPackageVersion(string packageId)
+    {
+        string root = RepositoryRoot();
+        ProcessStartInfo startInfo = new("dotnet")
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            WorkingDirectory = root,
+        };
+        startInfo.ArgumentList.Add("msbuild");
+        startInfo.ArgumentList.Add(Path.Combine(root, "Directory.Packages.props"));
+        startInfo.ArgumentList.Add("-getItem:PackageVersion");
+
+        using Process process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Could not start dotnet msbuild to evaluate Directory.Packages.props.");
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        process.ExitCode.ShouldBe(0, $"Directory.Packages.props evaluation failed:{Environment.NewLine}{error}");
+
+        using JsonDocument evaluation = JsonDocument.Parse(output);
+        JsonElement item = evaluation.RootElement.GetProperty("Items").GetProperty("PackageVersion")
+            .EnumerateArray()
+            .Single(element => string.Equals(element.GetProperty("Identity").GetString(), packageId, StringComparison.OrdinalIgnoreCase));
+
+        return item.GetProperty("Version").GetString()
+            ?? throw new InvalidOperationException($"The evaluated PackageVersion '{packageId}' has no Version metadata.");
     }
 }

@@ -43,12 +43,12 @@ public class CaseDeletionProjectionWorkflowTests
         {
             context.CallActivityAsync<bool>(
                 nameof(MarkCaseDeletingActivity),
-                Arg.Is<CaseProjectionCleanupInput>(i => i.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
+                Arg.Is<CaseProjectionCleanupInput>(i => i!.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
                 Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<bool>(nameof(DeleteCaseProjectionActivity), Input, Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<bool>(
                 nameof(DeleteCaseRouteMappingsActivity),
-                Arg.Is<CaseProjectionCleanupInput>(i => i.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
+                Arg.Is<CaseProjectionCleanupInput>(i => i!.TenantId == Input.TenantId && i.CaseId == Input.CaseId),
                 Arg.Any<WorkflowTaskOptions>());
         });
     }

@@ -114,7 +114,7 @@ public class QueueNaturalLanguageEmbeddingRetryActivityTests
             Arg.Any<CancellationToken>());
         await registry.Received(1).EnqueueAsync(
             Arg.Is<FailedNaturalLanguageEmbeddingRecord>(record =>
-                record.TenantId == "tenant-a"
+                record!.TenantId == "tenant-a"
                 && record.MemoryUnitId == "mu-1"
                 && Encoding.UTF8.GetByteCount(record.TruncatedRawJsonPayload) <= 20
                 && record.TruncatedRawJsonPayload == "{\"counterId\":\"c-1\",\""

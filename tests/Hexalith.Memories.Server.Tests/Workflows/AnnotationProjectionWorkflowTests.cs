@@ -65,18 +65,18 @@ public class AnnotationProjectionWorkflowTests
             context.CallChildWorkflowAsync<IngestionResult>(
                 nameof(IngestionWorkflow),
                 Arg.Is<IngestionInput>(i =>
-                    i.TenantId == Input.TenantId
+                    i!.TenantId == Input.TenantId
                     && i.CaseId == Input.CaseId
                     && i.SourceUri == Input.SourceUri
                     && i.SourceType == SourceType.Annotation
                     && i.CausationId == Input.TargetMemoryUnitId
                     && i.WorkflowConfiguration == Input.WorkflowConfiguration
                     && i.TraceContext == TraceContext),
-                Arg.Is<ChildWorkflowTaskOptions>(o => o.InstanceId == Input.AnnotationMemoryUnitId));
+                Arg.Is<ChildWorkflowTaskOptions>(o => o!.InstanceId == Input.AnnotationMemoryUnitId));
             context.CallActivityAsync<bool>(
                 nameof(RecordCaseActivityActivity),
                 Arg.Is<CaseActivityInput>(i =>
-                    i.TenantId == Input.TenantId
+                    i!.TenantId == Input.TenantId
                     && i.CaseId == Input.CaseId
                     && i.EventType == CaseActivityEventType.AnnotationCreated
                     && i.MemoryUnitId == Input.AnnotationMemoryUnitId
@@ -123,7 +123,7 @@ public class AnnotationProjectionWorkflowTests
         await context.Received(1).CallActivityAsync<bool>(
             nameof(CleanupGraphActivity),
             Arg.Is<CleanupInput>(i =>
-                i.MemoryUnitId == Input.AnnotationMemoryUnitId
+                i!.MemoryUnitId == Input.AnnotationMemoryUnitId
                 && i.TenantId == Input.TenantId
                 && i.TraceContext == TraceContext),
             Arg.Any<WorkflowTaskOptions>());
@@ -152,7 +152,7 @@ public class AnnotationProjectionWorkflowTests
 
         await context.Received(1).CallActivityAsync<bool>(
             nameof(CleanupGraphActivity),
-            Arg.Is<CleanupInput>(i => i.MemoryUnitId == Input.AnnotationMemoryUnitId && i.TenantId == Input.TenantId),
+            Arg.Is<CleanupInput>(i => i!.MemoryUnitId == Input.AnnotationMemoryUnitId && i.TenantId == Input.TenantId),
             Arg.Any<WorkflowTaskOptions>());
     }
 

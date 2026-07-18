@@ -119,7 +119,7 @@ public sealed class TenantIndexReadinessVerifierTests
 
         db.Received().Execute(
             "FT.ALTER",
-            Arg.Is<object[]>(args => args.Length == 5
+            Arg.Is<object[]>(args => args!.Length == 5
                 && args[1].ToString() == "SCHEMA"
                 && args[2].ToString() == "ADD"
                 && args[3].ToString() == "cloudeventSubject"

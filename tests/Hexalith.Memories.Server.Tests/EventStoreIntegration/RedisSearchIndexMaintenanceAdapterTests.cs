@@ -44,18 +44,18 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
         await db.Received(1).HashSetAsync(
             IndexSchemaDefinitions.BuildSyntacticKey("tenants-index", "t-1"),
             Arg.Is<HashEntry[]>(entries =>
-                HasEntry(entries, "id", "t-1")
-                && HasEntry(entries, "tenantId", "tenants-index")
-                && HasEntry(entries, "content", "Acme t-1")
-                && HasEntry(entries, "sourceUri", "tenant:t-1")
-                && HasEntry(entries, "sourceUriText", "tenant:t-1")
-                && HasEntry(entries, "sourceType", "event")
-                && HasEntry(entries, "sourceTypeText", "event")
-                && HasEntry(entries, "caseId", "case-1")
-                && HasEntry(entries, "cloudeventSubject", "t-1")
-                && HasEntry(entries, "metadataText", "status Active")
-                && HasEntry(entries, "attributeTags", "status=Active")
-                && HasEntry(entries, "metadataJson", JsonSerializer.Serialize(entry.Attributes, MemoriesJsonContext.Options))),
+                HasEntry(entries!, "id", "t-1")
+                && HasEntry(entries!, "tenantId", "tenants-index")
+                && HasEntry(entries!, "content", "Acme t-1")
+                && HasEntry(entries!, "sourceUri", "tenant:t-1")
+                && HasEntry(entries!, "sourceUriText", "tenant:t-1")
+                && HasEntry(entries!, "sourceType", "event")
+                && HasEntry(entries!, "sourceTypeText", "event")
+                && HasEntry(entries!, "caseId", "case-1")
+                && HasEntry(entries!, "cloudeventSubject", "t-1")
+                && HasEntry(entries!, "metadataText", "status Active")
+                && HasEntry(entries!, "attributeTags", "status=Active")
+                && HasEntry(entries!, "metadataJson", JsonSerializer.Serialize(entry.Attributes, MemoriesJsonContext.Options))),
             Arg.Any<CommandFlags>());
     }
 

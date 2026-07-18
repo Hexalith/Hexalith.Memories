@@ -487,7 +487,7 @@ public sealed class SearchEndpointContractTests : IDisposable
         _factory.DaprClient
             .GetStateAsync<StoredTenantRegistryEntry?>(
                 StoreName,
-                Arg.Is<string>(key => key.Contains(tenantId, StringComparison.Ordinal)),
+                Arg.Is<string>(key => key!.Contains(tenantId, StringComparison.Ordinal)),
                 Arg.Any<ConsistencyMode?>(),
                 Arg.Any<IReadOnlyDictionary<string, string>?>(),
                 Arg.Any<CancellationToken>())
