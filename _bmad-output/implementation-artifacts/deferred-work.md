@@ -2237,3 +2237,9 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 - source_spec: `_bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md`
   summary: Creation-lock release in `DaprAggregateCaseMappingStore.ReleaseCreationLockAsync` deletes unconditionally and can release a rival instance's active lock after the holder's TTL lease expired.
   evidence: `src/Hexalith.Memories.EventStore/DaprAggregateCaseMappingStore.cs:92-99` calls `DeleteStateAsync` without an owner token or ETag condition. Deferred as pre-existing: the prior Redis implementation used the same unconditional `DEL` after `SET NX`+TTL, so the migration preserved (did not introduce) this semantics; revisit if the F6 store design is reworked under the D1 review decision.
+
+## Deferred from: code review of 27-3-retention-verification-operations-runbook-and-a41-close-out (2026-07-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/27-3-retention-verification-operations-runbook-and-a41-close-out.md`
+  summary: Reconcile the canonical project context's stale Aspire AppHost SDK version with the repository pin.
+  evidence: `_bmad-output/project-context.md` still names `Aspire.AppHost.Sdk/13.3.3`, while `src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj` and the reviewed story use the actual `13.4.6` SDK pin. The context drift predates Story 27.3; current source remains authoritative until its owning documentation lane repairs the canonical context.
