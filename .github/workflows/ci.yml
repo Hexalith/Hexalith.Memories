@@ -168,7 +168,11 @@ jobs:
           global-json-file: global.json
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
+        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
+        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
+        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
@@ -192,7 +196,11 @@ jobs:
           global-json-file: global.json
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
+        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
+        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
+        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
@@ -269,7 +277,8 @@ jobs:
           cache-dependency-path: tests/Hexalith.Memories.Web.E2E/package-lock.json
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx
+        # See the "Restore solution" step in the build job above for the NU1901-1904 rationale.
+        run: dotnet restore Hexalith.Memories.slnx -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       # Build the Debug configuration the Playwright webServer runs (see playwright.config.ts),
       # so the browser lane exercises the same build this job produced instead of a discarded
@@ -345,7 +354,11 @@ jobs:
           docker info
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
+        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
+        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
+        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore

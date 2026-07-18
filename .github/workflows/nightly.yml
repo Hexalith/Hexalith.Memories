@@ -47,7 +47,11 @@ jobs:
           dapr --version
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
+        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
+        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
+        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Run Tier 3 integration tests (fast lane, excludes IntegrationSlow and Performance)
         run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release
@@ -94,7 +98,11 @@ jobs:
           dapr --version
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
+        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
+        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
+        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Run Tier 3 integration tests (slow lane only)
         run: bash ./tools/test.sh --filter "Category=IntegrationSlow" --configuration Release
@@ -131,7 +139,11 @@ jobs:
         run: docker info
 
       - name: Restore solution
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release
+        # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
+        # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
+        # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
+        # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore

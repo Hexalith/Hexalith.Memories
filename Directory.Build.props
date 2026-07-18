@@ -8,6 +8,17 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- Keep the NuGet vulnerability audit enabled but non-fatal for the four audit warning
+         codes, so a transitive advisory we cannot immediately upgrade (e.g. the AngleSharp/bunit
+         NU1902 chain, GHSA-pgww-w46g-26qg) surfaces in build logs without blocking CI (Hexalith
+         ci-cd-standards.md, "Dependency Auditing"). Matches Hexalith.Builds/Hexalith.EventStore/
+         Hexalith.Tenants. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <!-- Resolve dependent submodules under references/ when initialized, otherwise to the
          sibling checkout in the parent repository (mirrors the Hexalith*Root pattern). -->
     <HexalithFrontComposerRoot Condition="'$(HexalithFrontComposerRoot)' == '' and Exists('$(MSBuildThisFileDirectory)references\Hexalith.FrontComposer\src\Hexalith.FrontComposer.Contracts')">$(MSBuildThisFileDirectory)references\Hexalith.FrontComposer</HexalithFrontComposerRoot>

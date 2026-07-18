@@ -163,6 +163,20 @@ public sealed class ProductionDeploymentArtifactsTests
     }
 
     [Fact]
+    public void ProductionOverlay_AccessTelemetryDeploymentsAreScaledToZero()
+    {
+        // Story 27.3 is not yet delivered: no memories-access-telemetry(-clock) container image is
+        // published anywhere in this repo's build/release pipeline. If the disabled-patch overlay ever
+        // stops scaling these Deployments to 0, applying this overlay schedules pods that can never
+        // pull their image -- exactly the disposable-cluster verification failure this guards against.
+        string root = GetRepoRoot();
+        string rendered = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/production");
+
+        GetDocument(rendered, "Deployment", "memories-access-telemetry").ShouldContain("replicas: 0");
+        GetDocument(rendered, "Deployment", "memories-access-telemetry-clock").ShouldContain("replicas: 0");
+    }
+
+    [Fact]
     public void ProductionOverlay_SecretRoleIsResourceNameBound()
     {
         string root = GetRepoRoot();
