@@ -4,10 +4,24 @@ namespace: hexalith-memories
 resources:
   - namespace.yaml
   - ../../base
+patches:
+  - path: access-telemetry-disabled-patch.yaml
+configMapGenerator:
+  - name: memories-production-config
+    behavior: merge
+    literals:
+      - ACCESS_TELEMETRY_ENABLED=false
+      - ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH=unproven
 images:
   - name: registry.hexalith.com/memories
     newName: registry.hexalith.com/memories
     newTag: 0.0.0
   - name: registry.hexalith.com/memories-mcp
     newName: registry.hexalith.com/memories-mcp
+    newTag: 0.0.0
+  - name: registry.hexalith.com/memories-access-telemetry
+    newName: registry.hexalith.com/memories-access-telemetry
+    newTag: 0.0.0
+  - name: registry.hexalith.com/memories-access-telemetry-clock
+    newName: registry.hexalith.com/memories-access-telemetry-clock
     newTag: 0.0.0

@@ -1,0 +1,248 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memories-access-telemetry
+  labels:
+    app.kubernetes.io/name: memories-access-telemetry
+    app.kubernetes.io/component: lifecycle
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: memories-access-telemetry
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: memories-access-telemetry
+        app.kubernetes.io/component: lifecycle
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: memories-access-telemetry
+        dapr.io/app-port: "8080"
+        dapr.io/app-protocol: http
+        dapr.io/config: memories-access-telemetry-config
+        dapr.io/app-token-secret: app-api-token
+        dapr.io/api-token-secret: dapr-api-token
+        dapr.io/sidecar-cpu-request: 250m
+        dapr.io/sidecar-memory-request: 256Mi
+        dapr.io/sidecar-cpu-limit: "1"
+        dapr.io/sidecar-memory-limit: 512Mi
+    spec:
+      serviceAccountName: memories-access-telemetry
+      automountServiceAccountToken: true
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: lifecycle
+          image: registry.hexalith.com/memories-access-telemetry:0.0.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: DOTNET_ENVIRONMENT
+              value: Production
+            - name: APP_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: app-api-token
+                  key: token
+            - name: DAPR_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: dapr-api-token
+                  key: token
+            - name: DAPR_API_TOKEN_MODE
+              value: enabled
+            - name: AccessTelemetryLifecycle__Enabled
+              valueFrom:
+                configMapKeyRef:
+                  name: memories-production-config
+                  key: ACCESS_TELEMETRY_ENABLED
+            - name: AccessTelemetryLifecycle__RetentionSource
+              value: DaprConfiguration
+            - name: AccessTelemetryLifecycle__ComponentProfileHash
+              valueFrom:
+                configMapKeyRef:
+                  name: memories-production-config
+                  key: ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH
+            - name: AccessTelemetryLifecycle__MarkerKeyReference
+              value: access-telemetry-marker-key
+            - name: AccessTelemetryLifecycle__MarkerKeyGeneration
+              value: unconfigured
+            - name: AccessTelemetryLifecycle__AttestationVerificationKey
+              valueFrom:
+                secretKeyRef:
+                  name: access-telemetry-clock-key
+                  key: verification-public-key
+            - name: AccessTelemetryLifecycle__CapabilityEvidence__ExactVersionPinned
+              value: "false"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            runAsGroup: 1654
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "wget -qO- --header=\"dapr-api-token: ${APP_API_TOKEN}\" http://127.0.0.1:8080/alive >/dev/null"]
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 12
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "wget -qO- --header=\"dapr-api-token: ${APP_API_TOKEN}\" http://127.0.0.1:8080/ready >/dev/null"]
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 2
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "wget -qO- --header=\"dapr-api-token: ${APP_API_TOKEN}\" http://127.0.0.1:8080/alive >/dev/null"]
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memories-access-telemetry-clock
+  labels:
+    app.kubernetes.io/name: memories-access-telemetry-clock
+    app.kubernetes.io/component: trusted-clock
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: memories-access-telemetry-clock
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: memories-access-telemetry-clock
+        app.kubernetes.io/component: trusted-clock
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: memories-access-telemetry-clock
+        dapr.io/app-port: "8080"
+        dapr.io/app-protocol: http
+        dapr.io/config: memories-access-telemetry-clock-config
+        dapr.io/app-token-secret: app-api-token
+        dapr.io/api-token-secret: dapr-api-token
+        dapr.io/sidecar-cpu-request: 100m
+        dapr.io/sidecar-memory-request: 128Mi
+        dapr.io/sidecar-cpu-limit: 500m
+        dapr.io/sidecar-memory-limit: 256Mi
+    spec:
+      serviceAccountName: memories-access-telemetry-clock
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: clock
+          image: registry.hexalith.com/memories-access-telemetry-clock:0.0.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: DOTNET_ENVIRONMENT
+              value: Production
+            - name: APP_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: app-api-token
+                  key: token
+            - name: DAPR_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: dapr-api-token
+                  key: token
+            - name: DAPR_API_TOKEN_MODE
+              value: enabled
+            - name: ACCESS_TELEMETRY_CLOCK_SIGNING_KEY_PKCS8
+              valueFrom:
+                secretKeyRef:
+                  name: access-telemetry-clock-key
+                  key: signing-key-pkcs8
+            - name: Clock__SignerKeyEpoch
+              value: unconfigured
+            - name: Clock__Sources__0__Id
+              value: utc-source-a
+            - name: Clock__Sources__0__Endpoint
+              value: https://utc-source-a.example.invalid/v1/time
+            - name: Clock__Sources__0__AuthenticationToken
+              valueFrom:
+                secretKeyRef:
+                  name: access-telemetry-clock-sources
+                  key: source-a-token
+            - name: Clock__Sources__1__Id
+              value: utc-source-b
+            - name: Clock__Sources__1__Endpoint
+              value: https://utc-source-b.example.invalid/v1/time
+            - name: Clock__Sources__1__AuthenticationToken
+              valueFrom:
+                secretKeyRef:
+                  name: access-telemetry-clock-sources
+                  key: source-b-token
+            - name: Clock__Sources__2__Id
+              value: utc-source-c
+            - name: Clock__Sources__2__Endpoint
+              value: https://utc-source-c.example.invalid/v1/time
+            - name: Clock__Sources__2__AuthenticationToken
+              valueFrom:
+                secretKeyRef:
+                  name: access-telemetry-clock-sources
+                  key: source-c-token
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1654
+            runAsGroup: 1654
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "wget -qO- --header=\"dapr-api-token: ${APP_API_TOKEN}\" http://127.0.0.1:8080/ready >/dev/null"]
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 12
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "wget -qO- --header=\"dapr-api-token: ${APP_API_TOKEN}\" http://127.0.0.1:8080/ready >/dev/null"]
+            periodSeconds: 5
+            timeoutSeconds: 4
+            failureThreshold: 2
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-ec", "wget -qO- --header=\"dapr-api-token: ${APP_API_TOKEN}\" http://127.0.0.1:8080/alive >/dev/null"]
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

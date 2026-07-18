@@ -99,6 +99,18 @@ spec:
               value: memories-events
             - name: NaturalLanguage__DaprComponentName
               value: llm-openai
+            - name: AccessTelemetryLifecycle__Enabled
+              valueFrom:
+                configMapKeyRef:
+                  name: memories-production-config
+                  key: ACCESS_TELEMETRY_ENABLED
+            - name: AccessTelemetryLifecycle__RetentionSource
+              value: DaprConfiguration
+            - name: AccessTelemetryLifecycle__ComponentProfileHash
+              valueFrom:
+                configMapKeyRef:
+                  name: memories-production-config
+                  key: ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH
           resources:
             requests:
               cpu: 500m

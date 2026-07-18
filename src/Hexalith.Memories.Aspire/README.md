@@ -1,5 +1,7 @@
 # Hexalith.Memories.Aspire
 
+The package also exposes `AddHexalithMemoriesAccessTelemetry` for the fixed lifecycle and independent-clock topology. It is intentionally disabled by default: Story 27.2 supplies portable Dapr boundaries and component templates, while exact Production adapter selection and behavioral certification remain Story 27.3 work.
+
 .NET Aspire hosting extensions for [Hexalith.Memories](https://github.com/Hexalith/Hexalith.Memories).
 
 A Hexalith domain module that wants to embed the Memories search-index server in its own

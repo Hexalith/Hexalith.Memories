@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <EnableContainer>true</EnableContainer>
+    <ContainerRepository>memories-access-telemetry</ContainerRepository>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hexalith.Memories.AccessTelemetry.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.AccessTelemetry.Contracts\Hexalith.Memories.AccessTelemetry.Contracts.csproj" />
+    <ProjectReference Include="..\Hexalith.Memories.ServiceDefaults\Hexalith.Memories.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapr.AspNetCore" />
+    <PackageReference Include="Dapr.Client" />
+    <PackageReference Include="Dapr.Actors" />
+    <PackageReference Include="Dapr.Actors.AspNetCore" />
+  </ItemGroup>
+
+</Project>

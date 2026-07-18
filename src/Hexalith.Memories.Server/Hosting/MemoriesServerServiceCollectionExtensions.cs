@@ -13,6 +13,7 @@ using Dapr.Client;
 using Dapr.Workflow;
 
 using Hexalith.EventStore.Client.Registration;
+using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Activities.Indexing;
@@ -35,6 +36,7 @@ using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.RateLimiting;
 using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Telemetry;
+using Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
 using Hexalith.Memories.ServiceDefaults;
@@ -45,6 +47,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+
+using OpenTelemetry.Metrics;
 
 using StackExchange.Redis;
 
@@ -59,6 +63,7 @@ internal static class MemoriesServerServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.AddDaprClient();
+        builder.AddAccessTelemetryLifecycle();
         builder.Services.AddExceptionHandler<MemoriesServerExceptionHandler>();
         builder.Services.AddProblemDetails();
         builder.Services.TryAddTransient<TenantIdValidationEndpointFilter>();
@@ -496,5 +501,55 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.AddServerEventStoreIntegration(builder.Configuration);
 
         return builder;
+    }
+
+    private static void AddAccessTelemetryLifecycle(this WebApplicationBuilder builder)
+    {
+        AccessTelemetryOptions options = builder.Configuration
+            .GetSection(AccessTelemetryOptions.SectionName)
+            .Get<AccessTelemetryOptions>() ?? new AccessTelemetryOptions();
+        var status = new AccessTelemetryLifecycleStatus(options.Enabled);
+        builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton(status);
+        _ = builder.Services.AddOpenTelemetry().WithMetrics(metrics =>
+            metrics.AddMeter(ServerAccessTelemetryLifecycleMetrics.MeterName));
+        _ = builder.Services.AddHealthChecks().AddCheck<AccessTelemetryLifecycleHealthCheck>(
+            "access-telemetry-lifecycle",
+            failureStatus: HealthStatus.Unhealthy,
+            tags: ["lifecycle"],
+            timeout: TimeSpan.FromSeconds(3));
+
+        if (!options.Enabled)
+        {
+            return;
+        }
+
+        builder.Services.TryAddSingleton<TimeProvider>(TimeProvider.System);
+        builder.Services.TryAddSingleton<MonotonicRecordIdGenerator>();
+        builder.Services.AddSingleton<AccessTelemetryWriterIdentity>();
+        builder.Services.AddSingleton(new BoundedAccessTelemetryQueue(options.QueueRecordLimit, options.QueueByteLimit));
+        builder.Services.AddSingleton<AccessTelemetrySanitizerAccessor>();
+        builder.Services.AddSingleton<AccessTelemetryLifecycleLoggerProvider>();
+        builder.Services.AddSingleton<ILoggerProvider>(services => services.GetRequiredService<AccessTelemetryLifecycleLoggerProvider>());
+        builder.Services.AddKeyedSingleton<HttpClient>(
+            "access-telemetry-lifecycle",
+            (_, _) => AccessTelemetryDaprHttpClientFactory.Create(options.LifecycleAppId));
+        builder.Services.AddKeyedSingleton<HttpClient>(
+            "access-telemetry-clock",
+            (_, _) => AccessTelemetryDaprHttpClientFactory.Create(options.ClockAppId));
+        builder.Services.AddSingleton<IAccessTelemetryClockEvidenceProvider>(services => new DaprAccessTelemetryClockEvidenceProvider(
+            services.GetRequiredKeyedService<HttpClient>("access-telemetry-clock"),
+            options,
+            services.GetRequiredService<TimeProvider>(),
+            services.GetRequiredService<MonotonicRecordIdGenerator>()));
+        builder.Services.AddSingleton<IAccessTelemetryDeliveryClient>(services => new DaprAccessTelemetryDeliveryClient(
+            services.GetRequiredKeyedService<HttpClient>("access-telemetry-lifecycle"),
+            services.GetRequiredService<IAccessTelemetryClockEvidenceProvider>(),
+            options));
+        builder.Services.AddSingleton<IAccessTelemetryHeartbeatClient>(services => new DaprAccessTelemetryHeartbeatClient(
+            services.GetRequiredKeyedService<HttpClient>("access-telemetry-lifecycle")));
+        builder.Services.AddHostedService<AccessTelemetryLifecycleBootstrapService>();
+        builder.Services.AddHostedService<AccessTelemetryDeliveryWorker>();
+        builder.Services.AddHostedService<AccessTelemetryHeartbeatWorker>();
     }
 }

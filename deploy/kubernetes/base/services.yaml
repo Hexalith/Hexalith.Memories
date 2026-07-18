@@ -23,3 +23,29 @@ spec:
     - name: dapr-http
       port: 80
       targetPort: 3500
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memories-access-telemetry
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: memories-access-telemetry
+  ports:
+    - name: dapr-http
+      port: 80
+      targetPort: 3500
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memories-access-telemetry-clock
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: memories-access-telemetry-clock
+  ports:
+    - name: dapr-http
+      port: 80
+      targetPort: 3500

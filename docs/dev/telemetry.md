@@ -1,6 +1,6 @@
-# Hexalith.Memories — Observability & Telemetry (Story 7.5)
+# Hexalith.Memories — Observability & Telemetry
 
-This document describes the observability contract shipped by Story 7.5: structured JSON logging with
+This document describes the observability contract shipped by Story 7.5 and the portable access-telemetry lifecycle added by Story 27.2: structured JSON logging with
 OpenTelemetry correlation (NFR27), distributed trace propagation CLI → Server → backends (NFR28),
 per-tenant custom metrics (NFR29), and per-tenant audit events for every search + access operation
 (FR67).
@@ -23,10 +23,11 @@ per-tenant custom metrics (NFR29), and per-tenant audit events for every search 
 | Production — Honeycomb | Honeycomb ingest      | `OTEL_EXPORTER_OTLP_ENDPOINT=https://api.honeycomb.io:443`     |
 
 These Production examples are optional export routes only. They do not name or
-configure an access-record retention backend. Current shipped access telemetry
-still reaches JSON console and, when configured, OTLP. The accepted but not yet
-implemented lifecycle target is defined by
-[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md).
+configure an access-record retention backend. Access telemetry still reaches
+JSON console and, when configured, OTLP. Story 27.2 also ships a separate,
+disabled-by-default Dapr lifecycle path defined by
+[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md); Story 27.3 still owns
+exact Production adapter selection and physical-reclamation evidence.
 
 CLI-side telemetry is **opt-in** — set `HEXALITH_MEMORIES_OTEL_ENDPOINT` or pass `--telemetry` to any
 `memories` subcommand to export CLI spans.
@@ -74,6 +75,16 @@ Single meter: **`Hexalith.Memories`** (declared by `MemoriesMeter.Name`).
 | `memories.handlers.mismatches`                          | Counter&lt;long&gt;         | `{mismatches}`   | `tenant_id`, `severity`     | Detected event-handler mismatches                            |
 | `memories.handlers.observations.dropped`                | Counter&lt;long&gt;         | `{observations}` | `reason`                    | Dropped observation-store writes                             |
 
+The isolated lifecycle path registers meters
+`Hexalith.Memories.AccessTelemetry.Server` and
+`Hexalith.Memories.AccessTelemetry`. Its primary counter is
+`memories.access.telemetry.lifecycle.records`, with only bounded `state` values
+`accepted`, `rejected`, `enqueued`, `persisted`, `retried`, `failed`, `dropped`,
+`expired`, and `purged`, plus the ADR's bounded reason catalog. Queue bytes,
+Dapr/attestation/state/purge latency, retained capacity, expiry lag, reminder
+outcome, and physical-evidence presence are emitted without tenant, user, case,
+query, source, trace, instance, or process labels.
+
 ### Tag-key policy
 
 `case_id`, `user`, `memory_unit_id` are **NEVER** metric tag keys — Risk #1 cardinality mitigation.
@@ -119,13 +130,15 @@ EventId bank: **7500-7599** (success 7501-7509, error 7511-7519).
 }
 ```
 
-The example reflects the current contract, including a known privacy deviation:
-search can place raw `query` and `subject` values in `queryParams`, and the
-source-URI lookup can place raw `sourceUri` there. Do not persist or replay those
-raw values. ADR 27.1-001 requires Story 27.2 to sanitize typed logger state
-before enqueue: query length is bucketed, subject becomes a presence flag, and
-source URI becomes a bounded source-kind value. That target is not implemented
-by this decision story.
+The example reflects the public logger contract. JSON console/OTLP output can
+still contain the raw logger fields shown above and remains governed by the
+operator's existing log-routing policy. The separate lifecycle provider never
+parses stdout: it reads typed `AccessTelemetryEvent` state, HMAC-marks
+tenant/user/case identifiers, buckets query length, reduces subject to presence,
+classifies source URI into a bounded kind, canonicalizes the internal record,
+and only then attempts nonblocking enqueue. Raw query, subject, URI, payload,
+credential, token, secret, or exception content is not admitted to lifecycle
+state.
 
 ### Versioning policy
 
@@ -163,26 +176,39 @@ retention implementation.
 ### Retention lifecycle status
 
 Routing `AccessTelemetryCategory` to a file, collector, or external sink does
-not configure retention by itself. Memories currently emits events but does not
-yet own or enforce a deployed TTL/purge policy.
+not configure retention by itself. [ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md)
+is `Accepted`, and Story 27.2 implements its separate portable slice:
 
-[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md) accepts the target:
-a container-service-neutral, Dapr-only access-telemetry lifecycle service. The
-Memories process uses Dapr service invocation and has no Redis, Kubernetes, or
-other backend/orchestrator API. A fixed-ID Dapr actor owns serialized writes,
-durable state/reminders, expiry buckets, purge checkpoints, and dynamic marker
-rotation. Dapr state, configuration, and secrets components sit behind a
-fail-closed behavioral capability gate; a separate Dapr-invoked clock service
-provides signed independent-UTC attestations with one consistent one-second
-bound. The 24-hour Production default remains configurable from 1 hour through
-7 days. Millisecond logical expiry and portable Dapr delete evidence are
-separate from component-specific physical-reclamation evidence collected by
-the selected deployment adapter outside the application API. The ADR is
-`Accepted`; Stories 27.2 and 27.3 are unblocked to implement and verify it.
-Acceptance is a design gate, not shipped lifecycle behavior.
+- The Server provider consumes typed state, sanitizes synchronously, and uses a
+  record-and-byte bounded in-memory queue with no disk fallback. Dapr service
+  invocation sends batches to fixed app ID `memories-access-telemetry`; marker
+  material is loaded only from `access-telemetry-secrets` and Production
+  retention only from `access-telemetry-config`.
+- The fixed `AccessTelemetryLifecycleActor/global` is the serialized mutation
+  authority. It writes canonical record/index pairs transactionally, treats
+  source timestamp as the age authority, applies component TTL only as defense
+  in depth, and performs logical purge as Dapr delete plus strong absent read
+  before removing the expiry entry.
+- A separate `memories-access-telemetry-clock` service requires three distinct
+  authenticated UTC sources and signs context/nonce/profile-bound evidence.
+  Server acceptance and each lifecycle mutation verify freshness, replay,
+  signature, majority interval, and the one-second absolute bound.
+- Exact component-profile behavior is fail-closed. Missing, failed, duplicated,
+  stale, unpinned, or profile-mismatched evidence blocks lifecycle writes while
+  the Memories business readiness and existing JSON/OTLP routes remain
+  available.
+
+Retention is bounded from one hour through seven days; Development may use the
+24-hour default and explicit test composition may use shorter values. Checked-in
+Aspire/Dapr/Kubernetes resources declare the fixed identities and authorities,
+but the Production overlay keeps the Server provider and lifecycle writes
+disabled with an unproven profile. Story 27.3 must select and pin the exact
+Production adapter, execute its behavioral/failover/capacity/reclamation
+evidence, and explicitly enable the path.
 
 `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action
-remains open. ADR proposal or acceptance and story scheduling are not lifecycle evidence.
+remains open. Portable logical deletion and evidence hooks are not physical
+reclamation evidence.
 The boundary is bounded infrastructure telemetry only: no tamper evidence,
 append-only integrity, legal compliance, or certified audit retention.
 
@@ -194,17 +220,18 @@ another tenant's events. Operators may configure provider-specific `Warning`
 filters for console or OTLP to keep error events (7511-7519) while suppressing
 successful-operation events (7501-7509) on those routes.
 
-Story 27.2's lifecycle provider must independently keep
+Story 27.2's lifecycle provider independently keeps
 `AccessTelemetryCategory` at `Information`. A global category-level `Warning`
 filter would prevent success events from reaching every provider and is invalid
 when lifecycle retention is enabled. Regulated access-record retention therefore
 scales the bounded lifecycle pipeline; it is never implemented by globally
 filtering away successful operations.
 
-Until Story 27.2 ships, console and optional OTLP are the only emitted routes.
-A regulated deployment relying on that interim trail must retain `Information`
-for `AccessTelemetryCategory`, or explicitly accept that a provider-specific
-`Warning` filter suppresses every successful-operation record on that route.
+When the lifecycle provider is disabled, console and optional OTLP remain the
+only emitted routes. A deployment relying on those routes must retain
+`Information` for `AccessTelemetryCategory`, or explicitly accept that a
+provider-specific `Warning` filter suppresses successful-operation records on
+that route.
 
 ---
 
@@ -218,12 +245,11 @@ for `AccessTelemetryCategory`, or explicitly accept that a provider-specific
 
 ### What happens when OTLP is down
 
-The current OTLP exporter is **non-blocking** — endpoint unavailability
+The OTLP exporter is **non-blocking** — endpoint unavailability
 (connection refused, DNS failure, HTTP 5xx) can drop exported telemetry while
 CLI / Server user-visible behavior remains unchanged. There is no shipped
-Memories-side persistent OTLP buffer. ADR 27.1-001 deliberately keeps optional
-OTLP and JSON-console emission intact while adding a separate bounded lifecycle
-target; until Story 27.2 lands, that target supplies no retry or retention.
+Memories-side persistent OTLP buffer. The separate lifecycle worker has its own
+bounded in-memory retry/expiry policy and does not act as an OTLP fallback.
 
 ---
 
@@ -311,10 +337,10 @@ headroom; and attach cost and physical-reclamation evidence before rollout.
 Increasing the cluster ceiling or replica-derived traffic requires a new
 calculation and cannot silently undersize the selected component.
 
-Current JSON-console logging does not provide a persistent queue, capacity
-policy, or purge. Under the accepted capacity gate, Story 27.2's target provider
-must use bounded non-blocking enqueue so sink failure cannot escape into or
-indefinitely block a business request.
+JSON-console logging does not provide a persistent queue, capacity policy, or
+purge. The lifecycle provider uses bounded nonblocking enqueue, drops the newest
+record at either queue bound, and contains lifecycle exceptions so sink failure
+cannot escape into or indefinitely block a business request.
 
 ---
 

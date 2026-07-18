@@ -8,13 +8,17 @@ namespace Hexalith.Memories.Server.Tests.Architecture;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 using Hexalith.Memories.TestHelpers.Documentation;
 
 using Shouldly;
+
+using AccessTelemetryEvent = Hexalith.Memories.Contracts.V1.AccessTelemetryEvent;
 
 /// <summary>
 /// Story 27.1 structure-aware guards for the accepted access-telemetry lifecycle decision.
@@ -22,6 +26,7 @@ using Shouldly;
 public sealed partial class AccessTelemetryRetentionDecisionTests
 {
     private const string AdrRelativePath = "docs/dev/adr-27.1-001-access-telemetry-lifecycle.md";
+    private const string AccessEventSourceRelativePath = "src/Hexalith.Memories.Contracts/V1/AccessTelemetryEvent.cs";
     private const string ArchitectureRelativePath = "_bmad-output/planning-artifacts/architecture.md";
     private const string OperationSourceRelativePath = "src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLog.cs";
     private const string TelemetryRelativePath = "docs/dev/telemetry.md";
@@ -249,7 +254,7 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
             (decimal average, int p95) = MeasureSanitizedFixture(row[0]);
             average.ShouldBe(ParseDecimal(row[3]));
             p95.ShouldBe(ParseInt(row[4]));
-            p95.ShouldBeLessThanOrEqualTo(893);
+            p95.ShouldBeLessThanOrEqualTo(900);
         }
 
         IReadOnlyList<IReadOnlyList<string>> retentionSizing = adr.GetTableRows("Retention Sizing");
@@ -273,12 +278,137 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         schema.ShouldContain("`schemaVersion` is integer `1`", Case.Sensitive);
         schema.ShouldContain("at most six ordinally, lexicographically ordered keys", Case.Sensitive);
         schema.ShouldContain("complete encoded Dapr request exceeds 1 MiB", Case.Sensitive);
-        schema.ShouldContain("`caseMarker` is non-null", Case.Sensitive);
-        schema.ShouldContain("`resultCount` is non-null only", Case.Sensitive);
+        schema.ShouldContain("Case, Result, and Nullable Mapping", Case.Sensitive);
+        schema.ShouldContain("Only `tenantMarker` may carry `__rejected__`", Case.Sensitive);
 
         IReadOnlyList<IReadOnlyList<string>> queryBounds = adr.GetTableRows("Query Parameter Bounds");
         AssertCellCounts(queryBounds, 2, "Query Parameter Bounds");
         queryBounds.Select(static row => row[0]).ShouldBe(operationRows.Select(static value => $"`{value}`").ToArray());
+    }
+
+    [Fact]
+    public void Adr_C1SourceEventMapping_CoversEveryCurrentLoggerFamilyAndOutcome()
+    {
+        MarkdownContractDocument adr = ReadDocument(AdrRelativePath);
+        IReadOnlyList<IReadOnlyList<string>> decisions = adr.GetTableRows("Ratification Decision");
+        IReadOnlyList<IReadOnlyList<string>> mappings = adr.GetTableRows("Source Event Mapping");
+
+        AssertCellCounts(decisions, 2, "Ratification Decision");
+        GetRow(decisions, "Administrator decision").ShouldBe(
+            ["Administrator decision", "ratified 2026-07-18 by Administrator"]);
+        GetRow(decisions, "Architecture owner decision").ShouldBe(
+            ["Architecture owner decision", "ratified 2026-07-18 by Administrator on behalf of Hexalith.Memories maintainers"]);
+        GetRow(decisions, "Runtime persistence gate").ShouldBe(
+            ["Runtime persistence gate", "open — both ratifications recorded and structure guards green"]);
+
+        AssertCellCounts(mappings, 6, "Source Event Mapping");
+        (string Operation, int SuccessId, int ErrorId)[] expected =
+        [
+            ("search", 7501, 7511),
+            ("ingest", 7502, 7512),
+            ("traverse", 7503, 7513),
+            ("case-access", 7504, 7514),
+            ("delete", 7505, 7515),
+            ("tenant-lifecycle", 7506, 7516),
+            ("tenant-config", 7507, 7517),
+            ("case-member", 7508, 7518),
+            ("annotation", 7509, 7519),
+        ];
+        mappings.Select(static row => row[0]).ShouldBe(expected.Select(static item => $"`{item.Operation}`").ToArray());
+
+        string loggerSource = ReadRepoFile(OperationSourceRelativePath);
+        foreach ((string operation, int successId, int errorId) in expected)
+        {
+            IReadOnlyList<string> row = GetRow(mappings, $"`{operation}`");
+            ParseInt(row[1]).ShouldBe(successId);
+            row[2].ShouldBe("`Information`");
+            ParseInt(row[3]).ShouldBe(errorId);
+            row[4].ShouldBe("`Warning`");
+            loggerSource.ShouldContain($"EventId = {successId}, Level = LogLevel.Information", Case.Sensitive);
+            loggerSource.ShouldContain($"EventId = {errorId}, Level = LogLevel.Warning", Case.Sensitive);
+        }
+
+        GetRow(mappings, "`search`")[5].ShouldContain("`partial` -> `partial`", Case.Sensitive);
+        mappings.Skip(1).ShouldAllBe(static row => !row[5].Contains("`partial`", StringComparison.Ordinal));
+        NormalizeWhitespace(adr.GetSection("Persisted Schema Bounds")).ShouldContain(
+            "`outcome` is `ok`, `partial`, or `error`",
+            Case.Sensitive);
+    }
+
+    [Fact]
+    public void Adr_C1TypedStateAndNullableMapping_CoversFrozenLoggerState()
+    {
+        MarkdownContractDocument adr = ReadDocument(AdrRelativePath);
+        IReadOnlyList<IReadOnlyList<string>> fields = adr.GetTableRows("Typed State Mapping");
+        IReadOnlyList<IReadOnlyList<string>> nullable = adr.GetTableRows("Case, Result, and Nullable Mapping");
+
+        AssertCellCounts(fields, 3, "Typed State Mapping");
+        string[] sourceFields = typeof(AccessTelemetryEvent)
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Select(static property => property.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name)
+            .Where(static name => name is not null)
+            .Cast<string>()
+            .ToArray();
+        sourceFields.ShouldBe(
+            fields.Select(static row => row[0].Trim('`')).ToArray(),
+            ignoreOrder: true);
+        sourceFields.Length.ShouldBe(14);
+        fields.ShouldAllBe(static row => !string.IsNullOrWhiteSpace(row[1]) && !string.IsNullOrWhiteSpace(row[2]));
+
+        AssertCellCounts(nullable, 4, "Case, Result, and Nullable Mapping");
+        nullable.Select(static row => row[0]).ShouldBe(
+            ReadSourceOperationTypes().Select(static operation => $"`{operation}`").ToArray(),
+            ignoreOrder: true);
+        GetRow(nullable, "`search`")[2].ShouldContain("`caseScope=all-authorized`", Case.Sensitive);
+        GetRow(nullable, "`ingest`")[1].ShouldContain("EventStore ingestion adapter", Case.Sensitive);
+        GetRow(nullable, "`delete`")[2].ShouldContain("`tenant` permits null", Case.Sensitive);
+
+        string schema = NormalizeWhitespace(adr.GetSection("Persisted Schema Bounds"));
+        schema.ShouldContain("Case, Result, and Nullable Mapping", Case.Sensitive);
+        schema.ShouldContain("Only `tenantMarker` may carry `__rejected__`", Case.Sensitive);
+        schema.ShouldNotContain("`caseMarker` is non-null for every operation except", Case.Sensitive);
+        ReadRepoFile(AccessEventSourceRelativePath).ShouldContain("public sealed record AccessTelemetryEvent", Case.Sensitive);
+    }
+
+    [Fact]
+    public void Adr_C1QueryAndErrorMappings_AreTotalBoundedAndPrivacySafe()
+    {
+        MarkdownContractDocument adr = ReadDocument(AdrRelativePath);
+        IReadOnlyList<IReadOnlyList<string>> errors = adr.GetTableRows("Error Code Mapping");
+        IReadOnlyList<IReadOnlyList<string>> sources = adr.GetTableRows("Query Parameter Source Mapping");
+        IReadOnlyList<IReadOnlyList<string>> bounds = adr.GetTableRows("Query Parameter Bounds");
+
+        AssertCellCounts(errors, 2, "Error Code Mapping");
+        errors.Select(static row => row[0]).ShouldBe(
+        [
+            "`invalid_input`",
+            "`not_found`",
+            "`forbidden`",
+            "`conflict`",
+            "`cancelled`",
+            "`dependency_unavailable`",
+            "`rate_limited`",
+            "`internal_dependency_failure`",
+            "`internal_failure`",
+            "`unknown`",
+        ]);
+        GetRow(errors, "`unknown`")[1].ShouldContain("any unmatched source code", Case.Sensitive);
+        GetRow(errors, "`unknown`")[1].ShouldContain("longer than 128 characters", Case.Sensitive);
+
+        AssertCellCounts(sources, 4, "Query Parameter Source Mapping");
+        AssertCellCounts(bounds, 2, "Query Parameter Bounds");
+        sources.Select(static row => row[0]).ShouldBe(bounds.Select(static row => row[0]).ToArray());
+        sources.ShouldAllBe(static row => row[2].Split(',', StringSplitOptions.RemoveEmptyEntries).Length <= 6);
+        string sourceMapping = NormalizeWhitespace(adr.GetSection("Query Parameter Source Mapping"));
+        sourceMapping.ShouldContain("Drop the memory-unit ID and URI", Case.Sensitive);
+        sourceMapping.ShouldContain("Drop CloudEvent and aggregate identifiers", Case.Sensitive);
+        sourceMapping.ShouldContain("drop the `changedFields` array", Case.Sensitive);
+
+        string schema = NormalizeWhitespace(adr.GetSection("Persisted Schema Bounds"));
+        schema.ShouldContain("partial and error inputs use Error Code Mapping", Case.Sensitive);
+        bounds.Select(static row => row[0]).ShouldBe(
+            ReadSourceOperationTypes().Select(static operation => $"`{operation}`").ToArray(),
+            ignoreOrder: true);
     }
 
     [Fact]
@@ -324,24 +454,26 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
 
         string retention = NormalizeWhitespace(telemetry.GetSection("Retention lifecycle status"));
         retention.ShouldContain("[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md)", Case.Sensitive);
-        retention.ShouldContain("Dapr-only access-telemetry lifecycle service", Case.Sensitive);
-        retention.ShouldContain("no Redis, Kubernetes, or other backend/orchestrator API", Case.Sensitive);
-        retention.ShouldContain("The ADR is `Accepted`", Case.Sensitive);
-        retention.ShouldContain("Stories 27.2 and 27.3 are unblocked", Case.Sensitive);
+        retention.ShouldContain("is `Accepted`", Case.Sensitive);
+        retention.ShouldContain("Story 27.2 implements its separate portable slice", Case.Sensitive);
+        retention.ShouldContain("fixed `AccessTelemetryLifecycleActor/global`", Case.Sensitive);
+        retention.ShouldContain("Production overlay keeps the Server provider and lifecycle writes disabled", Case.Sensitive);
+        retention.ShouldContain("Story 27.3 must select and pin the exact Production adapter", Case.Sensitive);
+        retention.ShouldContain("`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward", Case.Sensitive);
 
         string routing = NormalizeWhitespace(telemetry.GetSection("Audit log routing recipe"));
         routing.ShouldContain("typed `AccessTelemetryEvent` logger state", Case.Sensitive);
         routing.ShouldNotContain("dedicated JSON file sink", Case.Sensitive);
 
         string schema = NormalizeWhitespace(telemetry.GetSection("Audit event schema (FR67)"));
-        schema.ShouldContain("known privacy deviation", Case.Sensitive);
-        schema.ShouldContain("raw `query` and `subject` values", Case.Sensitive);
-        schema.ShouldContain("raw `sourceUri`", Case.Sensitive);
-        schema.ShouldContain("Do not persist or replay those raw values", Case.Sensitive);
+        schema.ShouldContain("public logger contract", Case.Sensitive);
+        schema.ShouldContain("reads typed `AccessTelemetryEvent` state", Case.Sensitive);
+        schema.ShouldContain("only then attempts nonblocking enqueue", Case.Sensitive);
+        schema.ShouldContain("not admitted to lifecycle state", Case.Sensitive);
 
         string logLevelGate = NormalizeWhitespace(telemetry.GetSection("Log-level config gate"));
         logLevelGate.ShouldContain("provider/category scoped, not tenant scoped", Case.Sensitive);
-        logLevelGate.ShouldContain("Until Story 27.2 ships", Case.Sensitive);
+        logLevelGate.ShouldContain("When the lifecycle provider is disabled", Case.Sensitive);
         logLevelGate.ShouldContain("retain `Information`", Case.Sensitive);
 
         string volume = NormalizeWhitespace(telemetry.GetSection("Access telemetry volume estimates"));
@@ -512,28 +644,31 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
                 ["axis"] = "hybrid",
                 ["caseScope"] = "single",
                 ["explain"] = true,
-                ["limitBucket"] = "51-100",
                 ["queryLengthBucket"] = "257-1024",
-                ["weightProfile"] = "balanced",
+                ["subjectPresent"] = true,
+                ["weightProfile"] = "request-override",
             },
             "ingest" => new(StringComparer.Ordinal)
             {
-                ["batchSizeBucket"] = "1",
+                ["caseScope"] = "case",
                 ["contentKind"] = "document",
                 ["contentLengthBucket"] = "1-10MiB",
+                ["eventOutcome"] = "accepted",
                 ["sourceKind"] = "url",
             },
             "traverse" => new(StringComparer.Ordinal)
             {
+                ["caseScope"] = "single",
                 ["depthBucket"] = "5",
-                ["direction"] = "both",
+                ["direction"] = "out",
                 ["edgeTypeCount"] = 3,
-                ["includeGaps"] = true,
+                ["includeGaps"] = false,
             },
             "case-access" => new(StringComparer.Ordinal)
             {
-                ["accessKind"] = "memory-unit",
+                ["accessKind"] = "source-uri",
                 ["projection"] = "detail",
+                ["sourceKind"] = "url",
             },
             "delete" => new(StringComparer.Ordinal)
             {
@@ -542,24 +677,25 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
             },
             "tenant-lifecycle" => new(StringComparer.Ordinal)
             {
-                ["action"] = "provision",
-                ["resourceCountBucket"] = "4-8",
+                ["action"] = "deletion-status",
+                ["workflowState"] = "completed",
             },
             "tenant-config" => new(StringComparer.Ordinal)
             {
                 ["action"] = "update",
                 ["changedFieldCountBucket"] = "4-8",
+                ["configKind"] = "embedding",
+                ["forceReindex"] = true,
             },
             "case-member" => new(StringComparer.Ordinal)
             {
                 ["action"] = "add",
-                ["role"] = "editor",
+                ["role"] = "unknown",
             },
             "annotation" => new(StringComparer.Ordinal)
             {
                 ["action"] = "create",
-                ["annotationKind"] = "correction",
-                ["subjectPresent"] = true,
+                ["annotationKind"] = "unknown",
             },
             _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Unknown access operation."),
         };

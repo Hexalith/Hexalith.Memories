@@ -5,6 +5,8 @@ resources:
   - services.yaml
   - server-deployment.yaml
   - mcp-deployment.yaml
+  - access-telemetry-deployments.yaml
+  - access-telemetry-network-policy.yaml
   - redis-statefulset.yaml
   - falkordb-statefulset.yaml
   - dapr/config.yaml
@@ -13,6 +15,11 @@ resources:
   - dapr/statestore.yaml
   - dapr/pubsub.yaml
   - dapr/conversation-openai.yaml
+  - dapr/access-telemetry-store.yaml
+  - dapr/access-telemetry-secrets.yaml
+  - dapr/access-telemetry-config-store.yaml
+  - dapr/access-telemetry-lifecycle-config.yaml
+  - dapr/access-telemetry-clock-config.yaml
 configMapGenerator:
   - name: memories-production-config
     literals:
@@ -20,6 +27,9 @@ configMapGenerator:
       - OIDC_ISSUER=https://identity.example.com
       - OIDC_AUDIENCE=hexalith-memories
       - OIDC_TENANT_CLAIM=tenant_id
+      # Story 27.2 portable templates remain disabled until Story 27.3 supplies exact eligible evidence.
+      - ACCESS_TELEMETRY_ENABLED=false
+      - ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH=unproven
   - name: redis-stack-config
     files:
       - redis-stack.conf=config/redis-stack.conf

@@ -1,0 +1,19 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: access-telemetry-config
+spec:
+  type: configuration.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: redis:6379
+    - name: redisPassword
+      secretKeyRef:
+        name: redis-secret
+        key: password
+auth:
+  secretStore: access-telemetry-secrets
+scopes:
+  - memories
+  - memories-access-telemetry

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <EnableContainer>true</EnableContainer>
+    <ContainerRepository>memories-access-telemetry-clock</ContainerRepository>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hexalith.Memories.AccessTelemetry.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.AccessTelemetry.Contracts\Hexalith.Memories.AccessTelemetry.Contracts.csproj" />
+    <ProjectReference Include="..\Hexalith.Memories.ServiceDefaults\Hexalith.Memories.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,122 @@
+// <copyright file="AccessTelemetryLifecycleLogger.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
+
+using Hexalith.Memories.AccessTelemetry.Contracts;
+using Hexalith.Memories.Contracts.V1;
+
+using Microsoft.Extensions.Logging;
+
+/// <summary>Typed-state lifecycle logger that never invokes formatters or propagates exceptions.</summary>
+internal sealed class AccessTelemetryLifecycleLogger : ILogger
+{
+    private static readonly string RequiredCategory = typeof(AccessTelemetryCategory).FullName!;
+    private readonly bool _categoryMatches;
+    private readonly BoundedAccessTelemetryQueue _queue;
+    private readonly AccessTelemetrySanitizerAccessor _sanitizerAccessor;
+
+    /// <summary>Initializes a category-bound lifecycle logger.</summary>
+    public AccessTelemetryLifecycleLogger(
+        string categoryName,
+        BoundedAccessTelemetryQueue queue,
+        AccessTelemetrySanitizer sanitizer)
+        : this(categoryName, queue, CreateAccessor(sanitizer))
+    {
+    }
+
+    /// <summary>Initializes a category-bound lifecycle logger with fail-closed secret bootstrap.</summary>
+    public AccessTelemetryLifecycleLogger(
+        string categoryName,
+        BoundedAccessTelemetryQueue queue,
+        AccessTelemetrySanitizerAccessor sanitizerAccessor)
+    {
+        _categoryMatches = string.Equals(categoryName, RequiredCategory, StringComparison.Ordinal);
+        _queue = queue;
+        _sanitizerAccessor = sanitizerAccessor;
+    }
+
+    /// <inheritdoc/>
+    public IDisposable? BeginScope<TState>(TState state)
+        where TState : notnull
+        => null;
+
+    /// <inheritdoc/>
+    public bool IsEnabled(LogLevel logLevel)
+        => _categoryMatches && logLevel is LogLevel.Information or LogLevel.Warning;
+
+    /// <inheritdoc/>
+    public void Log<TState>(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        if (!IsEnabled(logLevel))
+        {
+            return;
+        }
+
+        try
+        {
+            AccessTelemetryEvent? source = ExtractTypedState(state);
+            AccessTelemetrySanitizer? sanitizer = _sanitizerAccessor.Current;
+            if (source is not null && sanitizer is not null && sanitizer.TrySanitize(logLevel, eventId, source, out AccessTelemetryRecord? record, out _))
+            {
+                ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Accepted, AccessTelemetryReason.None);
+                if (_queue.TryEnqueue(record!, out AccessTelemetryReason reason))
+                {
+                    ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Enqueued, AccessTelemetryReason.None);
+                    ServerAccessTelemetryLifecycleMetrics.RecordQueueBytes(_queue.ByteCount);
+                }
+                else
+                {
+                    ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Dropped, reason);
+                }
+            }
+            else if (source is not null && sanitizer is null)
+            {
+                ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Rejected, AccessTelemetryReason.RemoteValidationPending);
+            }
+            else if (source is not null)
+            {
+                ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Rejected, AccessTelemetryReason.SchemaMismatch);
+            }
+        }
+        catch (Exception caught) when (caught is not OutOfMemoryException and not StackOverflowException)
+        {
+            // Logging infrastructure is never allowed to alter the business request outcome.
+        }
+    }
+
+    private static AccessTelemetrySanitizerAccessor CreateAccessor(AccessTelemetrySanitizer sanitizer)
+    {
+        var accessor = new AccessTelemetrySanitizerAccessor();
+        accessor.Publish(sanitizer);
+        return accessor;
+    }
+
+    private static AccessTelemetryEvent? ExtractTypedState<TState>(TState state)
+    {
+        if (state is AccessTelemetryEvent direct)
+        {
+            return direct;
+        }
+
+        if (state is IEnumerable<KeyValuePair<string, object?>> values)
+        {
+            foreach (KeyValuePair<string, object?> value in values)
+            {
+                if (value.Value is AccessTelemetryEvent typed)
+                {
+                    return typed;
+                }
+            }
+        }
+
+        return null;
+    }
+}

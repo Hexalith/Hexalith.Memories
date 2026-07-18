@@ -1,0 +1,35 @@
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: memories-access-telemetry-config
+spec:
+  secrets:
+    scopes:
+      - storeName: access-telemetry-secrets
+        defaultAccess: deny
+        allowedSecrets:
+          - access-telemetry-marker-key
+          - redis-secret
+  accessControl:
+    defaultAction: deny
+    trustDomain: public
+    policies:
+      - appId: memories
+        namespace: hexalith-memories
+        trustDomain: public
+        defaultAction: deny
+        operations:
+          - name: /v1/access-telemetry/write
+            httpVerb: ["POST"]
+            action: allow
+          - name: /v1/access-telemetry/heartbeat
+            httpVerb: ["POST"]
+            action: allow
+      - appId: memories-access-telemetry-inspector
+        namespace: hexalith-memories
+        trustDomain: public
+        defaultAction: deny
+        operations:
+          - name: /v1/access-telemetry/inspect
+            httpVerb: ["GET"]
+            action: allow

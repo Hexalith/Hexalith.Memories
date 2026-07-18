@@ -73,7 +73,12 @@ redis.OnResourceReady((resource, _, _) =>
     try
     {
         (string host, int port) = ResolveAllocatedEndpoint(resource, "redis");
-        WriteDaprRedisComponentFiles(daprComponentPaths.StateStore, daprComponentPaths.PubSub, $"{host}:{port}");
+        WriteDaprRedisComponentFiles(
+            daprComponentPaths.StateStore,
+            daprComponentPaths.PubSub,
+            daprComponentPaths.AccessTelemetryStore,
+            daprComponentPaths.AccessTelemetryConfig,
+            $"{host}:{port}");
         cycleTcs.TrySetResult();
         return Task.CompletedTask;
     }
@@ -86,7 +91,8 @@ redis.OnResourceReady((resource, _, _) =>
 builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
 {
     if (@event.Resource.Name is "memories-dapr" or "memories-dapr-cli" or
-        "memories-mcp-dapr" or "memories-mcp-dapr-cli")
+        "memories-mcp-dapr" or "memories-mcp-dapr-cli" or
+        "memories-access-telemetry-dapr" or "memories-access-telemetry-dapr-cli")
     {
         Task rewriteSignal;
         lock (redisComponentRewriteGate)
@@ -130,6 +136,26 @@ IResourceBuilder<IDaprComponentResource> secretStore = builder
         "secretstores.local.file",
         new DaprComponentOptions { LocalPath = daprComponentPaths.SecretStore });
 
+IResourceBuilder<IDaprComponentResource> accessTelemetryStore = builder
+    .AddDaprComponent(
+        "access-telemetry-store",
+        "state.redis",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.AccessTelemetryStore })
+    .WaitFor(redis);
+
+IResourceBuilder<IDaprComponentResource> accessTelemetrySecrets = builder
+    .AddDaprComponent(
+        "access-telemetry-secrets",
+        "secretstores.local.file",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.AccessTelemetrySecrets });
+
+IResourceBuilder<IDaprComponentResource> accessTelemetryConfig = builder
+    .AddDaprComponent(
+        "access-telemetry-config",
+        "configuration.redis",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.AccessTelemetryConfig })
+    .WaitFor(redis);
+
 // Story 9.2: DAPR Conversation component — drives GenerateNaturalLanguageDescriptionActivity in the
 // dual-embedding ingestion path. Dev default is conversation.echo so Aspire/test runs exercise the full
 // pipeline deterministically without a real LLM provider; echo returns the input unchanged. Production
@@ -169,6 +195,8 @@ IResourceBuilder<ProjectResource> server = builder
         _ = sidecar.WithReference(pubSub);
         _ = sidecar.WithReference(secretStore);
         _ = sidecar.WithReference(conversationLlm);
+        _ = sidecar.WithReference(accessTelemetrySecrets);
+        _ = sidecar.WithReference(accessTelemetryConfig);
     })
     .WithEnvironment(
         "ConnectionStrings__redis",
@@ -186,7 +214,9 @@ server = server
     .WithReference(stateStore)
     .WithReference(pubSub)
     .WithReference(secretStore)
-    .WithReference(conversationLlm);
+    .WithReference(conversationLlm)
+    .WithReference(accessTelemetrySecrets)
+    .WithReference(accessTelemetryConfig);
 #pragma warning restore CS0618
 
 // Story 6.1: dev-only default allow-list for POST /api/v1/ingest/directory so developers can batch-ingest
@@ -219,6 +249,58 @@ if (daprApiToken is not null)
 server = security is null
     ? PropagateJwtBearerAuthenticationEnvironment(server)
     : server.WithJwtBearerSecurity(security);
+
+// Story 27.2: the portable lifecycle topology is present locally but disabled until the exact
+// component profile has behavioral evidence. Story 27.3 owns Production adapter certification.
+server = server.WithEnvironment("AccessTelemetryLifecycle__Enabled", "false");
+
+IResourceBuilder<ProjectResource> accessTelemetryClock = builder
+    .AddProject<Projects.Hexalith_Memories_AccessTelemetry_Clock>(
+        "memories-access-telemetry-clock",
+        launchProfileName: "http")
+    .WithDaprSidecar(sidecar =>
+    {
+        _ = sidecar.WithOptions(CreateDaprSidecarOptions(
+            appId: "memories-access-telemetry-clock",
+            httpPort: 3800,
+            grpcPort: 50301,
+            configPath: daprConfigPath,
+            placementHostAddress: daprPlacementHostAddress,
+            schedulerHostAddress: daprSchedulerHostAddress));
+    });
+
+IResourceBuilder<ProjectResource> accessTelemetry = builder
+    .AddProject<Projects.Hexalith_Memories_AccessTelemetry>(
+        "memories-access-telemetry",
+        launchProfileName: "http")
+    .WithDaprSidecar(sidecar =>
+    {
+        _ = sidecar.WithOptions(CreateDaprSidecarOptions(
+            appId: "memories-access-telemetry",
+            httpPort: 3700,
+            grpcPort: 50201,
+            configPath: daprConfigPath,
+            placementHostAddress: daprPlacementHostAddress,
+            schedulerHostAddress: daprSchedulerHostAddress));
+        _ = sidecar.WithReference(accessTelemetryStore);
+        _ = sidecar.WithReference(accessTelemetrySecrets);
+        _ = sidecar.WithReference(accessTelemetryConfig);
+    })
+    .WithEnvironment("AccessTelemetryLifecycle__Enabled", "false")
+    .WaitFor(redis)
+    .WaitFor(accessTelemetryStore)
+    .WaitFor(accessTelemetrySecrets)
+    .WaitFor(accessTelemetryConfig);
+
+#pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr reads project-level component references.
+accessTelemetry = accessTelemetry
+    .WithReference(accessTelemetryStore)
+    .WithReference(accessTelemetrySecrets)
+    .WithReference(accessTelemetryConfig);
+#pragma warning restore CS0618
+
+_ = accessTelemetryClock;
+_ = accessTelemetry;
 
 _ = server;
 
@@ -327,10 +409,18 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
     string pubSubPath = Path.Combine(componentsDirectory, "pubsub.yaml");
     string secretStorePath = Path.Combine(componentsDirectory, "secretstore.yaml");
     string conversationLlmPath = Path.Combine(componentsDirectory, "llm.yaml");
+    string accessTelemetryStorePath = Path.Combine(componentsDirectory, "access-telemetry-store.yaml");
+    string accessTelemetrySecretsPath = Path.Combine(componentsDirectory, "access-telemetry-secrets.yaml");
+    string accessTelemetryConfigPath = Path.Combine(componentsDirectory, "access-telemetry-config.yaml");
 
     // These files are rewritten with Aspire's allocated Redis endpoint before the Dapr sidecars start.
     // The initial localhost value keeps the files valid for design-time inspection and local fallbacks.
-    WriteDaprRedisComponentFiles(stateStorePath, pubSubPath, "127.0.0.1:6379");
+    WriteDaprRedisComponentFiles(
+        stateStorePath,
+        pubSubPath,
+        accessTelemetryStorePath,
+        accessTelemetryConfigPath,
+        "127.0.0.1:6379");
 
     File.WriteAllText(
         secretStorePath,
@@ -366,12 +456,35 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
               value: "false"
         """);
 
+    File.WriteAllText(
+        accessTelemetrySecretsPath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: access-telemetry-secrets
+        spec:
+          type: secretstores.local.file
+          version: v1
+          metadata:
+            - name: secretsFile
+              value: "{EscapeYamlDoubleQuotedScalar(secretsFile)}"
+            - name: nestedSeparator
+              value: ":"
+        scopes:
+          - memories
+          - memories-access-telemetry
+        """);
+
     return new GeneratedDaprComponentPaths(
         componentsDirectory,
         stateStorePath,
         pubSubPath,
         secretStorePath,
-        conversationLlmPath);
+        conversationLlmPath,
+        accessTelemetryStorePath,
+        accessTelemetrySecretsPath,
+        accessTelemetryConfigPath);
 }
 
 static void TryRestrictSecretFilePermissions(string secretsFile)
@@ -537,7 +650,12 @@ static string EscapeYamlDoubleQuotedScalar(string value)
     return builder.ToString();
 }
 
-static void WriteDaprRedisComponentFiles(string stateStorePath, string pubSubPath, string redisHost)
+static void WriteDaprRedisComponentFiles(
+    string stateStorePath,
+    string pubSubPath,
+    string accessTelemetryStorePath,
+    string accessTelemetryConfigPath,
+    string redisHost)
 {
     File.WriteAllText(
         stateStorePath,
@@ -585,6 +703,47 @@ static void WriteDaprRedisComponentFiles(string stateStorePath, string pubSubPat
               value: "500ms"
             - name: redisMaxRetryInterval
               value: "2s"
+        """);
+
+    File.WriteAllText(
+        accessTelemetryStorePath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: access-telemetry-store
+        spec:
+          type: state.redis
+          version: v1
+          metadata:
+            - name: redisHost
+              value: "{redisHost}"
+            - name: redisPassword
+              value: ""
+            - name: actorStateStore
+              value: "true"
+        scopes:
+          - memories-access-telemetry
+        """);
+
+    File.WriteAllText(
+        accessTelemetryConfigPath,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: access-telemetry-config
+        spec:
+          type: configuration.redis
+          version: v1
+          metadata:
+            - name: redisHost
+              value: "{redisHost}"
+            - name: redisPassword
+              value: ""
+        scopes:
+          - memories
+          - memories-access-telemetry
         """);
 }
 
@@ -970,7 +1129,10 @@ internal sealed record GeneratedDaprComponentPaths(
     string StateStore,
     string PubSub,
     string SecretStore,
-    string ConversationLlm);
+    string ConversationLlm,
+    string AccessTelemetryStore,
+    string AccessTelemetrySecrets,
+    string AccessTelemetryConfig);
 
 /// <summary>
 /// Story 15.6 code review: signals a Redis readiness probe failure that should NOT be retried —

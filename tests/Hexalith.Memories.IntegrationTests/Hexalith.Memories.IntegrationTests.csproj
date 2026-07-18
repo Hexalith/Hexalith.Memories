@@ -5,6 +5,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry.Contracts\Hexalith.Memories.AccessTelemetry.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry.Clock\Hexalith.Memories.AccessTelemetry.Clock.csproj" />
+    <ProjectReference Include="..\..\src\Hexalith.Memories.AccessTelemetry\Hexalith.Memories.AccessTelemetry.csproj" />
     <ProjectReference Include="..\..\src\Hexalith.Memories.AppHost\Hexalith.Memories.AppHost.csproj">
       <IsAspireProjectResource>false</IsAspireProjectResource>
     </ProjectReference>
@@ -24,6 +27,7 @@
     <PackageReference Include="Aspire.Hosting.Testing" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>

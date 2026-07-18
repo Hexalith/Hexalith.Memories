@@ -29,12 +29,17 @@ public sealed class AppHostProjectResolutionTests
         // second layer — the generated metadata still points at the expected csproj on disk.
         IProjectMetadata server = new Projects.Hexalith_Memories_Server();
         IProjectMetadata mcp = new Projects.Hexalith_Memories_Mcp();
+        IProjectMetadata lifecycle = new Projects.Hexalith_Memories_AccessTelemetry();
+        IProjectMetadata clock = new Projects.Hexalith_Memories_AccessTelemetry_Clock();
 
         server.ProjectPath.ShouldNotBeNullOrWhiteSpace();
         server.ProjectPath.ShouldEndWith("Hexalith.Memories.Server.csproj");
 
         mcp.ProjectPath.ShouldNotBeNullOrWhiteSpace();
         mcp.ProjectPath.ShouldEndWith("Hexalith.Memories.Mcp.csproj");
+
+        lifecycle.ProjectPath.ShouldEndWith("Hexalith.Memories.AccessTelemetry.csproj");
+        clock.ProjectPath.ShouldEndWith("Hexalith.Memories.AccessTelemetry.Clock.csproj");
 
         // The generated symbol *shape* is itself contract: Aspire derives the type name by replacing each
         // '.' in the project name with '_' and emits it into the `Projects` namespace, so a project rename
@@ -45,5 +50,7 @@ public sealed class AppHostProjectResolutionTests
 
         mcp.GetType().Namespace.ShouldBe("Projects");
         mcp.GetType().Name.ShouldBe("Hexalith_Memories_Mcp");
+        lifecycle.GetType().Name.ShouldBe("Hexalith_Memories_AccessTelemetry");
+        clock.GetType().Name.ShouldBe("Hexalith_Memories_AccessTelemetry_Clock");
     }
 }

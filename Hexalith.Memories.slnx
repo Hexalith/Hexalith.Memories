@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj" />
+    <Project Path="src/Hexalith.Memories.AccessTelemetry.Contracts/Hexalith.Memories.AccessTelemetry.Contracts.csproj" />
+    <Project Path="src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj" />
     <Project Path="src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj" />
     <Project Path="src/Hexalith.Memories.Aspire/Hexalith.Memories.Aspire.csproj" />
     <Project Path="src/Hexalith.Memories.Cli/Hexalith.Memories.Cli.csproj" />
@@ -17,6 +20,7 @@
     <Project Path="tools/MigrateEmbeddingVectors/MigrateEmbeddingVectors.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj" />

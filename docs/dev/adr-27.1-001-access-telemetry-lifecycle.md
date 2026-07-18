@@ -291,15 +291,15 @@ and cost before rollout.
 
 | Operation | Per-replica events/s | Cluster events/s | Representative average sanitized bytes | Representative P95 sanitized bytes |
 | :-------- | -------------------: | ---------------: | -------------------------------------: | ---------------------------------: |
-| search | 100 | 200 | 867.8 | 893 |
-| ingest | 3 | 6 | 833.8 | 859 |
-| traverse | 5 | 10 | 810.8 | 836 |
-| case-access | 8 | 16 | 788.8 | 814 |
+| search | 100 | 200 | 874.8 | 900 |
+| ingest | 3 | 6 | 856.8 | 882 |
+| traverse | 5 | 10 | 831.8 | 857 |
+| case-access | 8 | 16 | 806.8 | 832 |
 | delete | 1 | 2 | 770.8 | 796 |
-| tenant-lifecycle | 0.1 | 0.2 | 732.8 | 758 |
-| tenant-config | 0.4 | 0.8 | 730.8 | 756 |
-| case-member | 2 | 4 | 771.8 | 797 |
-| annotation | 5.5 | 11 | 809.8 | 835 |
+| tenant-lifecycle | 0.1 | 0.2 | 738.8 | 764 |
+| tenant-config | 0.4 | 0.8 | 775.8 | 801 |
+| case-member | 2 | 4 | 772.8 | 798 |
+| annotation | 5.5 | 11 | 784.8 | 810 |
 
 The deterministic fixture serializes 100 compact UTF-8 records per family: 90
 success and 10 bounded `internal_dependency_failure` records, fixed-length
@@ -452,20 +452,19 @@ or metrics. The persisted JSON schema is allowlisted:
 
 ### Story 27.2 C1 Mapping Ratification
 
-The current logger contract exposes more states than the accepted persisted V1
-text can represent. The reconciliation below is the proposed complete mapping.
-It is deliberately inactive until both named decision owners ratify it. On
-ratification it replaces every conflicting outcome, nullable-field, and
-`queryParams` clause under **Persisted Schema Bounds** and **Query Parameter
-Bounds**. Until then the runtime persistence gate remains closed and no provider,
-writer, lifecycle service, or deployment topology may be enabled.
+The current logger contract exposes more states than the original persisted V1
+text could represent. The reconciliation below is the ratified complete mapping.
+It replaces every conflicting outcome, nullable-field, and `queryParams` clause
+under **Persisted Schema Bounds** and **Query Parameter Bounds**.
+
+#### Ratification Decision
 
 | Decision field | Recorded value |
 | :------------- | :------------- |
 | Mapping version | Story 27.2 C1 source-to-persisted V1 reconciliation, 2026-07-18 |
-| Administrator decision | pending |
-| Architecture owner decision | pending — Hexalith.Memories maintainers |
-| Runtime persistence gate | closed pending both ratifications and green structure guards |
+| Administrator decision | ratified 2026-07-18 by Administrator |
+| Architecture owner decision | ratified 2026-07-18 by Administrator on behalf of Hexalith.Memories maintainers |
+| Runtime persistence gate | open — both ratifications recorded and structure guards green |
 | Scope | One persisted schema and one lifecycle family; no split or replan trigger found |
 
 #### Source Event Mapping
@@ -577,11 +576,11 @@ weight is copied.
 | `case-member` | `memberIdPrefix`, `operation` | `action`, `role` | Map current operations to `add` or `remove`; current typed state does not carry role, so persist bounded `unknown`; drop the member prefix. |
 | `annotation` | `memoryUnitIdPrefix`, `operation` | `action`, `annotationKind` | Current action is `create`; current typed state does not carry annotation kind, so persist bounded `unknown`; drop the memory-unit prefix. |
 
-The proposal keeps the existing six-key maximum and the 1,024-byte record
+The ratified mapping keeps the existing six-key maximum and the 1,024-byte record
 ceiling. Re-running the deterministic 90-success/10-error fixture with the
-proposed exact keys produces the following reviewable, non-Production sizing
-values; the canonical **Operation Envelope** table is updated only after
-ratification.
+exact keys produces the following reviewable, non-Production sizing values.
+
+#### Ratified Fixture Evidence
 
 | Operation | Proposed representative average sanitized bytes | Proposed representative P95 sanitized bytes |
 | :-------- | -----------------------------------------------: | -------------------------------------------: |
@@ -609,11 +608,14 @@ record must be at most 1,024 UTF-8 bytes.
   reader/inspector tests for the maximum retention window, and an explicit
   retirement gate. Unknown fields are never silently ignored.
 - `recordId` is a 26-character uppercase Crockford ULID. `eventId` is exactly
-  7501-7509 for `ok` and the corresponding 7511-7519 value for `error`.
+  7501-7509 for `ok`, 7501 for the sole `partial` search outcome, and the
+  corresponding 7511-7519 value for `error`.
   `operationType` is exactly `search`, `ingest`, `traverse`, `case-access`,
   `delete`, `tenant-lifecycle`, `tenant-config`, `case-member`, or `annotation`.
-  `outcome` is `ok` or `error`.
-- `errorCode` is `null` for `ok`; error inputs map to exactly one of
+  `outcome` is `ok`, `partial`, or `error`; only search event 7501 may be
+  `partial`, as fixed by **Source Event Mapping**.
+- `errorCode` is `null` for `ok`; partial and error inputs use Error Code
+  Mapping and map to exactly one of
   `invalid_input`, `not_found`, `forbidden`, `conflict`, `cancelled`,
   `dependency_unavailable`, `rate_limited`, `internal_dependency_failure`,
   `internal_failure`, or `unknown`. Exception types/messages and arbitrary
@@ -625,9 +627,10 @@ record must be at most 1,024 UTF-8 bytes.
 - All timestamps use `yyyy-MM-ddTHH:mm:ss.fffZ`. `durationMs` is integer
   `0..86,400,000`; `resultCount` is `null` or integer `0..1,000,000`.
   Floating-point values, negative values, and numeric strings are rejected.
-- `caseMarker` is non-null for every operation except `tenant-lifecycle` and
-  `tenant-config`. `resultCount` is non-null only for `search`, `traverse`, and
-  `case-access`. `userMarker` may be null for any operation.
+- `caseMarker`, `resultCount`, and their bounded scope/target companions follow
+  **Case, Result, and Nullable Mapping** exactly. Only `tenantMarker` may carry
+  `__rejected__`; rejected tenant scope forces user, case, trace, and span
+  markers to null. `userMarker` may otherwise be null for any operation.
 - `queryParams` contains at most six ordinally, lexicographically ordered keys,
   with only the per-operation keys and values in the table below. No free text,
   nested object, array, URI, identifier, or unlisted enum is accepted.
@@ -638,15 +641,15 @@ record must be at most 1,024 UTF-8 bytes.
 
 | Operation | Exact bounded `queryParams` contract |
 | :-------- | :----------------------------------- |
-| `search` | `axis`: `lexical`, `semantic`, `hybrid`; `caseScope`: `single`, `all-authorized`; `explain`: boolean; `limitBucket`: `1-10`, `11-25`, `26-50`, `51-100`; `queryLengthBucket`: `0`, `1-32`, `33-128`, `129-256`, `257-1024`, `1025+`; `weightProfile`: `lexical`, `semantic`, `balanced`. |
-| `ingest` | `batchSizeBucket`: `1`, `2-10`, `11-100`, `101-256`; `contentKind`: `document`, `text`, `image`, `audio`, `unknown`; `contentLengthBucket`: `0`, `1-64KiB`, `64KiB-1MiB`, `1-10MiB`, `10MiB+`; `sourceKind`: `upload`, `url`, `directory`, `text`, `unknown`. |
-| `traverse` | `depthBucket`: `1`, `2`, `3`, `4`, `5`; `direction`: `in`, `out`, `both`; `edgeTypeCount`: integer `0..16`; `includeGaps`: boolean. |
-| `case-access` | `accessKind`: `case`, `memory-unit`, `relation`; `projection`: `summary`, `detail`. |
-| `delete` | `cascade`: boolean; `targetKind`: `case`, `memory-unit`, `relation`, `annotation`. |
-| `tenant-lifecycle` | `action`: `provision`, `suspend`, `resume`, `delete`; `resourceCountBucket`: `0`, `1`, `2-3`, `4-8`, `9+`. |
-| `tenant-config` | `action`: `create`, `update`, `delete`; `changedFieldCountBucket`: `0`, `1`, `2-3`, `4-8`, `9+`. |
-| `case-member` | `action`: `add`, `update`, `remove`; `role`: `reader`, `editor`, `owner`. |
-| `annotation` | `action`: `create`, `update`, `delete`; `annotationKind`: `note`, `correction`, `warning`; `subjectPresent`: boolean. |
+| `search` | `axis`: `syntactic`, `semantic`, `graph`, `natural-language`, `hybrid`, `graph-scoped-syntactic`, `graph-scoped-semantic`, `unknown`; `caseScope`: `single`, `all-authorized`, `rejected-or-unknown`; `explain`: boolean; `queryLengthBucket`: `0`, `1-32`, `33-128`, `129-256`, `257-1024`, `1025+`; `subjectPresent`: boolean; `weightProfile`: `configured`, `request-override`, `invalid`. |
+| `ingest` | `caseScope`: `case`, `tenant`, `rejected-or-unknown`; `contentKind`: `document`, `text`, `image`, `audio`, `unknown`; `contentLengthBucket`: `0`, `1-64KiB`, `64KiB-1MiB`, `1-10MiB`, `10MiB+`; `eventOutcome`: `not-applicable`, `accepted`, `duplicate`, `rejected`, `unknown`; `sourceKind`: `file`, `url`, `event`, `command`, `projection`, `discussion`, `annotation`, `unknown`. |
+| `traverse` | `caseScope`: `single`, `all-authorized`, `rejected-or-unknown`; `depthBucket`: `0`, `1`, `2`, `3`, `4`, `5`, `6-10`, `invalid`; `direction`: `out`; `edgeTypeCount`: integer `0..16`; `includeGaps`: false. |
+| `case-access` | `accessKind`: `memory-unit-id`, `source-uri`; `projection`: `detail`; `sourceKind`: `url`, `file`, `other`, `unknown`, `not-applicable`. |
+| `delete` | `cascade`: boolean; `targetKind`: `memory-unit`, `case`, `tenant`. |
+| `tenant-lifecycle` | `action`: `provision`, `provision-status`, `deletion-status`; `workflowState`: `not-applicable`, `pending`, `running`, `completed`, `failed`, `terminated`, `unknown`. |
+| `tenant-config` | `action`: `update`; `changedFieldCountBucket`: `0`, `1`, `2-3`, `4-8`, `9+`; `configKind`: `embedding`, `display-name`; `forceReindex`: boolean. |
+| `case-member` | `action`: `add`, `remove`; `role`: `unknown`. |
+| `annotation` | `action`: `create`; `annotationKind`: `unknown`. |
 
 The immutable envelope consists of every persisted field except
 `acceptedAtUtc` and `envelopeHash`. The writer canonicalizes and hashes it; the

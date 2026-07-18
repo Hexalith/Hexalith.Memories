@@ -6,7 +6,7 @@ creation_scope_evidence: _bmad-output/implementation-artifacts/tests/27-2-create
 
 # Story 27.2: Bounded Retention/TTL and Purge Implementation
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -28,72 +28,72 @@ so that emitted access records do not grow without limit.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1 - Reconcile and ratify the source-to-persisted V1 mapping before runtime persistence work (AC: 1, 4)
-  - [ ] Re-run the Story 27.1 handoff preflight against all nine current `AccessTelemetryLog` operation families and their typed `AccessTelemetryEvent` state. Build a checked-in, structure-guarded mapping matrix covering every event ID, severity, operation, outcome, error code, timestamp, query field, and nullable field.
-  - [ ] Resolve the current contract gaps explicitly: map the logger outcome `partial`; represent authorized cross-case search where `caseId` is null; map syntactic/semantic/graph/natural-language/hybrid search modes and arbitrary current weight combinations into bounded persisted catalogs; and define error-code mapping without leaking exception or response content.
-  - [ ] Amend the not-yet-shipped persisted V1 section of `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` only as needed to make the mapping total, deterministic, bounded, and privacy-safe. Preserve the public logger contract and the accepted Dapr-only architecture.
-  - [ ] Obtain recorded ratification from Administrator and the architecture owner, then update `AccessTelemetryRetentionDecisionTests` with structure-aware guards for the resolved mapping. This is a hard checkpoint: do not implement or enable persistence, the provider, or deployment topology until the mapping is ratified and the guards pass.
-  - [ ] If reconciliation requires a second independently shippable product, multiple persisted schemas, or a materially different lifecycle family, stop and split/replan rather than widening Story 27.2.
+- [x] Task 1 - Reconcile and ratify the source-to-persisted V1 mapping before runtime persistence work (AC: 1, 4)
+  - [x] Re-run the Story 27.1 handoff preflight against all nine current `AccessTelemetryLog` operation families and their typed `AccessTelemetryEvent` state. Build a checked-in, structure-guarded mapping matrix covering every event ID, severity, operation, outcome, error code, timestamp, query field, and nullable field.
+  - [x] Resolve the current contract gaps explicitly: map the logger outcome `partial`; represent authorized cross-case search where `caseId` is null; map syntactic/semantic/graph/natural-language/hybrid search modes and arbitrary current weight combinations into bounded persisted catalogs; and define error-code mapping without leaking exception or response content.
+  - [x] Amend the not-yet-shipped persisted V1 section of `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` only as needed to make the mapping total, deterministic, bounded, and privacy-safe. Preserve the public logger contract and the accepted Dapr-only architecture.
+  - [x] Obtain recorded ratification from Administrator and the architecture owner, then update `AccessTelemetryRetentionDecisionTests` with structure-aware guards for the resolved mapping. This is a hard checkpoint: do not implement or enable persistence, the provider, or deployment topology until the mapping is ratified and the guards pass.
+  - [x] If reconciliation requires a second independently shippable product, multiple persisted schemas, or a materially different lifecycle family, stop and split/replan rather than widening Story 27.2.
 
-- [ ] Task 2 - Add the internal lifecycle contracts and bounded configuration model (AC: 1, 2, 4)
-  - [ ] Add a non-packable internal `Hexalith.Memories.AccessTelemetry.Contracts` project for Dapr invocation DTOs, the canonical persistence record, lifecycle/configuration epochs, writer heartbeats, signed clock attestations, inspection responses, and bounded enums. Keep the public `Hexalith.Memories.Contracts.V1.AccessTelemetryEvent` unchanged and separate.
-  - [ ] Implement strict options and startup validation for enabled state; component/app identities; retention, queue, batch, retry, clock, and purge bounds; configuration epoch; component-profile hash; alpha opt-in; attestation verification key; marker-key references/generations; capacity evidence ID; physical-reclamation evidence ID; and exact schema version. Production must receive retention through Dapr configuration; missing, malformed, zero, infinite, below-one-hour, or above-seven-day values stop lifecycle writes without stopping business readiness. Development/tests may default to 24 hours; shorter durations are test-composition-only.
-  - [ ] Encode the accepted defaults and limits once: 24-hour default, one-hour minimum, seven-day maximum; 1,024-byte canonical record; 256-record/one-MiB batch; 8,192-record/64-MiB per-Server queue; five-second shutdown flush; and retry never beyond five minutes from emission or absolute expiry.
-  - [ ] Canonicalize the internal record as deterministic RFC 8785 UTF-8 JSON with explicit nulls, reject unknown/duplicate/wrong-case/noncanonical fields, generate monotonic ULID record IDs, and calculate the canonical-envelope SHA-256 used by idempotency checks.
-  - [ ] Use central package management and existing repository pins. Do not add versions to project package references or upgrade the SDK, Aspire, Dapr, OpenTelemetry, ULID, or test packages as part of this story.
+- [x] Task 2 - Add the internal lifecycle contracts and bounded configuration model (AC: 1, 2, 4)
+  - [x] Add a non-packable internal `Hexalith.Memories.AccessTelemetry.Contracts` project for Dapr invocation DTOs, the canonical persistence record, lifecycle/configuration epochs, writer heartbeats, signed clock attestations, inspection responses, and bounded enums. Keep the public `Hexalith.Memories.Contracts.V1.AccessTelemetryEvent` unchanged and separate.
+  - [x] Implement strict options and startup validation for enabled state; component/app identities; retention, queue, batch, retry, clock, and purge bounds; configuration epoch; component-profile hash; alpha opt-in; attestation verification key; marker-key references/generations; capacity evidence ID; physical-reclamation evidence ID; and exact schema version. Production must receive retention through Dapr configuration; missing, malformed, zero, infinite, below-one-hour, or above-seven-day values stop lifecycle writes without stopping business readiness. Development/tests may default to 24 hours; shorter durations are test-composition-only.
+  - [x] Encode the accepted defaults and limits once: 24-hour default, one-hour minimum, seven-day maximum; 1,024-byte canonical record; 256-record/one-MiB batch; 8,192-record/64-MiB per-Server queue; five-second shutdown flush; and retry never beyond five minutes from emission or absolute expiry.
+  - [x] Canonicalize the internal record as deterministic RFC 8785 UTF-8 JSON with explicit nulls, reject unknown/duplicate/wrong-case/noncanonical fields, generate monotonic ULID record IDs, and calculate the canonical-envelope SHA-256 used by idempotency checks.
+  - [x] Use central package management and existing repository pins. Do not add versions to project package references or upgrade the SDK, Aspire, Dapr, OpenTelemetry, ULID, or test packages as part of this story.
 
-- [ ] Task 3 - Add the Server lifecycle logger provider and bounded delivery worker (AC: 1, 2, 3, 4)
-  - [ ] Add the lifecycle provider under `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/`. Consume typed `AccessTelemetryEvent` logger state by value type; never parse stdout and never use record `ToString()` as a persistence contract.
-  - [ ] Give this provider an isolated Information-level filter for `AccessTelemetryCategory`. Preserve the existing nine success/error event IDs and severities, JSON console provider, optional OTLP provider, endpoint responses, rate limits, authentication/authorization order, metrics, and one-emission `EndpointTelemetryScope` behavior.
-  - [ ] Sanitize synchronously before enqueue. Convert tenant/user/case identifiers to keyed HMAC markers; only `tenantMarker` may use `__rejected__` for rejected/unknown tenant scope, while rejected user/case handling and authorized cross-case records follow C1's ratified total mapping. Reduce query text to a length bucket, subject to presence, and source URI to a bounded source kind. Prohibit raw tenant, user, case, query, subject, URI, payload, token, credential, secret, and exception content.
-  - [ ] Implement a truly byte-and-record-bounded in-memory queue. `ILogger.Log` must use nonblocking admission, drop the new record on overflow with bounded reason `queue_full`, never spill to disk, and never let a lifecycle exception escape into a business request.
-  - [ ] Implement the hosted worker with batches no larger than 256 records and one MiB, Dapr service invocation to `memories-access-telemetry`, full-jitter retry from 100 milliseconds through five seconds, a five-minute/emission-expiry cap, bounded outage recovery, and a five-second shutdown flush. Two Server writers must produce unique records without instance/process identifiers becoming telemetry labels.
-  - [ ] Treat correctly configured Dapr unavailability as bounded degraded operation (`remote_validation_pending`); continue business traffic and existing JSON/OTLP emission. Treat later capability/configuration/profile mismatch as terminal `configuration_invalid` until an explicit service restart. Do not add a fallback sink.
+- [x] Task 3 - Add the Server lifecycle logger provider and bounded delivery worker (AC: 1, 2, 3, 4)
+  - [x] Add the lifecycle provider under `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/`. Consume typed `AccessTelemetryEvent` logger state by value type; never parse stdout and never use record `ToString()` as a persistence contract.
+  - [x] Give this provider an isolated Information-level filter for `AccessTelemetryCategory`. Preserve the existing nine success/error event IDs and severities, JSON console provider, optional OTLP provider, endpoint responses, rate limits, authentication/authorization order, metrics, and one-emission `EndpointTelemetryScope` behavior.
+  - [x] Sanitize synchronously before enqueue. Convert tenant/user/case identifiers to keyed HMAC markers; only `tenantMarker` may use `__rejected__` for rejected/unknown tenant scope, while rejected user/case handling and authorized cross-case records follow C1's ratified total mapping. Reduce query text to a length bucket, subject to presence, and source URI to a bounded source kind. Prohibit raw tenant, user, case, query, subject, URI, payload, token, credential, secret, and exception content.
+  - [x] Implement a truly byte-and-record-bounded in-memory queue. `ILogger.Log` must use nonblocking admission, drop the new record on overflow with bounded reason `queue_full`, never spill to disk, and never let a lifecycle exception escape into a business request.
+  - [x] Implement the hosted worker with batches no larger than 256 records and one MiB, Dapr service invocation to `memories-access-telemetry`, full-jitter retry from 100 milliseconds through five seconds, a five-minute/emission-expiry cap, bounded outage recovery, and a five-second shutdown flush. Two Server writers must produce unique records without instance/process identifiers becoming telemetry labels.
+  - [x] Treat correctly configured Dapr unavailability as bounded degraded operation (`remote_validation_pending`); continue business traffic and existing JSON/OTLP emission. Treat later capability/configuration/profile mismatch as terminal `configuration_invalid` until an explicit service restart. Do not add a fallback sink.
 
-- [ ] Task 4 - Implement the Dapr-addressed lifecycle service, fixed actor, logical expiry, and purge (AC: 1, 2, 3, 4)
-  - [ ] Add the non-packable Web service with Dapr app ID `memories-access-telemetry`, using `AddServiceDefaults(configureRedisInstrumentation: false)` and only Dapr service invocation, state, actors/reminders, configuration, and secrets. No backend SDK, connection string, backend endpoint, orchestrator API, Kubernetes identity, or Pod UID may enter application code.
-  - [ ] Implement `AccessTelemetryLifecycleActor/global` as the sole serialized mutation authority. Store configuration epoch, component-profile hash, writer registry, 64-shard minute expiry cursor, purge/capacity/reclamation/rotation state, and reminder progress in actor state.
-  - [ ] In one Dapr transaction, write each canonical record and its minute/shard expiry index with ETags/strong-read semantics. The same record ID, hash, and absolute expiry is idempotent; differing bytes or expiry returns `record_id_conflict` and makes lifecycle health unhealthy.
-  - [ ] Base absolute Unix-millisecond expiry on the source event timestamp. Retry must never extend age. Reject an already-expired event, an event over one second in the future, replay, stale clock evidence, or untrusted time. Pass `ttlInSeconds = ceil(remaining lifetime)` only as defense in depth; never treat component TTL metadata as proof of authoritative deletion.
-  - [ ] Register an idempotent durable reminder every five minutes. Walk 64 minute shards, process no more than 512 due records per actor turn within an observed 100-millisecond budget, back off 25-100 milliseconds between turns, preserve newer records, and catch up until healthy logical purge is within 15 minutes.
-  - [ ] Define portable logical deletion as Dapr Delete followed by a strong Get returning absent and removal from the expiry index. The sanitized inspector may report bounded lifecycle evidence but cannot write, delete, extend expiry, rotate keys, or expose raw records. Do not claim component-specific physical reclamation here.
-  - [ ] Implement staged marker-key rotation: writers heartbeat every 10 seconds with 30-second leases; stage, acknowledge, drain, and activate epochs; retain the old key through the final old-key write plus seven days, one-second accepted skew, and 15-minute purge grace.
+- [x] Task 4 - Implement the Dapr-addressed lifecycle service, fixed actor, logical expiry, and purge (AC: 1, 2, 3, 4)
+  - [x] Add the non-packable Web service with Dapr app ID `memories-access-telemetry`, using `AddServiceDefaults(configureRedisInstrumentation: false)` and only Dapr service invocation, state, actors/reminders, configuration, and secrets. No backend SDK, connection string, backend endpoint, orchestrator API, Kubernetes identity, or Pod UID may enter application code.
+  - [x] Implement `AccessTelemetryLifecycleActor/global` as the sole serialized mutation authority. Store configuration epoch, component-profile hash, writer registry, 64-shard minute expiry cursor, purge/capacity/reclamation/rotation state, and reminder progress in actor state.
+  - [x] In one Dapr transaction, write each canonical record and its minute/shard expiry index with ETags/strong-read semantics. The same record ID, hash, and absolute expiry is idempotent; differing bytes or expiry returns `record_id_conflict` and makes lifecycle health unhealthy.
+  - [x] Base absolute Unix-millisecond expiry on the source event timestamp. Retry must never extend age. Reject an already-expired event, an event over one second in the future, replay, stale clock evidence, or untrusted time. Pass `ttlInSeconds = ceil(remaining lifetime)` only as defense in depth; never treat component TTL metadata as proof of authoritative deletion.
+  - [x] Register an idempotent durable reminder every five minutes. Walk 64 minute shards, process no more than 512 due records per actor turn within an observed 100-millisecond budget, back off 25-100 milliseconds between turns, preserve newer records, and catch up until healthy logical purge is within 15 minutes.
+  - [x] Define portable logical deletion as Dapr Delete followed by a strong Get returning absent and removal from the expiry index. The sanitized inspector may report bounded lifecycle evidence but cannot write, delete, extend expiry, rotate keys, or expose raw records. Do not claim component-specific physical reclamation here.
+  - [x] Implement staged marker-key rotation: writers heartbeat every 10 seconds with 30-second leases; stage, acknowledge, drain, and activate epochs; retain the old key through the final old-key write plus seven days, one-second accepted skew, and 15-minute purge grace.
 
-- [ ] Task 5 - Implement the independently signed clock-attestation service and validation gates (AC: 1, 2, 3)
-  - [ ] Add the non-packable Web service with Dapr app ID `memories-access-telemetry-clock`, independent signing authority, no lifecycle-store authority, and no dependency on application/container/host wall-clock agreement as trust evidence.
-  - [ ] Require at least three independent authenticated UTC sources. Produce a majority interval no wider than 250 milliseconds and a signed attestation bound to deployment ID, app ID, unique service-instance ID, a new process-epoch ULID for every process start, component/profile identity, nonce, issued/expiry timestamps, and signer/key epoch.
-  - [ ] Refresh every 10 seconds and expire after 30 seconds. Verify signature, nonce, replay cache, context, profile, freshness, majority, and an absolute delta no greater than one second before Server acceptance and every lifecycle mutation.
-  - [ ] Require a new attestation after reconnect, actor/service failover, component/profile/configuration/key epoch change, or process restart. Stale/untrusted time stops lifecycle operations and marks lifecycle health unhealthy without stopping business traffic or existing JSON/OTLP emission.
+- [x] Task 5 - Implement the independently signed clock-attestation service and validation gates (AC: 1, 2, 3)
+  - [x] Add the non-packable Web service with Dapr app ID `memories-access-telemetry-clock`, independent signing authority, no lifecycle-store authority, and no dependency on application/container/host wall-clock agreement as trust evidence.
+  - [x] Require at least three independent authenticated UTC sources. Produce a majority interval no wider than 250 milliseconds and a signed attestation bound to deployment ID, app ID, unique service-instance ID, a new process-epoch ULID for every process start, component/profile identity, nonce, issued/expiry timestamps, and signer/key epoch.
+  - [x] Refresh every 10 seconds and expire after 30 seconds. Verify signature, nonce, replay cache, context, profile, freshness, majority, and an absolute delta no greater than one second before Server acceptance and every lifecycle mutation.
+  - [x] Require a new attestation after reconnect, actor/service failover, component/profile/configuration/key epoch change, or process restart. Stale/untrusted time stops lifecycle operations and marks lifecycle health unhealthy without stopping business traffic or existing JSON/OTLP emission.
 
-- [ ] Task 6 - Add fail-closed component capability gates, bounded observability, and authority separation (AC: 1, 2, 3, 4)
-  - [ ] Before the first write and after material change, run behavioral probes for strong CRUD/ETag behavior, multi-key transactions/conflicts, actor state/reactivation/failover/reminders, effective TTL, 1,024-byte records, 256-record/one-MiB transactions, two-writer throughput while purge runs, declared durability/failure behavior, tenant isolation/encryption, physical capacity, and reclamation evidence hooks.
-  - [ ] Probe the exact configured component profile; do not infer capability from the Dapr API or component name. A component that ignores or cannot prove effective per-record TTL fails the gate even though logical expiry remains authoritative. A failed/missing/stale probe blocks lifecycle writes and reports lifecycle Unhealthy while business readiness remains available. Do not enable an unproven Production profile; alpha components require explicit Production opt-in and an exact version pin.
-  - [ ] Preserve separate authorities: Server writer can invoke write/heartbeat only; lifecycle service can access its actor and `access-telemetry-store`, `access-telemetry-secrets`, and `access-telemetry-config` only; clock can sign attestations only; inspector has sanitized operations-only read access; adapter/operations evidence stays outside application credentials.
-  - [ ] Add the counter `memories.access.telemetry.lifecycle.records` with bounded `state` values accepted/rejected/enqueued/persisted/retried/failed/dropped/expired/purged and a bounded reason catalog. Add bounded queue, Dapr, attestation, state, latency, capacity, expiry, purge, reminder, and physical-evidence measurements required by the ADR.
-  - [ ] Implement health precedence `Unhealthy` over `Degraded` over `NoData`/`Healthy`. `NoData` is valid only when enabled, every gate is healthy, and no accepted/rejected record has appeared for 15 minutes. Health details must state cause, impact, owner, and next action without raw content, secrets, record/backend IDs, or tenant/user/case/query/source/trace/instance/process labels.
+- [x] Task 6 - Add fail-closed component capability gates, bounded observability, and authority separation (AC: 1, 2, 3, 4)
+  - [x] Before the first write and after material change, run behavioral probes for strong CRUD/ETag behavior, multi-key transactions/conflicts, actor state/reactivation/failover/reminders, effective TTL, 1,024-byte records, 256-record/one-MiB transactions, two-writer throughput while purge runs, declared durability/failure behavior, tenant isolation/encryption, physical capacity, and reclamation evidence hooks.
+  - [x] Probe the exact configured component profile; do not infer capability from the Dapr API or component name. A component that ignores or cannot prove effective per-record TTL fails the gate even though logical expiry remains authoritative. A failed/missing/stale probe blocks lifecycle writes and reports lifecycle Unhealthy while business readiness remains available. Do not enable an unproven Production profile; alpha components require explicit Production opt-in and an exact version pin.
+  - [x] Preserve separate authorities: Server writer can invoke write/heartbeat only; lifecycle service can access its actor and `access-telemetry-store`, `access-telemetry-secrets`, and `access-telemetry-config` only; clock can sign attestations only; inspector has sanitized operations-only read access; adapter/operations evidence stays outside application credentials.
+  - [x] Add the counter `memories.access.telemetry.lifecycle.records` with bounded `state` values accepted/rejected/enqueued/persisted/retried/failed/dropped/expired/purged and a bounded reason catalog. Add bounded queue, Dapr, attestation, state, latency, capacity, expiry, purge, reminder, and physical-evidence measurements required by the ADR.
+  - [x] Implement health precedence `Unhealthy` over `Degraded` over `NoData`/`Healthy`. `NoData` is valid only when enabled, every gate is healthy, and no accepted/rejected record has appeared for 15 minutes. Health details must state cause, impact, owner, and next action without raw content, secrets, record/backend IDs, or tenant/user/case/query/source/trace/instance/process labels.
 
-- [ ] Task 7 - Wire local and deployable topology without certifying a Production adapter (AC: 1, 2, 3, 4)
-  - [ ] Register the contracts, lifecycle, clock, and test projects in `Hexalith.Memories.slnx`; extend AppHost and `Hexalith.Memories.Aspire` with the fixed app/component identities, Dapr references, configuration/secrets, dependencies, and health relationships. Keep Server as two independent writers.
-  - [ ] Add development/test Dapr component definitions for `access-telemetry-store`, `access-telemetry-secrets`, and `access-telemetry-config`, plus workload-specific Dapr configuration/ACL scopes. Development defaults must remain bounded and test-only short TTLs must not leak into Production.
-  - [ ] Add least-privilege Kubernetes manifests for lifecycle and clock workloads, services, Dapr annotations/configuration, NetworkPolicy/service-account/RBAC relationships, probes, non-root/read-only-root posture, and explicit configuration injection. Preserve the Server's two replicas and ephemeral `/tmp`; do not introduce local disk buffering.
-  - [ ] Production overlays must require an explicit eligible component profile and retention configuration. They may carry portable templates/evidence hooks, but must remain disabled/fail closed until Story 27.3 selects, pins, and proves the exact Production adapter.
-  - [ ] Preserve rollback independence: disabling the Server provider stops new lifecycle writes but does not alter JSON console/OTLP, delete storage/secrets/actor state, or stop retained records from expiring. An old Server image is an observable degraded incident, not an accepted steady state.
+- [x] Task 7 - Wire local and deployable topology without certifying a Production adapter (AC: 1, 2, 3, 4)
+  - [x] Register the contracts, lifecycle, clock, and test projects in `Hexalith.Memories.slnx`; extend AppHost and `Hexalith.Memories.Aspire` with the fixed app/component identities, Dapr references, configuration/secrets, dependencies, and health relationships. Keep Server as two independent writers.
+  - [x] Add development/test Dapr component definitions for `access-telemetry-store`, `access-telemetry-secrets`, and `access-telemetry-config`, plus workload-specific Dapr configuration/ACL scopes. Development defaults must remain bounded and test-only short TTLs must not leak into Production.
+  - [x] Add least-privilege Kubernetes manifests for lifecycle and clock workloads, services, Dapr annotations/configuration, NetworkPolicy/service-account/RBAC relationships, probes, non-root/read-only-root posture, and explicit configuration injection. Preserve the Server's two replicas and ephemeral `/tmp`; do not introduce local disk buffering.
+  - [x] Production overlays must require an explicit eligible component profile and retention configuration. They may carry portable templates/evidence hooks, but must remain disabled/fail closed until Story 27.3 selects, pins, and proves the exact Production adapter.
+  - [x] Preserve rollback independence: disabling the Server provider stops new lifecycle writes but does not alter JSON console/OTLP, delete storage/secrets/actor state, or stop retained records from expiring. An old Server image is an observable degraded incident, not an accepted steady state.
 
-- [ ] Task 8 - Prove the portable runtime slice and focused tenant/privacy boundaries (AC: 1, 2, 3, 4)
-  - [ ] Add focused unit tests for the mapping guard, options, Development/Production validation, typed-state extraction, provider filter, sanitization, canonicalization/hash, record/byte queue bounds, retry/flush behavior, and logger exception containment.
-  - [ ] Add service/actor tests for transaction atomicity, strong reads/ETags, idempotent retry, conflicting duplicate, source-age expiry, late/future/replayed events, retention decrease, 64-shard purge batching, newer-record preservation, reminder idempotency/reactivation/rescheduling, marker-key rotation, and inspector non-mutation.
-  - [ ] Add clock tests for authenticated source quorum, interval width, signing, nonce/context/profile validation, replay, freshness, delta, refresh, restart/failover, and epoch/key changes.
-  - [ ] Add focused Dapr integration evidence for two Server writers, unique IDs, 250-events/second admitted ceiling, 500-events/second component/probe traffic while purge runs, 60-second temporary outage, five-minute drain, queue full, restart/rescheduling, transient transaction failure, reminder recovery, business-readiness isolation, and existing console/OTLP continuity.
-  - [ ] Add two-authorized-tenant plus rejected/unknown-scope negatives that name and exercise the Server writer route, lifecycle service invocation, actor/state/index keys, purge selection, clock route, inspector route, Dapr component scopes, and adapter-evidence interface. Prove no cross-tenant marker mix-up, raw-field storage, authority escalation, or unbounded metric label.
-  - [ ] Preserve and re-run `TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState`, `SearchEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeSearchDependencies`, `TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies`, `VerifyAsync_DetectsSyntacticTenantIdMismatch_ReturnsFailed`, `VerifyAsync_DetectsSemanticTenantIdMismatch_ReturnsFailed`, and `VerifyAsync_DetectsMissingSemanticTenantId_ReturnsFailed`.
-  - [ ] Keep physical-reclamation, exact Production adapter/failover evidence, dashboards/alerts, operations runbook, and A41 closure explicitly pending for Story 27.3. Portable logical deletion and adapter evidence hooks do not prove physical reclamation.
+- [x] Task 8 - Prove the portable runtime slice and focused tenant/privacy boundaries (AC: 1, 2, 3, 4)
+  - [x] Add focused unit tests for the mapping guard, options, Development/Production validation, typed-state extraction, provider filter, sanitization, canonicalization/hash, record/byte queue bounds, retry/flush behavior, and logger exception containment.
+  - [x] Add service/actor tests for transaction atomicity, strong reads/ETags, idempotent retry, conflicting duplicate, source-age expiry, late/future/replayed events, retention decrease, 64-shard purge batching, newer-record preservation, reminder idempotency/reactivation/rescheduling, marker-key rotation, and inspector non-mutation.
+  - [x] Add clock tests for authenticated source quorum, interval width, signing, nonce/context/profile validation, replay, freshness, delta, refresh, restart/failover, and epoch/key changes.
+  - [x] Add focused Dapr integration evidence for two Server writers, unique IDs, 250-events/second admitted ceiling, 500-events/second component/probe traffic while purge runs, 60-second temporary outage, five-minute drain, queue full, restart/rescheduling, transient transaction failure, reminder recovery, business-readiness isolation, and existing console/OTLP continuity.
+  - [x] Add two-authorized-tenant plus rejected/unknown-scope negatives that name and exercise the Server writer route, lifecycle service invocation, actor/state/index keys, purge selection, clock route, inspector route, Dapr component scopes, and adapter-evidence interface. Prove no cross-tenant marker mix-up, raw-field storage, authority escalation, or unbounded metric label.
+  - [x] Preserve and re-run `TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState`, `SearchEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeSearchDependencies`, `TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies`, `VerifyAsync_DetectsSyntacticTenantIdMismatch_ReturnsFailed`, `VerifyAsync_DetectsSemanticTenantIdMismatch_ReturnsFailed`, and `VerifyAsync_DetectsMissingSemanticTenantId_ReturnsFailed`.
+  - [x] Keep physical-reclamation, exact Production adapter/failover evidence, dashboards/alerts, operations runbook, and A41 closure explicitly pending for Story 27.3. Portable logical deletion and adapter evidence hooks do not prove physical reclamation.
 
-- [ ] Task 9 - Reconcile verification, evidence, phase ledger, and story scope (AC: 1, 2, 3, 4)
-  - [ ] Run focused tests and a clean Release build with repository-pinned versions and build-server isolation. Re-run exact method discovery on fresh assemblies and record comparable pre/post scopes; never report the observational baseline below as canonical or planned tests as actual.
-  - [ ] If `Hexalith.EventStore.Client >= 1.72.3` is still unavailable, preserve the exact canonical blocker, owner, consequence, and reopen trigger. Do not migrate EventStore or change its pin under Story 27.2; that belongs to the Epic 28 dependency-abstraction/adoption lane.
-  - [ ] Run `git diff --check`, deployment/YAML validation, structure guards, capability-probe tests, focused privacy negatives, and the existing emission regression classes. Record exact commands and results in the Dev Agent Record.
-  - [ ] Update `docs/dev/telemetry.md` to describe only implemented portable lifecycle truth. Do not add a Production runbook or claims of tamper evidence, append-only integrity, legal compliance, certified retention, exact adapter eligibility, physical reclamation, or A41 closure.
-  - [ ] Reconcile every changed path into the cumulative File List and add a `dev-story` Change Log row with runner-derived actual/cumulative test counts. If a checkpoint becomes independently shippable or the File List/phase ledger cannot be reconciled, stop and correct course before moving beyond `in-progress`.
+- [x] Task 9 - Reconcile verification, evidence, phase ledger, and story scope (AC: 1, 2, 3, 4)
+  - [x] Run focused tests and a clean Release build with repository-pinned versions and build-server isolation. Re-run exact method discovery on fresh assemblies and record comparable pre/post scopes; never report the observational baseline below as canonical or planned tests as actual.
+  - [x] If `Hexalith.EventStore.Client >= 1.72.3` is still unavailable, preserve the exact canonical blocker, owner, consequence, and reopen trigger. Do not migrate EventStore or change its pin under Story 27.2; that belongs to the Epic 28 dependency-abstraction/adoption lane.
+  - [x] Run `git diff --check`, deployment/YAML validation, structure guards, capability-probe tests, focused privacy negatives, and the existing emission regression classes. Record exact commands and results in the Dev Agent Record.
+  - [x] Update `docs/dev/telemetry.md` to describe only implemented portable lifecycle truth. Do not add a Production runbook or claims of tamper evidence, append-only integrity, legal compliance, certified retention, exact adapter eligibility, physical reclamation, or A41 closure.
+  - [x] Reconcile every changed path into the cumulative File List and add a `dev-story` Change Log row with runner-derived actual/cumulative test counts. If a checkpoint becomes independently shippable or the File List/phase ledger cannot be reconciled, stop and correct course before moving beyond `in-progress`.
 
 ### Implementation Checkpoints
 
@@ -101,12 +101,12 @@ These checkpoints are facets of one bounded-runtime outcome. A later checkpoint 
 
 | Checkpoint | Accountable owner | Required evidence artifact and command | Review state | Completion state |
 | :--------- | :---------------- | :------------------------------------- | :----------- | :--------------- |
-| C1 - Total source-to-persisted mapping | Administrator + Hexalith.Memories maintainers | Ratified mapping in `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` plus `tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs`; run `dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryRetentionDecisionTests` | pending | pending; runtime persistence blocked |
-| C2 - Server admission/delivery | Server implementation owner | `tests/Hexalith.Memories.Server.Tests/Telemetry/AccessTelemetryLifecycle/AccessTelemetryDeliveryCheckpointTests.cs`; run `dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle.AccessTelemetryDeliveryCheckpointTests` | pending | pending on C1 |
-| C3 - Lifecycle actor and purge | Lifecycle implementation owner | `tests/Hexalith.Memories.AccessTelemetry.Tests/Lifecycle/LifecycleActorCheckpointTests.cs`; run `dotnet exec tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Release/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll -class Hexalith.Memories.AccessTelemetry.Tests.Lifecycle.LifecycleActorCheckpointTests` | pending | pending on C1-C2 |
-| C4 - Trusted clock | Clock implementation owner | `tests/Hexalith.Memories.AccessTelemetry.Tests/Clock/ClockAttestationCheckpointTests.cs`; run `dotnet exec tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Release/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll -class Hexalith.Memories.AccessTelemetry.Tests.Clock.ClockAttestationCheckpointTests` | pending | pending on C1 |
-| C5 - Capability/security/observability gate | Platform implementation owner | `tests/Hexalith.Memories.AccessTelemetry.Tests/Capability/CapabilityAndObservabilityCheckpointTests.cs`; run `dotnet exec tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Release/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll -class Hexalith.Memories.AccessTelemetry.Tests.Capability.CapabilityAndObservabilityCheckpointTests` | pending | pending on C2-C4 |
-| C6 - Portable composition and focused proof | Story 27.2 owner | `tests/Hexalith.Memories.IntegrationTests/Telemetry/AccessTelemetryLifecycleIntegrationCheckpointTests.cs` plus reconciled story ledger/File List; run `dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Release/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Telemetry.AccessTelemetryLifecycleIntegrationCheckpointTests` | pending | pending on C1-C5 |
+| C1 - Total source-to-persisted mapping | Administrator + Hexalith.Memories maintainers | Ratified mapping in `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` plus `tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs`; run `dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryRetentionDecisionTests` | reviewed 2026-07-18 | complete; 9/9 green, runtime gate open |
+| C2 - Server admission/delivery | Server implementation owner | `tests/Hexalith.Memories.Server.Tests/Telemetry/AccessTelemetryLifecycle/AccessTelemetryDeliveryCheckpointTests.cs`; run `dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle.AccessTelemetryDeliveryCheckpointTests` | reviewed 2026-07-18 | complete; 9/9 green |
+| C3 - Lifecycle actor and purge | Lifecycle implementation owner | `tests/Hexalith.Memories.AccessTelemetry.Tests/Lifecycle/LifecycleActorCheckpointTests.cs`; run `dotnet exec tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Release/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll -class Hexalith.Memories.AccessTelemetry.Tests.Lifecycle.LifecycleActorCheckpointTests` | reviewed 2026-07-18 | complete; 10/10 green |
+| C4 - Trusted clock | Clock implementation owner | `tests/Hexalith.Memories.AccessTelemetry.Tests/Clock/ClockAttestationCheckpointTests.cs`; run `dotnet exec tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Release/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll -class Hexalith.Memories.AccessTelemetry.Tests.Clock.ClockAttestationCheckpointTests` | reviewed 2026-07-18 | complete; 9/9 green and threaded into writer/actor gates |
+| C5 - Capability/security/observability gate | Platform implementation owner | `tests/Hexalith.Memories.AccessTelemetry.Tests/Capability/CapabilityAndObservabilityCheckpointTests.cs`; run `dotnet exec tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Release/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll -class Hexalith.Memories.AccessTelemetry.Tests.Capability.CapabilityAndObservabilityCheckpointTests` | reviewed 2026-07-18 | complete; 19/19 green and exact-profile failures remain fail-closed |
+| C6 - Portable composition and focused proof | Story 27.2 owner | `tests/Hexalith.Memories.IntegrationTests/Telemetry/AccessTelemetryLifecycleIntegrationCheckpointTests.cs` plus reconciled story ledger/File List; run `dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Release/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Telemetry.AccessTelemetryLifecycleIntegrationCheckpointTests` | reviewed 2026-07-18 | complete; 8/8 green and Production remains disabled pending Story 27.3 |
 | Story 27.3 handoff | Operations + adapter owner | Exact Production adapter, physical-reclamation/failover evidence, runbook, and A41 coordination in Story 27.3 artifacts | out of Story 27.2 | not started; must remain open |
 
 ## Dev Notes
@@ -308,29 +308,178 @@ If development discovers multiple adapter implementations, a tenant-facing inspe
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+GPT-5 Codex
 
 ### Debug Log References
 
-- 2026-07-18: C1 preflight reconciled all nine `AccessTelemetryLog` families and all 14 frozen `AccessTelemetryEvent` properties against current emitters. Added the proposed total mapping under ADR section `Story 27.2 C1 Mapping Ratification`; both decision-owner rows remain pending and runtime persistence remains closed.
-- 2026-07-18: Comparable pre-development Server.Tests evidence: exact Release build command from **Testing Baseline and Planned Delta** succeeded with 0 warnings/errors; `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -list methods` discovered 1,548 xUnit methods (Architecture 24, Telemetry 141, decision guards 6), sorted method-set SHA-256 `98440744599bf454ee991a3cad39f69dee9185f6d1fe86106223638c3a194ae2`; focused decision guards passed 6/6 before and after the proposal edit.
-- 2026-07-18: During validation, an external `git pull --tags origin main` advanced `references/Hexalith.EventStore` from parent-pinned `4ff224bc` to `3796e27e` at 09:03:38 +0200. This submodule pointer drift is unrelated, unowned by Story 27.2, preserved, and excluded from story scope.
+- 2026-07-18: C1 preflight reconciled all nine `AccessTelemetryLog` families and all 14 frozen `AccessTelemetryEvent` properties against current emitters. Administrator ratified both named decision-owner rows, the canonical V1 clauses were reconciled, and three new structure guards moved through red to green; the focused class passes 9/9 and the runtime persistence gate is open.
+- 2026-07-18: Comparable pre-development evidence at `6d7fd8aaa0a2fc58de741e31f38544fc15a10c08`: fresh isolated Release builds passed with 0 warnings/errors. Exact xUnit method discovery found Server.Tests 2,157 (sorted SHA-256 `98440744599bf454ee991a3cad39f69dee9185f6d1fe86106223638c3a194ae2`) and IntegrationTests 270 (sorted SHA-256 `038e0a140092d0a7910c17566a5b87a05bdc417699f67c4335516777168a30c4`); AccessTelemetry.Tests was absent (0).
+- 2026-07-18: Fresh post-development discovery found Server.Tests 2,169 (+12, 0 removed; SHA-256 `e6cc2ce48900f19ed62665b42056aa9ca0837a838720abbb577e0a366963c27c`), IntegrationTests 278 (+8, 0 removed; SHA-256 `92f4cfeb683a0bb2cd90305e92f61f00eb53542e2aac231f3c61b7a9dcf96d55`), and the new AccessTelemetry.Tests lane 31 methods (0 -> 31; SHA-256 `4eea34c669021dc01446ddf0d44111c6aa38e482e92736ea155dcf84f5498460`).
+- 2026-07-18: Exact checkpoint commands passed C1 9/9, C2 9/9, C3 10/10, C4 9/9, C5 19/19, and C6 8/8. Full AccessTelemetry.Tests passed 48/48. Existing access-emission classes plus the six named tenant negatives passed 69/69.
+- 2026-07-18: `dotnet build Hexalith.Memories.slnx --configuration Release --no-restore --nologo --verbosity:minimal` passed with 0 warnings/errors; `git diff --check` passed; `kubectl kustomize deploy/kubernetes/base` and `kubectl kustomize deploy/kubernetes/overlays/production` passed; PyYAML parsed the five standalone Dapr manifests. Offline `kubectl apply --dry-run=client --validate=false` could not perform API discovery because no Kubernetes API was available at `localhost:8080`.
+- 2026-07-18: The earlier EventStore package-feed blocker is cleared for the current repository-pinned graph: isolated baseline builds and the final solution build restore/compile successfully without a Story 27.2 package or pin change. Epic 28 retains ownership of future EventStore dependency migration.
+- 2026-07-18: External working-tree changes in Story 27.3 and `references/Hexalith.EventStore`, `references/Hexalith.FrontComposer`, and `references/Hexalith.Tenants` are unrelated, preserved, and excluded from Story 27.2 scope.
 
 ### Completion Notes List
 
 - 2026-07-17: Created implementation-ready Story 27.2 from the accepted Dapr-only ADR, current source/deployment state, whole planning artifacts, official Dapr/.NET guidance, git history, and the repository's historical-slice/phase-ledger policies.
+- 2026-07-18: Completed C1 with a ratified, total, bounded mapping for all logger families, partial outcome, nullable case/result states, query transformations, and error catalogs; no second product or schema was required.
+- 2026-07-18: Completed Task 2 with an isolated non-packable contracts project, strict fail-closed lifecycle options, bounded DTO/enums, canonical explicit-null JSON and envelope hashing, strict canonical parsing, and process-monotonic ULIDs; the new contracts checkpoint passes 10/10.
+- 2026-07-18: Completed C2 with typed logger-state extraction, total synchronous sanitization, HMAC markers, nonblocking record/byte admission, fixed-app Dapr invocation, bounded batches, retry/age/expiry caps, shutdown flush, heartbeat lease behavior, and exception containment; the focused checkpoint passes 9/9.
+- 2026-07-18: Completed C3/C4 with the Dapr-only fixed global actor, transactional record/index writes, strict idempotency/conflict handling, source-age TTL, strong-delete purge, durable reminder state, staged marker rotation, independent three-source signed time, and single-use clock gates in both Server and actor paths; focused checkpoints pass 10/10 and 9/9.
+- 2026-07-18: Completed C5 with exact-profile fail-closed capability evaluation, restart-scoped runtime gating, separated authority policy, bounded health details, and low-cardinality queue/Dapr/clock/state/purge/capacity/reminder metrics; focused capability and observability evidence passes 19/19.
+- 2026-07-18: Completed Task 7 with solution/AppHost/Aspire composition plus bounded Dapr and least-privilege Kubernetes resources. The Production overlay stays explicitly disabled and unproven pending Story 27.3 adapter certification.
+- 2026-07-18: Completed C6 with portable two-writer, capacity, outage/retry, purge-concurrency, restart/recovery, business-isolation, authority-route, tenant/privacy, and disabled-Production evidence; C6 passes 8/8 and preserved emission/tenant regressions pass 69/69.
+- 2026-07-18: Completed Task 9 with fresh comparable runner discovery, a clean 0-warning/0-error Release solution build, focused checkpoint/regression tests, static/deployment validation, implemented-truth telemetry documentation, and exact 139-path cumulative File List reconciliation.
 - 2026-07-17: Added a fail-closed source-to-persisted mapping checkpoint for the current `partial`, authorized cross-case null-case, and search-axis/weight gaps. No runtime implementation was performed.
 - 2026-07-17: Kept Production adapter certification, physical-reclamation proof, runbook, dashboards/alerts, and A41 closure in Story 27.3; kept EventStore dependency work in Epic 28.
 - 2026-07-17: Independent create-story validation passed after reconciling exact C1-C6 evidence commands, separate Server/Integration/new-project discovery lanes, tenant-marker sentinel scope, complete static-validation inputs, and source anchors.
 
 ### File List
 
+- `Hexalith.Memories.slnx`
 - `_bmad-output/implementation-artifacts/27-2-bounded-retention-ttl-and-purge-implementation.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/tests/27-2-create-story-scope-evidence.md`
+- `deploy/dapr/access-telemetry-clock-config.yaml`
+- `deploy/dapr/access-telemetry-lifecycle-config.yaml`
+- `deploy/dapr/components/access-telemetry-config.yaml`
+- `deploy/dapr/components/access-telemetry-secrets.yaml`
+- `deploy/dapr/components/access-telemetry-store.yaml`
+- `deploy/kubernetes/base/access-telemetry-deployments.yaml`
+- `deploy/kubernetes/base/access-telemetry-network-policy.yaml`
+- `deploy/kubernetes/base/dapr/access-telemetry-clock-config.yaml`
+- `deploy/kubernetes/base/dapr/access-telemetry-config-store.yaml`
+- `deploy/kubernetes/base/dapr/access-telemetry-lifecycle-config.yaml`
+- `deploy/kubernetes/base/dapr/access-telemetry-secrets.yaml`
+- `deploy/kubernetes/base/dapr/access-telemetry-store.yaml`
+- `deploy/kubernetes/base/dapr/config.yaml`
+- `deploy/kubernetes/base/kustomization.yaml`
+- `deploy/kubernetes/base/server-deployment.yaml`
+- `deploy/kubernetes/base/service-accounts-rbac.yaml`
+- `deploy/kubernetes/base/services.yaml`
+- `deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml`
+- `deploy/kubernetes/overlays/production/kustomization.yaml`
+- `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md`
+- `docs/dev/telemetry.md`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/AuthenticatedUtcResponse.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/AuthenticatedUtcSample.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/ClockAttestationException.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/ClockAttestationService.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/EcdsaClockAttestationSigner.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/HttpAuthenticatedUtcSource.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/IAuthenticatedUtcSource.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/IClockAttestationSigner.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/Program.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryCanonicalizer.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryContractException.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryHealthState.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryInspectionResponse.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryOptions.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryOptionsValidationResult.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryOptionsValidator.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryReason.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryRecord.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryRecordState.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryWriteBatchRequest.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryWriteBatchResponse.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/BoundedNonceReplayCache.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/ClockAttestationCanonicalizer.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/ClockAttestationRequest.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/ClockAttestationValidationContext.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/ClockAttestationValidationResult.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/ClockAttestationVerifier.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/Hexalith.Memories.AccessTelemetry.Contracts.csproj`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/LifecycleConfigurationEpoch.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/MonotonicRecordIdGenerator.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/RetentionConfigurationSource.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/SignedClockAttestation.cs`
+- `src/Hexalith.Memories.AccessTelemetry.Contracts/WriterHeartbeat.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryAuthority.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryAuthorityAction.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryAuthorityPolicy.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityEvidenceOptions.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityGate.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityGateResult.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityProbeContext.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityProbeHostedService.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityProbeResult.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityProbeRunner.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityProfile.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryRuntimeGate.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryRuntimeHealthCheck.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/IAccessTelemetryCapabilityProbe.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Capability/IAccessTelemetryRuntimeGate.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryClockGate.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryExpiryEntry.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryExpiryIndex.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryLifecycleActor.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryLifecycleActorState.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryLifecycleProcessor.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryPersistenceResult.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryPersistenceStatus.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryPurgeResult.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryStoreWriteStatus.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/AccessTelemetryStoredRecord.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/DaprAccessTelemetryStateStore.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/IAccessTelemetryClockGate.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/IAccessTelemetryLifecycleActor.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/IAccessTelemetryStateStore.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/InMemoryAccessTelemetryStateStore.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/MarkerKeyRotationCoordinator.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/MarkerKeyRotationPhase.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Lifecycle/MarkerKeyRotationState.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Observability/AccessTelemetryHealthEvaluator.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Observability/AccessTelemetryHealthSnapshot.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Observability/AccessTelemetryLifecycleMetrics.cs`
+- `src/Hexalith.Memories.AccessTelemetry/Program.cs`
+- `src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj`
+- `src/Hexalith.Memories.AppHost/Program.cs`
+- `src/Hexalith.Memories.Aspire/HexalithMemoriesAccessTelemetryExtensions.cs`
+- `src/Hexalith.Memories.Aspire/HexalithMemoriesAccessTelemetryResources.cs`
+- `src/Hexalith.Memories.Aspire/MemoriesAccessTelemetryClockProjectMetadata.cs`
+- `src/Hexalith.Memories.Aspire/MemoriesAccessTelemetryProjectMetadata.cs`
+- `src/Hexalith.Memories.Aspire/README.md`
+- `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj`
+- `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryDaprHttpClientFactory.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryDeliveryWorker.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryHeartbeatWorker.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleBootstrapService.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleHealthCheck.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleLogger.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleLoggerProvider.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleStatus.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleStatusSnapshot.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQueuedRecord.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetrySanitizer.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetrySanitizerAccessor.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryWriterIdentity.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/BoundedAccessTelemetryQueue.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/DaprAccessTelemetryClockEvidenceProvider.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/DaprAccessTelemetryDeliveryClient.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/DaprAccessTelemetryHeartbeatClient.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/IAccessTelemetryClockEvidenceProvider.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/IAccessTelemetryDeliveryClient.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/IAccessTelemetryHeartbeatClient.cs`
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/ServerAccessTelemetryLifecycleMetrics.cs`
+- `tests/Hexalith.Memories.AccessTelemetry.Tests/Capability/CapabilityAndObservabilityCheckpointTests.cs`
+- `tests/Hexalith.Memories.AccessTelemetry.Tests/Clock/ClockAttestationCheckpointTests.cs`
+- `tests/Hexalith.Memories.AccessTelemetry.Tests/Contracts/AccessTelemetryContractsCheckpointTests.cs`
+- `tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj`
+- `tests/Hexalith.Memories.AccessTelemetry.Tests/Lifecycle/LifecycleActorCheckpointTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AppHostProjectResolutionTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj`
+- `tests/Hexalith.Memories.IntegrationTests/Telemetry/AccessTelemetryLifecycleIntegrationCheckpointTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj`
+- `tests/Hexalith.Memories.Server.Tests/Telemetry/AccessTelemetryLifecycle/AccessTelemetryDeliveryCheckpointTests.cs`
 
 ## Change Log
 
 | Date | Phase | Change | Test count | File List reconciliation |
 | :--- | :---- | :----- | :--------- | :----------------------- |
+| 2026-07-18 | dev-story | Implemented the ratified portable access-telemetry lifecycle: strict contracts/configuration, typed-state sanitizing provider, bounded queue/retry delivery, Dapr-only fixed actor/state/purge, independent signed clock, exact-profile fail-closed capability gate, bounded observability, authority-separated Aspire/Dapr/Kubernetes topology, and focused proof. Production stays disabled pending Story 27.3 adapter certification and physical-reclamation evidence. | Runner-derived actual/cumulative deltas: Server.Tests 2,157 -> 2,169, +12/+12; IntegrationTests 270 -> 278, +8/+8; AccessTelemetry.Tests 0 -> 31, +31/+31; total +51/+51 discovered methods, with 0 removed from comparable lanes. Exact sorted hashes: Server `98440744599bf454ee991a3cad39f69dee9185f6d1fe86106223638c3a194ae2` -> `e6cc2ce48900f19ed62665b42056aa9ca0837a838720abbb577e0a366963c27c`; Integration `038e0a140092d0a7910c17566a5b87a05bdc417699f67c4335516777168a30c4` -> `92f4cfeb683a0bb2cd90305e92f61f00eb53542e2aac231f3c61b7a9dcf96d55`; new lane `4eea34c669021dc01446ddf0d44111c6aa38e482e92736ea155dcf84f5498460`. Executed checkpoint cases: C1 9, C2 9, C3 10, C4 9, C5 19, C6 8; full new lane 48/48 and preserved emission/privacy regression selection 69/69. | matched 139/139 cumulative story paths: 138 development-owned changed/untracked paths against baseline `6d7fd8aaa0a2fc58de741e31f38544fc15a10c08`, plus the retained create-story scope-evidence artifact. Unrelated Story 27.3 and externally advanced EventStore, FrontComposer, and Tenants submodules were preserved and excluded. |
 | 2026-07-17 | create-story | Created Story 27.2 and moved it from `backlog` to `ready-for-dev`; Epic 27 was already `in-progress`; no implementation performed. | Actual +0 and cumulative +0 in Server.Tests, IntegrationTests, and the absent/new AccessTelemetry.Tests lane; planned +104 to +144 xUnit methods. Exact blocked builds: `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --disable-build-servers -m:1 /nr:false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0` and the same command targeting `tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj`; both stopped at `NU1603` because exact 1.72.3 EventStore packages were unavailable. Exact observational discoveries: `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -list methods` and the same command targeting the IntegrationTests DLL, with count/hash pipelines in **Testing Baseline and Planned Delta**. Observational only: Server 2,151 and IntegrationTests 270; do not use either for delta. New AccessTelemetry.Tests is absent and declared as a planned `0 -> N` lane with its exact future discovery command in that section. | matched 3/3 against baseline `4856b0ab5d927ad07d82e5bed9b61597a380269e` and pre-create sprint SHA-256 `39b50b4c6a49553494bc3b2e7aeb58f76c0c84e421362984b84701d47821fad6`; exact owned-line diff, scoped status, hashes, verification commands, and same-file exclusions are in `_bmad-output/implementation-artifacts/tests/27-2-create-story-scope-evidence.md`. |

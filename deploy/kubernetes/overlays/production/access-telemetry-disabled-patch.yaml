@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memories-access-telemetry
+  annotations:
+    memories.hexalith.io/access-telemetry-status: disabled-pending-story-27-3
+    memories.hexalith.io/required-component-profile: exact-version-and-behavioral-evidence
+    memories.hexalith.io/required-dapr-configuration: access-telemetry-config/retentionSeconds
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memories
+  annotations:
+    memories.hexalith.io/access-telemetry-provider: disabled-pending-story-27-3

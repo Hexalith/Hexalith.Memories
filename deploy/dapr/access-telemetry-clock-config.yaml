@@ -1,0 +1,17 @@
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: memories-access-telemetry-clock-config
+spec:
+  secrets:
+    scopes: []
+  accessControl:
+    defaultAction: deny
+    trustDomain: public
+    policies:
+      - appId: memories
+        defaultAction: deny
+        operations:
+          - name: /v1/time/attest
+            httpVerb: ["POST"]
+            action: allow
