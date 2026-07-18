@@ -111,6 +111,26 @@ public sealed class ContractDocumentGuardTests
     }
 
     [Fact]
+    public void GetSection_DoubledCarriageReturn_CollapsesToSingleLineBreakLikeLf()
+    {
+        const string LfMarkdown = """
+            # Document
+            ## Contract
+            owned line
+            ### Detail
+            subordinate line
+            ## Next
+            unrelated line
+            """;
+        string doubledCrMarkdown = LfMarkdown.Replace("\n", "\r\r\n", StringComparison.Ordinal);
+
+        string lfSection = new MarkdownContractDocument(LfMarkdown).GetSection("Contract");
+        string doubledCrSection = new MarkdownContractDocument(doubledCrMarkdown).GetSection("Contract");
+
+        doubledCrSection.ShouldBe(lfSection);
+    }
+
+    [Fact]
     public void GetTableRows_FencedTableAndHeading_AreIgnoredAndCellsAreNormalized()
     {
         const string Markdown = """

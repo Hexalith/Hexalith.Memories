@@ -41,6 +41,9 @@
   "nonPackableProjects": [
     "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
     "src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj",
-    "src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj"
+    "src/Hexalith.Memories.Web/Hexalith.Memories.Web.csproj",
+    "src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj",
+    "src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj",
+    "src/Hexalith.Memories.AccessTelemetry.Contracts/Hexalith.Memories.AccessTelemetry.Contracts.csproj"
   ]
 }

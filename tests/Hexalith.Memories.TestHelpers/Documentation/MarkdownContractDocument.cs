@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.TestHelpers.Documentation;
 
+using System.Text;
+
 /// <summary>
 /// Provides narrow, assertion-neutral access to exact ATX sections and Markdown table data rows.
 /// </summary>
@@ -362,5 +364,38 @@ public sealed class MarkdownContractDocument
     }
 
     private static string NormalizeLineEndings(string markdown)
-        => markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+    {
+        var normalized = new StringBuilder(markdown.Length);
+        int index = 0;
+        while (index < markdown.Length)
+        {
+            char character = markdown[index];
+            if (character != '\r')
+            {
+                normalized.Append(character);
+                index++;
+                continue;
+            }
+
+            // Collapse one or more consecutive carriage returns, optionally followed by a
+            // single line feed, into exactly one line break. A lone "\r\n" pair is the
+            // ordinary CRLF case; a repeated run such as "\r\r\n" is the corrupted shape a
+            // naive LF-to-CRLF materialization step produces when applied to text that is
+            // already CRLF (see the repository's CRLF-normalization guidance). Both must
+            // collapse to a single "\n" so section extraction is identical regardless of
+            // which line-ending pathology produced the source string.
+            normalized.Append('\n');
+            while (index < markdown.Length && markdown[index] == '\r')
+            {
+                index++;
+            }
+
+            if (index < markdown.Length && markdown[index] == '\n')
+            {
+                index++;
+            }
+        }
+
+        return normalized.ToString();
+    }
 }

@@ -84,9 +84,9 @@ before implementation is scheduled.
   - Status: carried-forward
   - Source story: 20-5-inbound-rate-limiting-quotas-and-audit-completeness
   - Backlog home: Epic 27, Stories 27.1-27.3. Scheduling does not satisfy the resolution gate.
-  - Target artifacts: `docs/dev/telemetry.md`, the Story 27.1 architecture decision, the selected access-telemetry sink/storage deployment and purge implementation, and focused lifecycle/tenant-privacy tests, or this entry updated to a complete explicit accepted-debt disposition.
+  - Target artifact: `docs/dev/telemetry.md`, the Story 27.1 architecture decision, the selected access-telemetry sink/storage deployment and purge implementation, and focused lifecycle/tenant-privacy tests, or this entry updated to a complete explicit accepted-debt disposition.
   - Resolution gate: Keep this entry `carried-forward` and the matching sprint action `open` until bounded retention/TTL is implemented, documented, and validated, or accepted debt records a named approver and owner, affected storage/scope, rationale, risk and consequence, compensating controls, and a time-bounded review/expiry date or measurable reopen trigger.
-  - Re-open/claim trigger: Review before any claim that A41 is fully closed, before any production-retention assurance is made, and at the accepted-debt review/expiry trigger if that path is selected.
+  - Re-open trigger: Review before any claim that A41 is fully closed, before any production-retention assurance is made, and at the accepted-debt review/expiry trigger if that path is selected.
   - Rationale: Inbound quotas and audit completeness are implemented in Story 20.5; access telemetry retention remains unaddressed and is carried forward to avoid falsely closing the A41 retention requirement. Owner: operations maintainer / security remediation owner.
 
 ## Story 19.1 Classification Sweep (2026-06-30)
@@ -2243,3 +2243,21 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 - source_spec: `_bmad-output/implementation-artifacts/27-3-retention-verification-operations-runbook-and-a41-close-out.md`
   summary: Reconcile the canonical project context's stale Aspire AppHost SDK version with the repository pin.
   evidence: `_bmad-output/project-context.md` still names `Aspire.AppHost.Sdk/13.3.3`, while `src/Hexalith.Memories.AppHost/Hexalith.Memories.AppHost.csproj` and the reviewed story use the actual `13.4.6` SDK pin. The context drift predates Story 27.3; current source remains authoritative until its owning documentation lane repairs the canonical context.
+
+## Deferred from: code review of spec-run-tests-and-fix-failures (2026-07-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md`
+  summary: Sibling helper `ContractDocumentGuard.cs`'s private `NormalizeLineEndings` has the same repeated-CR mishandling bug just fixed in `MarkdownContractDocument.cs`.
+  evidence: `tests/Hexalith.Memories.TestHelpers/Documentation/ContractDocumentGuard.cs:250-251` still uses the old `markdown.Replace("\r\n", "\n", ...).Replace('\r', '\n')` pattern (used by `FindLeakedToolCallMarkup`), which turns a doubled `\r` (e.g. `"\r\r\n"`) into an extra blank line instead of collapsing to one `\n` — the exact defect just fixed in the sibling file. Out of this spec's Code Map scope (which named only `MarkdownContractDocument.cs`); worth the same fix if the `\r\r\n` corruption risk is judged real for this file's consumers too.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md`
+  summary: Reconcile the `20.5-A41-ACCESS-TELEMETRY-RETENTION` entry's now-partially-resolved non-canonical labels with the earlier tracking entry that named them.
+  evidence: An existing entry (source_spec `spec-one-shot-artifact-tracking.md`, "Reconcile the access-telemetry retention deferred-entry schema...") named both `Target artifacts:` and `Re-open/claim trigger:` as non-canonical labels needing reconciliation. This spec's fix renamed both labels on the `20.5-A41-ACCESS-TELEMETRY-RETENTION` entry to the canonical singular form, but the other issues that same tracking entry names (a validator accepting incomplete accepted-debt metadata, contradictory proposed/applied and open-action wording) remain unresolved. Flagging so the earlier entry isn't treated as fully obsolete, nor its label-naming half duplicated as new work.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md`
+  summary: The `[Collection(...)]` convention preventing cross-test pollution of `AccessTelemetryLifecycleMetrics`'s static counter is enforced only by an XML doc comment, not by tooling.
+  evidence: `AccessTelemetryLifecycleMetricsTestCollection`'s doc comment states every test class touching the static `Records` counter via `MeterListener` "MUST be annotated" with the collection attribute, but nothing (analyzer or reflection-based guard test) verifies this. A third class added later that records to or listens on the counter without the attribute would silently reintroduce the exact flake this spec fixed, surfacing only as an intermittent CI failure. The same gap pre-exists for `Hexalith.Memories.Server.Tests`'s `TelemetryTestCollection`, suggesting a repo-wide guard test (e.g. reflection over `MeterListener` usages cross-checked against `[Collection]` attributes) would be the durable fix.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md`
+  summary: `MinimumDotnetSdkVersion` and its "10.0.302" user-facing message strings are duplicated as separate literals across multiple call sites instead of derived from one source of truth.
+  evidence: `src/Hexalith.Memories.Cli/Quickstart/PrerequisiteChecks.cs:27`'s `MinimumDotnetSdkVersion` constant and `src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs:148`'s `"Install .NET SDK 10.0.302 or newer and retry."` string (plus other CLI message sites) each hardcode the version independently. This is the exact duplication pattern that caused the drift bug this spec fixed (the constant fell behind when messaging was bumped); deriving all user-facing strings from `MinimumDotnetSdkVersion.ToString()` would prevent recurrence, but is a refactor beyond this bugfix spec's scope.

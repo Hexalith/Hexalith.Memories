@@ -24,7 +24,7 @@ internal sealed partial class PrerequisiteChecks
     private static readonly TimeSpan DockerTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DotnetTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DaprTimeout = TimeSpan.FromSeconds(3);
-    private static readonly Version MinimumDotnetSdkVersion = new(10, 0, 300);
+    private static readonly Version MinimumDotnetSdkVersion = new(10, 0, 302);
 
     private readonly IProcessRunner _processRunner;
 

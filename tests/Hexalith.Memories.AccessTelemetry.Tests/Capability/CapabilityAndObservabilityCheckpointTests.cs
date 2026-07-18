@@ -10,10 +10,12 @@ using System.Diagnostics.Metrics;
 using Hexalith.Memories.AccessTelemetry.Capability;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Observability;
+using Hexalith.Memories.AccessTelemetry.Tests.Observability;
 
 using Shouldly;
 
 /// <summary>Story 27.2 C5 checkpoint for capability, authority, and observability gates.</summary>
+[Collection(AccessTelemetryLifecycleMetricsTestCollection.Name)]
 public sealed class CapabilityAndObservabilityCheckpointTests
 {
     [Fact]

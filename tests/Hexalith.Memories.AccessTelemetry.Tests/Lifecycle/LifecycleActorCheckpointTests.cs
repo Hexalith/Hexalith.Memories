@@ -7,12 +7,14 @@ namespace Hexalith.Memories.AccessTelemetry.Tests.Lifecycle;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Lifecycle;
+using Hexalith.Memories.AccessTelemetry.Tests.Observability;
 
 using Microsoft.Extensions.Time.Testing;
 
 using Shouldly;
 
 /// <summary>Story 27.2 C3 checkpoint for the fixed lifecycle authority and purge.</summary>
+[Collection(AccessTelemetryLifecycleMetricsTestCollection.Name)]
 public sealed class LifecycleActorCheckpointTests
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
