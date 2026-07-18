@@ -10,39 +10,4 @@
   <Import Project="$(Hexalith1BuildPackageProps)" Condition="Exists('$(Hexalith1BuildPackageProps)') And '$(HexalithVersionsLoaded)' != 'true'" />
   <Import Project="$(Hexalith2BuildPackageProps)" Condition="Exists('$(Hexalith2BuildPackageProps)') And '$(HexalithVersionsLoaded)' != 'true'" />
   <Import Project="$(Hexalith3BuildPackageProps)" Condition="'$(HexalithVersionsLoaded)' != 'true'" />
-  <ItemGroup>
-    <!-- Local OpenTelemetry packages not supplied by Hexalith.Builds stay aligned with the
-         imported 1.16.x OpenTelemetry stack. -->
-    <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
-    <!-- Story 8.5: StackExchange.Redis OTEL instrumentation. Prerelease `-beta.N` tag accepted
-         explicitly per ADR-8.5-001 (b); upgrade-on-GA trigger tracked in deferred-work.md. -->
-    <PackageVersion Include="OpenTelemetry.Instrumentation.StackExchangeRedis" Version="1.16.0-beta.1" />
-    <!-- Story 7.5: in-memory OTLP exporter for Tier-2 trace-propagation tests. Bumped to 1.15.3
-         alongside the rest of the OTel core/exporter stack (Story 10.1 NU1902 sweep). -->
-    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.17.0" />
-    <!-- Story 10.1: Model Context Protocol C# SDK 1.4.1 (Microsoft-collaboration release).
-         Used by Hexalith.Memories.Mcp to host the LLM-agent tool surface over Streamable HTTP. -->
-    <PackageVersion Update="ModelContextProtocol" Version="1.4.1" />
-    <!-- DAPR AI SDKs -->
-    <PackageVersion Include="Dapr.AI" Version="1.18.4" />
-    <PackageVersion Include="Dapr.AI.Microsoft.Extensions" Version="1.18.4" />
-    <!-- Content Extraction -->
-    <PackageVersion Include="Kreuzberg" Version="4.10.2" />
-    <!-- Redis / FalkorDB -->
-    <PackageVersion Include="NRedisStack" Version="1.6.0" />
-    <PackageVersion Include="NFalkorDB" Version="1.0.6" />
-    <!-- Testing -->
-    <!-- Epic 17 UI governance: Memories is validated against this Fluent UI Blazor V5 RC.
-         Override the shared package props until the UX conformance suite is intentionally migrated. -->
-    <PackageVersion Update="Microsoft.FluentUI.AspNetCore.Components" Version="5.0.0-rc.4-26180.1" />
-    <PackageVersion Update="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="5.0.0-rc.4-26180.1" />
-    <!-- Keep the Memories test suite on the stable NSubstitute line. The shared Hexalith.Builds
-         props currently carry 6.0.0-rc.1, whose nullable matcher annotations break existing
-         warnings-as-errors test code without changing runtime behavior. -->
-    <PackageVersion Update="NSubstitute" Version="5.3.0" />
-    <!-- CLI (Story 7.1): System.CommandLine is prerelease (3.0.0-preview) but is the Microsoft-supported
-         CLI parser with first-class support for recursive/global options (Option.Recursive = true),
-         async handlers with CancellationToken, and global-tool-friendly packaging. See ADR-7.1-008. -->
-    <PackageVersion Update="System.CommandLine" Version="2.0.9" />
-  </ItemGroup>
 </Project>
