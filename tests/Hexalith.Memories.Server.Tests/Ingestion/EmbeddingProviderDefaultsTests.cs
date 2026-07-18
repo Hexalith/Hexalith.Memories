@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Ingestion;
 
+using System.Reflection;
+
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Ingestion;
 
@@ -12,6 +14,60 @@ using Shouldly;
 
 public class EmbeddingProviderDefaultsTests
 {
+    [Fact]
+    public void CreateOllamaDefault_ShouldSourceEndpointsFromOptions()
+    {
+        // spec-infrastructure-dependency-abstraction (F1, Decision D30): the Ollama default endpoints
+        // are config-sourced. Feeding non-default options must flow through to the produced config,
+        // proving BaseUrl / OidcTokenEndpoint / OidcClientId / OidcScope are no longer compiled literals.
+        // Uses the pure creator (not the static seam) so no global state is mutated — keeps the value-
+        // pinning tests and parallel test classes that call Ollama()/Google() unaffected.
+        EmbeddingProviderDefaultsOptions options = new()
+        {
+            Ollama = new OllamaProviderDefaults
+            {
+                BaseUrl = "https://ollama.internal",
+                OidcTokenEndpoint = "https://idp.internal/token",
+                OidcClientId = "custom-client",
+                OidcScope = "custom-scope",
+            },
+        };
+
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.CreateOllamaDefault(options);
+
+        config.BaseUrl.ShouldBe("https://ollama.internal");
+        config.OidcTokenEndpoint.ShouldBe("https://idp.internal/token");
+        config.OidcClientId.ShouldBe("custom-client");
+        config.OidcScope.ShouldBe("custom-scope");
+        // Non-endpoint fields stay pinned to the built-in Ollama identity.
+        config.Provider.ShouldBe("ollama");
+        config.Model.ShouldBe("qwen3-embedding:4b");
+        config.Dimensions.ShouldBe(2560);
+        config.ApiSecretKeyName.ShouldBe("memories-embedding-client-secret");
+    }
+
+    [Fact]
+    public void EmbeddingProviderDefaults_ShouldNotEmbedInfrastructureEndpointLiterals()
+    {
+        // spec-infrastructure-dependency-abstraction (F1, Decision D30): no infrastructure endpoint
+        // host/URL literal may remain baked into the registry/validation type. Provider/model/auth-mode
+        // name constants are allowed; endpoint hosts and URL schemes are not.
+        string[] forbiddenFragments = ["tache.ai", "googleapis.com", "://"];
+
+        IEnumerable<string> stringConstants = typeof(EmbeddingProviderDefaults)
+            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+            .Where(f => f.FieldType == typeof(string) && f.IsLiteral)
+            .Select(f => (string?)f.GetRawConstantValue() ?? string.Empty);
+
+        foreach (string value in stringConstants)
+        {
+            foreach (string forbidden in forbiddenFragments)
+            {
+                value.ShouldNotContain(forbidden);
+            }
+        }
+    }
+
     [Fact]
     public void Google_ShouldReturnCorrectDefaults()
     {

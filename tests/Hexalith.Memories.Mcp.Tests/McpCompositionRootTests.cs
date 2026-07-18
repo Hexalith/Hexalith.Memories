@@ -47,6 +47,29 @@ public sealed class McpCompositionRootTests
     }
 
     [Fact]
+    public void ResolveMemoriesServerAppId_FromConfiguration_WhenUnset_ReturnsDefault()
+    {
+        // spec-infrastructure-dependency-abstraction (F8, D30): app-id read through IConfiguration.
+        IConfiguration configuration = new ConfigurationBuilder().Build();
+
+        McpCompositionRoot.ResolveMemoriesServerAppId(configuration)
+            .ShouldBe(McpCompositionRoot.MemoriesServerAppId);
+    }
+
+    [Fact]
+    public void ResolveMemoriesServerAppId_FromConfiguration_WhenConfigured_TrimsValue()
+    {
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [McpCompositionRoot.MemoriesServerAppIdEnvVar] = "  memories-it-123  ",
+            })
+            .Build();
+
+        McpCompositionRoot.ResolveMemoriesServerAppId(configuration).ShouldBe("memories-it-123");
+    }
+
+    [Fact]
     public async Task StartAsync_InvalidProductionMcpAuthenticationOptions_FailsDuringStartupValidation()
     {
         using IHost host = Host.CreateDefaultBuilder()

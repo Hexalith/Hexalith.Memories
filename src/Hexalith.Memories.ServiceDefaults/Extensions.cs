@@ -12,6 +12,7 @@ using Hexalith.Memories.Telemetry;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
@@ -69,6 +70,52 @@ public static class Extensions
         });
 
         return builder;
+    }
+
+    /// <summary>
+    /// spec-infrastructure-dependency-abstraction (F5, Decision D30) — registers the keyed
+    /// <see cref="IConnectionMultiplexer"/> singletons ("redis" and "falkordb") in the boundary
+    /// (ServiceDefaults) project so product code only ever <em>consumes</em> the keyed connections it
+    /// depends on. Relocated verbatim from the Server composition root; the Aspire-injected
+    /// <c>ConnectionStrings__*</c> value is the sole endpoint source and the fail-fast guard preserves
+    /// the "Start the server through AppHost…" message that forces Aspire provisioning.
+    /// </summary>
+    /// <typeparam name="TBuilder">The host application builder type.</typeparam>
+    /// <param name="builder">The host application builder.</param>
+    /// <returns>The same <paramref name="builder"/> for chaining.</returns>
+    public static TBuilder AddKeyedRedisConnections<TBuilder>(this TBuilder builder)
+        where TBuilder : IHostApplicationBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        IConfiguration configuration = builder.Configuration;
+        _ = builder.Services.AddKeyedSingleton<IConnectionMultiplexer>(
+            RedisConnectionKey,
+            (_, _) => ConnectRequiredMultiplexer(configuration, RedisConnectionKey));
+        _ = builder.Services.AddKeyedSingleton<IConnectionMultiplexer>(
+            FalkorDbConnectionKey,
+            (_, _) => ConnectRequiredMultiplexer(configuration, FalkorDbConnectionKey));
+
+        return builder;
+    }
+
+    /// <summary>
+    /// spec-infrastructure-dependency-abstraction (F5) — connects the keyed multiplexer from the
+    /// Aspire-provided connection string, failing fast with AppHost guidance when it is absent.
+    /// Relocated from <c>MemoriesServerServiceCollectionExtensions.ConnectRequiredMultiplexer</c>;
+    /// <c>internal</c> so boundary registration tests can assert the guard message.
+    /// </summary>
+    /// <param name="configuration">Application configuration carrying the Aspire connection strings.</param>
+    /// <param name="connectionName">The keyed connection name ("redis" or "falkordb").</param>
+    /// <returns>A connected <see cref="IConnectionMultiplexer"/>.</returns>
+    internal static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configuration, string connectionName)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        string connectionString = configuration.GetConnectionString(connectionName)
+            ?? throw new InvalidOperationException(
+                $"Connection string '{connectionName}' is required. Start the server through AppHost or set ConnectionStrings__{connectionName}.");
+
+        return ConnectionMultiplexer.Connect(connectionString);
     }
 
     public static TBuilder ConfigureOpenTelemetry<TBuilder>(

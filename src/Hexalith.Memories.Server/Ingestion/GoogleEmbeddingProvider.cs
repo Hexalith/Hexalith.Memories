@@ -16,16 +16,21 @@ using Hexalith.Memories.Contracts.V1;
 /// (<see cref="EmbeddingProviderTransport"/>).</summary>
 internal sealed class GoogleEmbeddingProvider : IEmbeddingProvider
 {
-    private const string ApiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
+    // spec-infrastructure-dependency-abstraction (F2, Decision D30): the Google endpoint base URL is
+    // injected from config (EmbeddingProviders:Google:ApiBaseUrl) rather than a compiled const.
+    private readonly string _apiBaseUrl;
 
     private readonly EmbeddingSecretStore _secretStore;
 
     /// <summary>Initializes a new instance of the <see cref="GoogleEmbeddingProvider"/> class.</summary>
     /// <param name="secretStore">The shared DAPR secret store.</param>
-    public GoogleEmbeddingProvider(EmbeddingSecretStore secretStore)
+    /// <param name="apiBaseUrl">The config-sourced Google Generative Language models base URL.</param>
+    public GoogleEmbeddingProvider(EmbeddingSecretStore secretStore, string apiBaseUrl)
     {
         ArgumentNullException.ThrowIfNull(secretStore);
+        ArgumentException.ThrowIfNullOrWhiteSpace(apiBaseUrl);
         _secretStore = secretStore;
+        _apiBaseUrl = apiBaseUrl;
     }
 
     /// <inheritdoc/>
@@ -54,8 +59,8 @@ internal sealed class GoogleEmbeddingProvider : IEmbeddingProvider
     public HttpRequestMessage BuildRequest(IReadOnlyList<string> texts, TenantEmbeddingConfig config, EmbeddingProviderCredentials credentials, bool batch)
     {
         string endpointUrl = batch
-            ? $"{ApiBaseUrl}/{config.Model}:batchEmbedContents"
-            : $"{ApiBaseUrl}/{config.Model}:embedContent";
+            ? $"{_apiBaseUrl}/{config.Model}:batchEmbedContents"
+            : $"{_apiBaseUrl}/{config.Model}:embedContent";
 
         string requestJson = batch
             ? BuildBatchRequestJson(texts, config)

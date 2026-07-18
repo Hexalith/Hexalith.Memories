@@ -601,6 +601,54 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | D27 | Dapr Agents as Python sidecar service | Dapr Agents SDK is Python-only (GA 1.0.0). Run as a polyglot sidecar service (`ai-agent`) called by C# workflows via DAPR service invocation. Python owns AI enrichment, NLP, causal inference. C# owns core domain. | MVP (optional enrichment), Phase 1.5 (full AI features) |
 | D28 | Polyglot services via DAPR service invocation | When a Python/other-language library is the best fit, create a service in that language. DAPR service invocation makes the calling language invisible. Aspire AppHost orchestrates all services regardless of language. | MVP |
 | D29 | Redis physical isolation target | Per-tenant ACL users plus tenant-scoped backend resolution; prefixes/hash tags/logical DBs are placement aids, not the security boundary | Operational readiness |
+| D30 | No infrastructure dependency in product code | Product projects (`Server`, `Cli`, `Mcp`, `Web`, `Client.Rest`) reach infrastructure only via Dapr building blocks or Aspire-injected connections/config; direct infra clients and endpoint construction live only in boundary projects (`AppHost`, `Aspire`, `ServiceDefaults`, `Redis`, `EventStore`). Sanctioned exceptions are enumerated below. See ADR-IDA-001. | Operational readiness |
+
+#### D30 — No infrastructure dependency in product code (sanctioned exceptions)
+
+**Invariant.** Product code must not hardcode infrastructure endpoints/hosts/ports or construct
+infrastructure clients directly. Infrastructure is reached only through Dapr building blocks (workflows,
+actors, state, pub/sub, secrets, service invocation, Conversation API) or Aspire (connection/endpoint
+discovery, orchestration, component generation). Direct infrastructure clients and connection lifecycle
+live only in the boundary projects.
+
+**Sanctioned exceptions** (audited 2026-07-17, spec-infrastructure-dependency-abstraction):
+
+1. **Search/vector/graph direct clients** — direct `NRedisStack`/`NFalkorDB` usage is allowed only inside
+   the `Redis`/`EventStore` boundary projects and consumes **Aspire-injected** keyed connections
+   (`"redis"`/`"falkordb"`); no hardcoded endpoints.
+2. **Dapr-platform env contracts** — `DAPR_API_TOKEN`, `DAPR_API_TOKEN_MODE`, `APP_API_TOKEN`,
+   `DAPR_HTTP_PORT`/`DAPR_HTTP_ENDPOINT`, and the Dapr subscription-discovery topic env var
+   (`EnvironmentTopicAttribute`) are owned and injected by the Dapr runtime / AppHost / K8s and are read
+   directly by design.
+3. **CLI minimal direct-HTTP adapter** — the CLI reaches the Server over HTTP (not Dapr service
+   invocation); its endpoint defaults are config-sourced (env-overridable), never fixed pins.
+
+**Keyed connection construction** (F5) lives in `ServiceDefaults.AddKeyedRedisConnections`; product code
+only consumes the keyed `IConnectionMultiplexer` services. Embedding provider default endpoints (F1/F2)
+and the CLI endpoint/OTLP defaults (F3/F4) are config-sourced with overridable literal fallbacks.
+
+#### ADR-IDA-001 — EventStore store substrate: Dapr state vs direct Redis
+
+**Status:** Accepted (2026-07-17). **Context:** Three EventStore KV stores used direct Redis. The invariant
+(D30) prefers the Dapr state building block wherever Redis-native atomicity is not load-bearing.
+
+**Decision.** Split the three stores by whether Redis-native atomicity is load-bearing:
+
+- **Migrated to the Dapr state store (`statestore`):** `DaprAggregateCaseMappingStore` (aggregate→case KV
+  map + set-if-not-exists creation lock) and `DaprObservedEventTypeStore` (observed-event-type
+  index + per-aggregate counters). Redis hash/sorted-set/Lua primitives are re-expressed via Dapr state
+  **ETag optimistic concurrency** (bounded-retry compare-and-set) plus `ttlInSeconds` metadata; the
+  observed-type time-window query that Redis served with `ZRANGEBYSCORE` is now performed **in-memory** on
+  read. Idempotency and at-least-once/late/out-of-order safety are preserved.
+- **Kept on direct Redis:** `RedisPreflightDedupStore` — its `SET NX` atomic reserve + TTL + fail-OPEN is a
+  load-bearing check-and-set the Dapr state API cannot express portably.
+
+**Consequences / trade-offs.** The migrated stores lose cross-key atomicity (two non-atomic state writes)
+and the exact cardinality-cap atomicity (a small CAS race window may admit a few entries over the 1024 cap
+— the cap is defence-in-depth, not exact); TTL-refresh-on-write adds CAS contention on the aggregates
+index under high ingestion. These were accepted with full knowledge (architect decision, 2026-07-17) in
+exchange for building-block alignment. Real ETag-CAS/TTL behavior requires Dapr-sidecar integration
+verification (Tier-2); unit coverage uses an in-memory ETag-CAS state fake.
 
 ### Cross-Component Dependencies
 

@@ -82,15 +82,20 @@ public static class EventStoreIntegrationServiceCollectionExtensions
         services.TryAddSingleton<ICaseCreationService, MissingCaseCreationService>();
         services.TryAddSingleton<ISearchIndexMaintenance, MissingSearchIndexMaintenance>();
         services.TryAddSingleton<IEventIngestionTelemetry, NoOpEventIngestionTelemetry>();
+        // spec-infrastructure-dependency-abstraction (F6, Decision D30, ADR-IDA-001): the atomic-reserve
+        // dedup store stays on direct Redis; the KV/set mapping and observation stores are on Dapr state.
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddOptions<EventStoreStateStoreOptions>()
+            .Bind(configuration.GetSection(EventStoreStateStoreOptions.SectionName));
         services.TryAddSingleton<IPreflightDedupStore, RedisPreflightDedupStore>();
-        services.TryAddSingleton<IAggregateCaseMappingStore, RedisAggregateCaseMappingStore>();
+        services.TryAddSingleton<IAggregateCaseMappingStore, DaprAggregateCaseMappingStore>();
         services.TryAddSingleton<ITenantEventRouter, TenantEventRouter>();
         services.TryAddSingleton<ITenantEventRouteCacheInvalidator>(
             sp => (ITenantEventRouteCacheInvalidator)sp.GetRequiredService<ITenantEventRouter>());
         services.TryAddSingleton<IEventIngestionService, EventIngestionService>();
 
         // Story 9.3 — observation store + kill-switch options.
-        services.TryAddSingleton<IObservedEventTypeStore, RedisObservedEventTypeStore>();
+        services.TryAddSingleton<IObservedEventTypeStore, DaprObservedEventTypeStore>();
         services.TryAddSingleton<IProjectionBindingProvider, DefaultProjectionBindingProvider>();
         services.AddOptions<EventStoreObservationOptions>()
             .Bind(configuration.GetSection("EventStoreIntegration:Observation"));
@@ -108,7 +113,10 @@ public static class EventStoreIntegrationServiceCollectionExtensions
             return configuredTopic.Trim();
         }
 
-        string? environmentTopic = Environment.GetEnvironmentVariable(EventIngestionController.TopicEnvVar);
+        // spec-infrastructure-dependency-abstraction (F8, Decision D30): the AppHost-injected topic env var
+        // is read through IConfiguration (which surfaces environment variables) rather than a raw
+        // Environment.GetEnvironmentVariable call, for consistency and testability.
+        string? environmentTopic = configuration[EventIngestionController.TopicEnvVar];
         return string.IsNullOrWhiteSpace(environmentTopic) ? null : environmentTopic.Trim();
     }
 }

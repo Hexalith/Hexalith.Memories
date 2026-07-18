@@ -37,6 +37,7 @@ using Hexalith.Memories.Server.Search;
 using Hexalith.Memories.Server.Telemetry;
 using Hexalith.Memories.Server.Tenants;
 using Hexalith.Memories.Server.Workflows;
+using Hexalith.Memories.ServiceDefaults;
 
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -196,6 +197,16 @@ internal static class MemoriesServerServiceCollectionExtensions
             // workflow/tenant rate-limiter retry path. An outer HTTP resilience handler would
             // consume 429/5xx responses before that state machine can observe and persist them.
             .RemoveAllResilienceHandlers();
+
+        // spec-infrastructure-dependency-abstraction (F1/F2, Decision D30): seed the config-sourced
+        // embedding provider default endpoints so the built-in Ollama/Google defaults are not embedded
+        // as literals in product-logic code and can be overridden per environment via Aspire/appsettings.
+        builder.Services.Configure<EmbeddingProviderDefaultsOptions>(
+            builder.Configuration.GetSection(EmbeddingProviderDefaultsOptions.SectionName));
+        EmbeddingProviderDefaultsOptions embeddingProviderDefaults = new();
+        builder.Configuration.GetSection(EmbeddingProviderDefaultsOptions.SectionName).Bind(embeddingProviderDefaults);
+        EmbeddingProviderDefaults.Configure(embeddingProviderDefaults);
+
         builder.Services.AddSingleton<EmbeddingClient>();
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.Configure<TenantEmbeddingConfigCacheOptions>(
@@ -257,10 +268,10 @@ internal static class MemoriesServerServiceCollectionExtensions
         // keyed-redis index SaveDedupKeyActivity/CheckIdempotencyActivity use; no parallel store).
         builder.Services.AddSingleton<SourceUriMemoryUnitLookup>();
 
-        builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("redis", (sp, _) =>
-            ConnectRequiredMultiplexer(builder.Configuration, "redis"));
-        builder.Services.AddKeyedSingleton<IConnectionMultiplexer>("falkordb", (sp, _) =>
-            ConnectRequiredMultiplexer(builder.Configuration, "falkordb"));
+        // spec-infrastructure-dependency-abstraction (F5, Decision D30): the keyed IConnectionMultiplexer
+        // construction + fail-fast guard now live in the ServiceDefaults boundary project. Product code
+        // only consumes the keyed "redis"/"falkordb" connections below.
+        builder.AddKeyedRedisConnections();
         builder.Services.AddSingleton<IGraphQueryBuilder, GraphQueryBuilder>();
         builder.Services.AddSingleton<SyntacticSearchService>(sp =>
             new SyntacticSearchService(
@@ -485,14 +496,5 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.AddServerEventStoreIntegration(builder.Configuration);
 
         return builder;
-    }
-
-    private static IConnectionMultiplexer ConnectRequiredMultiplexer(IConfiguration configuration, string connectionName)
-    {
-        string connectionString = configuration.GetConnectionString(connectionName)
-            ?? throw new InvalidOperationException(
-                $"Connection string '{connectionName}' is required. Start the server through AppHost or set ConnectionStrings__{connectionName}.");
-
-        return ConnectionMultiplexer.Connect(connectionString);
     }
 }

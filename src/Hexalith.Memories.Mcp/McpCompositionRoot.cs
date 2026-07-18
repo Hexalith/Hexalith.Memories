@@ -16,6 +16,7 @@ using Hexalith.Memories.Mcp.Tools;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -65,7 +66,8 @@ internal static class McpCompositionRoot
         services.AddTransient<MemoriesMcpDaprInvocationHandler>();
         services.AddScoped<MemoriesClient>(sp =>
         {
-            HttpClient invokeClient = Dapr.Client.DaprClient.CreateInvokeHttpClient(ResolveMemoriesServerAppId());
+            HttpClient invokeClient = Dapr.Client.DaprClient.CreateInvokeHttpClient(
+                ResolveMemoriesServerAppId(sp.GetRequiredService<IConfiguration>()));
             MemoriesMcpDaprInvocationHandler.ApplyDaprApiToken(invokeClient);
             ApplyServerUpstreamBearer(sp, invokeClient);
             return new MemoriesClient(
@@ -98,11 +100,27 @@ internal static class McpCompositionRoot
                 timeout: TimeSpan.FromSeconds(6));
     }
 
-    /// <summary>Resolves the upstream Memories Server DAPR app-id.</summary>
+    /// <summary>Resolves the upstream Memories Server DAPR app-id from the process environment.</summary>
     /// <returns>The configured app-id, or the production default.</returns>
     internal static string ResolveMemoriesServerAppId()
     {
         string? configured = Environment.GetEnvironmentVariable(MemoriesServerAppIdEnvVar);
+        return string.IsNullOrWhiteSpace(configured)
+            ? MemoriesServerAppId
+            : configured.Trim();
+    }
+
+    /// <summary>Resolves the upstream Memories Server DAPR app-id from bound configuration.</summary>
+    /// <remarks>spec-infrastructure-dependency-abstraction (F8, Decision D30): the logical Dapr app-id is
+    /// read through <see cref="IConfiguration"/> (which still surfaces the AppHost-injected
+    /// <c>MEMORIES_MCP_UPSTREAM_APP_ID</c> env var) rather than a raw <c>Environment.GetEnvironmentVariable</c>
+    /// call, for consistency and testability.</remarks>
+    /// <param name="configuration">The application configuration.</param>
+    /// <returns>The configured app-id, or the production default.</returns>
+    internal static string ResolveMemoriesServerAppId(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        string? configured = configuration[MemoriesServerAppIdEnvVar];
         return string.IsNullOrWhiteSpace(configured)
             ? MemoriesServerAppId
             : configured.Trim();

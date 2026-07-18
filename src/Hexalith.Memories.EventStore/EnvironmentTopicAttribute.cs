@@ -14,7 +14,12 @@ using Dapr;
 ///
 /// <para>Dapr's built-in <see cref="TopicAttribute"/> does not expand environment-variable placeholders.
 /// This adapter keeps the standard controller + <c>MapSubscribeHandler()</c> subscription model while still
-/// allowing the topic name to be configured per deployment.</para></summary>
+/// allowing the topic name to be configured per deployment.</para>
+///
+/// <para>spec-infrastructure-dependency-abstraction (F8, Decision D30): this attribute reads the topic env
+/// var directly by design — it is evaluated by Dapr's <c>/dapr/subscribe</c> discovery at type-load time,
+/// before DI/<c>IConfiguration</c> exists, so it cannot take an injected configuration. It is a sanctioned
+/// D30 exception (a Dapr subscription-discovery env adapter), not a product-code infrastructure leak.</para></summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
 internal sealed class EnvironmentTopicAttribute : Attribute, ITopicMetadata
 {

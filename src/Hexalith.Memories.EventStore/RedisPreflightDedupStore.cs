@@ -13,6 +13,11 @@ using StackExchange.Redis;
 /// <summary>Package-owned Redis-backed <see cref="IPreflightDedupStore"/>.
 /// Uses <c>StringSet(..., When.NotExists)</c> as the atomic reservation primitive and fails OPEN on Redis
 /// outage so the workflow-level permanent dedup key remains authoritative.</summary>
+/// <remarks>spec-infrastructure-dependency-abstraction (F6, Decision D30, ADR-IDA-001): this store is
+/// deliberately NOT migrated to the Dapr state building block. Its atomic <c>SET NX</c> reserve + TTL +
+/// fail-OPEN is a load-bearing check-and-set that the Dapr state API cannot express portably. The KV/set
+/// <see cref="DaprAggregateCaseMappingStore"/> and <see cref="DaprObservedEventTypeStore"/> were migrated;
+/// this reservation store stays direct.</remarks>
 internal sealed partial class RedisPreflightDedupStore : IPreflightDedupStore
 {
     private readonly IConnectionMultiplexer _redis;

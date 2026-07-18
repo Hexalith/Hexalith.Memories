@@ -35,6 +35,14 @@ public static partial class EmbeddingProviderDefaults
     // width until a story deliberately raises the storage and memory policy.
     private const int MaxSupportedDimensions = 16_384;
 
+    // spec-infrastructure-dependency-abstraction (F1/F2, Decision D30): the Ollama default endpoint,
+    // OIDC token endpoint, client id, and scope are config-sourced rather than embedded as literals in
+    // this registry/validation type. Seeded once at composition-root startup via Configure(...);
+    // defaults to the built-in options which preserve the pre-change produced values for the no-config
+    // static path (unit tests and pre-startup callers that never invoke Configure). Reference assignment
+    // is atomic and the writer runs single-threaded at startup before any concurrent reader.
+    private static EmbeddingProviderDefaultsOptions _options = new();
+
     private static readonly ImmutableArray<ProviderRegistryEntry> Registry =
     [
         new(
@@ -60,21 +68,42 @@ public static partial class EmbeddingProviderDefaults
             [
                 new(OllamaModelName, [2560]),
             ],
-            CreateDefaultConfig: () => new TenantEmbeddingConfig
-            {
-                Provider = OllamaProviderName,
-                Model = OllamaModelName,
-                Dimensions = 2560,
-                RateLimitPerMinute = 6000,
-                ApiSecretKeyName = "memories-embedding-client-secret",
-                BaseUrl = "https://llm.tache.ai",
-                AuthMode = OidcClientCredentialsAuthMode,
-                OidcTokenEndpoint = "https://auth.tache.ai/realms/tache/protocol/openid-connect/token",
-                OidcClientId = "memories-embedding",
-                OidcScope = "openid",
-                ReindexRequired = false,
-            }),
+            CreateDefaultConfig: () => CreateOllamaDefault(_options)),
     ];
+
+    /// <summary>Seeds the config-sourced embedding provider default endpoints. Call once at
+    /// composition-root startup with the bound <see cref="EmbeddingProviderDefaultsOptions.SectionName"/>
+    /// options so the built-in Ollama default is environment-configurable
+    /// (spec-infrastructure-dependency-abstraction — F1, Decision D30).</summary>
+    /// <param name="options">The bound embedding provider default options.</param>
+    public static void Configure(EmbeddingProviderDefaultsOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        _options = options;
+    }
+
+    /// <summary>Builds the Ollama default configuration from the supplied options. Pure and
+    /// options-parameterized so config-sourcing can be verified without mutating the static seam.</summary>
+    /// <param name="options">The embedding provider default options supplying the Ollama endpoints.</param>
+    /// <returns>The Ollama default <see cref="TenantEmbeddingConfig"/>.</returns>
+    internal static TenantEmbeddingConfig CreateOllamaDefault(EmbeddingProviderDefaultsOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return new TenantEmbeddingConfig
+        {
+            Provider = OllamaProviderName,
+            Model = OllamaModelName,
+            Dimensions = 2560,
+            RateLimitPerMinute = 6000,
+            ApiSecretKeyName = "memories-embedding-client-secret",
+            BaseUrl = options.Ollama.BaseUrl,
+            AuthMode = OidcClientCredentialsAuthMode,
+            OidcTokenEndpoint = options.Ollama.OidcTokenEndpoint,
+            OidcClientId = options.Ollama.OidcClientId,
+            OidcScope = options.Ollama.OidcScope,
+            ReindexRequired = false,
+        };
+    }
 
     /// <summary>Returns the default Google embedding configuration using gemini-embedding-001.</summary>
     /// <returns>A <see cref="TenantEmbeddingConfig"/> with Google defaults.</returns>

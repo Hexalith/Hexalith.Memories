@@ -40,6 +40,11 @@ internal sealed class MemoriesMcpDaprInvocationHandler
     {
         ArgumentNullException.ThrowIfNull(client);
 
+        // spec-infrastructure-dependency-abstraction (F7, Decision D30): DAPR_API_TOKEN_MODE /
+        // DAPR_API_TOKEN are the sanctioned Dapr-platform token contract — the Dapr runtime and
+        // AppHost/K8s own and inject these env vars, so reading them directly here is a documented D30
+        // exception (a Dapr-platform env contract), NOT a product-code infrastructure leak. Do not
+        // re-flag or route through IConfiguration.
         string? mode = Environment.GetEnvironmentVariable(TokenModeEnvVar);
         if (!string.Equals(mode, "enabled", StringComparison.OrdinalIgnoreCase))
         {

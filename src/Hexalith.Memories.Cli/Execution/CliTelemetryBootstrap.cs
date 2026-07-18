@@ -28,7 +28,13 @@ public static class CliTelemetryBootstrap
     public const string OtlpEndpointEnvVar = "HEXALITH_MEMORIES_OTEL_ENDPOINT";
 
     /// <summary>Local Aspire dashboard OTLP endpoint used when <c>--telemetry</c> is passed without an explicit env var.</summary>
+    /// <remarks>spec-infrastructure-dependency-abstraction (F4, Decision D30): the local dev fallback is
+    /// config-sourced from <see cref="LocalDevelopmentOtlpEndpointEnvVar"/>; the literal remains only as the
+    /// documented, overridable default (identical effective value when unset).</remarks>
     public const string LocalDevelopmentOtlpEndpoint = "http://localhost:18889";
+
+    /// <summary>Env var that overrides the local development OTLP fallback endpoint.</summary>
+    public const string LocalDevelopmentOtlpEndpointEnvVar = "HEXALITH_MEMORIES_OTEL_LOCAL_ENDPOINT";
 
     /// <summary>Marker service type used to detect "already registered" on idempotency checks.</summary>
     private sealed class TelemetryRegisteredMarker
@@ -76,11 +82,17 @@ public static class CliTelemetryBootstrap
     }
 
     internal static Uri? ResolveEndpoint(string? endpoint, bool telemetryFlag)
-        => ResolveEndpoint(endpoint, telemetryFlag, WriteStderr);
+        => ResolveEndpoint(endpoint, telemetryFlag, WriteStderr, Environment.GetEnvironmentVariable);
 
     internal static Uri? ResolveEndpoint(string? endpoint, bool telemetryFlag, Action<string> warn)
+        => ResolveEndpoint(endpoint, telemetryFlag, warn, Environment.GetEnvironmentVariable);
+
+    internal static Uri? ResolveEndpoint(string? endpoint, bool telemetryFlag, Action<string> warn, Func<string, string?> readEnvironment)
     {
         ArgumentNullException.ThrowIfNull(warn);
+        ArgumentNullException.ThrowIfNull(readEnvironment);
+
+        Uri localEndpoint = ResolveLocalDevelopmentEndpoint(readEnvironment);
 
         if (!string.IsNullOrWhiteSpace(endpoint))
         {
@@ -94,13 +106,25 @@ public static class CliTelemetryBootstrap
                 $"[Hexalith.Memories.Cli] Ignoring {OtlpEndpointEnvVar}='{endpoint}': " +
                 "value is not an http(s) absolute URI. " +
                 (telemetryFlag
-                    ? $"Falling back to {LocalDevelopmentOtlpEndpoint}."
+                    ? $"Falling back to {localEndpoint}."
                     : "Telemetry disabled."));
 
-            return telemetryFlag ? new Uri(LocalDevelopmentOtlpEndpoint, UriKind.Absolute) : null;
+            return telemetryFlag ? localEndpoint : null;
         }
 
-        return telemetryFlag ? new Uri(LocalDevelopmentOtlpEndpoint, UriKind.Absolute) : null;
+        return telemetryFlag ? localEndpoint : null;
+    }
+
+    // spec-infrastructure-dependency-abstraction (F4, Decision D30): the local dev OTLP fallback is
+    // config-sourced from an env var; the literal endpoint stays only as the overridable default.
+    private static Uri ResolveLocalDevelopmentEndpoint(Func<string, string?> readEnvironment)
+    {
+        string? configured = readEnvironment(LocalDevelopmentOtlpEndpointEnvVar);
+        return !string.IsNullOrWhiteSpace(configured)
+            && Uri.TryCreate(configured.Trim(), UriKind.Absolute, out Uri? parsed)
+            && IsAcceptableOtlpScheme(parsed)
+            ? parsed
+            : new Uri(LocalDevelopmentOtlpEndpoint, UriKind.Absolute);
     }
 
     private static bool IsAcceptableOtlpScheme(Uri uri)

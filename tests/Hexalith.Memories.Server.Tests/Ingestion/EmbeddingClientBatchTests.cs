@@ -71,6 +71,44 @@ public class EmbeddingClientBatchTests
     }
 
     [Fact]
+    public async Task GenerateBatchAsync_Google_UsesConfigSourcedApiBaseUrl()
+    {
+        // spec-infrastructure-dependency-abstraction (F2, Decision D30): the Google endpoint base URL is
+        // config-sourced from EmbeddingProviders:Google:ApiBaseUrl. A non-default value must flow through
+        // to the request URI, proving the endpoint is no longer a compiled const.
+        HttpRequestMessage? capturedRequest = null;
+        float[] first = CreateVector(768, 0f);
+        float[] second = CreateVector(768, 10f);
+        TestDelegatingHandler handler = new((request, _) =>
+        {
+            capturedRequest = request;
+            return Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, CreateGoogleBatchResponse(first, second)));
+        });
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Memories:Testing:UseFakeEmbedding"] = "false",
+                ["EmbeddingProviders:Google:ApiBaseUrl"] = "https://google-proxy.internal/v1beta/models",
+            })
+            .Build();
+        EmbeddingClient client = new(
+            CreateHttpClientFactory(handler),
+            CreateDaprClientWithSecret("google-embedding-api-key", TestApiKey),
+            configuration,
+            CreateHostEnvironment());
+
+        _ = await client.GenerateBatchAsync(
+            ["first text", "second text"],
+            TenantId,
+            EmbeddingProviderDefaults.Google(),
+            CancellationToken.None);
+
+        capturedRequest.ShouldNotBeNull();
+        capturedRequest.RequestUri!.ToString().ShouldBe(
+            "https://google-proxy.internal/v1beta/models/gemini-embedding-001:batchEmbedContents");
+    }
+
+    [Fact]
     public async Task GenerateBatchAsync_Ollama_UsesArrayInputAndPreservesOrder()
     {
         HttpRequestMessage? capturedRequest = null;

@@ -73,10 +73,14 @@ public class EmbeddingClient
         // Compose the provider strategies manually so the existing DI registration and constructor contract are
         // preserved (Story 23.9, Task 6). The secret store is shared across providers so priming and generation reuse
         // one cache keyed by secret key name.
+        // spec-infrastructure-dependency-abstraction (F2, Decision D30): the Google provider endpoint is
+        // config-sourced from EmbeddingProviders:Google:ApiBaseUrl (default preserves the pre-change value).
+        EmbeddingProviderDefaultsOptions embeddingDefaults = new();
+        configuration.GetSection(EmbeddingProviderDefaultsOptions.SectionName).Bind(embeddingDefaults);
         EmbeddingSecretStore secretStore = new(daprClient);
         _transport = new EmbeddingProviderTransport(httpClientFactory);
         _providerRegistry = new EmbeddingProviderRegistry(
-            new GoogleEmbeddingProvider(secretStore),
+            new GoogleEmbeddingProvider(secretStore, embeddingDefaults.Google.ApiBaseUrl),
             new OllamaEmbeddingProvider(secretStore, oidcTokenProvider));
     }
 
