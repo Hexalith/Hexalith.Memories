@@ -20,6 +20,9 @@ internal sealed class OpenBaoRecordingHandler : HttpMessageHandler
     /// <summary>Gets or sets an optional first-response failure payload.</summary>
     internal string? InitializationFailureBody { get; set; }
 
+    /// <summary>Gets or sets an override for the runtime scoped-token lookup response.</summary>
+    internal string? RuntimeTokenLookupBody { get; set; }
+
     /// <inheritdoc/>
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
@@ -88,6 +91,7 @@ internal sealed class OpenBaoRecordingHandler : HttpMessageHandler
         {
             return Json(
                 HttpStatusCode.OK,
+                RuntimeTokenLookupBody ??
                 "{\"data\":{\"orphan\":true,\"renewable\":false,\"ttl\":604799,\"explicit_max_ttl\":604800," +
                 "\"type\":\"service\",\"policies\":[\"memories-runtime-read\"]}}");
         }

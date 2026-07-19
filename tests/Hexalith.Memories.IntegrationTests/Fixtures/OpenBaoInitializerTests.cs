@@ -13,6 +13,7 @@ using Hexalith.Memories.AppHost;
 using Shouldly;
 
 /// <summary>HTTP-contract tests for the AppHost-owned OpenBao initialization state machine.</summary>
+[Trait("Category", "Integration")]
 public sealed class OpenBaoInitializerTests
 {
     private static readonly Uri Endpoint = new("http://127.0.0.1:18200");
@@ -121,6 +122,45 @@ public sealed class OpenBaoInitializerTests
 
         exception.Message.ShouldContain("secret name", Case.Insensitive);
         exception.Message.ShouldNotContain(valueCanary, Case.Sensitive);
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData("..")]
+    public void SeedInputs_DotSegmentsCannotEscapeTheDeclaredRuntimePrefix(string secretName)
+    {
+        string runtimeSeeds = JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            [secretName] = "non-sensitive-test-value",
+        });
+
+        _ = Should.Throw<ArgumentException>(() => OpenBaoSeedInputs.Create(
+            runtimeSeeds,
+            "{\"access-telemetry-marker-key\":\"marker\",\"access-telemetry-clock-key\":\"clock\"}"));
+    }
+
+    [Theory]
+    [InlineData("{\"data\":{\"orphan\":false,\"renewable\":false,\"ttl\":604799,\"explicit_max_ttl\":604800,\"type\":\"service\",\"policies\":[\"memories-runtime-read\"]}}")]
+    [InlineData("{\"data\":{\"orphan\":true,\"renewable\":true,\"ttl\":604799,\"explicit_max_ttl\":604800,\"type\":\"service\",\"policies\":[\"memories-runtime-read\"]}}")]
+    [InlineData("{\"data\":{\"orphan\":true,\"renewable\":false,\"ttl\":518400,\"explicit_max_ttl\":604800,\"type\":\"service\",\"policies\":[\"memories-runtime-read\"]}}")]
+    [InlineData("{\"data\":{\"orphan\":true,\"renewable\":false,\"ttl\":604801,\"explicit_max_ttl\":604800,\"type\":\"service\",\"policies\":[\"memories-runtime-read\"]}}")]
+    [InlineData("{\"data\":{\"orphan\":true,\"renewable\":false,\"ttl\":604799,\"explicit_max_ttl\":604799,\"type\":\"service\",\"policies\":[\"memories-runtime-read\"]}}")]
+    [InlineData("{\"data\":{\"orphan\":true,\"renewable\":false,\"ttl\":604799,\"explicit_max_ttl\":604800,\"type\":\"batch\",\"policies\":[\"memories-runtime-read\"]}}")]
+    [InlineData("{\"data\":{\"orphan\":true,\"renewable\":false,\"ttl\":604799,\"explicit_max_ttl\":604800,\"type\":\"service\",\"policies\":[\"default\",\"memories-runtime-read\"]}}")]
+    public async Task InitializeAsync_InvalidScopedTokenLookupFailsClosed(string lookupBody)
+    {
+        var handler = new OpenBaoRecordingHandler { RuntimeTokenLookupBody = lookupBody };
+        using var client = new HttpClient(handler);
+        var initializer = new OpenBaoInitializer(client);
+        OpenBaoSeedInputs seeds = OpenBaoSeedInputs.Create(
+            "{\"provider-secret\":\"runtime-secret-value\"}",
+            "{\"access-telemetry-marker-key\":\"marker-secret-value\",\"access-telemetry-clock-key\":\"clock-secret-value\"}");
+
+        InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(() =>
+            initializer.InitializeAsync(Endpoint, seeds, TestContext.Current.CancellationToken));
+
+        exception.Message.ShouldContain("isolation contract", Case.Insensitive);
+        handler.Requests.ShouldNotContain(request => request.Path == "/v1/auth/token/revoke-self");
     }
 
     private static OpenBaoCapturedRequest Single(

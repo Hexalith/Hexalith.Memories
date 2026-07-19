@@ -16,6 +16,8 @@ using Aspire.Hosting.Testing;
 
 using Hexalith.Memories.TestHelpers.Process;
 
+using Microsoft.Extensions.DependencyInjection;
+
 using Shouldly;
 
 /// <summary>
@@ -31,6 +33,7 @@ public sealed class AppHostComponentFileOrderingTests
         string daprAppId = $"memories-ordering-{Guid.NewGuid():N}";
         using EnvVarScope daprAppIdScope = EnvVarScope.Set("MEMORIES_DAPR_APP_ID", daprAppId);
         using EnvVarScope keycloakScope = EnvVarScope.Set("EnableKeycloak", "false");
+        using EnvVarScope randomizePortsScope = EnvVarScope.Set("MEMORIES_ASPIRE_RANDOMIZE_PROJECT_PORTS", "true");
         IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Hexalith_Memories_AppHost>()
             .ConfigureAwait(true);
@@ -39,6 +42,17 @@ public sealed class AppHostComponentFileOrderingTests
             Path.GetTempPath(),
             "hexalith-memories-dapr",
             $"{daprAppId}-{Process.GetCurrentProcess().Id}");
+        string[] expectedStartedResources =
+        [
+            "memories",
+            "memories-dapr-cli",
+            "memories-access-telemetry",
+            "memories-access-telemetry-dapr-cli",
+            "memories-access-telemetry-clock",
+            "memories-access-telemetry-clock-dapr-cli",
+            "memories-mcp",
+            "memories-mcp-dapr-cli",
+        ];
         var observations = new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
         var observationErrors = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
         var startedResourceNames = new ConcurrentBag<string>();
@@ -63,7 +77,7 @@ public sealed class AppHostComponentFileOrderingTests
 
             if (consumer == "mcp")
             {
-                observations[consumer] = true;
+                observations.AddOrUpdate(@event.Resource.Name, true, (_, previous) => previous);
                 return;
             }
 
@@ -93,12 +107,16 @@ public sealed class AppHostComponentFileOrderingTests
                         !stateStore.Contains("value: \"127.0.0.1:6379\"", StringComparison.Ordinal);
                 }
 
-                observations[consumer] = componentsReady && runtimeTokenReady && accessTokenReady && redisReady;
+                bool observedReady = componentsReady && runtimeTokenReady && accessTokenReady && redisReady;
+                observations.AddOrUpdate(
+                    @event.Resource.Name,
+                    observedReady,
+                    (_, previous) => previous && observedReady);
             }
             catch (Exception exception)
             {
-                observations[consumer] = false;
-                observationErrors[consumer] = $"{exception.GetType().Name}: {exception.Message}";
+                observations.AddOrUpdate(@event.Resource.Name, false, (_, _) => false);
+                observationErrors[@event.Resource.Name] = $"{exception.GetType().Name}: {exception.Message}";
             }
         });
 
@@ -106,26 +124,57 @@ public sealed class AppHostComponentFileOrderingTests
         using CancellationTokenSource cts = new(TimeSpan.FromMinutes(3));
 
         await app.StartAsync(cts.Token).ConfigureAwait(true);
-        for (int attempt = 0; attempt < 600 && observations.Count < 4; attempt++)
+        for (int attempt = 0;
+            attempt < 600 && expectedStartedResources.Any(resource => !observations.ContainsKey(resource));
+            attempt++)
         {
             await Task.Delay(TimeSpan.FromMilliseconds(100), cts.Token).ConfigureAwait(true);
         }
 
         string observationContext = $"Started resources: {string.Join(", ", startedResourceNames.Order())}; " +
             $"observer errors: {string.Join(" | ", observationErrors.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={pair.Value}"))}";
-        observations.Keys.ShouldContain("server", observationContext);
-        observations.Keys.ShouldContain("lifecycle", observationContext);
-        observations.Keys.ShouldContain("clock", observationContext);
-        observations.Keys.ShouldContain("mcp", observationContext);
-        observations["server"].ShouldBeTrue(observationContext);
-        observations["lifecycle"].ShouldBeTrue(observationContext);
-        observations["clock"].ShouldBeTrue(observationContext);
+        foreach (string resourceName in expectedStartedResources)
+        {
+            observations.Keys.ShouldContain(resourceName, observationContext);
+            observations[resourceName].ShouldBeTrue(observationContext);
+        }
 
         _ = await app.ResourceNotifications.WaitForResourceHealthyAsync("memories-mcp", cts.Token)
             .WaitAsync(TimeSpan.FromMinutes(2), cts.Token).ConfigureAwait(true);
 
+        string repoRoot = ResolveRepoRoot();
+        string[] daprConfigurations =
+        [
+            Path.Combine(repoRoot, "deploy", "dapr", "config.yaml"),
+            Path.Combine(repoRoot, "deploy", "dapr", "access-telemetry-lifecycle-config.yaml"),
+            Path.Combine(repoRoot, "deploy", "dapr", "access-telemetry-clock-config.yaml"),
+        ];
+        foreach (string configurationPath in daprConfigurations)
+        {
+            string configuration = await File.ReadAllTextAsync(configurationPath, cts.Token).ConfigureAwait(true);
+            configuration.ShouldContain("- name: HotReload");
+            configuration.ShouldContain("enabled: false");
+        }
+
+        ResourceLoggerService resourceLogs = app.Services.GetRequiredService<ResourceLoggerService>();
+        foreach (string sidecarName in expectedStartedResources.Where(name => name.EndsWith("-dapr-cli", StringComparison.Ordinal)))
+        {
+            app.ResourceNotifications.TryGetCurrentState(sidecarName, out ResourceEvent? sidecarEvent)
+                .ShouldBeTrue(observationContext);
+            IResource resource = sidecarEvent!.Resource;
+            await foreach (IReadOnlyList<LogLine> batch in resourceLogs.GetAllAsync(resource))
+            {
+                foreach (LogLine line in batch)
+                {
+                    line.Content.ShouldNotContain("too many open files", Case.Insensitive);
+                    line.Content.ShouldNotContain("inotify_add_watch", Case.Insensitive);
+                    line.Content.ShouldNotContain("no space left on device", Case.Insensitive);
+                }
+            }
+        }
+
         string program = File.ReadAllText(Path.Combine(
-            ResolveRepoRoot(), "src", "Hexalith.Memories.AppHost", "Program.cs"));
+            repoRoot, "src", "Hexalith.Memories.AppHost", "Program.cs"));
         int mcpStart = program.IndexOf("IResourceBuilder<ProjectResource> mcp", StringComparison.Ordinal);
         int mcpEnd = program.IndexOf("_ = mcp;", mcpStart, StringComparison.Ordinal);
         string mcpComposition = program[mcpStart..mcpEnd];

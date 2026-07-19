@@ -14,6 +14,7 @@ using Hexalith.Memories.AppHost;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 OpenBaoDevelopmentProfile.EnsureAllowed(
@@ -74,21 +75,33 @@ IResourceBuilder<ContainerResource> openBao = builder
 var openBaoGenerationGate = new OpenBaoGenerationGate();
 openBao.OnResourceEndpointsAllocated((resource, @event, cancellationToken) =>
 {
-    (int generationNumber, TaskCompletionSource readiness) = openBaoGenerationGate.BeginGeneration();
+    if (!openBaoGenerationGate.TryBeginGeneration(out OpenBaoGenerationLease lease))
+    {
+        return Task.CompletedTask;
+    }
+
     _ = InitializeOpenBaoGenerationAsync(
         resource,
         @event.Services,
         runtimeSeedParameter.Resource,
         accessTelemetrySeedParameter.Resource,
         daprComponentPaths,
-        generationNumber,
-        readiness,
+        openBaoGenerationGate,
+        lease,
         cancellationToken);
     return Task.CompletedTask;
 });
-openBao.OnResourceStopped((_, _, _) =>
+openBao.OnResourceStopped((resource, @event, cancellationToken) =>
 {
     openBaoGenerationGate.MarkStopped();
+    _ = InitializeOpenBaoOnNextStartAsync(
+        resource,
+        @event.Services,
+        runtimeSeedParameter.Resource,
+        accessTelemetrySeedParameter.Resource,
+        daprComponentPaths,
+        openBaoGenerationGate,
+        @event.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
     return Task.CompletedTask;
 });
 
@@ -300,6 +313,7 @@ IResourceBuilder<ProjectResource> server = builder
     .WaitFor(openBao)
     .WaitFor(secretStore)
     .WaitFor(conversationLlm);
+server = RandomizeProjectHttpEndpointIfRequested(server);
 
 #pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr 9.7 reads project-level component references.
 server = server
@@ -380,6 +394,7 @@ IResourceBuilder<ProjectResource> accessTelemetryClock = builder
     .WithEnvironment("Clock__AllowDevelopmentSources", "true")
     .WaitFor(openBao)
     .WaitFor(accessTelemetrySecrets);
+accessTelemetryClock = RandomizeProjectHttpEndpointIfRequested(accessTelemetryClock);
 
 IResourceBuilder<ProjectResource> accessTelemetry = builder
     .AddProject<Projects.Hexalith_Memories_AccessTelemetry>(
@@ -418,6 +433,7 @@ IResourceBuilder<ProjectResource> accessTelemetry = builder
     .WaitFor(accessTelemetryStore)
     .WaitFor(accessTelemetrySecrets)
     .WaitFor(accessTelemetryConfig);
+accessTelemetry = RandomizeProjectHttpEndpointIfRequested(accessTelemetry);
 
 #pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr reads project-level component references.
 accessTelemetry = accessTelemetry
@@ -456,6 +472,7 @@ IResourceBuilder<ProjectResource> mcp = builder
     })
     .WithEnvironment("MEMORIES_MCP_UPSTREAM_APP_ID", daprAppId)
     .WaitFor(server);
+mcp = RandomizeProjectHttpEndpointIfRequested(mcp);
 
 if (appApiToken is not null)
 {
@@ -1155,23 +1172,28 @@ static async Task InitializeOpenBaoGenerationAsync(
     ParameterResource runtimeSeedParameter,
     ParameterResource accessTelemetrySeedParameter,
     GeneratedDaprComponentPaths paths,
-    int generationNumber,
-    TaskCompletionSource readiness,
+    OpenBaoGenerationGate generationGate,
+    OpenBaoGenerationLease lease,
     CancellationToken cancellationToken)
 {
+    using var generationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+        cancellationToken,
+        lease.CancellationToken);
+    CancellationToken generationToken = generationCancellation.Token;
+
     try
     {
         ResourceNotificationService notifications = services.GetRequiredService<ResourceNotificationService>();
         _ = await notifications.WaitForResourceAsync(
             resource.Name,
             [KnownResourceStates.Starting, KnownResourceStates.Running],
-            cancellationToken).ConfigureAwait(false);
+            generationToken).ConfigureAwait(false);
 
         (string host, int port) = ResolveAllocatedEndpoint(resource, OpenBaoDevelopmentProfile.EndpointName);
         var endpoint = new UriBuilder(Uri.UriSchemeHttp, host, port).Uri;
-        string runtimeSeedJson = await runtimeSeedParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)
+        string runtimeSeedJson = await runtimeSeedParameter.GetValueAsync(generationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException("The protected runtime seed parameter has no value.");
-        string accessTelemetrySeedJson = await accessTelemetrySeedParameter.GetValueAsync(cancellationToken)
+        string accessTelemetrySeedJson = await accessTelemetrySeedParameter.GetValueAsync(generationToken)
             .ConfigureAwait(false)
             ?? throw new InvalidOperationException("The protected access-telemetry seed parameter has no value.");
         OpenBaoSeedInputs seeds = OpenBaoSeedInputs.Create(runtimeSeedJson, accessTelemetrySeedJson);
@@ -1179,20 +1201,97 @@ static async Task InitializeOpenBaoGenerationAsync(
             endpoint,
             seeds,
             TimeSpan.FromMinutes(2),
-            cancellationToken).ConfigureAwait(false);
+            generationToken).ConfigureAwait(false);
 
-        WriteOpenBaoComponentGeneration(paths, endpoint, result);
-        readiness.TrySetResult();
-
-        if (generationNumber > 1)
+        if (!generationGate.TryInstallCurrent(
+                lease,
+                () => WriteOpenBaoComponentGeneration(paths, endpoint, result)))
         {
-            await RestartOpenBaoConsumersAsync(services, cancellationToken).ConfigureAwait(false);
+            return;
         }
+
+        if (lease.GenerationNumber > 1)
+        {
+            await RestartOpenBaoConsumersAsync(services, generationToken).ConfigureAwait(false);
+        }
+    }
+    catch (OperationCanceledException) when (generationToken.IsCancellationRequested)
+    {
+        _ = generationGate.TryFailCurrent(
+            lease,
+            new OperationCanceledException("The OpenBao generation was invalidated before recovery completed."));
     }
     catch (Exception exception)
     {
-        readiness.TrySetException(exception);
+        _ = generationGate.TryFailCurrent(lease, exception);
+        OpenBaoGenerationLogger.GenerationFailed(
+            services.GetRequiredService<ILoggerFactory>().CreateLogger("Hexalith.Memories.AppHost.OpenBaoGeneration"),
+            lease.GenerationNumber,
+            exception);
+        services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
     }
+}
+
+static async Task InitializeOpenBaoOnNextStartAsync(
+    IResource resource,
+    IServiceProvider services,
+    ParameterResource runtimeSeedParameter,
+    ParameterResource accessTelemetrySeedParameter,
+    GeneratedDaprComponentPaths paths,
+    OpenBaoGenerationGate generationGate,
+    CancellationToken applicationStopping)
+{
+    try
+    {
+        ResourceNotificationService notifications = services.GetRequiredService<ResourceNotificationService>();
+        _ = await notifications.WaitForResourceAsync(
+            resource.Name,
+            [KnownResourceStates.Starting, KnownResourceStates.Running],
+            applicationStopping).ConfigureAwait(false);
+        if (!generationGate.TryBeginGeneration(out OpenBaoGenerationLease lease))
+        {
+            return;
+        }
+
+        await InitializeOpenBaoGenerationAsync(
+            resource,
+            services,
+            runtimeSeedParameter,
+            accessTelemetrySeedParameter,
+            paths,
+            generationGate,
+            lease,
+            applicationStopping).ConfigureAwait(false);
+    }
+    catch (OperationCanceledException) when (applicationStopping.IsCancellationRequested)
+    {
+        // Normal AppHost shutdown; no replacement generation will start.
+    }
+    catch (Exception exception)
+    {
+        OpenBaoGenerationLogger.RecoveryWatcherFailed(
+            services.GetRequiredService<ILoggerFactory>().CreateLogger("Hexalith.Memories.AppHost.OpenBaoGeneration"),
+            exception);
+        services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
+    }
+}
+
+static IResourceBuilder<ProjectResource> RandomizeProjectHttpEndpointIfRequested(
+    IResourceBuilder<ProjectResource> resource)
+{
+    if (!string.Equals(
+            Environment.GetEnvironmentVariable("MEMORIES_ASPIRE_RANDOMIZE_PROJECT_PORTS"),
+            "true",
+            StringComparison.OrdinalIgnoreCase))
+    {
+        return resource;
+    }
+
+    return resource.WithEndpoint("http", endpoint =>
+    {
+        endpoint.Port = null;
+        endpoint.TargetPort = null;
+    });
 }
 
 static async Task<OpenBaoInitializationResult> InitializeOpenBaoWithRetryAsync(
@@ -1233,14 +1332,8 @@ static async Task RestartOpenBaoConsumersAsync(IServiceProvider services, Cancel
 {
     string[] consumers =
     [
-        "memories",
-        "memories-access-telemetry",
-        "memories-access-telemetry-clock",
-        "memories-dapr",
         "memories-dapr-cli",
-        "memories-access-telemetry-dapr",
         "memories-access-telemetry-dapr-cli",
-        "memories-access-telemetry-clock-dapr",
         "memories-access-telemetry-clock-dapr-cli",
     ];
     ResourceNotificationService notifications = services.GetRequiredService<ResourceNotificationService>();

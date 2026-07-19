@@ -12,28 +12,25 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Publishing;
 using Aspire.Hosting.Testing;
-
 using Dapr.Actors;
 using Dapr.Actors.Client;
-
 using Hexalith.Memories.AppHost;
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
 using Hexalith.Memories.Server.Actors;
 using Hexalith.Memories.Server.Tenants;
-using Hexalith.Memories.IntegrationTests.Telemetry.Infrastructure;
 using Hexalith.Memories.Telemetry;
 using Hexalith.Memories.TestHelpers.Process;
-
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
-
 using StackExchange.Redis;
 
 /// <summary>Starts the full Aspire topology for end-to-end ingestion workflow tests.</summary>
@@ -75,11 +72,13 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _enableKeycloakScope;
     private EnvVarScope? _telemetryInMemoryScope;
     private EnvVarScope? _workflowReplaySafetyScope;
+    private EnvVarScope? _randomizeProjectPortsScope;
     private readonly EmbeddingProviderTestMode _providerMode;
     private readonly EmbeddingProviderSecret? _embeddingProviderSecret;
     private readonly string _openBaoRuntimeSeedJson;
     private readonly string _openBaoRuntimeCanary = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     private byte[]? _accessTelemetryMarkerFingerprint;
+    private byte[]? _accessTelemetryClockFingerprint;
     private byte[]? _accessTelemetrySeedFingerprint;
     private string[] _accessTelemetrySeedValues = [];
     private string? _tempDaprConfigPath;
@@ -88,7 +87,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         @"HTTP server listening on TCP address: :(?<port>\d+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex SensitiveTokenRegex = new(
-        @"[A-Za-z0-9._~+/=-]{16,}",
+        @"(?<![A-Za-z0-9._~+/-])(?<token>[A-Za-z0-9._~+/-]{16,}={0,2})(?![A-Za-z0-9._~+/=-])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>Gets the HTTP client for the Memories Server resource.</summary>
@@ -127,11 +126,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Gets the embedding provider mode used by the fixture.</summary>
     public EmbeddingProviderTestMode ProviderMode => _providerMode;
 
-    /// <summary>Gets the most recent measured duration from all containers running to query readiness.</summary>
+    /// <summary>Gets the initial measured duration from all containers running to authenticated query readiness.</summary>
     public TimeSpan OpenBaoColdStartDuration { get; private set; }
 
     /// <summary>Gets the allocated loopback OpenBao endpoint for status-only verification.</summary>
     public Uri OpenBaoEndpoint { get; private set; } = new("http://127.0.0.1:1");
+
+    /// <summary>Gets the secret-free label of the last disclosure surface detected by the fixture.</summary>
+    internal string? OpenBaoSensitiveDisclosureSurface { get; private set; }
 
     /// <summary>Gets the HTTP client for the MCP server resource (Story 10.1).</summary>
     public HttpClient McpClient { get; private set; } = null!;
@@ -445,9 +447,19 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <param name="secretName">The requested name, including deliberate traversal attempts.</param>
     /// <returns>The HTTP status without reading or exposing an error body.</returns>
     internal async Task<HttpStatusCode> GetDaprSecretStatusAsync(string storeName, string secretName)
+        => await GetDaprSecretStatusAsync("memories-dapr-cli", storeName, secretName).ConfigureAwait(false);
+
+    /// <summary>Issues a status-only secret request through one named Dapr sidecar.</summary>
+    /// <param name="sidecarResourceName">The Aspire Dapr CLI resource name.</param>
+    /// <param name="storeName">The component name.</param>
+    /// <param name="secretName">The requested secret name.</param>
+    /// <returns>The exact HTTP status without reading or exposing an error body.</returns>
+    internal async Task<HttpStatusCode> GetDaprSecretStatusAsync(
+        string sidecarResourceName,
+        string storeName,
+        string secretName)
     {
-        HttpClient client = _daprStateClient
-            ?? throw new InvalidOperationException("The Dapr client is unavailable before topology startup.");
+        using HttpClient client = CreateDaprSidecarClient(sidecarResourceName);
         using HttpResponseMessage response = await client.GetAsync(
             $"/v1.0/secrets/{Uri.EscapeDataString(storeName)}/{Uri.EscapeDataString(secretName)}",
             TestContext.Current.CancellationToken).ConfigureAwait(false);
@@ -465,6 +477,98 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             $"/v1.0/secrets/{Uri.EscapeDataString(storeName)}/bulk",
             TestContext.Current.CancellationToken).ConfigureAwait(false);
         return response.StatusCode;
+    }
+
+    /// <summary>Reads a secret through a named Dapr sidecar and compares only its fingerprint.</summary>
+    /// <param name="sidecarResourceName">The Aspire Dapr CLI resource name.</param>
+    /// <param name="storeName">The component name.</param>
+    /// <param name="secretName">The secret name.</param>
+    /// <param name="fieldName">The field expected in the Dapr response.</param>
+    /// <param name="expectedFingerprint">The expected SHA-256 fingerprint.</param>
+    /// <returns><see langword="true"/> when the exact field value matches.</returns>
+    internal Task<bool> DaprSecretMatchesAsync(
+        string sidecarResourceName,
+        string storeName,
+        string secretName,
+        string fieldName,
+        byte[] expectedFingerprint)
+        => DaprSecretMatchesAsync(
+            CreateDaprSidecarClient(sidecarResourceName),
+            disposeClient: true,
+            storeName,
+            secretName,
+            fieldName,
+            expectedFingerprint);
+
+    /// <summary>Gets the fingerprint of the configured access-telemetry clock secret.</summary>
+    internal byte[] AccessTelemetryClockFingerprint => _accessTelemetryClockFingerprint
+        ?? throw new InvalidOperationException("Access-telemetry clock seed evidence is unavailable.");
+
+    /// <summary>Gets the fingerprint of the runtime canary without exposing its value.</summary>
+    internal byte[] RuntimeCanaryFingerprint => FingerprintBytes(_openBaoRuntimeCanary);
+
+    /// <summary>Gets the fingerprint of the access-telemetry marker without exposing its value.</summary>
+    internal byte[] AccessTelemetryMarkerFingerprint => _accessTelemetryMarkerFingerprint
+        ?? throw new InvalidOperationException("Access-telemetry marker seed evidence is unavailable.");
+
+    /// <summary>Restarts only OpenBao inside the current AppHost and waits for a new usable generation.</summary>
+    /// <returns><see langword="true"/> when identities rotated and permitted sidecar reads recovered.</returns>
+    internal async Task<bool> RestartOpenBaoGenerationInPlaceAsync()
+    {
+        DistributedApplication app = _app
+            ?? throw new InvalidOperationException("The topology is not running.");
+        string before = await ReadScopedTokenFingerprintAsync().ConfigureAwait(false);
+        using var cts = new CancellationTokenSource(ResourceHealthyTimeout);
+
+        await ExecuteResourceCommandAsync(
+            app,
+            OpenBaoDevelopmentProfile.ResourceName,
+            KnownResourceCommands.RestartCommand,
+            cts.Token).ConfigureAwait(false);
+
+        bool identitiesRotated = false;
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                string after = await ReadScopedTokenFingerprintAsync().ConfigureAwait(false);
+                identitiesRotated |= !string.Equals(before, after, StringComparison.Ordinal);
+                if (identitiesRotated)
+                {
+                    OpenBaoEndpoint = app.GetEndpoint(OpenBaoDevelopmentProfile.ResourceName, OpenBaoDevelopmentProfile.EndpointName);
+                    Uri currentDaprEndpoint = app.GetEndpoint("memories-dapr-cli", "http");
+                    if (currentDaprEndpoint != DaprSidecarHttpEndpoint)
+                    {
+                        DaprSidecarHttpEndpoint = currentDaprEndpoint;
+                        _daprStateClient?.Dispose();
+                        _daprStateClient = CreateDaprSidecarClient("memories-dapr-cli");
+                    }
+
+                    if (await CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(false) &&
+                        await CanReadOpenBaoAccessMarkerAsync().ConfigureAwait(false))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch (Exception exception) when (
+                exception is IOException or HttpRequestException or TaskCanceledException &&
+                !cts.IsCancellationRequested)
+            {
+                // Generation files and sidecar endpoints are replaced independently; retry until both converge.
+            }
+
+            try
+            {
+                await Task.Delay(EndpointPollInterval, cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+
+        throw new TimeoutException("OpenBao did not install a rotated in-place generation before the restart deadline.");
     }
 
     /// <summary>Uses each mounted identity directly against the opposite OpenBao prefix.</summary>
@@ -518,6 +622,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <returns><c>true</c> when a raw seed/token or bootstrap fingerprint match is found.</returns>
     internal async Task<bool> HasOpenBaoSensitiveDisclosureAsync()
     {
+        OpenBaoSensitiveDisclosureSurface = null;
         DistributedApplication app = _app
             ?? throw new InvalidOperationException("The topology is not running.");
         IDistributedApplicationTestingBuilder builder = _builder
@@ -529,11 +634,18 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         string accessToken = await File.ReadAllTextAsync(
             Path.Combine(ownedDirectory, "openbao-access-telemetry.token"),
             TestContext.Current.CancellationToken).ConfigureAwait(false);
-        string[] sensitiveValues = [_openBaoRuntimeCanary, .. _accessTelemetrySeedValues, runtimeToken, accessToken];
+        string[] sensitiveValues =
+        [
+            _openBaoRuntimeCanary,
+            .. _accessTelemetrySeedValues,
+            runtimeToken,
+            accessToken,
+            .. _embeddingProviderSecret is null ? [] : new[] { _embeddingProviderSecret.Value },
+        ];
         string fingerprintPath = Path.Combine(ownedDirectory, "openbao-sensitive.sha256");
         if (!File.Exists(fingerprintPath))
         {
-            return true;
+            return Detected("missing bootstrap fingerprint evidence");
         }
 
         var bootstrapFingerprints = File.ReadLines(fingerprintPath)
@@ -543,27 +655,91 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             .ToHashSet(StringComparer.Ordinal);
 
         bool Leaks(string text) => ContainsSensitiveValue(text, sensitiveValues, bootstrapFingerprints);
+        bool Detected(string surface)
+        {
+            OpenBaoSensitiveDisclosureSurface = surface;
+            return true;
+        }
 
         if (_logProvider.GetEntriesSince(0).Any(entry =>
             Leaks(entry.Category) || Leaks(entry.Message)))
         {
-            return true;
+            return Detected("custom-provider AppHost logs");
         }
 
         ResourceLoggerService resourceLogs = app.Services.GetRequiredService<ResourceLoggerService>();
-        foreach (IResource resource in builder.Resources)
+        DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
+        DistributedApplicationExecutionContext executionContext = app.Services
+            .GetRequiredService<DistributedApplicationExecutionContext>();
+        foreach (IResource resource in model.Resources)
         {
             if (Leaks(resource.Name) || resource.Annotations.Any(annotation =>
                 Leaks(annotation.GetType().FullName ?? string.Empty) || Leaks(annotation.ToString() ?? string.Empty)))
             {
-                return true;
+                return Detected($"model annotations for {resource.Name}");
             }
 
             await foreach (IReadOnlyList<LogLine> batch in resourceLogs.GetAllAsync(resource))
             {
                 if (batch.Any(line => Leaks(line.Content)))
                 {
-                    return true;
+                    return Detected($"resource logs for {resource.Name}");
+                }
+            }
+
+            if (app.ResourceNotifications.TryGetCurrentState(resource.Name, out ResourceEvent? resourceEvent))
+            {
+                CustomResourceSnapshot snapshot = resourceEvent.Snapshot;
+                if (snapshot.EnvironmentVariables.Any(variable =>
+                        Leaks(variable.Name) || Leaks(variable.Value ?? string.Empty)) ||
+                    snapshot.Properties.Where(property => !property.IsSensitive).Any(property =>
+                        Leaks(property.Name) || Leaks(property.Value?.ToString() ?? string.Empty)) ||
+                    snapshot.Urls.Any(url => Leaks(url.ToString())) ||
+                    snapshot.Volumes.Any(volume => Leaks(volume.ToString())) ||
+                    snapshot.Commands.Any(command => Leaks(command.ToString())))
+                {
+                    return Detected($"resolved diagnostics snapshot for {resource.Name}");
+                }
+            }
+
+            var resolvedEnvironment = new Dictionary<string, object>(StringComparer.Ordinal);
+            var environmentContext = new EnvironmentCallbackContext(
+                executionContext,
+                resource,
+                resolvedEnvironment,
+                TestContext.Current.CancellationToken);
+            foreach (EnvironmentCallbackAnnotation annotation in resource.Annotations
+                .OfType<EnvironmentCallbackAnnotation>())
+            {
+                await annotation.Callback(environmentContext).ConfigureAwait(false);
+            }
+
+            if (resolvedEnvironment.Any(variable =>
+                    Leaks(variable.Key) || Leaks(variable.Value?.ToString() ?? string.Empty)))
+            {
+                return Detected($"resolved environment for {resource.Name}");
+            }
+
+            foreach (ManifestPublishingCallbackAnnotation annotation in resource.Annotations
+                .OfType<ManifestPublishingCallbackAnnotation>()
+                .Where(annotation => annotation.Callback is not null))
+            {
+                using var manifestStream = new MemoryStream();
+                await using (var writer = new Utf8JsonWriter(manifestStream))
+                {
+                    writer.WriteStartObject();
+                    var manifestContext = new ManifestPublishingContext(
+                        executionContext,
+                        "aspire-manifest.json",
+                        writer,
+                        TestContext.Current.CancellationToken);
+                    await annotation.Callback!(manifestContext).ConfigureAwait(false);
+                    writer.WriteEndObject();
+                }
+
+                if (Leaks(Encoding.UTF8.GetString(manifestStream.ToArray())))
+                {
+                    return Detected($"manifest callback for {resource.Name}");
                 }
             }
         }
@@ -579,7 +755,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 TestContext.Current.CancellationToken).ConfigureAwait(false);
             if (Leaks(content))
             {
-                return true;
+                return Detected($"generated document {Path.GetFileName(path)}");
             }
         }
 
@@ -591,30 +767,54 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         string secretName,
         string fieldName,
         byte[] expectedFingerprint)
+        => await DaprSecretMatchesAsync(
+            _daprStateClient
+                ?? throw new InvalidOperationException("The Dapr client is unavailable before topology startup."),
+            disposeClient: false,
+            storeName,
+            secretName,
+            fieldName,
+            expectedFingerprint).ConfigureAwait(false);
+
+    private static async Task<bool> DaprSecretMatchesAsync(
+        HttpClient client,
+        bool disposeClient,
+        string storeName,
+        string secretName,
+        string fieldName,
+        byte[] expectedFingerprint)
     {
-        HttpClient client = _daprStateClient
-            ?? throw new InvalidOperationException("The Dapr client is unavailable before topology startup.");
-        using HttpResponseMessage response = await client.GetAsync(
-            $"/v1.0/secrets/{Uri.EscapeDataString(storeName)}/{Uri.EscapeDataString(secretName)}",
-            TestContext.Current.CancellationToken).ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK)
+        try
         {
-            return false;
-        }
+            using HttpResponseMessage response = await client.GetAsync(
+                $"/v1.0/secrets/{Uri.EscapeDataString(storeName)}/{Uri.EscapeDataString(secretName)}",
+                TestContext.Current.CancellationToken).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                return false;
+            }
 
-        await using Stream stream = await response.Content.ReadAsStreamAsync(
-            TestContext.Current.CancellationToken).ConfigureAwait(false);
-        using JsonDocument document = await JsonDocument.ParseAsync(
-            stream,
-            cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
-        if (!document.RootElement.TryGetProperty(fieldName, out JsonElement valueElement) ||
-            valueElement.ValueKind != JsonValueKind.String)
+            await using Stream stream = await response.Content.ReadAsStreamAsync(
+                TestContext.Current.CancellationToken).ConfigureAwait(false);
+            using JsonDocument document = await JsonDocument.ParseAsync(
+                stream,
+                cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
+            if (!document.RootElement.TryGetProperty(fieldName, out JsonElement valueElement) ||
+                valueElement.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            byte[] actualFingerprint = FingerprintBytes(valueElement.GetString()!);
+            return CryptographicOperations.FixedTimeEquals(actualFingerprint, expectedFingerprint);
+        }
+        finally
         {
-            return false;
+            if (disposeClient)
+            {
+                client.Dispose();
+            }
         }
-
-        byte[] actualFingerprint = FingerprintBytes(valueElement.GetString()!);
-        return CryptographicOperations.FixedTimeEquals(actualFingerprint, expectedFingerprint);
     }
 
     private static async Task<HttpStatusCode> ProbeOpenBaoStatusAsync(
@@ -639,6 +839,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             .ToArray();
         string marker = document.RootElement.GetProperty("access-telemetry-marker-key").GetString()
             ?? throw new InvalidOperationException("The access-telemetry marker seed is unavailable.");
+        string clock = document.RootElement.GetProperty("access-telemetry-clock-key").GetString()
+            ?? throw new InvalidOperationException("The access-telemetry clock seed is unavailable.");
         byte[] seedFingerprint = FingerprintBytes(accessSeedJson);
         if (_accessTelemetrySeedFingerprint is not null &&
             !CryptographicOperations.FixedTimeEquals(_accessTelemetrySeedFingerprint, seedFingerprint))
@@ -649,6 +851,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _accessTelemetrySeedValues = values;
         _accessTelemetrySeedFingerprint = seedFingerprint;
         _accessTelemetryMarkerFingerprint = FingerprintBytes(marker);
+        _accessTelemetryClockFingerprint = FingerprintBytes(clock);
     }
 
     private static DateTimeOffset GetOpenBaoContainersRunningBoundary(DistributedApplication app)
@@ -673,7 +876,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             "hexalith-memories-dapr",
             $"{_daprAppId}-{Process.GetCurrentProcess().Id}");
 
-    private static bool ContainsSensitiveValue(
+    internal static bool ContainsSensitiveValue(
         string text,
         IEnumerable<string> sensitiveValues,
         IReadOnlySet<string> bootstrapFingerprints)
@@ -685,13 +888,46 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         foreach (Match match in SensitiveTokenRegex.Matches(text))
         {
-            if (bootstrapFingerprints.Contains(Convert.ToHexString(FingerprintBytes(match.Value))))
+            if (bootstrapFingerprints.Contains(Convert.ToHexString(FingerprintBytes(match.Groups["token"].Value))))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    private HttpClient CreateDaprSidecarClient(string sidecarResourceName)
+    {
+        DistributedApplication app = _app
+            ?? throw new InvalidOperationException("The topology is not running.");
+        Uri endpoint = string.Equals(sidecarResourceName, "memories-dapr-cli", StringComparison.Ordinal)
+            ? DaprSidecarHttpEndpoint
+            : app.GetEndpoint(sidecarResourceName, "http");
+        var client = new HttpClient
+        {
+            BaseAddress = endpoint,
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+        string? daprApiToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
+        if (!string.IsNullOrWhiteSpace(daprApiToken))
+        {
+            client.DefaultRequestHeaders.TryAddWithoutValidation("dapr-api-token", daprApiToken);
+        }
+
+        return client;
+    }
+
+    private async Task<string> ReadScopedTokenFingerprintAsync()
+    {
+        string directory = GetAppHostOwnedDaprDirectory();
+        byte[] runtimeToken = await File.ReadAllBytesAsync(
+            Path.Combine(directory, "openbao-runtime.token"),
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        byte[] accessToken = await File.ReadAllBytesAsync(
+            Path.Combine(directory, "openbao-access-telemetry.token"),
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        return Convert.ToHexString(SHA256.HashData(runtimeToken)) + Convert.ToHexString(SHA256.HashData(accessToken));
     }
 
     private static byte[] FingerprintBytes(string value)
@@ -729,6 +965,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 _eventStoreMappedTenantId);
             _enableKeycloakScope = EnvVarScope.Set("EnableKeycloak", "false");
             _workflowReplaySafetyScope = EnvVarScope.Set("WorkflowReplaySafety__Enabled", "false");
+            _randomizeProjectPortsScope = EnvVarScope.Set("MEMORIES_ASPIRE_RANDOMIZE_PROJECT_PORTS", "true");
 
             _daprConfigPathScope = CreateDaprConfigOverrideIfNeeded();
 
@@ -751,6 +988,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _enableKeycloakScope = null;
         _workflowReplaySafetyScope?.Dispose();
         _workflowReplaySafetyScope = null;
+        _randomizeProjectPortsScope?.Dispose();
+        _randomizeProjectPortsScope = null;
         _redisVolumeNameScope?.Dispose();
         _redisVolumeNameScope = null;
         _falkorVolumeNameScope?.Dispose();
@@ -1368,7 +1607,26 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         };
         _actorHttpMessageHandler = new HttpClientHandler();
         _actorProxyFactory = new ActorProxyFactory(_actorProxyOptions, (HttpMessageHandler)_actorHttpMessageHandler);
-        OpenBaoColdStartDuration = DateTimeOffset.UtcNow - GetOpenBaoContainersRunningBoundary(_app);
+
+        await WaitForEndpointAsync(
+            MemoriesClient,
+            "/api/v1/tenants",
+            [HttpStatusCode.OK],
+            EndpointReadyTimeout,
+            EndpointPollInterval,
+            logStartIndex,
+            cancellationToken).ConfigureAwait(false);
+        if (!await CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(false) ||
+            !await CanReadOpenBaoAccessMarkerAsync().ConfigureAwait(false))
+        {
+            throw new InvalidOperationException(
+                "The initial authenticated query boundary was reached before both scoped OpenBao reads succeeded.");
+        }
+
+        if (OpenBaoColdStartDuration == default)
+        {
+            OpenBaoColdStartDuration = DateTimeOffset.UtcNow - GetOpenBaoContainersRunningBoundary(_app);
+        }
     }
 
     /// <summary>
@@ -1841,31 +2099,48 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         int logStartIndex,
         CancellationToken cancellationToken)
     {
+        CancellationToken appStopping = _app?.Services.GetService<IHostApplicationLifetime>()?.ApplicationStopping
+            ?? CancellationToken.None;
+        using CancellationTokenSource waitCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            appStopping);
+        CancellationToken waitToken = waitCts.Token;
         DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
         Exception? lastException = null;
         HttpStatusCode? lastStatusCode = null;
 
-        while (DateTimeOffset.UtcNow < deadline)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
+            while (DateTimeOffset.UtcNow < deadline)
             {
-                using CancellationTokenSource probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                probeCts.CancelAfter(EndpointProbeTimeout);
-                using HttpResponseMessage response = await client.GetAsync(url, probeCts.Token).ConfigureAwait(false);
-                lastStatusCode = response.StatusCode;
-
-                if (expectedStatusCodes.Contains(response.StatusCode))
+                waitToken.ThrowIfCancellationRequested();
+                try
                 {
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                lastException = ex;
-            }
+                    using CancellationTokenSource probeCts = CancellationTokenSource.CreateLinkedTokenSource(waitToken);
+                    probeCts.CancelAfter(EndpointProbeTimeout);
+                    using HttpResponseMessage response = await client.GetAsync(url, probeCts.Token).ConfigureAwait(false);
+                    lastStatusCode = response.StatusCode;
 
-            await Task.Delay(pollInterval, cancellationToken).ConfigureAwait(false);
+                    if (expectedStatusCodes.Contains(response.StatusCode))
+                    {
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    lastException = ex;
+                }
+
+                await Task.Delay(pollInterval, waitToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException exception) when (
+            appStopping.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException(
+                $"The AppHost stopped while endpoint '{url}' was converging." +
+                $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}",
+                exception);
         }
 
         throw new TimeoutException(

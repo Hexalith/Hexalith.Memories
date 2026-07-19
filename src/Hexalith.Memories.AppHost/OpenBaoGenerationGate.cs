@@ -9,28 +9,31 @@ namespace Hexalith.Memories.AppHost;
 internal sealed class OpenBaoGenerationGate
 {
     private readonly object _sync = new();
-    private bool _generationActive;
+    private OpenBaoGenerationLease? _activeLease;
     private int _generationNumber;
-    private TaskCompletionSource _readiness = CreateCompletionSource();
+    private TaskCompletionSource _nextReadiness = CreateCompletionSource();
 
-    /// <summary>Begins a generation and returns its number and exclusive completion source.</summary>
-    /// <returns>The current generation lease.</returns>
-    internal (int GenerationNumber, TaskCompletionSource Readiness) BeginGeneration()
+    /// <summary>Attempts to acquire exclusive ownership of generation initialization.</summary>
+    /// <param name="lease">The active generation lease.</param>
+    /// <returns><see langword="true"/> only for the callback that owns initialization.</returns>
+    internal bool TryBeginGeneration(out OpenBaoGenerationLease lease)
     {
         lock (_sync)
         {
-            if (!_generationActive)
+            if (_activeLease is not null)
             {
-                if (_readiness.Task.IsCompleted)
-                {
-                    _readiness = CreateCompletionSource();
-                }
-
-                _generationActive = true;
-                _generationNumber++;
+                lease = _activeLease;
+                return false;
             }
 
-            return (_generationNumber, _readiness);
+            if (_nextReadiness.Task.IsCompleted)
+            {
+                _nextReadiness = CreateCompletionSource();
+            }
+
+            lease = new OpenBaoGenerationLease(++_generationNumber, _nextReadiness);
+            _activeLease = lease;
+            return true;
         }
     }
 
@@ -40,7 +43,44 @@ internal sealed class OpenBaoGenerationGate
     {
         lock (_sync)
         {
-            return _readiness.Task;
+            return (_activeLease?.Readiness ?? _nextReadiness).Task;
+        }
+    }
+
+    /// <summary>Atomically installs artifacts and publishes readiness for the current generation.</summary>
+    /// <param name="lease">The lease that produced the artifacts.</param>
+    /// <param name="install">The protected artifact installation action.</param>
+    /// <returns><see langword="false"/> when the lease became stale before installation.</returns>
+    internal bool TryInstallCurrent(OpenBaoGenerationLease lease, Action install)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(install);
+
+        lock (_sync)
+        {
+            if (!ReferenceEquals(_activeLease, lease))
+            {
+                return false;
+            }
+
+            install();
+            lease.Readiness.TrySetResult();
+            return true;
+        }
+    }
+
+    /// <summary>Publishes an initialization failure only when the lease is still current.</summary>
+    /// <param name="lease">The lease that failed.</param>
+    /// <param name="exception">The initialization failure.</param>
+    /// <returns><see langword="true"/> when the failure belonged to the current generation.</returns>
+    internal bool TryFailCurrent(OpenBaoGenerationLease lease, Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(exception);
+
+        lock (_sync)
+        {
+            return ReferenceEquals(_activeLease, lease) && lease.Readiness.TrySetException(exception);
         }
     }
 
@@ -49,11 +89,16 @@ internal sealed class OpenBaoGenerationGate
     {
         lock (_sync)
         {
-            _generationActive = false;
-            if (_readiness.Task.IsCompleted)
+            if (_activeLease is null)
             {
-                _readiness = CreateCompletionSource();
+                return;
             }
+
+            _activeLease.Cancel();
+            _activeLease.Readiness.TrySetException(
+                new OperationCanceledException("The OpenBao generation stopped before initialization completed."));
+            _activeLease = null;
+            _nextReadiness = CreateCompletionSource();
         }
     }
 

@@ -98,6 +98,6 @@ internal sealed class OpenBaoSeedInputs
     }
 
     private static bool IsSafeSecretName(string name)
-        => name.Length > 0 && name.All(character =>
+        => name is not "." and not ".." && name.Length > 0 && name.All(character =>
             char.IsAsciiLetterOrDigit(character) || character is '.' or '_' or '-');
 }

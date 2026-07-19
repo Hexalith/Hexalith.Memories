@@ -59,6 +59,74 @@ public sealed class OpenBaoTopologyIntegrationTests(
     }
 
     [Fact]
+    public async Task DaprSidecarMatrix_EnforcesExactComponentAndKeyAllowDenyBoundaries()
+    {
+        const string runtimeStore = "secretstore";
+        const string accessStore = "access-telemetry-secrets";
+        const string markerKey = "access-telemetry-marker-key";
+        const string clockKey = "access-telemetry-clock-key";
+
+        (await fixture.DaprSecretMatchesAsync(
+            "memories-dapr-cli",
+            runtimeStore,
+            AspireIngestionPipelineFixture.OpenBaoRuntimeCanarySecretName,
+            AspireIngestionPipelineFixture.OpenBaoRuntimeCanarySecretName,
+            fixture.RuntimeCanaryFingerprint).ConfigureAwait(true)).ShouldBeTrue();
+        (await fixture.DaprSecretMatchesAsync(
+            "memories-dapr-cli",
+            accessStore,
+            markerKey,
+            markerKey,
+            fixture.AccessTelemetryMarkerFingerprint).ConfigureAwait(true)).ShouldBeTrue();
+        (await fixture.GetDaprSecretStatusAsync(
+            "memories-dapr-cli",
+            accessStore,
+            clockKey).ConfigureAwait(true)).ShouldBe(HttpStatusCode.Forbidden);
+
+        (await fixture.DaprSecretMatchesAsync(
+            "memories-access-telemetry-dapr-cli",
+            accessStore,
+            markerKey,
+            markerKey,
+            fixture.AccessTelemetryMarkerFingerprint).ConfigureAwait(true)).ShouldBeTrue();
+        (await fixture.GetDaprSecretStatusAsync(
+            "memories-access-telemetry-dapr-cli",
+            accessStore,
+            clockKey).ConfigureAwait(true)).ShouldBe(HttpStatusCode.Forbidden);
+        (await fixture.GetDaprSecretStatusAsync(
+            "memories-access-telemetry-dapr-cli",
+            runtimeStore,
+            AspireIngestionPipelineFixture.OpenBaoRuntimeCanarySecretName).ConfigureAwait(true))
+            .ShouldBe(HttpStatusCode.Unauthorized);
+
+        (await fixture.DaprSecretMatchesAsync(
+            "memories-access-telemetry-clock-dapr-cli",
+            accessStore,
+            clockKey,
+            "signing-key-pkcs8",
+            fixture.AccessTelemetryClockFingerprint).ConfigureAwait(true)).ShouldBeTrue();
+        (await fixture.GetDaprSecretStatusAsync(
+            "memories-access-telemetry-clock-dapr-cli",
+            accessStore,
+            markerKey).ConfigureAwait(true)).ShouldBe(HttpStatusCode.Forbidden);
+        (await fixture.GetDaprSecretStatusAsync(
+            "memories-access-telemetry-clock-dapr-cli",
+            runtimeStore,
+            AspireIngestionPipelineFixture.OpenBaoRuntimeCanarySecretName).ConfigureAwait(true))
+            .ShouldBe(HttpStatusCode.Unauthorized);
+
+        (await fixture.GetDaprSecretStatusAsync(
+            "memories-mcp-dapr-cli",
+            runtimeStore,
+            AspireIngestionPipelineFixture.OpenBaoRuntimeCanarySecretName).ConfigureAwait(true))
+            .ShouldBe(HttpStatusCode.InternalServerError);
+        (await fixture.GetDaprSecretStatusAsync(
+            "memories-mcp-dapr-cli",
+            accessStore,
+            markerKey).ConfigureAwait(true)).ShouldBe(HttpStatusCode.InternalServerError);
+    }
+
+    [Fact]
     public async Task FullTopologyRestart_ReinitializesOpenBaoAndRecoversPermittedDaprReads()
     {
         (await fixture.CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(true)).ShouldBeTrue();
@@ -73,10 +141,19 @@ public sealed class OpenBaoTopologyIntegrationTests(
     }
 
     [Fact]
+    public async Task InPlaceOpenBaoRestart_RotatesGenerationAndRecoversDependentSidecars()
+    {
+        (await fixture.RestartOpenBaoGenerationInPlaceAsync().ConfigureAwait(true)).ShouldBeTrue();
+        (await fixture.IsOpenBaoInitializedAndUnsealedAsync().ConfigureAwait(true)).ShouldBeTrue();
+        output.WriteLine("In-place OpenBao restart installed a rotated generation and recovered all dependent sidecars.");
+    }
+
+    [Fact]
     public async Task DiagnosticsModelGeneratedFilesAndLogs_ContainNoSensitiveMaterial_AndColdStartMeetsNfr7()
     {
         (await fixture.HasOpenBaoSensitiveDisclosureAsync().ConfigureAwait(true)).ShouldBeFalse(
-            "Seed canaries, scoped tokens, bootstrap tokens, and unseal keys must be absent from model, diagnostics, generated YAML/HCL, and logs.");
+            "Seed canaries, scoped tokens, bootstrap tokens, and unseal keys must be absent from model, diagnostics, " +
+            $"generated YAML/HCL, and logs. Surface: {fixture.OpenBaoSensitiveDisclosureSurface ?? "none"}.");
         fixture.OpenBaoColdStartDuration.ShouldBeLessThan(
             TimeSpan.FromSeconds(60),
             "NFR7 measures from all containers running until the root topology accepts queries, excluding image pull.");
