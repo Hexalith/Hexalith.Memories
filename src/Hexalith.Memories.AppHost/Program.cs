@@ -1,10 +1,8 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Eventing;
@@ -14,10 +12,29 @@ using CommunityToolkit.Aspire.Hosting.Dapr;
 using Hexalith.EventStore.Aspire;
 using Hexalith.Memories.AppHost;
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
+OpenBaoDevelopmentProfile.EnsureAllowed(
+    builder.ExecutionContext.IsRunMode,
+    builder.Environment.IsDevelopment());
+builder.Services.AddHostedService<OpenBaoSessionLifetimeGuard>();
+
+AccessTelemetryDevelopmentSecrets accessTelemetryDevelopmentSecrets = AccessTelemetryDevelopmentSecrets.Create(
+    builder.Configuration["Parameters:openbao-access-telemetry-seeds"]);
+builder.Configuration["Parameters:openbao-runtime-seeds"] ??= "{}";
+builder.Configuration["Parameters:openbao-access-telemetry-seeds"] ??= accessTelemetryDevelopmentSecrets.SeedJson;
+IResourceBuilder<ParameterResource> runtimeSeedParameter = builder.AddParameterFromConfiguration(
+    "openbao-runtime-seeds",
+    "Parameters:openbao-runtime-seeds",
+    secret: true);
+IResourceBuilder<ParameterResource> accessTelemetrySeedParameter = builder.AddParameterFromConfiguration(
+    "openbao-access-telemetry-seeds",
+    "Parameters:openbao-access-telemetry-seeds",
+    secret: true);
+
 HexalithEventStoreSecurityResources? security = builder.AddHexalithEventStoreSecurity();
-string secretsFile = EnsureSecretsFile();
-AccessTelemetryDevelopmentSecrets accessTelemetryDevelopmentSecrets = EnsureAccessTelemetryDevelopmentSecrets(secretsFile);
 string daprConfigPath = ResolveDaprConfigPath();
 string accessTelemetryClockDaprConfigPath = ResolveAccessTelemetryDaprConfigPath("access-telemetry-clock-config.yaml");
 string accessTelemetryLifecycleDaprConfigPath = ResolveAccessTelemetryDaprConfigPath("access-telemetry-lifecycle-config.yaml");
@@ -25,7 +42,55 @@ string daprAppId = ResolveDaprAppId();
 string redisConfigPath = ResolveRedisConfigPath();
 string redisVolumeName = ResolveRedisVolumeName();
 string falkorVolumeName = ResolveFalkorVolumeName();
-GeneratedDaprComponentPaths daprComponentPaths = EnsureDaprComponentFiles(daprAppId, secretsFile);
+GeneratedDaprComponentPaths daprComponentPaths = EnsureDaprComponentFiles(daprAppId);
+string openBaoConfigurationPath = OpenBaoDevelopmentProfile.WriteConfiguration(daprComponentPaths.ComponentsDirectory);
+
+IResourceBuilder<ContainerResource> openBao = builder
+    .AddContainer(OpenBaoDevelopmentProfile.ResourceName, OpenBaoDevelopmentProfile.Image, OpenBaoDevelopmentProfile.ImageTag)
+    .WithBindMount(
+        openBaoConfigurationPath,
+        OpenBaoDevelopmentProfile.ContainerConfigurationPath,
+        isReadOnly: true)
+    .WithArgs(context =>
+    {
+        context.Args.Add("server");
+        context.Args.Add($"-config={OpenBaoDevelopmentProfile.ContainerConfigurationPath}");
+    })
+    .WithHttpEndpoint(
+        targetPort: OpenBaoDevelopmentProfile.ContainerPort,
+        name: OpenBaoDevelopmentProfile.EndpointName,
+        isProxied: true)
+    .WithEndpoint(OpenBaoDevelopmentProfile.EndpointName, endpoint =>
+    {
+        endpoint.TargetHost = IPAddress.Loopback.ToString();
+        endpoint.IsExternal = false;
+    })
+    .WithHttpHealthCheck(
+        path: OpenBaoDevelopmentProfile.HealthPath,
+        endpointName: OpenBaoDevelopmentProfile.EndpointName)
+    .WithLifetime(ContainerLifetime.Session)
+    .ExcludeFromManifest();
+
+var openBaoGenerationGate = new OpenBaoGenerationGate();
+openBao.OnResourceEndpointsAllocated((resource, @event, cancellationToken) =>
+{
+    (int generationNumber, TaskCompletionSource readiness) = openBaoGenerationGate.BeginGeneration();
+    _ = InitializeOpenBaoGenerationAsync(
+        resource,
+        @event.Services,
+        runtimeSeedParameter.Resource,
+        accessTelemetrySeedParameter.Resource,
+        daprComponentPaths,
+        generationNumber,
+        readiness,
+        cancellationToken);
+    return Task.CompletedTask;
+});
+openBao.OnResourceStopped((_, _, _) =>
+{
+    openBaoGenerationGate.MarkStopped();
+    return Task.CompletedTask;
+});
 
 // Story 15.6 code review: the rewrite signal is refreshable so a transient OnResourceReady fault
 // does not poison every subsequent sidecar start in the same AppHost session. The first
@@ -84,7 +149,8 @@ redis.OnResourceReady((resource, _, _) =>
             daprComponentPaths.PubSub,
             daprComponentPaths.AccessTelemetryStore,
             daprComponentPaths.AccessTelemetryConfig,
-            $"{host}:{port}");
+            $"{host}:{port}",
+            daprComponentPaths.DaprAppId);
         cycleTcs.TrySetResult();
         return Task.CompletedTask;
     }
@@ -96,9 +162,12 @@ redis.OnResourceReady((resource, _, _) =>
 });
 builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellationToken) =>
 {
-    if (@event.Resource.Name is "memories-dapr" or "memories-dapr-cli" or
+    bool usesRedis = @event.Resource.Name is "memories" or "memories-access-telemetry" or
+        "memories-mcp" or
+        "memories-dapr" or "memories-dapr-cli" or
         "memories-mcp-dapr" or "memories-mcp-dapr-cli" or
-        "memories-access-telemetry-dapr" or "memories-access-telemetry-dapr-cli")
+        "memories-access-telemetry-dapr" or "memories-access-telemetry-dapr-cli";
+    if (usesRedis)
     {
         Task rewriteSignal;
         lock (redisComponentRewriteGate)
@@ -115,6 +184,20 @@ builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, cancellati
         (string host, int port) = ResolveAllocatedEndpoint(redis.Resource, "redis");
         await WaitForRedisPingAsync(host, port, TimeSpan.FromMinutes(2), cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    bool usesOpenBao = @event.Resource.Name is "memories" or
+        "memories-access-telemetry" or "memories-access-telemetry-clock" or
+        "memories-dapr" or "memories-dapr-cli" or
+        "memories-access-telemetry-dapr" or "memories-access-telemetry-dapr-cli" or
+        "memories-access-telemetry-clock-dapr" or "memories-access-telemetry-clock-dapr-cli";
+    if (usesOpenBao)
+    {
+        Task generationReadiness = openBaoGenerationGate.SnapshotReadiness();
+        await WaitForOpenBaoGenerationAsync(
+            generationReadiness,
+            TimeSpan.FromMinutes(2),
+            cancellationToken).ConfigureAwait(false);
     }
 });
 
@@ -139,8 +222,9 @@ IResourceBuilder<IDaprComponentResource> pubSub = builder
 IResourceBuilder<IDaprComponentResource> secretStore = builder
     .AddDaprComponent(
         "secretstore",
-        "secretstores.local.file",
-        new DaprComponentOptions { LocalPath = daprComponentPaths.SecretStore });
+        "secretstores.hashicorp.vault",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.SecretStore })
+    .WaitFor(openBao);
 
 IResourceBuilder<IDaprComponentResource> accessTelemetryStore = builder
     .AddDaprComponent(
@@ -152,8 +236,9 @@ IResourceBuilder<IDaprComponentResource> accessTelemetryStore = builder
 IResourceBuilder<IDaprComponentResource> accessTelemetrySecrets = builder
     .AddDaprComponent(
         "access-telemetry-secrets",
-        "secretstores.local.file",
-        new DaprComponentOptions { LocalPath = daprComponentPaths.AccessTelemetrySecrets });
+        "secretstores.hashicorp.vault",
+        new DaprComponentOptions { LocalPath = daprComponentPaths.AccessTelemetrySecrets })
+    .WaitFor(openBao);
 
 IResourceBuilder<IDaprComponentResource> accessTelemetryConfig = builder
     .AddDaprComponent(
@@ -212,6 +297,7 @@ IResourceBuilder<ProjectResource> server = builder
         ReferenceExpression.Create($"{falkordbEndpoint.Property(EndpointProperty.HostAndPort)}"))
     .WaitFor(redis)
     .WaitFor(falkordb)
+    .WaitFor(openBao)
     .WaitFor(secretStore)
     .WaitFor(conversationLlm);
 
@@ -292,6 +378,7 @@ IResourceBuilder<ProjectResource> accessTelemetryClock = builder
     .WithEnvironment("Clock__SigningKeySecretName", "access-telemetry-clock-key")
     .WithEnvironment("Clock__SignerKeyEpoch", "development-clock-key")
     .WithEnvironment("Clock__AllowDevelopmentSources", "true")
+    .WaitFor(openBao)
     .WaitFor(accessTelemetrySecrets);
 
 IResourceBuilder<ProjectResource> accessTelemetry = builder
@@ -326,6 +413,7 @@ IResourceBuilder<ProjectResource> accessTelemetry = builder
     .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationEvidenceId", "development-reclamation-hook")
     .WithEnvironment("AccessTelemetryLifecycle__CapabilityEvidence__ExactVersionPinned", "true")
     .WaitFor(redis)
+    .WaitFor(openBao)
     .WaitFor(accessTelemetryClock)
     .WaitFor(accessTelemetryStore)
     .WaitFor(accessTelemetrySecrets)
@@ -411,81 +499,17 @@ static string EnsureTestDataRoot()
     return testData;
 }
 
-static string EnsureSecretsFile()
+static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId)
 {
-    string repoRoot = RepositoryRootLocator.Resolve();
-    string secretsFile = Path.Combine(repoRoot, "secrets.json");
-
-    if (!File.Exists(secretsFile))
-    {
-        File.WriteAllText(secretsFile, "{}" + Environment.NewLine);
-    }
-
-    // Story 15.6 code review: tighten permissions every time the file is observed (idempotent chmod
-    // on Linux/macOS) so a pre-existing secrets.json from a previous AppHost run, or from a release
-    // pre-dating this hardening, does not remain world-readable.
-    TryRestrictSecretFilePermissions(secretsFile);
-
-    return secretsFile;
-}
-
-static AccessTelemetryDevelopmentSecrets EnsureAccessTelemetryDevelopmentSecrets(string secretsFile)
-{
-    JsonObject root;
-    try
-    {
-        root = JsonNode.Parse(File.ReadAllText(secretsFile)) as JsonObject
-            ?? throw new InvalidOperationException("The local Dapr secrets file must contain a JSON object.");
-    }
-    catch (JsonException exception)
-    {
-        throw new InvalidOperationException("The local Dapr secrets file contains invalid JSON.", exception);
-    }
-
-    if (root["access-telemetry-marker-key"] is null)
-    {
-        root["access-telemetry-marker-key"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-    }
-
-    string signingKey;
-    if (root["access-telemetry-clock-key"]?.GetValue<string>() is string configured && !string.IsNullOrWhiteSpace(configured))
-    {
-        signingKey = configured;
-    }
-    else
-    {
-        using ECDsa generated = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        signingKey = Convert.ToBase64String(generated.ExportPkcs8PrivateKey());
-        root["access-telemetry-clock-key"] = signingKey;
-    }
-
-    using ECDsa clockKey = ECDsa.Create();
-    clockKey.ImportPkcs8PrivateKey(Convert.FromBase64String(signingKey), out int bytesRead);
-    if (bytesRead == 0)
-    {
-        throw new InvalidOperationException("The local access-telemetry clock signing key is malformed.");
-    }
-
-    File.WriteAllText(
-        secretsFile,
-        root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
-    TryRestrictSecretFilePermissions(secretsFile);
-    return new AccessTelemetryDevelopmentSecrets(Convert.ToBase64String(clockKey.ExportSubjectPublicKeyInfo()));
-}
-
-static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, string secretsFile)
-{
-    // Story 15.6 code review: sweep stale per-PID directories before creating ours. ProcessExit
-    // handlers do not fire on SIGKILL / FailFast / BSOD, so crashed prior sessions leak component
-    // YAMLs (each containing a `secretsFile` path) under %TEMP%. The sweep deletes only directories
-    // whose PID is no longer alive — never touches a running AppHost's directory.
+    // Sweep only positively identified, stale per-PID directories before creating this run's
+    // owner-only directory. ProcessExit handlers do not fire on SIGKILL / FailFast / BSOD.
     SweepStaleDaprComponentDirectories(daprAppId);
 
     string componentsDirectory = Path.Combine(
         Path.GetTempPath(),
         "hexalith-memories-dapr",
         $"{daprAppId}-{Process.GetCurrentProcess().Id}");
-    Directory.CreateDirectory(componentsDirectory);
+    OpenBaoProtectedFileSystem.CreateDirectory(componentsDirectory);
     RegisterDaprComponentDirectoryCleanup(componentsDirectory);
 
     string stateStorePath = Path.Combine(componentsDirectory, "statestore.yaml");
@@ -495,6 +519,9 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
     string accessTelemetryStorePath = Path.Combine(componentsDirectory, "access-telemetry-store.yaml");
     string accessTelemetrySecretsPath = Path.Combine(componentsDirectory, "access-telemetry-secrets.yaml");
     string accessTelemetryConfigPath = Path.Combine(componentsDirectory, "access-telemetry-config.yaml");
+    string runtimeTokenPath = Path.Combine(componentsDirectory, "openbao-runtime.token");
+    string accessTelemetryTokenPath = Path.Combine(componentsDirectory, "openbao-access-telemetry.token");
+    string sensitiveFingerprintsPath = Path.Combine(componentsDirectory, "openbao-sensitive.sha256");
 
     // These files are rewritten with Aspire's allocated Redis endpoint before the Dapr sidecars start.
     // The initial localhost value keeps the files valid for design-time inspection and local fallbacks.
@@ -503,24 +530,8 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
         pubSubPath,
         accessTelemetryStorePath,
         accessTelemetryConfigPath,
-        "127.0.0.1:6379");
-
-    File.WriteAllText(
-        secretStorePath,
-        $"""
-        apiVersion: dapr.io/v1alpha1
-        kind: Component
-        metadata:
-          name: secretstore
-        spec:
-          type: secretstores.local.file
-          version: v1
-          metadata:
-            - name: secretsFile
-              value: "{EscapeYamlDoubleQuotedScalar(secretsFile)}"
-            - name: nestedSeparator
-              value: ":"
-        """);
+        "127.0.0.1:6379",
+        daprAppId);
 
     File.WriteAllText(
         conversationLlmPath,
@@ -539,67 +550,21 @@ static GeneratedDaprComponentPaths EnsureDaprComponentFiles(string daprAppId, st
               value: "false"
         """);
 
-    File.WriteAllText(
-        accessTelemetrySecretsPath,
-        $"""
-        apiVersion: dapr.io/v1alpha1
-        kind: Component
-        metadata:
-          name: access-telemetry-secrets
-        spec:
-          type: secretstores.local.file
-          version: v1
-          metadata:
-            - name: secretsFile
-              value: "{EscapeYamlDoubleQuotedScalar(secretsFile)}"
-            - name: nestedSeparator
-              value: ":"
-        scopes:
-          - memories
-          - memories-access-telemetry
-          - memories-access-telemetry-clock
-        """);
-
-    return new GeneratedDaprComponentPaths(
+    var paths = new GeneratedDaprComponentPaths(
         componentsDirectory,
+        daprAppId,
         stateStorePath,
         pubSubPath,
         secretStorePath,
         conversationLlmPath,
         accessTelemetryStorePath,
         accessTelemetrySecretsPath,
-        accessTelemetryConfigPath);
-}
-
-static void TryRestrictSecretFilePermissions(string secretsFile)
-{
-    if (OperatingSystem.IsWindows())
-    {
-        return;
-    }
-
-    // Story 15.6 code review: the method name promises best-effort, so do not crash AppHost startup
-    // when the filesystem cannot honor POSIX permissions (FAT32/exFAT, SMB without unix-mode
-    // mapping, sandboxed mounts). Wrap and continue.
-    try
-    {
-        File.SetUnixFileMode(secretsFile, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-    }
-    catch (IOException ex)
-    {
-        Console.Error.WriteLine(
-            $"Hexalith.Memories AppHost: best-effort chmod on '{secretsFile}' skipped ({ex.GetType().Name}: {ex.Message}).");
-    }
-    catch (UnauthorizedAccessException ex)
-    {
-        Console.Error.WriteLine(
-            $"Hexalith.Memories AppHost: best-effort chmod on '{secretsFile}' denied ({ex.GetType().Name}: {ex.Message}).");
-    }
-    catch (PlatformNotSupportedException ex)
-    {
-        Console.Error.WriteLine(
-            $"Hexalith.Memories AppHost: best-effort chmod on '{secretsFile}' unsupported on this runtime ({ex.GetType().Name}).");
-    }
+        accessTelemetryConfigPath,
+        runtimeTokenPath,
+        accessTelemetryTokenPath,
+        sensitiveFingerprintsPath);
+    WriteOpenBaoComponentDocuments(paths, new Uri("http://127.0.0.1:1"));
+    return paths;
 }
 
 static void RegisterDaprComponentDirectoryCleanup(string componentsDirectory)
@@ -734,12 +699,92 @@ static string EscapeYamlDoubleQuotedScalar(string value)
     return builder.ToString();
 }
 
+static void WriteOpenBaoComponentGeneration(
+    GeneratedDaprComponentPaths paths,
+    Uri endpoint,
+    OpenBaoInitializationResult initialization)
+{
+    OpenBaoProtectedFileSystem.WriteAllTextAtomically(paths.RuntimeToken, initialization.RuntimeToken);
+    OpenBaoProtectedFileSystem.WriteAllTextAtomically(
+        paths.AccessTelemetryToken,
+        initialization.AccessTelemetryToken);
+    OpenBaoProtectedFileSystem.WriteAllTextAtomically(
+        paths.SensitiveFingerprints,
+        $"bootstrap={initialization.BootstrapTokenSha256}{Environment.NewLine}" +
+        $"unseal={initialization.UnsealKeySha256}{Environment.NewLine}");
+    WriteOpenBaoComponentDocuments(paths, endpoint);
+}
+
+static void WriteOpenBaoComponentDocuments(GeneratedDaprComponentPaths paths, Uri endpoint)
+{
+    string vaultAddress = EscapeYamlDoubleQuotedScalar(endpoint.GetLeftPart(UriPartial.Authority));
+    string runtimeTokenPath = EscapeYamlDoubleQuotedScalar(paths.RuntimeToken);
+    string accessTelemetryTokenPath = EscapeYamlDoubleQuotedScalar(paths.AccessTelemetryToken);
+
+    OpenBaoProtectedFileSystem.WriteAllTextAtomically(
+        paths.SecretStore,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: secretstore
+        spec:
+          type: secretstores.hashicorp.vault
+          version: v1
+          metadata:
+            - name: vaultAddr
+              value: "{vaultAddress}"
+            - name: vaultTokenMountPath
+              value: "{runtimeTokenPath}"
+            - name: enginePath
+              value: "secret"
+            - name: vaultKVPrefix
+              value: "hexalith/memories/runtime"
+            - name: vaultKVUsePrefix
+              value: "true"
+            - name: vaultValueType
+              value: "map"
+        scopes:
+          - {paths.DaprAppId}
+        """);
+
+    OpenBaoProtectedFileSystem.WriteAllTextAtomically(
+        paths.AccessTelemetrySecrets,
+        $"""
+        apiVersion: dapr.io/v1alpha1
+        kind: Component
+        metadata:
+          name: access-telemetry-secrets
+        spec:
+          type: secretstores.hashicorp.vault
+          version: v1
+          metadata:
+            - name: vaultAddr
+              value: "{vaultAddress}"
+            - name: vaultTokenMountPath
+              value: "{accessTelemetryTokenPath}"
+            - name: enginePath
+              value: "secret"
+            - name: vaultKVPrefix
+              value: "hexalith/memories/access-telemetry"
+            - name: vaultKVUsePrefix
+              value: "true"
+            - name: vaultValueType
+              value: "map"
+        scopes:
+          - {paths.DaprAppId}
+          - memories-access-telemetry
+          - memories-access-telemetry-clock
+        """);
+}
+
 static void WriteDaprRedisComponentFiles(
     string stateStorePath,
     string pubSubPath,
     string accessTelemetryStorePath,
     string accessTelemetryConfigPath,
-    string redisHost)
+    string redisHost,
+    string daprAppId)
 {
     File.WriteAllText(
         stateStorePath,
@@ -765,7 +810,7 @@ static void WriteDaprRedisComponentFiles(
             - name: actorStateStore
               value: "true"
         scopes:
-          - memories
+          - {daprAppId}
         """);
 
     File.WriteAllText(
@@ -838,7 +883,7 @@ static void WriteDaprRedisComponentFiles(
             - name: redisPassword
               value: ""
         scopes:
-          - memories
+          - {daprAppId}
           - memories-access-telemetry
         """);
 }
@@ -1104,6 +1149,138 @@ static (string Host, int Port) ResolveAllocatedEndpoint(IResource resource, stri
     return (host, allocated.Port);
 }
 
+static async Task InitializeOpenBaoGenerationAsync(
+    IResource resource,
+    IServiceProvider services,
+    ParameterResource runtimeSeedParameter,
+    ParameterResource accessTelemetrySeedParameter,
+    GeneratedDaprComponentPaths paths,
+    int generationNumber,
+    TaskCompletionSource readiness,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        ResourceNotificationService notifications = services.GetRequiredService<ResourceNotificationService>();
+        _ = await notifications.WaitForResourceAsync(
+            resource.Name,
+            [KnownResourceStates.Starting, KnownResourceStates.Running],
+            cancellationToken).ConfigureAwait(false);
+
+        (string host, int port) = ResolveAllocatedEndpoint(resource, OpenBaoDevelopmentProfile.EndpointName);
+        var endpoint = new UriBuilder(Uri.UriSchemeHttp, host, port).Uri;
+        string runtimeSeedJson = await runtimeSeedParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The protected runtime seed parameter has no value.");
+        string accessTelemetrySeedJson = await accessTelemetrySeedParameter.GetValueAsync(cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The protected access-telemetry seed parameter has no value.");
+        OpenBaoSeedInputs seeds = OpenBaoSeedInputs.Create(runtimeSeedJson, accessTelemetrySeedJson);
+        OpenBaoInitializationResult result = await InitializeOpenBaoWithRetryAsync(
+            endpoint,
+            seeds,
+            TimeSpan.FromMinutes(2),
+            cancellationToken).ConfigureAwait(false);
+
+        WriteOpenBaoComponentGeneration(paths, endpoint, result);
+        readiness.TrySetResult();
+
+        if (generationNumber > 1)
+        {
+            await RestartOpenBaoConsumersAsync(services, cancellationToken).ConfigureAwait(false);
+        }
+    }
+    catch (Exception exception)
+    {
+        readiness.TrySetException(exception);
+    }
+}
+
+static async Task<OpenBaoInitializationResult> InitializeOpenBaoWithRetryAsync(
+    Uri endpoint,
+    OpenBaoSeedInputs seeds,
+    TimeSpan timeout,
+    CancellationToken cancellationToken)
+{
+    DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
+    Exception? lastConnectionError = null;
+    using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+    var initializer = new OpenBaoInitializer(client);
+
+    while (DateTimeOffset.UtcNow < deadline)
+    {
+        try
+        {
+            return await initializer.InitializeAsync(endpoint, seeds, cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException exception)
+        {
+            lastConnectionError = exception;
+        }
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            lastConnectionError = exception;
+        }
+
+        await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
+    }
+
+    throw new TimeoutException(
+        $"OpenBao did not accept loopback initialization requests within {timeout}.",
+        lastConnectionError);
+}
+
+static async Task RestartOpenBaoConsumersAsync(IServiceProvider services, CancellationToken cancellationToken)
+{
+    string[] consumers =
+    [
+        "memories",
+        "memories-access-telemetry",
+        "memories-access-telemetry-clock",
+        "memories-dapr",
+        "memories-dapr-cli",
+        "memories-access-telemetry-dapr",
+        "memories-access-telemetry-dapr-cli",
+        "memories-access-telemetry-clock-dapr",
+        "memories-access-telemetry-clock-dapr-cli",
+    ];
+    ResourceNotificationService notifications = services.GetRequiredService<ResourceNotificationService>();
+    ResourceCommandService commands = services.GetRequiredService<ResourceCommandService>();
+    foreach (string consumer in consumers)
+    {
+        if (!notifications.TryGetCurrentState(consumer, out _))
+        {
+            continue;
+        }
+
+        ExecuteCommandResult result = await commands.ExecuteCommandAsync(
+            consumer,
+            KnownResourceCommands.RestartCommand,
+            cancellationToken).ConfigureAwait(false);
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(
+                $"The OpenBao generation was installed, but dependent resource '{consumer}' could not restart.");
+        }
+    }
+}
+
+static async Task WaitForOpenBaoGenerationAsync(
+    Task readiness,
+    TimeSpan timeout,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        await readiness.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+    }
+    catch (TimeoutException exception)
+    {
+        throw new TimeoutException(
+            $"The current OpenBao generation was not initialized within {timeout}.",
+            exception);
+    }
+}
+
 static async Task WaitForRedisComponentRewriteAsync(
     Task rewriteTask,
     TimeSpan timeout,
@@ -1235,15 +1412,17 @@ static bool IsRedisPong(IReadOnlyList<byte> bytes)
 
 internal sealed record GeneratedDaprComponentPaths(
     string ComponentsDirectory,
+    string DaprAppId,
     string StateStore,
     string PubSub,
     string SecretStore,
     string ConversationLlm,
     string AccessTelemetryStore,
     string AccessTelemetrySecrets,
-    string AccessTelemetryConfig);
-
-internal sealed record AccessTelemetryDevelopmentSecrets(string VerificationPublicKey);
+    string AccessTelemetryConfig,
+    string RuntimeToken,
+    string AccessTelemetryToken,
+    string SensitiveFingerprints);
 
 /// <summary>
 /// Story 15.6 code review: signals a Redis readiness probe failure that should NOT be retried —

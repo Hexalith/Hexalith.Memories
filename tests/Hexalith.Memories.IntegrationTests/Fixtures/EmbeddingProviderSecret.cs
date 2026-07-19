@@ -7,12 +7,12 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
 using System.Text.RegularExpressions;
 
-/// <summary>Secret-store entry used by provider-specific Aspire integration tests.</summary>
+/// <summary>Protected provider-neutral seed input used by provider-specific Aspire integration tests.</summary>
 public sealed partial record EmbeddingProviderSecret
 {
     /// <summary>Initializes a new instance of the <see cref="EmbeddingProviderSecret"/> record.</summary>
     /// <param name="name">The DAPR secret name. Constrained to identifier characters because it is interpolated into a YAML allowed-secrets list.</param>
-    /// <param name="value">The secret value written to the local test secret store.</param>
+    /// <param name="value">The protected value supplied through an Aspire secret parameter.</param>
     public EmbeddingProviderSecret(string name, string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -31,7 +31,7 @@ public sealed partial record EmbeddingProviderSecret
     /// <summary>Gets the DAPR secret name referenced by tenant embedding configuration.</summary>
     public string Name { get; }
 
-    /// <summary>Gets the secret value written to the local test secret store.</summary>
+    /// <summary>Gets the protected seed value supplied to the disposable topology.</summary>
     public string Value { get; }
 
     [GeneratedRegex("^[A-Za-z0-9._-]+$", RegexOptions.CultureInvariant)]

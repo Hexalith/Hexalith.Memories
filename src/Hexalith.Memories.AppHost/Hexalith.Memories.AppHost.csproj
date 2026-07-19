@@ -22,4 +22,8 @@
     <PackageReference Include="OpenTelemetry" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
+  </ItemGroup>
+
 </Project>

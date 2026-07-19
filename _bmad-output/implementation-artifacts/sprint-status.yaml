@@ -431,7 +431,7 @@ development_status:
   # Epic 29: OpenBao-First Dapr Secret Management
   # Registered on 2026-07-19 by the approved OpenBao-First Aspire Secret Management course correction.
   epic-29: in-progress
-  29-1-openbao-backed-apphost-secret-topology: ready-for-dev
+  29-1-openbao-backed-apphost-secret-topology: review
   29-2-provider-neutral-aspire-composition-and-secret-verification: backlog
   epic-29-retrospective: optional
 

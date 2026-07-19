@@ -5,6 +5,9 @@ kind: Configuration
 metadata:
   name: memories-access-telemetry-clock-config
 spec:
+  features:
+    - name: HotReload
+      enabled: false
   secrets:
     scopes:
       - storeName: access-telemetry-secrets

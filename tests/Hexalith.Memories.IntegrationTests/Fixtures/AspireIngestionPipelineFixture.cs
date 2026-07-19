@@ -8,9 +8,9 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 using Aspire.Hosting;
@@ -29,6 +29,7 @@ using Hexalith.Memories.Telemetry;
 using Hexalith.Memories.TestHelpers.Process;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -40,6 +41,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 {
     private const string StateStoreName = "statestore";
     private const string TenantRegistryIndexKey = "tenant-registry-index";
+    private const string AspireContainerCreatorProcessLabel = "com.microsoft.developer.usvc-dev.creatorProcessId";
+    private const string AspireContainerCreatorStartTimeLabel = "com.microsoft.developer.usvc-dev.creatorProcessStartTime";
+    internal const string OpenBaoRuntimeCanarySecretName = "story29-runtime-canary";
 
     private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(12);
     private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
@@ -73,13 +77,18 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private EnvVarScope? _workflowReplaySafetyScope;
     private readonly EmbeddingProviderTestMode _providerMode;
     private readonly EmbeddingProviderSecret? _embeddingProviderSecret;
-    private bool _secretsFileExisted;
-    private string? _originalSecretsFileContent;
-    private string? _secretsFilePath;
+    private readonly string _openBaoRuntimeSeedJson;
+    private readonly string _openBaoRuntimeCanary = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+    private byte[]? _accessTelemetryMarkerFingerprint;
+    private byte[]? _accessTelemetrySeedFingerprint;
+    private string[] _accessTelemetrySeedValues = [];
     private string? _tempDaprConfigPath;
     private readonly TestLogProvider _logProvider = new();
     private static readonly Regex DaprHttpPortRegex = new(
         @"HTTP server listening on TCP address: :(?<port>\d+)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex SensitiveTokenRegex = new(
+        @"[A-Za-z0-9._~+/=-]{16,}",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>Gets the HTTP client for the Memories Server resource.</summary>
@@ -100,10 +109,29 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     {
         _providerMode = providerMode;
         _embeddingProviderSecret = embeddingProviderSecret;
+        var runtimeSeeds = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [OpenBaoRuntimeCanarySecretName] = _openBaoRuntimeCanary,
+        };
+        if (embeddingProviderSecret is not null)
+        {
+            if (!runtimeSeeds.TryAdd(embeddingProviderSecret.Name, embeddingProviderSecret.Value))
+            {
+                throw new ArgumentException("The provider secret name is reserved by the OpenBao fixture.", nameof(embeddingProviderSecret));
+            }
+        }
+
+        _openBaoRuntimeSeedJson = JsonSerializer.Serialize(runtimeSeeds);
     }
 
     /// <summary>Gets the embedding provider mode used by the fixture.</summary>
     public EmbeddingProviderTestMode ProviderMode => _providerMode;
+
+    /// <summary>Gets the most recent measured duration from all containers running to query readiness.</summary>
+    public TimeSpan OpenBaoColdStartDuration { get; private set; }
+
+    /// <summary>Gets the allocated loopback OpenBao endpoint for status-only verification.</summary>
+    public Uri OpenBaoEndpoint { get; private set; } = new("http://127.0.0.1:1");
 
     /// <summary>Gets the HTTP client for the MCP server resource (Story 10.1).</summary>
     public HttpClient McpClient { get; private set; } = null!;
@@ -393,6 +421,282 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return stopwatch.Elapsed;
     }
 
+    /// <summary>Reads the seeded runtime canary through the Server's Dapr secret component.</summary>
+    /// <returns><c>true</c> when the returned value has the expected fingerprint.</returns>
+    internal Task<bool> CanReadOpenBaoRuntimeCanaryAsync()
+        => DaprSecretMatchesAsync(
+            "secretstore",
+            OpenBaoRuntimeCanarySecretName,
+            OpenBaoRuntimeCanarySecretName,
+            FingerprintBytes(_openBaoRuntimeCanary));
+
+    /// <summary>Reads the access marker through the Server's separately scoped Dapr component.</summary>
+    /// <returns><c>true</c> when the returned value has the expected fingerprint.</returns>
+    internal Task<bool> CanReadOpenBaoAccessMarkerAsync()
+        => DaprSecretMatchesAsync(
+            "access-telemetry-secrets",
+            "access-telemetry-marker-key",
+            "access-telemetry-marker-key",
+            _accessTelemetryMarkerFingerprint
+                ?? throw new InvalidOperationException("Access-telemetry seed evidence is unavailable."));
+
+    /// <summary>Issues a status-only Dapr secret request for negative-evidence tests.</summary>
+    /// <param name="storeName">The component name.</param>
+    /// <param name="secretName">The requested name, including deliberate traversal attempts.</param>
+    /// <returns>The HTTP status without reading or exposing an error body.</returns>
+    internal async Task<HttpStatusCode> GetDaprSecretStatusAsync(string storeName, string secretName)
+    {
+        HttpClient client = _daprStateClient
+            ?? throw new InvalidOperationException("The Dapr client is unavailable before topology startup.");
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/v1.0/secrets/{Uri.EscapeDataString(storeName)}/{Uri.EscapeDataString(secretName)}",
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        return response.StatusCode;
+    }
+
+    /// <summary>Issues a status-only Dapr bulk-secret request.</summary>
+    /// <param name="storeName">The component name.</param>
+    /// <returns>The HTTP status without reading or exposing an error body.</returns>
+    internal async Task<HttpStatusCode> GetDaprBulkSecretStatusAsync(string storeName)
+    {
+        HttpClient client = _daprStateClient
+            ?? throw new InvalidOperationException("The Dapr client is unavailable before topology startup.");
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/v1.0/secrets/{Uri.EscapeDataString(storeName)}/bulk",
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        return response.StatusCode;
+    }
+
+    /// <summary>Uses each mounted identity directly against the opposite OpenBao prefix.</summary>
+    /// <returns><c>true</c> only when both identity probes receive authorization denial.</returns>
+    internal async Task<bool> AreOpenBaoCrossPrefixIdentitiesDeniedAsync()
+    {
+        string ownedDirectory = GetAppHostOwnedDaprDirectory();
+        string runtimeToken = await File.ReadAllTextAsync(
+            Path.Combine(ownedDirectory, "openbao-runtime.token"),
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        string accessToken = await File.ReadAllTextAsync(
+            Path.Combine(ownedDirectory, "openbao-access-telemetry.token"),
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        using var client = new HttpClient { BaseAddress = OpenBaoEndpoint };
+        HttpStatusCode runtimeToAccess = await ProbeOpenBaoStatusAsync(
+            client,
+            runtimeToken,
+            "/v1/secret/data/hexalith/memories/access-telemetry/access-telemetry-marker-key")
+            .ConfigureAwait(false);
+        HttpStatusCode accessToRuntime = await ProbeOpenBaoStatusAsync(
+            client,
+            accessToken,
+            $"/v1/secret/data/hexalith/memories/runtime/{OpenBaoRuntimeCanarySecretName}")
+            .ConfigureAwait(false);
+        return runtimeToAccess == HttpStatusCode.Forbidden && accessToRuntime == HttpStatusCode.Forbidden;
+    }
+
+    /// <summary>Reads initialized/unsealed status from the strict OpenBao health endpoint.</summary>
+    /// <returns><c>true</c> only for HTTP 200 with initialized and unsealed state.</returns>
+    internal async Task<bool> IsOpenBaoInitializedAndUnsealedAsync()
+    {
+        using var client = new HttpClient { BaseAddress = OpenBaoEndpoint };
+        using HttpResponseMessage response = await client.GetAsync(
+            "/v1/sys/health",
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            return false;
+        }
+
+        await using Stream stream = await response.Content.ReadAsStreamAsync(
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        using JsonDocument document = await JsonDocument.ParseAsync(
+            stream,
+            cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
+        return document.RootElement.GetProperty("initialized").GetBoolean() &&
+            !document.RootElement.GetProperty("sealed").GetBoolean();
+    }
+
+    /// <summary>Scans live logs, model annotations, and generated non-secret documents for disclosure.</summary>
+    /// <returns><c>true</c> when a raw seed/token or bootstrap fingerprint match is found.</returns>
+    internal async Task<bool> HasOpenBaoSensitiveDisclosureAsync()
+    {
+        DistributedApplication app = _app
+            ?? throw new InvalidOperationException("The topology is not running.");
+        IDistributedApplicationTestingBuilder builder = _builder
+            ?? throw new InvalidOperationException("The topology model is unavailable.");
+        string ownedDirectory = GetAppHostOwnedDaprDirectory();
+        string runtimeToken = await File.ReadAllTextAsync(
+            Path.Combine(ownedDirectory, "openbao-runtime.token"),
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        string accessToken = await File.ReadAllTextAsync(
+            Path.Combine(ownedDirectory, "openbao-access-telemetry.token"),
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        string[] sensitiveValues = [_openBaoRuntimeCanary, .. _accessTelemetrySeedValues, runtimeToken, accessToken];
+        string fingerprintPath = Path.Combine(ownedDirectory, "openbao-sensitive.sha256");
+        if (!File.Exists(fingerprintPath))
+        {
+            return true;
+        }
+
+        var bootstrapFingerprints = File.ReadLines(fingerprintPath)
+            .Select(line => line.Split('=', 2))
+            .Where(parts => parts.Length == 2)
+            .Select(parts => parts[1])
+            .ToHashSet(StringComparer.Ordinal);
+
+        bool Leaks(string text) => ContainsSensitiveValue(text, sensitiveValues, bootstrapFingerprints);
+
+        if (_logProvider.GetEntriesSince(0).Any(entry =>
+            Leaks(entry.Category) || Leaks(entry.Message)))
+        {
+            return true;
+        }
+
+        ResourceLoggerService resourceLogs = app.Services.GetRequiredService<ResourceLoggerService>();
+        foreach (IResource resource in builder.Resources)
+        {
+            if (Leaks(resource.Name) || resource.Annotations.Any(annotation =>
+                Leaks(annotation.GetType().FullName ?? string.Empty) || Leaks(annotation.ToString() ?? string.Empty)))
+            {
+                return true;
+            }
+
+            await foreach (IReadOnlyList<LogLine> batch in resourceLogs.GetAllAsync(resource))
+            {
+                if (batch.Any(line => Leaks(line.Content)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        IEnumerable<string> generatedDocuments = Directory.EnumerateFiles(ownedDirectory)
+            .Where(path => Path.GetExtension(path) is ".yaml" or ".hcl")
+            .Append(_tempDaprConfigPath ?? string.Empty)
+            .Where(File.Exists);
+        foreach (string path in generatedDocuments)
+        {
+            string content = await File.ReadAllTextAsync(
+                path,
+                TestContext.Current.CancellationToken).ConfigureAwait(false);
+            if (Leaks(content))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<bool> DaprSecretMatchesAsync(
+        string storeName,
+        string secretName,
+        string fieldName,
+        byte[] expectedFingerprint)
+    {
+        HttpClient client = _daprStateClient
+            ?? throw new InvalidOperationException("The Dapr client is unavailable before topology startup.");
+        using HttpResponseMessage response = await client.GetAsync(
+            $"/v1.0/secrets/{Uri.EscapeDataString(storeName)}/{Uri.EscapeDataString(secretName)}",
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            return false;
+        }
+
+        await using Stream stream = await response.Content.ReadAsStreamAsync(
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        using JsonDocument document = await JsonDocument.ParseAsync(
+            stream,
+            cancellationToken: TestContext.Current.CancellationToken).ConfigureAwait(false);
+        if (!document.RootElement.TryGetProperty(fieldName, out JsonElement valueElement) ||
+            valueElement.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        byte[] actualFingerprint = FingerprintBytes(valueElement.GetString()!);
+        return CryptographicOperations.FixedTimeEquals(actualFingerprint, expectedFingerprint);
+    }
+
+    private static async Task<HttpStatusCode> ProbeOpenBaoStatusAsync(
+        HttpClient client,
+        string token,
+        string path)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Add("X-Vault-Token", token);
+        using HttpResponseMessage response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken).ConfigureAwait(false);
+        return response.StatusCode;
+    }
+
+    private void CaptureAccessTelemetrySeedEvidence(string accessSeedJson)
+    {
+        using JsonDocument document = JsonDocument.Parse(accessSeedJson);
+        string[] values = document.RootElement.EnumerateObject()
+            .Select(property => property.Value.GetString()
+                ?? throw new InvalidOperationException("An access-telemetry seed value is not a string."))
+            .ToArray();
+        string marker = document.RootElement.GetProperty("access-telemetry-marker-key").GetString()
+            ?? throw new InvalidOperationException("The access-telemetry marker seed is unavailable.");
+        byte[] seedFingerprint = FingerprintBytes(accessSeedJson);
+        if (_accessTelemetrySeedFingerprint is not null &&
+            !CryptographicOperations.FixedTimeEquals(_accessTelemetrySeedFingerprint, seedFingerprint))
+        {
+            throw new InvalidOperationException("The protected access-telemetry seed changed across topology restart.");
+        }
+
+        _accessTelemetrySeedValues = values;
+        _accessTelemetrySeedFingerprint = seedFingerprint;
+        _accessTelemetryMarkerFingerprint = FingerprintBytes(marker);
+    }
+
+    private static DateTimeOffset GetOpenBaoContainersRunningBoundary(DistributedApplication app)
+    {
+        string[] containers = ["memories-vectors", "memories-graphs", "openbao"];
+        DateTime[] startTimes = containers.Select(name =>
+        {
+            if (!app.ResourceNotifications.TryGetCurrentState(name, out ResourceEvent? resourceEvent) ||
+                resourceEvent.Snapshot.StartTimeStamp is not DateTime started)
+            {
+                throw new InvalidOperationException($"Container '{name}' has no recorded start boundary.");
+            }
+
+            return started;
+        }).ToArray();
+        return new DateTimeOffset(startTimes.Max());
+    }
+
+    private string GetAppHostOwnedDaprDirectory()
+        => Path.Combine(
+            Path.GetTempPath(),
+            "hexalith-memories-dapr",
+            $"{_daprAppId}-{Process.GetCurrentProcess().Id}");
+
+    private static bool ContainsSensitiveValue(
+        string text,
+        IEnumerable<string> sensitiveValues,
+        IReadOnlySet<string> bootstrapFingerprints)
+    {
+        if (sensitiveValues.Any(value => !string.IsNullOrEmpty(value) && text.Contains(value, StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        foreach (Match match in SensitiveTokenRegex.Matches(text))
+        {
+            if (bootstrapFingerprints.Contains(Convert.ToHexString(FingerprintBytes(match.Value))))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static byte[] FingerprintBytes(string value)
+        => SHA256.HashData(Encoding.UTF8.GetBytes(value));
+
     /// <inheritdoc/>
     public async ValueTask InitializeAsync()
     {
@@ -426,7 +730,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _enableKeycloakScope = EnvVarScope.Set("EnableKeycloak", "false");
             _workflowReplaySafetyScope = EnvVarScope.Set("WorkflowReplaySafety__Enabled", "false");
 
-            WriteLocalDaprSecretIfNeeded();
             _daprConfigPathScope = CreateDaprConfigOverrideIfNeeded();
 
             using var cts = new CancellationTokenSource(TopologyStartupTimeout);
@@ -435,7 +738,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         catch
         {
             DisposeEnvVarScopes();
-            RestoreLocalDaprSecret();
             DeleteTempDaprConfig();
             throw;
         }
@@ -792,8 +1094,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     {
         await DisposeTopologyAsync(CancellationToken.None).ConfigureAwait(false);
         DisposeEnvVarScopes();
-        RestoreLocalDaprSecret();
         DeleteTempDaprConfig();
+        await RemoveFixtureDockerContainersAsync(_falkorVolumeName).ConfigureAwait(false);
         await RemoveDockerVolumeIfPresentAsync(_falkorVolumeName).ConfigureAwait(false);
         await RemoveDockerVolumeIfPresentAsync(_redisVolumeName).ConfigureAwait(false);
     }
@@ -809,75 +1111,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return _actorProxyFactory.CreateActorProxy<TActor>(new ActorId(actorId), actorType, _actorProxyOptions);
     }
 
-    private void WriteLocalDaprSecretIfNeeded()
-    {
-        if (_providerMode != EmbeddingProviderTestMode.OllamaOidcFake || _embeddingProviderSecret is null)
-        {
-            return;
-        }
-
-        // Snapshot existence and content BEFORE storing the path so a read failure cannot cause
-        // RestoreLocalDaprSecret to delete a pre-existing user secrets.json (data loss).
-        string secretsPath = Path.Combine(RepositoryRootLocator.Resolve(), "secrets.json");
-        bool existed = File.Exists(secretsPath);
-        string? originalContent = existed ? File.ReadAllText(secretsPath) : null;
-
-        JsonObject root;
-        if (existed && !string.IsNullOrWhiteSpace(originalContent))
-        {
-            JsonNode? parsed = JsonNode.Parse(originalContent);
-            // JsonNode.AsObject() throws when the root is an array or primitive; cast as JsonObject
-            // and surface a clear error so we never silently overwrite a non-object secrets file.
-            root = parsed as JsonObject
-                ?? throw new InvalidOperationException(
-                    $"'{secretsPath}' must be a JSON object at its root for DAPR local secret-store; found {parsed?.GetType().Name ?? "null"}.");
-        }
-        else
-        {
-            root = [];
-        }
-
-        root[_embeddingProviderSecret.Name] = _embeddingProviderSecret.Value;
-
-        _secretsFilePath = secretsPath;
-        _secretsFileExisted = existed;
-        _originalSecretsFileContent = originalContent;
-        File.WriteAllText(
-            secretsPath,
-            root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
-    }
-
-    private void RestoreLocalDaprSecret()
-    {
-        if (_secretsFilePath is null)
-        {
-            return;
-        }
-
-        if (_secretsFileExisted)
-        {
-            File.WriteAllText(_secretsFilePath, _originalSecretsFileContent ?? string.Empty);
-        }
-        else if (File.Exists(_secretsFilePath))
-        {
-            File.Delete(_secretsFilePath);
-        }
-
-        _secretsFilePath = null;
-        _originalSecretsFileContent = null;
-        _secretsFileExisted = false;
-    }
-
     private EnvVarScope? CreateDaprConfigOverrideIfNeeded()
     {
-        if (_providerMode != EmbeddingProviderTestMode.OllamaOidcFake || _embeddingProviderSecret is null)
-        {
-            return null;
-        }
-
         string tempDirectory = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr", _daprAppId);
         Directory.CreateDirectory(tempDirectory);
         _tempDaprConfigPath = Path.Combine(tempDirectory, "config.yaml");
+        string providerSecretEntry = _embeddingProviderSecret is null
+            ? string.Empty
+            : $"{Environment.NewLine}          - {_embeddingProviderSecret.Name}";
         File.WriteAllText(
             _tempDaprConfigPath,
             $$"""
@@ -886,6 +1127,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             metadata:
               name: memories-config
             spec:
+              features:
+                - name: HotReload
+                  enabled: false
               secrets:
                 scopes:
                   - storeName: secretstore
@@ -893,7 +1137,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                     allowedSecrets:
                       - embedding-api-key
                       - llm-secret
-                      - {{_embeddingProviderSecret.Name}}
+                      - {{OpenBaoRuntimeCanarySecretName}}{{providerSecretEntry}}
+                  - storeName: access-telemetry-secrets
+                    defaultAccess: deny
+                    allowedSecrets:
+                      - access-telemetry-marker-key
             """);
 
         return EnvVarScope.Set("MEMORIES_DAPR_CONFIG_PATH", _tempDaprConfigPath);
@@ -983,8 +1231,37 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         int logStartIndex = _logProvider.Count;
 
         _builder = await DistributedApplicationTestingBuilder
-            .CreateAsync<Projects.Hexalith_Memories_AppHost>()
+            .CreateAsync<Projects.Hexalith_Memories_AppHost>(
+                [],
+                (_, settings) =>
+                {
+                    var initialConfiguration = new ConfigurationManager();
+                    initialConfiguration.AddInMemoryCollection(new Dictionary<string, string?>(StringComparer.Ordinal)
+                    {
+                        ["Parameters:openbao-runtime-seeds"] = _openBaoRuntimeSeedJson,
+                    });
+                    settings.Configuration = initialConfiguration;
+                },
+                cancellationToken)
             .ConfigureAwait(false);
+        ParameterResource accessSeedParameter = _builder.Resources
+            .OfType<ParameterResource>()
+            .Single(resource => resource.Name == "openbao-access-telemetry-seeds");
+        ParameterResource runtimeSeedParameter = _builder.Resources
+            .OfType<ParameterResource>()
+            .Single(resource => resource.Name == "openbao-runtime-seeds");
+        string resolvedRuntimeSeedJson = await runtimeSeedParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The protected runtime test seed is unavailable.");
+        if (!CryptographicOperations.FixedTimeEquals(
+            FingerprintBytes(resolvedRuntimeSeedJson),
+            FingerprintBytes(_openBaoRuntimeSeedJson)))
+        {
+            throw new InvalidOperationException("The protected runtime test seed was not bound before AppHost composition.");
+        }
+
+        string accessSeedJson = await accessSeedParameter.GetValueAsync(cancellationToken).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The protected access-telemetry test seed is unavailable.");
+        CaptureAccessTelemetrySeedEvidence(accessSeedJson);
 
         _ = _builder.Services.AddLogging(logging =>
         {
@@ -1008,6 +1285,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         _app = await _builder.BuildAsync().ConfigureAwait(false);
         await _app.StartAsync(cancellationToken).ConfigureAwait(false);
+        OpenBaoEndpoint = _app.GetEndpoint("openbao", "http");
 
         _ = await _app.ResourceNotifications
             .WaitForResourceHealthyAsync("memories", cancellationToken)
@@ -1090,6 +1368,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         };
         _actorHttpMessageHandler = new HttpClientHandler();
         _actorProxyFactory = new ActorProxyFactory(_actorProxyOptions, (HttpMessageHandler)_actorHttpMessageHandler);
+        OpenBaoColdStartDuration = DateTimeOffset.UtcNow - GetOpenBaoContainersRunningBoundary(_app);
     }
 
     /// <summary>
@@ -1465,22 +1744,91 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             return;
         }
 
+        using CancellationTokenSource cleanupCts = new(DockerVolumeCleanupTimeout);
         try
         {
-            using CancellationTokenSource cleanupCts = new(DockerVolumeCleanupTimeout);
-            _ = await RunProcessCommandAsync(
-                "docker",
-                $"volume rm {volumeName}",
-                cleanupCts.Token).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("No such volume", StringComparison.OrdinalIgnoreCase))
-        {
+            while (true)
+            {
+                try
+                {
+                    _ = await RunProcessCommandAsync(
+                        "docker",
+                        $"volume rm {volumeName}",
+                        cleanupCts.Token).ConfigureAwait(false);
+                    return;
+                }
+                catch (InvalidOperationException ex) when (
+                    ex.Message.Contains("No such volume", StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+                catch (InvalidOperationException ex) when (
+                    ex.Message.Contains("volume is in use", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(500), cleanupCts.Token).ConfigureAwait(false);
+                }
+            }
         }
         catch (OperationCanceledException ex)
         {
             throw new TimeoutException(
                 $"Docker volume removal timed out after {DockerVolumeCleanupTimeout} for fixture-owned volume '{volumeName}'.",
                 ex);
+        }
+    }
+
+    private static async Task RemoveFixtureDockerContainersAsync(string volumeName)
+    {
+        if (string.IsNullOrWhiteSpace(volumeName))
+        {
+            return;
+        }
+
+        using CancellationTokenSource cleanupCts = new(DockerVolumeCleanupTimeout);
+        string volumeContainerOutput = await RunProcessCommandAsync(
+            "docker",
+            $"ps --all --quiet --filter volume={volumeName}",
+            cleanupCts.Token).ConfigureAwait(false);
+        string[] volumeContainerIds = volumeContainerOutput.Split(
+            ['\r', '\n'],
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var creators = new HashSet<(string ProcessId, string StartTime)>();
+        foreach (string containerId in volumeContainerIds)
+        {
+            string inspectOutput = await RunProcessCommandAsync(
+                "docker",
+                $"container inspect {containerId}",
+                cleanupCts.Token).ConfigureAwait(false);
+            using JsonDocument inspect = JsonDocument.Parse(inspectOutput);
+            JsonElement labels = inspect.RootElement[0]
+                .GetProperty("Config")
+                .GetProperty("Labels");
+            if (labels.TryGetProperty(AspireContainerCreatorProcessLabel, out JsonElement creatorProcessElement) &&
+                creatorProcessElement.GetString() is { Length: > 0 } creatorProcessId &&
+                labels.TryGetProperty(AspireContainerCreatorStartTimeLabel, out JsonElement creatorStartTimeElement) &&
+                creatorStartTimeElement.GetString() is { Length: > 0 } creatorStartTime)
+            {
+                _ = creators.Add((creatorProcessId, creatorStartTime));
+            }
+        }
+
+        foreach ((string creatorProcessId, string creatorStartTime) in creators)
+        {
+            string fixtureContainerOutput = await RunProcessCommandAsync(
+                "docker",
+                $"ps --all --quiet --filter label={AspireContainerCreatorProcessLabel}={creatorProcessId} " +
+                $"--filter label={AspireContainerCreatorStartTimeLabel}={creatorStartTime}",
+                cleanupCts.Token).ConfigureAwait(false);
+            string[] fixtureContainerIds = fixtureContainerOutput.Split(
+                ['\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (string containerId in fixtureContainerIds)
+            {
+                _ = await RunProcessCommandAsync(
+                    "docker",
+                    $"container rm --force --volumes {containerId}",
+                    cleanupCts.Token).ConfigureAwait(false);
+            }
         }
     }
 

@@ -6,6 +6,9 @@ kind: Configuration
 metadata:
   name: memories-config
 spec:
+  features:
+    - name: HotReload
+      enabled: false
   secrets:
     scopes:
       - storeName: secretstore
@@ -15,3 +18,7 @@ spec:
           - google-embedding-api-key
           - memories-embedding-client-secret
           - llm-secret
+      - storeName: access-telemetry-secrets
+        defaultAccess: deny
+        allowedSecrets:
+          - access-telemetry-marker-key

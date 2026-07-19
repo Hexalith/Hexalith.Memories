@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 
 using Aspire.Hosting;
@@ -12,48 +14,91 @@ using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Eventing;
 using Aspire.Hosting.Testing;
 
+using Hexalith.Memories.TestHelpers.Process;
+
 using Shouldly;
 
 /// <summary>
-/// Story 15.6 AC #7 — behavioral guard that the DAPR sidecars do not start until the AppHost has
-/// rewritten the local <c>statestore.yaml</c> with the Aspire-allocated Redis endpoint. The previous
-/// implementation of this test was a source-text grep on Program.cs that could pass even when the
-/// runtime ordering was broken (Story 15.6 code review patch).
+/// Behavioral guard that each Dapr sidecar sees complete current-generation Redis and OpenBao files
+/// at its actual <see cref="BeforeResourceStartedEvent"/> boundary.
 /// </summary>
 [Trait("Category", "Integration")]
 public sealed class AppHostComponentFileOrderingTests
 {
     [Fact]
-    public async Task SidecarStart_DoesNotBeginUntilStatestoreYamlIsRewrittenWithAllocatedRedisHost()
+    public async Task SidecarStart_ObservesCurrentRedisAndOpenBaoGenerationFiles()
     {
+        string daprAppId = $"memories-ordering-{Guid.NewGuid():N}";
+        using EnvVarScope daprAppIdScope = EnvVarScope.Set("MEMORIES_DAPR_APP_ID", daprAppId);
+        using EnvVarScope keycloakScope = EnvVarScope.Set("EnableKeycloak", "false");
         IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Hexalith_Memories_AppHost>()
             .ConfigureAwait(true);
 
-        // Capture the statestore.yaml content observed at the moment the memories-dapr sidecar
-        // begins starting. This tap subscribes AFTER Program.cs's production subscriber, so Aspire
-        // dispatches it second; the production subscriber awaits the rewrite TCS before it returns,
-        // so by the time this tap runs the rewrite must be complete and any 127.0.0.1 placeholder
-        // must have been replaced with the allocated Redis host:port.
-        string? capturedStateStoreContent = null;
-        string? capturedSidecarResourceName = null;
+        string ownedDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "hexalith-memories-dapr",
+            $"{daprAppId}-{Process.GetCurrentProcess().Id}");
+        var observations = new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
+        var observationErrors = new ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+        var startedResourceNames = new ConcurrentBag<string>();
 
         builder.Eventing.Subscribe<BeforeResourceStartedEvent>(async (@event, _) =>
         {
-            if (@event.Resource.Name is not ("memories-dapr"
-                or "memories-dapr-cli"
-                or "memories-mcp-dapr"
-                or "memories-mcp-dapr-cli"))
+            startedResourceNames.Add(@event.Resource.Name);
+            string? consumer = @event.Resource.Name switch
+            {
+                "memories" or "memories-dapr" or "memories-dapr-cli" => "server",
+                "memories-access-telemetry" or "memories-access-telemetry-dapr" or
+                    "memories-access-telemetry-dapr-cli" => "lifecycle",
+                "memories-access-telemetry-clock" or "memories-access-telemetry-clock-dapr" or
+                    "memories-access-telemetry-clock-dapr-cli" => "clock",
+                "memories-mcp" or "memories-mcp-dapr" or "memories-mcp-dapr-cli" => "mcp",
+                _ => null,
+            };
+            if (consumer is null)
             {
                 return;
             }
 
-            capturedSidecarResourceName ??= @event.Resource.Name;
-
-            string? statestoreYamlPath = LocateMostRecentStatestoreYaml();
-            if (statestoreYamlPath is not null && File.Exists(statestoreYamlPath))
+            if (consumer == "mcp")
             {
-                capturedStateStoreContent ??= await File.ReadAllTextAsync(statestoreYamlPath).ConfigureAwait(true);
+                observations[consumer] = true;
+                return;
+            }
+
+            try
+            {
+                string runtimeComponent = await File.ReadAllTextAsync(
+                    Path.Combine(ownedDirectory, "secretstore.yaml")).ConfigureAwait(true);
+                string accessComponent = await File.ReadAllTextAsync(
+                    Path.Combine(ownedDirectory, "access-telemetry-secrets.yaml")).ConfigureAwait(true);
+                bool runtimeTokenReady = !string.IsNullOrWhiteSpace(await File.ReadAllTextAsync(
+                    Path.Combine(ownedDirectory, "openbao-runtime.token")).ConfigureAwait(true));
+                bool accessTokenReady = !string.IsNullOrWhiteSpace(await File.ReadAllTextAsync(
+                    Path.Combine(ownedDirectory, "openbao-access-telemetry.token")).ConfigureAwait(true));
+                bool componentsReady = runtimeComponent.Contains("type: secretstores.hashicorp.vault", StringComparison.Ordinal) &&
+                    runtimeComponent.Contains("hexalith/memories/runtime", StringComparison.Ordinal) &&
+                    runtimeComponent.Contains("vaultTokenMountPath", StringComparison.Ordinal) &&
+                    !runtimeComponent.Contains("http://127.0.0.1:1", StringComparison.Ordinal) &&
+                    accessComponent.Contains("type: secretstores.hashicorp.vault", StringComparison.Ordinal) &&
+                    accessComponent.Contains("hexalith/memories/access-telemetry", StringComparison.Ordinal) &&
+                    !accessComponent.Contains("http://127.0.0.1:1", StringComparison.Ordinal);
+                bool redisReady = true;
+                if (consumer is "server" or "lifecycle")
+                {
+                    string stateStore = await File.ReadAllTextAsync(
+                        Path.Combine(ownedDirectory, "statestore.yaml")).ConfigureAwait(true);
+                    redisReady = stateStore.Contains("redisHost", StringComparison.Ordinal) &&
+                        !stateStore.Contains("value: \"127.0.0.1:6379\"", StringComparison.Ordinal);
+                }
+
+                observations[consumer] = componentsReady && runtimeTokenReady && accessTokenReady && redisReady;
+            }
+            catch (Exception exception)
+            {
+                observations[consumer] = false;
+                observationErrors[consumer] = $"{exception.GetType().Name}: {exception.Message}";
             }
         });
 
@@ -61,49 +106,49 @@ public sealed class AppHostComponentFileOrderingTests
         using CancellationTokenSource cts = new(TimeSpan.FromMinutes(3));
 
         await app.StartAsync(cts.Token).ConfigureAwait(true);
-
-        if (capturedSidecarResourceName is not null)
+        for (int attempt = 0; attempt < 600 && observations.Count < 4; attempt++)
         {
-            // Wait for the sidecar resource that actually exists in this DAPR hosting version
-            // (for example memories-dapr-cli). The tap above runs before the sidecar starts, so
-            // by the time that resource is healthy, capturedStateStoreContent reflects the file
-            // state at the start barrier.
-            _ = await app.ResourceNotifications
-                .WaitForResourceAsync(
-                    capturedSidecarResourceName,
-                    e => e.Snapshot.State?.Text is "Running" or "Finished",
-                    cts.Token)
-                .ConfigureAwait(true);
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cts.Token).ConfigureAwait(true);
         }
 
-        capturedStateStoreContent.ShouldNotBeNull(
-            "BeforeResourceStartedEvent did not fire for any DAPR sidecar — the rewrite-ordering invariant cannot be asserted.");
-        capturedStateStoreContent!.ShouldContain(
-            "redisHost",
-            Case.Sensitive,
-            "statestore.yaml should contain the redisHost metadata key once written.");
-        capturedStateStoreContent.ShouldNotContain(
-            "value: \"127.0.0.1:",
-            Case.Sensitive,
-            "The DAPR sidecar started before AppHost rewrote statestore.yaml with the Aspire-allocated Redis endpoint (Story 15.6 AC #2 / #7 regression).");
+        string observationContext = $"Started resources: {string.Join(", ", startedResourceNames.Order())}; " +
+            $"observer errors: {string.Join(" | ", observationErrors.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={pair.Value}"))}";
+        observations.Keys.ShouldContain("server", observationContext);
+        observations.Keys.ShouldContain("lifecycle", observationContext);
+        observations.Keys.ShouldContain("clock", observationContext);
+        observations.Keys.ShouldContain("mcp", observationContext);
+        observations["server"].ShouldBeTrue(observationContext);
+        observations["lifecycle"].ShouldBeTrue(observationContext);
+        observations["clock"].ShouldBeTrue(observationContext);
+
+        _ = await app.ResourceNotifications.WaitForResourceHealthyAsync("memories-mcp", cts.Token)
+            .WaitAsync(TimeSpan.FromMinutes(2), cts.Token).ConfigureAwait(true);
+
+        string program = File.ReadAllText(Path.Combine(
+            ResolveRepoRoot(), "src", "Hexalith.Memories.AppHost", "Program.cs"));
+        int mcpStart = program.IndexOf("IResourceBuilder<ProjectResource> mcp", StringComparison.Ordinal);
+        int mcpEnd = program.IndexOf("_ = mcp;", mcpStart, StringComparison.Ordinal);
+        string mcpComposition = program[mcpStart..mcpEnd];
+        mcpComposition.ShouldNotContain("secretStore");
+        mcpComposition.ShouldNotContain("accessTelemetrySecrets");
+        mcpComposition.ShouldNotContain("openBao");
 
         await app.StopAsync(cts.Token).ConfigureAwait(true);
     }
 
-    private static string? LocateMostRecentStatestoreYaml()
+    private static string ResolveRepoRoot()
     {
-        // AppHost writes component YAMLs under %TEMP%/hexalith-memories-dapr/{daprAppId}-{pid}/.
-        // Locate the most recent statestore.yaml under any PID directory.
-        string root = Path.Combine(Path.GetTempPath(), "hexalith-memories-dapr");
-        if (!Directory.Exists(root))
+        string candidate = AppContext.BaseDirectory;
+        for (int i = 0; i < 8; i++)
         {
-            return null;
+            if (File.Exists(Path.Combine(candidate, "Hexalith.Memories.slnx")))
+            {
+                return candidate;
+            }
+
+            candidate = Path.GetFullPath(Path.Combine(candidate, ".."));
         }
 
-        return Directory.EnumerateFiles(root, "statestore.yaml", SearchOption.AllDirectories)
-            .Select(static path => (Path: path, Modified: File.GetLastWriteTimeUtc(path)))
-            .OrderByDescending(static entry => entry.Modified)
-            .Select(static entry => entry.Path)
-            .FirstOrDefault();
+        return AppContext.BaseDirectory;
     }
 }
