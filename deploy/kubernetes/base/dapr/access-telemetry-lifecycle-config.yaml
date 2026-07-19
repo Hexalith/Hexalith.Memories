@@ -3,6 +3,10 @@ kind: Configuration
 metadata:
   name: memories-access-telemetry-config
 spec:
+  # access-telemetry-store is an actor state store and therefore requires a workload restart.
+  features:
+    - name: HotReload
+      enabled: false
   secrets:
     scopes:
       - storeName: access-telemetry-secrets

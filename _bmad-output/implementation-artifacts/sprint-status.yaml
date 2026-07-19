@@ -1,5 +1,5 @@
 # generated: 2026-07-05T17:40:39+02:00
-# last_updated: 2026-07-18
+# last_updated: 2026-07-19
 # project: memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-07-18
+last_updated: 2026-07-19
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -84,6 +84,7 @@ readiness_accounting:
     - epic-24
     - epic-25
     - epic-26
+    - epic-29
   default_story_inherits_epic_metadata: true
   epic_metadata:
     epic-0: { track: product, phase: MVP, mvpReadiness: included }
@@ -113,6 +114,7 @@ readiness_accounting:
     epic-24: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
     epic-25: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
     epic-26: { track: remediation, phase: audit-remediation, mvpReadiness: excluded }
+    epic-29: { track: operational, phase: operational-readiness, mvpReadiness: excluded }
   story_overrides:
     8-3-data-export: { track: product, phase: Phase2, mvpReadiness: reserved-non-mvp }
     18-4-stable-ingest-contract-with-explicit-idempotency-token-and-atomic-dedup: { releaseSensitive: true }
@@ -144,6 +146,11 @@ story_execution_order:
       - 23-6-directory-batch-scalability
       - 23-7-index-provisioning-ownership
       - 23-8-workflow-config-determinism
+  epic-29:
+    reason: "Story 29.2 consumes the executable OpenBao AppHost topology and isolation contract produced by Story 29.1."
+    order:
+      - 29-1-openbao-backed-apphost-secret-topology
+      - 29-2-provider-neutral-aspire-composition-and-secret-verification
 
 development_status:
 
@@ -420,6 +427,13 @@ development_status:
   epic-28: backlog
   28-1-adopt-owner-approved-eventstore-runtime-identity: backlog
   epic-28-retrospective: optional
+
+  # Epic 29: OpenBao-First Dapr Secret Management
+  # Registered on 2026-07-19 by the approved OpenBao-First Aspire Secret Management course correction.
+  epic-29: backlog
+  29-1-openbao-backed-apphost-secret-topology: backlog
+  29-2-provider-neutral-aspire-composition-and-secret-verification: backlog
+  epic-29-retrospective: optional
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
 action_items:

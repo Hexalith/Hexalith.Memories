@@ -3,6 +3,11 @@ kind: Configuration
 metadata:
   name: memories-config
 spec:
+  # Dapr 1.18 enables HotReload by default, but actor state stores cannot be reloaded in place.
+  # Keep component changes deterministic: apply the manifest, then restart the owning workload.
+  features:
+    - name: HotReload
+      enabled: false
   secrets:
     scopes:
       - storeName: secretstore

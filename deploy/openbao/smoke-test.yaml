@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: hexalith-keys-smoke-test
+  namespace: openbao
+  labels:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/instance: hexalith-keys
+    app.kubernetes.io/component: smoke-test
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 60
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openbao
+        app.kubernetes.io/instance: hexalith-keys
+        app.kubernetes.io/component: smoke-test
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: status
+          image: quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: BAO_ADDR
+              value: https://hexalith-keys.openbao.svc.cluster.local:8200
+            - name: BAO_CACERT
+              value: /openbao/tls/ca.crt
+          command:
+            - /bin/sh
+            - -ec
+            - bao status -format=json
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: tls
+              mountPath: /openbao/tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: openbao-server-tls
+            defaultMode: 288

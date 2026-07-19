@@ -34,13 +34,24 @@ Create the Secret resources below in namespace `hexalith-memories` through the i
 | Secret `app-api-token` | `token` | DAPR sidecar-to-app authentication (`APP_API_TOKEN`) |
 | Secret `dapr-api-token` | `token` | app-to-DAPR authentication (`DAPR_API_TOKEN`) |
 | Secret `registry-credentials` | Kubernetes Docker config JSON | image pulls for Server and MCP |
+| Secret `openbao-runtime-bootstrap` | `token`, `ca.pem` | TLS-verified, read-only OpenBao access for Dapr component `secretstore` |
+| Secret `openbao-access-telemetry-bootstrap` | `token`, `ca.pem` | TLS-verified, read-only OpenBao access for Dapr component `access-telemetry-secrets` |
 | Generated ConfigMap `memories-production-config-*` | `OIDC_AUTHORITY`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_TENANT_CLAIM` | identical Server/MCP OIDC validation contract; patch through Kustomize, not by creating a competing unhashed ConfigMap |
 
 The OIDC authority and issuer must use HTTPS. Server and MCP intentionally consume the same audience and tenant-claim name. MCP forwards the validated inbound bearer unchanged when invoking Server; there is no production `Authentication:ServerUpstream` signing key.
 
 > **Redis/FalkorDB password charset.** The `redis-secret` `password` and `falkordb-password` values are consumed inline — inside the `ConnectionStrings__redis` / `ConnectionStrings__falkordb` connection strings and the backends' `--requirepass` argument. Restrict them to characters that are safe in both contexts: avoid spaces, commas (`,`), equals signs (`=`), and `$`, which would otherwise split the connection string into spurious options or truncate the password passed to `--requirepass`. Prefer URL/shell-safe characters such as alphanumerics plus `-` `_` `.` `~`.
 
+The two Dapr secret stores resolve their values from the internal `hexalith-keys` OpenBao service. Their
+bootstrap Kubernetes Secrets hold only a scoped OpenBao token and CA; secret payloads are stored beneath
+separate runtime and access-telemetry prefixes. Direct pod environment and container-argument consumers
+still require their Kubernetes Secrets because Dapr does not inject environment variables. See
+[Hexalith Keys OpenBao operations](./openbao.md) for the exact boundary, deployment profile, ownership,
+rotation deadlines, and recovery requirements.
+
 The default DAPR trust domain is `public` and the production namespace is `hexalith-memories`. If the cluster uses another trust domain or namespace, patch both the Server DAPR `Configuration` policy and the workload namespace together. Do not widen the deny-by-default `/api/v1/**` policy or add publisher app-ids: `eventstore` is the sole publisher and `memories` is subscriber-only.
+
+The `memories-config` and `memories-access-telemetry-config` DAPR configurations explicitly disable the DAPR 1.18 `HotReload` feature. Both workloads use actor state stores, which DAPR cannot reload in place. After changing `statestore`, `access-telemetry-store`, or another component visible to either workload, apply the reviewed component manifest and run `kubectl rollout restart deployment/memories -n hexalith-memories`; when lifecycle replicas are enabled, also restart `deployment/memories-access-telemetry`. Wait for each rollout and require the structured `/ready` response to return top-level `status: Healthy`. Do not treat the DAPR log message that rejects an actor-state-store hot reload as evidence that a changed component was accepted.
 
 ### Apply and verify
 
@@ -158,6 +169,7 @@ Story 26.1 closes the former aspirate-manifest deferral with the Kustomize base 
 - [Tenant onboarding and offboarding](./tenant-onboarding-offboarding.md)
 - [Upgrade and migration](./upgrade-migration.md)
 - [Monitoring and alerting thresholds](./monitoring-alerting-thresholds.md)
+- [Hexalith Keys OpenBao operations](./openbao.md)
 
 ## References
 

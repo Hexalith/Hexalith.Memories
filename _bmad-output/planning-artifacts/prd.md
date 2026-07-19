@@ -699,7 +699,7 @@ MVP supports Google embedding generation at runtime. Configuration is per-tenant
 | `provider` | MVP: google. Post-MVP: openai / mistral / ollama / custom via provider expansion stories | Tenant config |
 | `model` | Specific model ID | Tenant config |
 | `dimensions` | Vector dimensions (determines Redis Vector index schema) | Derived from provider/model |
-| `apiKey` | Provider API key | .NET User Secrets (local dev), DAPR Secrets API (deployed) |
+| `apiKey` | Provider API key reference | DAPR Secrets API backed by OpenBao |
 | `rateLimitPerMinute` | Throttle ceiling for ingestion pipeline actor | Tenant config |
 
 **Critical constraints:**
@@ -787,9 +787,10 @@ Not all capabilities map to all interfaces. CLI is the superset for operational 
 1. Command-line flags
 2. Environment variables (`HEXALITH_MEMORIES_*`)
 3. Config file (`~/.hexalith/memories.json` or project-local)
-4. DAPR Secrets API (deployed environments — for sensitive values: API tokens, embedding provider keys)
-5. .NET User Secrets (local development — for sensitive values)
-6. DAPR configuration (sidecar discovery, app-id)
+4. DAPR Secrets API backed by OpenBao for embedding, LLM, and application runtime secrets
+5. DAPR configuration for sidecar discovery, app-id, and non-secret component settings
+
+Sensitive values are not resolved through configuration fallback. Product services retrieve them through DAPR secret-store components. Aspire secret parameters or .NET User Secrets may supply protected local bootstrap or one-time seeding inputs, but product services must not read them as an alternative runtime secret provider. Kubernetes Secrets are permitted only where required for OpenBao bootstrap material or direct pod inputs that DAPR cannot provide.
 
 ### Developer Experience & Documentation
 
@@ -968,7 +969,7 @@ Non-.NET external consumers can integrate today via ingress REST API (JSON paylo
 | NFR | Requirement | Verification | Phase |
 |---|---|---|---|
 | **NFR8** | Zero cross-tenant data leakage — no search, ingestion, or graph traversal returns data from another tenant | Automated test suite: search, ingest, graph across all axes with malformed/empty/swapped tenant IDs. Graph-specific test: create identical graph structures in tenant A and B, traverse from tenant A, verify zero nodes from tenant B appear even if edge IDs collide | MVP |
-| **NFR9** | Embedding provider API keys stored in secure secret management (.NET User Secrets for local dev, DAPR Secrets API for deployed) — never in config files or environment variables in production | Code review + secret scanning in CI | Ongoing |
+| **NFR9** | Product services retrieve embedding-provider and other application runtime secrets exclusively through the DAPR Secrets API, backed by OpenBao in Aspire and deployed environments. Secret values are never stored in application configuration or ordinary environment variables. Kubernetes Secrets are restricted to documented, unavoidable OpenBao bootstrap credentials or direct pod inputs outside the DAPR secret-store boundary. | Structural dependency tests, secret scanning, AppHost topology tests, and integration tests proving DAPR reads from OpenBao without secret disclosure | Ongoing |
 | **NFR10** | All inter-service communication authenticated via DAPR API tokens | DAPR configuration validation | Ongoing |
 | **NFR11** | External access authenticated at ingress layer — no unauthenticated access to REST API endpoints | Integration test with unauthenticated requests | P1.5 |
 

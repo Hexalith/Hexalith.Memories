@@ -44,7 +44,9 @@ public sealed class ProductionDeploymentArtifactsTests
         string pubsub = GetDocument(rendered, "Component", "pubsub");
         string conversation = GetDocument(rendered, "Component", "llm-openai");
         string secretStore = GetDocument(rendered, "Component", "secretstore");
+        string accessTelemetrySecretStore = GetDocument(rendered, "Component", "access-telemetry-secrets");
         string configuration = GetDocument(rendered, "Configuration", "memories-config");
+        string accessTelemetryConfiguration = GetDocument(rendered, "Configuration", "memories-access-telemetry-config");
         string productionConfig = GetDocumentByNamePrefix(rendered, "ConfigMap", "memories-production-config-");
 
         server.ShouldContain("dapr.io/app-id: memories");
@@ -100,9 +102,18 @@ public sealed class ProductionDeploymentArtifactsTests
         pubsub.ShouldContain("- memories");
         pubsub.ShouldNotContain("publishAllowedTopics");
 
-        secretStore.ShouldContain("type: secretstores.kubernetes");
+        secretStore.ShouldContain("type: secretstores.hashicorp.vault");
+        secretStore.ShouldContain("value: https://hexalith-keys.openbao.svc.cluster.local:8200");
+        secretStore.ShouldContain("name: openbao-runtime-bootstrap");
+        secretStore.ShouldContain("value: hexalith/memories/runtime");
+        secretStore.ShouldContain("name: skipVerify");
+        secretStore.ShouldContain("value: \"false\"");
         secretStore.ShouldContain("- memories");
         secretStore.ShouldContain("- eventstore");
+
+        accessTelemetrySecretStore.ShouldContain("type: secretstores.hashicorp.vault");
+        accessTelemetrySecretStore.ShouldContain("name: openbao-access-telemetry-bootstrap");
+        accessTelemetrySecretStore.ShouldContain("value: hexalith/memories/access-telemetry");
 
         // Structural ACL contract, not loose substring presence. kustomize re-serializes with sorted keys
         // and block-style lists, so the single operation renders as
@@ -127,12 +138,20 @@ public sealed class ProductionDeploymentArtifactsTests
         configuration.ShouldNotContain("PUT");
         configuration.ShouldNotContain("PATCH");
 
+        foreach (string actorConfiguration in new[] { configuration, accessTelemetryConfiguration })
+        {
+            actorConfiguration.ShouldContain("features:");
+            actorConfiguration.ShouldContain("name: HotReload");
+            actorConfiguration.ShouldContain("enabled: false");
+            (actorConfiguration.Split("name: HotReload").Length - 1).ShouldBe(1);
+        }
+
         GetDocument(rendered, "ServiceAccount", "memories").ShouldContain("name: registry-credentials");
         GetDocument(rendered, "ServiceAccount", "memories-mcp").ShouldContain("name: registry-credentials");
 
         rendered.ShouldNotContain("conversation.echo", Case.Insensitive);
         rendered.ShouldNotContain("Authentication__ServerUpstream", Case.Insensitive);
-        rendered.ShouldNotContain("SigningKey", Case.Insensitive);
+        (server + mcp + productionConfig).ShouldNotContain("SigningKey", Case.Insensitive);
         rendered.ShouldNotContain("kind: Secret");
     }
 
@@ -188,10 +207,55 @@ public sealed class ProductionDeploymentArtifactsTests
         role.ShouldContain("- llm-secret");
         role.ShouldContain("- google-embedding-api-key");
         role.ShouldContain("- memories-embedding-client-secret");
+        role.ShouldContain("- openbao-runtime-bootstrap");
+        role.ShouldContain("- openbao-access-telemetry-bootstrap");
         role.ShouldContain("verbs:");
         role.ShouldContain("- get");
         role.ShouldNotContain("- list");
         role.ShouldNotContain("- watch");
+    }
+
+    [Fact]
+    public void OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal()
+    {
+        string root = GetRepoRoot();
+        string values = Read(root, "deploy/openbao/values.yaml");
+        string openBaoNamespace = Read(root, "deploy/openbao/namespace.yaml");
+        string serviceAccountHardening = Read(root, "deploy/openbao/service-account-hardening.yaml");
+        string smokeTest = Read(root, "deploy/openbao/smoke-test.yaml");
+
+        values.ShouldContain("fullnameOverride: hexalith-keys");
+        values.ShouldContain("tlsDisable: false");
+        values.ShouldContain("2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653");
+        values.ShouldContain("type: ClusterIP");
+        values.ShouldContain("storage \"raft\"");
+        values.ShouldContain("storageClass: openebs-hostpath-retain");
+        (values.Split("size: 10Gi").Length - 1).ShouldBe(2);
+        values.ShouldContain("audit \"file\" \"persistent\"");
+        values.ShouldContain("tls_min_version = \"tls12\"");
+        values.ShouldNotContain("tls_disable = 1");
+        values.ShouldNotContain("enabled: true\n  publishNotReadyAddresses", Case.Insensitive);
+        values.ShouldContain("injector:\n  enabled: false");
+        values.ShouldContain("ui:\n  enabled: false");
+
+        openBaoNamespace.ShouldContain("name: openbao");
+        openBaoNamespace.ShouldContain("pod-security.kubernetes.io/enforce: restricted");
+        openBaoNamespace.ShouldContain("hexalith.io/platform-owner: jpiquot");
+        openBaoNamespace.ShouldContain("hexalith.io/security-reviewer: murat-tea-for-jpiquot");
+
+        serviceAccountHardening.ShouldContain("kind: ServiceAccount");
+        serviceAccountHardening.ShouldContain("name: hexalith-keys");
+        serviceAccountHardening.ShouldContain("automountServiceAccountToken: false");
+
+        smokeTest.ShouldContain("kind: Job");
+        smokeTest.ShouldContain("name: hexalith-keys-smoke-test");
+        smokeTest.ShouldContain("automountServiceAccountToken: false");
+        smokeTest.ShouldContain("runAsNonRoot: true");
+        smokeTest.ShouldContain("allowPrivilegeEscalation: false");
+        smokeTest.ShouldContain("- ALL");
+        smokeTest.ShouldContain("value: https://hexalith-keys.openbao.svc.cluster.local:8200");
+        smokeTest.ShouldContain("value: /openbao/tls/ca.crt");
+        smokeTest.ShouldNotContain("tls-skip-verify");
     }
 
     private static string GetDocument(string rendered, string kind, string name)

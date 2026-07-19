@@ -1,0 +1,177 @@
+# Pinned deployment profile for the official OpenBao Helm chart.
+# Chart: oci://ghcr.io/openbao/charts/openbao, version 0.28.5
+# Chart digest: sha256:1c2e01185430b9bc426da870909fdccfbb4e3e4758f0c6f8cccfbceead4381ff
+global:
+  enabled: true
+  tlsDisable: false
+
+fullnameOverride: hexalith-keys
+
+injector:
+  enabled: false
+
+csi:
+  enabled: false
+
+server:
+  enabled: true
+  image:
+    registry: quay.io
+    repository: openbao/openbao
+    tag: "2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653"
+    pullPolicy: IfNotPresent
+  updateStrategyType: OnDelete
+  logLevel: info
+  logFormat: json
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  authDelegator:
+    enabled: false
+  ingress:
+    enabled: false
+  service:
+    enabled: true
+    type: ClusterIP
+    publishNotReadyAddresses: false
+    active:
+      enabled: false
+    standby:
+      enabled: false
+  networkPolicy:
+    enabled: true
+    ingress:
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: hexalith-memories
+        ports:
+          - port: 8200
+            protocol: TCP
+      - from:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/name: openbao
+                app.kubernetes.io/instance: hexalith-keys
+        ports:
+          - port: 8200
+            protocol: TCP
+          - port: 8201
+            protocol: TCP
+  readinessProbe:
+    enabled: true
+    failureThreshold: 3
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+  livenessProbe:
+    enabled: true
+    path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
+    port: 8200
+    failureThreshold: 3
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 3
+  extraLabels:
+    app.kubernetes.io/part-of: hexalith-memories
+    hexalith.io/platform-owner: jpiquot
+  annotations:
+    hexalith.io/security-reviewer: murat-tea-for-jpiquot
+  configAnnotation: true
+  volumes:
+    - name: openbao-server-tls
+      secret:
+        secretName: openbao-server-tls
+        defaultMode: 288
+    - name: openbao-seal
+      secret:
+        secretName: openbao-seal
+        defaultMode: 288
+  volumeMounts:
+    - name: openbao-server-tls
+      mountPath: /openbao/userconfig/openbao-server-tls
+      readOnly: true
+    - name: openbao-seal
+      mountPath: /openbao/userconfig/openbao-seal
+      readOnly: true
+  dataStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: openebs-hostpath-retain
+    accessMode: ReadWriteOnce
+    labels:
+      app.kubernetes.io/part-of: hexalith-memories
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  auditStorage:
+    enabled: true
+    size: 10Gi
+    storageClass: openebs-hostpath-retain
+    accessMode: ReadWriteOnce
+    labels:
+      app.kubernetes.io/part-of: hexalith-memories
+  standalone:
+    enabled: true
+    config: |
+      ui = false
+      default_lease_ttl = "168h"
+      max_lease_ttl = "8760h"
+
+      listener "tcp" {
+        address = "[::]:8200"
+        cluster_address = "[::]:8201"
+        tls_disable = 0
+        tls_cert_file = "/openbao/userconfig/openbao-server-tls/tls.crt"
+        tls_key_file = "/openbao/userconfig/openbao-server-tls/tls.key"
+        tls_min_version = "tls12"
+      }
+
+      storage "raft" {
+        path = "/openbao/data"
+        node_id = "hexalith-keys-0"
+      }
+
+      seal "static" {
+        current_key_id = "kubernetes-openbao-seal-v1"
+        current_key = "file:///openbao/userconfig/openbao-seal/current.key"
+      }
+
+      audit "file" "persistent" {
+        description = "Persistent JSON audit trail"
+        options {
+          file_path = "/openbao/audit/openbao-audit.json"
+          format = "json"
+          hmac_accessor = "true"
+          mode = "0600"
+        }
+      }
+  ha:
+    enabled: false
+  serviceAccount:
+    create: true
+    createSecret: false
+    serviceDiscovery:
+      enabled: false
+  statefulSet:
+    securityContext:
+      pod:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      container:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+
+ui:
+  enabled: false

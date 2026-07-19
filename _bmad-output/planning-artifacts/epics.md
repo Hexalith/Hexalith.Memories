@@ -886,8 +886,13 @@ So that memory units can be searched by semantic similarity.
 
 **Given** the embedding API key is configured
 **When** the system accesses it
-**Then** it reads from DAPR Secrets API (deployed) or .NET User Secrets (local dev)
-**And** the key is never stored in config files or environment variables
+**Then** it retrieves the value through DAPR Secrets API component `secretstore`
+**And** the component is backed by OpenBao in Aspire and deployed topologies
+**And** tenant configuration contains only the secret name
+**And** product code has no direct dependency on OpenBao, .NET User Secrets, Kubernetes Secrets, or another provider-specific secret API
+**And** the secret value is never written to configuration, ordinary environment variables, logs, traces, or API responses
+
+**Supersession note:** Epic 29 owns implementation and observable verification of this strengthened secret-provider contract. Story 1.4 remains historical completed work and is not reopened.
 
 **Validation Evidence Required:** Completion evidence must include embedding contract output with provider/model/dimension metadata and secret-redaction verification. Pure internal implementation completion is not sufficient.
 
@@ -1895,7 +1900,10 @@ So that I have a single tool for all Memories operations across any environment.
 
 **Given** the CLI needs to connect to the Memories Server
 **When** I configure the endpoint
-**Then** configuration layering is respected (precedence high to low): command-line flags → environment variables (`HEXALITH_MEMORIES_*`) → config file (`~/.hexalith/memories.json` or project-local) → DAPR Secrets API → .NET User Secrets → DAPR configuration (NFR23)
+**Then** non-secret CLI configuration layering is respected (precedence high to low): command-line flags → environment variables (`HEXALITH_MEMORIES_*`) → config file (`~/.hexalith/memories.json` or project-local) → DAPR configuration (NFR23)
+**And** application and provider secrets are not CLI configuration
+**And** those secrets remain behind the Server's DAPR secret-store boundary
+**And** credentials required directly by the CLI use the protected mechanism defined by the selected execution environment and are never persisted in the CLI config file
 
 **Given** the CLI is configured for different environments
 **When** I target localhost (local dev), docker service name (container), or remote URL (ingress)
@@ -3300,6 +3308,8 @@ So that the AppHost boot orchestration, ServiceDefaults health/telemetry surface
 **Given** the production `deploy/dapr/components/statestore.yaml`, `secretstore.yaml`, and `conversation-llm.yaml` templates ship to Kubernetes deployments,
 **When** the implementation lands,
 **Then** the statestore template uses env-var interpolation for `redisPassword`, the secretstore template uses an absolute path with a documented volume mount, and the conversation component uses the DAPR Conversation API's documented `cacheTTL` metadata key.
+
+**Supersession note:** D31 and Epic 29 supersede Story 15.6 only for the `secretstore.yaml` provider decision. A secret-store template used by an Aspire or deployed runtime must use an OpenBao-backed DAPR component rather than `secretstores.local.file` or `secretstores.kubernetes`. Kubernetes Secrets may supply only documented bootstrap tokens/CA material or unavoidable direct pod inputs. The statestore and conversation-component requirements remain unchanged, and Story 15.6 remains historical completed work.
 
 **Given** Story 1.1's spec calls for `AppPort=5000` in `WithDaprSidecar()` but the current code intentionally omits it for Aspire-Testing port randomization,
 **When** this story runs,
@@ -4877,3 +4887,69 @@ memory result while duplicate replay is ignored.
 **When** it cannot be resolved without changing the zero-code ingestion contract or topology,
 **Then** this story fails closed and routes that behavior change to a separately approved
 compatibility story rather than expanding silently.
+
+## Epic 29: OpenBao-First Dapr Secret Management
+
+Aspire-hosted services resolve application secrets exclusively through Dapr secret-store components
+backed by OpenBao. Kubernetes Secrets remain permitted only for unavoidable bootstrap credentials or
+direct pod inputs that Dapr cannot inject.
+
+**Lifecycle label:** Operational Readiness / Secret Management Hardening.
+
+**Driven by:** Sprint Change Proposal 2026-07-19 — OpenBao-First Aspire Secret Management.
+
+**Sequencing gate:** Story 29.1 establishes the AppHost OpenBao topology. Story 29.2 consumes that topology
+and must not claim provider-neutral composition or Dapr access verification before Story 29.1's resource,
+bootstrap, isolation, and readiness contract is executable.
+
+### Story 29.1: OpenBao-Backed AppHost Secret Topology
+
+As a developer and operator,
+I want the Aspire AppHost to provision and initialize OpenBao-backed Dapr secret stores,
+So that local and deployed application code use the same provider-neutral secret-access boundary.
+
+**Acceptance Criteria:**
+
+**Given** the Aspire AppHost starts the Memories topology,
+**When** secret infrastructure is composed,
+**Then** AppHost adds a pinned, health-checked OpenBao resource with a safe development profile that cannot silently become a production deployment
+**And** `secretstore` and `access-telemetry-secrets` use `secretstores.hashicorp.vault`
+**And** the stores use separate least-privilege policies and secret prefixes.
+
+**Given** a service consumes an application secret,
+**When** its Dapr sidecar starts,
+**Then** it waits for OpenBao initialization and receives only its required Dapr component
+**And** application secret payloads are not stored in local-file or Kubernetes secret-store components.
+
+**Given** OpenBao requires bootstrap or one-time seeding material,
+**When** AppHost supplies it,
+**Then** local bootstrap uses Aspire secret parameters or protected temporary files
+**And** Kubernetes Secrets are allowed only for required deployed bootstrap tokens and CA certificates or direct pod inputs Dapr cannot provide
+**And** secrets never appear in source control, configuration, logs, diagnostics, or Aspire model output.
+
+**Given** the OpenBao-backed topology is running,
+**When** integration verification executes,
+**Then** successful Dapr secret reads, cross-prefix denial, health, and restart recovery are proven without disclosing secret values.
+
+### Story 29.2: Provider-Neutral Aspire Composition and Secret Verification
+
+As an Aspire integration consumer,
+I want the reusable Memories Aspire APIs to accept externally provisioned Dapr secret-store resources,
+So that consumers can use OpenBao without product code depending on OpenBao.
+
+**Acceptance Criteria:**
+
+**Given** a consumer composes Memories through `Hexalith.Memories.Aspire`,
+**When** it supplies a Dapr secret-store resource,
+**Then** reusable Aspire extensions do not hard-code `secretstores.local.file`
+**And** Server, access-telemetry lifecycle, and clock sidecars reference their required secret-store components.
+
+**Given** embedding, lifecycle bootstrap, or clock code requires a secret,
+**When** it resolves the value,
+**Then** it uses `DaprClient.GetSecretAsync`
+**And** product projects contain no OpenBao SDK, HTTP client, endpoint, or provider credentials.
+
+**Given** standalone Dapr templates, tests, and operations documentation are reviewed,
+**When** Story 29.2 completes,
+**Then** they follow the OpenBao-first rule and document every remaining Kubernetes Secret exception
+**And** automated topology and integration tests prove both Dapr secret components resolve values from OpenBao without exposing secret values.

@@ -256,7 +256,7 @@ The Memories Server is a **trusted component** with access to all tenant embeddi
 - **Conversation API:** DAPR AI (`Dapr.AI`) — provider-agnostic LLM abstraction for AI-powered enrichment (metadata extraction, content classification, causal relationship inference). Component YAML per provider. PII scrubbing, response caching, tool calling built-in. Alpha status — suppress `DAPR_CONVERSATION` warning.
 - **State store:** Redis with `actorStateStore: "true"` (shared by workflows + actors)
 - **Pub/sub:** Redis Streams (event ingestion — Phase 1.5, but component configured from start)
-- **Secrets:** Local file (dev) / DAPR Secrets API (deployed) — manages both embedding API keys and LLM provider keys
+- **Secrets:** DAPR Secrets API in Aspire and deployed environments, backed by OpenBao through `secretstores.hashicorp.vault`. Separate `secretstore` and `access-telemetry-secrets` components isolate runtime and access-telemetry prefixes. Product code depends only on DAPR and never on OpenBao directly.
 - **Service invocation:** Internal programmatic API — C# ↔ Python (AI Agent), Phase 1.5: MCP → Server
 
 **Polyglot services (via DAPR service invocation):**
@@ -602,6 +602,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | D28 | Polyglot services via DAPR service invocation | When a Python/other-language library is the best fit, create a service in that language. DAPR service invocation makes the calling language invisible. Aspire AppHost orchestrates all services regardless of language. | MVP |
 | D29 | Redis physical isolation target | Per-tenant ACL users plus tenant-scoped backend resolution; prefixes/hash tags/logical DBs are placement aids, not the security boundary | Operational readiness |
 | D30 | No infrastructure dependency in product code | Product projects (`Server`, `Cli`, `Mcp`, `Web`, `Client.Rest`) reach infrastructure only via Dapr building blocks or Aspire-injected connections/config; direct infra clients and endpoint construction live only in boundary projects (`AppHost`, `Aspire`, `ServiceDefaults`, `Redis`, `EventStore`). Sanctioned exceptions are enumerated below. See ADR-IDA-001. | Operational readiness |
+| D31 | OpenBao-first DAPR secret provider | Application runtime secrets are resolved through DAPR secret-store components backed by OpenBao. Local-file and Kubernetes secret stores are not application-secret providers. Aspire secret parameters or protected files may bootstrap and seed local OpenBao. Kubernetes Secrets are permitted only for required OpenBao tokens/CA material or direct pod inputs that DAPR cannot inject; every exception must be documented and tested. | Operational readiness |
 
 #### D30 — No infrastructure dependency in product code (sanctioned exceptions)
 
@@ -626,6 +627,35 @@ live only in the boundary projects.
 **Keyed connection construction** (F5) lives in `ServiceDefaults.AddKeyedRedisConnections`; product code
 only consumes the keyed `IConnectionMultiplexer` services. Embedding provider default endpoints (F1/F2)
 and the CLI endpoint/OTLP defaults (F3/F4) are config-sourced with overridable literal fallbacks.
+
+#### D31 — OpenBao-first DAPR secret provider
+
+**Invariant.** Product services retrieve application secrets exclusively through DAPR Secrets API. They
+do not use an OpenBao SDK, construct an OpenBao endpoint, read Kubernetes Secrets, or resolve application
+secrets directly from .NET User Secrets.
+
+**Component boundaries.**
+
+| DAPR component | OpenBao prefix | Consumers |
+|---|---|---|
+| `secretstore` | `secret/hexalith/memories/runtime` | Memories Server and components resolving embedding or LLM secrets |
+| `access-telemetry-secrets` | `secret/hexalith/memories/access-telemetry` | Memories Server, access-telemetry lifecycle, and clock |
+
+Each component uses a distinct read-only policy. Cross-prefix reads fail closed.
+
+**Aspire topology.** The AppHost owns the OpenBao resource, health and initialization sequencing, DAPR
+component generation, protected bootstrap inputs, and secret seeding. Consumers wait for initialization
+and reference only their required DAPR components. A development-mode OpenBao profile must be explicit
+and must not silently publish as a production topology.
+
+**Bootstrap exception.** The DAPR component must authenticate before it can read OpenBao. Protected Aspire
+parameters or temporary credential files are allowed locally. In Kubernetes, narrowly scoped Secrets may
+hold only required OpenBao bootstrap tokens and CA certificates. Direct pod inputs may remain Kubernetes
+Secrets only where DAPR cannot supply them; migrating those inputs requires a separately approved Agent
+Injector or CSI design.
+
+**Security evidence.** Verification must prove successful DAPR reads, cross-prefix denial, restart
+recovery, absence of provider-specific product dependencies, and secret-safe logs and diagnostics.
 
 #### ADR-IDA-001 — EventStore store substrate: Dapr state vs direct Redis
 
