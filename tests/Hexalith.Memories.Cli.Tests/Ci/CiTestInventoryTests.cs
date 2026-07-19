@@ -452,6 +452,10 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("required-server-restored");
         verifier.ShouldContain("required-server-mcp-restored");
         verifier.ShouldContain("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }");
+        verifier.ShouldContain("wget -S -O- -T 6 --header=\"dapr-api-token: ${APP_API_TOKEN}\"");
+        verifier.ShouldContain("wgetExit=$?");
+        verifier.ShouldContain("dapr-api-token: %s");
+        verifier.ShouldContain("Connection: close\\r\\ndapr-api-token: %s\\r\\n\\r\\n");
         verifier.ShouldContain("Write-ClusterDiagnostics");
         verifier.ShouldContain("describe-pods.txt");
         verifier.ShouldContain("events.txt");

@@ -209,9 +209,17 @@ function Get-RunningPodName {
 function Get-HealthResponse {
     param([Parameter(Mandatory)][string]$Pod, [Parameter(Mandatory)][string]$Container)
 
-    # Capture the HTTP status line as well as the aggregate document. Keeping stdin open beyond
-    # the longest backend health-check timeout makes BusyBox netcat reliable for 503 responses.
-    $probeCommand = '{ printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"; sleep 5; } | nc -w 6 127.0.0.1 8080'
+    # Use the same image-native client and application-token header as the Kubernetes probes.
+    # BusyBox wget intentionally omits the response body for HTTP errors, so retain the raw
+    # authenticated response as a fallback for expected 503 fault-injection states.
+    $probeCommand = @'
+set +e
+wget -S -O- -T 6 --header="dapr-api-token: ${APP_API_TOKEN}" http://127.0.0.1:8080/ready
+wgetExit=$?
+if [ "$wgetExit" -ne 0 ]; then
+    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 5; } | nc -w 6 127.0.0.1 8080
+fi
+'@
     $output = @(& kubectl exec -n $namespace $Pod -c $Container -- /bin/sh -ec $probeCommand 2>&1)
     $text = $output -join [Environment]::NewLine
     $statusMatch = [regex]::Match($text, 'HTTP/\d(?:\.\d)?\s+(?<status>\d{3})')

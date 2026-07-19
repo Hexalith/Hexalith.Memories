@@ -68,7 +68,9 @@ read_inventory() {
     return 1
   fi
 
-  grep -vE '^[[:space:]]*(#|$)' "$inventory_path"
+  # Most repository text is intentionally materialized as CRLF in CI. Normalize only the
+  # terminal carriage return so project paths passed to dotnet remain exact on both platforms.
+  sed 's/\r$//' "$inventory_path" | grep -vE '^[[:space:]]*(#|$)'
 }
 
 # Resolve the inventory file for the current filter. Filters that don't match any case fall

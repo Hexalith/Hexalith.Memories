@@ -72,6 +72,16 @@ class ProductionDeploymentEvidenceTests(unittest.TestCase):
         self.assertIn("required-server-restored", verifier)
         self.assertIn("required-server-mcp-restored", verifier)
 
+    def test_health_probe_uses_authenticated_image_native_client_and_preserves_fault_body(self) -> None:
+        verifier = VERIFIER.read_text(encoding="utf-8-sig")
+
+        self.assertIn('wget -S -O- -T 6 --header="dapr-api-token: ${APP_API_TOKEN}"', verifier)
+        self.assertIn("wgetExit=$?", verifier)
+        self.assertIn("dapr-api-token: %s", verifier)
+        self.assertIn("Connection: close\\r\\ndapr-api-token: %s\\r\\n\\r\\n", verifier)
+        self.assertIn("nc -w 6 127.0.0.1 8080", verifier)
+        self.assertIn("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }", verifier)
+
     def test_complete_success_and_failure_evidence_pass(self) -> None:
         for status in ("succeeded", "failed"):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as temp:

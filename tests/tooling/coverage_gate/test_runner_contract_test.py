@@ -78,6 +78,7 @@ class TestRunnerContractTests(unittest.TestCase):
                 self.assertEqual(0, result.returncode, result.stdout + result.stderr)
                 arguments = json.loads(log_path.read_text(encoding="utf-8"))
                 self.assertEqual("test", arguments[0])
+                self.assertTrue(all("\r" not in argument for argument in arguments))
                 self.assertIn(BENCHMARK_PROJECT, arguments)
                 self.assertIn("--no-build", arguments)
                 self.assertNotIn("--filter", arguments)
