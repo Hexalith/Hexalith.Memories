@@ -170,9 +170,23 @@ public sealed class Epic17ConformanceHardeningTests
 
         using Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Could not start dotnet msbuild to evaluate Directory.Packages.props.");
-        string output = process.StandardOutput.ReadToEnd();
-        string error = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+
+        // Drain both pipes concurrently before waiting for exit: reading them sequentially with an
+        // untimed WaitForExit deadlocks as soon as msbuild fills the unread pipe's buffer (worst when
+        // it fails verbosely on stderr), which would stall the whole test run.
+        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> errorTask = process.StandardError.ReadToEndAsync();
+
+        bool exited = process.WaitForExit(120_000);
+        if (!exited)
+        {
+            process.Kill(entireProcessTree: true);
+        }
+
+        exited.ShouldBeTrue("dotnet msbuild did not finish evaluating Directory.Packages.props within 120 seconds; its process tree was killed.");
+
+        string output = outputTask.GetAwaiter().GetResult();
+        string error = errorTask.GetAwaiter().GetResult();
         process.ExitCode.ShouldBe(0, $"Directory.Packages.props evaluation failed:{Environment.NewLine}{error}");
 
         using JsonDocument evaluation = JsonDocument.Parse(output);
