@@ -83,6 +83,45 @@ class TestRunnerContractTests(unittest.TestCase):
                 self.assertIn("--no-build", arguments)
                 self.assertNotIn("--filter", arguments)
 
+    def test_bash_runner_normalizes_crlf_inventory_records(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            tools_dir = root / "tools"
+            tools_dir.mkdir()
+            runner = tools_dir / "test.sh"
+            shutil.copy2(REPO_ROOT / "tools" / "test.sh", runner)
+            os.chmod(runner, 0o755)
+            (tools_dir / "test-projects.benchmark.txt").write_bytes(
+                b"# benchmark projects\r\n"
+                + BENCHMARK_PROJECT.encode("utf-8")
+                + b"\r\n"
+            )
+            fake_root = root / "fake-dotnet"
+            fake_root.mkdir()
+            env, log_path = self._fake_dotnet_environment(fake_root)
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(runner),
+                    "--filter",
+                    "Category=Benchmark",
+                    "--configuration",
+                    "Release",
+                    "--no-build",
+                ],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            arguments = json.loads(log_path.read_text(encoding="utf-8"))
+            self.assertIn(BENCHMARK_PROJECT, arguments)
+            self.assertTrue(all("\r" not in argument for argument in arguments))
+
     def test_non_exact_benchmark_expression_preserves_trait_filter(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

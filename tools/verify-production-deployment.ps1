@@ -56,7 +56,8 @@ Get-ChildItem -LiteralPath $evidencePath -File -ErrorAction SilentlyContinue |
     Where-Object {
         $_.Name -in $ownedEvidenceNames -or
         $_.Name -like '*-current.log' -or
-        $_.Name -like '*-previous.log'
+        $_.Name -like '*-previous.log' -or
+        $_.Name -like 'health-*.json'
     } |
     Remove-Item -Force
 
@@ -214,30 +215,113 @@ function Get-HealthResponse {
     # authenticated response as a fallback for expected 503 fault-injection states.
     $probeCommand = @'
 set +e
-wget -S -O- -T 6 --header="dapr-api-token: ${APP_API_TOKEN}" http://127.0.0.1:8080/ready
+wgetOutput="$(wget -S -O- -T 6 --header="dapr-api-token: ${APP_API_TOKEN}" http://127.0.0.1:8080/ready 2>&1)"
 wgetExit=$?
+printf '%s\n' "$wgetOutput"
 if [ "$wgetExit" -ne 0 ]; then
-    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 5; } | nc -w 6 127.0.0.1 8080
+    if printf '%s\n' "$wgetOutput" | grep -Eq 'HTTP/[0-9.]+ 503([[:space:]]|$)'; then
+        { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 5; } | nc -w 6 127.0.0.1 8080
+    else
+        exit "$wgetExit"
+    fi
 fi
 '@
+    # The repository's checkout policy materializes this PowerShell file as CRLF. The
+    # container shell must receive LF-only commands or BusyBox reports a syntax error.
+    $probeCommand = $probeCommand.Replace("`r", '')
     $output = @(& kubectl exec -n $namespace $Pod -c $Container -- /bin/sh -ec $probeCommand 2>&1)
-    $text = $output -join [Environment]::NewLine
-    $statusMatch = [regex]::Match($text, 'HTTP/\d(?:\.\d)?\s+(?<status>\d{3})')
-    $statusCode = if ($statusMatch.Success) { [int]$statusMatch.Groups['status'].Value } else { $null }
-    $start = $text.IndexOf('{')
-    $end = $text.LastIndexOf('}')
-    $body = if ($start -ge 0 -and $end -ge $start) {
-        $text.Substring($start, $end - $start + 1)
+    $text = Protect-EvidenceText ($output -join [Environment]::NewLine)
+    $statusMatches = [regex]::Matches($text, 'HTTP/\d(?:\.\d)?\s+(?<status>\d{3})')
+    $statusCode = if ($statusMatches.Count -gt 0) {
+        [int]$statusMatches[$statusMatches.Count - 1].Groups['status'].Value
     }
     else {
-        $text
+        $null
     }
+    $body = Get-HealthJsonBody $text
 
     return [pscustomobject]@{
         StatusCode = $statusCode
         Body = $body
         Raw = $text
     }
+}
+
+function Get-HealthJsonBody {
+    param([AllowEmptyString()][string]$Text)
+
+    # kubectl combines wget diagnostics, response bodies, and fallback output. Extract the
+    # last balanced JSON object that has the aggregate-health status property instead of
+    # accepting arbitrary braces from a diagnostic message.
+    $depth = 0
+    $start = -1
+    $insideString = $false
+    $escaped = $false
+    $lastValidBody = $null
+    for ($index = 0; $index -lt $Text.Length; $index++) {
+        $character = $Text[$index]
+        if ($insideString) {
+            if ($escaped) {
+                $escaped = $false
+            }
+            elseif ($character -eq '\') {
+                $escaped = $true
+            }
+            elseif ($character -eq '"') {
+                $insideString = $false
+            }
+            continue
+        }
+
+        if ($character -eq '"') {
+            $insideString = $true
+        }
+        elseif ($character -eq '{') {
+            if ($depth -eq 0) {
+                $start = $index
+            }
+            $depth++
+        }
+        elseif ($character -eq '}' -and $depth -gt 0) {
+            $depth--
+            if ($depth -eq 0 -and $start -ge 0) {
+                $candidate = $Text.Substring($start, $index - $start + 1)
+                try {
+                    $parsed = $candidate | ConvertFrom-Json -ErrorAction Stop
+                    if ($null -ne $parsed.PSObject.Properties['status']) {
+                        $lastValidBody = $candidate
+                    }
+                }
+                catch {
+                    # Continue scanning; a later response body may still be valid.
+                }
+                $start = -1
+            }
+        }
+    }
+
+    if ($null -ne $lastValidBody) {
+        return $lastValidBody
+    }
+
+    return $Text
+}
+
+function Save-HealthResponseEvidence {
+    param(
+        [Parameter(Mandatory)][string]$Stage,
+        [Nullable[int]]$StatusCode,
+        [AllowEmptyString()][string]$Body
+    )
+
+    $safeStage = $Stage -replace '[^0-9A-Za-z_.-]', '_'
+    $evidence = [ordered]@{
+        schemaVersion = 1
+        stage = $Stage
+        statusCode = $StatusCode
+        body = Protect-EvidenceText $Body
+    }
+    $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidencePath "health-$safeStage.json") -Encoding utf8
 }
 
 function Wait-AggregateStatus {
@@ -283,6 +367,7 @@ function Wait-AggregateStatus {
             $response = Get-HealthResponse $pod $Container
             $lastBody = $response.Body
             $lastStatusCode = $response.StatusCode
+            Save-HealthResponseEvidence -Stage $Stage -StatusCode $lastStatusCode -Body $lastBody
             $health = $null
             try {
                 $health = $lastBody | ConvertFrom-Json

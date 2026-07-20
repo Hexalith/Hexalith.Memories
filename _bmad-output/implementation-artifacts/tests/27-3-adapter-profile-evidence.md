@@ -1,6 +1,6 @@
 # Story 27.3 C1 Adapter Profile Evidence
 
-- captured_utc: `2026-07-19T21:09:33.174595+00:00`
+- captured_utc: `2026-07-19T21:32:35.497164+00:00`
 - checkpoint: `adapter-profile`
 - status: `rejected`
 - rejection_reason: lifecycle deployment is disabled; Production writes remain fail-closed

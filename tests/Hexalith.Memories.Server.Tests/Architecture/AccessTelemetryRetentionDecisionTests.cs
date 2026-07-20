@@ -47,7 +47,8 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         "Rollback and Transition",
         "Assurance Boundary",
         "Story 27.2 Implementation Handoff",
-        "Story 27.3 Verification and Operations Handoff",
+        "Stories 27.3 and 27.4 Verification and Operations Handoff",
+        "Production Adapter Qualification — PG-AZ-1",
     ];
 
     [Fact]
@@ -68,7 +69,7 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
             "no application dependency on a specific state-store product or container orchestrator",
             Case.Sensitive);
         GetRow(metadata, "Implementation gate")[1].ShouldContain(
-            "Stories 27.2 and 27.3 are unblocked to implement and verify this accepted contract",
+            "Story 27.3 qualifies the exact Production adapter",
             Case.Sensitive);
 
         adr.GetTableHeader("Options Evaluated").ShouldBe(
@@ -532,12 +533,13 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         implementationHandoff.ShouldContain("Alpha components are allowed", Case.Sensitive);
         implementationHandoff.ShouldContain("named Story 20.2/24.3 privacy negatives", Case.Sensitive);
 
-        string verificationHandoff = NormalizeWhitespace(adr.GetSection("Story 27.3 Verification and Operations Handoff"));
+        string verificationHandoff = NormalizeWhitespace(adr.GetSection("Stories 27.3 and 27.4 Verification and Operations Handoff"));
+        verificationHandoff.ShouldContain("Story 27.3 owns only exact Production-adapter qualification", Case.Sensitive);
+        verificationHandoff.ShouldContain("Story 27.4 remains backlog", Case.Sensitive);
         verificationHandoff.ShouldContain("no direct backend dependency", Case.Sensitive);
-        verificationHandoff.ShouldContain("zero acknowledged-record loss claim", Case.Sensitive);
-        verificationHandoff.ShouldContain("cohort-attributable physical-reclamation evidence", Case.Sensitive);
+        verificationHandoff.ShouldContain("physical reclamation", Case.Sensitive);
         verificationHandoff.ShouldContain("business readiness must stay available", Case.Sensitive);
-        verificationHandoff.ShouldContain("container-service-neutral runbook", Case.Sensitive);
+        verificationHandoff.ShouldContain("container-service-neutral lifecycle runbook", Case.Sensitive);
         verificationHandoff.ShouldContain("A41 deferred entry and action close-out", Case.Sensitive);
 
         NormalizeWhitespace(telemetry.GetSection("Retention lifecycle status")).ShouldContain(
@@ -547,6 +549,38 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         ContractDocumentGuard.FindLeakedToolCallMarkup(adrMarkdown).ShouldBeEmpty();
         ContractDocumentGuard.FindLeakedToolCallMarkup(architectureMarkdown).ShouldBeEmpty();
         ContractDocumentGuard.FindLeakedToolCallMarkup(telemetryMarkdown).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Adr_ProductionAdapterQualification_PinsExactProfileAndFailClosedApprovalGate()
+    {
+        MarkdownContractDocument adr = ReadDocument(AdrRelativePath);
+        IReadOnlyList<IReadOnlyList<string>> profile = adr.GetTableRows("Exact qualification profile");
+        IReadOnlyList<IReadOnlyList<string>> images = adr.GetTableRows("Required immutable image set");
+
+        AssertCellCounts(profile, 2, "Exact qualification profile");
+        GetRow(profile, "Profile ID")[1].ShouldBe(
+            "`postgresql-v2-dapr-1.18.1-azure-pg17.10-zrha-d32ds-v5-4095gib-40kiops-v1`");
+        GetRow(profile, "Dapr component")[1].ShouldContain("`type: state.postgresql`", Case.Sensitive);
+        GetRow(profile, "Backend")[1].ShouldBe("Azure Database for PostgreSQL Flexible Server 17.10");
+        GetRow(profile, "Storage")[1].ShouldContain("4,396,972,769,280 usable bytes", Case.Sensitive);
+        GetRow(profile, "Dapr control plane")[1].ShouldContain("anti-affinity across three zones", Case.Sensitive);
+        GetRow(profile, "Physical reclamation")[1].ShouldContain("within 24 hours", Case.Sensitive);
+
+        AssertCellCounts(images, 2, "Required immutable image set");
+        GetRow(images, "Dapr sidecar")[1].ShouldBe(
+            "`ghcr.io/dapr/daprd@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8`");
+        GetRow(images, "Lifecycle service")[1].ShouldContain("**Missing and blocking:**", Case.Sensitive);
+        GetRow(images, "Clock service")[1].ShouldContain("**Missing and blocking:**", Case.Sensitive);
+
+        string qualification = NormalizeWhitespace(adr.GetSection("Production Adapter Qualification — PG-AZ-1"));
+        qualification.ShouldContain("Maximum steady-state admission (70%) | 3,077,880,938,496", Case.Sensitive);
+        qualification.ShouldContain("Reclamation critical boundary (80%) | 3,517,578,215,424", Case.Sensitive);
+        qualification.ShouldContain("Lifecycle Unhealthy boundary (90%) | 3,957,275,492,352", Case.Sensitive);
+        qualification.ShouldContain("loss of the Azure PostgreSQL primary compute and its availability zone", Case.Sensitive);
+        qualification.ShouldContain("neither may be inferred from the other", Case.Sensitive);
+        qualification.ShouldContain("is rejected for C1", Case.Sensitive);
+        qualification.ShouldContain("remain Dapr-only", Case.Sensitive);
     }
 
     private static void AssertCellCounts(

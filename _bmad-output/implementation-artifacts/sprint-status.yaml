@@ -414,10 +414,13 @@ development_status:
   epic-26-retrospective: done
 
   # Epic 27: Access Telemetry Lifecycle Hardening
+  # Story 27.3/27.4 split approved by Administrator on 2026-07-20 under
+  # sprint-change-proposal-2026-07-19-story-27-3-c1-production-adapter.md.
   epic-27: in-progress
   27-1-access-telemetry-retention-ownership-decision: done
   27-2-bounded-retention-ttl-and-purge-implementation: done
-  27-3-retention-verification-operations-runbook-and-a41-close-out: in-progress
+  27-3-production-adapter-and-deployment-profile: in-progress
+  27-4-retention-verification-operations-runbook-and-a41-close-out: backlog
   epic-27-retrospective: optional
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption

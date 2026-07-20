@@ -2,7 +2,7 @@
 title: 'Fix CI test inventory and production rollout probes'
 type: 'bugfix'
 created: '2026-07-19'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '1a557ca3c7a50c7fe0db2dedfd1af2d3b21fe83b'
 context:
@@ -70,3 +70,38 @@ The repository deliberately stores text as LF but materializes most text as CRLF
 - `dotnet build tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --configuration Release -p:NuGetAudit=false -p:MinVerVersionOverride=0.0.264` -- expected: zero warnings and errors.
 - `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj --configuration Release --no-build --filter FullyQualifiedName~CiTestInventoryTests` -- expected: CI inventory contracts pass, or invoke the built xUnit v3 assembly directly if project filtering is blocked by Microsoft.Testing.Platform.
 - `git diff --check` -- expected: no whitespace or conflict-marker errors.
+
+## Suggested Review Order
+
+**Authenticated health probing and evidence**
+
+- The verifier now follows the deployed authenticated HTTP contract and preserves expected fault responses.
+  [`verify-production-deployment.ps1:210`](../../tools/verify-production-deployment.ps1#L210)
+
+- CRLF normalization keeps the shell payload executable in CI's materialized checkout.
+  [`verify-production-deployment.ps1:229`](../../tools/verify-production-deployment.ps1#L229)
+
+- Per-stage status and body snapshots make successful and fault-injection observations diagnosable.
+  [`verify-production-deployment.ps1:310`](../../tools/verify-production-deployment.ps1#L310)
+
+- Evidence validation requires durable authenticated 200 and 503 health observations.
+  [`validate-production-deployment-evidence.ps1:50`](../../tools/validate-production-deployment-evidence.ps1#L50)
+
+- The deployment manifest remains the source of truth for the application-token health header.
+  [`server-deployment.yaml:135`](../../deploy/kubernetes/base/server-deployment.yaml#L135)
+
+**Inventory argument normalization**
+
+- Only terminal carriage returns are removed, leaving inventories, filters, and result validation unchanged.
+  [`test.sh:62`](../../tools/test.sh#L62)
+
+- An explicit CRLF fixture proves Bash passes exact project paths to dotnet.
+  [`test_runner_contract_test.py:86`](../../tests/tooling/coverage_gate/test_runner_contract_test.py#L86)
+
+**Regression contracts**
+
+- Static verifier contracts guard authentication, 5xx fallback, redaction, and evidence behavior.
+  [`production_deployment_evidence_test.py:97`](../../tests/tooling/production_deployment_evidence/production_deployment_evidence_test.py#L97)
+
+- The repository's C# CI inventory suite mirrors the production verifier contract.
+  [`CiTestInventoryTests.cs:454`](../../tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs#L454)

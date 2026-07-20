@@ -83,7 +83,7 @@ before implementation is scheduled.
   - ID: 20.5-A41-ACCESS-TELEMETRY-RETENTION
   - Status: carried-forward
   - Source story: 20-5-inbound-rate-limiting-quotas-and-audit-completeness
-  - Backlog home: Epic 27, Stories 27.1-27.3. Scheduling does not satisfy the resolution gate.
+  - Backlog home: Epic 27, Stories 27.1-27.4. Story 27.3 qualifies the exact Production adapter; Story 27.4 owns deployment-shaped verification and close-out. Scheduling does not satisfy the resolution gate.
   - Target artifact: `docs/dev/telemetry.md`, the Story 27.1 architecture decision, the selected access-telemetry sink/storage deployment and purge implementation, and focused lifecycle/tenant-privacy tests, or this entry updated to a complete explicit accepted-debt disposition.
   - Resolution gate: Keep this entry `carried-forward` and the matching sprint action `open` until bounded retention/TTL is implemented, documented, and validated, or accepted debt records a named approver and owner, affected storage/scope, rationale, risk and consequence, compensating controls, and a time-bounded review/expiry date or measurable reopen trigger.
   - Re-open trigger: Review before any claim that A41 is fully closed, before any production-retention assurance is made, and at the accepted-debt review/expiry trigger if that path is selected.
@@ -2230,7 +2230,7 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 
 - source_spec: `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md`
   summary: Restate or intentionally retire the `docs/operations/rate-limiting.md` documentation obligation dropped from the `20.5-A41-ACCESS-TELEMETRY-RETENTION` target-artifact list.
-  evidence: The concurrent A41-entry rewrite in commit `8bb0708a` (sprint-change-proposal scope, not Story 27.1) replaced the old `Target artifact: docs/operations/rate-limiting.md and the future access-telemetry storage/purge implementation` line with a new target list that omits rate-limiting.md entirely, leaving that file's documentation obligation without a stated disposition. The fourth code-review pass of Story 27.1 (2026-07-17) surfaced the orphaned obligation; ownership belongs to the A41/Story 27.3 close-out coordination, not this decision story.
+  evidence: The concurrent A41-entry rewrite in commit `8bb0708a` (sprint-change-proposal scope, not Story 27.1) replaced the old `Target artifact: docs/operations/rate-limiting.md and the future access-telemetry storage/purge implementation` line with a new target list that omits rate-limiting.md entirely, leaving that file's documentation obligation without a stated disposition. The fourth code-review pass of Story 27.1 (2026-07-17) surfaced the orphaned obligation; ownership belongs to the A41/Story 27.4 close-out coordination after Story 27.3 qualification, not this decision story.
 
 ## Deferred from: code review of spec-infrastructure-dependency-abstraction (2026-07-17)
 

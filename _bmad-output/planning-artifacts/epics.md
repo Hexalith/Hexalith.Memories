@@ -4763,9 +4763,11 @@ Operators can configure and verify a bounded lifecycle for access telemetry thro
 
 **Lifecycle label:** Operational Readiness / Security and Observability Hardening.
 
-**Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation).
+**Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation) and the approved Sprint Change Proposal 2026-07-19/20 (Story 27.3 C1 Production Adapter and Deployment Profile).
 
 **Sequencing gate:** Story 27.1 is decision-first. Stories 27.2 and 27.3 must not implement or claim a sink/store before its ownership, topology, failure, retention, purge, and validation contract is ratified.
+
+**Qualification and close-out split:** Story 27.3 owns exact Production-adapter qualification and the immutable deployment profile. Story 27.4 consumes only that approved profile and owns deployment-shaped lifecycle evidence, operations documentation, and A41 close-out. Adapter rejection is a complete Story 27.3 outcome only when it preserves fail-closed writes and routes a new correct-course decision; it never closes A41.
 
 ### Story 27.1: Access-Telemetry Retention Ownership Decision (Decision-First)
 
@@ -4811,25 +4813,46 @@ So that emitted access records do not grow without limit.
 **When** records are written, expired, purged, and inspected through any supported operational seam,
 **Then** tenant/privacy boundaries fail closed and focused cross-tenant negative tests name the affected storage, routing, and evidence surfaces.
 
-### Story 27.3: Retention Verification, Operations Runbook, and A41 Close-Out
+### Story 27.3: Production Adapter and Deployment Profile
 
-As a security reviewer,
-I want executable lifecycle evidence and one coordinated close-out,
-So that A41 closes only after the policy works in the deployment shape.
+As a Platform Operations and security review pair,
+I want one immutable Production state-store profile qualified against every C1 gate,
+So that deployment-shaped lifecycle verification starts only on an atomic, durable, capacity-funded, and approved adapter.
 
 **Acceptance Criteria:**
 
-**Given** a short test retention window and a production-shaped deployment,
-**When** old and new access events cross the expiry boundary across at least two Server writers and a controlled restart,
-**Then** focused evidence proves expired records are unavailable/purged, newer records remain, required audit emission continues, and tenant/privacy negative checks pass.
+1. The exact `PG-AZ-1` runtime, component, backend, Dapr control plane, application images, component/config manifests, actor/Scheduler identities, configuration epoch, profile hash, region, quota, and cost are captured from the running target.
+2. CRUD, strong reads, ETags, rollback-atomic multi-key transactions, TTL, actor reactivation, Placement/Scheduler/reminder recovery, request bounds, two-writer 500 events/s throughput, 150,000-record purge catch-up, isolation, encryption, capacity, and cohort-attributable physical reclamation all pass without skip.
+3. Forced loss of the PostgreSQL primary/AZ proves zero loss of every acknowledged record. Outside-profile RPO/RTO and recovery are published without overstating them.
+4. Hexalith Platform Operations approves capacity, quota, cost, operation, fault, upgrade, rollback, and reclamation evidence; a separate security reviewer approves identity, secrets, TLS, network, authorization, encryption, privacy, and evidence integrity.
+5. Any missing digest, placeholder, profile drift, failed probe, missing approval, or unreserved capacity keeps Production writes disabled, Story 27.3 `in-progress`, Story 27.4 `backlog`, and A41 open.
 
-**Given** the ratified production duration,
-**When** operators deploy, monitor, change, or roll back the policy,
-**Then** telemetry, deployment-configuration, capacity, monitoring, incident, and recovery documentation identifies the owner, configuration, defaults, storage impact, purge verification, alarms, rollback, and assurance limits.
+### Story 27.4: Retention Verification, Operations Runbook, and A41 Close-Out
 
-**Given** all implementation and documentation evidence passes,
+As a security reviewer,
+I want executable lifecycle evidence and one coordinated close-out against the approved Production profile,
+So that A41 closes only after the policy works in the deployment shape.
+
+**Predecessor Gate:**
+
+- Story 27.3 is `done` with an immutable `PG-AZ-1` C1 packet, no skipped, stale, failed, or unapproved result, and both required approvals.
+- The live profile hash at Story 27.4 start exactly matches Story 27.3. A mismatch returns ownership to Story 27.3 and keeps writes disabled.
+
+**Acceptance Criteria:**
+
+**Given** the approved immutable profile, a short test retention window, and a production-shaped deployment,
+**When** old and new access events cross the expiry boundary across at least two Server writers and controlled workload, sidecar, actor, Placement, Scheduler, and backend-fault recovery,
+**Then** focused evidence proves exact acknowledgement, durable recovery, expired-record unavailability and purge, newer-record preservation, required audit emission continuity, and tenant/privacy denial before dependencies.
+
+**Given** the ratified Production duration and exact adapter profile,
+**When** operators deploy, monitor, change, fail over, recover, or roll back the policy,
+**Then** telemetry, deployment configuration, capacity, monitoring, incident, recovery, adapter-reclamation, and decommission documentation identifies the owner, configuration, defaults, storage impact, purge verification, alarms, rollback, RPO/RTO limits, and assurance boundary.
+
+**Given** C2-C6, terminal validation, and publish verification all pass against the unchanged approved profile,
 **When** A41 is closed,
-**Then** `20.5-A41-ACCESS-TELEMETRY-RETENTION` is reconciled from `carried-forward`, the matching sprint action is closed, architecture and all A41 summaries cite the evidence, and Epic 20/Story 20.5 remain historical `done` records rather than being reopened.
+**Then** `20.5-A41-ACCESS-TELEMETRY-RETENTION` is reconciled from `carried-forward`, the matching sprint action is closed, architecture and all A41 summaries cite the same canonical evidence, and Epic 20/Story 20.5 remain historical `done` records rather than being reopened.
+
+**Transferred scope:** Former Story 27.3 Tasks 2-8 move here without gate reduction: multi-writer/replacement/durability proof; expiry, purge, newer-record preservation, and cohort-attributable reclamation; failure/privacy/authority/health/metrics/alerts; runbook and exact-adapter appendix; residual reconciliation; evidence-backed A41 mutation; and terminal governed validation. A41 remains `carried-forward` and its sprint action remains `open` until every checkpoint and publish verification passes.
 
 ## Epic 28: Owner-Approved EventStore Runtime Adoption
 

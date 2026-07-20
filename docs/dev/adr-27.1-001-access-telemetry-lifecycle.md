@@ -12,13 +12,14 @@
 | Affected deployment | Any container service on which the required Dapr APIs and an eligible Dapr component profile are available |
 | Selected family | Repository-owned dedicated write-only telemetry service |
 | Selected technology | Dapr service invocation, state management, actors, reminders, configuration, and secrets; no application dependency on a specific state-store product or container orchestrator |
-| Implementation gate | Stories 27.2 and 27.3 are unblocked to implement and verify this accepted contract; neither implementation start nor ADR acceptance closes A41 |
+| Implementation gate | Story 27.2 implements the portable contract; Story 27.3 qualifies the exact Production adapter; Story 27.4 performs deployment-shaped verification and A41 close-out. Neither implementation start, profile selection, nor ADR acceptance closes A41. |
 
 This accepted decision defines a portable lifecycle target but does not implement
 it. Current JSON-console emission and optional OTLP export remain the only
-shipped paths. Story 27.2 implements the target; Story 27.3 verifies both the
-portable contract and the selected deployment adapter, and owns the
-evidence-backed A41 close-out gate.
+shipped paths. Story 27.2 implements the portable target; Story 27.3 qualifies
+the selected Production adapter and immutable deployment profile; Story 27.4
+consumes only that approved profile and owns deployment-shaped verification,
+operations documentation, and the evidence-backed A41 close-out gate.
 
 ## Verified Current State
 
@@ -765,39 +766,218 @@ map:
    overflow, retry/shutdown, component rejection, reconnect/revalidation,
    business-path isolation, and the named Story 20.2/24.3 privacy negatives.
 
-## Story 27.3 Verification and Operations Handoff
+## Stories 27.3 and 27.4 Verification and Operations Handoff
 
-After Story 27.2 implementation, Story 27.3 must supply Production-shaped
-evidence and the operations contract:
+After Story 27.2 implementation, Story 27.3 owns only exact Production-adapter
+qualification. It must prove or reject the `PG-AZ-1` target below, publish its
+immutable profile/evidence hash, and obtain separate Platform Operations and
+security approvals. Production lifecycle writes remain disabled until C1
+passes. Adapter rejection is a bounded Story 27.3 result but requires another
+correct-course decision and never closes A41.
+
+Story 27.4 remains backlog until Story 27.3 is `done` and the live profile hash
+exactly matches the approved C1 packet. It then owns the former verification and
+close-out work:
 
 1. Run at least two Server writers through Dapr and prove unique sanitized
    records, actor serialization, idempotent retry, conflict rejection, exact
    Dapr transaction acknowledgement, and no direct backend dependency.
-2. Replace each Server, lifecycle-service, clock-service, Dapr sidecar, and
-   actor activation; prove durable state/reminder reconstruction and continued
-   JSON-console/optional-OTLP emission. Exercise the adapter's declared
-   single-component fault and prove its zero acknowledged-record loss claim.
-3. Prove minimum/default/maximum retention, one-second clock/future bound,
-   late and already-expired records, attestation freshness/replay/identity,
+2. Replace each Server, lifecycle-service, clock-service, Dapr sidecar, actor
+   activation, Placement member, and Scheduler member; prove durable
+   state/reminder reconstruction and continued JSON-console/optional-OTLP
+   emission. Re-exercise the approved adapter fault without profile drift.
+3. Prove minimum/default/maximum retention, one-second clock/future bound, late
+   and already-expired records, attestation freshness/replay/identity,
    millisecond logical expiry, Dapr TTL defense in depth, bounded purge catch-up,
-   and preservation of newer records.
-4. Select the exact Dapr component profile, including any alpha opt-in. Publish
-   its version pin, capability-probe results, physical-amplification formula,
-   resource/quota/cost reservation, durability boundary, and cohort-attributable
-   physical-reclamation evidence within its declared bound.
-5. Exercise Dapr/app/state/clock outage, stale attestation, actor failover,
+   transition/rollback cohorts, crash recovery, physical reclamation, and
+   preservation of newer records.
+4. Exercise Dapr/app/state/clock outage, stale attestation, actor failover,
    reminder delay, queue/byte exhaustion, transaction/ETag/TTL failure,
    capacity pressure, bad configuration or keys, profile drift, reconnect, retry
-   exhaustion, and shutdown. Business requests and business readiness must stay
-   available while lifecycle health fails closed.
-6. Prove the full lifecycle signal set, bounded labels, health precedence,
+   exhaustion, shutdown, and degraded rollback. Business requests and business
+   readiness must stay available while lifecycle health fails closed.
+5. Prove the full lifecycle signal set, bounded labels, health precedence,
    alerts, `NoData`, inspection least privilege, raw-value absence,
    cross-tenant denial before lifecycle dependencies, and no tenant-facing read
-   route.
-7. Publish a container-service-neutral runbook plus the selected adapter
-   appendix for rollout, component upgrade/rollback, alpha risk, capacity,
-   alerts, recovery, inspection, key rotation, degraded old image, physical
-   evidence, and verified decommission.
-8. Only after all portable and adapter-specific evidence passes, coordinate the
-   A41 deferred entry and action close-out. Story 27.1 scheduling or ADR
-   acceptance alone is never closure.
+   route. The tenant-negative evidence rule remains mandatory.
+6. Publish a container-service-neutral lifecycle runbook plus the selected
+   adapter operations appendix for rollout, component upgrade/rollback,
+   capacity, alerts, recovery, inspection, key rotation, degraded old image,
+   physical evidence, and verified decommission.
+7. Reconcile closure-owned residuals and run terminal governed validation
+   against the unchanged approved profile.
+8. Only after all C2-C6 evidence and publish verification pass, coordinate the
+   A41 deferred entry and action close-out. Scheduling, profile selection, or
+   ADR acceptance alone is never closure.
+
+## Production Adapter Qualification — PG-AZ-1
+
+`PG-AZ-1` is the sole approved qualification target, not a certified profile.
+Story 27.3 must keep Production lifecycle writes disabled until every C1 probe,
+image pin, capacity reservation, and separate approval below passes. Any target
+substitution or profile drift requires another approved course correction.
+
+### Exact qualification profile
+
+| Field | Qualification contract |
+| :---- | :--------------------- |
+| Profile ID | `postgresql-v2-dapr-1.18.1-azure-pg17.10-zrha-d32ds-v5-4095gib-40kiops-v1` |
+| Dapr component | `access-telemetry-store`, `type: state.postgresql`, `version: v2` |
+| Dapr runtime | 1.18.1 stable, pinned by the digests below |
+| Backend | Azure Database for PostgreSQL Flexible Server 17.10 |
+| Availability | Zone-redundant HA with primary and synchronous standby in separate availability zones |
+| Compute | General Purpose `Standard_D32ds_v5`, 32 vCores |
+| Storage | Premium SSD v2, 4,095 GiB = 4,396,972,769,280 usable bytes |
+| Storage performance | 40,000 provisioned IOPS and 1,200 MiB/s throughput |
+| Network/TLS | Private access only, public network disabled, private DNS, egress limited to TCP 5432, TLS 1.2 or later, `sslmode=verify-full`, explicit CA bundle, and hostname verification |
+| Database boundary | Dedicated database `memories_access_telemetry`, schema `access_telemetry`, and runtime role limited to that database/schema |
+| TTL/actor | `cleanupInterval: 5m`; logical expiry and actor purge remain normative; `actorStateStore: "true"`; sole actor type `AccessTelemetryLifecycleActor`, fixed ID `global` |
+| Dapr control plane | Three replicas each for Operator, Placement, Scheduler, Sentry, and Injector, with required anti-affinity across three zones |
+| Scheduler | Three 16 GiB retained volumes on zone-resilient storage; 16 GiB etcd quota per member |
+| Retention | 1-hour minimum, 24-hour default, 7-day maximum; no backend default TTL |
+| Physical reclamation | Cohort deletes plus ordinary `VACUUM (ANALYZE, INDEX_CLEANUP ON)`; `pgstattuple` and table/index statistics must prove bytes returned to the PostgreSQL allocator within 24 hours. This is not an OS-disk-shrink claim. |
+
+The PostgreSQL v2 Dapr state component is selected for qualification because it
+supports the required state, transactional, ETag, TTL, and actor surfaces. A
+published capability row is not certification; the running profile must pass
+the behavioral contract. See the [Dapr PostgreSQL v2 component reference](https://docs.dapr.io/reference/components-reference/supported-state-stores/setup-postgresql-v2/).
+
+### Required Dapr component configuration
+
+The Production component is generated from this non-secret contract. The
+OpenBao-backed connection string must contain the approved private FQDN,
+database, runtime role, timeout, CA path, and `sslmode=verify-full`. It never
+appears in application configuration or evidence.
+
+```yaml
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: access-telemetry-store
+spec:
+  type: state.postgresql
+  version: v2
+  initTimeout: 1m
+  metadata:
+    - name: connectionString
+      secretKeyRef:
+        name: access-telemetry-postgresql
+        key: connectionString
+    - name: tablePrefix
+      value: access_telemetry.lifecycle_
+    - name: metadataTableName
+      value: access_telemetry.dapr_metadata
+    - name: timeout
+      value: 3s
+    - name: cleanupInterval
+      value: 5m
+    - name: maxConns
+      value: "64"
+    - name: connectionMaxIdleTime
+      value: 5m
+    - name: actorStateStore
+      value: "true"
+auth:
+  secretStore: access-telemetry-secrets
+scopes:
+  - memories-access-telemetry
+```
+
+`queryIndexes` is intentionally absent. PostgreSQL v2 does not implement the
+Dapr Query API, and the portable lifecycle owns explicit transactional
+expiry-bucket keys; adding a backend query path would violate the Dapr-only
+contract.
+
+### Required immutable image set
+
+Every reviewed workload is pinned by registry digest. Tags, placeholders, and
+container runtime layer IDs fail C1.
+
+| Workload | Required digest |
+| :------- | :-------------- |
+| Dapr sidecar | `ghcr.io/dapr/daprd@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8` |
+| Dapr Operator | `ghcr.io/dapr/operator@sha256:89661f52a3d37f5d528c35dd9d2b4ac76c7b274bd459c8570d6246b6bfdda549` |
+| Dapr Placement | `ghcr.io/dapr/placement@sha256:6caf20016d115d4a7f133b9206b739a10abd9f558d76683b27be9ab60f759e26` |
+| Dapr Scheduler | `ghcr.io/dapr/scheduler@sha256:c9bb9ada0cd6a63cd92c26470da1985124e423432af4e39f09b96979fd1059c0` |
+| Dapr Sentry | `ghcr.io/dapr/sentry@sha256:2f98508dff56c75329dbd51674c89f41ce349e06c7744ab2519cb69ba338d41f` |
+| Dapr Injector | `ghcr.io/dapr/injector@sha256:2793b954b1aef142d59bd5eae71bec4de5f71d16e9ad80fec81cbf3b4eea428c` |
+| Memories Server | `registry.hexalith.com/memories@sha256:71e49b6e806ec2fa7c221e58600ba02115693923db05915663396be01b1c042c`, unless Story 27.3 changes Server code, in which case the replacement CI digest is mandatory |
+| Lifecycle service | **Missing and blocking:** replace `0.0.0` with signed CI output `registry.hexalith.com/memories-access-telemetry@sha256:<64-hex>` |
+| Clock service | **Missing and blocking:** replace `0.0.0` with signed CI output `registry.hexalith.com/memories-access-telemetry-clock@sha256:<64-hex>` |
+| OpenBao | `quay.io/openbao/openbao@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653` |
+
+The two missing application digests are deliberately not invented. C1 cannot
+pass until both images are built from reviewed source, signed, scanned,
+deployed by digest, and recaptured from live Pod `imageID` values.
+
+### Capacity contract
+
+All operands are integer bytes/counts and all arithmetic is checked or
+arbitrary precision.
+
+| Retention | Records | Canonical payload bytes |
+| :-------- | ------: | ----------------------: |
+| 1 hour | 900,000 | 921,600,000 |
+| 24 hours | 21,600,000 | 22,118,400,000 |
+| 7 days | 151,200,000 | 154,828,800,000 |
+
+```text
+baseBytes = records * (measuredRecordBytes + measuredIndexBytes) * 2
+controlBytes = 34,359,738,368
+reclamationWorkspace = max(137,438,953,472, ceil_div(baseBytes, 4))
+requiredPeak = baseBytes + controlBytes + reclamationWorkspace
+schedulerBytes = 3 * 17,179,869,184
+totalPlatformRequired = requiredPeak + schedulerBytes
+```
+
+The durability multiplier is `2` for the primary and synchronous standby. The
+4,095 GiB reservation has these exact gates:
+
+| State | Bytes |
+| :---- | ----: |
+| Maximum steady-state admission (70%) | 3,077,880,938,496 |
+| Reclamation critical boundary (80%) | 3,517,578,215,424 |
+| Lifecycle Unhealthy boundary (90%) | 3,957,275,492,352 |
+
+Measured record/index amplification, WAL, autovacuum, backup, allocator, and
+cohort-reclamation evidence must fit the formula. Platform Operations must
+attach live target-region availability, quota, price, and funding approval. A
+region or SKU substitution changes the profile hash.
+
+### Declared fault model
+
+The in-profile single-component fault is loss of the Azure PostgreSQL primary
+compute and its availability zone while the synchronous standby zone and
+regional control plane remain available. C1 injects a forced failover under the
+two-writer workload and proves zero loss of every transaction Dapr acknowledged
+before the fault. It records disconnect duration, retries, queue/drop
+accounting, DNS reconnection, actor reactivation, reminder reconstruction, and
+observed recovery. A Dapr sidecar restart is a required process-fault test, not
+the declared backend fault.
+
+Regional loss, simultaneous primary/standby loss, operator data deletion,
+credential compromise, and logical corruption are outside the declared
+profile. Platform Operations must publish their separate, potentially nonzero
+RPO/RTO and recovery procedure.
+
+### Approval and assurance gate
+
+Hexalith Platform Operations approves capacity, quota, cost, operation, fault,
+maintenance, reclamation, upgrade, rollback, backup/restore, and outside-profile
+RPO/RTO. A separate security reviewer approves private TLS `verify-full`,
+OpenBao scope, least-privilege database authority, Dapr ACL/component scopes,
+NetworkPolicy, encryption, privacy, image signature/vulnerability evidence,
+evidence hashes, and the required cross-tenant denial results. Each approval is
+named, dated, and bound to the immutable profile hash; neither may be inferred
+from the other or from Administrator approval of the planning split.
+
+The Redis `state.redis/v1` profile with one 20 GiB volume and `appendfsync
+everysec` is rejected for C1: its 24-hour canonical payload already exceeds the
+reservation before overhead, and the exact profile has not proved rollback-
+atomic multi-key failure behavior or zero acknowledged loss. This rejection
+does not select a direct PostgreSQL application dependency; Memories and the
+lifecycle service remain Dapr-only.
+
+The assurance boundary remains bounded infrastructure telemetry only. This
+profile does not make records tamper-evident, append-only, legally compliant,
+immutable, non-repudiable, or certified audit retention.

@@ -47,6 +47,33 @@ if (-not [string]::Equals($lastStage, [string]$result.stage, [StringComparison]:
     throw "last-stage.txt '$lastStage' does not match verification-result.json stage '$($result.stage)'."
 }
 
+$healthFiles = @(Get-ChildItem -LiteralPath $evidencePath -File -Filter 'health-*.json')
+if ($healthFiles.Count -eq 0) {
+    throw 'Production deployment evidence must include at least one authenticated health response.'
+}
+$healthStatusCodes = @()
+foreach ($file in $healthFiles) {
+    try {
+        $health = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
+        $healthBody = ([string]$health.body) | ConvertFrom-Json
+    }
+    catch {
+        throw "Health response evidence '$($file.Name)' is not valid JSON: $($_.Exception.Message)"
+    }
+    if (
+        $health.schemaVersion -ne 1 -or
+        [string]::IsNullOrWhiteSpace([string]$health.stage) -or
+        $health.statusCode -notin @(200, 503) -or
+        [string]::IsNullOrWhiteSpace([string]$healthBody.status)
+    ) {
+        throw "Health response evidence '$($file.Name)' does not contain a valid stage, HTTP status, and aggregate-health body."
+    }
+    $healthStatusCodes += [int]$health.statusCode
+}
+if ($result.status -eq 'succeeded' -and ($healthStatusCodes -notcontains 200 -or $healthStatusCodes -notcontains 503)) {
+    throw 'Succeeded production deployment evidence must include both authenticated HTTP 200 and HTTP 503 health responses.'
+}
+
 $currentLogs = @(Get-ChildItem -LiteralPath $evidencePath -File -Filter '*-current.log')
 $previousLogs = @(Get-ChildItem -LiteralPath $evidencePath -File -Filter '*-previous.log')
 if ($currentLogs.Count -eq 0 -or $previousLogs.Count -eq 0) {

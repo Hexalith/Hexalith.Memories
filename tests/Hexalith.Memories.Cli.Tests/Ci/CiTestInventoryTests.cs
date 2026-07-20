@@ -452,10 +452,16 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("required-server-restored");
         verifier.ShouldContain("required-server-mcp-restored");
         verifier.ShouldContain("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }");
-        verifier.ShouldContain("wget -S -O- -T 6 --header=\"dapr-api-token: ${APP_API_TOKEN}\"");
+        verifier.ShouldContain("wgetOutput=\"$(wget -S -O- -T 6 --header=\"dapr-api-token: ${APP_API_TOKEN}\"");
         verifier.ShouldContain("wgetExit=$?");
+        verifier.ShouldContain("grep -Eq 'HTTP/[0-9.]+ 503([[:space:]]|$)'");
         verifier.ShouldContain("dapr-api-token: %s");
         verifier.ShouldContain("Connection: close\\r\\ndapr-api-token: %s\\r\\n\\r\\n");
+        verifier.ShouldContain("$probeCommand = $probeCommand.Replace(\"`r\", '')");
+        verifier.ShouldContain("$text = Protect-EvidenceText ($output -join [Environment]::NewLine)");
+        verifier.ShouldContain("function Get-HealthJsonBody");
+        verifier.ShouldContain("ConvertFrom-Json -ErrorAction Stop");
+        verifier.ShouldContain("Save-HealthResponseEvidence");
         verifier.ShouldContain("Write-ClusterDiagnostics");
         verifier.ShouldContain("describe-pods.txt");
         verifier.ShouldContain("events.txt");
@@ -464,6 +470,8 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("--previous");
         verifier.ShouldNotContain("dapr.io/enabled\":\"false");
         evidenceValidator.ShouldContain("verification-result.json");
+        evidenceValidator.ShouldContain("health-*.json");
+        evidenceValidator.ShouldContain("authenticated HTTP 200 and HTTP 503 health responses");
         evidenceValidator.ShouldContain("Succeeded production deployment evidence must finish at required-server-mcp-restored");
         evidenceValidator.ShouldContain("*-current.log");
         evidenceValidator.ShouldContain("*-previous.log");
