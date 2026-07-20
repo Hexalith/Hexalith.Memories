@@ -20,17 +20,20 @@ class AdapterProfileTests(unittest.TestCase):
                 "KUBE_CONTEXT": "jpiquot@local",
                 "KUBE_NAMESPACE": "hexalith-memories",
                 "DEPLOYMENT_ID": "deployment-27-3",
-                "PROFILE_ID": "profile-27-3",
+                "PROFILE_ID": adapter_profile.EXPECTED_PROFILE_ID,
                 "EVIDENCE_ROOT": "_bmad-output/implementation-artifacts/tests",
-                "DECLARED_SINGLE_COMPONENT_FAULT": "dapr-sidecar-restart",
+                "DECLARED_SINGLE_COMPONENT_FAULT": "postgresql-pod-replacement",
             }
         )
 
         self.assertEqual("jpiquot@local", identity.kube_context)
         self.assertEqual("hexalith-memories", identity.kube_namespace)
         self.assertEqual("deployment-27-3", identity.deployment_id)
-        self.assertEqual("profile-27-3", identity.profile_id)
-        self.assertEqual("dapr-sidecar-restart", identity.declared_single_component_fault)
+        self.assertEqual(adapter_profile.EXPECTED_PROFILE_ID, identity.profile_id)
+        self.assertEqual("postgresql-pod-replacement", identity.declared_single_component_fault)
+        self.assertEqual("jpiquot@local", adapter_profile.EXPECTED_KUBE_CONTEXT)
+        self.assertEqual("hexalith-memories", adapter_profile.EXPECTED_KUBE_NAMESPACE)
+        self.assertIn("postgres:18.4-trixie@sha256:", adapter_profile.EXPECTED_POSTGRESQL_IMAGE)
 
     def test_capacity_inputs_fail_closed(self):
         invalid_inputs = (

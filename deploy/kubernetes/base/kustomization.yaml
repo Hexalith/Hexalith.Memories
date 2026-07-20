@@ -6,6 +6,7 @@ resources:
   - server-deployment.yaml
   - mcp-deployment.yaml
   - access-telemetry-deployments.yaml
+  - access-telemetry-postgresql.yaml
   - access-telemetry-network-policy.yaml
   - redis-statefulset.yaml
   - falkordb-statefulset.yaml

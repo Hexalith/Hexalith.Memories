@@ -41,7 +41,12 @@ public sealed class ProductionDeploymentArtifactsTests
         string mcp = GetDocument(rendered, "Deployment", "memories-mcp");
         string redis = GetDocument(rendered, "StatefulSet", "redis-stack");
         string falkordb = GetDocument(rendered, "StatefulSet", "falkordb");
+        string accessTelemetryPostgresql = GetDocument(rendered, "StatefulSet", "access-telemetry-postgresql");
+        string accessTelemetryPostgresqlConfig = GetDocument(rendered, "ConfigMap", "access-telemetry-postgresql-config");
+        string accessTelemetryPostgresqlService = GetDocument(rendered, "Service", "access-telemetry-postgresql");
+        string accessTelemetryPostgresqlPolicy = GetDocument(rendered, "NetworkPolicy", "access-telemetry-postgresql");
         string pubsub = GetDocument(rendered, "Component", "pubsub");
+        string accessTelemetryStore = GetDocument(rendered, "Component", "access-telemetry-store");
         string conversation = GetDocument(rendered, "Component", "llm-openai");
         string secretStore = GetDocument(rendered, "Component", "secretstore");
         string accessTelemetrySecretStore = GetDocument(rendered, "Component", "access-telemetry-secrets");
@@ -59,6 +64,11 @@ public sealed class ProductionDeploymentArtifactsTests
         server.ShouldContain("\"Healthy\"");
         server.ShouldContain("name: DAPR_API_TOKEN_MODE");
         server.ShouldContain("value: enabled");
+
+        string accessTelemetryDeployment = GetDocument(rendered, "Deployment", "memories-access-telemetry");
+        accessTelemetryDeployment.ShouldContain("dapr.io/volume-mounts: access-telemetry-postgresql-tls:/mnt/access-telemetry-postgresql");
+        accessTelemetryDeployment.ShouldContain("secretName: access-telemetry-postgresql-tls");
+        accessTelemetryDeployment.ShouldContain("key: ca.crt");
 
         mcp.ShouldContain("dapr.io/app-id: memories-mcp");
         mcp.ShouldContain("dapr.io/sidecar-cpu-request: 100m");
@@ -86,6 +96,41 @@ public sealed class ProductionDeploymentArtifactsTests
         falkordb.ShouldContain("mountPath: /var/lib/falkordb/data");
         falkordb.ShouldContain("failureThreshold: 60");
         falkordb.ShouldContain("memory: 4Gi");
+
+        accessTelemetryPostgresql.ShouldContain("replicas: 1");
+        accessTelemetryPostgresql.ShouldContain("postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a");
+        accessTelemetryPostgresql.ShouldContain("hexalith.io/availability: single-node-non-ha");
+        accessTelemetryPostgresql.ShouldContain("value: /var/lib/postgresql/18/docker");
+        accessTelemetryPostgresql.ShouldContain("mountPath: /var/lib/postgresql");
+        accessTelemetryPostgresql.ShouldContain("storageClassName: openebs-hostpath-retain");
+        accessTelemetryPostgresql.ShouldContain("storage: 400Gi");
+        accessTelemetryPostgresql.ShouldContain("ssl=on");
+        accessTelemetryPostgresql.ShouldContain("ssl_min_protocol_version=TLSv1.2");
+        accessTelemetryPostgresqlConfig.ShouldContain("peer map=container-postgres");
+        accessTelemetryPostgresqlConfig.ShouldContain("container-postgres postgres memories_admin");
+        accessTelemetryPostgresql.ShouldContain("ident_file=/etc/postgresql/pg_ident.conf");
+        accessTelemetryPostgresql.ShouldContain("secretName: access-telemetry-postgresql-bootstrap");
+        accessTelemetryPostgresql.ShouldContain("secretName: access-telemetry-postgresql-tls");
+        accessTelemetryPostgresql.ShouldContain("cpu: \"4\"");
+        accessTelemetryPostgresql.ShouldContain("memory: 8Gi");
+        accessTelemetryPostgresql.ShouldContain("cpu: \"8\"");
+        accessTelemetryPostgresql.ShouldContain("memory: 16Gi");
+        accessTelemetryPostgresqlService.ShouldContain("type: ClusterIP");
+        accessTelemetryPostgresqlService.ShouldContain("port: 5432");
+        accessTelemetryPostgresqlPolicy.ShouldContain("app.kubernetes.io/name: memories-access-telemetry");
+        accessTelemetryPostgresqlPolicy.ShouldContain("app.kubernetes.io/name: access-telemetry-postgresql-verifier");
+        accessTelemetryPostgresqlPolicy.ShouldContain("egress: []");
+        string accessTelemetryNetworkPolicy = GetDocument(rendered, "NetworkPolicy", "memories-access-telemetry");
+        accessTelemetryNetworkPolicy.ShouldContain("kubernetes.io/metadata.name: openbao");
+        accessTelemetryNetworkPolicy.ShouldContain("port: 8200");
+
+        accessTelemetryStore.ShouldContain("type: state.postgresql");
+        accessTelemetryStore.ShouldContain("version: v2");
+        accessTelemetryStore.ShouldContain("name: access-telemetry-postgresql");
+        accessTelemetryStore.ShouldContain("name: sslRootCert");
+        accessTelemetryStore.ShouldContain("value: /mnt/access-telemetry-postgresql/ca.crt");
+        accessTelemetryStore.ShouldContain("value: access_telemetry.lifecycle_");
+        accessTelemetryStore.ShouldNotContain("queryIndexes");
 
         conversation.ShouldContain("type: conversation.openai");
         conversation.ShouldContain("value: gpt-4o-mini");

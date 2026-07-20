@@ -769,7 +769,7 @@ map:
 ## Stories 27.3 and 27.4 Verification and Operations Handoff
 
 After Story 27.2 implementation, Story 27.3 owns only exact Production-adapter
-qualification. It must prove or reject the `PG-AZ-1` target below, publish its
+qualification. It must prove or reject the `PG-ONPREM-1` target below, publish its
 immutable profile/evidence hash, and obtain separate Platform Operations and
 security approvals. Production lifecycle writes remain disabled until C1
 passes. Adapter rejection is a bounded Story 27.3 result but requires another
@@ -810,32 +810,41 @@ close-out work:
    A41 deferred entry and action close-out. Scheduling, profile selection, or
    ADR acceptance alone is never closure.
 
-## Production Adapter Qualification — PG-AZ-1
+## Production Adapter Qualification — PG-ONPREM-1
 
-`PG-AZ-1` is the sole approved qualification target, not a certified profile.
+`PG-ONPREM-1` is the sole approved qualification target, not a certified profile.
 Story 27.3 must keep Production lifecycle writes disabled until every C1 probe,
-image pin, capacity reservation, and separate approval below passes. Any target
-substitution or profile drift requires another approved course correction.
+image pin, configured-retention capacity admission, backup/restore result, and
+separate approval below passes. Any target substitution or profile drift
+requires another approved course correction.
 
 ### Exact qualification profile
 
 | Field | Qualification contract |
 | :---- | :--------------------- |
-| Profile ID | `postgresql-v2-dapr-1.18.1-azure-pg17.10-zrha-d32ds-v5-4095gib-40kiops-v1` |
+| Profile ID | `postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1` |
 | Dapr component | `access-telemetry-store`, `type: state.postgresql`, `version: v2` |
 | Dapr runtime | 1.18.1 stable, pinned by the digests below |
-| Backend | Azure Database for PostgreSQL Flexible Server 17.10 |
-| Availability | Zone-redundant HA with primary and synchronous standby in separate availability zones |
-| Compute | General Purpose `Standard_D32ds_v5`, 32 vCores |
-| Storage | Premium SSD v2, 4,095 GiB = 4,396,972,769,280 usable bytes |
-| Storage performance | 40,000 provisioned IOPS and 1,200 MiB/s throughput |
-| Network/TLS | Private access only, public network disabled, private DNS, egress limited to TCP 5432, TLS 1.2 or later, `sslmode=verify-full`, explicit CA bundle, and hostname verification |
+| Backend | PostgreSQL 18.4 from the Docker Official Image, one raw Kubernetes StatefulSet replica |
+| Kubernetes target | Context `jpiquot@local`, namespace `hexalith-memories`, Kubernetes v1.34.9, one `amd64` node named `node1` |
+| Availability | Single node and single PostgreSQL replica; no node, disk, zone, control-plane, or site HA claim |
+| Compute | Request 4 CPU/8 GiB; limit 8 CPU/16 GiB; measured C1 load evidence is authoritative |
+| Storage | 400 GiB = 429,496,729,600 bytes requested from `openebs-hostpath-retain`, `Retain`, local to `node1`; the host-path request is not a physical reservation |
+| PostgreSQL 18 layout | Mount `/var/lib/postgresql`; `PGDATA=/var/lib/postgresql/18/docker` |
+| Storage performance | No guaranteed IOPS/throughput; C1 must measure the exact local disk and fail capacity/latency admission when the envelope is not met |
+| Network/TLS | ClusterIP only, no public or ingress endpoint, NetworkPolicy egress/ingress limited to approved identities on TCP 5432, TLS 1.2 or later, `sslmode=verify-full`, explicit internal CA bundle, service-DNS hostname verification, and documented certificate rotation |
 | Database boundary | Dedicated database `memories_access_telemetry`, schema `access_telemetry`, and runtime role limited to that database/schema |
 | TTL/actor | `cleanupInterval: 5m`; logical expiry and actor purge remain normative; `actorStateStore: "true"`; sole actor type `AccessTelemetryLifecycleActor`, fixed ID `global` |
-| Dapr control plane | Three replicas each for Operator, Placement, Scheduler, Sentry, and Injector, with required anti-affinity across three zones |
-| Scheduler | Three 16 GiB retained volumes on zone-resilient storage; 16 GiB etcd quota per member |
-| Retention | 1-hour minimum, 24-hour default, 7-day maximum; no backend default TTL |
+| Dapr control plane | Existing three replicas each for Operator, Placement, Scheduler, Sentry, and Injector, all currently co-located on `node1`; replica count does not provide node fault independence |
+| Scheduler | Three 16 GiB retained local volumes plus three 1 GiB Placement volumes on the same node |
+| Retention | 1-hour minimum, configured 24-hour target, 7-day software maximum; admit only the measured duration that fits this exact profile; no backend default TTL |
 | Physical reclamation | Cohort deletes plus ordinary `VACUUM (ANALYZE, INDEX_CLEANUP ON)`; `pgstattuple` and table/index statistics must prove bytes returned to the PostgreSQL allocator within 24 hours. This is not an OS-disk-shrink claim. |
+
+PostgreSQL 18.4 is the latest stable/current minor release on 2026-07-20;
+PostgreSQL 19 is beta and is excluded. See the
+[PostgreSQL versioning policy](https://www.postgresql.org/support/versioning/),
+[PostgreSQL 18.4 release notes](https://www.postgresql.org/docs/release/18.4/),
+and [PostgreSQL Docker Official Image](https://hub.docker.com/_/postgres?tab=tags).
 
 The PostgreSQL v2 Dapr state component is selected for qualification because it
 supports the required state, transactional, ETag, TTL, and actor surfaces. A
@@ -901,13 +910,15 @@ container runtime layer IDs fail C1.
 | Dapr Scheduler | `ghcr.io/dapr/scheduler@sha256:c9bb9ada0cd6a63cd92c26470da1985124e423432af4e39f09b96979fd1059c0` |
 | Dapr Sentry | `ghcr.io/dapr/sentry@sha256:2f98508dff56c75329dbd51674c89f41ce349e06c7744ab2519cb69ba338d41f` |
 | Dapr Injector | `ghcr.io/dapr/injector@sha256:2793b954b1aef142d59bd5eae71bec4de5f71d16e9ad80fec81cbf3b4eea428c` |
+| PostgreSQL | `docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a`; the `linux/amd64` manifest is `sha256:d93de42662696f278fb34354b06fdaa90ad7ca3106d6f72fbd01d16da006d2cf` |
 | Memories Server | `registry.hexalith.com/memories@sha256:71e49b6e806ec2fa7c221e58600ba02115693923db05915663396be01b1c042c`, unless Story 27.3 changes Server code, in which case the replacement CI digest is mandatory |
 | Lifecycle service | **Missing and blocking:** replace `0.0.0` with signed CI output `registry.hexalith.com/memories-access-telemetry@sha256:<64-hex>` |
 | Clock service | **Missing and blocking:** replace `0.0.0` with signed CI output `registry.hexalith.com/memories-access-telemetry-clock@sha256:<64-hex>` |
 | OpenBao | `quay.io/openbao/openbao@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653` |
 
-The two missing application digests are deliberately not invented. C1 cannot
-pass until both images are built from reviewed source, signed, scanned,
+The PostgreSQL manifest must resolve to the listed `linux/amd64` identity on
+`node1`. The two missing application digests are deliberately not invented. C1
+cannot pass until both images are built from reviewed source, signed, scanned,
 deployed by digest, and recaptured from live Pod `imageID` values.
 
 ### Capacity contract
@@ -922,7 +933,7 @@ arbitrary precision.
 | 7 days | 151,200,000 | 154,828,800,000 |
 
 ```text
-baseBytes = records * (measuredRecordBytes + measuredIndexBytes) * 2
+baseBytes = records * (measuredRecordBytes + measuredIndexBytes) * 1
 controlBytes = 34,359,738,368
 reclamationWorkspace = max(137,438,953,472, ceil_div(baseBytes, 4))
 requiredPeak = baseBytes + controlBytes + reclamationWorkspace
@@ -930,46 +941,59 @@ schedulerBytes = 3 * 17,179,869,184
 totalPlatformRequired = requiredPeak + schedulerBytes
 ```
 
-The durability multiplier is `2` for the primary and synchronous standby. The
-4,095 GiB reservation has these exact gates:
+The durability multiplier is `1` because this profile has one PostgreSQL data
+copy; backups are recovery evidence, not a synchronous database replica. The
+400 GiB PVC request has these exact gates:
 
 | State | Bytes |
 | :---- | ----: |
-| Maximum steady-state admission (70%) | 3,077,880,938,496 |
-| Reclamation critical boundary (80%) | 3,517,578,215,424 |
-| Lifecycle Unhealthy boundary (90%) | 3,957,275,492,352 |
+| Maximum steady-state admission (70%) | 300,647,710,720 |
+| Reclamation critical boundary (80%) | 343,597,383,680 |
+| Lifecycle Unhealthy boundary (90%) | 386,547,056,640 |
 
 Measured record/index amplification, WAL, autovacuum, backup, allocator, and
-cohort-reclamation evidence must fit the formula. Platform Operations must
-attach live target-region availability, quota, price, and funding approval. A
-region or SKU substitution changes the profile hash.
+cohort-reclamation evidence must fit the formula for the configured 24-hour
+target. The 7-day software maximum is rejected unless a measured result fits or
+a larger-storage profile is separately approved. Because OpenEBS host-path
+shares node storage, C1 also captures current filesystem headroom and competing
+volume use; the PVC request alone is not capacity reservation. Platform
+Operations must attach node/storage availability, operating cost, monitoring,
+and funding approval. A node, storage class, size, or resource-envelope
+substitution changes the profile hash.
 
 ### Declared fault model
 
-The in-profile single-component fault is loss of the Azure PostgreSQL primary
-compute and its availability zone while the synchronous standby zone and
-regional control plane remain available. C1 injects a forced failover under the
-two-writer workload and proves zero loss of every transaction Dapr acknowledged
-before the fault. It records disconnect duration, retries, queue/drop
-accounting, DNS reconnection, actor reactivation, reminder reconstruction, and
-observed recovery. A Dapr sidecar restart is a required process-fault test, not
-the declared backend fault.
+The in-profile single-component fault is forced loss of the PostgreSQL
+container/process and replacement of its StatefulSet pod while `node1` and the
+bound retained OpenEBS local volume remain healthy. C1 injects this fault under
+the two-writer workload and proves zero loss of every transaction Dapr
+acknowledged before the fault. It records disconnect duration, retries,
+queue/drop accounting, service-DNS reconnection, PostgreSQL crash recovery,
+actor reactivation, reminder reconstruction, and observed recovery. A Dapr
+sidecar restart remains a required process-fault test but is not the declared
+backend fault.
 
-Regional loss, simultaneous primary/standby loss, operator data deletion,
-credential compromise, and logical corruption are outside the declared
-profile. Platform Operations must publish their separate, potentially nonzero
-RPO/RTO and recovery procedure.
+Loss of `node1`, the local disk/PV path, the Kubernetes control plane or site,
+operator data deletion, credential compromise, and logical corruption are
+outside the declared profile. `PG-ONPREM-1` is not HA and must never be described
+as node-, disk-, zone-, or site-redundant. Platform Operations must attach a
+named backup destination, successful restore evidence, and the resulting
+potentially nonzero RPO/RTO before C1 can pass. A zero-loss node-failure claim
+requires multiple fault-independent nodes and replicated storage or an external
+on-premises HA PostgreSQL service under a new approved profile.
 
 ### Approval and assurance gate
 
-Hexalith Platform Operations approves capacity, quota, cost, operation, fault,
-maintenance, reclamation, upgrade, rollback, backup/restore, and outside-profile
-RPO/RTO. A separate security reviewer approves private TLS `verify-full`,
+Hexalith Platform Operations approves node/storage capacity, operating cost,
+operation, the bounded pod/process fault, maintenance, reclamation, upgrade,
+rollback, backup/restore, and outside-profile RPO/RTO, and explicitly
+acknowledges the absence of node/disk/site HA. A separate security reviewer
+approves ClusterIP-only TLS `verify-full`,
 OpenBao scope, least-privilege database authority, Dapr ACL/component scopes,
 NetworkPolicy, encryption, privacy, image signature/vulnerability evidence,
 evidence hashes, and the required cross-tenant denial results. Each approval is
 named, dated, and bound to the immutable profile hash; neither may be inferred
-from the other or from Administrator approval of the planning split.
+from the other or from Administrator approval of the planning corrections.
 
 The Redis `state.redis/v1` profile with one 20 GiB volume and `appendfsync
 everysec` is rejected for C1: its 24-hour canonical payload already exceeds the

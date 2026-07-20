@@ -120,6 +120,17 @@ ADR_TWO_WRITER_WORKLOAD = WorkloadEnvelope(
     },
 )
 
+EXPECTED_KUBE_CONTEXT = "jpiquot@local"
+EXPECTED_KUBE_NAMESPACE = "hexalith-memories"
+EXPECTED_PROFILE_ID = (
+    "postgresql-v2-dapr-1.18.1-postgresql-18.4-"
+    "onprem-k8s1-openebs-local-retain-400g-v1"
+)
+EXPECTED_POSTGRESQL_IMAGE = (
+    "docker.io/library/postgres:18.4-trixie@"
+    "sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a"
+)
+
 
 @dataclass(frozen=True)
 class CapacityRequirement:
@@ -396,6 +407,7 @@ def _configuration_summary(item: Mapping[str, Any]) -> dict[str, Any]:
 
 def _statefulset_summary(item: Mapping[str, Any]) -> dict[str, Any]:
     spec = item.get("spec", {})
+    status = item.get("status", {})
     images = [
         container.get("image")
         for container in spec.get("template", {}).get("spec", {}).get("containers", [])
@@ -404,6 +416,7 @@ def _statefulset_summary(item: Mapping[str, Any]) -> dict[str, Any]:
     return {
         **_metadata_summary(item),
         "replicas": spec.get("replicas"),
+        "ready_replicas": status.get("readyReplicas", 0),
         "images": images,
     }
 
@@ -546,26 +559,44 @@ def run_adapter_profile_checkpoint(
         reason = f"unsupported workload profile: {workload_profile}"
     elif steady_state_minutes != 30 or purge_backlog_records != 150000:
         reason = "C1 workload envelope does not match the mandatory 30-minute/150,000-record gate"
+    elif identity.kube_context != EXPECTED_KUBE_CONTEXT or identity.kube_namespace != EXPECTED_KUBE_NAMESPACE:
+        reason = "execution target does not match the approved on-premises Kubernetes identity"
+    elif identity.profile_id != EXPECTED_PROFILE_ID:
+        reason = "profile identity does not match the approved immutable PG-ONPREM-1 profile"
     elif any(observation.exit_code != 0 or observation.payload is None for observation in observations):
         reason = "deployment identity could not be captured from every required read-only Kubernetes query"
     else:
+        statefulsets_by_name = {item.get("metadata", {}).get("name"): item for item in statefulsets}
+        postgresql = statefulsets_by_name.get("access-telemetry-postgresql")
+        postgresql_spec = postgresql.get("spec", {}) if postgresql else {}
+        postgresql_status = postgresql.get("status", {}) if postgresql else {}
+        postgresql_images = [
+            container.get("image")
+            for container in postgresql_spec.get("template", {}).get("spec", {}).get("containers", [])
+        ]
         by_name = {item.get("metadata", {}).get("name"): item for item in deployments}
         lifecycle = by_name.get("memories-access-telemetry")
         lifecycle_replicas = lifecycle.get("spec", {}).get("replicas", 0) if lifecycle else 0
-        if lifecycle is None or lifecycle_replicas < 1:
+        if postgresql is None:
+            reason = "the approved access-telemetry PostgreSQL StatefulSet is missing"
+        elif postgresql_spec.get("replicas") != 1 or postgresql_status.get("readyReplicas", 0) != 1:
+            reason = "the approved access-telemetry PostgreSQL StatefulSet is not exactly 1/1 Ready"
+        elif postgresql_images != [EXPECTED_POSTGRESQL_IMAGE]:
+            reason = "the running PostgreSQL image does not match the approved immutable digest"
+        elif lifecycle is None or lifecycle_replicas < 1:
             reason = "lifecycle deployment is disabled; Production writes remain fail-closed"
         else:
             store = next(
                 (item for item in components if item.get("metadata", {}).get("name") == "access-telemetry-store"),
                 None,
             )
-            store_type = store.get("spec", {}).get("type") if store else None
-            if store_type != "state.redis":
+            store_spec = store.get("spec", {}) if store else {}
+            if store_spec.get("type") != "state.postgresql" or store_spec.get("version") != "v2":
                 reason = "exact Production state-store component identity is missing"
             else:
                 reason = (
-                    "state.redis adapter has no approved exact-profile rollback, zero-loss, "
-                    "capacity, and physical-reclamation probe result"
+                    "state.postgresql/v2 has no complete approved exact-profile Dapr behavior, load, "
+                    "capacity, backup/restore, physical-reclamation, and separated-review result"
                 )
 
     profile = AdapterProfile(

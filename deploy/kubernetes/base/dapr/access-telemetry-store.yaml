@@ -1,30 +1,33 @@
-# Portable template only. Story 27.3 must select, pin, and prove the exact Production adapter.
+# PG-ONPREM-1 qualification template. Production writes remain disabled until Story 27.3 passes C1.
 apiVersion: dapr.io/v1alpha1
 kind: Component
 metadata:
   name: access-telemetry-store
 spec:
-  type: state.redis
-  version: v1
+  type: state.postgresql
+  version: v2
+  initTimeout: 1m
   metadata:
-    - name: redisHost
-      value: redis:6379
-    - name: redisPassword
+    - name: connectionString
       secretKeyRef:
-        name: redis-secret
-        key: password
+        name: access-telemetry-postgresql
+        key: connectionString
+    - name: sslRootCert
+      value: /mnt/access-telemetry-postgresql/ca.crt
+    - name: tablePrefix
+      value: access_telemetry.lifecycle_
+    - name: metadataTableName
+      value: access_telemetry.dapr_metadata
+    - name: timeout
+      value: 3s
+    - name: cleanupInterval
+      value: 5m
+    - name: maxConns
+      value: "64"
+    - name: connectionMaxIdleTime
+      value: 5m
     - name: actorStateStore
       value: "true"
-    - name: queryIndexes
-      value: |
-        [
-          {
-            "name": "expiryMinute",
-            "indexes": [
-              { "key": "expiryMinute", "type": "NUMERIC" }
-            ]
-          }
-        ]
 auth:
   secretStore: access-telemetry-secrets
 scopes:

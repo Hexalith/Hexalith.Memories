@@ -48,7 +48,7 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         "Assurance Boundary",
         "Story 27.2 Implementation Handoff",
         "Stories 27.3 and 27.4 Verification and Operations Handoff",
-        "Production Adapter Qualification — PG-AZ-1",
+        "Production Adapter Qualification — PG-ONPREM-1",
     ];
 
     [Fact]
@@ -560,24 +560,32 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
 
         AssertCellCounts(profile, 2, "Exact qualification profile");
         GetRow(profile, "Profile ID")[1].ShouldBe(
-            "`postgresql-v2-dapr-1.18.1-azure-pg17.10-zrha-d32ds-v5-4095gib-40kiops-v1`");
+            "`postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1`");
         GetRow(profile, "Dapr component")[1].ShouldContain("`type: state.postgresql`", Case.Sensitive);
-        GetRow(profile, "Backend")[1].ShouldBe("Azure Database for PostgreSQL Flexible Server 17.10");
-        GetRow(profile, "Storage")[1].ShouldContain("4,396,972,769,280 usable bytes", Case.Sensitive);
-        GetRow(profile, "Dapr control plane")[1].ShouldContain("anti-affinity across three zones", Case.Sensitive);
+        GetRow(profile, "Backend")[1].ShouldContain("PostgreSQL 18.4", Case.Sensitive);
+        GetRow(profile, "Kubernetes target")[1].ShouldContain("`jpiquot@local`", Case.Sensitive);
+        GetRow(profile, "Availability")[1].ShouldContain("no node, disk, zone, control-plane, or site HA claim", Case.Sensitive);
+        GetRow(profile, "Storage")[1].ShouldContain("429,496,729,600 bytes", Case.Sensitive);
+        GetRow(profile, "Dapr control plane")[1].ShouldContain("co-located on `node1`", Case.Sensitive);
         GetRow(profile, "Physical reclamation")[1].ShouldContain("within 24 hours", Case.Sensitive);
 
         AssertCellCounts(images, 2, "Required immutable image set");
         GetRow(images, "Dapr sidecar")[1].ShouldBe(
             "`ghcr.io/dapr/daprd@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8`");
+        GetRow(images, "PostgreSQL")[1].ShouldContain(
+            "sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a",
+            Case.Sensitive);
         GetRow(images, "Lifecycle service")[1].ShouldContain("**Missing and blocking:**", Case.Sensitive);
         GetRow(images, "Clock service")[1].ShouldContain("**Missing and blocking:**", Case.Sensitive);
 
-        string qualification = NormalizeWhitespace(adr.GetSection("Production Adapter Qualification — PG-AZ-1"));
-        qualification.ShouldContain("Maximum steady-state admission (70%) | 3,077,880,938,496", Case.Sensitive);
-        qualification.ShouldContain("Reclamation critical boundary (80%) | 3,517,578,215,424", Case.Sensitive);
-        qualification.ShouldContain("Lifecycle Unhealthy boundary (90%) | 3,957,275,492,352", Case.Sensitive);
-        qualification.ShouldContain("loss of the Azure PostgreSQL primary compute and its availability zone", Case.Sensitive);
+        string qualification = NormalizeWhitespace(adr.GetSection("Production Adapter Qualification — PG-ONPREM-1"));
+        qualification.ShouldContain("Maximum steady-state admission (70%) | 300,647,710,720", Case.Sensitive);
+        qualification.ShouldContain("Reclamation critical boundary (80%) | 343,597,383,680", Case.Sensitive);
+        qualification.ShouldContain("Lifecycle Unhealthy boundary (90%) | 386,547,056,640", Case.Sensitive);
+        qualification.ShouldContain("forced loss of the PostgreSQL container/process", Case.Sensitive);
+        qualification.ShouldContain("must never be described as node-, disk-, zone-, or site-redundant", Case.Sensitive);
+        qualification.ShouldContain("named backup destination", Case.Sensitive);
+        qualification.ShouldContain("`queryIndexes` is intentionally absent", Case.Sensitive);
         qualification.ShouldContain("neither may be inferred from the other", Case.Sensitive);
         qualification.ShouldContain("is rejected for C1", Case.Sensitive);
         qualification.ShouldContain("remain Dapr-only", Case.Sensitive);

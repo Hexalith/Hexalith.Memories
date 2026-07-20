@@ -4763,7 +4763,7 @@ Operators can configure and verify a bounded lifecycle for access telemetry thro
 
 **Lifecycle label:** Operational Readiness / Security and Observability Hardening.
 
-**Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation) and the approved Sprint Change Proposal 2026-07-19/20 (Story 27.3 C1 Production Adapter and Deployment Profile).
+**Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation), the approved Sprint Change Proposal 2026-07-19/20 (Story 27.3 C1 Production Adapter and Deployment Profile), and the approved Sprint Change Proposal 2026-07-20 (Story 27.3 On-Premises PostgreSQL 18.4 Profile).
 
 **Sequencing gate:** Story 27.1 is decision-first. Stories 27.2 and 27.3 must not implement or claim a sink/store before its ownership, topology, failure, retention, purge, and validation contract is ratified.
 
@@ -4821,10 +4821,10 @@ So that deployment-shaped lifecycle verification starts only on an atomic, durab
 
 **Acceptance Criteria:**
 
-1. The exact `PG-AZ-1` runtime, component, backend, Dapr control plane, application images, component/config manifests, actor/Scheduler identities, configuration epoch, profile hash, region, quota, and cost are captured from the running target.
+1. The exact `PG-ONPREM-1` runtime, component, PostgreSQL 18.4 backend, Dapr control plane, application images, component/config manifests, actor/Scheduler identities, configuration epoch, profile hash, node/storage capacity, and operating cost are captured from the running on-premises target.
 2. CRUD, strong reads, ETags, rollback-atomic multi-key transactions, TTL, actor reactivation, Placement/Scheduler/reminder recovery, request bounds, two-writer 500 events/s throughput, 150,000-record purge catch-up, isolation, encryption, capacity, and cohort-attributable physical reclamation all pass without skip.
-3. Forced loss of the PostgreSQL primary/AZ proves zero loss of every acknowledged record. Outside-profile RPO/RTO and recovery are published without overstating them.
-4. Hexalith Platform Operations approves capacity, quota, cost, operation, fault, upgrade, rollback, and reclamation evidence; a separate security reviewer approves identity, secrets, TLS, network, authorization, encryption, privacy, and evidence integrity.
+3. Forced loss and replacement of the PostgreSQL container/process proves zero loss of every acknowledged record while the single node and retained local volume remain healthy. Node, local-volume, control-plane, and site loss are explicitly outside profile; backup/restore evidence and the resulting nonzero RPO/RTO are published without an HA claim or overstatement.
+4. Hexalith Platform Operations approves node/storage capacity, operating cost, operation, bounded fault, backup/restore, upgrade, rollback, and reclamation evidence and explicitly acknowledges the absence of node/disk/site HA; a separate security reviewer approves identity, secrets, TLS, network, authorization, encryption, privacy, and evidence integrity.
 5. Any missing digest, placeholder, profile drift, failed probe, missing approval, or unreserved capacity keeps Production writes disabled, Story 27.3 `in-progress`, Story 27.4 `backlog`, and A41 open.
 
 ### Story 27.4: Retention Verification, Operations Runbook, and A41 Close-Out
@@ -4835,7 +4835,7 @@ So that A41 closes only after the policy works in the deployment shape.
 
 **Predecessor Gate:**
 
-- Story 27.3 is `done` with an immutable `PG-AZ-1` C1 packet, no skipped, stale, failed, or unapproved result, and both required approvals.
+- Story 27.3 is `done` with an immutable approved Production-profile C1 packet, currently `PG-ONPREM-1`, no skipped, stale, failed, or unapproved result, and both required approvals.
 - The live profile hash at Story 27.4 start exactly matches Story 27.3. A mismatch returns ownership to Story 27.3 and keeps writes disabled.
 
 **Acceptance Criteria:**
