@@ -1,9 +1,9 @@
 # Story 27.3 C1 Adapter Profile Evidence
 
-- captured_utc: `2026-07-20T07:23:03Z`
+- captured_utc: `2026-07-20T11:21:32.846536+00:00`
 - checkpoint: `adapter-profile`
 - status: `rejected`
-- rejection_reason: the PostgreSQL server-installation subset passed, but the complete no-skip C1 qualification has not run; the live Dapr component remains Redis, lifecycle/clock images remain placeholders at zero replicas, the exposed pre-existing OpenBao access token must be rotated before seeding the PostgreSQL connection, and backup/restore, workload/capacity/reclamation, full Dapr behavior, and separate approvals are absent
+- rejection_reason: lifecycle deployment is disabled; Production writes remain fail-closed
 - production_lifecycle_writes: `disabled`
 - evidence_is_approval: `false`
 
@@ -14,62 +14,32 @@
 - deployment_id: `memories-production-2.11.0-c7c2ca21-hexalith-keys-r2`
 - profile_id: `postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1`
 - evidence_root: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/tests`
-- declared_single_component_fault: `postgresql-container-or-process-loss-and-statefulset-pod-replacement-while-node1-and-the-retained-local-volume-remain-healthy`
-- assurance_limit: `single-node, single-instance, non-HA; node, local-volume, control-plane, and site loss are outside profile`
+- declared_single_component_fault: `postgresql-pod-process-loss-with-node1-and-retained-volume-healthy`
 
 ## Immutable Profile Material
 
-- combined_profile_sha256: `0952992388e7004aeb287a442b6b55c416a7b6db4bad55b931b713bf1a699c3c`
-- collector_profile_sha256: `dbe2eb0e50c7f8144e769fcae5c9fded1fed6e04c167e288f52e186916e3ede6`
-- collector_mutation_manifest_sha256: `e2ff545e79639245ae33be115be808ff321c476dbace963b574d27484fa0f590`
-- rendered_production_sha256: `e2c9a5cd4536b740ecc629fb3d362123abf02d911b205f067a0b6c4bf8de8942`
-- postgresql_manifest_sha256: `aa5581f06c9c6d1dbd3c74cfebe2be5c5079d6188e3369cfb4244439d84b3405`
-- network_policy_sha256: `ae076135fe09c437fc620f491d23fb29d7b3f187cdc93dbd0f19d804f7f41c4f`
-- lifecycle_deployment_sha256: `2e23562abe3b376914efaaf109cd34ba58f440f7296e430b39ba47d4e25e48e5`
-- dapr_component_sha256: `ffe404bcb2ae600191bae2b98189cb61b3717c97e92548d595efad14da38597d`
-- adapter_source_sha256: `d250bc1616e3039726121182618d7132a50be15a4d0dc796becd08b158ffe4a5`
-- expiry_bucket_source_sha256: `e8d9e16a841e028818048c11a7affa5e47a3f7faccd1e199a072e4ab5e5a50bc`
-- expiry_catalog_source_sha256: `fe530ba4b5e3d7b05ed05d7442ac82ab714172f22dca8d88b79306d3fb0c0074`
-- collector_source_sha256: `a5badbdb51b33d65c8ce3907de5272c1354198adf1a49c4d8ce4300af0778677`
-- collector_entrypoint_sha256: `6aeda3ec341e45c768cf8960a7369e55e02be4b328f73bec82c1119881a72e9c`
-- collector_tests_sha256: `1f0164c2ffbce9be1d39cbf17931ca8a573ad024dc229c8ffac72f8d96b77f62`
+- profile_sha256: `fba5b2ff22fcce7130e513e1ec94c73d8c97984f3857c6f80473386041c124c8`
+- mutation_manifest_sha256: `450e4a751038e5578208eb287d6478d86e87ebe0ad18cbabfddf7ad32d6a9560`
 - allowed_mutations: `[]`
 
-## Installed Server Observations
+## Safe Deployment Observations
 
-| Observation | Result |
+| Observation | Value |
 | :-- | :-- |
-| PostgreSQL | `18.4 (Debian 18.4-1.pgdg13+1)` |
-| requested and resolved image | `docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a` |
-| registry linux/amd64 manifest | `sha256:d93de42662696f278fb34354b06fdaa90ad7ca3106d6f72fbd01d16da006d2cf` |
-| StatefulSet | `access-telemetry-postgresql`, `1/1` Ready on `node1`, final pod restart count `0` |
-| PVC | `data-access-telemetry-postgresql-0`, Bound `400Gi`, `openebs-hostpath-retain`, PV `pvc-31258a19-5814-48c5-8209-1d92f2e6f8ed`, reclaim policy `Retain` |
-| service | `ClusterIP`, port `5432`, no external IP |
-| durability settings | data checksums `on`; `fsync=on`; `synchronous_commit=on`; `full_page_writes=on` |
-| transport | hostname-verified TLS succeeded with TLS 1.3 / `TLS_AES_256_GCM_SHA384`; plaintext connection rejected |
-| certificate | SHA-256 fingerprint `A1:27:02:AF:F5:48:ED:10:72:DB:BD:7A:D0:3E:7D:56:D4:48:AB:AA:51:93:A2:08:70:49:7D:01:DF:79:A2:19`; expires `2028-10-22T07:11:18Z` |
-| database boundary | dedicated `memories_access_telemetry` database and `access_telemetry` schema; runtime role has CONNECT/USAGE/CREATE and is not superuser |
-| network isolation | labeled verifier reached port 5432; an otherwise identical unlabeled pod was blocked; both temporary pods were removed |
-| pod replacement | a non-sensitive probe row survived deletion/recreation of the StatefulSet pod on the same retained PV, was read after recovery, and was removed |
-| protected material | the newly created PostgreSQL passwords and CA/server keypair were rotated after a diagnostic exposed their earlier base64 encodings; the superseded database passwords are invalid and the superseded certificate is no longer mounted |
-| existing Keycloak PostgreSQL | deployment/PVC UIDs and resource versions remained unchanged before and after installation |
+| deployments | `[{"available_replicas":2,"generation":3,"images":["registry.hexalith.com/memories@sha256:71e49b6e806ec2fa7c221e58600ba02115693923db05915663396be01b1c042c"],"name":"memories","namespace":"hexalith-memories","ready_replicas":2,"replicas":2,"resource_version":"880895"},{"available_replicas":0,"generation":1,"images":["registry.hexalith.com/memories-access-telemetry:0.0.0"],"name":"memories-access-telemetry","namespace":"hexalith-memories","ready_replicas":0,"replicas":0,"resource_version":"855240"},{"available_replicas":0,"generation":1,"images":["registry.hexalith.com/memories-access-telemetry-clock:0.0.0"],"name":"memories-access-telemetry-clock","namespace":"hexalith-memories","ready_replicas":0,"replicas":0,"resource_version":"855251"},{"available_replicas":2,"generation":1,"images":["registry.hexalith.com/memories-mcp@sha256:4d5cd738a89fdca71b7202d7661cecea8bab6b6e45d4fe505670cf7287205bb7"],"name":"memories-mcp","namespace":"hexalith-memories","ready_replicas":2,"replicas":2,"resource_version":"881057"}]` |
+| components | `[{"generation":1,"metadata_names":["redisHost","redisPassword"],"name":"access-telemetry-config","namespace":"hexalith-memories","resource_version":"855267","scopes":["memories","memories-access-telemetry"],"type":"configuration.redis","version":"v1"},{"generation":2,"metadata_names":["vaultAddr","caPem","skipVerify","tlsServerName","vaultToken","vaultKVPrefix","vaultKVUsePrefix","enginePath","vaultValueType"],"name":"access-telemetry-secrets","namespace":"hexalith-memories","resource_version":"880742","scopes":["memories","memories-access-telemetry","memories-access-telemetry-clock"],"type":"secretstores.hashicorp.vault","version":"v1"},{"generation":1,"metadata_names":["redisHost","redisPassword","actorStateStore","queryIndexes"],"name":"access-telemetry-store","namespace":"hexalith-memories","resource_version":"855299","scopes":["memories-access-telemetry"],"type":"state.redis","version":"v1"},{"generation":1,"metadata_names":["key","model","responseCacheTTL"],"name":"llm-openai","namespace":"hexalith-memories","resource_version":"855309","scopes":["memories"],"type":"conversation.openai","version":"v1"},{"generation":1,"metadata_names":["redisHost","redisPassword","allowedTopics","protectedTopics","publishingScopes","subscriptionScopes"],"name":"pubsub","namespace":"hexalith-memories","resource_version":"855314","scopes":["eventstore","memories"],"type":"pubsub.redis","version":"v1"},{"generation":2,"metadata_names":["vaultAddr","caPem","skipVerify","tlsServerName","vaultToken","vaultKVPrefix","vaultKVUsePrefix","enginePath","vaultValueType"],"name":"secretstore","namespace":"hexalith-memories","resource_version":"880741","scopes":["eventstore","memories"],"type":"secretstores.hashicorp.vault","version":"v1"},{"generation":1,"metadata_names":["redisHost","redisPassword","actorStateStore"],"name":"statestore","namespace":"hexalith-memories","resource_version":"855317","scopes":["memories"],"type":"state.redis","version":"v1"}]` |
+| configurations | `[{"access_control_default":"deny","access_control_policy_count":2,"features":[],"generation":1,"name":"memories-access-telemetry-clock-config","namespace":"hexalith-memories","resource_version":"855318","secret_scope_count":1},{"access_control_default":"deny","access_control_policy_count":2,"features":[{"enabled":false,"name":"HotReload"}],"generation":2,"name":"memories-access-telemetry-config","namespace":"hexalith-memories","resource_version":"872776","secret_scope_count":1},{"access_control_default":"deny","access_control_policy_count":1,"features":[{"enabled":false,"name":"HotReload"}],"generation":2,"name":"memories-config","namespace":"hexalith-memories","resource_version":"872775","secret_scope_count":2},{"access_control_default":"deny","access_control_policy_count":0,"features":[],"generation":1,"name":"memories-mcp-config","namespace":"hexalith-memories","resource_version":"855321","secret_scope_count":1}]` |
+| statefulsets | `[{"generation":2,"images":["docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a"],"name":"access-telemetry-postgresql","namespace":"hexalith-memories","ready_replicas":1,"replicas":1,"resource_version":"1117577"},{"generation":1,"images":["falkordb/falkordb:v4.12.0@sha256:7927eb194df0fadf70e2deb6c20c8178743ec92aacd739c790f8a35ce5dee613"],"name":"falkordb","namespace":"hexalith-memories","ready_replicas":1,"replicas":1,"resource_version":"855559"},{"generation":1,"images":["redis/redis-stack-server:7.4.0-v8@sha256:798ab84d9f266936b034ab11c4d04a2b8e4b441884c5aa7d17ac951eefdf742a"],"name":"redis-stack","namespace":"hexalith-memories","ready_replicas":1,"replicas":1,"resource_version":"855596"}]` |
+| pods | `[{"container_images":["ghcr.io/dapr/daprd:1.18.1","sha256:c68e099f4beefcdd008de4d1dbdc70b3fc1c84ba2481b2c40c8d519eeaa4fa5f"],"generation":1,"name":"memories-589ff6d645-fp9qt","namespace":"hexalith-memories","node":"node1","phase":"Running","resource_version":"880875"},{"container_images":["ghcr.io/dapr/daprd:1.18.1","sha256:c68e099f4beefcdd008de4d1dbdc70b3fc1c84ba2481b2c40c8d519eeaa4fa5f"],"generation":1,"name":"memories-589ff6d645-kr9f9","namespace":"hexalith-memories","node":"node1","phase":"Running","resource_version":"880795"}]` |
 
-## Adapter Compatibility Verification
+## Read-only Child Commands
 
-- Dapr PostgreSQL v2 does not implement Query State. The lifecycle adapter now uses deterministic `expiry-catalog` and `expiry-bucket/{minute}/{shard}` state committed transactionally with each record.
-- Focused AccessTelemetry tests passed `61/61`, including atomic record/bucket/catalog writes, explicit due traversal without Query State, delete/prune behavior, and idempotent retries.
-- Focused deployment and architecture guards passed `17/17`.
-- The complete production Kustomize render passed Kubernetes server-side dry-run.
-- The exact C1 Python inventory passed `4/4`; the aligned read-only collector recognized the immutable `PG-ONPREM-1` server identity and exited `1` at the expected fail-closed lifecycle-disabled gate.
-- The checked-in component is `state.postgresql/v2`, has no `queryIndexes`, resolves its connection through OpenBao, and mounts the PostgreSQL CA read-only into the Dapr sidecar for `sslRootCert` verification.
+| Command | Exit | Stdout SHA-256 | Stderr SHA-256 | Result |
+| :-- | --: | :-- | :-- | :-- |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get deployments -o json ` | 0 | `e8aab535b36d748e452da087368f1dec16a8e63cac4d71cde87527ec728fd958` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get components.dapr.io -o json ` | 0 | `7e63ac35f4db121603f052c3d4a6e7465b059cca91474de40d5302734fc3b8ef` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get configurations.dapr.io -o json ` | 0 | `a2e2031e8c550b7af09ca31a15881bc5eebb48bc16805beb8ebec75a16d3a13e` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get statefulsets -o json ` | 0 | `36d8a017901e7203e12d1f2558b59d647677d5b2ac51dce36d842e9f27a68df2` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get pods -l app.kubernetes.io/name=memories -o json ` | 0 | `e1c629c9d52c249a816b56958eaf9e11ae4c490c260a2c9af571aa390fbba323` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | ok |
 
-## Remaining C1 Gates
-
-- Rotate the pre-existing `openbao-access-telemetry-bootstrap` token through the documented rolling-restart procedure, then seed `access-telemetry-postgresql/connectionString` without exposing it.
-- Publish immutable lifecycle and clock application image digests; replace the `0.0.0` placeholders only in a reviewed qualification run.
-- Apply and exercise the PostgreSQL v2 Dapr component with the actual Dapr 1.18.1 sidecar and prove CRUD, strong reads, ETags, rollback-atomic transactions, TTL, actors, Placement/Scheduler, reminders, bounds, and failure behavior.
-- Run the exact two-writer 500 events/s steady-state and 150,000-record purge workload; measure capacity operands, latency, catch-up, physical reclamation, and local-host headroom.
-- Configure a named off-cluster backup destination and complete a successful restore, publishing bounded nonzero RPO/RTO without an HA claim.
-- Obtain separate hash-bound Platform Operations and security approvals.
-
-The packet intentionally stores public certificate identity, hashes, and structural results only. It stores no password, token, private key, connection string, raw Secret data, or pod environment value.
+The packet intentionally stores hashes and structural metadata only; it does not store secret values, backend credentials, or raw pod environment data.
