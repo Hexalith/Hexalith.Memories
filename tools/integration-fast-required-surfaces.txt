@@ -10,3 +10,4 @@ hybrid-search|Hexalith.Memories.IntegrationTests.Search.HybridSearchApiIntegrati
 tenant-isolation|Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests
 telemetry-integration|Hexalith.Memories.IntegrationTests.Telemetry.AspireEndToEndTraceTests
 mcp-integration|Hexalith.Memories.IntegrationTests.Mcp.McpServerIntegrationTests
+migration|Hexalith.Memories.IntegrationTests.Migration.EmbeddingVectorMigrationRedisIntegrationTests

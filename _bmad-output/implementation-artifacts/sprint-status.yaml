@@ -1,5 +1,5 @@
 # generated: 2026-07-05T17:40:39+02:00
-# last_updated: 2026-07-19
+# last_updated: 2026-07-21
 # project: memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-07-19
+last_updated: 2026-07-21
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -559,11 +559,11 @@ action_items:
   - epic: 21
     action: "Provide a runnable or explicitly accepted infrastructure lane for RedisStack migration integration tests"
     owner: "Murat, Amelia"
-    status: open
+    status: done  # 2026-07-21: Closed on the runnable-lane arm of the success criterion ("executes in an approved CI lane"). EmbeddingVectorMigrationRedisIntegrationTests (Category=Integration, 5 plain [Fact]s, self-provisions redis/redis-stack via Testcontainers RedisStackFixture) executes and passes in the approved CI Docker lane (ci.yml job integration-fast; tests also run in nightly.yml). Evidence: run 29798593273 - the 5 migration tests are among 261 passed (8 skipped, 1 unrelated OpenBaoTopology timeout; none of the skips/fail is the migration class). Hardening: the class is now required surface "migration" in tools/integration-fast-required-surfaces.txt, so verify-integration-fast-coverage.py asserts the class is PRESENT in a fully-green integration-fast TRX - catching removal/rename/non-discovery. Honest caveats (do not overclaim): the verifier checks presence, not per-class pass/skip outcome, and is success()-gated so it runs only on green lanes; run 29798593273 was itself red (OpenBao is in-lane) so its verifier step did not run - the required-surface gate first fires on the next fully-green run. Not locally runnable in the dev sandbox (no Docker socket); CI is the approved lane. Deferred hardening: see deferred-work.md ID 21.10-A4-VERIFY (make the gate outcome-aware + add a red-lane/nightly backstop). Re-open trigger: the migration tests stop executing/passing in the CI integration-fast lane; OR the "migration" surface is removed from integration-fast-required-surfaces.txt (human/review-detected - the gate cannot self-detect removal); OR the deferred verifier hardening reveals the class was silently skipped while the gate stayed green.
   - epic: 21
     action: "Add review-found workflow/runtime defects to future remediation story checklists"
     owner: "Amelia"
-    status: open
+    status: done  # 2026-07-21: Loaded fail-closed checklist at _bmad/custom/remediation-runtime-checklist.md carrying the four Epic 21 review runtime-defect classes (Dapr activity registration, observed child workflows, owner-checked cleanup/dedup, rollback-marker/staging preservation) plus File List reconciliation (Epic 21 hygiene, deferred to story-phase-ledger.md — not a runtime defect); self-scoping by touched surface with a not-applicable escape. Injected into committed bmad-{create-story,dev-story,code-review}.toml (one REMEDIATION_RUNTIME_CHECKLIST directive each; enforcement is LLM-obeyed prose loaded by the override, like the sibling story-scope-guard/story-phase-ledger policies). Customization-resolution fixture 14/14 with per-skill directive-body and both-surface (.agents/.claude) checks (tests/tooling/bmad_customization/bmad_customization_test.py); lesson L11 recorded; three-layer adversarial review applied. Spec: spec-remediation-runtime-defect-checklist.md.
   - epic: 22
     action: "Add an explicit File List and evidence-table pre-review check to future remediation story close-out"
     owner: "Amelia, Murat"

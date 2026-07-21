@@ -5,8 +5,10 @@
 
 persistent_facts = [
   "file:{project-root}/_bmad/custom/story-phase-ledger.md",
+  "file:{project-root}/_bmad/custom/remediation-runtime-checklist.md",
 ]
 
 activation_steps_append = [
   "STORY_PHASE_LEDGER: Apply the shared story phase ledger policy throughout development. Read the create-story baseline, or create the policy-adoption baseline before implementation when the story predates this policy; capture comparable runner-derived totals immediately before and after development with named units, scope, filters, configuration, and the exact command or precise blocked-evidence record; separate any named external same-lane delta; repair stale count references only in policy-permitted sections; append a dev-story row with actual phase and cumulative deltas; and reconcile every cumulative in-scope changed path against the story File List using declared baseline and name-status evidence. Before setting review, fail closed when the required row, evidence, arithmetic, stale-reference repair, or File List reconciliation is missing or inconsistent.",
+  "REMEDIATION_RUNTIME_CHECKLIST: Apply the remediation runtime defect checklist during development. Re-derive applicability from the actual development diff; a creation-time not-applicable note is void if development introduces a triggering surface. For each applicable category (Dapr workflow activity registration, observed child workflows, owner-checked cleanup and dedup, rollback marker and staging-artifact preservation) implement the behavior and add focused negative or adversarial coverage, or record an accepted blocker with owner, consequence, and reopen trigger; File List reconciliation defers to the story phase ledger. Fail closed before setting review when an applicable category lacks passing evidence or an accepted blocker.",
 ]

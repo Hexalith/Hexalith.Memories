@@ -36,6 +36,10 @@ Create the Secret resources below in namespace `hexalith-memories` through the i
 | Secret `registry-credentials` | Kubernetes Docker config JSON | image pulls for Server and MCP |
 | Secret `openbao-runtime-bootstrap` | `token`, `ca.pem` | TLS-verified, read-only OpenBao access for Dapr component `secretstore` |
 | Secret `openbao-access-telemetry-bootstrap` | `token`, `ca.pem` | TLS-verified, read-only OpenBao access for Dapr component `access-telemetry-secrets` |
+| Secret `access-telemetry-postgresql-bootstrap` | `admin-password`, `runtime-password` | PostgreSQL 18.4 `PG-ONPREM-1` StatefulSet bootstrap + initdb.d runtime-role creation |
+| Secret `access-telemetry-postgresql-tls` | `tls.crt`, `tls.key`, `ca.crt` | PostgreSQL server TLS and the Dapr `access-telemetry-store` `verify-full` CA volume mount |
+| Secret `access-telemetry-clock-key` | `verification-public-key` | lifecycle attestation verification (the clock's private signing key is OpenBao-resident) |
+| Secret `access-telemetry-clock-sources` | `source-a-token`, `source-b-token`, `source-c-token` | `memories-access-telemetry-clock` external UTC source authentication |
 | Generated ConfigMap `memories-production-config-*` | `OIDC_AUTHORITY`, `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_TENANT_CLAIM` | identical Server/MCP OIDC validation contract; patch through Kustomize, not by creating a competing unhashed ConfigMap |
 
 The OIDC authority and issuer must use HTTPS. Server and MCP intentionally consume the same audience and tenant-claim name. MCP forwards the validated inbound bearer unchanged when invoking Server; there is no production `Authentication:ServerUpstream` signing key.
@@ -47,7 +51,7 @@ bootstrap Kubernetes Secrets hold only a scoped OpenBao token and CA; secret pay
 separate runtime and access-telemetry prefixes. Direct pod environment and container-argument consumers
 still require their Kubernetes Secrets because Dapr does not inject environment variables. See
 [Hexalith Keys OpenBao operations](./openbao.md) for the exact boundary, deployment profile, ownership,
-rotation deadlines, and recovery requirements.
+rotation deadlines, and recovery requirements. The Dapr `access-telemetry-secrets` store additionally resolves the OpenBao-resident `access-telemetry-postgresql` connection string (which must carry `sslmode=verify-full` and `sslrootcert`), `access-telemetry-marker-key`, and the clock signing key from the `hexalith/memories/access-telemetry` prefix; these are not Kubernetes Secrets.
 
 The default DAPR trust domain is `public` and the production namespace is `hexalith-memories`. If the cluster uses another trust domain or namespace, patch both the Server DAPR `Configuration` policy and the workload namespace together. Do not widen the deny-by-default `/api/v1/**` policy or add publisher app-ids: `eventstore` is the sole publisher and `memories` is subscriber-only.
 

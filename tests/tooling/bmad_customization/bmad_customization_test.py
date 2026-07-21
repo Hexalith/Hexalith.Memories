@@ -32,6 +32,13 @@ LEDGER_POLICY_FACT = "file:{project-root}/_bmad/custom/story-phase-ledger.md"
 LESSONS_FACT = "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md"
 MARKER = "HISTORICAL_SLICE_GUARD:"
 LEDGER_MARKER = "STORY_PHASE_LEDGER:"
+RUNTIME_CHECKLIST_POLICY = (
+    REPO_ROOT / "_bmad" / "custom" / "remediation-runtime-checklist.md"
+)
+RUNTIME_CHECKLIST_FACT = (
+    "file:{project-root}/_bmad/custom/remediation-runtime-checklist.md"
+)
+RUNTIME_CHECKLIST_MARKER = "REMEDIATION_RUNTIME_CHECKLIST:"
 SPEC_PROJECT_CONTEXT_FACT = "file:{project-root}/project-context.md"
 GENERATOR_PROJECT_CONTEXT_FACT = "file:{project-root}/**/project-context.md"
 PROJECT_CONTEXT_BRIDGE = """# Project Context Bridge
@@ -664,6 +671,100 @@ class BMadCustomizationTests(unittest.TestCase):
         self.assertIn("count mismatch", ledger_directive)
         self.assertIn("unaccounted in-scope file", ledger_directive)
         self.assertIn("before done", ledger_directive)
+
+    def test_runtime_checklist_wired_into_lifecycle_workflows(self):
+        # Each skill's directive must carry its own fail-closed gate, not just the
+        # marker prefix — otherwise a gutted or cross-wired directive still passes.
+        skill_directive_phrases = {
+            "bmad-create-story": ("ready-for-dev", "not-applicable note"),
+            "bmad-dev-story": ("before setting review", "Re-derive applicability"),
+            "bmad-code-review": (
+                "fail-closed blocker for done",
+                "independently re-derive",
+            ),
+        }
+        for surface in (".agents", ".claude"):
+            for skill_name, phrases in skill_directive_phrases.items():
+                with self.subTest(surface=surface, skill_name=skill_name):
+                    workflow = resolve_workflow(skill_name, surface)
+                    self.assertIn(
+                        RUNTIME_CHECKLIST_FACT,
+                        workflow["persistent_facts"],
+                    )
+                    checklist_directives = [
+                        step
+                        for step in workflow["activation_steps_append"]
+                        if step.startswith(RUNTIME_CHECKLIST_MARKER)
+                    ]
+                    self.assertEqual(len(checklist_directives), 1)
+                    for phrase in phrases:
+                        self.assertIn(phrase, checklist_directives[0])
+                    # Injecting the checklist must not clobber the phase-ledger guard.
+                    ledger_directives = [
+                        step
+                        for step in workflow["activation_steps_append"]
+                        if step.startswith(LEDGER_MARKER)
+                    ]
+                    self.assertEqual(len(ledger_directives), 1)
+
+    def test_runtime_checklist_preserves_create_and_review_guards(self):
+        create = resolve_workflow("bmad-create-story")
+        for fact in (POLICY_FACT, LEDGER_POLICY_FACT, LESSONS_FACT):
+            self.assertIn(fact, create["persistent_facts"])
+        self.assertEqual(
+            len(
+                [
+                    step
+                    for step in create["activation_steps_append"]
+                    if step.startswith(MARKER)
+                ]
+            ),
+            1,
+        )
+
+        review = resolve_workflow("bmad-code-review")
+        self.assertIn(RUNTIME_CHECKLIST_FACT, review["persistent_facts"])
+        layer_ids = [layer["id"] for layer in review["review_layers"]]
+        for layer_id in (
+            "historical-slice-guard",
+            "story-phase-ledger",
+            "blind-hunter",
+            "edge-case-hunter",
+            "verification-gap",
+            "acceptance-auditor",
+        ):
+            self.assertEqual(layer_ids.count(layer_id), 1)
+
+    def test_runtime_checklist_policy_defines_categories_and_gates(self):
+        policy = normalize_text(
+            RUNTIME_CHECKLIST_POLICY.read_text(encoding="utf-8")
+        )
+        for category in (
+            "Dapr workflow activity registration",
+            "Observed child workflows",
+            "Owner-checked cleanup",
+            "Rollback marker and staging-artifact preservation",
+            "File List reconciliation",
+        ):
+            self.assertIn(category, policy)
+        # File List reconciliation defers to the phase ledger, not duplicated here.
+        self.assertIn("story-phase-ledger.md", policy)
+        # Self-scoping applicability with an explicit not-applicable escape.
+        self.assertIn(
+            "not applicable — no workflow/runtime surface touched",
+            policy,
+        )
+        # Fail-closed creation and review gates.
+        self.assertIn("## Creation gate", policy)
+        self.assertIn("## Review gate", policy)
+        self.assertIn("ready-for-dev", policy)
+        self.assertIn("decision_needed", policy)
+        self.assertIn("blocks `done`", policy)
+        # Obligation sentences must survive, not just headings and keywords.
+        self.assertIn("verify ownership", policy)
+        self.assertIn("never overwritten", policy)
+        self.assertIn("Independently re-derive applicability", policy)
+        self.assertIn("not re-specified or separately tested here", policy)
 
 
 if __name__ == "__main__":

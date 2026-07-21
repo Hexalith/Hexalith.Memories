@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: memories-access-telemetry
     app.kubernetes.io/component: lifecycle
 spec:
-  replicas: 2
+  replicas: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: memories-access-telemetry
@@ -135,7 +135,7 @@ metadata:
     app.kubernetes.io/name: memories-access-telemetry-clock
     app.kubernetes.io/component: trusted-clock
 spec:
-  replicas: 2
+  replicas: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: memories-access-telemetry-clock

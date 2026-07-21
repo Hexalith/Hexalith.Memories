@@ -1,0 +1,49 @@
+# Tenant-isolation surface globs consumed by tools/check-tenant-isolation-evidence.py.
+#
+# A changed file that matches any glob below is "scope-sensitive": the resolving
+# story/spec must then carry a `## Cross-Tenant Negative Evidence` section (see
+# CONTRIBUTING.md). One glob per line; blank lines and `#` comments are ignored.
+# `**` matches zero or more path segments; each segment uses shell wildcards.
+#
+# Authoritative surface enumeration: _bmad-output/project-context.md `### Testing
+# Rules` ("Tenant isolation requires attached negative evidence") and
+# _bmad-output/planning-artifacts/epics.md (carry-forward guard). Anchors: Story
+# 20.2 (denial-before-dependency) and Story 24.3 (verifier/tenant-marker).
+#
+# Breadth: "Balanced" — tenant-isolation-specific files and directories only.
+# Keep this list narrow and reviewable; widening or narrowing it is a gated
+# ("Ask First") decision because it changes what the gate blocks.
+
+# Authentication, auth-claim normalization, tenant authorization filters/middleware (Story 20.2)
+src/Hexalith.Memories.Server/Authentication/**
+src/Hexalith.Memories.Mcp/Authentication/**
+
+# MCP tool execution / authorization surface
+src/Hexalith.Memories.Mcp/McpToolExecutor.cs
+
+# Tenant isolation verifier and tenant-scoped index readiness verification (Story 24.3)
+src/Hexalith.Memories.Server/Tenants/**
+src/Hexalith.Memories.Server/Infrastructure/*TenantIndexReadinessVerifier.cs
+
+# Tenant/case routing, status, and endpoint filters (all Server endpoints are tenant-scoped API surface)
+src/Hexalith.Memories.Server/Endpoints/**
+
+# Tenant provisioning/deletion, status, registry, and per-tenant index/key/graph selection
+src/Hexalith.Memories.Server/Activities/Tenants/**
+src/Hexalith.Memories.Server/Activities/Indexing/TenantIdGuard.cs
+
+# Graph query selection (tenant-scoped graph/database selection)
+src/Hexalith.Memories.Server/Graph/*GraphQueryBuilder.cs
+
+# Per-tenant stateful actors (all Server actors are tenant-scoped singletons; tenant-scoped actor IDs)
+src/Hexalith.Memories.Server/Actors/**
+
+# Attribution / principal-derived audit identity (Story 20.2)
+src/Hexalith.Memories.Server/Telemetry/AuditPrincipalResolver.cs
+
+# Tenant identifier / status / isolation contracts (wire + routing surface)
+src/Hexalith.Memories.Contracts/V1/Tenant*.cs
+src/Hexalith.Memories.Contracts/V1/*Isolation*.cs
+
+# Tenant lifecycle aggregate/commands/events (tenant status transitions)
+src/Hexalith.Memories.EventStore/Domain/**/*Tenant*.cs

@@ -2301,3 +2301,30 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
   - Target artifact: _bmad-output/planning-artifacts/epics.md
   - Re-open trigger: before Story 27.3 advances to done; the release/publish-pipeline work must own a separate story.
   - Rationale: The four-image publish/partial-recovery pipeline (CiTestInventoryTests.cs + tests/tooling/publish_containers/*) is independently demonstrable and was ledgered as an external CI/CD lane, yet is bundled into the single C1 adapter-qualification slice. Administrator approved splitting it into a new story via correct-course on 2026-07-21; 27.3's File List and ledger shrink to adapter/qualification scope.
+
+## Deferred from: code review of 27-3-production-adapter-and-deployment-profile chunk 2 (2026-07-21)
+
+Chunk 2 = deployment manifests + docs (18 File-List paths). Intermediate chunked review; does not finalize the ledger or advance status. Chunk 3 (tooling + CI) remains.
+
+- Fail-closed `done` blockers: chunk 3 unreviewed; live method/case recount not runnable in this sandbox; Server story/external split +1/+30 -> +5/+26 (see DW 27.3-CR4). Story stays `in-progress`.
+- Clock NetworkPolicy egress to TCP/443 is unrestricted (no `to:`); tighten to real UTC-source CIDRs before enablement. [deploy/kubernetes/base/access-telemetry-network-policy.yaml:99]
+- `maxConns: 64` x 2 replicas (128) can exceed PostgreSQL `max_connections=100` under the C1 two-writer load; reconcile before/at the load probe. [deploy/kubernetes/base/dapr/access-telemetry-store.yaml:25]
+- Verification coverage gap: `skipVerify:"false"`, pg_hba `hostnossl...reject`, init-SQL least-privilege grants, new RBAC secret-reader Roles, `actorStateStore:"true"`, and the telemetry ACL are unbound by static guard tests; add assertions to the chunk-1 guard tests. [tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs]
+- Pre-enablement operational hardening: probe `wget`/`sh` dependency, missing metrics ingress, startup-vs-initTimeout cold-start race, terminationGracePeriod/PDB node-drain block, manual restart on password/CA rotation. [deploy/kubernetes/base/access-telemetry-deployments.yaml]
+- Docs: release-runbook four-image expansion belongs with DW 27.3-CR5; ADR byte-bucket boundary overlap and `edgeTypeCount>16` ambiguity; verify ADR `Story 27.2 C1 mapping` block attribution. [docs/dev/release-runbook.md; docs/dev/adr-27.1-001-access-telemetry-lifecycle.md]
+
+### DW 27.3-CR6 - OpenBao secrets platform is an independent slice (split approved)
+
+  - ID: 27.3-CR6
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
+  - Target artifact: _bmad-output/planning-artifacts/epics.md
+  - Re-open trigger: before Story 27.3 advances to done; the OpenBao platform + runtime secretstore migration must own a separate story.
+  - Rationale: The OpenBao `hexalith-keys` secrets platform (deploy/openbao/values.yaml, namespace.yaml, service-account-hardening.yaml, smoke-test.yaml, docs/operations/openbao.md) and the runtime `secretstore` migration from Kubernetes to hashicorp.vault (scopes eventstore/memories) are an independently-deployable operations platform bundled into the single PG-ONPREM-1 C1 qualification slice, which the Slice Proof and spec (a general operations platform 'returns to planning') do not authorize. Administrator approved splitting it into a new story via correct-course on 2026-07-21; 27.3's File List and ledger shrink to the PG-ONPREM-1 adapter and its secret backing. The static file-based OpenBao seal (key in a Kubernetes Secret beside the data) and namespace-wide 8200 ingress must be surfaced to the security approver as accepted single-node limitations of that split story.
+
+  - ID: 21.10-A4-VERIFY
+  - Status: open
+  - Source story: Epic 21 retro action #4 (spec-redisstack-migration-integration-lane.md); surfaced by adversarial/edge/verification-gap review 2026-07-21
+  - Target artifact: tools/verify-integration-fast-coverage.py
+  - Re-open trigger: any required integration-fast surface is later marked Skip= or conditionally skipped; or the standing in-lane failure (OpenBaoTopologyIntegrationTests) is fixed and a green-only enforcement backstop is wanted; or a maintainer needs the gate to prove execution rather than presence.
+  - Rationale: verify-integration-fast-coverage.py asserts each required surface class is PRESENT in the TRX TestDefinitions (executed_classes harvests className from every <UnitTest> regardless of <UnitTestResult outcome>), guarded only by a lane-aggregate executed>0 check - so a required class whose tests are all Skip=/NotExecuted still satisfies the gate as long as other lane tests ran. Additionally the "Verify fast integration coverage evidence" step in ci.yml has no if: always(), so it is skipped whenever the fast lane is red, and nightly.yml does not run the verifier at all - leaving enforcement inert on red lanes. Hardening: intersect required classNames with results whose outcome is Passed/Failed (executed, not NotExecuted); add a fixture TRX test (skipped-only required class -> exit 1) mirroring tests/tooling/coverage_gate; add a red-lane/nightly enforcement backstop. Pre-existing; affects all required surfaces in integration-fast-required-surfaces.txt, surfaced while enforcing the migration surface for Epic 21 retro action #4.

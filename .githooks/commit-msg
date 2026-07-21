@@ -13,7 +13,13 @@ trap 'rm -f "$changed_file"' EXIT
 git diff --cached --name-only -- > "$changed_file"
 
 if command -v python3 >/dev/null 2>&1; then
-  python3 tools/check-story-file-scope.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file"
+  py=python3
 else
-  python tools/check-story-file-scope.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file"
+  py=python
 fi
+
+"$py" tools/check-story-file-scope.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file"
+
+# Cross-tenant negative evidence gate. Runs here (not pre-commit) because the
+# bypass/Story trailers live in the commit message, which pre-commit cannot see.
+"$py" tools/check-tenant-isolation-evidence.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file"

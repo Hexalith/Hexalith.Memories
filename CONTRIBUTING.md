@@ -131,6 +131,50 @@ python tools/check-story-file-scope.py --branch-name feature/12-3-story-file-sco
 This guardrail has narrow non-goals: it does not change runtime behavior, release tooling, package
 metadata, or submodule contents. Do not initialize nested submodules recursively for story-scope work.
 
+## Cross-Tenant Negative Evidence
+
+The repository rule *"Tenant isolation requires attached negative evidence"*
+(`_bmad-output/project-context.md`, `### Testing Rules`) is enforced by
+`tools/check-tenant-isolation-evidence.py`. When a changed file matches a
+tenant-isolation surface glob listed in `tools/tenant-isolation-surfaces.txt`
+(tenant/case routing, auth claims and authorization filters, tenant status,
+index/key/graph selection, actor IDs, MCP authorization/execution, attribution),
+the resolving story/spec must carry a `## Cross-Tenant Negative Evidence`
+section. A change that touches no surface is a silent no-op.
+
+The section must contain exactly one of these dispositions (`**Label:**` lines,
+optionally bulleted):
+
+```markdown
+## Cross-Tenant Negative Evidence
+
+**Surfaces:** <named affected surfaces>
+**Tests:** `Xxx.CrossTenantDenialTests` (one or more backticked test names)
+**Command:** `dotnet test ... --filter "..."`
+**Result:** N passed; cross-tenant denial precedes dependencies.
+```
+
+If the proof cannot run, record an accepted blocker instead — `**Accepted
+blocker:**`, `**Owner:**`, `**Consequence:**`, `**Reopen trigger:**` (all
+required). If a matched file provably changes no live isolation path, state
+`**Not triggered:** <reason>`. Cite Story 20.2 (denial-before-dependency) and
+Story 24.3 (verifier/tenant-marker) when applicable, or the newer canonical
+replacement.
+
+Story resolution and precedence match the File Scope check (`--story-key` >
+`Story:`/`Story-Key:` trailer > branch name). The gate runs in the `commit-msg`
+hook (not `pre-commit`, which cannot see the trailers) and as a step of the
+`story-file-scope` CI job. As a last resort, a change with no story/spec may
+carry a `Tenant-Isolation-Evidence: not-applicable - <reason>` commit trailer;
+the non-empty reason is logged.
+
+To run the check directly:
+
+```powershell
+python tools/check-tenant-isolation-evidence.py --story-key <your-story-key> --changed-file src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+python tools/check-tenant-isolation-evidence.py --branch-name feature/<your-story-key> --changed-files-file changed-files.txt --commit-message-file commit-message.txt
+```
+
 ## Sprint Status History Conventions
 
 `_bmad-output/implementation-artifacts/sprint-status.yaml` records story state
@@ -289,7 +333,7 @@ The scheduled `.github/workflows/nightly.yml` workflow remains the Tier 3 slow i
 
 | Check | Purpose |
 | --- | --- |
-| `story-file-scope` | Validate changed files against the originating story's `File Scope`. |
+| `story-file-scope` | Validate changed files against the originating story's `File Scope`, and require attached cross-tenant negative evidence when a tenant-isolation surface changed. |
 | `build` | Restore and build `Hexalith.Memories.slnx` in Release. |
 | `test-unit-contract` | Run Docker-free unit/contract coverage, enforce the scoped line gate, and pack/validate the approved NuGet topology before merge. |
 | `integration-fast` | Run Docker-backed `Category=Integration&Category!=IntegrationSlow&Category!=Performance` tests and verify required surface evidence. |

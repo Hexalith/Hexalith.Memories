@@ -149,6 +149,9 @@ jobs:
       - name: Validate story file scope
         run: python3 tools/check-story-file-scope.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
+      - name: Validate cross-tenant negative evidence
+        run: python3 tools/check-tenant-isolation-evidence.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
+
   build:
     name: build
     runs-on: ubuntu-latest
@@ -207,6 +210,9 @@ jobs:
 
       - name: Run BMad customization fixtures
         run: python3 -m unittest discover -s tests/tooling/bmad_customization -p "*_test.py"
+
+      - name: Run tenant-isolation evidence gate fixtures
+        run: python3 -m unittest discover -s tests/tooling/tenant_isolation_evidence -p "*_test.py"
 
       - name: Verify repository line-ending policy
         run: python3 -m unittest discover -s tests/tooling/line_endings -p "*_test.py"

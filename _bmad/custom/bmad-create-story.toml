@@ -7,9 +7,11 @@ persistent_facts = [
   "file:{project-root}/_bmad/custom/story-scope-guard.md",
   "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
   "file:{project-root}/_bmad/custom/story-phase-ledger.md",
+  "file:{project-root}/_bmad/custom/remediation-runtime-checklist.md",
 ]
 
 activation_steps_append = [
   "HISTORICAL_SLICE_GUARD: Apply the team story-scope policy during artifact analysis and final validation. Classify every previous/historical story before reuse; ignore numeric adjacency as a relevance signal; include Historical Context Classification and Slice Proof when prior stories influence the draft; fail closed without ready-for-dev or sprint-status mutation until every anti-template or required-split violation is resolved.",
   "STORY_PHASE_LEDGER: Apply the shared story phase ledger policy throughout creation. Before either ready-for-dev write or sprint-status mutation, create the canonical Change Log table when absent, append one create-story baseline row with actual phase delta +0, quantified planned tests when known, runner-derived baseline discovery totals and named units plus the exact command or a precise not-run reason, and reconcile the cumulative initial File List. Fail closed when the table, row, evidence, counts, or File List does not reconcile.",
+  "REMEDIATION_RUNTIME_CHECKLIST: Apply the remediation runtime defect checklist (_bmad/custom/remediation-runtime-checklist.md) during story creation. Classify applicability from the actual change surfaces per the checklist (Dapr workflow/child-workflow/activity registration; cleanup, compensation, or dedup of shared or tenant-scoped state; migration, blue/green cutover, rollback, abort, or staging keys/indexes/aliases). For each applicable category except File List reconciliation, add one explicit acceptance or task item naming the guarded defect and requiring adversarial or negative coverage, or record the explicit not-applicable note; File List reconciliation is covered by the story phase ledger. Fail closed before ready-for-dev or sprint-status mutation when an applicable category lacks a checklist item or the not-applicable note.",
 ]

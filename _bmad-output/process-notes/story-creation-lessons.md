@@ -48,3 +48,29 @@ party-mode review, advanced elicitation, and code-review automation.
   advancement when required evidence, counts, or in-scope paths disagree.
 - Keep enforcement update-safe in committed `_bmad/custom` policies and
   resolver fixtures. Generated `.agents/skills/**` files remain untouched.
+
+## L11 - Review-Found Workflow/Runtime Defects Become Remediation Checklist Items
+
+- Epic 21 reviews caught workflow and runtime defects that happy-path tests
+  missed: missing Dapr activity registration, unobserved child workflows,
+  owner-check race gaps, duplicate-detector false positives, rollback marker
+  overwrite, and staging index cleanup gaps. Those defect classes are now a
+  durable pre-development and pre-close checklist, not tribal memory in a closed
+  retrospective (Epic 21 retro action item 5).
+- `_bmad/custom/remediation-runtime-checklist.md` defines five self-scoping
+  categories — Dapr activity registration, observed child workflows,
+  owner-checked cleanup/dedup, rollback-marker/staging preservation, and File
+  List reconciliation (deferred to `story-phase-ledger.md`, not duplicated). It
+  applies only to changes touching those runtime surfaces; a non-touching change
+  records an explicit not-applicable note and fabricates no category item.
+- Enforce it through committed
+  `_bmad/custom/bmad-{create-story,dev-story,code-review}.toml` overrides that
+  load the policy fact and one `REMEDIATION_RUNTIME_CHECKLIST:` directive each.
+  Do not enforce it by editing generated `.agents/skills/**` or
+  `.claude/skills/**` files; those updates overwrite.
+- A full review that newly finds a workflow/runtime dispatch, cleanup, or
+  rollback defect adds it to the reviewed story and carries it into this
+  checklist for future remediation stories.
+- After any BMad skill refresh, run the customization-resolution fixture
+  (`tests/tooling/bmad_customization/bmad_customization_test.py`) before the next
+  story creation or review.

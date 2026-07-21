@@ -12,8 +12,6 @@ spec:
       secretKeyRef:
         name: access-telemetry-postgresql
         key: connectionString
-    - name: sslRootCert
-      value: /mnt/access-telemetry-postgresql/ca.crt
     - name: tablePrefix
       value: access_telemetry.lifecycle_
     - name: metadataTableName

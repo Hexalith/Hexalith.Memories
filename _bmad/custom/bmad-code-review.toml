@@ -7,11 +7,13 @@ persistent_facts = [
   "file:{project-root}/_bmad/custom/story-scope-guard.md",
   "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
   "file:{project-root}/_bmad/custom/story-phase-ledger.md",
+  "file:{project-root}/_bmad/custom/remediation-runtime-checklist.md",
 ]
 
 activation_steps_append = [
   "HISTORICAL_SLICE_GUARD: During triage, apply the policy's fail-closed severity and routing rules to confirmed historical-template reuse or hidden multi-slice scope.",
   "STORY_PHASE_LEDGER: For full or spec review, apply the shared policy to the auditor's findings and selected actions. Route unambiguous row, count, stale-reference, or File List repairs to patch and ambiguous scope or exclusions to decision_needed. After review actions and patches but before status synchronization, require explicit evidence that every in-scope review chunk is complete; independently re-run comparable discovery; append code-review with the review-patch phase delta (including +0), cumulative story and external same-lane deltas, exact command or complete blocker, and cumulative File List reconciliation with baseline/name-status evidence. Fail closed before done while any chunk, required row, count mismatch, stale total, evidence gap required for agreement, or unaccounted in-scope file remains.",
+  "REMEDIATION_RUNTIME_CHECKLIST: During full review, independently re-derive applicability from the diff and reject a not-applicable note or accepted blocker the touched surfaces contradict. Confirm each applicable remediation runtime category (except File List reconciliation, which the phase ledger covers) is backed by executed passing evidence or a re-validated accepted blocker; happy-path or build-only evidence does not satisfy a category. Any newly found workflow/runtime dispatch, cleanup, or rollback defect becomes a checklist item on the reviewed story and, if a new defect class, a new category in the policy for future remediation stories. Route an unambiguous missing item or coverage gap to patch and ambiguous scope to decision_needed. Treat an applicable category left unproven as a fail-closed blocker for done.",
 ]
 
 [[workflow.review_layers]]
