@@ -268,7 +268,7 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("complete-partial-release.ps1");
         workflow.ShouldContain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
         workflow.ShouldContain("@($summary.packages).Count -ne 9");
-        workflow.ShouldContain("@($summary.images).Count -ne 2");
+        workflow.ShouldContain("@($summary.images).Count -ne 4");
         workflow.ShouldContain("@($summary.releaseAssets).Count -ne 10");
         workflow.ShouldContain("@('pushed', 'already-present')");
         workflow.ShouldContain("if: always()");
@@ -353,7 +353,7 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReleaseConfiguration_PublishesRetrySafeTwoImageUnitAndVersionedDeployment()
+    public void ReleaseConfiguration_PublishesRetrySafeFourImageUnitAndVersionedDeployment()
     {
         string repoRoot = GetRepoRoot();
         string releaseConfig = File.ReadAllText(Path.Combine(repoRoot, ".releaserc.json"));
@@ -377,6 +377,8 @@ public sealed partial class CiTestInventoryTests
         publishContainers.ShouldContain("[string]$RepositoryPrefix = 'memories'");
         publishContainers.ShouldContain("repository = $RepositoryPrefix");
         publishContainers.ShouldContain("repository = \"$RepositoryPrefix-mcp\"");
+        publishContainers.ShouldContain("repository = \"$RepositoryPrefix-access-telemetry\"");
+        publishContainers.ShouldContain("repository = \"$RepositoryPrefix-access-telemetry-clock\"");
         publishContainers.ShouldContain("HEXALITH_ZOT_USERNAME");
         publishContainers.ShouldContain("HEXALITH_ZOT_API_KEY");
         publishContainers.ShouldNotContain("CONTAINER_REGISTRY_USERNAME");
@@ -392,7 +394,9 @@ public sealed partial class CiTestInventoryTests
         publishContainers.ShouldNotContain("docker login");
         publishContainers.ShouldNotContain("& docker");
         publishContainers.ShouldContain("disposition = $Disposition");
-        renderDeployment.ShouldContain("Both release image references must end with the semantic-release version");
+        renderDeployment.ShouldContain("All release image references must end with the semantic-release version");
+        renderDeployment.ShouldContain("[string]$AccessTelemetryImage");
+        renderDeployment.ShouldContain("[string]$AccessTelemetryClockImage");
     }
 
     [Fact]
@@ -411,6 +415,8 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("./tools/verify-production-deployment.ps1");
         workflow.ShouldContain("-ServerArchive ./artifacts/containers/release/server.tar.gz");
         workflow.ShouldContain("-McpArchive ./artifacts/containers/release/mcp.tar.gz");
+        workflow.ShouldContain("-AccessTelemetryArchive ./artifacts/containers/release/access-telemetry.tar.gz");
+        workflow.ShouldContain("-AccessTelemetryClockArchive ./artifacts/containers/release/access-telemetry-clock.tar.gz");
         workflow.ShouldContain("KUBECTL_VERSION: 'v1.35.0'");
         workflow.ShouldContain("KIND_VERSION: 'v0.31.0'");
         workflow.ShouldContain("KIND_NODE_IMAGE: 'kindest/node:v1.35.0'");

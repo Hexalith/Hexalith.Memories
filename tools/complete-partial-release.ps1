@@ -195,10 +195,14 @@ try {
     $images = @($containerSummary.images)
     $expectedImages = @(
         "$Registry/memories:$Version",
-        "$Registry/memories-mcp:$Version"
+        "$Registry/memories-mcp:$Version",
+        "$Registry/memories-access-telemetry:$Version",
+        "$Registry/memories-access-telemetry-clock:$Version"
     )
-    if ($images.Count -ne 2 -or @($images.image | Where-Object { $_ -notin $expectedImages }).Count -gt 0) {
-        throw 'Container recovery evidence does not contain the exact two-image release unit.'
+    if ($images.Count -ne 4 -or
+        @($images.image | Where-Object { $_ -notin $expectedImages }).Count -gt 0 -or
+        @($expectedImages | Where-Object { $_ -notin $images.image }).Count -gt 0) {
+        throw 'Container recovery evidence does not contain the exact four-image release unit.'
     }
 
     foreach ($image in $images) {

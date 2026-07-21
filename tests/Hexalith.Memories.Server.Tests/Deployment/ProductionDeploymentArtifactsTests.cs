@@ -123,6 +123,11 @@ public sealed class ProductionDeploymentArtifactsTests
         string accessTelemetryNetworkPolicy = GetDocument(rendered, "NetworkPolicy", "memories-access-telemetry");
         accessTelemetryNetworkPolicy.ShouldContain("kubernetes.io/metadata.name: openbao");
         accessTelemetryNetworkPolicy.ShouldContain("port: 8200");
+        accessTelemetryNetworkPolicy.ShouldContain("cidr: 169.254.25.10/32");
+        accessTelemetryNetworkPolicy.ShouldContain("app.kubernetes.io/name: redis-stack");
+        accessTelemetryNetworkPolicy.ShouldContain("port: 6379");
+        string accessTelemetryClockNetworkPolicy = GetDocument(rendered, "NetworkPolicy", "memories-access-telemetry-clock");
+        accessTelemetryClockNetworkPolicy.ShouldContain("cidr: 169.254.25.10/32");
 
         accessTelemetryStore.ShouldContain("type: state.postgresql");
         accessTelemetryStore.ShouldContain("version: v2");

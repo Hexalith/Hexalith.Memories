@@ -93,6 +93,8 @@ def write_fake_pwsh(directory: Path) -> None:
 
                 (output / "server.tar.gz").write_bytes(b"server")
                 (output / "mcp.tar.gz").write_bytes(b"mcp")
+                (output / "access-telemetry.tar.gz").write_bytes(b"access-telemetry")
+                (output / "access-telemetry-clock.tar.gz").write_bytes(b"access-telemetry-clock")
                 (output / "production-deployment.yaml").write_text(
                     "kind: List\\nreleaseVersion: " + os.environ["FAKE_RELEASE_VERSION"] + "\\n",
                     encoding="utf-8",
@@ -270,6 +272,8 @@ class ReleaseOrchestrationTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertGreater((container_output / "server.tar.gz").stat().st_size, 0)
             self.assertGreater((container_output / "mcp.tar.gz").stat().st_size, 0)
+            self.assertGreater((container_output / "access-telemetry.tar.gz").stat().st_size, 0)
+            self.assertGreater((container_output / "access-telemetry-clock.tar.gz").stat().st_size, 0)
             self.assertEqual(
                 (container_output / "production-deployment.yaml").read_text(encoding="utf-8"),
                 deployment_output.read_text(encoding="utf-8"),

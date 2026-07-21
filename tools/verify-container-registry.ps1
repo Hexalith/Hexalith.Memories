@@ -2,7 +2,11 @@
 param(
     [string]$Registry = 'registry.hexalith.com',
 
-    [string[]]$Repositories = @('memories', 'memories-mcp')
+    [string[]]$Repositories = @(
+        'memories',
+        'memories-mcp',
+        'memories-access-telemetry',
+        'memories-access-telemetry-clock')
 )
 
 $ErrorActionPreference = 'Stop'

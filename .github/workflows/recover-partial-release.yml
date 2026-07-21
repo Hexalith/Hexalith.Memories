@@ -135,8 +135,8 @@ jobs:
           }
 
           $images = @($summary.images)
-          if ($images.Count -ne 2) {
-            throw "Container recovery must reconcile exactly two immutable image tags."
+          if ($images.Count -ne 4) {
+            throw "Container recovery must reconcile exactly four immutable image tags."
           }
           foreach ($image in $images) {
             if ($image.status -ne 'succeeded' -or $image.disposition -notin @('pushed', 'already-present')) {
@@ -169,7 +169,7 @@ jobs:
           if ($summary.status -ne 'succeeded' -or $summary.version -ne $env:RECOVERY_VERSION) {
             throw "Partial-release completion evidence did not report success."
           }
-          if (@($summary.packages).Count -ne 9 -or @($summary.images).Count -ne 2 -or @($summary.releaseAssets).Count -ne 10) {
+          if (@($summary.packages).Count -ne 9 -or @($summary.images).Count -ne 4 -or @($summary.releaseAssets).Count -ne 10) {
             throw "Partial-release completion evidence does not contain the complete release unit."
           }
 

@@ -413,7 +413,7 @@ jobs:
         with:
           version: ${{ env.DAPR_CLI_VERSION }}
 
-      - name: Publish local Server and MCP OCI archives
+      - name: Publish local release OCI archives
         shell: pwsh
         run: ./tools/publish-containers.ps1 -Version "0.0.0-ci.${{ github.run_number }}"
 
@@ -423,6 +423,8 @@ jobs:
           ./tools/verify-production-deployment.ps1 `
             -ServerArchive ./artifacts/containers/release/server.tar.gz `
             -McpArchive ./artifacts/containers/release/mcp.tar.gz `
+            -AccessTelemetryArchive ./artifacts/containers/release/access-telemetry.tar.gz `
+            -AccessTelemetryClockArchive ./artifacts/containers/release/access-telemetry-clock.tar.gz `
             -Version "0.0.0-ci.${{ github.run_number }}" `
             -DaprRuntimeVersion $env:DAPR_RUNTIME_VERSION `
             -KindNodeImage $env:KIND_NODE_IMAGE `

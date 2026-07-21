@@ -27,6 +27,12 @@ PACKAGE_IDS = [
     "Hexalith.Memories.EventStore",
     "Hexalith.Memories.Telemetry",
 ]
+IMAGE_REPOSITORIES = [
+    "memories",
+    "memories-mcp",
+    "memories-access-telemetry",
+    "memories-access-telemetry-clock",
+]
 
 
 def git(root: Path, *args: str) -> None:
@@ -61,15 +67,11 @@ def prepare_tagged_source(root: Path) -> tuple[Path, Path]:
                 "version": VERSION,
                 "images": [
                     {
-                        "image": f"registry.test/memories:{VERSION}",
+                        "image": f"registry.test/{repository}:{VERSION}",
                         "status": "succeeded",
-                        "disposition": "pushed",
-                    },
-                    {
-                        "image": f"registry.test/memories-mcp:{VERSION}",
-                        "status": "succeeded",
-                        "disposition": "already-present",
-                    },
+                        "disposition": "pushed" if index % 2 == 0 else "already-present",
+                    }
+                    for index, repository in enumerate(IMAGE_REPOSITORIES)
                 ],
             }
         ),
@@ -77,7 +79,8 @@ def prepare_tagged_source(root: Path) -> tuple[Path, Path]:
     )
     deployment = root / "production-deployment.yaml"
     deployment.write_text(
-        f"images:\n- registry.test/memories:{VERSION}\n- registry.test/memories-mcp:{VERSION}\n",
+        "images:\n"
+        + "".join(f"- registry.test/{repository}:{VERSION}\n" for repository in IMAGE_REPOSITORIES),
         encoding="utf-8",
     )
     return container_summary, deployment
@@ -286,7 +289,7 @@ class PartialReleaseCompletionTests(unittest.TestCase):
             )
             self.assertEqual("succeeded", evidence["status"])
             self.assertEqual(9, len(evidence["packages"]))
-            self.assertEqual(2, len(evidence["images"]))
+            self.assertEqual(4, len(evidence["images"]))
             self.assertEqual(10, len(evidence["releaseAssets"]))
             commands = [
                 json.loads(line)

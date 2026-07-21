@@ -7,6 +7,12 @@ param(
     [string]$McpArchive,
 
     [Parameter(Mandatory)]
+    [string]$AccessTelemetryArchive,
+
+    [Parameter(Mandatory)]
+    [string]$AccessTelemetryClockArchive,
+
+    [Parameter(Mandatory)]
     [string]$Version,
 
     [string]$ClusterName = "hexalith-memories-verification",
@@ -25,6 +31,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $namespace = 'hexalith-memories'
 $serverImage = "registry.hexalith.com/memories:$Version"
 $mcpImage = "registry.hexalith.com/memories-mcp:$Version"
+$accessTelemetryImage = "registry.hexalith.com/memories-access-telemetry:$Version"
+$accessTelemetryClockImage = "registry.hexalith.com/memories-access-telemetry-clock:$Version"
 $manifestPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-production-$Version.yaml"
 $kubeconfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-kubeconfig-$([Guid]::NewGuid().ToString('N'))"
 $originalKubeconfig = $env:KUBECONFIG
@@ -598,7 +606,9 @@ try {
     # Assert-ImageContract and 'kind load' expect.
     foreach ($load in @(
             @{ Archive = $ServerArchive; Target = $serverImage },
-            @{ Archive = $McpArchive; Target = $mcpImage })) {
+            @{ Archive = $McpArchive; Target = $mcpImage },
+            @{ Archive = $AccessTelemetryArchive; Target = $accessTelemetryImage },
+            @{ Archive = $AccessTelemetryClockArchive; Target = $accessTelemetryClockImage })) {
         $loadOutput = (Invoke-Checked docker @('load', '--input', $load.Archive)) -join [Environment]::NewLine
         $loaded = [regex]::Match($loadOutput, 'Loaded image(?: ID)?:\s*(?<ref>\S+)').Groups['ref'].Value
         if ([string]::IsNullOrWhiteSpace($loaded)) {
@@ -610,7 +620,11 @@ try {
     }
     Assert-ImageContract $serverImage
     Assert-ImageContract $mcpImage
-    Invoke-Checked kind @('load', 'docker-image', '--name', $ClusterName, $serverImage, $mcpImage) | Out-Host
+    Assert-ImageContract $accessTelemetryImage
+    Assert-ImageContract $accessTelemetryClockImage
+    Invoke-Checked kind @(
+        'load', 'docker-image', '--name', $ClusterName,
+        $serverImage, $mcpImage, $accessTelemetryImage, $accessTelemetryClockImage) | Out-Host
 
     Invoke-Checked kubectl @('create', 'namespace', $namespace) | Out-Null
     Apply-GeneratedSecret 'redis-secret' @('password=verification-redis-password', 'falkordb-password=verification-falkordb-password')
@@ -628,6 +642,8 @@ try {
     Invoke-Checked pwsh @(
         '-NoLogo', '-NoProfile', '-File', (Join-Path $PSScriptRoot 'render-production-deployment.ps1'),
         '-Version', $Version, '-ServerImage', $serverImage, '-McpImage', $mcpImage,
+        '-AccessTelemetryImage', $accessTelemetryImage,
+        '-AccessTelemetryClockImage', $accessTelemetryClockImage,
         '-OutputPath', $manifestPath) | Out-Host
     Invoke-Checked kubectl @('apply', '--dry-run=client', '-f', $manifestPath) | Out-Host
     Invoke-Checked kubectl @('apply', '-f', $manifestPath) | Out-Host

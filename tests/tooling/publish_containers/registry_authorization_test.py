@@ -11,6 +11,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "tools" / "verify-container-registry.ps1"
 USERNAME = "SECRET_ZOT_USERNAME_SHOULD_NOT_LEAK"
 API_KEY = "SECRET_ZOT_API_KEY_SHOULD_NOT_LEAK"
+REPOSITORIES = [
+    "memories",
+    "memories-mcp",
+    "memories-access-telemetry",
+    "memories-access-telemetry-clock",
+]
 
 
 class RegistryState:
@@ -132,7 +138,7 @@ def run_probe(
 
 
 class RegistryAuthorizationTests(unittest.TestCase):
-    def test_probe_verifies_and_cancels_both_repository_upload_sessions(self) -> None:
+    def test_probe_verifies_and_cancels_all_repository_upload_sessions(self) -> None:
         state = RegistryState()
         with RegistryServer(state) as registry:
             result = run_probe(registry.origin)
@@ -140,9 +146,9 @@ class RegistryAuthorizationTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(["/v2/"], state.gets)
         self.assertEqual([None], state.get_authorizations)
-        self.assertEqual(["memories", "memories-mcp"], state.posts)
-        self.assertEqual(["/uploads/memories", "/uploads/memories-mcp"], state.deletes)
-        self.assertEqual(2, len([value for value in state.delete_authorizations if value]))
+        self.assertEqual(REPOSITORIES, state.posts)
+        self.assertEqual([f"/uploads/{repository}" for repository in REPOSITORIES], state.deletes)
+        self.assertEqual(4, len([value for value in state.delete_authorizations if value]))
         self.assertNotIn(USERNAME, result.stdout + result.stderr)
         self.assertNotIn(API_KEY, result.stdout + result.stderr)
 
@@ -168,7 +174,7 @@ class RegistryAuthorizationTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertEqual(["/v2/"], state.gets)
-        self.assertEqual(["memories", "memories-mcp"], state.posts)
+        self.assertEqual(REPOSITORIES, state.posts)
 
     def test_cross_origin_upload_locations_are_cancelled_without_forwarding_credentials(self) -> None:
         registry_state = RegistryState()
@@ -179,12 +185,12 @@ class RegistryAuthorizationTests(unittest.TestCase):
                 result = run_probe(registry.origin)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual(["memories", "memories-mcp"], registry_state.posts)
+        self.assertEqual(REPOSITORIES, registry_state.posts)
         self.assertEqual(
-            ["/uploads/memories", "/uploads/memories-mcp"],
+            [f"/uploads/{repository}" for repository in REPOSITORIES],
             cancellation_state.deletes,
         )
-        self.assertEqual([None, None], cancellation_state.delete_authorizations)
+        self.assertEqual([None, None, None, None], cancellation_state.delete_authorizations)
         self.assertNotIn(USERNAME, result.stdout + result.stderr)
         self.assertNotIn(API_KEY, result.stdout + result.stderr)
 
@@ -209,7 +215,7 @@ class RegistryAuthorizationTests(unittest.TestCase):
             result = run_probe(registry.origin)
 
         self.assertNotEqual(0, result.returncode)
-        self.assertEqual(2, len(state.deletes))
+        self.assertEqual(4, len(state.deletes))
         self.assertIn("could not cancel every", result.stdout + result.stderr)
 
     def test_missing_credentials_fail_without_contacting_registry(self) -> None:

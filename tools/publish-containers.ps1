@@ -68,6 +68,18 @@ $images = @(
         project = 'src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj'
         repository = "$RepositoryPrefix-mcp"
         archive = Join-Path $outputPath 'mcp.tar.gz'
+    },
+    [ordered]@{
+        name = 'access-telemetry'
+        project = 'src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj'
+        repository = "$RepositoryPrefix-access-telemetry"
+        archive = Join-Path $outputPath 'access-telemetry.tar.gz'
+    },
+    [ordered]@{
+        name = 'access-telemetry-clock'
+        project = 'src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj'
+        repository = "$RepositoryPrefix-access-telemetry-clock"
+        archive = Join-Path $outputPath 'access-telemetry-clock.tar.gz'
     }
 )
 
@@ -383,11 +395,15 @@ Push-Location $repoRoot
 try {
     $serverImage = "$Registry/$RepositoryPrefix`:$Version"
     $mcpImage = "$Registry/$RepositoryPrefix-mcp`:$Version"
+    $accessTelemetryImage = "$Registry/$RepositoryPrefix-access-telemetry`:$Version"
+    $accessTelemetryClockImage = "$Registry/$RepositoryPrefix-access-telemetry-clock`:$Version"
     $render = Invoke-NativeCommand -Command 'pwsh' -Arguments @(
         '-NoLogo', '-NoProfile', '-File', './tools/render-production-deployment.ps1',
         '-Version', $Version,
         '-ServerImage', $serverImage,
         '-McpImage', $mcpImage,
+        '-AccessTelemetryImage', $accessTelemetryImage,
+        '-AccessTelemetryClockImage', $accessTelemetryClockImage,
         '-OutputPath', $deploymentPath)
     if ($render.ExitCode -ne 0) {
         $reason = "Production release deployment render failed: $(Get-FailureText $render)"
@@ -449,7 +465,7 @@ try {
         if ($env:GITHUB_ACTIONS -eq 'true') {
             $failedCount = @($outcomes | Where-Object status -eq 'failed').Count
             $title = if ($status -eq 'partial-publish') { 'PARTIAL CONTAINER PUBLISH' } elseif ($Push) { 'CONTAINER PUBLISH FAILED' } else { 'CONTAINER BUILD FAILED' }
-            Write-Host "::error title=$title::$failedCount of 2 release images failed for $Version."
+            Write-Host "::error title=$title::$failedCount of $($images.Count) release images failed for $Version."
         }
 
         throw "Container publication finished with status '$status'."

@@ -10,6 +10,12 @@ param(
     [string]$McpImage,
 
     [Parameter(Mandatory)]
+    [string]$AccessTelemetryImage,
+
+    [Parameter(Mandatory)]
+    [string]$AccessTelemetryClockImage,
+
+    [Parameter(Mandatory)]
     [string]$OutputPath
 )
 
@@ -55,6 +61,8 @@ if (-not [string]::IsNullOrWhiteSpace($stderr)) {
 
 $defaultServerImage = 'registry.hexalith.com/memories:0.0.0'
 $defaultMcpImage = 'registry.hexalith.com/memories-mcp:0.0.0'
+$defaultAccessTelemetryImage = 'registry.hexalith.com/memories-access-telemetry:0.0.0'
+$defaultAccessTelemetryClockImage = 'registry.hexalith.com/memories-access-telemetry-clock:0.0.0'
 if (($rendered.Split($defaultServerImage).Count - 1) -ne 1) {
     throw "Rendered deployment must contain exactly one Server image placeholder."
 }
@@ -63,14 +71,26 @@ if (($rendered.Split($defaultMcpImage).Count - 1) -ne 1) {
     throw "Rendered deployment must contain exactly one MCP image placeholder."
 }
 
+if (($rendered.Split($defaultAccessTelemetryImage).Count - 1) -ne 1) {
+    throw "Rendered deployment must contain exactly one access-telemetry image placeholder."
+}
+
+if (($rendered.Split($defaultAccessTelemetryClockImage).Count - 1) -ne 1) {
+    throw "Rendered deployment must contain exactly one access-telemetry-clock image placeholder."
+}
+
 $expectedSuffix = ":$Version"
 if (-not $ServerImage.EndsWith($expectedSuffix, [StringComparison]::Ordinal) -or
-    -not $McpImage.EndsWith($expectedSuffix, [StringComparison]::Ordinal)) {
-    throw "Both release image references must end with the semantic-release version '$expectedSuffix'."
+    -not $McpImage.EndsWith($expectedSuffix, [StringComparison]::Ordinal) -or
+    -not $AccessTelemetryImage.EndsWith($expectedSuffix, [StringComparison]::Ordinal) -or
+    -not $AccessTelemetryClockImage.EndsWith($expectedSuffix, [StringComparison]::Ordinal)) {
+    throw "All release image references must end with the semantic-release version '$expectedSuffix'."
 }
 
 $rendered = $rendered.Replace($defaultServerImage, $ServerImage, [StringComparison]::Ordinal)
 $rendered = $rendered.Replace($defaultMcpImage, $McpImage, [StringComparison]::Ordinal)
+$rendered = $rendered.Replace($defaultAccessTelemetryImage, $AccessTelemetryImage, [StringComparison]::Ordinal)
+$rendered = $rendered.Replace($defaultAccessTelemetryClockImage, $AccessTelemetryClockImage, [StringComparison]::Ordinal)
 if ($rendered -match '(?m)^kind:\s+Secret\s*$') {
     throw "Production deployment render must not contain literal Kubernetes Secret resources."
 }
@@ -78,4 +98,4 @@ if ($rendered -match '(?m)^kind:\s+Secret\s*$') {
 $outputDirectory = Split-Path -Parent $resolvedOutput
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 Set-Content -LiteralPath $resolvedOutput -Value $rendered -Encoding utf8
-Write-Host "Rendered production deployment $resolvedOutput with Server and MCP tag $Version."
+Write-Host "Rendered production deployment $resolvedOutput with all release image tags at $Version."

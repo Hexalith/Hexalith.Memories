@@ -28,14 +28,15 @@ artifacts from a workstation.
 - Semantic-release runs `tools/verify-container-registry.ps1` as its `verifyReleaseCmd`, before
   prepare creates release artifacts or a tag can be published. The verifier first requires the
   unauthenticated `/v2/` response to advertise a Basic `WWW-Authenticate` realm, then opens and
-  immediately cancels an authenticated OCI upload session in both `memories` and `memories-mcp`.
+  immediately cancels authenticated OCI upload sessions in `memories`, `memories-mcp`,
+  `memories-access-telemetry`, and `memories-access-telemetry-clock`.
   The challenge check proves challenge-driven clients can select the authfile credential; the
   upload probes separately prove write authorization. Every opened probe session must return HTTP
   204 when cancelled or the release fails closed.
 - `tools/pack-release.ps1` is the `prepareCmd` for `@semantic-release/exec`.
 - `tools/publish-release.ps1` is the `publishCmd` for `@semantic-release/exec`. It always attempts
   both NuGet and container publication and writes one aggregate release summary.
-- `tools/pack-release.ps1` prebuilds the Server and MCP OCI archives and the versioned production
+- `tools/pack-release.ps1` prebuilds the Server, MCP, access-telemetry lifecycle, and clock OCI archives and the versioned production
   deployment before any publish-side effects occur.
 - `tools/publish-containers.ps1 -Push` publishes the prebuilt archives with `skopeo copy`, passing
   credentials through a scoped temporary authfile built from `HEXALITH_ZOT_USERNAME` and
@@ -97,7 +98,8 @@ Before relying on the release path:
    event on `main` is merging a PR.
 6. A scoped `NUGET_API_KEY` repository secret and the standard `HEXALITH_ZOT_USERNAME` and
    `HEXALITH_ZOT_API_KEY` secrets exist. The Zot principal has repository write authorization for
-   both flat repositories, `memories` and `memories-mcp`. `HEXALITH_ZOT_REGISTRY` may override the
+   four flat repositories: `memories`, `memories-mcp`, `memories-access-telemetry`, and
+   `memories-access-telemetry-clock`. `HEXALITH_ZOT_REGISTRY` may override the
    default `registry.hexalith.com` host.
 7. The `skopeo` CLI is on the release runner's PATH (preinstalled on the GitHub-hosted
    `ubuntu-24.04` image). Container publication fails closed with disposition `tooling-missing`
@@ -348,7 +350,8 @@ those actions can move the published state away from the CI-recorded audit ancho
   preemptively.
 - If registry write-scope verification returns HTTP 401 or 403, stop before creating a release.
   An organization or Zot administrator must grant the `HEXALITH_ZOT_USERNAME` principal push
-  authorization to both `memories` and `memories-mcp`; rotating a valid credential or proving
+  authorization to `memories`, `memories-mcp`, `memories-access-telemetry`, and
+  `memories-access-telemetry-clock`; rotating a valid credential or proving
   registry login/read access does not repair a repository ACL. Never paste the username, API key,
   or authorization header into an issue or workflow log.
 - If container pushes fail with `unauthorized: authentication required` after verification passes,
@@ -395,15 +398,16 @@ those actions can move the published state away from the CI-recorded audit ancho
   The workflow accepts only a semantic-version tag reachable from `origin/main` and never creates
   or moves a tag. It stages the recovery scripts and their passing fixtures from current trusted
   `main`, then checks out and builds the exact tagged source.
-- Recovery first proves Zot write scope for both repositories. It then rebuilds and reconciles the
-  Server and MCP immutable tags using the remote image **config digest**. A matching tag is recorded
+- Recovery first proves Zot write scope for all four repositories. It then rebuilds and reconciles
+  the Server, MCP, access-telemetry lifecycle, and clock immutable tags using the remote image
+  **config digest**. A matching tag is recorded
   as already present, a missing tag is pushed, and any conflicting digest fails closed.
 - Recovery never invokes a NuGet push. It downloads the nine expected packages from the NuGet flat
   container, validates their nuspec id/version against the tagged inventory, hashes them, and uses
   those verified bytes as GitHub Release assets. It creates or completes the stable GitHub Release
   with exactly those nine `.nupkg` files plus `hexalith-memories-production.yaml`. Existing matching
   assets are retained; unexpected names or mismatched bytes fail closed.
-- Only after the two images, nine packages, versioned deployment, and all ten GitHub Release assets
+- Only after the four images, nine packages, versioned deployment, and all ten GitHub Release assets
   verify does recovery attach the evidence artifact to the matching partial-publish incident and
   close it. A failed or interrupted run remains safely rerunnable and leaves the incident open.
 - Container release members are prebuilt during prepare. On a rerun, an existing immutable image
