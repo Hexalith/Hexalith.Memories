@@ -2261,3 +2261,43 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 - source_spec: `_bmad-output/implementation-artifacts/spec-run-tests-and-fix-failures.md`
   summary: `MinimumDotnetSdkVersion` and its "10.0.302" user-facing message strings are duplicated as separate literals across multiple call sites instead of derived from one source of truth.
   evidence: `src/Hexalith.Memories.Cli/Quickstart/PrerequisiteChecks.cs:27`'s `MinimumDotnetSdkVersion` constant and `src/Hexalith.Memories.Cli/Errors/ErrorMessageCatalog.cs:148`'s `"Install .NET SDK 10.0.302 or newer and retry."` string (plus other CLI message sites) each hardcode the version independently. This is the exact duplication pattern that caused the drift bug this spec fixed (the constant fell behind when messaging was bumped); deriving all user-facing strings from `MinimumDotnetSdkVersion.ToString()` would prevent recurrence, but is a refactor beyond this bugfix spec's scope.
+## Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-21)
+
+- Concurrency safety of the Dapr access-telemetry state store under actor-failover split-brain.
+  - ID: 27.3-CR1
+  - Status: carried-forward
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
+  - Target artifact: src/Hexalith.Memories.AccessTelemetry/Lifecycle/DaprAccessTelemetryStateStore.cs
+  - Re-open trigger: the pending C1 two-writer / partial-commit deployment probe runs against PG-ONPREM-1.
+  - Rationale: WriteRecordAndIndexAsync/DeleteAndVerifyAsync have no retry loop and empty-etag FirstWrite on first bucket/catalog creation is last-write-wins, so a rare split-brain window could drop an expiry-index entry. Not reachable under the single global turn-based AccessTelemetryLifecycleActor in normal operation, and fail-closed (ETag conflict throws -> at-least-once retry; orphaned record bounded by its own TTL). The ADR assigns two-writer collision / partial-commit proof to the C1 deployment probe, not unit tests.
+
+- Live test-count totals recorded in the 27.3 Change Log predate current HEAD.
+  - ID: 27.3-CR2
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
+  - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
+  - Re-open trigger: before Story 27.3 advances to done, or when any File List assembly changes.
+  - Rationale: The latest dev-story rows recorded Server 2,188 / Integration 297 / AccessTelemetry 43 at an earlier HEAD; the 12 reviewed chunk files were verified unchanged since, but a full live runner recount could not be executed in this sandbox and must be re-run at the done gate.
+
+- recordId charset is not validated before it is interpolated into the Dapr state key.
+  - ID: 27.3-CR3
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
+  - Target artifact: src/Hexalith.Memories.AccessTelemetry/Lifecycle/DaprAccessTelemetryStateStore.cs
+  - Re-open trigger: a RecordId containing '/' or other key-delimiter characters can reach GetRecordKey/GetBucketKey.
+  - Rationale: GetRecordKey builds `records/{shard}/{recordId}` and GetShard only guards null/whitespace; confirm the AccessTelemetryRecord contract constrains RecordId to a safe charset, otherwise add explicit validation.
+- Recompute the 27.3 Change Log Server.Tests story-vs-external split at the final-chunk reconciliation.
+  - ID: 27.3-CR4
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
+  - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
+  - Re-open trigger: before Story 27.3 advances to done / at the final-chunk code-review ledger reconciliation.
+  - Rationale: 4 Story-27.3 C1 methods (Adr_C1SourceEventMapping, Adr_C1TypedStateAndNullableMapping, Adr_C1QueryAndErrorMappings, Adr_ProductionAdapterQualification in AccessTelemetryRetentionDecisionTests.cs 6->10; plus ProductionDeploymentArtifactsTests +2) are booked under the +30 external delta rather than the +1 story delta. Recompute with live discovery (expected Server +5 story / +26 external) when the final review chunk finalizes the ledger. Administrator approved deferring the recompute to the final chunk on 2026-07-21.
+
+- Split the four-image release/publish pipeline out of Story 27.3 into a newly numbered story.
+  - ID: 27.3-CR5
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
+  - Target artifact: _bmad-output/planning-artifacts/epics.md
+  - Re-open trigger: before Story 27.3 advances to done; the release/publish-pipeline work must own a separate story.
+  - Rationale: The four-image publish/partial-recovery pipeline (CiTestInventoryTests.cs + tests/tooling/publish_containers/*) is independently demonstrable and was ledgered as an external CI/CD lane, yet is bundled into the single C1 adapter-qualification slice. Administrator approved splitting it into a new story via correct-course on 2026-07-21; 27.3's File List and ledger shrink to adapter/qualification scope.
