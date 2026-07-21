@@ -2,8 +2,9 @@
 title: 'Fix OpenBao staging in production deployment verification'
 type: 'bugfix'
 created: '2026-07-21'
-status: 'draft'
+status: 'in-progress'
 review_loop_iteration: 0
+baseline_commit: 'bf911d5ca1dbab8c763e4df1c3e3d74773493117'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture.md'
   - '{project-root}/docs/operations/openbao.md'
