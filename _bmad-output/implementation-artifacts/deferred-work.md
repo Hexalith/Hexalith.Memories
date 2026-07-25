@@ -2328,3 +2328,31 @@ Chunk 2 = deployment manifests + docs (18 File-List paths). Intermediate chunked
   - Target artifact: tools/verify-integration-fast-coverage.py
   - Re-open trigger: any required integration-fast surface is later marked Skip= or conditionally skipped; or the standing in-lane failure (OpenBaoTopologyIntegrationTests) is fixed and a green-only enforcement backstop is wanted; or a maintainer needs the gate to prove execution rather than presence.
   - Rationale: verify-integration-fast-coverage.py asserts each required surface class is PRESENT in the TRX TestDefinitions (executed_classes harvests className from every <UnitTest> regardless of <UnitTestResult outcome>), guarded only by a lane-aggregate executed>0 check - so a required class whose tests are all Skip=/NotExecuted still satisfies the gate as long as other lane tests ran. Additionally the "Verify fast integration coverage evidence" step in ci.yml has no if: always(), so it is skipped whenever the fast lane is red, and nightly.yml does not run the verifier at all - leaving enforcement inert on red lanes. Hardening: intersect required classNames with results whose outcome is Passed/Failed (executed, not NotExecuted); add a fixture TRX test (skipped-only required class -> exit 1) mirroring tests/tooling/coverage_gate; add a red-lane/nightly enforcement backstop. Pre-existing; affects all required surfaces in integration-fast-required-surfaces.txt, surfaced while enforcing the migration surface for Epic 21 retro action #4.
+
+  - ID: REL-EVENTSTORE-EXPECTED-COUNT
+  - Status: open
+  - Source story: spec-gh-30146368778-fix-tenants-release-startup-failure.md; surfaced by all three review layers 2026-07-25
+  - Target artifact: references/Hexalith.EventStore/scripts/validate-publication-preflight.sh, .github/workflows/release.yml, tests/Hexalith.EventStore.Contracts.Tests/Packaging/ContainerPublishingGovernanceTests.cs
+  - Re-open trigger: before Hexalith.EventStore bumps its domain-release.yml pin off cf04c419378dfe1bd3c41a9244b5e3283092056e (i.e. before editing ApprovedBuildsReleaseSha).
+  - Rationale: --expected-package-count is now required on the shared publication preflight, and domain-release.yml requires the matching expected-package-count input when publish-containers is true. EventStore's wrapper passes neither and its release.yml declares neither. It is insulated only by its pin to an ancestor commit. The moment that pin is bumped, its first release fails at verifyReleaseCmd with argparse exit 2 - and both repos' suites report green, because ContainerPublishingGovernanceTests enumerates the wrapper's flags but was not extended to require the new one. EventStore must add --expected-package-count 14 to the wrapper, expected-package-count: 14 to release.yml, and matching assertions to that governance test. Deliberately out of scope here: this spec was scoped to Tenants plus the shared Builds generalization, and touching EventStore was an explicit Ask First boundary.
+
+  - ID: REL-CONTAINER-MULTI-MAPPING
+  - Status: open
+  - Source story: spec-gh-30146368778-fix-tenants-release-startup-failure.md; surfaced by adversarial review 2026-07-25
+  - Target artifact: references/Hexalith.Builds/Github/publish-containers/publish-containers.sh, publication_preflight.py
+  - Re-open trigger: when any caller declares more than one container-projects mapping.
+  - Rationale: publish-containers.sh calls the preflight once per container mapping, all writing into the same evidence directory, and publication_preflight.py fails with preflight-phase-collision when publication-preflight.container.json already exists. Tenants and EventStore each declare exactly one mapping, so the multi-mapping contract that domain-release.md advertises would fail on the second project - after the first image has already been pushed. Pre-existing; not caused by the caller-declared package-count change.
+
+  - ID: REL-SOURCE-PROOF-DUPLICATION
+  - Status: open
+  - Source story: spec-gh-30146368778-fix-tenants-release-startup-failure.md; surfaced by adversarial review 2026-07-25
+  - Target artifact: references/Hexalith.Tenants/.github/workflows/release.yml, references/Hexalith.EventStore/.github/workflows/release.yml, references/Hexalith.Builds/Github/publish-containers/publication_preflight.py
+  - Re-open trigger: when the bash and Python source proofs disagree, or when a third module copies the verify-source job.
+  - Rationale: the verify-source job reimplements prove_current_green_source in bash, duplicated verbatim across Tenants and EventStore. The Python original additionally validates the workflow filename against WORKFLOW_PATTERN, rejects redirects via FailClosedRedirectHandler, and requires a positive integer run id; the bash copy relies on gh (which follows redirects) and hardcodes ci.yml in the URL. Two divergent implementations of the same gate will drift. Candidate fix: a shared composite action in Hexalith.Builds. Related: verify-source declares no timeout-minutes, so a wedged gh call inherits the 360-minute default and, with cancel-in-progress: false, blocks every subsequent release dispatch for six hours.
+
+  - ID: REL-CI-TRUST-ANCHOR-UNPINNED
+  - Status: open
+  - Source story: spec-gh-30146368778-fix-tenants-release-startup-failure.md; surfaced by adversarial review 2026-07-25
+  - Target artifact: references/Hexalith.Tenants/.github/workflows/ci.yml, references/Hexalith.Builds/.github/workflows/ci-cd-standards.md
+  - Re-open trigger: any review of the release supply-chain threat model.
+  - Rationale: the release path now demands byte-exact Hexalith.Builds identity (uses: pinned to 40-hex, validated against job.workflow_sha), but the CI run that verify-source accepts as proof of a green source is produced by ci.yml calling domain-ci.yml@main - a mutable reference. The evidence authorizing publication is generated by an unpinned workflow definition. ci-cd-standards.md currently sanctions @main for "routine, non-publication" Builds references, so changing this is a standards decision, not a module fix. Pre-existing and applies to every Hexalith module.
