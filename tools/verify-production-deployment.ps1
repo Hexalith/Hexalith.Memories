@@ -21,6 +21,8 @@ param(
 
     [string]$KindNodeImage = "kindest/node:v1.35.0",
 
+    [string]$OpenBaoImage = "quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653",
+
     [string]$EvidenceDirectory = "artifacts/production-deployment-verification",
 
     [switch]$KeepCluster
@@ -29,6 +31,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $namespace = 'hexalith-memories'
+$openBaoNamespace = 'openbao'
+$openBaoPod = 'hexalith-keys-0'
 $serverImage = "registry.hexalith.com/memories:$Version"
 $mcpImage = "registry.hexalith.com/memories-mcp:$Version"
 $accessTelemetryImage = "registry.hexalith.com/memories-access-telemetry:$Version"
@@ -36,6 +40,12 @@ $accessTelemetryClockImage = "registry.hexalith.com/memories-access-telemetry-cl
 $manifestPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-production-$Version.yaml"
 $kubeconfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-kubeconfig-$([Guid]::NewGuid().ToString('N'))"
 $originalKubeconfig = $env:KUBECONFIG
+$openBaoMaterialPath = $null
+$openBaoRootToken = ''
+$openBaoUnsealKey = ''
+$openBaoRuntimeToken = ''
+$openBaoAccessTelemetryToken = ''
+$sensitiveEvidenceValues = [System.Collections.Generic.List[string]]::new()
 $clusterCreated = $false
 $daprTokenFaultInjected = $false
 $originalMemoriesDeploymentState = $null
@@ -58,7 +68,10 @@ $ownedEvidenceNames = @(
     'describe-pods.txt',
     'describe-workloads.txt',
     'pods.json',
-    'logs-enumeration-error.txt'
+    'logs-enumeration-error.txt',
+    'openbao-resources.txt',
+    'openbao-status.json',
+    'dapr-secret-components.yaml'
 )
 Get-ChildItem -LiteralPath $evidencePath -File -ErrorAction SilentlyContinue |
     Where-Object {
@@ -84,7 +97,7 @@ function Protect-EvidenceText {
         'verification-invalid-dapr-api-token',
         $env:HEXALITH_ZOT_USERNAME,
         $env:HEXALITH_ZOT_API_KEY
-    )
+    ) + @($sensitiveEvidenceValues)
     foreach ($secret in $secrets) {
         if (-not [string]::IsNullOrWhiteSpace($secret)) {
             $sanitized = $sanitized.Replace($secret, '***', [StringComparison]::Ordinal)

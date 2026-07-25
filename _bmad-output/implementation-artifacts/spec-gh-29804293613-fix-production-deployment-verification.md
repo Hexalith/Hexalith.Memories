@@ -4,7 +4,7 @@ type: 'bugfix'
 created: '2026-07-21'
 status: 'in-progress'
 review_loop_iteration: 0
-baseline_commit: 'bf911d5ca1dbab8c763e4df1c3e3d74773493117'
+baseline_commit: '2411c03c497133f48ec4ad42be9b333f8fc157c4'
 context:
   - '{project-root}/_bmad-output/planning-artifacts/architecture.md'
   - '{project-root}/docs/operations/openbao.md'
