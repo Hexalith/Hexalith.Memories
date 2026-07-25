@@ -2213,6 +2213,56 @@ So that I can back up knowledge, migrate data, or analyze it externally.
 **When** new ingestion occurs simultaneously
 **Then** the export captures a consistent snapshot — units added during export are either all included or all excluded (snapshot isolation)
 
+### Recency-Aware Ranking (Age Decay)
+
+As a developer,
+I want an optional deterministic recency prior as a fusion input, tunable per query and tenant,
+So that when relevance is otherwise equal, newer memory wins.
+
+**Phase Note:** Sourced from Sprint Change Proposal 2026-07-25 (Cerebras knowledge-base findings intake, finding D1; see `research/cerebras-knowledge-base-findings-2026-07-25.md`). Complements the existing >90-day staleness confidence flag, which is informational only and does not affect ranking.
+
+**Activation rule:** When activated, create a normal story file and sprint-status entry before implementation. Fusion must stay deterministic and pure, the recency prior must be explainable in `--explain` output, and the benchmark NDCG suite must be re-validated against the PRD hard line (≥ 7/8 hybrid wins) before any default change ships.
+
+### Ingestion Distillation & Normalized Embedding
+
+As a developer,
+I want an optional LLM distillation activity in `IngestionWorkflow` that normalizes noisy conversational or long-form content into a consistent searchable form (one-line question, short summary, resolution, referenced systems) embedded alongside full-text indexing,
+So that semantic recall improves on content whose raw text embeds poorly.
+
+**Phase Note:** Sourced from Sprint Change Proposal 2026-07-25 (finding D2). Cerebras reports significant accuracy gains from embedding a normalized distilled form instead of raw transcripts; Memories already applies this pattern to events via the NL-description dual embedding (Epic 9) — this placeholder extends it to document and discussion ingestion.
+
+**Activation rule:** When activated, create a normal story file and sprint-status entry before implementation. Distillation runs in workflow activities only (replay-safe orchestration), raw content remains fully indexed, and distilled fields carry `ai-inferred` origin with confidence scores.
+
+### Context-Prepended Chunk Embedding & Low-Signal Gating
+
+As a developer,
+I want chunk embeddings prepended with parent-document or thread context and a deterministic low-signal gate (IDF and length thresholds) applied before embedding rows are created,
+So that tangent content is findable on its own while filler never pollutes the vector index.
+
+**Phase Note:** Sourced from Sprint Change Proposal 2026-07-25 (finding D3). Cites Anthropic Contextual Retrieval and the Cerebras bursting gate (IDF ≥ 4.0 on at least one token, ≥ 200 combined characters). Prerequisite thinking for Phase 2 discussion threading.
+
+**Activation rule:** When activated, create a normal story file and sprint-status entry before implementation. Gating thresholds must be deterministic, configurable per tenant, and covered by ingestion tests including the rejected-below-threshold path.
+
+### Reranker Activation & Context Re-Expansion
+
+As a developer,
+I want a small-model reranker implemented behind the existing `IResultFuser` seam (fused top-N → scored → top-K) and neighbor re-expansion of winning chunks into the Evidence Packet,
+So that results are ranked against the actual question and never lose the surrounding context that chunking split apart.
+
+**Phase Note:** Sourced from Sprint Change Proposal 2026-07-25 (finding D4). The `IResultFuser` reranker seam was delivered by Story 22.7; this placeholder covers its first implementation plus Evidence Packet neighbor re-expansion.
+
+**Activation rule:** When activated, create a normal story file and sprint-status entry before implementation. The reranker must be optional and degradable — a reranker outage falls back to deterministic fusion order with the degraded flag set (FR66) — and token-budget rules (FR23) still bound re-expanded responses. Benchmark NDCG scoring must cover the reranked path.
+
+### Scope Bundles & Default Scope
+
+As a team member or agent,
+I want named, non-exclusive scope bundles that reference cases and sources without duplicating them, and a default scope stored per user or agent identity,
+So that search is relevant by default without weakening strict case ownership.
+
+**Phase Note:** Sourced from Sprint Change Proposal 2026-07-25 (finding D5), mirroring the Cerebras "projects" pattern (the same source may belong to many projects; onboarding sets a default project that scopes queries automatically). Additive over the strict single-ownership case model and Story 3.4 cross-case search.
+
+**Activation rule:** When activated, create a normal story file and sprint-status entry before implementation. Physical tenant isolation is unchanged, cross-tenant bundles are forbidden, and activation requires attached cross-tenant negative evidence per the standing tenant-isolation testing rule.
+
 
 ## Epic 9: EventStore Integration & Zero-Code Memory
 
@@ -3380,6 +3430,8 @@ Future web users can inspect evidence, scope, sources, graph context, case activ
 **Readiness note:** Story 17.6 is the current conformance gate for the host-less web RCL. It does not close product-route browser, axe, forced-colors, reduced-motion, zoom/reflow, touch, or manual screen-reader validation gaps. Story 17.7 is the scheduled browser/assistive-technology gap-closure story for those fail-closed dimensions.
 
 **Execution gate:** Any future Epic 17 implementation or reopened Story 17.2-17.5 work must verify Story 17.6 completion evidence first and must reuse its conformance tests. If `story_execution_order` is present in sprint status, tooling must treat 17.6 as the preflight regardless of numeric suffix.
+
+**Query-pipeline note (2026-07-25):** When web question-answering is pulled forward, adopt a planner → executor → synthesis pipeline over the Evidence Packet (a lightweight planning pass selects axes/tools; the executor fans out in parallel and normalizes results into the Evidence Packet; synthesis answers with citations and caveats), per the Cerebras knowledge-base findings (`research/cerebras-knowledge-base-findings-2026-07-25.md`, finding D6).
 
 **UX-DRs covered:** UX-DR5, UX-DR6, UX-DR15, UX-DR16, UX-DR20, UX-DR21, UX-DR22, UX-DR23, UX-DR24, UX-DR26, UX-DR27, UX-DR29, UX-DR30, UX-DR31, UX-DR32, UX-DR33, UX-DR34, UX-DR35, UX-DR36, UX-DR37, UX-DR38, UX-DR39, UX-DR40
 
