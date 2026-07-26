@@ -2296,7 +2296,7 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 
 - Split the four-image release/publish pipeline out of Story 27.3 into a newly numbered story.
   - ID: 27.3-CR5
-  - Status: open
+  - Status: resolved 2026-07-26 — split executed by the approved Sprint Change Proposal 2026-07-26 into Epic 30 / Story 30.1 (`epics.md`), registered in `sprint-status.yaml`, and removed from Story 27.3's File List.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
   - Target artifact: _bmad-output/planning-artifacts/epics.md
   - Re-open trigger: before Story 27.3 advances to done; the release/publish-pipeline work must own a separate story.
@@ -2308,15 +2308,24 @@ Chunk 2 = deployment manifests + docs (18 File-List paths). Intermediate chunked
 
 - Fail-closed `done` blockers: chunk 3 unreviewed; live method/case recount not runnable in this sandbox; Server story/external split +1/+30 -> +5/+26 (see DW 27.3-CR4). Story stays `in-progress`.
 - Clock NetworkPolicy egress to TCP/443 is unrestricted (no `to:`); tighten to real UTC-source CIDRs before enablement. [deploy/kubernetes/base/access-telemetry-network-policy.yaml:99]
-- `maxConns: 64` x 2 replicas (128) can exceed PostgreSQL `max_connections=100` under the C1 two-writer load; reconcile before/at the load probe. [deploy/kubernetes/base/dapr/access-telemetry-store.yaml:25]
-- Verification coverage gap: `skipVerify:"false"`, pg_hba `hostnossl...reject`, init-SQL least-privilege grants, new RBAC secret-reader Roles, `actorStateStore:"true"`, and the telemetry ACL are unbound by static guard tests; add assertions to the chunk-1 guard tests. [tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs]
+- ~~`maxConns: 64` x 2 replicas (128) can exceed PostgreSQL `max_connections=100` under the C1 two-writer load; reconcile before/at the load probe.~~ [deploy/kubernetes/base/dapr/access-telemetry-store.yaml:25] — **resolved 2026-07-26 (dev-story)**: `maxConns` lowered to `40`, so `2 x 40 + 3 superuser-reserved + 10 evidence sessions = 93 <= max_connections 100`. The derivation is a comment on the metadata entry and is enforced by the new `ProductionDeploymentArtifactsTests.ProductionOverlay_AccessTelemetryConnectionPoolFitsPostgreSqlMaxConnections`, which failed RED at `141 > 100` before the fix.
+- ~~Verification coverage gap: `skipVerify:"false"`, pg_hba `hostnossl...reject`, init-SQL least-privilege grants, new RBAC secret-reader Roles, `actorStateStore:"true"`, and the telemetry ACL are unbound by static guard tests; add assertions to the chunk-1 guard tests.~~ [tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs] — **resolved 2026-07-26 (dev-story)**: all six surfaces are now bound by `ProductionDeploymentArtifactsTests.ProductionOverlay_AccessTelemetryProfileSecurityContractsAreBound`. Because the guard passed on first authoring, it was mutation-proven rather than RED-proven: six independent drift injections (`skipVerify:"true"`, `actorStateStore:"false"`, dropped `hostnossl ... reject`, RBAC verbs widened to `get,list`, ACL `defaultAction: allow`, and an extra secret smuggled into `allowedSecrets`) each failed the suite, and the baseline returned green after every revert.
 - Pre-enablement operational hardening: probe `wget`/`sh` dependency, missing metrics ingress, startup-vs-initTimeout cold-start race, terminationGracePeriod/PDB node-drain block, manual restart on password/CA rotation. [deploy/kubernetes/base/access-telemetry-deployments.yaml]
 - Docs: release-runbook four-image expansion belongs with DW 27.3-CR5; ADR byte-bucket boundary overlap and `edgeTypeCount>16` ambiguity; verify ADR `Story 27.2 C1 mapping` block attribution. [docs/dev/release-runbook.md; docs/dev/adr-27.1-001-access-telemetry-lifecycle.md]
+
+### DW 27.3-CR7 - create-story scope verifier is inert after the 27.3 split rename
+
+  - ID: 27.3-CR7
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (dev-story, 2026-07-26)
+  - Target artifact: _bmad-output/implementation-artifacts/tests/27-3-create-story-scope-evidence.md
+  - Re-open trigger: before Story 27.3 advances to done; the embedded scope verifier must exit 0.
+  - Rationale: The embedded verifier's executable constants at lines 69-76 (`KEY`, `STORY`, `MATRIX`) still name the pre-split `27-3-retention-verification-operations-runbook-and-a41-close-out` key/path and the `27-3-retention-verification-evidence.md` matrix. Commit `f474db15` renamed the story to `27-3-production-adapter-and-deployment-profile.md` and the matrix to `27-3-adapter-profile-evidence.md` under the approved 2026-07-20 course correction, so the verifier now exits 1 with `missing governed artifact: …` and has been inert since the split. The status-parity, monotonic-transition, unique-YAML-key, and baseline-relative File List assertions added by earlier review findings are therefore not running. The recorded creation diff at lines 16-34 is append-only history and must not be rewritten; only the three constants are stale. Found by dev-story on 2026-07-26 while revalidating the story's own gates; not repaired there because this is a create-story-phase governance artifact and the story phase ledger does not authorize dev-story to rewrite another phase's evidence verifier.
 
 ### DW 27.3-CR6 - OpenBao secrets platform is an independent slice (split approved)
 
   - ID: 27.3-CR6
-  - Status: open
+  - Status: resolved 2026-07-26 — split executed by the approved Sprint Change Proposal 2026-07-26 into Epic 31 / Story 31.1 (`epics.md`), registered in `sprint-status.yaml`, and removed from Story 27.3's File List. The static file-based seal and namespace-wide 8200 ingress are carried into Story 31.1's security-approval acceptance criterion.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
   - Target artifact: _bmad-output/planning-artifacts/epics.md
   - Re-open trigger: before Story 27.3 advances to done; the OpenBao platform + runtime secretstore migration must own a separate story.

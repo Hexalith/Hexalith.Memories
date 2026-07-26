@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Tests.Deployment;
 
 using System.Diagnostics;
+using System.Globalization;
 
 using Shouldly;
 
@@ -312,6 +313,161 @@ public sealed class ProductionDeploymentArtifactsTests
         smokeTest.ShouldContain("value: https://hexalith-keys.openbao.svc.cluster.local:8200");
         smokeTest.ShouldContain("value: /openbao/tls/ca.crt");
         smokeTest.ShouldNotContain("tls-skip-verify");
+    }
+
+    [Fact]
+    public void ProductionOverlay_AccessTelemetryConnectionPoolFitsPostgreSqlMaxConnections()
+    {
+        // Story 27.3 C1 load-probe precondition. The ADR two-writer envelope scales the lifecycle
+        // deployment to two replicas, and each replica's Dapr sidecar opens its own state-store pool of
+        // maxConns connections. PostgreSQL must seat every pooled connection plus the superuser reserve
+        // and the evidence sessions the probe itself runs, otherwise the 500 events/s run fails on
+        // connection exhaustion instead of on a real capacity limit.
+        const int c1WriterReplicas = 2;
+        const int superuserReservedConnections = 3;
+        const int evidenceSessionHeadroom = 10;
+
+        string root = GetRepoRoot();
+        string rendered = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/production");
+        string store = GetDocument(rendered, "Component", "access-telemetry-store");
+        string postgresql = GetDocument(rendered, "StatefulSet", "access-telemetry-postgresql");
+
+        int maxConns = ReadComponentMetadataInt32(store, "maxConns");
+        int maxConnections = ReadServerParameterInt32(postgresql, "max_connections");
+
+        // The reserve arithmetic above is only valid while the server keeps the defaults it is derived
+        // from. This also catches an override of superuser_reserved_connections, which ends with the
+        // same token.
+        postgresql.ShouldNotContain("reserved_connections=");
+
+        ((c1WriterReplicas * maxConns) + superuserReservedConnections + evidenceSessionHeadroom)
+            .ShouldBeLessThanOrEqualTo(
+                maxConnections,
+                $"{c1WriterReplicas} lifecycle writers x maxConns {maxConns}, plus {superuserReservedConnections} superuser-reserved and {evidenceSessionHeadroom} evidence connections, must fit max_connections {maxConnections}.");
+    }
+
+    [Fact]
+    public void ProductionOverlay_AccessTelemetryProfileSecurityContractsAreBound()
+    {
+        // Story 27.3 C1 immutability. AC4 requires an independent security reviewer to approve identity,
+        // secrets, TLS, authorization, and encryption for the exact PG-ONPREM-1 profile, but until now
+        // nothing failed when any of these drifted -- a silently weakened profile shipped green and would
+        // have been certified. Each block below binds one property the C1 evidence packet certifies.
+        string root = GetRepoRoot();
+        string rendered = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/production");
+
+        // The access-telemetry secret store must verify OpenBao's TLS identity, never skip it.
+        string secrets = GetDocument(rendered, "Component", "access-telemetry-secrets");
+        ReadComponentMetadata(secrets, "skipVerify").ShouldBe("false");
+        ReadComponentMetadata(secrets, "tlsServerName").ShouldBe("hexalith-keys.openbao.svc.cluster.local");
+
+        // The store must stay an actor state store; losing this disables reminders at runtime only.
+        string store = GetDocument(rendered, "Component", "access-telemetry-store");
+        ReadComponentMetadata(store, "actorStateStore").ShouldBe("true");
+
+        // PostgreSQL must reject every plaintext path and keep the runtime role least-privileged.
+        string postgresqlConfig = GetDocument(rendered, "ConfigMap", "access-telemetry-postgresql-config");
+        string hostBasedAuthentication = CollapseSpaces(postgresqlConfig);
+        hostBasedAuthentication.ShouldContain("hostssl all all 0.0.0.0/0 scram-sha-256");
+        hostBasedAuthentication.ShouldContain("hostssl all all ::/0 scram-sha-256");
+        hostBasedAuthentication.ShouldContain("hostnossl all all 0.0.0.0/0 reject");
+        hostBasedAuthentication.ShouldContain("hostnossl all all ::/0 reject");
+        hostBasedAuthentication.ShouldNotContain(" trust");
+        hostBasedAuthentication.ShouldNotContain(" md5");
+        postgresqlConfig.ShouldContain("CREATE ROLE memories_access_telemetry_runtime LOGIN");
+        postgresqlConfig.ShouldNotContain("SUPERUSER");
+        postgresqlConfig.ShouldContain("REVOKE ALL ON DATABASE memories_access_telemetry FROM PUBLIC;");
+        postgresqlConfig.ShouldContain("REVOKE ALL ON SCHEMA public FROM PUBLIC;");
+        postgresqlConfig.ShouldContain("GRANT CONNECT ON DATABASE memories_access_telemetry TO memories_access_telemetry_runtime;");
+        postgresqlConfig.ShouldContain("GRANT USAGE, CREATE ON SCHEMA access_telemetry TO memories_access_telemetry_runtime;");
+
+        // Each workload reads exactly its own secrets, and only by get.
+        foreach ((string role, string[] resourceNames) in new[]
+        {
+            ("memories-access-telemetry-secret-reader", new[] { "access-telemetry-marker-key", "redis-secret", "app-api-token", "dapr-api-token", "openbao-access-telemetry-bootstrap" }),
+            ("memories-access-telemetry-clock-secret-reader", new[] { "access-telemetry-clock-key", "app-api-token", "dapr-api-token", "openbao-access-telemetry-bootstrap" }),
+        })
+        {
+            string document = GetDocument(rendered, "Role", role);
+            ReadYamlSequence(document, "resourceNames", "resources").ShouldBe(resourceNames, ignoreOrder: true);
+            ReadYamlSequence(document, "resources", "verbs").ShouldBe(["secrets"]);
+            ReadYamlSequence(document, "verbs", "---").ShouldBe(["get"]);
+        }
+
+        // The lifecycle ACL stays deny-default with exactly the four named operations.
+        string lifecycleConfiguration = GetDocument(rendered, "Configuration", "memories-access-telemetry-config");
+        (lifecycleConfiguration.Split("defaultAction: deny").Length - 1).ShouldBe(3);
+        (lifecycleConfiguration.Split("appId:").Length - 1).ShouldBe(2);
+        (lifecycleConfiguration.Split("action: allow").Length - 1).ShouldBe(4);
+        lifecycleConfiguration.ShouldContain("appId: memories\n");
+        lifecycleConfiguration.ShouldContain("appId: memories-access-telemetry-inspector");
+        lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/write");
+        lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/heartbeat");
+        lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/validate");
+        lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/inspect");
+        lifecycleConfiguration.ShouldNotContain("name: /**");
+        lifecycleConfiguration.ShouldNotContain("DELETE");
+        lifecycleConfiguration.ShouldNotContain("PUT");
+        lifecycleConfiguration.ShouldNotContain("PATCH");
+        lifecycleConfiguration.ShouldContain("defaultAccess: deny");
+        ReadYamlSequence(lifecycleConfiguration, "allowedSecrets", "defaultAccess")
+            .ShouldBe(["access-telemetry-marker-key", "redis-secret", "access-telemetry-postgresql"], ignoreOrder: true);
+    }
+
+    private static string CollapseSpaces(string value)
+    {
+        while (value.Contains("  ", StringComparison.Ordinal))
+        {
+            value = value.Replace("  ", " ", StringComparison.Ordinal);
+        }
+
+        return value;
+    }
+
+    private static IReadOnlyList<string> ReadYamlSequence(string document, string key, string terminator)
+    {
+        int start = document.IndexOf($"{key}:", StringComparison.Ordinal);
+        start.ShouldBeGreaterThanOrEqualTo(0, $"Sequence '{key}' is missing.");
+        int end = document.IndexOf(terminator == "---" ? terminator : $"{terminator}:", start, StringComparison.Ordinal);
+        end = end < 0 ? document.Length : end;
+        end.ShouldBeGreaterThan(start, $"'{terminator}' does not follow '{key}'.");
+
+        return [.. document[start..end]
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith("- ", StringComparison.Ordinal))
+            .Select(line => line[2..].Trim().Trim('"'))];
+    }
+
+    private static string ReadComponentMetadata(string component, string metadataName)
+    {
+        int nameIndex = component.IndexOf($"name: {metadataName}\n", StringComparison.Ordinal);
+        nameIndex.ShouldBeGreaterThanOrEqualTo(0, $"Component metadata '{metadataName}' is missing.");
+        int valueIndex = component.IndexOf("value:", nameIndex, StringComparison.Ordinal);
+        valueIndex.ShouldBeGreaterThan(nameIndex, $"Component metadata '{metadataName}' has no value.");
+        int lineEnd = component.IndexOf('\n', valueIndex);
+        string value = component[(valueIndex + "value:".Length)..(lineEnd < 0 ? component.Length : lineEnd)];
+
+        return value.Trim().Trim('"');
+    }
+
+    private static int ReadComponentMetadataInt32(string component, string metadataName)
+        => int.Parse(ReadComponentMetadata(component, metadataName), CultureInfo.InvariantCulture);
+
+    private static int ReadServerParameterInt32(string statefulSet, string parameterName)
+    {
+        int index = statefulSet.IndexOf($"{parameterName}=", StringComparison.Ordinal);
+        index.ShouldBeGreaterThanOrEqualTo(0, $"PostgreSQL server parameter '{parameterName}' is missing.");
+        int start = index + parameterName.Length + 1;
+        int end = start;
+        while (end < statefulSet.Length && char.IsAsciiDigit(statefulSet[end]))
+        {
+            end++;
+        }
+
+        end.ShouldBeGreaterThan(start, $"PostgreSQL server parameter '{parameterName}' has no numeric value.");
+
+        return int.Parse(statefulSet[start..end], CultureInfo.InvariantCulture);
     }
 
     private static string GetDocument(string rendered, string kind, string name)

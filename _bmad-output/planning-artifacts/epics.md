@@ -141,7 +141,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 **Security (NFR8-NFR11)**
 
 - NFR8: Zero cross-tenant data leakage — verified by automated test suite across all axes [MVP]
-- NFR9: Embedding API keys stored in secure secret management — never in config files [Ongoing]
+- NFR9: Product services retrieve embedding-provider and other application runtime secrets exclusively through the DAPR Secrets API backed by OpenBao; secret values never live in application configuration or ordinary environment variables. Kubernetes Secrets are restricted to documented, unavoidable OpenBao bootstrap credentials or direct pod inputs outside the DAPR secret-store boundary. Verified by structural dependency tests, secret scanning, AppHost topology tests, and integration tests [Ongoing]
 - NFR10: All inter-service communication authenticated via DAPR API tokens [Ongoing]
 - NFR11: External access authenticated at ingress layer [P1.5]
 
@@ -168,7 +168,7 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 
 **Algorithmic Quality (NFR24-NFR26)**
 
-- NFR24: All axis scores normalized to 0.0-1.0 before fusion [MVP]
+- NFR24: Hybrid fusion uses deterministic weighted reciprocal-rank fusion with per-axis rank contributions in 0.0-1.0; single-axis explain still documents axis-specific score semantics [MVP]
 - NFR25: Fusion algorithm produces deterministic scores [MVP]
 - NFR26: Benchmark suite produces reproducible results (identical NDCG@10) [MVP]
 
@@ -421,6 +421,8 @@ Minimum build/test CI is part of the executable foundation path and is tracked a
 
 **Post-MVP audit remediation:** Epics 20-26 reinforce already-approved requirements and production-readiness gaps. They do not reopen MVP thesis validation or expand active MVP readiness unless a story is explicitly sprint-selected as a blocker for production exposure.
 
+**Post-MVP operational hardening:** Epics 27-31 are Operational Readiness track. Epic 27 hardens the access-telemetry lifecycle; Epic 28 adopts the owner-approved EventStore runtime identity; Epic 29 owns Aspire-local OpenBao secret topology; Epic 30 owns the container release pipeline; Epic 31 owns the deployed OpenBao platform and runtime secret-store migration. None is counted toward MVP product readiness, each requires explicit sprint selection, and each is judged by the Engineering/Operational Readiness Track acceptance rules below.
+
 **FR71 scope interpretation:** Epic 26 covers the operational backup/restore and disaster-recovery slice of FR71. It does not pull the broader application-facing portable export feature into active MVP scope; full export remains Phase 2 unless explicitly sprint-selected.
 
 ### Pre-Implementation CI Preflight Gate (2026-05-19)
@@ -550,7 +552,7 @@ Acceptance criteria that allow "implemented, documented, accepted, or carried fo
 
 Operational checkpoint stories may remain umbrella tracking stories, but each checkpoint must be implemented, reviewed, and evidenced as a separately verifiable slice. A checkpoint cannot be marked complete only because the umbrella story is complete.
 
-When checkpoint-heavy stories are selected for implementation, the story file must either split checkpoints into separately tracked child story files or include a checklist evidence table with owner, validation command or artifact, review status, and completion date for each checkpoint. This guard applies especially to future or backlog stories such as 21.9 and 26.5.
+When checkpoint-heavy stories are selected for implementation, the story file must either split checkpoints into separately tracked child story files or include a checklist evidence table with owner, validation command or artifact, review status, and completion date for each checkpoint. This guard is shape-based, not story-specific: it binds any story whose acceptance criteria enumerate more than five independently verifiable gates, however those gates are grouped into criteria. A single table row covering multiple gates does not satisfy it — one row per gate is required, because a shared review state and completion date cannot record partial completion. Stories 21.9, 26.5, and 27.3 are the known instances to date.
 
 ### Epic 11: CI/CD & Automated Quality Pipeline
 Minimum build/test CI is an enabling prerequisite for any greenfield or restarted implementation sequence. Semantic release, NuGet publishing, branch protection, and release-hardening behavior remain in this operational-readiness epic.
@@ -642,6 +644,31 @@ Operators can configure and verify a bounded lifecycle for access telemetry thro
 **Lifecycle label:** Operational Readiness / Security and Observability Hardening
 **Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation)
 **FRs reinforced:** FR67
+
+### Epic 28: Owner-Approved EventStore Runtime Adoption
+Memories source and package modes converge on the exact EventStore runtime identity authorized by EventStore Story 1.20 while preserving the existing zero-code DAPR ingestion contract.
+**Lifecycle label:** Operational Readiness / EventStore Dependency Adoption
+**Driven by:** Approved direct course correction 2026-07-17
+**Activation gate:** Externally gated on EventStore Story 1.20 recording `final_decision: available`, `authorize_consumer_migration: true`, a 40-hex `tested_runtime_sha`, named owner approval, and the approved package version and SHA-256 inventory.
+
+### Epic 29: OpenBao-First Dapr Secret Management
+Aspire-hosted services resolve application secrets exclusively through Dapr secret-store components backed by OpenBao. Kubernetes Secrets remain permitted only for unavoidable bootstrap credentials or direct pod inputs that Dapr cannot inject.
+**Lifecycle label:** Operational Readiness / Secret Management Hardening
+**Driven by:** Sprint Change Proposal 2026-07-19 — OpenBao-First Aspire Secret Management
+**NFRs reinforced:** NFR9
+**Scope boundary:** Epic 29 owns the Aspire/AppHost-local secret topology and provider-neutral composition. The deployed-cluster OpenBao platform and the runtime Dapr `secretstore` migration are Epic 31.
+
+### Epic 30: Container Release Pipeline Ownership
+The four-image container release and partial-recovery pipeline is owned, tested, and documented as an independently demonstrable release lane rather than as incidental scope inside an adapter-qualification story.
+**Lifecycle label:** Operational Readiness / Release Engineering
+**Driven by:** Sprint Change Proposal 2026-07-26 — DW 27.3-CR5 split approved by Administrator 2026-07-21
+
+### Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
+The deployed OpenBao `hexalith-keys` platform and the runtime Dapr `secretstore` migration from Kubernetes Secrets to `hashicorp.vault` are owned, hardened, documented, and security-reviewed as an independently deployable operations platform.
+**Lifecycle label:** Operational Readiness / Secret Management Platform
+**Driven by:** Sprint Change Proposal 2026-07-26 — DW 27.3-CR6 split approved by Administrator 2026-07-21
+**NFRs reinforced:** NFR9
+**Scope boundary:** Epic 31 owns the deployed-cluster platform and runtime secret-store migration. Aspire/AppHost-local topology and provider-neutral composition are Epic 29.
 
 ---
 
@@ -1122,8 +1149,8 @@ So that I can discover content that is structurally connected to a starting poin
 ### Story 2.4: Score Normalization
 
 As a developer,
-I want all search axis scores normalized to 0.0-1.0 before fusion,
-So that scores from different axes are comparable and the fusion algorithm produces meaningful composite rankings.
+I want each search axis to expose a documented, deterministic 0.0-1.0 score for single-axis results and explain output,
+So that per-axis relevance is interpretable on its own terms, independent of how the hybrid composite is produced.
 
 **Acceptance Criteria:**
 
@@ -1150,7 +1177,7 @@ So that scores from different axes are comparable and the fusion algorithm produ
 
 **Given** normalization unit tests with known inputs
 **When** each normalization function is executed
-**Then** outputs match expected values exactly (NFR24)
+**Then** outputs match expected values exactly (NFR24 single-axis explain semantics, NFR25 determinism)
 
 **Validation Evidence Required:** Deterministic normalization tests must cover BM25 saturation, cosine pass-through, graph proximity decay, and repeated-query stability.
 
@@ -1166,7 +1193,8 @@ So that I get the best possible results by combining syntactic, semantic, and gr
 **When** the fusion algorithm executes
 **Then** it calls all three search backends in parallel
 **And** results are merged using the pure function `Fuse(List<ScoredResult>[], FusionWeights) → RankedResults`
-**And** the composite score is a weighted average of normalized axis scores
+**And** the composite score is a deterministic weighted reciprocal-rank fusion of per-axis result ranks — raw BM25, cosine, and graph-proximity magnitudes are not averaged into the composite (NFR24)
+**And** explain output exposes each axis's rank contribution and the fusion weights applied, rather than its raw magnitude
 **And** the function has no backend calls or hidden state — all dependencies (corpus statistics, normalization parameters) are injected
 
 **Given** the same query executed twice against the same data
@@ -1190,6 +1218,8 @@ So that I get the best possible results by combining syntactic, semantic, and gr
 **And** the response carries degraded search metadata naming the excluded axis.
 
 **Ownership note:** Story 2.5 owns search-layer fusion behavior over available axes. Story 5.6 owns the system-wide backend availability policy, health detection, chaos/degradation verification, and FR66/NFR18 degraded-service contract.
+
+**Fusion supersession note (2026-07-26):** Stories 2.4 and 2.5 were originally specified against a normalize-then-weighted-average model. Story 22.4 selected corpus-invariant weighted reciprocal-rank fusion, and Epic 26 calibrated it (RRF `k=10`; live syntactic/semantic/graph weights `0.30/0.35/0.35`; optional NL weight `0.20`, default-off). The text above was reconciled to that as-built model by the approved Sprint Change Proposal 2026-07-26; the implementation in `FusionEngine` and `ExplainMetadataBuilder` was already weighted RRF and is unchanged by that reconciliation. Per-axis normalization is retained for single-axis score semantics and explain output only. Authority for fusion behavior is `architecture.md` section 8; `prd.md` NFR24-NFR26 owns the requirement.
 
 ### Story 2.6: Explain Mode & Confidence Scores
 
@@ -5028,3 +5058,90 @@ So that consumers can use OpenBao without product code depending on OpenBao.
 **When** Story 29.2 completes,
 **Then** they follow the OpenBao-first rule and document every remaining Kubernetes Secret exception
 **And** automated topology and integration tests prove both Dapr secret components resolve values from OpenBao without exposing secret values.
+
+---
+
+## Epic 30: Container Release Pipeline Ownership
+
+The four-image container release and partial-recovery pipeline is owned, tested, and documented as an independently demonstrable release lane rather than as incidental scope inside an adapter-qualification story.
+
+**Lifecycle label:** Operational Readiness / Release Engineering.
+
+**Driven by:** Sprint Change Proposal 2026-07-26, executing DW 27.3-CR5 (split approved by the Administrator on 2026-07-21 during Story 27.3 code review).
+
+**Scope origin:** The pipeline artifacts already exist in the repository and were ledgered as an external CI/CD lane while bundled into Story 27.3's single C1 adapter-qualification slice. This epic gives them an owner, not a new implementation.
+
+### Story 30.1: Four-Image Container Release and Partial-Recovery Pipeline
+
+**Status:** backlog. **Owner:** Memories Maintainer.
+
+As a maintainer,
+I want the four-image container release and partial-recovery pipeline to be an independently demonstrable, tested release lane,
+So that release integrity is provable on its own evidence instead of inside an unrelated adapter qualification.
+
+**Acceptance Criteria:**
+
+**Given** the four-image publish pipeline and its partial-recovery path,
+**When** the release lane is exercised,
+**Then** `tools/publish-containers.ps1`, `tools/complete-partial-release.ps1`, and `tools/verify-container-registry.ps1` are covered by the `tests/tooling/publish_containers` suites with named discovery commands and pass counts
+**And** `.github/workflows/recover-partial-release.yml` and the release/publish steps of `.github/workflows/ci.yml` are bound by `CiTestInventoryTests` assertions.
+
+**Given** a publish run that fails after some images are pushed,
+**When** partial recovery runs,
+**Then** the remaining images publish without republishing or corrupting the already-pushed set
+**And** the recovery path is evidenced by a named test result, not by inspection.
+
+**Given** `docs/dev/release-runbook.md`,
+**When** Story 30.1 completes,
+**Then** the runbook documents the four-image expansion, the partial-recovery procedure, and the registry-authorization contract.
+
+**Given** registry push authorization,
+**When** the pipeline authenticates,
+**Then** the authorization mode in use is recorded, and any registry-side limitation that blocks an authenticated push is captured as a named blocker with owner, consequence, and reopen trigger rather than worked around silently.
+
+**Known risk (carried, not yet re-verified):** a prior investigation recorded that the zot registry rejected challenge-response push authentication — Docker and skopeo pushes returned 401 while a preemptive single-connection preflight probe succeeded — and suspected a registry-side replica/state issue requiring server-side diagnosis. Re-verify this against the current registry before treating the publish path as green; if it reproduces, record it as an accepted blocker per the acceptance criterion above.
+
+**Scope boundary:** Story 30.1 owns the release/publish lane only. Production deployment rendering, verification, and evidence tooling (`tools/render-production-deployment.ps1`, `tools/verify-production-deployment.ps1`, `tools/validate-production-deployment-evidence.ps1`) remain owned by Story 27.3.
+
+---
+
+## Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
+
+The deployed OpenBao `hexalith-keys` platform and the runtime Dapr `secretstore` migration from Kubernetes Secrets to `hashicorp.vault` are owned, hardened, documented, and security-reviewed as an independently deployable operations platform.
+
+**Lifecycle label:** Operational Readiness / Secret Management Platform.
+
+**Driven by:** Sprint Change Proposal 2026-07-26, executing DW 27.3-CR6 (split approved by the Administrator on 2026-07-21 during Story 27.3 code review).
+
+**Scope boundary:** Epic 29 owns the Aspire/AppHost-local OpenBao topology and provider-neutral composition. Epic 31 owns the deployed-cluster platform and the runtime secret-store migration. Neither epic's stories may be closed on the other's evidence.
+
+**Scope origin:** The platform is already deployed and operational — the 2026-07-20 live probe resolved the access-telemetry store through it. This epic formalizes ownership, hardening, and documentation of a running platform; it does not stand one up.
+
+### Story 31.1: OpenBao Platform Hardening and Runtime Secret-Store Migration
+
+**Status:** backlog. **Owner:** Memories Maintainer + security reviewer.
+
+As an operator and security reviewer,
+I want the deployed OpenBao platform and the runtime Dapr secret-store migration owned by one reviewable story,
+So that the secret-management boundary is hardened and approved on its own evidence rather than inside an adapter-qualification slice.
+
+**Acceptance Criteria:**
+
+**Given** the deployed OpenBao `hexalith-keys` platform,
+**When** its topology is reviewed,
+**Then** `deploy/openbao/values.yaml`, `namespace.yaml`, `service-account-hardening.yaml`, and `smoke-test.yaml` are documented in `docs/operations/openbao.md` with their exact deployed configuration
+**And** the smoke test is runnable with a named command and recorded result.
+
+**Given** the runtime `secretstore` component,
+**When** the migration completes,
+**Then** `deploy/kubernetes/base/dapr/secretstore.yaml` uses `hashicorp.vault` with the `eventstore` and `memories` scopes
+**And** every remaining Kubernetes Secret is documented as an unavoidable OpenBao bootstrap credential or a direct pod input outside the DAPR secret-store boundary (NFR9).
+
+**Given** the single-node deployment profile,
+**When** the security reviewer evaluates it,
+**Then** the static file-based OpenBao seal — the unseal key held in a Kubernetes Secret beside the data — and the namespace-wide port 8200 ingress are surfaced explicitly as accepted single-node limitations with owner, consequence, compensating controls, and a reopen trigger
+**And** neither limitation is described as hardened or production-HA.
+
+**Given** secret-resolution behavior,
+**When** structural and integration tests run,
+**Then** no product project contains an OpenBao SDK, HTTP client, endpoint, or provider credential, and secret values are never exposed in logs, telemetry, CLI output, or test snapshots (NFR9, project-context "Never expose secrets").

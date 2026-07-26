@@ -1,6 +1,6 @@
 ---
 date: 2026-07-26
-status: proposed
+status: approved
 trigger: implementation-readiness-report-2026-07-25.md
 scope_classification: Moderate
 mode: Batch
@@ -950,9 +950,28 @@ recompute (+1/+30 → +5/+26).
 ## 8. Approval
 
 - [ ] **Approved** — proceed with Edits 1–18
-- [ ] **Approved with changes** — note exceptions below
+- [x] **Approved with changes** — note exceptions below
 - [ ] **Rejected / revise**
 
-**Approver:** _______________  **Date:** _______________
+**Approver:** Administrator (Jerome)  **Date:** 2026-07-26
 
 **Notes:**
+
+Approved and executed on 2026-07-26 with three corrections agreed during execution:
+
+1. **File List arithmetic corrected.** §2 and Edit 14 state "13 paths move out"; the enumerated set
+   is **16**, and all 16 were verified present in the 52-path File List. The result of record is
+   **52 - 16 = 36 remaining**, not 39. Recorded in the story's File List scope-change note.
+2. **Drifted line anchors.** Edit 4 cites `epics.md:1180` (actual 1169) and Edit 18 cites
+   `deferred-work.md:2319` (actual 2328, shifted by the DW 27.3-CR7 entry added earlier the same
+   day). Both were applied by unique-text match rather than line number; target text unchanged.
+3. **Ledger reconciliation added.** The proposal did not address the interaction with the
+   `dev-story` row appended earlier on 2026-07-26 recording `matched 52/52`. That append-only row
+   is preserved unrewritten; a dated scope-change note in the File List section records that the
+   reconciliation baseline for all subsequent phases is 36. No non-canonical ledger phase row was
+   appended, per the story phase ledger's fixed phase vocabulary.
+
+**Edit 11** (checkpoint-guard generalization) was explicitly confirmed and applied.
+**Edit 5b** (Story 22.3 ambiguity) was left as-is per the proposal's own recommendation.
+
+Story 27.3 remains `in-progress`; Production writes remain disabled; no story status advanced.

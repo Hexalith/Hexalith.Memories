@@ -20,8 +20,13 @@ spec:
       value: 3s
     - name: cleanupInterval
       value: 5m
+    # Story 27.3 C1 pool math: the ADR two-writer probe runs 2 lifecycle replicas, and each sidecar
+    # opens its own pool. 2 x 40 = 80, plus PostgreSQL's 3 superuser-reserved connections and 10
+    # evidence/sampling sessions, fits max_connections=100 with margin. Raising this without raising
+    # max_connections in access-telemetry-postgresql.yaml exhausts the server during the 500 events/s
+    # run; ProductionDeploymentArtifactsTests guards the invariant.
     - name: maxConns
-      value: "64"
+      value: "40"
     - name: connectionMaxIdleTime
       value: 5m
     - name: actorStateStore
