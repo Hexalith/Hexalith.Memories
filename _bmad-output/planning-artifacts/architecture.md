@@ -224,7 +224,7 @@ The Memories Server is a **trusted component** with access to all tenant embeddi
 
 **Growth-phase security:**
 - Memory unit optional `classification` field — schema-present in MVP, not enforced. Enables Phase 4 LLM context redaction without schema migration.
-- Access telemetry lifecycle — current behavior is JSON-console emission plus optional OTLP export, with no repository-owned bounded lifecycle. [ADR 27.1-001](../../docs/dev/adr-27.1-001-access-telemetry-lifecycle.md) accepts a container-service neutral, Dapr-only access-telemetry lifecycle service: typed-state sanitization and non-blocking buffering; Dapr service invocation; a fixed-ID Dapr actor with durable state/reminders; Dapr state, configuration, and secrets components behind a fail-closed behavioral capability gate; continuously signed independent-UTC attestations with a one-second bound; millisecond logical expiry plus actor-driven purge; dynamic writer/key-rotation barriers; separate write/service/clock/inspection/adapter authorities; and component-specific physical-reclamation evidence collected outside the application API. Memories has no Redis, Kubernetes, backend-SDK, or orchestrator-API dependency for this lifecycle. The ratified all-nine-operation envelope is 250 events/s cluster-wide, up to 151,200,000 records and 144.20 GiB of canonical payload at the 7-day maximum; the selected adapter must reserve measured physical amplification, durability, index, and reclamation workspace before rollout. Story 27.3 now qualifies `PG-ONPREM-1`, a dedicated PostgreSQL 18.4 Dapr v2 profile on the current single-node on-premises cluster: its in-profile zero-loss fault is PostgreSQL pod/process replacement with the node and retained local volume healthy; node, volume, control-plane, and site loss remain outside profile with no HA claim and require approved backup/restore RPO/RTO. Stories 27.2 and 27.3 are unblocked to implement and verify the accepted target. `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains open until implementation and Production-shaped evidence pass or an explicit accepted-debt disposition satisfies the recorded closure gate. This is bounded infrastructure telemetry, not tamper-evident, append-only, legally compliant, or certified audit retention.
+- Access telemetry lifecycle — current behavior is JSON-console emission plus optional OTLP export, with no repository-owned bounded lifecycle. [ADR 27.1-001](../../docs/dev/adr-27.1-001-access-telemetry-lifecycle.md) accepts a container-service neutral, Dapr-only access-telemetry lifecycle service: typed-state sanitization and non-blocking buffering; Dapr service invocation; a fixed-ID Dapr actor with durable state/reminders; Dapr state, configuration, and secrets components behind a fail-closed behavioral capability gate; continuously signed independent-UTC attestations with a one-second bound; millisecond logical expiry plus actor-driven purge; dynamic writer/key-rotation barriers; separate write/service/clock/inspection/adapter authorities; and component-specific physical-reclamation evidence collected outside the application API. Memories has no Redis, Kubernetes, backend-SDK, or orchestrator-API dependency for this lifecycle. The ratified all-nine-operation envelope is 250 events/s cluster-wide, up to 151,200,000 records and 144.20 GiB of canonical payload at the 7-day maximum; the selected adapter must reserve measured physical amplification, durability, index, and reclamation workspace before rollout. Story 27.3 now qualifies `PG-ONPREM-1`, a dedicated PostgreSQL 18.4 Dapr v2 profile on the current single-node on-premises cluster: its in-profile zero-loss fault is PostgreSQL pod/process replacement with the node and retained local volume healthy; node, volume, control-plane, and site loss remain outside profile with no HA claim and require approved backup/restore RPO/RTO. Story 27.2 owns portable runtime implementation, Story 27.3 owns exact-adapter qualification of the immutable deployment profile, and Story 27.4 owns deployment-shaped lifecycle verification, the operations runbook, and A41 close-out; verification of the accepted target is Story 27.4 scope and is not claimable under Story 27.3. `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains open until implementation and Production-shaped evidence pass or an explicit accepted-debt disposition satisfies the recorded closure gate. This is bounded infrastructure telemetry, not tamper-evident, append-only, legally compliant, or certified audit retention.
 - Explain output as decorator on search results (not separate query path) — ensures Phase 4 ACL filtering applies equally to results and explain metadata.
 
 ### Testability Architecture
@@ -533,7 +533,7 @@ dotnet new classlib -n Hexalith.Memories.EventStore
 ### Decision Priority Analysis
 
 **Critical Decisions (Block Implementation):**
-Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from architectural decision making, D18-D22 from EventStore alignment, D23-D25 from DAPR Workflow/Actor adoption, D26-D28 from DAPR AI/Conversation API and polyglot architecture.
+Captured in Decision Registry D1-D31. D1-D10 from context analysis, D11-D17 from architectural decision making, D18-D22 from EventStore alignment, D23-D25 from DAPR Workflow/Actor adoption, D26-D28 from DAPR AI/Conversation API and polyglot architecture, D29-D30 from operational readiness, and D31 from OpenBao-first secret provisioning.
 
 **Deferred Decisions (Post-MVP):**
 - Full REST API design (Phase 2)
@@ -1643,7 +1643,7 @@ Tenant Ops: minimal API endpoint → DaprWorkflowClient.ScheduleNewWorkflowAsync
 - [x] Memory unit + graph edge data model defined
 
 **Architectural Decisions**
-- [x] 28 decisions (D1-D28) with versions and rationale
+- [x] 31 decisions (D1-D31) with versions and rationale
 - [x] Technology stack verified via web search
 - [x] Gate-blocking vs deferrable summary
 - [x] Decision registry for quick reference
@@ -1708,7 +1708,7 @@ tests/
 ### Implementation Handoff
 
 **AI Agent Guidelines:**
-- Follow all 27 architectural decisions (D1-D28) exactly as documented
+- Follow all 31 architectural decisions (D1-D31) exactly as documented
 - Use implementation patterns consistently — `.editorconfig` and EventStore CLAUDE.md are sources of truth
 - Respect project structure and boundaries — FR-to-structure mapping defines where code lives
 - Use DAPR Workflow for all multi-step orchestrations — never hand-roll state machines or queues

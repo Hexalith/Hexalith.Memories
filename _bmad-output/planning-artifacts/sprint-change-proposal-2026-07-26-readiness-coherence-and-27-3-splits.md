@@ -127,7 +127,7 @@ No epic is removed, deferred, resequenced, or redefined. No epic becomes obsolet
 | :--- | :--- | :--- |
 | 2.4 Score Normalization | `done` | Story statement reframed from "before fusion" to single-axis explain semantics; final AC citation clarified. ACs describing normalization behavior are unchanged — they describe live code. |
 | 2.5 Fusion Algorithm & Hybrid Search | `done` | One AC line replaced (weighted average → weighted RRF); one AC line added (explain exposes rank contributions and fusion weights). Dated reconciliation note appended. |
-| **27.3 Production Adapter and Deployment Profile** | **`in-progress`** | C1 checkpoint row expands into a 14-row gate evidence table. Two `[Review][Action]` split rows close. File List shrinks by 13 paths. Two `Scope Transferred` entries added. **No acceptance criterion is edited.** |
+| **27.3 Production Adapter and Deployment Profile** | **`in-progress`** | C1 checkpoint row expands into a 14-row gate evidence table. Two `[Review][Action]` split rows close. File List shrinks by 16 paths (corrected 2026-07-26 by code review, chunk 3b: the enumerated set in Edit 14 is 16, and 52 - 16 = 36 is the arithmetic of record). Two `Scope Transferred` entries added. **No acceptance criterion is edited.** |
 | 27.4 Retention Verification, Runbook, A41 Close-Out | `backlog` | Unchanged. Still gated behind 27.3. |
 | 28.1 Adopt Owner-Approved EventStore Runtime Identity | `backlog` | Unchanged. Still externally gated on EventStore Story 1.20. |
 | 29.2 Provider-Neutral Aspire Composition and Secret Verification | `backlog` | Unchanged in scope. Boundary against Story 31.1 stated so neither can claim the other's evidence. |
@@ -615,7 +615,7 @@ Neither transferred block is executable under Story 27.3, and neither may be cla
 27.3 evidence. Both target stories are `backlog`.
 ```
 
-**File List reductions — 13 paths move out of Story 27.3:**
+**File List reductions — 16 paths move out of Story 27.3** (corrected 2026-07-26 by code review, chunk 3b; the normative text originally read "13 paths" in this heading and in §2, while the enumerated set below is and always was 16. The approval note at the end of this proposal recorded the correction; the normative text is now aligned so that reconstructing scope from it yields 52 - 16 = 36, not 39)**:**
 
 To Story 30.1:
 ```

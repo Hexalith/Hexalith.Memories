@@ -132,6 +132,17 @@ EXPECTED_POSTGRESQL_IMAGE = (
 )
 
 
+# Approved PG-ONPREM-1 capacity thresholds (sprint-change-proposal-2026-07-20).
+# The threshold table governs admission; 100% profile occupancy is NOT admissible.
+PROFILE_CAPACITY_BYTES = 400 * 1024**3  # 429,496,729,600
+STEADY_STATE_CAPACITY_BYTES = 300_647_710_720  # 70%
+CRITICAL_CAPACITY_BYTES = 343_597_383_680  # 80%
+UNHEALTHY_CAPACITY_BYTES = 386_547_056_640  # 90%
+# The 7-day software maximum is measured for evidence but is never admitted
+# against the exact 400 GiB single-node profile.
+NON_ADMISSIBLE_HORIZONS = ("7d",)
+
+
 @dataclass(frozen=True)
 class CapacityRequirement:
     """Checked capacity result for one retention horizon."""
@@ -139,6 +150,97 @@ class CapacityRequirement:
     horizon: str
     records: int
     required_bytes: int
+
+
+@dataclass(frozen=True)
+class CapacityAdmission:
+    """Admission verdict for one horizon against the approved thresholds."""
+
+    horizon: str
+    required_bytes: int
+    admitted: bool
+    band: str
+    reason: str
+
+
+def evaluate_capacity_admission(
+    requirements: "list[CapacityRequirement]",
+) -> "list[CapacityAdmission]":
+    """Apply the approved 70/80/90% threshold table to computed capacity results.
+
+    Admission is fail-closed: a horizon is admitted only when its measured
+    requirement stays at or below the 70% steady-state threshold. Exactly 80%
+    is treated as critical, not as an admissible reclamation peak. Horizons in
+    NON_ADMISSIBLE_HORIZONS are never admitted against this profile.
+    """
+
+    verdicts: list[CapacityAdmission] = []
+    for requirement in requirements:
+        required = _normalize_integer(requirement.required_bytes, f"required_bytes[{requirement.horizon}]")
+        if required == 0:
+            verdicts.append(
+                CapacityAdmission(
+                    requirement.horizon,
+                    required,
+                    False,
+                    "invalid",
+                    "a zero capacity requirement is not evidence; measured record/index bytes must be positive",
+                )
+            )
+            continue
+        if requirement.horizon in NON_ADMISSIBLE_HORIZONS:
+            verdicts.append(
+                CapacityAdmission(
+                    requirement.horizon,
+                    required,
+                    False,
+                    "out-of-profile",
+                    f"horizon {requirement.horizon} is measured for evidence only and is not admissible against PG-ONPREM-1",
+                )
+            )
+            continue
+        if required > UNHEALTHY_CAPACITY_BYTES:
+            band = "unhealthy"
+        elif required >= CRITICAL_CAPACITY_BYTES:
+            band = "critical"
+        elif required > STEADY_STATE_CAPACITY_BYTES:
+            band = "above-steady-state"
+        else:
+            band = "steady-state"
+        admitted = band == "steady-state"
+        reason = (
+            f"{required} bytes is within the 70% steady-state threshold "
+            f"({STEADY_STATE_CAPACITY_BYTES})"
+            if admitted
+            else (
+                f"{required} bytes exceeds the 70% steady-state threshold "
+                f"({STEADY_STATE_CAPACITY_BYTES}); band={band}"
+            )
+        )
+        verdicts.append(CapacityAdmission(requirement.horizon, required, admitted, band, reason))
+    return verdicts
+
+
+def canonical_pg_onprem_profile() -> AdapterProfile:
+    """The exact reviewed PG-ONPREM-1 profile whose hash approvals bind to."""
+
+    return AdapterProfile(
+        identity={
+            "profileId": EXPECTED_PROFILE_ID,
+            "kubeContext": EXPECTED_KUBE_CONTEXT,
+            "kubeNamespace": EXPECTED_KUBE_NAMESPACE,
+            "postgresqlImage": EXPECTED_POSTGRESQL_IMAGE,
+            "componentType": "state.postgresql/v2",
+            "maxConns": "40",
+        },
+        capabilities={
+            "actorStateStore": True,
+            "strongReads": True,
+            "transactionRollback": True,
+            "ttl": True,
+        },
+        workload=ADR_TWO_WRITER_WORKLOAD.to_dict(),
+    )
 
 
 _BYTE_UNITS = {
@@ -477,6 +579,14 @@ def _write_rejection_evidence(
             f"- profile_sha256: `{manifest['profile_sha256']}`",
             f"- mutation_manifest_sha256: `{manifest['mutation_manifest_sha256']}`",
             "- allowed_mutations: `[]`",
+            # Story 27.3 code review (chunk 3b): the packet published a bare
+            # profile hash with no statement of what object it covered, so an
+            # approval could bind the reviewed manifests or the divergent live
+            # cluster and a reader could not tell which.
+            "- profile_hash_covers: `runtime-observed profile constructed by this invocation from the supplied identity and the live component query`",
+            f"- reviewed_canonical_profile_sha256: `{canonical_pg_onprem_profile().manifest()['profile_sha256']}`",
+            "- reviewed_canonical_profile_source: `tools/verify_access_telemetry_lifecycle.py::canonical_pg_onprem_profile`",
+            f"- runtime_matches_reviewed_profile: `{str(manifest['profile_sha256'] == canonical_pg_onprem_profile().manifest()['profile_sha256']).lower()}`",
             "",
             "## Safe Deployment Observations",
             "",
@@ -513,7 +623,21 @@ def _write_rejection_evidence(
             "",
         ]
     )
-    path.write_text("\n".join(lines), encoding="utf-8")
+    # Story 27.3 code review (chunk 3b).
+    # P32: `.gitattributes` declares `* text=auto eol=crlf`, so a packet written
+    # with LF produces working-tree bytes - and any hash over them - that differ
+    # from a fresh checkout. Write CRLF explicitly.
+    # P25: the single fixed path was rewritten on every invocation, so the
+    # rejection history AC5 depends on was destroyed by the run that would claim
+    # approval, and an approval was indistinguishable from a rejection by path.
+    # Every run now also lands an immutable per-run copy beside it.
+    body = "\r\n".join(lines) + "\r\n"
+    path.write_text(body, encoding="utf-8", newline="")
+    run_id = _sha256(body)[:16]
+    history = path.parent / "adapter-profile-runs" / f"{path.stem}-{run_id}.md"
+    history.parent.mkdir(parents=True, exist_ok=True)
+    if not history.exists():
+        history.write_text(body, encoding="utf-8", newline="")
 
 
 def run_adapter_profile_checkpoint(

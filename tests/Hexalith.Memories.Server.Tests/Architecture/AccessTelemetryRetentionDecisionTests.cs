@@ -453,6 +453,26 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
             Case.Sensitive);
         security.ShouldNotContain("MVP: structured log file", Case.Sensitive);
 
+        // Story 27.3 code review (chunk 3b): the PG-ONPREM-1 assurance boundary
+        // was unguarded here, so the sentence could be deleted or rewritten into
+        // an HA claim while this class stayed green and the ADR-side guard kept
+        // passing - letting the two records diverge silently.
+        security.ShouldContain("Story 27.3 now qualifies `PG-ONPREM-1`", Case.Sensitive);
+        security.ShouldContain(
+            "in-profile zero-loss fault is PostgreSQL pod/process replacement",
+            Case.Sensitive);
+        security.ShouldContain(
+            "node, volume, control-plane, and site loss remain outside profile with no HA claim",
+            Case.Sensitive);
+        security.ShouldContain("require approved backup/restore RPO/RTO", Case.Sensitive);
+
+        // Verification was transferred to Story 27.4 by the approved 2026-07-20
+        // course correction; the architecture record must not reassign it to 27.3.
+        security.ShouldContain("Story 27.4 owns deployment-shaped lifecycle verification", Case.Sensitive);
+        security.ShouldNotContain(
+            "Stories 27.2 and 27.3 are unblocked to implement and verify",
+            Case.Sensitive);
+
         string retention = NormalizeWhitespace(telemetry.GetSection("Retention lifecycle status"));
         retention.ShouldContain("[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md)", Case.Sensitive);
         retention.ShouldContain("is `Accepted`", Case.Sensitive);

@@ -91,5 +91,92 @@ class AdapterProfileTests(unittest.TestCase):
         self.assertEqual(first["canonical_profile"], json.loads(first["canonical_profile_json"]))
 
 
+    def test_capacity_result_is_admitted_against_profile_thresholds(self):
+        """A computed capacity result must be judged against the approved 70/80/90% table.
+
+        Added 2026-07-26 by code review (chunk 3b). The pre-existing
+        `test_capacity_inputs_fail_closed` only proves that bad *inputs* raise;
+        nothing proved that a well-formed but over-capacity *result* is
+        rejected, so gate C1.13 had no producer that could fail.
+        """
+
+        def required(total_bytes):
+            return [adapter_profile.CapacityRequirement("24h", 1, total_bytes)]
+
+        # Well under the 70% steady-state threshold -> admitted.
+        admitted = adapter_profile.evaluate_capacity_admission(
+            required(adapter_profile.STEADY_STATE_CAPACITY_BYTES)
+        )
+        self.assertTrue(admitted[0].admitted)
+        self.assertEqual("steady-state", admitted[0].band)
+
+        # One byte over steady state -> rejected.
+        over = adapter_profile.evaluate_capacity_admission(
+            required(adapter_profile.STEADY_STATE_CAPACITY_BYTES + 1)
+        )
+        self.assertFalse(over[0].admitted)
+        self.assertEqual("above-steady-state", over[0].band)
+
+        # Exactly 80% is critical, not an admissible reclamation peak.
+        critical = adapter_profile.evaluate_capacity_admission(
+            required(adapter_profile.CRITICAL_CAPACITY_BYTES)
+        )
+        self.assertFalse(critical[0].admitted)
+        self.assertEqual("critical", critical[0].band)
+
+        # Above 90% -> unhealthy.
+        unhealthy = adapter_profile.evaluate_capacity_admission(
+            required(adapter_profile.UNHEALTHY_CAPACITY_BYTES + 1)
+        )
+        self.assertFalse(unhealthy[0].admitted)
+        self.assertEqual("unhealthy", unhealthy[0].band)
+
+        # A 100% "fits the 400 GiB profile" result is NOT admissible.
+        full = adapter_profile.evaluate_capacity_admission(
+            required(adapter_profile.PROFILE_CAPACITY_BYTES)
+        )
+        self.assertFalse(full[0].admitted)
+
+        # A zero requirement is not a proof of fit.
+        zero = adapter_profile.evaluate_capacity_admission(required(0))
+        self.assertFalse(zero[0].admitted)
+        self.assertEqual("invalid", zero[0].band)
+
+        # The 7-day software maximum is measured but never admitted.
+        seven_day = adapter_profile.evaluate_capacity_admission(
+            [adapter_profile.CapacityRequirement("7d", 1, 1024)]
+        )
+        self.assertFalse(seven_day[0].admitted)
+        self.assertEqual("out-of-profile", seven_day[0].band)
+
+    def test_canonical_pg_onprem_profile_hash_is_pinned(self):
+        """The reviewed PG-ONPREM-1 profile must hash to a pinned value.
+
+        Added 2026-07-26 by code review (chunk 3b). The pre-existing
+        `test_profile_and_mutation_manifest_are_immutable` hashes a synthetic
+        profile twice and asserts the two results are equal, which holds under
+        any canonicalization or profile change. This case pins the real
+        profile, so a field change or a serialization change fails here.
+        """
+
+        manifest = adapter_profile.canonical_pg_onprem_profile().manifest()
+
+        self.assertEqual(
+            "dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14",
+            manifest["profile_sha256"],
+        )
+        self.assertEqual(
+            "2983ccdebedbd12e34bb1aec363335eb825301ce92d1c4ed87f8956d9c176b84",
+            manifest["mutation_manifest_sha256"],
+        )
+        self.assertEqual([], json.loads(manifest["canonical_profile_json"]).get("allowed_mutations", []))
+        self.assertEqual(
+            adapter_profile.EXPECTED_PROFILE_ID,
+            manifest["canonical_profile"]["identity"]["profileId"],
+        )
+        # The approved profile pins maxConns 40, not the ADR's stale 64.
+        self.assertEqual("40", manifest["canonical_profile"]["identity"]["maxConns"])
+
+
 if __name__ == "__main__":
     unittest.main()

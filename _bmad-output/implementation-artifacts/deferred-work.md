@@ -2307,11 +2307,30 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 Chunk 2 = deployment manifests + docs (18 File-List paths). Intermediate chunked review; does not finalize the ledger or advance status. Chunk 3 (tooling + CI) remains.
 
 - Fail-closed `done` blockers: chunk 3 unreviewed; live method/case recount not runnable in this sandbox; Server story/external split +1/+30 -> +5/+26 (see DW 27.3-CR4). Story stays `in-progress`.
+  - ID: 27.3-CR18
+  - Status: superseded 2026-07-26 — chunk 3a and chunk 3b are now reviewed and the live recount ran successfully; the surviving obligations are DW 27.3-CR4 (Server attribution) and the open review action items.
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
+  - Re-open trigger: superseded; do not reopen under this ID.
 - Clock NetworkPolicy egress to TCP/443 is unrestricted (no `to:`); tighten to real UTC-source CIDRs before enablement. [deploy/kubernetes/base/access-telemetry-network-policy.yaml:99]
+  - ID: 27.3-CR19
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
+  - Target artifact: deploy/kubernetes/base/access-telemetry-network-policy.yaml
+  - Re-open trigger: before Production lifecycle enablement; the clock egress must be restricted to the real UTC-source CIDRs once the three `.example.invalid` authorities are replaced.
 - ~~`maxConns: 64` x 2 replicas (128) can exceed PostgreSQL `max_connections=100` under the C1 two-writer load; reconcile before/at the load probe.~~ [deploy/kubernetes/base/dapr/access-telemetry-store.yaml:25] — **resolved 2026-07-26 (dev-story)**: `maxConns` lowered to `40`, so `2 x 40 + 3 superuser-reserved + 10 evidence sessions = 93 <= max_connections 100`. The derivation is a comment on the metadata entry and is enforced by the new `ProductionDeploymentArtifactsTests.ProductionOverlay_AccessTelemetryConnectionPoolFitsPostgreSqlMaxConnections`, which failed RED at `141 > 100` before the fix.
 - ~~Verification coverage gap: `skipVerify:"false"`, pg_hba `hostnossl...reject`, init-SQL least-privilege grants, new RBAC secret-reader Roles, `actorStateStore:"true"`, and the telemetry ACL are unbound by static guard tests; add assertions to the chunk-1 guard tests.~~ [tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs] — **resolved 2026-07-26 (dev-story)**: all six surfaces are now bound by `ProductionDeploymentArtifactsTests.ProductionOverlay_AccessTelemetryProfileSecurityContractsAreBound`. Because the guard passed on first authoring, it was mutation-proven rather than RED-proven: six independent drift injections (`skipVerify:"true"`, `actorStateStore:"false"`, dropped `hostnossl ... reject`, RBAC verbs widened to `get,list`, ACL `defaultAction: allow`, and an extra secret smuggled into `allowedSecrets`) each failed the suite, and the baseline returned green after every revert.
 - Pre-enablement operational hardening: probe `wget`/`sh` dependency, missing metrics ingress, startup-vs-initTimeout cold-start race, terminationGracePeriod/PDB node-drain block, manual restart on password/CA rotation. [deploy/kubernetes/base/access-telemetry-deployments.yaml]
+  - ID: 27.3-CR20
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
+  - Target artifact: deploy/kubernetes/base/access-telemetry-deployments.yaml
+  - Re-open trigger: before Production lifecycle enablement; each named hardening item must be resolved or accepted with an owner.
 - Docs: release-runbook four-image expansion belongs with DW 27.3-CR5; ADR byte-bucket boundary overlap and `edgeTypeCount>16` ambiguity; verify ADR `Story 27.2 C1 mapping` block attribution. [docs/dev/release-runbook.md; docs/dev/adr-27.1-001-access-telemetry-lifecycle.md]
+  - ID: 27.3-CR21
+  - Status: open (release-runbook arm transferred to Story 30.1 on 2026-07-26; the ADR arms remain Story 27.3's)
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
+  - Target artifact: docs/dev/adr-27.1-001-access-telemetry-lifecycle.md
+  - Re-open trigger: before Story 27.3 advances to done; the ADR byte-bucket boundary overlap and the `edgeTypeCount>16` clamp-vs-reject ambiguity must be resolved.
 
 ### DW 27.3-CR7 - create-story scope verifier is inert after the 27.3 split rename
 
@@ -2321,6 +2340,10 @@ Chunk 2 = deployment manifests + docs (18 File-List paths). Intermediate chunked
   - Target artifact: _bmad-output/implementation-artifacts/tests/27-3-create-story-scope-evidence.md
   - Re-open trigger: before Story 27.3 advances to done; the embedded scope verifier must exit 0.
   - Rationale: The embedded verifier's executable constants at lines 69-76 (`KEY`, `STORY`, `MATRIX`) still name the pre-split `27-3-retention-verification-operations-runbook-and-a41-close-out` key/path and the `27-3-retention-verification-evidence.md` matrix. Commit `f474db15` renamed the story to `27-3-production-adapter-and-deployment-profile.md` and the matrix to `27-3-adapter-profile-evidence.md` under the approved 2026-07-20 course correction, so the verifier now exits 1 with `missing governed artifact: …` and has been inert since the split. The status-parity, monotonic-transition, unique-YAML-key, and baseline-relative File List assertions added by earlier review findings are therefore not running. The recorded creation diff at lines 16-34 is append-only history and must not be rewritten; only the three constants are stale. Found by dev-story on 2026-07-26 while revalidating the story's own gates; not repaired there because this is a create-story-phase governance artifact and the story phase ledger does not authorize dev-story to rewrite another phase's evidence verifier.
+
+## Deferred from: other sources, re-filed 2026-07-26 by code review (chunk 3b)
+
+The five structured entries below (`21.10-A4-VERIFY` and the four `REL-*` entries) were filed under the Story 27.3 chunk-2 code-review heading, which does not own them: `21.10-A4-VERIFY` is an Epic 21 retrospective action and the four `REL-*` entries were surfaced on 2026-07-25 by `spec-gh-30146368778-fix-tenants-release-startup-failure.md`. They are re-filed here without altering their content, IDs, status or triggers.
 
 ### DW 27.3-CR6 - OpenBao secrets platform is an independent slice (split approved)
 
@@ -2374,7 +2397,11 @@ Chunk 3a of 3 (never-reviewed tooling/CI plus the post-2026-07-21 review-patch d
 `1ee36f77ef4446741e545663c6e386122ce4c93653f7a4448a258cdc9594aac3`). Six review layers ran with
 zero failed layers.
 
-- **27.3-CR7 - chunk 3b unreviewed; fail-closed for `done`.** The eight governance/planning record
+- **27.3-CR17 - chunk 3b unreviewed; fail-closed for `done`.** (Renumbered 2026-07-26 by code review, chunk 3b: this entry was minted as `27.3-CR7`, colliding with the existing `DW 27.3-CR7` create-story-verifier entry. Both were open and both were cited as `done` blockers, so the ID resolved to two unrelated obligations. Resolved 2026-07-26: chunk 3b has now been reviewed; this entry is closed by that review.) The eight governance/planning record
+  - ID: 27.3-CR17
+  - Status: resolved 2026-07-26 — chunk 3b reviewed; all in-scope chunks are now complete.
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3)
+  - Re-open trigger: resolved; a new chunk would need a new ID.
   paths of Story 27.3 (story file, `epics.md`, `architecture.md`, the 2026-07-20 sprint change
   proposal, `deferred-work.md`, `sprint-status.yaml`, and the create-scope and adapter-profile
   evidence packets; 2,076 diff lines) have not been reviewed. Per `story-phase-ledger.md`, an
@@ -2383,6 +2410,11 @@ zero failed layers.
   appended and Story 27.3 cannot reach `done`. Reopen trigger: run code review over the chunk-3b
   path set, then append the final row carrying evidence that all three chunks are complete.
 - **27.3-CR8 - test-double state store ships in the product container assembly.**
+  - ID: 27.3-CR8
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3)
+  - Target artifact: src/Hexalith.Memories.AccessTelemetry/Lifecycle/InMemoryAccessTelemetryStateStore.cs
+  - Re-open trigger: when the Story 27.2-origin structural move to a shared test-support project is scheduled.
   `src/Hexalith.Memories.AccessTelemetry/Lifecycle/InMemoryAccessTelemetryStateStore.cs` documents
   itself as a deterministic adapter for lifecycle tests that the runtime host does not register,
   yet it lives in a project with `EnableContainer=true` and `ContainerRepository`
@@ -2394,6 +2426,11 @@ zero failed layers.
   guard asserting the runtime composition root never registers it. Pre-existing: introduced by
   Story 27.2, not by this chunk.
 - **27.3-CR9 - commit `358bef35` bypasses the Conventional Commits contract.** Its subject carries
+  - ID: 27.3-CR9
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3)
+  - Target artifact: .githooks / commitlint configuration
+  - Re-open trigger: confirm the commit-msg hook rejects a missing type prefix, and decide whether the omitted product change needs a follow-up release note.
   no type prefix and its body enumerates only the three new test files, omitting the
   `InMemoryAccessTelemetryStateStore.cs` purge-ordering product change in the same commit. The
   commit is already published on `main`, so correcting the message itself would require a history
@@ -2401,3 +2438,68 @@ zero failed layers.
   changed-surface audit trail are both wrong for that commit. Reopen trigger: confirm the
   commit-msg hook rejects a missing type prefix, and record whether the omitted product change
   needs a follow-up release note.
+
+## Deferred from: code review of 27-3-production-adapter-and-deployment-profile chunk 3b (2026-07-26)
+
+### DW 27.3-CR10 - `sprint-status.yaml` has no executable integrity check
+
+  - ID: 27.3-CR10
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
+  - Target artifact: _bmad-output/implementation-artifacts/sprint-status.yaml
+  - Re-open trigger: a `development_status` key, status value, or `story_execution_order` entry drifts from `epics.md` without any check failing.
+  - Rationale: `grep` over `tools/`, `tests/` and `.github/workflows/` finds no tool, test or workflow that parses `sprint-status.yaml`; the only test that opens it counts one `epic: 0` action block. Nothing validates duplicate `development_status` keys, allowed status values, `story_execution_order` membership against registered story keys, or `epics.md` parity, so every epic registration, story registration and status flip in the chunk-3b diff ships unchecked. This is a pre-existing repo-wide gap, not a defect introduced by Story 27.3; it is recorded here because Story 27.3's fail-closed status gates cite this file as their authority. Owner: repository tooling owner. Consequence: the sprint ledger every downstream gate treats as authoritative is entirely self-reported.
+
+### DW 27.3-CR11 - Epic 21 retro action closed `done` behind a gate that has never fired
+
+  - ID: 27.3-CR11
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
+  - Target artifact: _bmad-output/implementation-artifacts/sprint-status.yaml
+  - Re-open trigger: the first fully-green `integration-fast` run either fires the required-surface gate successfully, or reveals the migration class was skipped while the gate stayed green.
+  - Rationale: The action was flipped `open` -> `done` inside the chunk-3b diff. The closure is better evidenced than a first reading suggests: the five `EmbeddingVectorMigrationRedisIntegrationTests` facts did execute and pass in run 29798593273 (among 261 passed), which satisfies the action's "executes in an approved CI lane" criterion, and the note discloses its own caveats honestly. The residual is that the hardening cited in the same note has never run: `verify-integration-fast-coverage.py` asserts class presence rather than per-class outcome, its CI step inherits `success()` so it is skipped on red lanes, and run 29798593273 was itself red. The recorded reopen trigger for surface removal is human-detected only. Hardening is already tracked as open `21.10-A4-VERIFY`. Owner: Epic 21 / integration-lane owner. Consequence: a `done` retro action depends on an enforcement gate with no executed proof.
+
+### DW 27.3-CR12 - `DW 27.3-CR3`'s reopen trigger cannot fire before the defect it prevents
+
+  - ID: 27.3-CR12
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
+  - Target artifact: _bmad-output/implementation-artifacts/deferred-work.md
+  - Re-open trigger: when `DW 27.3-CR3` is next touched, replace its trigger with an observable event (a charset guard, a contract assertion, or a test) rather than a restatement of the defect.
+  - Rationale: `DW 27.3-CR3`'s reopen trigger reads "a `RecordId` containing `/` or other key-delimiter characters can reach `GetRecordKey`/`GetBucketKey`", but the entry's own rationale states it is unknown whether the record contract constrains `RecordId`, and no guard, test or gate observes that condition. The entry can therefore only reopen after the key collision it exists to prevent has already occurred. Owner: Story 27.3 adapter owner. Consequence: a deferred correctness item is effectively dormant.
+
+### DW 27.3-CR13 - `epics.md` planning-convention drift for Epics 29-31
+
+  - ID: 27.3-CR13
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
+  - Target artifact: _bmad-output/planning-artifacts/epics.md
+  - Re-open trigger: before Story 30.1, 30.2 or 31.1 is set `ready-for-dev`.
+  - Rationale: Stories 29.1, 29.2, 30.1, 30.2 and 31.1 each duplicate `**Status:** backlog` inside `epics.md` while Epic 27's stories carry none, creating two status authorities with nothing guarding them against drift. Separately, `epics.md` presents Epic 30 as Story 30.1 then Story 30.2 while `sprint-status.yaml:163` sequences `30-2` before `30-1` with a stated reason that Story 30.1's own activation gate never mentions, so a reader working from `epics.md` alone starts with the wrong story. Owner: the Epic 29/30 planning sessions. Consequence: story-selection order and status are ambiguous across two records.
+
+### DW 27.3-CR14 - `maxConns` profile substitution needs a superseding course correction
+
+  - ID: 27.3-CR14
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
+  - Target artifact: _bmad-output/planning-artifacts/sprint-change-proposal-2026-07-20-story-27-3-on-prem-postgresql-18-4.md
+  - Re-open trigger: before Story 27.3 advances to done; an approved correction must pin `maxConns: "40"`, recompute `profile_sha256`, and name the artifact carrying the new hash.
+  - Rationale: The shipped manifest is `"40"` while both the ADR immutable component block and the approved 2026-07-20 course correction pin `"64"`. Task 1 states any substitution changes the profile hash and requires another approved course correction. Administrator decided 2026-07-26 during code review that a new correction supersedes the 2026-07-20 pinning rather than amending an approved dated proposal in place. The profile ID string does not encode `maxConns`, so Task 1's substitution guard cannot detect the drift on its own. Owner: Story 27.3 adapter owner + Product Owner. Consequence: AC1's immutable profile and AC4's hash-bound approvals currently bind an object three records describe differently.
+
+### DW 27.3-CR15 - deployment-verification lane needs an acceptance criterion and a named checkpoint
+
+  - ID: 27.3-CR15
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
+  - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
+  - Re-open trigger: before Story 27.3 advances to done; the lane must have a declared acceptance criterion and a checkpoint row carrying owner, evidence command, review state and completion state.
+  - Rationale: The kind-based production-deployment-verification lane runs as a standalone `ci.yml` job with no dependency on the externally-blocked C1, and `epics.md:5137` assigns its three tools to Story 27.3, yet the story declares no acceptance criterion, no task and no checkpoint for it. The approved 2026-07-26 correction simultaneously freezes Story 27.3's acceptance criteria, so a checkpoint alone would prove an outcome no AC declares. Administrator decided 2026-07-26 during code review that a new correction adds the AC and its checkpoint, keeping the lane in Story 27.3. Owner: Story 27.3 owner + Product Owner. Consequence: an independently shipping lane is unaccountable to any acceptance criterion until the correction lands.
+
+### DW 27.3-CR16 - Stories 30.1 and 31.1 must be split before selection
+
+  - ID: 27.3-CR16
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
+  - Target artifact: _bmad-output/planning-artifacts/epics.md
+  - Re-open trigger: before Story 30.1, 30.2 or 31.1 is set `ready-for-dev`.
+  - Rationale: Both stories created by the 2026-07-26 split reproduce the anti-template shape that split was executed to cure. Story 30.1 carries seven Given/When/Then blocks, names eight "separate reviewable checkpoints" with no owner, evidence command, review state or completion state, and gates the whole story on an unshipped external Hexalith.Builds revision — the same pattern that let independently shippable lanes accumulate under a blocked umbrella in Story 27.3. Story 31.1 bundles the OpenBao platform hardening and the runtime `secretstore` migration, two independently deployable outcomes, with no checkpoint table. `epics.md:555` and `story-scope-guard.md:30-31` do not bind while both are `backlog`, but selecting either as written re-creates the violation. Administrator decided 2026-07-26 during code review to split both now via correct-course. Owner: Product Owner. Consequence: without the split, Epic 30 and Epic 31 inherit Story 27.3's failure mode.

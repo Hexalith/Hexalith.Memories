@@ -21,6 +21,9 @@
 - profile_sha256: `01f6ce9f1cdf6fad022c6f86942d0a103c1685fcc9a54c47efc48ac58162d6cc`
 - mutation_manifest_sha256: `04c034b9e8c8012f4813d52877042adbda9edc385f32d87c36f2019ecc3e61da`
 - allowed_mutations: `[]`
+- profile_hash_covers: `runtime-observed profile constructed by the invocation that produced this packet` (recorded 2026-07-26 by code review, chunk 3b)
+- reviewed_canonical_profile_sha256: `dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14`
+- runtime_matches_reviewed_profile: `unknown for this packet` — this capture predates the pinned canonical profile, and the live cluster is known to diverge from the reviewed manifests (the running `access-telemetry-store` still carries `sslRootCert`, removed from the repository manifest by the chunk-2 patch, and the pre-change `maxConns`). The cluster has not been re-applied. Until it is, `profile_sha256` above binds neither the reviewed manifests nor an approved profile, and no AC4 approval may be recorded against it.
 
 ## Safe Deployment Observations
 

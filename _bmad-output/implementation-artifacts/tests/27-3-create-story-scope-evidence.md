@@ -66,16 +66,24 @@ BASELINE = "272c33bc5d30d71ac46f20e703b9d5456e75a093"
 CREATION = "6d7fd8aaa0a2fc58de741e31f38544fc15a10c08"
 PRE_CREATE_SHA = "f2cc7a2520634d2ca280622faf1494477c0ec5500e24ae0c8b7baf36f1dc13c8"
 POST_CREATE_SHA = "cb351de28a5ac78667cfdd57d67a45d6e5c4ab53a429cf50985819126be23116"
-KEY = "27-3-retention-verification-operations-runbook-and-a41-close-out"
+# Creation-time identity is immutable history and is used ONLY to reconstruct
+# the creation commit. Current identity is used for every HEAD-relative check.
+# Splitting these two roles is what makes the post-split repoint possible:
+# commit f474db15 renamed both the story key and the story path under the
+# approved 2026-07-20 course correction (code review, chunk 3b).
+CREATION_KEY = "27-3-retention-verification-operations-runbook-and-a41-close-out"
+CREATION_STORY = Path("_bmad-output/implementation-artifacts/27-3-retention-verification-operations-runbook-and-a41-close-out.md")
+RENAME_COMMIT = "f474db15"
+KEY = "27-3-production-adapter-and-deployment-profile"
 PREDECESSOR_KEY = "27-2-bounded-retention-ttl-and-purge-implementation"
 A41_ID = "20.5-A41-ACCESS-TELEMETRY-RETENTION"
-STORY = Path("_bmad-output/implementation-artifacts/27-3-retention-verification-operations-runbook-and-a41-close-out.md")
+STORY = Path("_bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md")
 SPRINT = Path("_bmad-output/implementation-artifacts/sprint-status.yaml")
 EVIDENCE = Path("_bmad-output/implementation-artifacts/tests/27-3-create-story-scope-evidence.md")
 DEFERRED = Path("_bmad-output/implementation-artifacts/deferred-work.md")
-MATRIX = Path("_bmad-output/implementation-artifacts/tests/27-3-retention-verification-evidence.md")
+MATRIX = Path("_bmad-output/implementation-artifacts/tests/27-3-adapter-profile-evidence.md")
 MATRIX_ANCHOR = MATRIX.as_posix()
-PATHS = [STORY.as_posix(), SPRINT.as_posix(), EVIDENCE.as_posix()]
+CREATION_PATHS = [CREATION_STORY.as_posix(), SPRINT.as_posix(), EVIDENCE.as_posix()]
 STATUS_RANK = {"ready-for-dev": 0, "in-progress": 1, "review": 2, "done": 3}
 
 
@@ -145,7 +153,13 @@ def checkpoint_rows(text):
         match = re.match(r"^C([0-9]+) -", cells[0])
         require(match is not None, f"invalid checkpoint identifier: {cells[0]}")
         parsed.append((int(match.group(1)), cells))
-    require([identifier for identifier, _ in parsed] == list(range(7)), f"checkpoints must be unique ordered C0-C6: {lines}")
+    identifiers = [identifier for identifier, _ in parsed]
+    # Post-split shape check (code review, chunk 3b): the approved 2026-07-20
+    # correction moved C2-C6 to Story 27.4, so a fixed C0-C6 range can never
+    # hold. Require instead that the rows are unique, ordered, contiguous from
+    # C0, and include at least the C0 handoff and the C1 qualification gate.
+    require(identifiers == list(range(len(identifiers))), f"checkpoints must be unique, ordered and contiguous from C0: {identifiers}")
+    require(len(identifiers) >= 2, f"story must declare at least C0 and C1: {identifiers}")
     return parsed
 
 
@@ -165,11 +179,35 @@ def ledger_rows(text):
 
 
 def successful_phase(row, phase):
+    """Classify a ledger row by its Change cell, not by whole-row vocabulary.
+
+    Code review (chunk 3b): the previous implementation lower-cased cells 2-4
+    together and rejected the row if any of five words appeared anywhere. That
+    inverted both gates - a documented HALT row scored *successful* because
+    none of the five words appeared in its prose, while an honest final
+    code-review row whose Test-count cell legitimately says "the
+    blocked-evidence gate is discharged" scored *unsuccessful*. The outcome of
+    a phase is described in its Change cell; the Test-count and File-List cells
+    describe evidence and must not be scanned for outcome words.
+    """
+
     if row[1] != phase:
         return False
-    combined = " ".join(row[2:]).lower()
-    blockers = ("blocked", "halted", "unavailable", "no implementation", "not captured")
-    return not any(blocker in combined for blocker in blockers) and re.search(r"matched [0-9]+/[0-9]+", row[4]) is not None
+    change = row[2].lower()
+    halted = (
+        "halted before",
+        "and halted",
+        "blocked because",
+        "no implementation",
+        "attempted task",
+    )
+    if any(marker in change for marker in halted):
+        return False
+    reconciliation = re.search(r"matched ([0-9]+)/([0-9]+)", row[4])
+    if reconciliation is None:
+        return False
+    matched, total = int(reconciliation.group(1)), int(reconciliation.group(2))
+    return total > 0 and matched == total
 
 
 for path in (STORY, SPRINT, EVIDENCE):
@@ -177,14 +215,14 @@ for path in (STORY, SPRINT, EVIDENCE):
 
 creation_sprint = git("show", f"{CREATION}:{SPRINT.as_posix()}")
 require(hashlib.sha256(creation_sprint.encode()).hexdigest() == POST_CREATE_SHA, "creation sprint hash mismatch")
-ready_line = f"  {KEY}: ready-for-dev\n"
-backlog_line = f"  {KEY}: backlog\n"
+ready_line = f"  {CREATION_KEY}: ready-for-dev\n"
+backlog_line = f"  {CREATION_KEY}: backlog\n"
 require(creation_sprint.count(ready_line) == 1, "creation sprint must contain exactly one ready-for-dev row")
 pre_create_sprint = creation_sprint.replace(ready_line, backlog_line, 1)
 require(hashlib.sha256(pre_create_sprint.encode()).hexdigest() == PRE_CREATE_SHA, "pre-create sprint hash mismatch")
 
 expected_name_status = [
-    f"A\t{STORY.as_posix()}",
+    f"A\t{CREATION_STORY.as_posix()}",
     f"M\t{SPRINT.as_posix()}",
     f"A\t{EVIDENCE.as_posix()}",
 ]
@@ -194,7 +232,7 @@ actual_name_status = git(
     BASELINE,
     CREATION,
     "--",
-    *PATHS,
+    *CREATION_PATHS,
 ).splitlines()
 require(actual_name_status == expected_name_status, f"creation name-status mismatch: {actual_name_status}")
 
@@ -208,7 +246,9 @@ require(story_status == current, f"story/sprint status mismatch: {story_status} 
 
 head_sprint = load_yaml(git("show", f"HEAD:{SPRINT.as_posix()}"))
 head_story = git("show", f"HEAD:{STORY.as_posix()}")
+require(KEY in head_sprint["development_status"], f"HEAD sprint has no development_status row for {KEY}")
 prior_status = head_sprint["development_status"][KEY]
+require(prior_status in STATUS_RANK, f"unsupported HEAD sprint status: {prior_status}")
 require(unique_story_status(head_story, "HEAD story") == prior_status, "HEAD story/sprint status mismatch")
 require(STATUS_RANK[current] >= STATUS_RANK[prior_status], f"non-monotonic story transition: {prior_status} -> {current}")
 
@@ -242,27 +282,39 @@ if current == "done":
     require(successful_review and successful_review[-1] > successful_dev[-1], "done requires a successful final code-review row after development")
     require(ledger[-1][1] == "code-review" and successful_phase(ledger[-1], "code-review"), "final ledger row must be successful code-review")
 
+    # A41 close-out is Story 27.4 scope. Story 27.3 must prove the OPPOSITE:
+    # that it left the residual untouched. Code review (chunk 3b), per the
+    # Administrator decision: the previous implementation required A41 to be
+    # `resolved` and its sprint action `done` before Story 27.3 could reach
+    # `done`, while this story forbids that mutation in four places and
+    # reserves it to Story 27.4 - which stays `backlog` until Story 27.3 is
+    # `done`. That closed cycle made `done` unreachable. The Story 27.4-scoped
+    # branch is removed and replaced by the preservation assertions below.
     require(DEFERRED.is_file(), f"missing deferred register: {DEFERRED}")
     deferred_text = DEFERRED.read_text(encoding="utf-8")
     residual_start = deferred_text.find(f"- ID: {A41_ID}")
     require(residual_start >= 0, "missing A41 residual")
     residual_end = deferred_text.find("\n## ", residual_start)
     residual = deferred_text[residual_start:] if residual_end < 0 else deferred_text[residual_start:residual_end]
-    require(re.search(r"^\s*- Status: resolved$", residual, re.MULTILINE) is not None, "A41 residual is not resolved")
-    require(MATRIX_ANCHOR in residual, "A41 residual does not cite the canonical matrix")
+    require(
+        re.search(r"^\s*- Status: resolved", residual, re.MULTILINE) is None,
+        "Story 27.3 must not resolve the A41 residual; close-out belongs to Story 27.4",
+    )
 
     actions = [item for item in status_document.get("action_items", []) if A41_ID in str(item.get("action", ""))]
     require(len(actions) == 1, f"expected one A41 sprint action: {actions}")
-    require(actions[0].get("status") == "done", "A41 sprint action is not done")
-    require(actions[0].get("evidence") == MATRIX_ANCHOR, "A41 sprint action evidence anchor differs")
+    require(str(actions[0].get("status", "")).startswith("open"), "Story 27.3 must leave the A41 sprint action open")
 
+    # The canonical matrix for Story 27.3 is the immutable adapter-profile
+    # evidence packet, and `done` requires it to record an approval rather than
+    # the fail-closed rejection it currently carries.
     require(MATRIX.is_file(), f"missing canonical matrix: {MATRIX}")
     matrix_text = MATRIX.read_text(encoding="utf-8")
-    require(re.search(r"^postflight_status: passed$", matrix_text, re.MULTILINE) is not None, "postflight did not pass")
-    require(re.search(r"^postflight_index_tree: [0-9a-f]{40}$", matrix_text, re.MULTILINE) is not None, "missing postflight index tree")
-    require(re.search(r"^approved_mutation_manifest_sha256: [0-9a-f]{64}$", matrix_text, re.MULTILINE) is not None, "missing mutation manifest hash")
-    require(re.search(r"^publish_verify_status: passed$", matrix_text, re.MULTILINE) is not None, "publish verification did not pass")
-    require(re.search(r"^published_commit: [0-9a-f]{40}$", matrix_text, re.MULTILINE) is not None, "missing published commit")
+    require(re.search(r"^profile_sha256: [0-9a-f]{64}$", matrix_text, re.MULTILINE) is not None, "matrix has no profile hash")
+    require(re.search(r"^mutation_manifest_sha256: [0-9a-f]{64}$", matrix_text, re.MULTILINE) is not None, "matrix has no mutation manifest hash")
+    require(re.search(r"^status: approved$", matrix_text, re.MULTILINE) is not None, "C1 evidence packet does not record an approved status")
+    require(re.search(r"^evidence_is_approval: true$", matrix_text, re.MULTILINE) is not None, "C1 evidence packet is not an approval")
+    require(MATRIX_ANCHOR in story_text, "story does not cite the canonical matrix")
 PY
 ```
 
