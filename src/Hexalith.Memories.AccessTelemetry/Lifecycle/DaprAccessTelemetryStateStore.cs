@@ -213,8 +213,11 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
             ConsistencyMode.Strong,
             PartitionMetadata,
             cancellationToken).ConfigureAwait(false);
-        bool bucketContainsEntry = bucket?.Entries.Any(candidate =>
-            string.Equals(candidate.RecordId, entry.RecordId, StringComparison.Ordinal)) == true;
+        // Match the complete entry identity, never the record identifier alone. A superseded or
+        // foreign entry can share (ExpiryMinute, Shard) with the live record's own entry, and
+        // pruning by RecordId would delete the live entry too. GetDueEntriesAsync reads purge
+        // candidates only from buckets, so that record would never be rediscovered or purged.
+        bool bucketContainsEntry = bucket?.Entries.Any(candidate => candidate == entry) == true;
 
         if (record is not null &&
             (!string.Equals(record.EnvelopeHash, entry.EnvelopeHash, StringComparison.Ordinal) ||
@@ -222,7 +225,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
         {
             if (bucketContainsEntry)
             {
-                await RemoveBucketEntryAsync(bucket!, bucketEtag, entry.RecordId, cancellationToken).ConfigureAwait(false);
+                await RemoveBucketEntryAsync(bucket!, bucketEtag, entry, cancellationToken).ConfigureAwait(false);
             }
 
             return AccessTelemetryDeleteStatus.StaleIndex;
@@ -242,7 +245,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
 
         if (bucketContainsEntry)
         {
-            operations.Add(CreateBucketRemoval(bucket!, bucketEtag, entry.RecordId));
+            operations.Add(CreateBucketRemoval(bucket!, bucketEtag, entry));
         }
 
         if (operations.Count > 0)
@@ -266,8 +269,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
             ConsistencyMode.Strong,
             PartitionMetadata,
             cancellationToken).ConfigureAwait(false);
-        if (remaining is not null || remainingBucket?.Entries.Any(candidate =>
-            string.Equals(candidate.RecordId, entry.RecordId, StringComparison.Ordinal)) == true)
+        if (remaining is not null || remainingBucket?.Entries.Any(candidate => candidate == entry) == true)
         {
             return AccessTelemetryDeleteStatus.VerificationFailed;
         }
@@ -278,10 +280,12 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
     private static StateTransactionRequest CreateBucketRemoval(
         AccessTelemetryExpiryBucket bucket,
         string bucketEtag,
-        string recordId)
+        AccessTelemetryExpiryEntry entry)
     {
+        // Remove only the exact entry. Other entries sharing this record identifier are separate
+        // index generations and are resolved on their own purge pass.
         AccessTelemetryExpiryEntry[] remaining = bucket.Entries
-            .Where(candidate => !string.Equals(candidate.RecordId, recordId, StringComparison.Ordinal))
+            .Where(candidate => candidate != entry)
             .ToArray();
         return new StateTransactionRequest(
             GetBucketKey(bucket.ExpiryMinute, bucket.Shard),
@@ -297,12 +301,12 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
     private async Task RemoveBucketEntryAsync(
         AccessTelemetryExpiryBucket bucket,
         string bucketEtag,
-        string recordId,
+        AccessTelemetryExpiryEntry entry,
         CancellationToken cancellationToken)
     {
         await daprClient.ExecuteStateTransactionAsync(
             StoreName,
-            [CreateBucketRemoval(bucket, bucketEtag, recordId)],
+            [CreateBucketRemoval(bucket, bucketEtag, entry)],
             PartitionMetadata,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         (AccessTelemetryExpiryBucket? remaining, _) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryBucket>(
@@ -311,7 +315,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
             ConsistencyMode.Strong,
             PartitionMetadata,
             cancellationToken).ConfigureAwait(false);
-        if (remaining?.Entries.Any(candidate => string.Equals(candidate.RecordId, recordId, StringComparison.Ordinal)) == true)
+        if (remaining?.Entries.Any(candidate => candidate == entry) == true)
         {
             throw new InvalidOperationException("The stale lifecycle expiry bucket entry could not be strongly verified absent.");
         }

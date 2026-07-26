@@ -5,14 +5,26 @@
 
 namespace Hexalith.Memories.AccessTelemetry.Lifecycle;
 
+using System.Globalization;
+
 using Hexalith.Memories.AccessTelemetry.Contracts;
 
-/// <summary>Deterministic state adapter for lifecycle tests; not registered by the runtime host.</summary>
+/// <summary>
+/// Deterministic state adapter for lifecycle tests; not registered by the runtime host. It stands
+/// in for <see cref="DaprAccessTelemetryStateStore"/> in the portable lifecycle checkpoints, so it
+/// must model the same observable contract: all-or-nothing record/index/catalog writes, the
+/// anti-resurrection conflict guard, minute-major purge order with empty-minute pruning, and a
+/// strong post-delete verification that can fail.
+/// </summary>
 internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateStore
 {
     private readonly Dictionary<string, AccessTelemetryRecord> _records = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AccessTelemetryExpiryEntry> _entries = new(StringComparer.Ordinal);
+    private readonly HashSet<long> _activeMinutes = [];
+    private readonly HashSet<string> _undeletableRecordIds = new(StringComparer.Ordinal);
+    private readonly List<int> _transactionOperationCounts = [];
     private readonly Lock _gate = new();
+    private int _lastTtlInSeconds;
 
     /// <summary>Gets the retained record count.</summary>
     public int RecordCount
@@ -38,8 +50,59 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         }
     }
 
-    /// <summary>Gets the operation count in the last atomic transaction.</summary>
-    public int LastTransactionOperationCount { get; private set; }
+    /// <summary>Gets the retained active expiry-minute count, mirroring the Dapr expiry catalog.</summary>
+    public int ActiveMinuteCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _activeMinutes.Count;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gets the operation count of every committed atomic write, in completion order. A write that
+    /// opens a new expiry minute commits three operations (record, bucket, catalog); a write into
+    /// an already-active minute commits two, exactly as the Dapr adapter does.
+    /// </summary>
+    public IReadOnlyList<int> TransactionOperationCounts
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _transactionOperationCounts.ToArray();
+            }
+        }
+    }
+
+    /// <summary>Gets the operation count in the last atomic transaction, or zero if none committed.</summary>
+    public int LastTransactionOperationCount
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _transactionOperationCounts.Count == 0
+                    ? 0
+                    : _transactionOperationCounts[^1];
+            }
+        }
+    }
+
+    /// <summary>Gets the time-to-live carried by the last committed write, or zero if none committed.</summary>
+    public int LastTtlInSeconds
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _lastTtlInSeconds;
+            }
+        }
+    }
 
     /// <summary>Reports whether a record remains retained.</summary>
     public bool ContainsRecord(string recordId)
@@ -59,6 +122,31 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         }
     }
 
+    /// <summary>
+    /// Removes one record the way native component TTL reaping would, leaving its expiry-index
+    /// entry and active minute behind. Models the orphaned-entry state the purge loop must resolve.
+    /// </summary>
+    public void ExpireByTtl(string recordId)
+    {
+        lock (_gate)
+        {
+            _ = _records.Remove(recordId);
+        }
+    }
+
+    /// <summary>
+    /// Makes the backend acknowledge a record deletion it never applies, so the strong re-read still
+    /// observes the record. Models the durability defect
+    /// <see cref="AccessTelemetryDeleteStatus.VerificationFailed"/> exists to catch.
+    /// </summary>
+    public void SuppressRecordDeletion(string recordId)
+    {
+        lock (_gate)
+        {
+            _ = _undeletableRecordIds.Add(recordId);
+        }
+    }
+
     /// <inheritdoc/>
     public Task<AccessTelemetryStoreWriteStatus> WriteRecordAndIndexAsync(
         AccessTelemetryRecord record,
@@ -67,6 +155,7 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(ttlInSeconds, 0);
         lock (_gate)
         {
             if (_records.TryGetValue(record.RecordId, out AccessTelemetryRecord? existing))
@@ -79,9 +168,22 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
                 return Task.FromResult(existingStatus);
             }
 
+            // Anti-resurrection guard, mirroring the Dapr bucket check: an expiry entry already
+            // occupying this record's (minute, shard) slot is a conflict, never a silent overwrite.
+            // Decided before any mutation so a rejected write leaves no partial state behind.
+            if (_entries.Values.Any(candidate =>
+                candidate.ExpiryMinute == expiryEntry.ExpiryMinute &&
+                candidate.Shard == expiryEntry.Shard &&
+                string.Equals(candidate.RecordId, expiryEntry.RecordId, StringComparison.Ordinal)))
+            {
+                return Task.FromResult(AccessTelemetryStoreWriteStatus.Conflict);
+            }
+
+            bool addCatalogMinute = _activeMinutes.Add(expiryEntry.ExpiryMinute);
             _records.Add(record.RecordId, record);
             _entries.Add(GetEntryKey(expiryEntry), expiryEntry);
-            LastTransactionOperationCount = 2;
+            _lastTtlInSeconds = ttlInSeconds;
+            _transactionOperationCounts.Add(addCatalogMinute ? 3 : 2);
             return Task.FromResult(AccessTelemetryStoreWriteStatus.Inserted);
         }
     }
@@ -93,19 +195,46 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (limit <= 0)
+        {
+            return Task.FromResult<IReadOnlyList<AccessTelemetryExpiryEntry>>([]);
+        }
+
         lock (_gate)
         {
             // Purge order is observable behaviour, so this must match DaprAccessTelemetryStateStore
-            // exactly: minute-major traversal, then ExpiresAtUtc, Shard, and RecordId within a minute.
-            IReadOnlyList<AccessTelemetryExpiryEntry> entries = _entries.Values
-                .Where(entry => entry.ExpiryMinute <= dueMinute)
-                .OrderBy(static entry => entry.ExpiryMinute)
-                .ThenBy(static entry => entry.ExpiresAtUtc, StringComparer.Ordinal)
-                .ThenBy(static entry => entry.Shard)
-                .ThenBy(static entry => entry.RecordId, StringComparer.Ordinal)
-                .Take(limit)
-                .ToArray();
-            return Task.FromResult(entries);
+            // exactly: minute-major traversal, then ExpiresAtUtc, Shard, and RecordId within a
+            // minute, stopping at the limit without visiting - or pruning - later minutes.
+            var due = new List<AccessTelemetryExpiryEntry>(limit);
+            var emptyMinutes = new List<long>();
+            foreach (long minute in _activeMinutes.Where(minute => minute <= dueMinute).Order())
+            {
+                AccessTelemetryExpiryEntry[] minuteEntries = _entries.Values
+                    .Where(entry => entry.ExpiryMinute == minute)
+                    .ToArray();
+                if (minuteEntries.Length == 0)
+                {
+                    emptyMinutes.Add(minute);
+                    continue;
+                }
+
+                due.AddRange(minuteEntries
+                    .OrderBy(static entry => entry.ExpiresAtUtc, StringComparer.Ordinal)
+                    .ThenBy(static entry => entry.Shard)
+                    .ThenBy(static entry => entry.RecordId, StringComparer.Ordinal)
+                    .Take(limit - due.Count));
+                if (due.Count >= limit)
+                {
+                    break;
+                }
+            }
+
+            foreach (long minute in emptyMinutes)
+            {
+                _ = _activeMinutes.Remove(minute);
+            }
+
+            return Task.FromResult<IReadOnlyList<AccessTelemetryExpiryEntry>>(due);
         }
     }
 
@@ -115,16 +244,31 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            string entryKey = GetEntryKey(entry);
             if (_records.TryGetValue(entry.RecordId, out AccessTelemetryRecord? record) &&
                 (!string.Equals(record.EnvelopeHash, entry.EnvelopeHash, StringComparison.Ordinal) ||
                     !string.Equals(record.ExpiresAtUtc, entry.ExpiresAtUtc, StringComparison.Ordinal)))
             {
-                _ = _entries.Remove(GetEntryKey(entry));
+                // Prune only this exact stale entry. The live record's own entry can share the same
+                // (minute, shard) slot, and removing it would leave the record unpurgeable forever.
+                _ = _entries.Remove(entryKey);
                 return Task.FromResult(AccessTelemetryDeleteStatus.StaleIndex);
             }
 
-            bool existed = _records.Remove(entry.RecordId);
-            _ = _entries.Remove(GetEntryKey(entry));
+            bool existed = record is not null;
+            if (existed && !_undeletableRecordIds.Contains(entry.RecordId))
+            {
+                _ = _records.Remove(entry.RecordId);
+            }
+
+            _ = _entries.Remove(entryKey);
+
+            // Strong post-delete verification, exactly as the Dapr adapter performs it.
+            if (_records.ContainsKey(entry.RecordId) || _entries.ContainsKey(entryKey))
+            {
+                return Task.FromResult(AccessTelemetryDeleteStatus.VerificationFailed);
+            }
+
             return Task.FromResult(existed
                 ? AccessTelemetryDeleteStatus.Deleted
                 : AccessTelemetryDeleteStatus.AlreadyAbsent);
@@ -133,6 +277,6 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
 
     private static string GetEntryKey(AccessTelemetryExpiryEntry entry)
         => string.Create(
-            System.Globalization.CultureInfo.InvariantCulture,
-            $"{entry.ExpiryMinute:D12}/{entry.Shard:D2}/{entry.RecordId}");
+            CultureInfo.InvariantCulture,
+            $"{entry.ExpiryMinute:D12}/{entry.Shard:D2}/{entry.RecordId}/{entry.EnvelopeHash}/{entry.ExpiresAtUtc}");
 }

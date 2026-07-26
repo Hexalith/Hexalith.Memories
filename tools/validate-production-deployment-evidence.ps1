@@ -55,18 +55,36 @@ $healthStatusCodes = @()
 foreach ($file in $healthFiles) {
     try {
         $health = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
-        $healthBody = ([string]$health.body) | ConvertFrom-Json
     }
     catch {
         throw "Health response evidence '$($file.Name)' is not valid JSON: $($_.Exception.Message)"
     }
-    if (
-        $health.schemaVersion -ne 1 -or
-        [string]::IsNullOrWhiteSpace([string]$health.stage) -or
-        $health.statusCode -notin @(200, 503) -or
-        [string]::IsNullOrWhiteSpace([string]$healthBody.status)
-    ) {
-        throw "Health response evidence '$($file.Name)' does not contain a valid stage, HTTP status, and aggregate-health body."
+
+    # The envelope contract holds for every packet, succeeded or failed.
+    if ($health.schemaVersion -ne 1 -or [string]::IsNullOrWhiteSpace([string]$health.stage)) {
+        throw "Health response evidence '$($file.Name)' does not contain a valid schemaVersion and stage."
+    }
+
+    # The body/status-code contract is gated on a succeeded run. A failed probe legitimately
+    # records a null statusCode and a raw transcript body (Get-HealthJsonBody falls back to
+    # the transcript when no status-bearing JSON object is present), so requiring a parsable
+    # body and a 200/503 code unconditionally made honest failure evidence unvalidatable -
+    # exactly the evidence a failed run exists to produce.
+    if ($result.status -ne 'succeeded') {
+        if ($null -ne $health.statusCode) {
+            $healthStatusCodes += [int]$health.statusCode
+        }
+        continue
+    }
+
+    try {
+        $healthBody = ([string]$health.body) | ConvertFrom-Json
+    }
+    catch {
+        throw "Health response evidence '$($file.Name)' from a succeeded run has an unparsable body: $($_.Exception.Message)"
+    }
+    if ($health.statusCode -notin @(200, 503) -or [string]::IsNullOrWhiteSpace([string]$healthBody.status)) {
+        throw "Health response evidence '$($file.Name)' does not contain a valid HTTP status and aggregate-health body."
     }
     $healthStatusCodes += [int]$health.statusCode
 }

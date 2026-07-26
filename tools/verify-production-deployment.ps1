@@ -21,8 +21,6 @@ param(
 
     [string]$KindNodeImage = "kindest/node:v1.35.0",
 
-    [string]$OpenBaoImage = "quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653",
-
     [string]$EvidenceDirectory = "artifacts/production-deployment-verification",
 
     [switch]$KeepCluster
@@ -30,9 +28,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
+# Health-response parsing lives in its own dot-sourceable file so it can be exercised
+# directly by tests/tooling/production_deployment_evidence with real transcripts.
+. (Join-Path $PSScriptRoot 'production-deployment-health.ps1')
 $namespace = 'hexalith-memories'
-$openBaoNamespace = 'openbao'
-$openBaoPod = 'hexalith-keys-0'
 $serverImage = "registry.hexalith.com/memories:$Version"
 $mcpImage = "registry.hexalith.com/memories-mcp:$Version"
 $accessTelemetryImage = "registry.hexalith.com/memories-access-telemetry:$Version"
@@ -40,13 +39,8 @@ $accessTelemetryClockImage = "registry.hexalith.com/memories-access-telemetry-cl
 $manifestPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-production-$Version.yaml"
 $kubeconfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "hexalith-memories-kubeconfig-$([Guid]::NewGuid().ToString('N'))"
 $originalKubeconfig = $env:KUBECONFIG
-$openBaoMaterialPath = $null
-$openBaoRootToken = ''
-$openBaoUnsealKey = ''
-$openBaoRuntimeToken = ''
-$openBaoAccessTelemetryToken = ''
-$sensitiveEvidenceValues = [System.Collections.Generic.List[string]]::new()
 $clusterCreated = $false
+$healthEvidenceAttempts = @{}
 $daprTokenFaultInjected = $false
 $originalMemoriesDeploymentState = $null
 $memoriesDeploymentStateChanged = $false
@@ -68,10 +62,7 @@ $ownedEvidenceNames = @(
     'describe-pods.txt',
     'describe-workloads.txt',
     'pods.json',
-    'logs-enumeration-error.txt',
-    'openbao-resources.txt',
-    'openbao-status.json',
-    'dapr-secret-components.yaml'
+    'logs-enumeration-error.txt'
 )
 Get-ChildItem -LiteralPath $evidencePath -File -ErrorAction SilentlyContinue |
     Where-Object {
@@ -97,7 +88,7 @@ function Protect-EvidenceText {
         'verification-invalid-dapr-api-token',
         $env:HEXALITH_ZOT_USERNAME,
         $env:HEXALITH_ZOT_API_KEY
-    ) + @($sensitiveEvidenceValues)
+    )
     foreach ($secret in $secrets) {
         if (-not [string]::IsNullOrWhiteSpace($secret)) {
             $sanitized = $sanitized.Replace($secret, '***', [StringComparison]::Ordinal)
@@ -240,25 +231,24 @@ wgetOutput="$(wget -S -O- -T 6 --header="dapr-api-token: ${APP_API_TOKEN}" http:
 wgetExit=$?
 printf '%s\n' "$wgetOutput"
 if [ "$wgetExit" -ne 0 ]; then
-    if printf '%s\n' "$wgetOutput" | grep -Eq 'HTTP/[0-9.]+ 503([[:space:]]|$)'; then
-        { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 5; } | nc -w 6 127.0.0.1 8080
-    else
-        exit "$wgetExit"
-    fi
+    # The netcat fallback exists for every wget failure that still has a retrievable body,
+    # not only for an already-parsed 503. Gating it on a 503 line meant the slow-but-healthy
+    # and timed-out cases - exactly what the fallback was added for - died on the deadline.
+    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 5; } | nc -w 6 127.0.0.1 8080
 fi
 '@
     # The repository's checkout policy materializes this PowerShell file as CRLF. The
     # container shell must receive LF-only commands or BusyBox reports a syntax error.
     $probeCommand = $probeCommand.Replace("`r", '')
     $output = @(& kubectl exec -n $namespace $Pod -c $Container -- /bin/sh -ec $probeCommand 2>&1)
-    $text = Protect-EvidenceText ($output -join [Environment]::NewLine)
-    $statusMatches = [regex]::Matches($text, 'HTTP/\d(?:\.\d)?\s+(?<status>\d{3})')
-    $statusCode = if ($statusMatches.Count -gt 0) {
-        [int]$statusMatches[$statusMatches.Count - 1].Groups['status'].Value
-    }
-    else {
-        $null
-    }
+
+    # Parse the RAW response. Redaction is an evidence-write concern only: sanitizing first
+    # ran unanchored String.Replace over $env:HEXALITH_ZOT_USERNAME/_API_KEY - values this
+    # script does not control - across the very text the status regex and ConvertFrom-Json
+    # depend on, so a short or common username value corrupted the health decision itself.
+    # Save-HealthResponseEvidence already redacts at the write.
+    $text = $output -join [Environment]::NewLine
+    $statusCode = Get-HealthStatusCode $text
     $body = Get-HealthJsonBody $text
 
     return [pscustomobject]@{
@@ -268,66 +258,6 @@ fi
     }
 }
 
-function Get-HealthJsonBody {
-    param([AllowEmptyString()][string]$Text)
-
-    # kubectl combines wget diagnostics, response bodies, and fallback output. Extract the
-    # last balanced JSON object that has the aggregate-health status property instead of
-    # accepting arbitrary braces from a diagnostic message.
-    $depth = 0
-    $start = -1
-    $insideString = $false
-    $escaped = $false
-    $lastValidBody = $null
-    for ($index = 0; $index -lt $Text.Length; $index++) {
-        $character = $Text[$index]
-        if ($insideString) {
-            if ($escaped) {
-                $escaped = $false
-            }
-            elseif ($character -eq '\') {
-                $escaped = $true
-            }
-            elseif ($character -eq '"') {
-                $insideString = $false
-            }
-            continue
-        }
-
-        if ($character -eq '"') {
-            $insideString = $true
-        }
-        elseif ($character -eq '{') {
-            if ($depth -eq 0) {
-                $start = $index
-            }
-            $depth++
-        }
-        elseif ($character -eq '}' -and $depth -gt 0) {
-            $depth--
-            if ($depth -eq 0 -and $start -ge 0) {
-                $candidate = $Text.Substring($start, $index - $start + 1)
-                try {
-                    $parsed = $candidate | ConvertFrom-Json -ErrorAction Stop
-                    if ($null -ne $parsed.PSObject.Properties['status']) {
-                        $lastValidBody = $candidate
-                    }
-                }
-                catch {
-                    # Continue scanning; a later response body may still be valid.
-                }
-                $start = -1
-            }
-        }
-    }
-
-    if ($null -ne $lastValidBody) {
-        return $lastValidBody
-    }
-
-    return $Text
-}
-
 function Save-HealthResponseEvidence {
     param(
         [Parameter(Mandatory)][string]$Stage,
@@ -335,14 +265,30 @@ function Save-HealthResponseEvidence {
         [AllowEmptyString()][string]$Body
     )
 
+    # Two stage names differing only outside [0-9A-Za-z_.-] used to collapse onto one file
+    # name, and every poll of a stage overwrote the previous one, so only the final attempt
+    # survived. The validator's "must include both HTTP 200 and HTTP 503" then rested on
+    # incidental final-poll timing rather than on a recorded transition. Disambiguate the
+    # stage and keep every poll.
     $safeStage = $Stage -replace '[^0-9A-Za-z_.-]', '_'
+    if ($safeStage -cne $Stage) {
+        $stageBytes = [System.Text.Encoding]::UTF8.GetBytes($Stage)
+        $stageHash = [System.Convert]::ToHexString(
+            [System.Security.Cryptography.SHA256]::HashData($stageBytes)).Substring(0, 8).ToLowerInvariant()
+        $safeStage = "$safeStage.$stageHash"
+    }
+
+    $script:healthEvidenceAttempts[$safeStage] = 1 + ($script:healthEvidenceAttempts[$safeStage] ?? 0)
+    $attempt = ($script:healthEvidenceAttempts[$safeStage]).ToString('000')
     $evidence = [ordered]@{
         schemaVersion = 1
         stage = $Stage
+        attempt = [int]$script:healthEvidenceAttempts[$safeStage]
         statusCode = $StatusCode
         body = Protect-EvidenceText $Body
     }
-    $evidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidencePath "health-$safeStage.json") -Encoding utf8
+    $evidence | ConvertTo-Json -Depth 5 |
+        Set-Content -LiteralPath (Join-Path $evidencePath "health-$safeStage-$attempt.json") -Encoding utf8
 }
 
 function Wait-AggregateStatus {

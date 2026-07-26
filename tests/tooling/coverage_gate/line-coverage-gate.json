@@ -43,6 +43,7 @@
   "requiredReportProjects": [
     "Hexalith.Memories.Contracts.Tests",
     "Hexalith.Memories.Server.Tests",
+    "Hexalith.Memories.AccessTelemetry.Tests",
     "Hexalith.Memories.Cli.Tests",
     "Hexalith.Memories.Mcp.Tests",
     "Hexalith.Memories.EventStore.Tests",

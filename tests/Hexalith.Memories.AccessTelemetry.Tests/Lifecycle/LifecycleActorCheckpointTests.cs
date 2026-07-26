@@ -38,7 +38,13 @@ public sealed class LifecycleActorCheckpointTests
         result.TtlInSeconds.ShouldBe(3601);
         store.RecordCount.ShouldBe(1);
         store.IndexCount.ShouldBe(1);
-        store.LastTransactionOperationCount.ShouldBe(2);
+        // Three operations, derived from the committed set rather than asserted against a constant:
+        // record, expiry bucket, and the catalog minute this first write opens. This is the exact
+        // operation count DaprAccessTelemetryStateStore commits for the same write.
+        store.LastTransactionOperationCount.ShouldBe(3);
+        store.TransactionOperationCounts.ShouldBe([3]);
+        store.ActiveMinuteCount.ShouldBe(1);
+        store.LastTtlInSeconds.ShouldBe(3601);
         AccessTelemetryRecord persisted = store.GetRecord(record.RecordId)!;
         persisted.AcceptedAtUtc.ShouldBe(Format(Now));
         persisted.ExpiresAtUtc.ShouldBe("2026-07-18T11:00:00.100Z");

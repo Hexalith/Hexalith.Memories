@@ -7,6 +7,16 @@ metadata:
     app.kubernetes.io/component: lifecycle
 spec:
   replicas: 0
+  # Story 27.3 C1 pool math. Each replica's Dapr sidecar opens its own state-store pool of
+  # maxConns connections, so a rolling-update surge pod would transiently demand a third pool
+  # (3 x 40 + 13 = 133) against PostgreSQL max_connections=100 and exhaust the server mid-probe.
+  # maxSurge: 0 caps concurrent pods at spec.replicas; ProductionDeploymentArtifactsTests reads
+  # both operands out of the rendered overlay and fails if either drifts.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: memories-access-telemetry

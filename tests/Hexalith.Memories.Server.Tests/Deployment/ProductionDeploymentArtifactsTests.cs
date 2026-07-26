@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Deployment;
 
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 using Shouldly;
 
@@ -138,11 +139,32 @@ public sealed class ProductionDeploymentArtifactsTests
 
         // Chunk-2 review patch (2026-07-21): sslRootCert is not a recognised state.postgresql/v2
         // metadata field, so Dapr silently ignored it and it guaranteed nothing. TLS verify-full is
-        // carried by the OpenBao-sourced connection string (sslrootcert/sslmode=verify-full), so the
-        // dead field must stay removed and the secret carrier is what this guard binds instead.
+        // carried by the OpenBao-sourced connection string, so the dead field must stay removed and
+        // the secret carrier is what this guard binds instead.
+        //
+        // Bound structurally, not by substring: connectionString must resolve from a secretKeyRef
+        // (never an inline literal, which would put a credential in the manifest), from the exact
+        // secret and key the OpenBao sync populates, through the verifying secret store.
         accessTelemetryStore.ShouldNotContain("sslRootCert");
+        (string connectionSecret, string connectionKey) =
+            ReadComponentMetadataSecretRef(accessTelemetryStore, "connectionString");
+        connectionSecret.ShouldBe("access-telemetry-postgresql");
+        connectionKey.ShouldBe("connectionString");
         accessTelemetryStore.ShouldContain("secretStore: access-telemetry-secrets");
-        accessTelemetryStore.ShouldContain("key: connectionString");
+
+        // ACCEPTED BLOCKER - `sslmode=verify-full` / `sslrootcert` content is not statically bindable.
+        // The connection string lives only in OpenBao; no producer of it exists anywhere under
+        // deploy/, tools/, or src/, so a string provisioned with `sslmode=require` would leave every
+        // static guard in this file green. What is bindable is bound above (secret carrier, secret
+        // store, no inline literal) plus the server-side rejection of plaintext in the pg_hba guard,
+        // which is what actually makes a non-TLS connection fail.
+        //   Owner: Hexalith Platform Operations (OpenBao secret content), with the security reviewer
+        //     for AC4 sign-off.
+        //   Consequence: gate C1.12 (encryption) cannot be discharged by any test in this assembly;
+        //     it requires the running-profile observation in the C1 evidence packet.
+        //   Reopen trigger: the connection string becomes observable to a checked-in producer or to
+        //     the C1 verifier's captured component identity; bind `sslmode=verify-full` and
+        //     `sslrootcert` then and delete this blocker.
 
         conversation.ShouldContain("type: conversation.openai");
         conversation.ShouldContain("value: gpt-4o-mini");
@@ -323,27 +345,40 @@ public sealed class ProductionDeploymentArtifactsTests
         // maxConns connections. PostgreSQL must seat every pooled connection plus the superuser reserve
         // and the evidence sessions the probe itself runs, otherwise the 500 events/s run fails on
         // connection exhaustion instead of on a real capacity limit.
-        const int c1WriterReplicas = 2;
+        //
+        // Every operand except the two documented ADR constants is read out of the rendered overlay.
+        // Hardcoding the replica count bound the arithmetic to nothing: the shipped overlay is scaled
+        // to zero, so a later scale-up or a default RollingUpdate surge pod would have added a third
+        // pool (3 x 40 + 13 = 133 > 100) with the guard still green.
+        const int c1ProbeReplicas = 2;
         const int superuserReservedConnections = 3;
         const int evidenceSessionHeadroom = 10;
 
         string root = GetRepoRoot();
         string rendered = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/production");
         string store = GetDocument(rendered, "Component", "access-telemetry-store");
-        string postgresql = GetDocument(rendered, "StatefulSet", "access-telemetry-postgresql");
+        string lifecycle = GetDocument(rendered, "Deployment", "memories-access-telemetry");
 
         int maxConns = ReadComponentMetadataInt32(store, "maxConns");
-        int maxConnections = ReadServerParameterInt32(postgresql, "max_connections");
+        int maxConnections = ReadServerParameterInt32(rendered, "max_connections");
 
         // The reserve arithmetic above is only valid while the server keeps the defaults it is derived
         // from. This also catches an override of superuser_reserved_connections, which ends with the
-        // same token.
-        postgresql.ShouldNotContain("reserved_connections=");
+        // same token, wherever in the rendered manifest it is set.
+        rendered.ShouldNotContain("reserved_connections=");
 
-        ((c1WriterReplicas * maxConns) + superuserReservedConnections + evidenceSessionHeadroom)
+        // Peak concurrent pods, not the declared replica count: a rolling update may run
+        // maxSurge extra pods, each with its own sidecar pool. maxSurge must be pinned, because the
+        // Kubernetes default is 25% and would round up to an extra pod at two replicas.
+        int declaredReplicas = ReadIntegerField(lifecycle, "replicas");
+        int maxSurge = ReadIntegerField(lifecycle, "maxSurge");
+        int plannedReplicas = Math.Max(declaredReplicas, c1ProbeReplicas);
+        int peakPods = plannedReplicas + maxSurge;
+
+        ((peakPods * maxConns) + superuserReservedConnections + evidenceSessionHeadroom)
             .ShouldBeLessThanOrEqualTo(
                 maxConnections,
-                $"{c1WriterReplicas} lifecycle writers x maxConns {maxConns}, plus {superuserReservedConnections} superuser-reserved and {evidenceSessionHeadroom} evidence connections, must fit max_connections {maxConnections}.");
+                $"{peakPods} peak lifecycle pods (declared {declaredReplicas}, C1 probe {c1ProbeReplicas}, maxSurge {maxSurge}) x maxConns {maxConns}, plus {superuserReservedConnections} superuser-reserved and {evidenceSessionHeadroom} evidence connections, must fit max_connections {maxConnections}.");
     }
 
     [Fact]
@@ -366,14 +401,32 @@ public sealed class ProductionDeploymentArtifactsTests
         ReadComponentMetadata(store, "actorStateStore").ShouldBe("true");
 
         // PostgreSQL must reject every plaintext path and keep the runtime role least-privileged.
+        // pg_hba is first-match-wins, so presence assertions alone are not enough: a bare
+        // `host ... scram-sha-256` line inserted above the reject rules accepts plaintext TCP while
+        // every presence assertion still passes. Every TCP rule is therefore checked in order.
         string postgresqlConfig = GetDocument(rendered, "ConfigMap", "access-telemetry-postgresql-config");
-        string hostBasedAuthentication = CollapseSpaces(postgresqlConfig);
-        hostBasedAuthentication.ShouldContain("hostssl all all 0.0.0.0/0 scram-sha-256");
-        hostBasedAuthentication.ShouldContain("hostssl all all ::/0 scram-sha-256");
-        hostBasedAuthentication.ShouldContain("hostnossl all all 0.0.0.0/0 reject");
-        hostBasedAuthentication.ShouldContain("hostnossl all all ::/0 reject");
-        hostBasedAuthentication.ShouldNotContain(" trust");
-        hostBasedAuthentication.ShouldNotContain(" md5");
+        IReadOnlyList<string> hostBasedAuthenticationRules = ReadHostBasedAuthenticationRules(postgresqlConfig);
+        hostBasedAuthenticationRules
+            .Where(static rule => rule.StartsWith("host", StringComparison.OrdinalIgnoreCase))
+            .ShouldBe(
+                [
+                    "hostssl all all 0.0.0.0/0 scram-sha-256",
+                    "hostssl all all ::/0 scram-sha-256",
+                    "hostnossl all all 0.0.0.0/0 reject",
+                    "hostnossl all all ::/0 reject",
+                ],
+                "pg_hba TCP rules must appear exactly in this order: no rule may precede them, and no "
+                    + "connection-type-agnostic `host` rule may exist at all.");
+
+        // Weak authentication methods are excluded from the pg_hba rules themselves, not from the
+        // whole ConfigMap: the init SQL legitimately contains `LOGIN PASSWORD`.
+        foreach (string weak in new[] { "trust", "md5", "password" })
+        {
+            hostBasedAuthenticationRules.ShouldNotContain(
+                rule => rule.Split(' ').Contains(weak, StringComparer.OrdinalIgnoreCase),
+                $"No pg_hba rule may authenticate with '{weak}'.");
+        }
+
         postgresqlConfig.ShouldContain("CREATE ROLE memories_access_telemetry_runtime LOGIN");
         postgresqlConfig.ShouldNotContain("SUPERUSER");
         postgresqlConfig.ShouldContain("REVOKE ALL ON DATABASE memories_access_telemetry FROM PUBLIC;");
@@ -389,12 +442,14 @@ public sealed class ProductionDeploymentArtifactsTests
         })
         {
             string document = GetDocument(rendered, "Role", role);
-            ReadYamlSequence(document, "resourceNames", "resources").ShouldBe(resourceNames, ignoreOrder: true);
-            ReadYamlSequence(document, "resources", "verbs").ShouldBe(["secrets"]);
-            ReadYamlSequence(document, "verbs", "---").ShouldBe(["get"]);
+            ReadYamlSequence(document, "resourceNames").ShouldBe(resourceNames, ignoreOrder: true);
+            ReadYamlSequence(document, "resources").ShouldBe(["secrets"]);
+            ReadYamlSequence(document, "verbs").ShouldBe(["get"]);
         }
 
-        // The lifecycle ACL stays deny-default with exactly the four named operations.
+        // The lifecycle ACL stays deny-default with exactly the four named operations. The verb
+        // exclusions are case-insensitive: Dapr matches HTTP verbs case-insensitively, so a
+        // case-sensitive substring check let `httpVerb: ["delete"]` through.
         string lifecycleConfiguration = GetDocument(rendered, "Configuration", "memories-access-telemetry-config");
         (lifecycleConfiguration.Split("defaultAction: deny").Length - 1).ShouldBe(3);
         (lifecycleConfiguration.Split("appId:").Length - 1).ShouldBe(2);
@@ -406,12 +461,56 @@ public sealed class ProductionDeploymentArtifactsTests
         lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/validate");
         lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/inspect");
         lifecycleConfiguration.ShouldNotContain("name: /**");
-        lifecycleConfiguration.ShouldNotContain("DELETE");
-        lifecycleConfiguration.ShouldNotContain("PUT");
-        lifecycleConfiguration.ShouldNotContain("PATCH");
+        lifecycleConfiguration.ShouldNotContain("DELETE", Case.Insensitive);
+        lifecycleConfiguration.ShouldNotContain("PUT", Case.Insensitive);
+        lifecycleConfiguration.ShouldNotContain("PATCH", Case.Insensitive);
         lifecycleConfiguration.ShouldContain("defaultAccess: deny");
-        ReadYamlSequence(lifecycleConfiguration, "allowedSecrets", "defaultAccess")
+        ReadYamlSequence(lifecycleConfiguration, "allowedSecrets")
             .ShouldBe(["access-telemetry-marker-key", "redis-secret", "access-telemetry-postgresql"], ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// Returns every pg_hba rule in file order, with runs of whitespace collapsed. pg_hba is
+    /// first-match-wins, so rule order is the security property and a presence check is not.
+    /// </summary>
+    private static IReadOnlyList<string> ReadHostBasedAuthenticationRules(string configMap)
+    {
+        string[] lines = configMap.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        int start = Array.FindIndex(lines, static line => line.TrimStart().StartsWith("pg_hba.conf:", StringComparison.Ordinal));
+        start.ShouldBeGreaterThanOrEqualTo(0, "pg_hba.conf is missing from the config map.");
+        int blockIndent = Indent(lines[start]);
+
+        var rules = new List<string>();
+        for (int index = start + 1; index < lines.Length; index++)
+        {
+            string raw = lines[index];
+            if (raw.Trim().Length == 0)
+            {
+                continue;
+            }
+
+            // The literal block ends at the first line that dedents back to the key's own level.
+            if (Indent(raw) <= blockIndent)
+            {
+                break;
+            }
+
+            string rule = CollapseSpaces(raw.Replace('\t', ' ')).Trim();
+            if (rule.StartsWith('#'))
+            {
+                continue;
+            }
+
+            if (rule.StartsWith("local", StringComparison.OrdinalIgnoreCase) ||
+                rule.StartsWith("host", StringComparison.OrdinalIgnoreCase))
+            {
+                rules.Add(rule);
+            }
+        }
+
+        rules.ShouldNotBeEmpty("pg_hba.conf declared no authentication rules.");
+
+        return rules;
     }
 
     private static string CollapseSpaces(string value)
@@ -424,50 +523,187 @@ public sealed class ProductionDeploymentArtifactsTests
         return value;
     }
 
-    private static IReadOnlyList<string> ReadYamlSequence(string document, string key, string terminator)
+    /// <summary>
+    /// Reads a YAML block sequence bound to its own key by indentation. The previous
+    /// terminator-string form ran to end-of-document whenever the terminator was absent, silently
+    /// absorbing every later sequence in the manifest, and it matched only the first occurrence of
+    /// the key. This form requires the key to occur exactly once and stops at the first line that
+    /// dedents out of the key's block.
+    /// </summary>
+    private static IReadOnlyList<string> ReadYamlSequence(string document, string key)
     {
-        int start = document.IndexOf($"{key}:", StringComparison.Ordinal);
-        start.ShouldBeGreaterThanOrEqualTo(0, $"Sequence '{key}' is missing.");
-        int end = document.IndexOf(terminator == "---" ? terminator : $"{terminator}:", start, StringComparison.Ordinal);
-        end = end < 0 ? document.Length : end;
-        end.ShouldBeGreaterThan(start, $"'{terminator}' does not follow '{key}'.");
+        string[] lines = document.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        int[] keyLines = [.. lines
+            .Select(static (line, index) => (line, index))
+            .Where(candidate => IsKeyLine(candidate.line, key))
+            .Select(static candidate => candidate.index)];
+        keyLines.Length.ShouldBe(1, $"Sequence '{key}' must occur exactly once; found {keyLines.Length}.");
 
-        return [.. document[start..end]
-            .Split('\n')
-            .Select(line => line.Trim())
-            .Where(line => line.StartsWith("- ", StringComparison.Ordinal))
-            .Select(line => line[2..].Trim().Trim('"'))];
+        int keyIndex = keyLines[0];
+
+        // A key can be the first key of a sequence item (`- allowedSecrets:`), in which case its
+        // effective indent is past the `- ` marker.
+        int keyIndent = Indent(lines[keyIndex]) +
+            (lines[keyIndex].TrimStart().StartsWith("- ", StringComparison.Ordinal) ? 2 : 0);
+        var items = new List<string>();
+        for (int index = keyIndex + 1; index < lines.Length; index++)
+        {
+            string line = lines[index];
+            if (line.Trim().Length == 0)
+            {
+                continue;
+            }
+
+            // A block sequence may sit at the key's own indent or deeper; anything shallower, or any
+            // line that is not a sequence item, ends the block.
+            string trimmed = line.Trim();
+            if (Indent(line) < keyIndent || !trimmed.StartsWith("- ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            items.Add(trimmed[2..].Trim().Trim('"'));
+        }
+
+        items.ShouldNotBeEmpty($"Sequence '{key}' is empty.");
+
+        return items;
     }
 
+    /// <summary>
+    /// Reads one <c>spec.metadata</c> item's inline value, bound to that item. The previous form
+    /// took the next <c>value:</c> anywhere after the name, so a <c>secretKeyRef</c>-backed entry
+    /// silently returned a later, unrelated entry's value.
+    /// </summary>
     private static string ReadComponentMetadata(string component, string metadataName)
     {
-        int nameIndex = component.IndexOf($"name: {metadataName}\n", StringComparison.Ordinal);
-        nameIndex.ShouldBeGreaterThanOrEqualTo(0, $"Component metadata '{metadataName}' is missing.");
-        int valueIndex = component.IndexOf("value:", nameIndex, StringComparison.Ordinal);
-        valueIndex.ShouldBeGreaterThan(nameIndex, $"Component metadata '{metadataName}' has no value.");
-        int lineEnd = component.IndexOf('\n', valueIndex);
-        string value = component[(valueIndex + "value:".Length)..(lineEnd < 0 ? component.Length : lineEnd)];
+        IReadOnlyList<string> item = ReadComponentMetadataItem(component, metadataName);
+        string[] values = [.. item
+            .Where(static line => line.StartsWith("value:", StringComparison.Ordinal))
+            .Select(static line => line["value:".Length..].Trim().Trim('"'))];
+        values.Length.ShouldBe(
+            1,
+            $"Component metadata '{metadataName}' must carry exactly one inline value; found {values.Length}.");
 
-        return value.Trim().Trim('"');
+        return values[0];
+    }
+
+    /// <summary>Reads the secret name and key a <c>secretKeyRef</c>-backed metadata entry resolves from.</summary>
+    private static (string SecretName, string Key) ReadComponentMetadataSecretRef(string component, string metadataName)
+    {
+        IReadOnlyList<string> item = ReadComponentMetadataItem(component, metadataName);
+        int reference = item.ToList().IndexOf("secretKeyRef:");
+        reference.ShouldBeGreaterThanOrEqualTo(0, $"Component metadata '{metadataName}' is not secretKeyRef-backed.");
+        item.ShouldNotContain(
+            static line => line.StartsWith("value:", StringComparison.Ordinal),
+            $"Component metadata '{metadataName}' must not carry an inline value beside its secretKeyRef.");
+
+        // Read the reference's own name/key, never the item's `name: {metadataName}` line.
+        IReadOnlyList<string> body = [.. item.Skip(reference + 1)];
+
+        return (ReadScalar(body, "name:"), ReadScalar(body, "key:"));
+    }
+
+    /// <summary>
+    /// Returns the trimmed lines of one <c>spec.metadata</c> item, from its <c>- name:</c> line up
+    /// to the next item or the end of the sequence.
+    /// </summary>
+    private static IReadOnlyList<string> ReadComponentMetadataItem(string component, string metadataName)
+    {
+        string[] lines = component.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        int start = -1;
+        int itemIndent = -1;
+        for (int index = 0; index < lines.Length; index++)
+        {
+            string trimmed = lines[index].Trim();
+            if (trimmed.StartsWith("- ", StringComparison.Ordinal) &&
+                string.Equals(trimmed[2..].Trim(), $"name: {metadataName}", StringComparison.Ordinal))
+            {
+                start.ShouldBe(-1, $"Component metadata '{metadataName}' must occur exactly once.");
+                start = index;
+                itemIndent = Indent(lines[index]);
+            }
+        }
+
+        start.ShouldBeGreaterThanOrEqualTo(0, $"Component metadata '{metadataName}' is missing.");
+
+        var item = new List<string> { $"name: {metadataName}" };
+        for (int index = start + 1; index < lines.Length; index++)
+        {
+            string line = lines[index];
+            if (line.Trim().Length == 0)
+            {
+                continue;
+            }
+
+            // A dedent, or the next `- ` item at the same indent, ends this item.
+            if (Indent(line) <= itemIndent)
+            {
+                break;
+            }
+
+            item.Add(line.Trim());
+        }
+
+        return item;
+    }
+
+    private static string ReadScalar(IReadOnlyList<string> item, string key)
+    {
+        string[] values = [.. item
+            .Where(line => line.StartsWith(key, StringComparison.Ordinal) && line.Length > key.Length)
+            .Select(line => line[key.Length..].Trim().Trim('"'))];
+        values.Length.ShouldBe(1, $"Expected exactly one '{key}' in the item; found {values.Length}.");
+
+        return values[0];
     }
 
     private static int ReadComponentMetadataInt32(string component, string metadataName)
         => int.Parse(ReadComponentMetadata(component, metadataName), CultureInfo.InvariantCulture);
 
-    private static int ReadServerParameterInt32(string statefulSet, string parameterName)
+    /// <summary>
+    /// Reads a PostgreSQL server parameter from the whole rendered manifest, not from one document.
+    /// The parameter can be set from the StatefulSet command line or from the config ConfigMap, and
+    /// the previous single-document, first-occurrence form was voided by either.
+    /// </summary>
+    private static int ReadServerParameterInt32(string rendered, string parameterName)
     {
-        int index = statefulSet.IndexOf($"{parameterName}=", StringComparison.Ordinal);
-        index.ShouldBeGreaterThanOrEqualTo(0, $"PostgreSQL server parameter '{parameterName}' is missing.");
-        int start = index + parameterName.Length + 1;
-        int end = start;
-        while (end < statefulSet.Length && char.IsAsciiDigit(statefulSet[end]))
+        MatchCollection matches = Regex.Matches(
+            rendered,
+            $@"(?<![A-Za-z0-9_]){Regex.Escape(parameterName)}\s*=\s*(?<value>\d+)",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(5));
+        matches.Count.ShouldBe(
+            1,
+            $"PostgreSQL server parameter '{parameterName}' must be set exactly once across the rendered manifest; found {matches.Count}.");
+
+        return int.Parse(matches[0].Groups["value"].Value, CultureInfo.InvariantCulture);
+    }
+
+    private static int ReadIntegerField(string document, string key)
+    {
+        MatchCollection matches = Regex.Matches(
+            document,
+            $@"^\s*{Regex.Escape(key)}:\s*(?<value>\d+)\s*$",
+            RegexOptions.Multiline,
+            TimeSpan.FromSeconds(5));
+        matches.Count.ShouldBe(1, $"Field '{key}' must occur exactly once; found {matches.Count}.");
+
+        return int.Parse(matches[0].Groups["value"].Value, CultureInfo.InvariantCulture);
+    }
+
+    private static int Indent(string line) => line.Length - line.TrimStart().Length;
+
+    private static bool IsKeyLine(string line, string key)
+    {
+        string trimmed = line.TrimStart();
+        if (trimmed.StartsWith("- ", StringComparison.Ordinal))
         {
-            end++;
+            trimmed = trimmed[2..].TrimStart();
         }
 
-        end.ShouldBeGreaterThan(start, $"PostgreSQL server parameter '{parameterName}' has no numeric value.");
-
-        return int.Parse(statefulSet[start..end], CultureInfo.InvariantCulture);
+        return trimmed.StartsWith($"{key}:", StringComparison.Ordinal) &&
+            trimmed[(key.Length + 1)..].Trim().Length == 0;
     }
 
     private static string GetDocument(string rendered, string kind, string name)

@@ -87,6 +87,37 @@ if (-not $ServerImage.EndsWith($expectedSuffix, [StringComparison]::Ordinal) -or
     throw "All release image references must end with the semantic-release version '$expectedSuffix'."
 }
 
+# Placeholder counts and the version suffix say nothing about WHICH image goes where, so
+# transposed or duplicated arguments used to render a valid-looking manifest whose workloads
+# run the wrong image. Bind each argument to the repository suffix it must carry, relative to
+# the Server image's repository, and reject duplicates outright. The registry host and the
+# repository prefix stay parameterized (publish-containers.ps1 overrides both).
+$suppliedImages = [ordered]@{
+    ServerImage = $ServerImage
+    McpImage = $McpImage
+    AccessTelemetryImage = $AccessTelemetryImage
+    AccessTelemetryClockImage = $AccessTelemetryClockImage
+}
+$baseRepository = $ServerImage.Substring(0, $ServerImage.Length - $expectedSuffix.Length)
+$expectedSuffixes = [ordered]@{
+    McpImage = '-mcp'
+    AccessTelemetryImage = '-access-telemetry'
+    AccessTelemetryClockImage = '-access-telemetry-clock'
+}
+foreach ($parameter in $expectedSuffixes.Keys) {
+    $supplied = [string]$suppliedImages[$parameter]
+    $repository = $supplied.Substring(0, $supplied.Length - $expectedSuffix.Length)
+    $expectedRepository = "$baseRepository$($expectedSuffixes[$parameter])"
+    if (-not [string]::Equals($repository, $expectedRepository, [StringComparison]::Ordinal)) {
+        throw "-$parameter must reference repository '$expectedRepository', but names '$repository'."
+    }
+}
+
+$distinctImages = @($suppliedImages.Values | Sort-Object -Unique)
+if ($distinctImages.Count -ne $suppliedImages.Count) {
+    throw "All four release image references must be distinct; found $($distinctImages.Count) unique value(s)."
+}
+
 $rendered = $rendered.Replace($defaultServerImage, $ServerImage, [StringComparison]::Ordinal)
 $rendered = $rendered.Replace($defaultMcpImage, $McpImage, [StringComparison]::Ordinal)
 $rendered = $rendered.Replace($defaultAccessTelemetryImage, $AccessTelemetryImage, [StringComparison]::Ordinal)

@@ -19,11 +19,17 @@ using NSubstitute;
 /// <summary>
 /// Deterministic in-process substitute for a strongly consistent, transactional Dapr state store.
 /// It models the store contract the PG-ONPREM-1 profile must honour: all-or-nothing transactions,
-/// ETag validation, empty-ETag first-write insert semantics, component TTL reaping, and a
-/// backend that can acknowledge a delete the strong re-read still contradicts.
+/// ETag validation, empty-ETag first-write insert semantics, required partition and TTL metadata,
+/// strong-only reads, component TTL reaping, and a backend that can acknowledge a write or delete
+/// the strong re-read still contradicts.
 /// </summary>
 internal sealed class TransactionalDaprState
 {
+    private const string PartitionKeyName = "partitionKey";
+    private const string PartitionKeyValue = "access-telemetry";
+    private const string RecordKeyPrefix = "records/";
+    private const string TtlKeyName = "ttlInSeconds";
+
     private static readonly JsonSerializerOptions DaprJsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly Dictionary<string, (byte[] Value, string ETag)> _entries = new(StringComparer.Ordinal);
@@ -65,6 +71,14 @@ internal sealed class TransactionalDaprState
     public HashSet<string> UndeletableKeys { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// Gets the keys whose upsert the backend acknowledges but never applies. Without this the
+    /// index-side durability branches are unreachable: the bucket-rewrite path of
+    /// <see cref="AccessTelemetryDeleteStatus.VerificationFailed"/> and the stale-entry
+    /// <see cref="InvalidOperationException"/> both require an acknowledged upsert that did not land.
+    /// </summary>
+    public HashSet<string> UnappliedUpsertKeys { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// Gets or sets a hook invoked immediately before a transaction is validated, so a test can
     /// interleave a concurrent writer between the adapter's ETag read and its commit.
     /// </summary>
@@ -79,10 +93,24 @@ internal sealed class TransactionalDaprState
         => JsonSerializer.Deserialize<T>(_entries[key].Value, DaprJsonOptions)!;
 
     /// <summary>
-    /// Removes one key the way native component TTL reaping would, leaving every other key —
-    /// including a now-orphaned expiry-bucket entry — untouched.
+    /// Writes one value directly, bypassing the transaction path, so a test can construct backend
+    /// state no single adapter call produces — for example a bucket still holding a superseded
+    /// index generation alongside the live entry.
     /// </summary>
-    public void ExpireByTtl(string key) => _entries.Remove(key);
+    public void Seed<T>(string key, T value)
+        where T : class
+        => _entries[key] = (JsonSerializer.SerializeToUtf8Bytes(value, DaprJsonOptions), NextETag());
+
+    /// <summary>
+    /// Removes one key the way native component TTL reaping would, leaving every other key —
+    /// including a now-orphaned expiry-bucket entry — untouched. A key that is not stored is a
+    /// mistyped fixture, not a no-op reaping.
+    /// </summary>
+    public void ExpireByTtl(string key)
+    {
+        RequireStored(key, nameof(ExpireByTtl));
+        _ = _entries.Remove(key);
+    }
 
     /// <summary>
     /// Advances one key's ETag without changing its value, modelling a concurrent writer that
@@ -90,8 +118,19 @@ internal sealed class TransactionalDaprState
     /// </summary>
     public void AdvanceETag(string key)
     {
+        RequireStored(key, nameof(AdvanceETag));
         (byte[] Value, string ETag) current = _entries[key];
         _entries[key] = (current.Value, NextETag());
+    }
+
+    private void RequireStored(string key, string operation)
+    {
+        if (!_entries.ContainsKey(key))
+        {
+            throw new KeyNotFoundException(
+                $"{operation} was given the key '{key}', which this state does not hold. Stored keys: " +
+                $"{string.Join(", ", _entries.Keys.Order(StringComparer.Ordinal))}.");
+        }
     }
 
     private string NextETag() => (++_etagSequence).ToString(CultureInfo.InvariantCulture);
@@ -101,6 +140,7 @@ internal sealed class TransactionalDaprState
         // Validate every operation before mutating anything: the transaction is all-or-nothing.
         foreach (StateTransactionRequest operation in operations)
         {
+            RequireMetadata(operation);
             bool exists = _entries.TryGetValue(operation.Key, out (byte[] Value, string ETag) current);
             string currentEtag = exists ? current.ETag : string.Empty;
             if (!string.IsNullOrEmpty(operation.ETag))
@@ -128,10 +168,40 @@ internal sealed class TransactionalDaprState
                     _ = _entries.Remove(operation.Key);
                 }
             }
-            else
+            else if (!UnappliedUpsertKeys.Contains(operation.Key))
             {
                 _entries[operation.Key] = (operation.Value!, NextETag());
             }
+        }
+    }
+
+    /// <summary>
+    /// Enforces the component metadata contract every operation must carry. Without this the fake
+    /// accepts an adapter that stopped sending <c>partitionKey</c> or the record <c>ttlInSeconds</c>,
+    /// which the PG-ONPREM-1 component relies on for co-location and native expiry.
+    /// </summary>
+    private static void RequireMetadata(StateTransactionRequest operation)
+    {
+        if (operation.Metadata is null ||
+            !operation.Metadata.TryGetValue(PartitionKeyName, out string? partition) ||
+            !string.Equals(partition, PartitionKeyValue, StringComparison.Ordinal))
+        {
+            throw new DaprException(
+                $"Operation on '{operation.Key}' is missing the required '{PartitionKeyName}: {PartitionKeyValue}' metadata.");
+        }
+
+        bool isRecordUpsert = operation.OperationType == StateOperationType.Upsert &&
+            operation.Key.StartsWith(RecordKeyPrefix, StringComparison.Ordinal);
+        if (isRecordUpsert && !operation.Metadata.ContainsKey(TtlKeyName))
+        {
+            throw new DaprException(
+                $"Record upsert on '{operation.Key}' is missing the required '{TtlKeyName}' metadata.");
+        }
+
+        if (!isRecordUpsert && operation.Metadata.ContainsKey(TtlKeyName))
+        {
+            throw new DaprException(
+                $"Operation on '{operation.Key}' must not carry '{TtlKeyName}': only records expire natively.");
         }
     }
 
@@ -147,6 +217,17 @@ internal sealed class TransactionalDaprState
             .Returns(call =>
             {
                 string key = call.ArgAt<string>(1);
+
+                // Every read on this store is a strong read. Serving an eventual or unspecified
+                // read identically would make the post-delete verification meaningless, because a
+                // stale replica could satisfy it.
+                ConsistencyMode? consistency = call.ArgAt<ConsistencyMode?>(2);
+                if (consistency != ConsistencyMode.Strong)
+                {
+                    throw new DaprException(
+                        $"Read of '{key}' requested {consistency?.ToString() ?? "no"} consistency; this store serves strong reads only.");
+                }
+
                 return _entries.TryGetValue(key, out (byte[] Value, string ETag) current)
                     ? (JsonSerializer.Deserialize<T>(current.Value, DaprJsonOptions)!, current.ETag)
                     : (default(T)!, string.Empty);

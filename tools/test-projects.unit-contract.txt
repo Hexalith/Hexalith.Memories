@@ -1,6 +1,7 @@
 # Docker-free unit/contract lane. Keep in sync with Hexalith.Memories.slnx test inventory.
 tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj
 tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj
+tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj
 tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj
 tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj
 tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj

@@ -2273,11 +2273,12 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
 
 - Live test-count totals recorded in the 27.3 Change Log predate current HEAD.
   - ID: 27.3-CR2
-  - Status: open
+  - Status: resolved 2026-07-26 — the live runner recount executes in this sandbox and was run again by dev-story.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
   - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
   - Re-open trigger: before Story 27.3 advances to done, or when any File List assembly changes.
-  - Rationale: The latest dev-story rows recorded Server 2,188 / Integration 297 / AccessTelemetry 43 at an earlier HEAD; the 12 reviewed chunk files were verified unchanged since, but a full live runner recount could not be executed in this sandbox and must be re-run at the done gate.
+  - Evidence: recount executed 2026-07-26 by dev-story on a clean tree at HEAD `a6753c11` with fresh Release builds (0 warnings, 0 errors). Pre-development: Server.Tests 2,190 / `bd27c3da547f6efacc2fc9ce9abd2360794c77e52e4a5fd7c6a4a5e73a28b4d0`, IntegrationTests 297 / `7836151bdf59ff8712f59911ed138a2f7afc792a7c4d2415c64122695c163856`, AccessTelemetry.Tests 55 / `973244b8ebcdfd55eeaf01ba56b8f33a1836aee158a98906817b5a5b2e3e60ef`, Cli.Tests 384 / `55e179bb6678fb671b1b342eeef71876b5f2f2c6106903c36507bb16769de312`. Command: `DiffEngine_Disabled=true dotnet exec <assembly> -list methods -noLogo | grep -E '^Hexalith\.'`.
+  - Rationale: The entry's recorded figures (Server 2,188 / Integration 297 / AccessTelemetry 43) were stale: they predated the chunk-1 and chunk-2 review patches. The correct pre-development figures at HEAD `a6753c11` are recorded in the Evidence field above, and the post-development figures are in the 2026-07-26 `dev-story` Change Log row. The original claim that a full live runner recount "could not be executed in this sandbox" is false and is corrected here.
 
 - recordId charset is not validated before it is interpolated into the Dapr state key.
   - ID: 27.3-CR3
@@ -2288,10 +2289,11 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
   - Rationale: GetRecordKey builds `records/{shard}/{recordId}` and GetShard only guards null/whitespace; confirm the AccessTelemetryRecord contract constrains RecordId to a safe charset, otherwise add explicit validation.
 - Recompute the 27.3 Change Log Server.Tests story-vs-external split at the final-chunk reconciliation.
   - ID: 27.3-CR4
-  - Status: open
+  - Status: resolved 2026-07-26 — the Server story/external attribution is restated and the recompute is done.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
   - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
   - Re-open trigger: before Story 27.3 advances to done / at the final-chunk code-review ledger reconciliation.
+  - Evidence: the authoritative equation is `2,157 create + 6 Story 27.3 + 1 Story 31.1 + 26 external = 2,190`, recorded by the 2026-07-26 chunk-3b `code-review` Change Log row and restated in the 2026-07-26 `dev-story` row. It supersedes both the recorded `+1/+30` and this entry's own `+5/+26` target, which was correct only at Server 2,188. The `+1` is `OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal`, which follows Story 31.1 with `deploy/openbao/values.yaml` per the 2026-07-26 Administrator decision. Live discovery at HEAD `a6753c11` confirms Server 2,190 at hash `bd27c3da547f6efacc2fc9ce9abd2360794c77e52e4a5fd7c6a4a5e73a28b4d0`; the 2026-07-26 dev-story phase added no Server method, so the equation is unchanged after it.
   - Rationale: 4 Story-27.3 C1 methods (Adr_C1SourceEventMapping, Adr_C1TypedStateAndNullableMapping, Adr_C1QueryAndErrorMappings, Adr_ProductionAdapterQualification in AccessTelemetryRetentionDecisionTests.cs 6->10; plus ProductionDeploymentArtifactsTests +2) are booked under the +30 external delta rather than the +1 story delta. Recompute with live discovery (expected Server +5 story / +26 external) when the final review chunk finalizes the ledger. Administrator approved deferring the recompute to the final chunk on 2026-07-21.
 
 - Split the four-image release/publish pipeline out of Story 27.3 into a newly numbered story.
@@ -2300,6 +2302,7 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3)
   - Target artifact: _bmad-output/planning-artifacts/epics.md
   - Re-open trigger: before Story 27.3 advances to done; the release/publish-pipeline work must own a separate story.
+  - Evidence: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-26-readiness-coherence-and-27-3-splits.md` (approved 2026-07-26) enumerates the ten transferred paths; `_bmad-output/planning-artifacts/epics.md` carries Epic 30 / Story 30.1; `_bmad-output/implementation-artifacts/sprint-status.yaml` registers `30-1-...` as `backlog`; Story 27.3's File List no longer declares any of the ten paths.
   - Rationale: The four-image publish/partial-recovery pipeline (CiTestInventoryTests.cs + tests/tooling/publish_containers/*) is independently demonstrable and was ledgered as an external CI/CD lane, yet is bundled into the single C1 adapter-qualification slice. Administrator approved splitting it into a new story via correct-course on 2026-07-21; 27.3's File List and ledger shrink to adapter/qualification scope.
 
 ## Deferred from: code review of 27-3-production-adapter-and-deployment-profile chunk 2 (2026-07-21)
@@ -2308,15 +2311,18 @@ Chunk 2 = deployment manifests + docs (18 File-List paths). Intermediate chunked
 
 - Fail-closed `done` blockers: chunk 3 unreviewed; live method/case recount not runnable in this sandbox; Server story/external split +1/+30 -> +5/+26 (see DW 27.3-CR4). Story stays `in-progress`.
   - ID: 27.3-CR18
-  - Status: superseded 2026-07-26 — chunk 3a and chunk 3b are now reviewed and the live recount ran successfully; the surviving obligations are DW 27.3-CR4 (Server attribution) and the open review action items.
+  - Status: resolved 2026-07-26 — chunk 3a and chunk 3b are now reviewed and the live recount ran successfully; the surviving obligations are DW 27.3-CR4 (Server attribution) and the open review action items. (`superseded` is not one of the register's four documented statuses; corrected to `resolved` on 2026-07-26 by dev-story.)
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
+  - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
   - Re-open trigger: superseded; do not reopen under this ID.
+  - Evidence: chunk 3a (2026-07-26, HEAD `159d7216`) and chunk 3b (2026-07-26, HEAD `c9dfb06f`) are both recorded in **Code Review Evidence** of the story file, and the live recount executed successfully at `159d7216` (Server 2,190 / IntegrationTests 297 / AccessTelemetry.Tests 55). The surviving obligation is tracked separately as DW 27.3-CR4.
 - Clock NetworkPolicy egress to TCP/443 is unrestricted (no `to:`); tighten to real UTC-source CIDRs before enablement. [deploy/kubernetes/base/access-telemetry-network-policy.yaml:99]
   - ID: 27.3-CR19
   - Status: open
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
   - Target artifact: deploy/kubernetes/base/access-telemetry-network-policy.yaml
   - Re-open trigger: before Production lifecycle enablement; the clock egress must be restricted to the real UTC-source CIDRs once the three `.example.invalid` authorities are replaced.
+  - Rationale: The clock NetworkPolicy allows egress on TCP/443 with no `to:` selector, so the trusted-time workload can reach any address on the internet. The real UTC-source CIDRs are not knowable while all three configured authorities are `.example.invalid` placeholders, so narrowing the rule now would encode a fiction. Owner: clock-authority owner. Consequence: an unrestricted egress path exists on a workload that is scaled to zero and fail-closed.
 - ~~`maxConns: 64` x 2 replicas (128) can exceed PostgreSQL `max_connections=100` under the C1 two-writer load; reconcile before/at the load probe.~~ [deploy/kubernetes/base/dapr/access-telemetry-store.yaml:25] — **resolved 2026-07-26 (dev-story)**: `maxConns` lowered to `40`, so `2 x 40 + 3 superuser-reserved + 10 evidence sessions = 93 <= max_connections 100`. The derivation is a comment on the metadata entry and is enforced by the new `ProductionDeploymentArtifactsTests.ProductionOverlay_AccessTelemetryConnectionPoolFitsPostgreSqlMaxConnections`, which failed RED at `141 > 100` before the fix.
 - ~~Verification coverage gap: `skipVerify:"false"`, pg_hba `hostnossl...reject`, init-SQL least-privilege grants, new RBAC secret-reader Roles, `actorStateStore:"true"`, and the telemetry ACL are unbound by static guard tests; add assertions to the chunk-1 guard tests.~~ [tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs] — **resolved 2026-07-26 (dev-story)**: all six surfaces are now bound by `ProductionDeploymentArtifactsTests.ProductionOverlay_AccessTelemetryProfileSecurityContractsAreBound`. Because the guard passed on first authoring, it was mutation-proven rather than RED-proven: six independent drift injections (`skipVerify:"true"`, `actorStateStore:"false"`, dropped `hostnossl ... reject`, RBAC verbs widened to `get,list`, ACL `defaultAction: allow`, and an extra secret smuggled into `allowedSecrets`) each failed the suite, and the baseline returned green after every revert.
 - Pre-enablement operational hardening: probe `wget`/`sh` dependency, missing metrics ingress, startup-vs-initTimeout cold-start race, terminationGracePeriod/PDB node-drain block, manual restart on password/CA rotation. [deploy/kubernetes/base/access-telemetry-deployments.yaml]
@@ -2325,12 +2331,14 @@ Chunk 2 = deployment manifests + docs (18 File-List paths). Intermediate chunked
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
   - Target artifact: deploy/kubernetes/base/access-telemetry-deployments.yaml
   - Re-open trigger: before Production lifecycle enablement; each named hardening item must be resolved or accepted with an owner.
+  - Rationale: Five independent pre-enablement items on a workload that is scaled to zero: the exec probes require `wget` and `/bin/sh` in images that are still `:0.0.0` placeholders; there is no metrics/monitoring ingress, so Prometheus reports NoData; the 60s startup probe races the store's `initTimeout: 1m` on a cold start; `terminationGracePeriodSeconds: 120` plus a `minAvailable: 1` PDB on a single replica blocks node drain; and DB/OpenBao password and TLS-CA rotation need a manual sidecar restart because HotReload is off for an actor state store. Owner: Hexalith Platform Operations. Consequence: none today (replicas are zero); each becomes live at enablement.
 - Docs: release-runbook four-image expansion belongs with DW 27.3-CR5; ADR byte-bucket boundary overlap and `edgeTypeCount>16` ambiguity; verify ADR `Story 27.2 C1 mapping` block attribution. [docs/dev/release-runbook.md; docs/dev/adr-27.1-001-access-telemetry-lifecycle.md]
   - ID: 27.3-CR21
   - Status: open (release-runbook arm transferred to Story 30.1 on 2026-07-26; the ADR arms remain Story 27.3's)
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
   - Target artifact: docs/dev/adr-27.1-001-access-telemetry-lifecycle.md
   - Re-open trigger: before Story 27.3 advances to done; the ADR byte-bucket boundary overlap and the `edgeTypeCount>16` clamp-vs-reject ambiguity must be resolved.
+  - Rationale: Two documentation defects in the ADR that no code reads today: adjacent byte-bucket labels overlap at their 64KiB/1MiB/10MiB boundaries, so a value exactly on a boundary has two valid labels, and the behaviour for `edgeTypeCount > 16` is unspecified between clamping and rejecting. The `Story 27.2 C1 mapping` block's attribution also needs confirmation. Owner: ADR owner. Consequence: an implementer reading the ADR can pick either reading; no shipped code depends on the ambiguity yet. The release-runbook arm of this entry transferred to Story 30.1 on 2026-07-26.
 
 ### DW 27.3-CR7 - create-story scope verifier is inert after the 27.3 split rename
 
@@ -2352,6 +2360,7 @@ The five structured entries below (`21.10-A4-VERIFY` and the four `REL-*` entrie
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
   - Target artifact: _bmad-output/planning-artifacts/epics.md
   - Re-open trigger: before Story 27.3 advances to done; the OpenBao platform + runtime secretstore migration must own a separate story.
+  - Evidence: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-26-readiness-coherence-and-27-3-splits.md` (approved 2026-07-26) enumerates the six transferred paths; `_bmad-output/planning-artifacts/epics.md` carries Epic 31 / Story 31.1; `_bmad-output/implementation-artifacts/sprint-status.yaml` registers `31-1-...` as `backlog`; Story 27.3's File List no longer declares any of the six paths.
   - Rationale: The OpenBao `hexalith-keys` secrets platform (deploy/openbao/values.yaml, namespace.yaml, service-account-hardening.yaml, smoke-test.yaml, docs/operations/openbao.md) and the runtime `secretstore` migration from Kubernetes to hashicorp.vault (scopes eventstore/memories) are an independently-deployable operations platform bundled into the single PG-ONPREM-1 C1 qualification slice, which the Slice Proof and spec (a general operations platform 'returns to planning') do not authorize. Administrator approved splitting it into a new story via correct-course on 2026-07-21; 27.3's File List and ledger shrink to the PG-ONPREM-1 adapter and its secret backing. The static file-based OpenBao seal (key in a Kubernetes Secret beside the data) and namespace-wide 8200 ingress must be surfaced to the security approver as accepted single-node limitations of that split story.
 
   - ID: 21.10-A4-VERIFY
@@ -2401,7 +2410,9 @@ zero failed layers.
   - ID: 27.3-CR17
   - Status: resolved 2026-07-26 — chunk 3b reviewed; all in-scope chunks are now complete.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3)
+  - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
   - Re-open trigger: resolved; a new chunk would need a new ID.
+  - Evidence: the chunk-3b record in **Code Review Evidence** of the story file (8 governance/planning paths, 2,264 diff lines at HEAD `c9dfb06f`, manifest SHA-256 `605152e597357936680f5f171d9a87e09dfcb7887e21ecd953bfab6d550d6344`), which states that chunk 3b completes path-level review coverage.
   paths of Story 27.3 (story file, `epics.md`, `architecture.md`, the 2026-07-20 sprint change
   proposal, `deferred-work.md`, `sprint-status.yaml`, and the create-scope and adapter-profile
   evidence packets; 2,076 diff lines) have not been reviewed. Per `story-phase-ledger.md`, an
@@ -2415,6 +2426,7 @@ zero failed layers.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3)
   - Target artifact: src/Hexalith.Memories.AccessTelemetry/Lifecycle/InMemoryAccessTelemetryStateStore.cs
   - Re-open trigger: when the Story 27.2-origin structural move to a shared test-support project is scheduled.
+  - Rationale: The class documents itself as a test double the runtime host does not register, yet it ships inside a project with `EnableContainer=true` and `ContainerRepository memories-access-telemetry`, reachable only through `InternalsVisibleTo`. A DI misregistration would satisfy `IAccessTelemetryStateStore` with no durability. Moving it to a shared test-support project is a Story 27.2-origin structural change. Owner: AccessTelemetry adapter owner. Consequence: a test double is present in the released image's assembly surface. Partially mitigated 2026-07-26 by dev-story: the adapter now validates `ttlInSeconds`, models the anti-resurrection conflict, prunes drained expiry minutes, and performs the same strong post-delete verification as the Dapr adapter, so a misregistration no longer silently discards expiry - but the structural placement is unchanged.
   `src/Hexalith.Memories.AccessTelemetry/Lifecycle/InMemoryAccessTelemetryStateStore.cs` documents
   itself as a deterministic adapter for lifecycle tests that the runtime host does not register,
   yet it lives in a project with `EnableContainer=true` and `ContainerRepository`
@@ -2431,6 +2443,7 @@ zero failed layers.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3)
   - Target artifact: .githooks / commitlint configuration
   - Re-open trigger: confirm the commit-msg hook rejects a missing type prefix, and decide whether the omitted product change needs a follow-up release note.
+  - Rationale: Commit `358bef35` carries no Conventional Commits type prefix, and its body lists only the three new test files while omitting the `InMemoryAccessTelemetryStateStore.cs` purge-ordering product change in the same commit. It is already published on `main`, so correcting the message needs a history rewrite; the durable fix is the commit-msg gate, not this commit. Owner: repository workflow owner. Consequence: release semantics and the changed-surface audit trail are both wrong for that one commit.
   no type prefix and its body enumerates only the three new test files, omitting the
   `InMemoryAccessTelemetryStateStore.cs` purge-ordering product change in the same commit. The
   commit is already published on `main`, so correcting the message itself would require a history

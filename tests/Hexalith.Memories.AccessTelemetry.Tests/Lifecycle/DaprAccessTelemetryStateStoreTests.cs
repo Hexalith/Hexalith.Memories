@@ -198,7 +198,11 @@ public sealed class DaprAccessTelemetryStateStoreTests
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
 
+        // The superseded entry shares (ExpiryMinute, Shard) with the live record's own entry, so a
+        // prune that matched on RecordId alone would delete the live entry too.
         AccessTelemetryExpiryEntry staleEntry = entry with { EnvelopeHash = new string('b', 64) };
+        AccessTelemetryStateStoreTestRecords.BucketKey(staleEntry)
+            .ShouldBe(AccessTelemetryStateStoreTestRecords.BucketKey(entry));
 
         AccessTelemetryDeleteStatus result = await store.DeleteAndVerifyAsync(staleEntry, CancellationToken.None);
 
@@ -206,7 +210,16 @@ public sealed class DaprAccessTelemetryStateStoreTests
         state.Contains(AccessTelemetryStateStoreTestRecords.RecordKey(record.RecordId)).ShouldBeTrue();
         state.Get<AccessTelemetryRecord>(AccessTelemetryStateStoreTestRecords.RecordKey(record.RecordId))
             .EnvelopeHash.ShouldBe(record.EnvelopeHash);
-        state.Contains(AccessTelemetryStateStoreTestRecords.BucketKey(entry)).ShouldBeFalse();
+
+        // The live record's own index entry must survive, and it must stay purgeable. Buckets are
+        // the only source GetDueEntriesAsync reads, so losing the entry orphans the record forever.
+        state.Get<AccessTelemetryExpiryBucket>(AccessTelemetryStateStoreTestRecords.BucketKey(entry))
+            .Entries.ShouldHaveSingleItem().ShouldBe(entry);
+        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+            entry.ExpiryMinute,
+            10,
+            CancellationToken.None);
+        due.ShouldHaveSingleItem().ShouldBe(entry);
     }
 
     [Fact]
@@ -244,11 +257,18 @@ public sealed class DaprAccessTelemetryStateStoreTests
     }
 
     [Fact]
-    public async Task DeleteAndVerifyAsync_EntryCarryingAnotherTenantMarker_IsDeniedAndLeavesTheRecordIntact()
+    public async Task DeleteAndVerifyAsync_EntryCarryingAnotherTenantMarker_IsDeniedAndLeavesTheRecordPurgeable()
     {
-        // Cross-tenant denial at the state-store boundary (Task 1, PG-ONPREM-1 qualification).
+        // Envelope-binding denial at the state-store boundary (Task 1, PG-ONPREM-1 qualification).
         // The sealed envelope hash covers TenantMarker, so an expiry entry minted against a
         // different tenant's marker can never authorise deletion of this tenant's record.
+        //
+        // Scope, stated precisely: this is NOT physical cross-tenant isolation evidence. The record
+        // key (`records/{shard}/{recordId}`) carries no tenant dimension - this is a single global
+        // infrastructure store owned by one fixed actor - so both records below resolve to the same
+        // state key by construction. What is proven here is that the marker is inside the sealed
+        // envelope and therefore participates in the authorisation decision. Gate C1.11 (physical
+        // cross-tenant denial against the running profile) is not discharged by this test and says so.
         var state = new TransactionalDaprState();
         var store = new DaprAccessTelemetryStateStore(state.Client);
         AccessTelemetryRecord tenantA = CreateRecord("01K0A000000000000000000001");
@@ -268,6 +288,17 @@ public sealed class DaprAccessTelemetryStateStoreTests
         state.Contains(AccessTelemetryStateStoreTestRecords.RecordKey(tenantA.RecordId)).ShouldBeTrue();
         state.Get<AccessTelemetryRecord>(AccessTelemetryStateStoreTestRecords.RecordKey(tenantA.RecordId))
             .TenantMarker.ShouldBe(tenantA.TenantMarker);
+
+        // The denial must not cost tenant A its index entry: the foreign entry lands in the same
+        // (ExpiryMinute, Shard) bucket, so a RecordId-only prune would silently make the record
+        // unpurgeable while still reporting a successful denial.
+        state.Get<AccessTelemetryExpiryBucket>(AccessTelemetryStateStoreTestRecords.BucketKey(entryA))
+            .Entries.ShouldHaveSingleItem().ShouldBe(entryA);
+        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+            entryA.ExpiryMinute,
+            10,
+            CancellationToken.None);
+        due.ShouldHaveSingleItem().ShouldBe(entryA);
     }
 
     [Fact]
@@ -309,6 +340,91 @@ public sealed class DaprAccessTelemetryStateStoreTests
 
         // Truncation must not drop the untraversed minute from the catalog.
         state.Get<AccessTelemetryExpiryCatalog>("expiry-catalog").ActiveMinutes.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task DeleteAndVerifyAsync_BackendKeepsTheBucketEntryAfterAcknowledgedRewrite_ReturnsVerificationFailed()
+    {
+        // The index side of the durability contract: the backend acknowledges the bucket rewrite
+        // that drops this entry, but the strong re-read still observes it.
+        var state = new TransactionalDaprState();
+        var store = new DaprAccessTelemetryStateStore(state.Client);
+        // Both identifiers hash to shard 1 and share the expiry minute, so both entries live in one
+        // bucket and removing either is an Upsert of the surviving bucket, not a Delete of the key.
+        AccessTelemetryRecord kept = CreateRecord("01K0A000000000000000000033");
+        AccessTelemetryRecord alsoDue = CreateRecord("01K0A000000000000000000069", Expiry.AddMilliseconds(500));
+        AccessTelemetryExpiryEntry keptEntry = CreateEntry(kept);
+        AccessTelemetryExpiryEntry alsoDueEntry = CreateEntry(alsoDue);
+        await store.WriteRecordAndIndexAsync(kept, keptEntry, 3600, CancellationToken.None);
+        await store.WriteRecordAndIndexAsync(alsoDue, alsoDueEntry, 3600, CancellationToken.None);
+        AccessTelemetryStateStoreTestRecords.BucketKey(alsoDueEntry)
+            .ShouldBe(AccessTelemetryStateStoreTestRecords.BucketKey(keptEntry));
+
+        _ = state.UnappliedUpsertKeys.Add(AccessTelemetryStateStoreTestRecords.BucketKey(keptEntry));
+
+        AccessTelemetryDeleteStatus result = await store.DeleteAndVerifyAsync(keptEntry, CancellationToken.None);
+
+        result.ShouldBe(AccessTelemetryDeleteStatus.VerificationFailed);
+        state.Contains(AccessTelemetryStateStoreTestRecords.RecordKey(kept.RecordId)).ShouldBeFalse();
+        state.Get<AccessTelemetryExpiryBucket>(AccessTelemetryStateStoreTestRecords.BucketKey(keptEntry))
+            .Entries.ShouldContain(keptEntry);
+    }
+
+    [Fact]
+    public async Task DeleteAndVerifyAsync_StaleEntryRewriteIsAcknowledgedButNotApplied_ThrowsRatherThanReportingSuccess()
+    {
+        // The stale-index prune runs outside the main transaction, so it verifies its own removal
+        // and must refuse to report StaleIndex when the backend did not actually apply it.
+        var state = new TransactionalDaprState();
+        var store = new DaprAccessTelemetryStateStore(state.Client);
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+        await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
+
+        // A superseded generation of the same record still occupies the bucket, so pruning it is a
+        // bucket Upsert that leaves the live entry behind rather than a Delete of the bucket key.
+        AccessTelemetryRecord superseded = CreateRecord("01K0A000000000000000000001", durationMs: 99);
+        AccessTelemetryExpiryEntry supersededEntry = CreateEntry(superseded);
+        state.Seed(
+            AccessTelemetryStateStoreTestRecords.BucketKey(entry),
+            new AccessTelemetryExpiryBucket(entry.ExpiryMinute, entry.Shard, [entry, supersededEntry]));
+        _ = state.UnappliedUpsertKeys.Add(AccessTelemetryStateStoreTestRecords.BucketKey(entry));
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(() =>
+            store.DeleteAndVerifyAsync(supersededEntry, CancellationToken.None));
+
+        // The live record and its own index entry are untouched by the failed prune.
+        state.Contains(AccessTelemetryStateStoreTestRecords.RecordKey(record.RecordId)).ShouldBeTrue();
+        state.Get<AccessTelemetryExpiryBucket>(AccessTelemetryStateStoreTestRecords.BucketKey(entry))
+            .Entries.ShouldContain(entry);
+    }
+
+    [Fact]
+    public async Task WriteRecordAndIndexAsync_CarriesPartitionAndTtlMetadataTheComponentRequires()
+    {
+        // The fake rejects a transaction whose operations drop `partitionKey`, or whose record
+        // upsert drops `ttlInSeconds`, so this asserts the metadata contract rather than restating
+        // the captured request.
+        var state = new TransactionalDaprState();
+        var store = new DaprAccessTelemetryStateStore(state.Client);
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+
+        AccessTelemetryStoreWriteStatus result = await store.WriteRecordAndIndexAsync(
+            record,
+            entry,
+            3600,
+            CancellationToken.None);
+
+        result.ShouldBe(AccessTelemetryStoreWriteStatus.Inserted);
+        IReadOnlyList<StateTransactionRequest> committed = state.Transactions.ShouldHaveSingleItem();
+        committed.ShouldAllBe(static operation => operation.Metadata!["partitionKey"] == "access-telemetry");
+        committed
+            .Where(static operation => operation.Key.StartsWith("records/", StringComparison.Ordinal))
+            .ShouldAllBe(static operation => operation.Metadata!.ContainsKey("ttlInSeconds"));
+        committed
+            .Where(static operation => !operation.Key.StartsWith("records/", StringComparison.Ordinal))
+            .ShouldAllBe(static operation => !operation.Metadata!.ContainsKey("ttlInSeconds"));
     }
 
     private static AccessTelemetryExpiryEntry CreateEntry(AccessTelemetryRecord record)

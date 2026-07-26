@@ -31,6 +31,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--steady-state-minutes", type=int, required=True)
     parser.add_argument("--purge-backlog-records", type=int, required=True)
     parser.add_argument("--evidence", required=True)
+    # Both values are part of the reviewed Production-Shaped Execution Contract and must be
+    # supplied, never synthesized. DECLARED_SINGLE_COMPONENT_FAULT previously defaulted to
+    # the literal "unconfigured", which is non-empty and therefore passed the required-field
+    # check and was stamped into the immutable packet as a reviewed declaration; EVIDENCE_ROOT
+    # was derived from the evidence path's parent instead of the reviewed value.
+    parser.add_argument(
+        "--declared-single-component-fault",
+        default=os.environ.get("DECLARED_SINGLE_COMPONENT_FAULT", ""),
+    )
+    parser.add_argument("--evidence-root", default=os.environ.get("EVIDENCE_ROOT", ""))
     return parser
 
 
@@ -46,15 +56,18 @@ def main(argv: list[str] | None = None) -> int:
                 "KUBE_NAMESPACE": args.namespace,
                 "DEPLOYMENT_ID": args.deployment_id,
                 "PROFILE_ID": args.profile_id,
-                "EVIDENCE_ROOT": str(Path(args.evidence).resolve().parent),
-                "DECLARED_SINGLE_COMPONENT_FAULT": os.environ.get(
-                    "DECLARED_SINGLE_COMPONENT_FAULT",
-                    "unconfigured",
-                ),
+                "EVIDENCE_ROOT": args.evidence_root,
+                "DECLARED_SINGLE_COMPONENT_FAULT": args.declared_single_component_fault,
             }
         )
     except EnvironmentIdentityError as exc:
         print(str(exc), file=sys.stderr)
+        return 2
+    if identity.declared_single_component_fault.lower() in {"unconfigured", "unknown", "tbd", "none"}:
+        print(
+            "DECLARED_SINGLE_COMPONENT_FAULT must name the reviewed fault, not a placeholder",
+            file=sys.stderr,
+        )
         return 2
     return run_adapter_profile_checkpoint(
         identity=identity,

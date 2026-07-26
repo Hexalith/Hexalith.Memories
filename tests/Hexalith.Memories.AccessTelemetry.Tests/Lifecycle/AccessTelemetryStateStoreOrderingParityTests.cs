@@ -89,6 +89,56 @@ public sealed class AccessTelemetryStateStoreOrderingParityTests
         inMemoryDue.Select(static entry => entry.RecordId).ShouldBe(expected);
     }
 
+    [Fact]
+    public async Task GetDueEntriesAsync_EntriesSharingExpiresAtUtc_BothAdaptersBreakTheTieOnShard()
+    {
+        // Both records carry the identical canonical expiry instant, so ExpiresAtUtc cannot order
+        // them and the Shard tiebreaker is the only thing that can. The shards (21, 6) deliberately
+        // disagree with RecordId order, so dropping `.ThenBy(entry => entry.Shard)` falls through to
+        // RecordId and reverses both adapters.
+        AccessTelemetryRecord higherShard = AccessTelemetryStateStoreTestRecords.CreateRecord(
+            "01K0A000000000000000000001",
+            Expiry.AddMilliseconds(100));
+        AccessTelemetryRecord lowerShard = AccessTelemetryStateStoreTestRecords.CreateRecord(
+            "01K0A000000000000000000002",
+            Expiry.AddMilliseconds(100));
+
+        (IReadOnlyList<AccessTelemetryExpiryEntry> daprDue, IReadOnlyList<AccessTelemetryExpiryEntry> inMemoryDue) =
+            await ReadDueFromBothAdaptersAsync([higherShard, lowerShard], Expiry.AddMinutes(1), 10);
+
+        daprDue.Select(static entry => entry.ExpiresAtUtc).Distinct().ShouldHaveSingleItem();
+        string[] expected = [lowerShard.RecordId, higherShard.RecordId];
+        daprDue.Select(static entry => entry.RecordId).ShouldBe(expected);
+        inMemoryDue.Select(static entry => entry.RecordId).ShouldBe(expected);
+        daprDue.Select(static entry => entry.Shard).ShouldBe([6, 21]);
+        inMemoryDue.Select(static entry => entry.Shard).ShouldBe([6, 21]);
+    }
+
+    [Fact]
+    public async Task GetDueEntriesAsync_EntriesSharingExpiresAtUtcAndShard_BothAdaptersBreakTheTieOnRecordId()
+    {
+        // Both record identifiers hash to shard 1 and carry the identical expiry instant, so
+        // RecordId is the only remaining tiebreaker. They are written in descending identifier
+        // order, so dropping `.ThenBy(entry => entry.RecordId)` leaves the in-memory adapter on
+        // dictionary insertion order and reverses it.
+        AccessTelemetryRecord second = AccessTelemetryStateStoreTestRecords.CreateRecord(
+            "01K0A000000000000000000069",
+            Expiry.AddMilliseconds(100));
+        AccessTelemetryRecord first = AccessTelemetryStateStoreTestRecords.CreateRecord(
+            "01K0A000000000000000000033",
+            Expiry.AddMilliseconds(100));
+
+        (IReadOnlyList<AccessTelemetryExpiryEntry> daprDue, IReadOnlyList<AccessTelemetryExpiryEntry> inMemoryDue) =
+            await ReadDueFromBothAdaptersAsync([second, first], Expiry.AddMinutes(1), 10);
+
+        // Proves the fixture is a true two-way tie before RecordId is consulted.
+        daprDue.Select(static entry => entry.ExpiresAtUtc).Distinct().ShouldHaveSingleItem();
+        daprDue.Select(static entry => entry.Shard).ShouldBe([1, 1]);
+        string[] expected = [first.RecordId, second.RecordId];
+        daprDue.Select(static entry => entry.RecordId).ShouldBe(expected);
+        inMemoryDue.Select(static entry => entry.RecordId).ShouldBe(expected);
+    }
+
     private static async Task<(IReadOnlyList<AccessTelemetryExpiryEntry> Dapr, IReadOnlyList<AccessTelemetryExpiryEntry> InMemory)>
         ReadDueFromBothAdaptersAsync(
             IReadOnlyList<AccessTelemetryRecord> records,

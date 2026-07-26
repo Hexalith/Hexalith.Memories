@@ -232,6 +232,17 @@ jobs:
       - name: Run production deployment evidence fixtures
         run: python3 -m unittest discover -s tests/tooling/production_deployment_evidence -p "*_test.py"
 
+      - name: Run access-telemetry lifecycle C1 fixtures
+        # Story 27.3's mandatory C1 inventory. PYTHONHASHSEED=0 matches the story's exact
+        # discovery command so the recorded sorted-case identity is reproducible here.
+        run: PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p "test_adapter_profile.py"
+
+      - name: Run story file-scope gate fixtures
+        run: python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"
+
+      - name: Run integration stub closure fixtures
+        run: python3 -m unittest discover -s tests/tooling/integration_stub_closure -p "*_test.py"
+
       - name: Pack and validate release packages
         run: pwsh ./tools/pack-release.ps1 -Version 0.0.264 -OutputDirectory artifacts/packages/ci -PackageOnly
 

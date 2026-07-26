@@ -55,6 +55,10 @@ class CoverageContractTests(unittest.TestCase):
             [
                 "Hexalith.Memories.Contracts.Tests",
                 "Hexalith.Memories.Server.Tests",
+                # Story 27.3: registered in the Docker-free unit/contract lane on 2026-07-26, so
+                # its Cobertura report is now required evidence. Keep in sync with
+                # tools/test-projects.unit-contract.txt and CiTestInventoryTests.
+                "Hexalith.Memories.AccessTelemetry.Tests",
                 "Hexalith.Memories.Cli.Tests",
                 "Hexalith.Memories.Mcp.Tests",
                 "Hexalith.Memories.EventStore.Tests",

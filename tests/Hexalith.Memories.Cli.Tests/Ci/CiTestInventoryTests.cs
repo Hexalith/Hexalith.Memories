@@ -18,6 +18,7 @@ public sealed partial class CiTestInventoryTests
     [
         "tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj",
         "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj",
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
         "tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj",
         "tests/Hexalith.Memories.Mcp.Tests/Hexalith.Memories.Mcp.Tests.csproj",
         "tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj",
@@ -400,6 +401,76 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void CiWorkflow_KeepsEveryRestoreAuditExceptionInSyncWithDirectoryBuildProps()
+    {
+        // `-p:WarningsNotAsErrors=...` is a *global* MSBuild property, which a <PropertyGroup>
+        // cannot override, so Directory.Build.props' own definition is inert during CI restore.
+        // The global form is nonetheless required: it is the only way the exception reaches the
+        // Hexalith.FrontComposer submodule, which has a separate Directory.Build.props chain.
+        //
+        // Owner: repository build owner (Hexalith ci-cd-standards.md, "Dependency Auditing").
+        // Consequence of drift: a code added to Directory.Build.props works locally and is
+        // silently dropped in CI, or one restore step diverges from the other three.
+        // Reopen trigger: the submodule adopts the shared Directory.Build.props chain, at which
+        // point the -p: injection can be deleted and this guard with it.
+        string repoRoot = GetRepoRoot();
+        string workflow = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
+        string buildProps = File.ReadAllText(Path.Combine(repoRoot, "Directory.Build.props"));
+
+        Match declared = Regex.Match(
+            buildProps,
+            @"<WarningsNotAsErrors>\$\(WarningsNotAsErrors\);(?<codes>[^<]+)</WarningsNotAsErrors>");
+        declared.Success.ShouldBeTrue("Directory.Build.props must declare the audit-warning exception list.");
+        string[] declaredCodes = [.. declared.Groups["codes"].Value.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)];
+        declaredCodes.ShouldNotBeEmpty();
+
+        MatchCollection restoreSteps = Regex.Matches(
+            workflow,
+            @"dotnet restore [^\r\n]*?-p:WarningsNotAsErrors=(?<codes>[^\s]+)");
+        restoreSteps.Count.ShouldBe(
+            4,
+            "Every CI restore step must carry the audit-warning exception; found a different number of injected steps.");
+
+        foreach (Match step in restoreSteps)
+        {
+            // %3B is the URL-encoded semicolon the shell requires inside a -p: value.
+            string[] injected = [.. step.Groups["codes"].Value
+                .Replace("%3B", ";", StringComparison.Ordinal)
+                .Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)];
+            injected.ShouldBe(
+                declaredCodes,
+                "Each CI restore step must inject exactly the codes Directory.Build.props declares, "
+                    + "because the global property makes that declaration inert during CI restore.");
+        }
+    }
+
+    [Fact]
+    public void CiWorkflow_RunsEveryToolingFixtureSuiteThatGuardsAShippedTool()
+    {
+        // A tooling suite that no workflow runs is not a guard. Story 27.3's four-case (now
+        // six-case) C1 inventory ran in no workflow while being cited as mandatory evidence,
+        // and the sweep that found it also found `story_scope` and `integration_stub_closure`
+        // unwired. Any workflow may host a suite: release_preflight runs from release.yml.
+        string repoRoot = GetRepoRoot();
+        string workflows = string.Concat(Directory
+            .GetFiles(Path.Combine(repoRoot, ".github", "workflows"), "*.yml")
+            .Order(StringComparer.Ordinal)
+            .Select(File.ReadAllText));
+
+        foreach (string suite in Directory
+            .GetDirectories(Path.Combine(repoRoot, "tests", "tooling"))
+            .Select(static directory => new DirectoryInfo(directory).Name)
+            .Where(static name => !string.IsNullOrEmpty(name))
+            .Order(StringComparer.Ordinal))
+        {
+            workflows.ShouldContain(
+                $"-s tests/tooling/{suite} ",
+                Case.Sensitive,
+                $"tests/tooling/{suite} is executed by no workflow step, so reverting anything it guards ships green.");
+        }
+    }
+
+    [Fact]
     public void CiWorkflow_PinsDisposableClusterDeploymentVerificationJob()
     {
         string repoRoot = GetRepoRoot();
@@ -460,14 +531,20 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }");
         verifier.ShouldContain("wgetOutput=\"$(wget -S -O- -T 6 --header=\"dapr-api-token: ${APP_API_TOKEN}\"");
         verifier.ShouldContain("wgetExit=$?");
-        verifier.ShouldContain("grep -Eq 'HTTP/[0-9.]+ 503([[:space:]]|$)'");
         verifier.ShouldContain("dapr-api-token: %s");
         verifier.ShouldContain("Connection: close\\r\\ndapr-api-token: %s\\r\\n\\r\\n");
         verifier.ShouldContain("$probeCommand = $probeCommand.Replace(\"`r\", '')");
-        verifier.ShouldContain("$text = Protect-EvidenceText ($output -join [Environment]::NewLine)");
-        verifier.ShouldContain("function Get-HealthJsonBody");
-        verifier.ShouldContain("ConvertFrom-Json -ErrorAction Stop");
         verifier.ShouldContain("Save-HealthResponseEvidence");
+
+        // Health-response parsing moved to its own dot-sourceable file so it can be exercised
+        // with real transcripts instead of pinned by source text, and redaction moved off the
+        // health-decision path to the evidence write.
+        string health = File.ReadAllText(Path.Combine(repoRoot, "tools", "production-deployment-health.ps1"));
+        verifier.ShouldContain("production-deployment-health.ps1");
+        verifier.ShouldNotContain("$text = Protect-EvidenceText ($output");
+        health.ShouldContain("function Get-HealthJsonBody");
+        health.ShouldContain("function Get-HealthStatusCode");
+        health.ShouldContain("ConvertFrom-Json -ErrorAction Stop");
         verifier.ShouldContain("Write-ClusterDiagnostics");
         verifier.ShouldContain("describe-pods.txt");
         verifier.ShouldContain("events.txt");
@@ -1363,7 +1440,12 @@ public sealed partial class CiTestInventoryTests
         targetArtifact.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Target artifact:' field.");
         reopenTrigger.ShouldNotBeNullOrWhiteSpace($"structured deferred entry '{id}' is missing the required 'Re-open trigger:' field.");
 
-        AllowedDeferredStatuses.ShouldContain(status!, $"structured deferred entry '{id}' has invalid 'Status: {status}'. Allowed values: {string.Join(", ", AllowedDeferredStatuses)}.");
+        // The register's closure style writes a dated rationale after the status token
+        // (`Status: resolved 2026-07-26 - <why>`). Take the leading token as the status and
+        // keep the remainder as prose; the token itself must still be one of the four
+        // documented values, so `superseded` or any other invented status still fails.
+        status = status!.Split(' ', 2, StringSplitOptions.TrimEntries)[0];
+        AllowedDeferredStatuses.ShouldContain(status, $"structured deferred entry '{id}' has invalid 'Status: {status}'. Allowed values: {string.Join(", ", AllowedDeferredStatuses)}.");
 
         if (status == "resolved")
         {
