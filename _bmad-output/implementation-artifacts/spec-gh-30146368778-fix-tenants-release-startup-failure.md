@@ -1,4 +1,4 @@
----
+ok---
 title: 'Restore a policy-compliant Release pipeline for Hexalith.Tenants'
 type: 'bugfix'
 created: '2026-07-25'
