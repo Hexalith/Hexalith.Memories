@@ -95,9 +95,12 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            // Purge order is observable behaviour, so this must match DaprAccessTelemetryStateStore
+            // exactly: minute-major traversal, then ExpiresAtUtc, Shard, and RecordId within a minute.
             IReadOnlyList<AccessTelemetryExpiryEntry> entries = _entries.Values
                 .Where(entry => entry.ExpiryMinute <= dueMinute)
                 .OrderBy(static entry => entry.ExpiryMinute)
+                .ThenBy(static entry => entry.ExpiresAtUtc, StringComparer.Ordinal)
                 .ThenBy(static entry => entry.Shard)
                 .ThenBy(static entry => entry.RecordId, StringComparer.Ordinal)
                 .Take(limit)

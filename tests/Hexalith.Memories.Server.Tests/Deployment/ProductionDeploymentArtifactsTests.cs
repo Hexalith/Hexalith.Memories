@@ -132,10 +132,16 @@ public sealed class ProductionDeploymentArtifactsTests
         accessTelemetryStore.ShouldContain("type: state.postgresql");
         accessTelemetryStore.ShouldContain("version: v2");
         accessTelemetryStore.ShouldContain("name: access-telemetry-postgresql");
-        accessTelemetryStore.ShouldContain("name: sslRootCert");
-        accessTelemetryStore.ShouldContain("value: /mnt/access-telemetry-postgresql/ca.crt");
         accessTelemetryStore.ShouldContain("value: access_telemetry.lifecycle_");
         accessTelemetryStore.ShouldNotContain("queryIndexes");
+
+        // Chunk-2 review patch (2026-07-21): sslRootCert is not a recognised state.postgresql/v2
+        // metadata field, so Dapr silently ignored it and it guaranteed nothing. TLS verify-full is
+        // carried by the OpenBao-sourced connection string (sslrootcert/sslmode=verify-full), so the
+        // dead field must stay removed and the secret carrier is what this guard binds instead.
+        accessTelemetryStore.ShouldNotContain("sslRootCert");
+        accessTelemetryStore.ShouldContain("secretStore: access-telemetry-secrets");
+        accessTelemetryStore.ShouldContain("key: connectionString");
 
         conversation.ShouldContain("type: conversation.openai");
         conversation.ShouldContain("value: gpt-4o-mini");

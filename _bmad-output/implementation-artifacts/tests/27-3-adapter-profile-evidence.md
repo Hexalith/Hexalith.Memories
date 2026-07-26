@@ -1,6 +1,6 @@
 # Story 27.3 C1 Adapter Profile Evidence
 
-- captured_utc: `2026-07-20T21:12:48.321277+00:00`
+- captured_utc: `2026-07-26T13:47:09.398199+00:00`
 - checkpoint: `adapter-profile`
 - status: `rejected`
 - rejection_reason: lifecycle deployment is disabled; Production writes remain fail-closed
@@ -11,15 +11,15 @@
 
 - kube_context: `jpiquot@local`
 - kube_namespace: `hexalith-memories`
-- deployment_id: `story-27-3-c1-qualification`
+- deployment_id: `memories-production-2.11.0-c7c2ca21-hexalith-keys-r2`
 - profile_id: `postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1`
 - evidence_root: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/tests`
-- declared_single_component_fault: `postgresql-pod-replacement`
+- declared_single_component_fault: `postgresql-pod-process-loss-retained-local-volume`
 
 ## Immutable Profile Material
 
-- profile_sha256: `53d18fd4dcdb77b99e240b471f0edfcfd975f1838ab6cae757a9d1782d9b6efa`
-- mutation_manifest_sha256: `bfd97635e9e00ef08f9f8567d2085b222168e58623a3f5059cf493ec81cf50e8`
+- profile_sha256: `01f6ce9f1cdf6fad022c6f86942d0a103c1685fcc9a54c47efc48ac58162d6cc`
+- mutation_manifest_sha256: `04c034b9e8c8012f4813d52877042adbda9edc385f32d87c36f2019ecc3e61da`
 - allowed_mutations: `[]`
 
 ## Safe Deployment Observations
