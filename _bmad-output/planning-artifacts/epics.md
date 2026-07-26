@@ -658,9 +658,10 @@ Aspire-hosted services resolve application secrets exclusively through Dapr secr
 **NFRs reinforced:** NFR9
 **Scope boundary:** Epic 29 owns the Aspire/AppHost-local secret topology and provider-neutral composition. The deployed-cluster OpenBao platform and the runtime Dapr `secretstore` migration are Epic 31.
 
-### Epic 30: Container Release Pipeline Ownership
-The four-image container release and partial-recovery pipeline is owned, tested, and documented as an independently demonstrable release lane rather than as incidental scope inside an adapter-qualification story.
-**Lifecycle label:** Operational Readiness / Release Engineering
+### Epic 30: CI/CD Pipeline Ownership and Alignment
+Memories adopts the EventStore-shaped Hexalith CI/CD model: reusable Hexalith.Builds workflows own standard build, test, and release mechanics, while Memories retains only named module-specific verification and recovery lanes. Tenants supplies compatible coverage and consumer-validation patterns where those shared inputs fit. The existing four-image container release and partial-recovery scope remains independently owned inside this epic.
+**Lifecycle label:** Operational Readiness / CI/CD Engineering
+**Alignment target:** EventStore's shared-core plus companion-lane structure, with Tenants-style coverage and consumer validation where supported. Alignment must not weaken tenant-negative evidence, web E2E, integration, deployment, benchmark, package-inventory, or partial-release recovery gates.
 **Driven by:** Sprint Change Proposal 2026-07-26 — DW 27.3-CR5 split approved by Administrator 2026-07-21
 
 ### Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
@@ -5061,11 +5062,13 @@ So that consumers can use OpenBao without product code depending on OpenBao.
 
 ---
 
-## Epic 30: Container Release Pipeline Ownership
+## Epic 30: CI/CD Pipeline Ownership and Alignment
 
-The four-image container release and partial-recovery pipeline is owned, tested, and documented as an independently demonstrable release lane rather than as incidental scope inside an adapter-qualification story.
+Memories adopts the EventStore-shaped Hexalith CI/CD model: reusable Hexalith.Builds workflows own standard build, test, and release mechanics, while Memories retains only named module-specific verification and recovery lanes. Tenants supplies compatible coverage and consumer-validation patterns where those shared inputs fit. The existing four-image container release and partial-recovery scope remains independently owned inside this epic.
 
-**Lifecycle label:** Operational Readiness / Release Engineering.
+**Lifecycle label:** Operational Readiness / CI/CD Engineering.
+
+**Alignment target:** EventStore's shared-core plus companion-lane structure, with Tenants-style coverage and consumer validation where supported. Alignment must not weaken tenant-negative evidence, web E2E, integration, deployment, benchmark, package-inventory, or partial-release recovery gates.
 
 **Driven by:** Sprint Change Proposal 2026-07-26, executing DW 27.3-CR5 (split approved by the Administrator on 2026-07-21 during Story 27.3 code review).
 
@@ -5075,33 +5078,98 @@ The four-image container release and partial-recovery pipeline is owned, tested,
 
 **Status:** backlog. **Owner:** Memories Maintainer.
 
+**Activation gate:** Story 30.1 must not enter implementation until an owner-approved Hexalith.Builds revision supports a frozen multi-container publication identity, repeated per-container verification without phase collisions, and evidence sufficient for partial-release recovery. The current single `container_repository` identity and single-use container phase do not satisfy the four-image contract.
+
 As a maintainer,
-I want the four-image container release and partial-recovery pipeline to be an independently demonstrable, tested release lane,
-So that release integrity is provable on its own evidence instead of inside an unrelated adapter qualification.
+I want the nine-package and four-image release aligned to the guarded Hexalith release workflow,
+So that publication uses one auditable shared contract while preserving deterministic partial recovery.
 
 **Acceptance Criteria:**
 
-**Given** the four-image publish pipeline and its partial-recovery path,
-**When** the release lane is exercised,
-**Then** `tools/publish-containers.ps1`, `tools/complete-partial-release.ps1`, and `tools/verify-container-registry.ps1` are covered by the `tests/tooling/publish_containers` suites with named discovery commands and pass counts
-**And** `.github/workflows/recover-partial-release.yml` and the release/publish steps of `.github/workflows/ci.yml` are bound by `CiTestInventoryTests` assertions.
+**Given** an operator intentionally dispatches a release from `main`,
+**When** the release caller starts,
+**Then** an unprotected preflight proves the dispatch SHA is the current `main` tip with successful exact-source push CI
+**And** the release job uses a protected `production` environment, `cancel-in-progress: false`, and `domain-release.yml` pinned to the same approved 40-character Hexalith.Builds SHA passed as `builds-execution-sha`
+**And** ordinary pushes to `main` never publish a release.
+
+**Given** exact-source CI already tested the release candidate,
+**When** the reusable release job is invoked,
+**Then** `test-projects` remains empty to avoid duplicate release compute
+**And** `expected-package-count` is fixed at `9`
+**And** any failed source, package-count, environment, destination-absence, or Builds-identity proof stops before publication.
+
+**Given** the shared publication preflight reads `packages[].id`,
+**When** Memories adopts the shared release,
+**Then** `tools/release-packages.json`, its schema, validators, pack scripts, recovery tooling, and fixtures migrate atomically from `packageId` to `id`
+**And** the canonical inventory remains exactly the existing nine package IDs.
+
+**Given** the approved multi-container Hexalith.Builds contract,
+**When** semantic-release publishes version `${nextRelease.version}`,
+**Then** the caller supplies exactly these mappings:
+
+- `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories`
+- `src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp`
+- `src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock`
+
+**And** every image is verified against its declared platforms and workload-appropriate health contract
+**And** Memories-specific production-deployment asset generation remains in the caller rather than being copied into Hexalith.Builds.
 
 **Given** a publish run that fails after some images are pushed,
-**When** partial recovery runs,
-**Then** the remaining images publish without republishing or corrupting the already-pushed set
-**And** the recovery path is evidenced by a named test result, not by inspection.
+**When** recovery is authorized,
+**Then** `.github/workflows/recover-partial-release.yml` consumes immutable release evidence, proves the exact source/version/inventory, skips already-published members, and publishes only the missing members
+**And** recovery never overwrites, retags, or silently treats an ambiguous destination response as success.
 
-**Given** `docs/dev/release-runbook.md`,
-**When** Story 30.1 completes,
-**Then** the runbook documents the four-image expansion, the partial-recovery procedure, and the registry-authorization contract.
+**Given** the existing automatic release and custom publisher,
+**When** migration is cut over,
+**Then** a dry run and controlled release rehearsal prove nine-package, four-image, GitHub Release asset, registry authorization, failure, and recovery parity
+**And** the old path is removed only after parity succeeds
+**And** rollback restores the prior caller without changing a published version or mutable tag.
 
 **Given** registry push authorization,
 **When** the pipeline authenticates,
 **Then** the authorization mode in use is recorded, and any registry-side limitation that blocks an authenticated push is captured as a named blocker with owner, consequence, and reopen trigger rather than worked around silently.
 
+**Implementation evidence:** The story file must track the Hexalith.Builds prerequisite SHA, manifest migration, four-image identity, release rehearsal, partial-failure exercise, recovery result, protected-environment configuration, and rollback proof as separate reviewable checkpoints.
+
 **Known risk (carried, not yet re-verified):** a prior investigation recorded that the zot registry rejected challenge-response push authentication — Docker and skopeo pushes returned 401 while a preemptive single-connection preflight probe succeeded — and suspected a registry-side replica/state issue requiring server-side diagnosis. Re-verify this against the current registry before treating the publish path as green; if it reproduces, record it as an accepted blocker per the acceptance criterion above.
 
 **Scope boundary:** Story 30.1 owns the release/publish lane only. Production deployment rendering, verification, and evidence tooling (`tools/render-production-deployment.ps1`, `tools/verify-production-deployment.ps1`, `tools/validate-production-deployment-evidence.ps1`) remain owned by Story 27.3.
+
+### Story 30.2: Shared CI Core and Module-Specific Verification Lanes
+
+**Status:** backlog. **Owner:** Memories Maintainer + Hexalith.Builds Maintainer.
+
+As a maintainer,
+I want Memories CI aligned to the shared Hexalith.Builds contract,
+So that standard checks remain consistent across modules without losing Memories-specific evidence.
+
+**Acceptance Criteria:**
+
+**Given** pull requests and pushes to `main`,
+**When** `ci.yml` runs,
+**Then** its standard restore, Release build, warnings-as-errors, and compatible per-project test work is delegated to `Hexalith/Hexalith.Builds/.github/workflows/domain-ci.yml@main`
+**And** test projects and platform selection are explicit rather than inferred.
+
+**Given** Memories has verification that the reusable workflow does not model,
+**When** the pipeline is reorganized,
+**Then** story-file scope, tenant-negative evidence, tooling fixtures, release-package topology, web E2E, fast integration, and production-deployment verification remain named local jobs or companion workflows
+**And** nightly slow integration and benchmark lanes remain intact.
+
+**Given** consumer validation, coverage, or package validation cannot use an existing shared input without weakening evidence,
+**When** alignment is implemented,
+**Then** the missing reusable capability is added to Hexalith.Builds or retained locally with a documented exception
+**And** shared workflow logic is not copied into Memories.
+
+**Given** commit and pull-request title validation,
+**When** a pull-request title is opened, synchronized, reopened, or edited, or a commit reaches `main`,
+**Then** commitlint runs with the pull-request title supplied explicitly and enforces the repository Conventional Commit contract.
+
+**Given** the aligned pipeline is proposed for required-check adoption,
+**When** old and new lanes are compared,
+**Then** every existing required gate has equivalent or stronger executable evidence, stable check names are documented for branch protection, TRX and coverage evidence remain downloadable, and duplicate work is removed only after equivalence is proven.
+
+**Implementation evidence:** The story file must contain a lane-by-lane migration table naming the old owner, new owner, trigger, required-check name, validation command or artifact, and rollback path.
 
 ---
 

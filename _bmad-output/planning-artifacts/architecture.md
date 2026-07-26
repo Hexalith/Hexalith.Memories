@@ -561,7 +561,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | # | Decision | Choice | Rationale | Affects |
 |---|---|---|---|---|
 | D16 | Test framework | xUnit v3 + Shouldly + NSubstitute | Aspire `DistributedApplicationTestingBuilder` aligned. Readable assertions. | All test projects |
-| D17 | CI/CD pipeline | GitHub Actions minimum build/test gate first, then full semantic release | The minimum build/test feedback gate is an early foundation prerequisite for any greenfield or restarted implementation sequence. Automated versioning from conventional commits, NuGet publish on tag, branch protection on `main`, and release hardening remain Engineering/Operational Readiness work. | Git workflow, commit conventions, NuGet publishing, CONTRIBUTING.md |
+| D17 | CI/CD pipeline | Hexalith.Builds reusable CI core plus module-specific verification lanes and intentional guarded release | Pull requests and pushes to `main` use `domain-ci.yml@main` for compatible standard build/test work. Memories-specific tenant evidence, tooling, web E2E, integration, deployment, benchmark, and recovery lanes remain local and explicit. Publication is operator-dispatched from the exact current green `main` source, enters a protected environment, and invokes `domain-release.yml` pinned to an approved immutable Hexalith.Builds SHA. | Shared workflow callers, module-specific workflow lanes, commit conventions, branch protection, package/container publication, recovery, CONTRIBUTING.md |
 
 ### Updated Deployment Topology
 
@@ -593,7 +593,7 @@ Captured in Decision Registry D1-D28. D1-D10 from context analysis, D11-D17 from
 | D14 | Versioned contract namespaces | Clean consumer upgrade path | MVP |
 | D15 | Type-scoped actor identity | Future-safe naming | MVP |
 | D16 | xUnit + Shouldly + NSubstitute (aligned with EventStore) | Ecosystem consistency | MVP |
-| D17 | GitHub Actions + semantic release | Automated versioning, open-source ready | MVP |
+| D17 | Reusable GitHub Actions CI + guarded semantic release | Consistent evidence, intentional publication, recoverable multi-artifact release | Engineering/Operational Readiness |
 | D23 | DAPR Workflow for multi-step orchestrations | Durable Task Framework: built-in retry, compensation, state persistence, restart survival | MVP |
 | D24 | DAPR Actors for per-tenant stateful singletons | Virtual actor pattern: `EmbeddingRateLimiterActor`, `CorpusStatisticsActor`. Actor ID = tenant ID. | MVP |
 | D25 | Workflow-Actor separation of concerns | Workflows orchestrate processes (sequencing, retry, compensation). Actors manage per-entity state (rate limits, cached stats). Activities do I/O. | MVP |
