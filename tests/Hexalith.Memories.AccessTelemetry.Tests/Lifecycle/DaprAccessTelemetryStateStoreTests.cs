@@ -427,6 +427,33 @@ public sealed class DaprAccessTelemetryStateStoreTests
             .ShouldAllBe(static operation => !operation.Metadata!.ContainsKey("ttlInSeconds"));
     }
 
+    [Fact]
+    public async Task DeleteAndVerifyAsync_CarriesPartitionMetadataAndNeverTtlOnAnyOperation()
+    {
+        // The write path has its own metadata guard above; the delete path had none. The fake's
+        // RequireMetadata throws for any operation with wrong metadata, so the existing green suite
+        // proves this implicitly — but implicitly only, and a reader auditing the component contract
+        // for the delete transaction had no assertion to point at. Records expire natively, so a
+        // delete must never carry ttlInSeconds while still carrying the co-location partition key.
+        var state = new TransactionalDaprState();
+        var store = new DaprAccessTelemetryStateStore(state.Client);
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+        _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
+
+        AccessTelemetryDeleteStatus result = await store.DeleteAndVerifyAsync(entry, CancellationToken.None);
+
+        result.ShouldBe(AccessTelemetryDeleteStatus.Deleted);
+        IReadOnlyList<StateTransactionRequest> deleteTransaction = state.Transactions
+            .Skip(1)
+            .SelectMany(static transaction => transaction)
+            .ToArray();
+        deleteTransaction.ShouldNotBeEmpty();
+        deleteTransaction.ShouldAllBe(static operation => operation.Metadata!["partitionKey"] == "access-telemetry");
+        deleteTransaction.ShouldAllBe(static operation => !operation.Metadata!.ContainsKey("ttlInSeconds"));
+        deleteTransaction.ShouldContain(static operation => operation.OperationType == StateOperationType.Delete);
+    }
+
     private static AccessTelemetryExpiryEntry CreateEntry(AccessTelemetryRecord record)
         => AccessTelemetryStateStoreTestRecords.CreateEntry(record);
 

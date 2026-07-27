@@ -13,8 +13,13 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 /// Deterministic state adapter for lifecycle tests; not registered by the runtime host. It stands
 /// in for <see cref="DaprAccessTelemetryStateStore"/> in the portable lifecycle checkpoints, so it
 /// must model the same observable contract: all-or-nothing record/index/catalog writes, the
-/// anti-resurrection conflict guard, minute-major purge order with empty-minute pruning, and a
-/// strong post-delete verification that can fail.
+/// anti-resurrection conflict guard, minute-major purge order with empty-minute pruning, and strong
+/// post-delete verification that can fail on both the record side
+/// (<see cref="AccessTelemetryDeleteStatus.VerificationFailed"/>, forced by
+/// <see cref="SuppressRecordDeletion"/>) and the stale-entry index side (an
+/// <see cref="InvalidOperationException"/> mirroring
+/// <c>DaprAccessTelemetryStateStore.RemoveBucketEntryAsync</c>, forced by
+/// <see cref="SuppressEntryRemoval"/>).
 /// </summary>
 internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateStore
 {
@@ -22,6 +27,7 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
     private readonly Dictionary<string, AccessTelemetryExpiryEntry> _entries = new(StringComparer.Ordinal);
     private readonly HashSet<long> _activeMinutes = [];
     private readonly HashSet<string> _undeletableRecordIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _unremovableEntryKeys = new(StringComparer.Ordinal);
     private readonly List<int> _transactionOperationCounts = [];
     private readonly Lock _gate = new();
     private int _lastTtlInSeconds;
@@ -125,12 +131,19 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
     /// <summary>
     /// Removes one record the way native component TTL reaping would, leaving its expiry-index
     /// entry and active minute behind. Models the orphaned-entry state the purge loop must resolve.
+    /// A record that is not retained is a mistyped fixture, not a no-op reaping, so it throws for
+    /// fail-fast parity with the sibling <c>TransactionalDaprState.ExpireByTtl</c> helper.
     /// </summary>
     public void ExpireByTtl(string recordId)
     {
         lock (_gate)
         {
-            _ = _records.Remove(recordId);
+            if (!_records.Remove(recordId))
+            {
+                throw new KeyNotFoundException(
+                    $"{nameof(ExpireByTtl)} was given the record identifier '{recordId}', which this store does not retain. " +
+                    $"Retained record identifiers: {string.Join(", ", _records.Keys.Order(StringComparer.Ordinal))}.");
+            }
         }
     }
 
@@ -144,6 +157,33 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         lock (_gate)
         {
             _ = _undeletableRecordIds.Add(recordId);
+        }
+    }
+
+    /// <summary>
+    /// Makes the backend acknowledge a stale expiry-entry prune it never applies, so the strong
+    /// re-read still observes the entry. Models the index-side durability defect that
+    /// <c>DaprAccessTelemetryStateStore.RemoveBucketEntryAsync</c> throws on.
+    /// </summary>
+    public void SuppressEntryRemoval(AccessTelemetryExpiryEntry entry)
+    {
+        lock (_gate)
+        {
+            _ = _unremovableEntryKeys.Add(GetEntryKey(entry));
+        }
+    }
+
+    /// <summary>
+    /// Writes one expiry entry directly, bypassing the write path, so a test can construct index
+    /// state no single adapter call produces — a bucket still holding a superseded index generation
+    /// alongside the live entry.
+    /// </summary>
+    public void Seed(AccessTelemetryExpiryEntry entry)
+    {
+        lock (_gate)
+        {
+            _entries[GetEntryKey(entry)] = entry;
+            _ = _activeMinutes.Add(entry.ExpiryMinute);
         }
     }
 
@@ -251,7 +291,21 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
             {
                 // Prune only this exact stale entry. The live record's own entry can share the same
                 // (minute, shard) slot, and removing it would leave the record unpurgeable forever.
-                _ = _entries.Remove(entryKey);
+                // The Dapr adapter prunes only when the bucket actually holds the entry, so guard
+                // on presence before both the removal and its verification.
+                bool entryPresent = _entries.ContainsKey(entryKey);
+                if (entryPresent && !_unremovableEntryKeys.Contains(entryKey))
+                {
+                    _ = _entries.Remove(entryKey);
+                }
+
+                // Strong post-prune verification, exactly as RemoveBucketEntryAsync performs it.
+                if (entryPresent && _entries.ContainsKey(entryKey))
+                {
+                    throw new InvalidOperationException(
+                        "The stale lifecycle expiry bucket entry could not be strongly verified absent.");
+                }
+
                 return Task.FromResult(AccessTelemetryDeleteStatus.StaleIndex);
             }
 

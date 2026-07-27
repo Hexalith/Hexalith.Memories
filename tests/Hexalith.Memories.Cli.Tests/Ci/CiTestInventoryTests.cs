@@ -424,15 +424,25 @@ public sealed partial class CiTestInventoryTests
         string[] declaredCodes = [.. declared.Groups["codes"].Value.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)];
         declaredCodes.ShouldNotBeEmpty();
 
-        MatchCollection restoreSteps = Regex.Matches(
-            workflow,
-            @"dotnet restore [^\r\n]*?-p:WarningsNotAsErrors=(?<codes>[^\s]+)");
-        restoreSteps.Count.ShouldBe(
+        // Match every `dotnet restore` invocation, not only the ones already carrying the flag:
+        // matching on the flag made a new restore step added *without* it invisible to this guard,
+        // so the count stayed at 4 and the guard stayed green on exactly the drift it exists to catch.
+        MatchCollection restoreInvocations = Regex.Matches(workflow, @"dotnet restore [^\r\n]*");
+        restoreInvocations.Count.ShouldBe(
             4,
-            "Every CI restore step must carry the audit-warning exception; found a different number of injected steps.");
+            "Every CI restore invocation must be accounted for by this guard; found a different number of restore steps.");
 
-        foreach (Match step in restoreSteps)
+        Match[] restoreSteps = [.. restoreInvocations
+            .Where(static invocation => invocation.Value.Contains("-p:WarningsNotAsErrors=", StringComparison.Ordinal))];
+        restoreSteps.Length.ShouldBe(
+            restoreInvocations.Count,
+            "Every CI restore invocation must inject the audit-warning exception; one carries no -p:WarningsNotAsErrors= at all.");
+
+        foreach (Match invocation in restoreSteps)
         {
+            Match step = Regex.Match(invocation.Value, @"-p:WarningsNotAsErrors=(?<codes>[^\s]+)");
+            step.Success.ShouldBeTrue();
+
             // %3B is the URL-encoded semicolon the shell requires inside a -p: value.
             string[] injected = [.. step.Groups["codes"].Value
                 .Replace("%3B", ";", StringComparison.Ordinal)
@@ -457,16 +467,24 @@ public sealed partial class CiTestInventoryTests
             .Order(StringComparer.Ordinal)
             .Select(File.ReadAllText));
 
-        foreach (string suite in Directory
+        string[] suites = [.. Directory
             .GetDirectories(Path.Combine(repoRoot, "tests", "tooling"))
             .Select(static directory => new DirectoryInfo(directory).Name)
             .Where(static name => !string.IsNullOrEmpty(name))
-            .Order(StringComparer.Ordinal))
+            .Order(StringComparer.Ordinal)];
+
+        // Without this the foreach below runs zero times and the test passes having asserted
+        // nothing, which is indistinguishable from every suite being wired.
+        suites.ShouldNotBeEmpty("tests/tooling must contain at least one fixture suite for this guard to mean anything.");
+
+        foreach (string suite in suites)
         {
-            workflows.ShouldContain(
-                $"-s tests/tooling/{suite} ",
-                Case.Sensitive,
-                $"tests/tooling/{suite} is executed by no workflow step, so reverting anything it guards ships green.");
+            // Bound to the path as a whole token rather than to a literal trailing space, so
+            // harmless workflow-YAML reformatting cannot fail the guard, while `story_scope` still
+            // cannot be satisfied by a hypothetical `story_scope_extra` step.
+            Regex.IsMatch(workflows, $@"-s\s+tests/tooling/{Regex.Escape(suite)}(?![0-9A-Za-z_-])")
+                .ShouldBeTrue(
+                    $"tests/tooling/{suite} is executed by no workflow step, so reverting anything it guards ships green.");
         }
     }
 

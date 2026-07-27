@@ -191,4 +191,53 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
             CancellationToken.None);
         due.ShouldHaveSingleItem().ShouldBe(entry);
     }
+
+    [Fact]
+    public async Task DeleteAndVerifyAsync_StalePruneIsAcknowledgedButNotApplied_ThrowsRatherThanReportingStaleIndex()
+    {
+        // Parity with DaprAccessTelemetryStateStore.RemoveBucketEntryAsync, which strongly re-reads
+        // the bucket after pruning a stale entry and throws when the entry survived. Without this
+        // branch the portable checkpoints cannot observe an index-side durability regression:
+        // deleting the Dapr adapter's re-read would leave every in-memory checkpoint green.
+        var store = new InMemoryAccessTelemetryStateStore();
+        AccessTelemetryRecord record = AccessTelemetryStateStoreTestRecords.CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = AccessTelemetryStateStoreTestRecords.CreateEntry(record);
+        _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
+        AccessTelemetryExpiryEntry staleEntry = entry with { EnvelopeHash = new string('b', 64) };
+        store.Seed(staleEntry);
+        store.SuppressEntryRemoval(staleEntry);
+
+        InvalidOperationException thrown = await Should.ThrowAsync<InvalidOperationException>(
+            () => store.DeleteAndVerifyAsync(staleEntry, CancellationToken.None));
+
+        thrown.Message.ShouldContain("strongly verified absent");
+
+        // The failed prune must not have cost the live record its own index entry.
+        store.ContainsRecord(record.RecordId).ShouldBeTrue();
+        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+            entry.ExpiryMinute,
+            10,
+            CancellationToken.None);
+        due.ShouldContain(entry);
+    }
+
+    [Fact]
+    public async Task ExpireByTtl_RecordIdThatIsNotStored_ThrowsInsteadOfSilentlyNoOpping()
+    {
+        // Fail-fast parity with the sibling TransactionalDaprState.ExpireByTtl helper, which throws
+        // KeyNotFoundException for the identical mistake. A silent no-op here lets a fixture that
+        // mistypes the identifier still "arrange" TTL reaping and then assert against a record that
+        // was never reaped, so the test passes for the wrong reason.
+        var store = new InMemoryAccessTelemetryStateStore();
+        AccessTelemetryRecord record = AccessTelemetryStateStoreTestRecords.CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = AccessTelemetryStateStoreTestRecords.CreateEntry(record);
+        _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
+
+        KeyNotFoundException thrown = Should.Throw<KeyNotFoundException>(
+            () => store.ExpireByTtl("01K0A000000000000000000009"));
+
+        thrown.Message.ShouldContain("01K0A000000000000000000009");
+        thrown.Message.ShouldContain(record.RecordId);
+        store.ContainsRecord(record.RecordId).ShouldBeTrue();
+    }
 }
