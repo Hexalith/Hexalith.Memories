@@ -930,6 +930,41 @@ public sealed partial class CiTestInventoryTests
         baselines.ShouldBeEmpty();
     }
 
+    [Fact]
+    public void DeferredWorkRegister_RealRepo_DeclaresEachIdExactlyOnce()
+    {
+        string repoRoot = GetRepoRoot();
+        string[] lines = File.ReadAllLines(Path.Combine(repoRoot, "_bmad-output", "implementation-artifacts", "deferred-work.md"));
+
+        string[] duplicates = FindDuplicateDeferredIds(lines);
+
+        // Story 27.3: an ID collision has now recurred three times, each time because an entry was
+        // renumbered to escape a collision and landed on another live ID (27.3-CR7 -> 27.3-CR17 ->
+        // 27.3-CR18). Every existing guard, including ReadOpenDeferredBaselines above, checks for a
+        // duplicate field *within* one entry and stays green across entries, so the register could
+        // resolve one ID to two unrelated obligations with nothing able to observe it. This binds
+        // the register-wide invariant instead of the per-entry one.
+        duplicates.ShouldBeEmpty($"deferred-work.md declares duplicate entry IDs: {string.Join(", ", duplicates)}");
+    }
+
+    [Fact]
+    public void FindDuplicateDeferredIds_RepeatedId_IsReportedWithItsCount()
+    {
+        string[] fixture =
+        [
+            "  - ID: S11-FX",
+            "  - Status: open",
+            "  - ID: S11-FY",
+            "  - Status: open",
+            "  - ID: S11-FX",
+            "  - Status: resolved",
+        ];
+
+        string[] duplicates = FindDuplicateDeferredIds(fixture);
+
+        duplicates.ShouldBe(["S11-FX (x2)"]);
+    }
+
     private static string[] OpenStructuredBaselineFixture(string id, string testName)
         =>
         [
@@ -1481,6 +1516,24 @@ public sealed partial class CiTestInventoryTests
 
         result.Add(new StructuredDeferredEntry(id!, status!, sourceStory!, targetArtifact!, reopenTrigger!, evidence, rationale, test));
     }
+
+    /// <summary>Returns every deferred-work ID declared more than once, with its occurrence count.</summary>
+    /// <remarks>
+    /// Reuses <see cref="StructuredFieldRegex"/> so this guard and the structured-entry reader agree
+    /// on exactly which lines are ID declarations; a line the reader ignores cannot make this fail,
+    /// and a line the reader honours cannot escape it.
+    /// </remarks>
+    private static string[] FindDuplicateDeferredIds(IEnumerable<string> lines)
+        => lines
+            .Select(static line => StructuredFieldRegex().Match(line))
+            .Where(static match => match.Success
+                && string.Equals(match.Groups["label"].Value, "ID", StringComparison.OrdinalIgnoreCase))
+            .Select(static match => match.Groups["value"].Value.Trim())
+            .GroupBy(static id => id, StringComparer.Ordinal)
+            .Where(static group => group.Count() > 1)
+            .Select(static group => $"{group.Key} (x{group.Count()})")
+            .OrderBy(static description => description, StringComparer.Ordinal)
+            .ToArray();
 
     [GeneratedRegex(@"(?<key>S11-F[A-Z0-9]+)\.")]
     private static partial Regex DeferredKeyRegex();

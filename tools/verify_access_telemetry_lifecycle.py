@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 
 class EnvironmentIdentityError(ValueError):
@@ -21,6 +21,50 @@ class EnvironmentIdentityError(ValueError):
 
 class CapacityInputError(ValueError):
     """Raised when a capacity operand cannot be normalized safely."""
+
+
+# The official `ghcr.io/dapr/daprd` image places its binary at `/daprd` and ships no
+# shell and no populated `PATH`, so a bare `daprd` exec fails with `executable file not
+# found in $PATH`. Probing the image layout first is what lets gate C1.15's producer emit
+# an observation at all; the bare name is retained for a target that does populate `PATH`.
+DAPRD_EXECUTABLE_CANDIDATES: tuple[str, ...] = ("/daprd", "daprd")
+
+# Every branch of the runtime-identity producer emits this exact key set, so a
+# reader diffing two packets sees a recorded blocker rather than a vanished field.
+DAPRD_IDENTITY_FIELDS: tuple[str, ...] = (
+    "daprd_version",
+    "daprd_version_probe_pod",
+    "daprd_executable",
+    "daprd_build_info",
+)
+
+# `daprd --version` answers a bare semantic version. Anything else from an exit-0
+# exec - usage text, a wrapper script's banner, a shadowing binary on `PATH` - is a
+# claim rather than an observation and must not reach the packet as a version.
+DAPRD_VERSION_PATTERN = re.compile(r"\A\d+\.\d+\.\d+\S*\Z")
+
+
+def _is_daprd_version(payload: str) -> bool:
+    return bool(DAPRD_VERSION_PATTERN.match(payload))
+
+
+def _observation_cause(observation: "CommandObservation | None") -> str:
+    """Return a stated cause, never a bare `None`.
+
+    `_run_command` leaves `error` unset on exit 0, so an exec that succeeds with
+    empty or unusable stdout would otherwise interpolate `None` into the packet as
+    the reason nothing was captured - a blocker naming no cause, which defeats the
+    reopen trigger it exists to serve.
+    """
+
+    if observation is None:
+        return "no candidate command was executed"
+    if observation.error:
+        return observation.error
+    binary = observation.command[0] if observation.command else "command"
+    if observation.exit_code == 0:
+        return f"{binary} exited 0 with no version-shaped output"
+    return f"{binary} exited {observation.exit_code}"
 
 
 _REQUIRED_IDENTITY_FIELDS = (
@@ -577,7 +621,9 @@ def _run_kubectl(identity: EnvironmentIdentity, *arguments: str) -> CommandObser
     )
 
 
-def _run_dapr_version(identity: EnvironmentIdentity, pod_name: str) -> CommandObservation:
+def _run_daprd(
+    identity: EnvironmentIdentity, pod_name: str, executable: str, flag: str
+) -> CommandObservation:
     return _run_command(
         (
             "kubectl",
@@ -590,10 +636,118 @@ def _run_dapr_version(identity: EnvironmentIdentity, pod_name: str) -> CommandOb
             "-c",
             "daprd",
             "--",
-            "daprd",
-            "--version",
+            executable,
+            flag,
         ),
         parse_json=False,
+    )
+
+
+def collect_sidecar_image_identity(
+    pod_summaries: Sequence[Mapping[str, Any]],
+) -> tuple[list[str], list[str] | str]:
+    """Return the observed daprd sidecar tags and digests for gate C1.15.
+
+    The digest half fails closed. Kubelet reports a bare `sha256:<id>` imageID
+    whenever the running image carries no repository digest - a locally built or
+    side-loaded image, as `kind load docker-image` produces - and this cluster is
+    already observed emitting that form on the app container. A repo-name substring
+    filter drops those, and an empty list published as a positive observation is
+    indistinguishable from "no daprd container was observed", in the very field AC1
+    requires. When a daprd tag was seen but no digest could be bound, record the
+    blocker instead.
+    """
+
+    images = sorted(
+        {
+            image
+            for summary in pod_summaries
+            for image in summary.get("container_images", [])
+            if "daprd" in image
+        }
+    )
+    digests: set[str] = set()
+    for summary in pod_summaries:
+        names = summary.get("container_images", [])
+        identifiers = summary.get("container_image_ids", [])
+        for position, image_id in enumerate(identifiers):
+            if not image_id:
+                continue
+            # Bind by the parallel tag when the imageID itself carries no repo name.
+            name = names[position] if position < len(names) else ""
+            if "daprd" in image_id or "daprd" in name:
+                digests.add(image_id)
+    if images and not digests:
+        return (
+            images,
+            "not captured; no daprd containerStatus carried an imageID",
+        )
+    return (images, sorted(digests))
+
+
+def collect_daprd_runtime_identity(
+    running_pods: Sequence[str],
+    probe: Callable[[str, str, str], CommandObservation],
+) -> tuple[dict[str, Any], list[CommandObservation]]:
+    """Capture the running Dapr runtime identity for gate C1.15.
+
+    `probe(pod_name, executable, flag)` runs one read-only `daprd` invocation.
+    Both the executable path and the pod are probed as candidate lists: the
+    official `ghcr.io/dapr/daprd` image carries no shell and no populated
+    `PATH`, so a bare `daprd` exec fails with `executable file not found in
+    $PATH` (surfaced by `kubectl exec` as exit 1) while `/daprd` answers - and
+    a Running pod without the sidecar container must not hide a version a later
+    Running pod could report. Every probe becomes a recorded observation, and a
+    target that answers nowhere records the blocker rather than a claim.
+    """
+
+    def blocked(reason: str, **overrides: str) -> dict[str, str]:
+        # Every branch emits the same key set. A field that silently disappears
+        # is indistinguishable from a field that was never probed, which is the
+        # opposite of what a fail-closed packet is for; `collect_attestations`
+        # and `collect_capacity_evidence` take the same approach.
+        fields = {key: f"not captured; {reason}" for key in DAPRD_IDENTITY_FIELDS}
+        fields.update(overrides)
+        return fields
+
+    observations: list[CommandObservation] = []
+    if not running_pods:
+        return (blocked("no Running pod matched the label selector"), observations)
+
+    fallback: CommandObservation | None = None
+    for pod_name in running_pods:
+        for executable in DAPRD_EXECUTABLE_CANDIDATES:
+            version = probe(pod_name, executable, "--version")
+            observations.append(version)
+            payload = str(version.payload or "").strip()
+            if not _is_daprd_version(payload):
+                # An exit-0 answer that is not version-shaped is a claim, not an
+                # observation: a wrapper script, usage text printed with exit 0, or a
+                # binary shadowing the bare-name candidate would otherwise be stamped
+                # into the packet as the running runtime version.
+                fallback = fallback or version
+                continue
+            build_info = probe(pod_name, executable, "--build-info")
+            observations.append(build_info)
+            build_payload = str(build_info.payload or "").strip()
+            return (
+                {
+                    "daprd_version": payload,
+                    "daprd_version_probe_pod": pod_name,
+                    "daprd_executable": executable,
+                    "daprd_build_info": build_payload
+                    or f"not captured; {_observation_cause(build_info)}",
+                },
+                observations,
+            )
+
+    return (
+        blocked(
+            _observation_cause(fallback),
+            daprd_version_probe_pod=running_pods[0],
+            daprd_executable="not captured; no candidate path returned a version-shaped answer",
+        ),
+        observations,
     )
 
 
@@ -691,10 +845,19 @@ def _pod_summary(item: Mapping[str, Any]) -> dict[str, Any]:
         **_metadata_summary(item),
         "phase": status.get("phase"),
         "node": _mapping(item.get("spec")).get("nodeName"),
+        # `image` carries the mutable tag; only `imageID` carries the digest of the bytes
+        # actually running, which is what AC1 and gate C1.15 require. The two lists are
+        # published side by side, so they are built from the same iteration and hold
+        # positional parity: a Waiting container (ContainerCreating, ImagePullBackOff)
+        # has an empty `imageID`, and dropping it would silently rebind every later
+        # digest to the wrong container.
         "container_images": [
-            image
+            _mapping(container).get("image") or ""
             for container in _sequence(status.get("containerStatuses"))
-            if (image := _mapping(container).get("image"))
+        ],
+        "container_image_ids": [
+            _mapping(container).get("imageID") or ""
+            for container in _sequence(status.get("containerStatuses"))
         ],
     }
 
@@ -1019,8 +1182,14 @@ def run_adapter_profile_checkpoint(
     command captures identity and rejects fail-closed. It is NOT a behavioural prober, and
     it is not the producer for the C1 gate rows that require CRUD, strong-read, ETag,
     transaction-fault, TTL, actor/Scheduler, request-bound, throughput, purge-backlog,
-    isolation, encryption or reclamation observations. Each of those rows names its own
-    operator-executed command in the story's C1 Gate Evidence Table.
+    isolation, encryption or reclamation observations.
+
+    Corrected 2026-07-27 per the Administrator decision of that date: those thirteen rows
+    (C1.1-C1.12 and C1.14) are recorded as **blocked** in the story's C1 Gate Evidence
+    Table, not as naming their own command. No operator-executable producer can exist for
+    them while the PG-ONPREM-1 lifecycle Deployments are scaled to zero. The earlier
+    wording pointed at commands the table never held, so the cross-reference resolved in
+    neither direction; each row now carries its own blocker with owner and reopen trigger.
     """
 
     # The evidence path must be usable before anything else runs; an unusable path used to
@@ -1106,37 +1275,26 @@ def run_adapter_profile_checkpoint(
 
     # AC1 requires the running Dapr runtime identity, captured from the deployment rather
     # than inferred from .NET package pins. This is gate C1.15's producer.
+    sidecar_images, sidecar_digests = collect_sidecar_image_identity(summaries["pods"])
     runtime_identity: dict[str, Any] = {
         "kube_context_observed": identity.kube_context,
         "kube_context_is_reviewed_label": identity.kube_context == EXPECTED_KUBE_CONTEXT,
-        "sidecar_images": sorted(
-            {
-                image
-                for summary in summaries["pods"]
-                for image in summary["container_images"]
-                if "daprd" in image
-            }
-        ),
+        "sidecar_images": sidecar_images,
+        "sidecar_image_digests": sidecar_digests,
     }
     running_pods = [summary["name"] for summary in summaries["pods"] if summary["phase"] == "Running"]
-    if not running_pods:
-        runtime_identity["daprd_version"] = "not captured; no Running pod matched the label selector"
-    else:
-        # Try every Running pod, not only the first: a pod lacking the daprd sidecar
-        # container must not hide a version a later Running pod could have reported.
-        version = None
-        probe_pod = None
-        for candidate in running_pods:
-            attempt = _run_dapr_version(identity, candidate)
-            observations.append(attempt)
-            if attempt.payload:
-                version = attempt
-                probe_pod = candidate
-                break
-            version = version or attempt
-            probe_pod = probe_pod or candidate
-        runtime_identity["daprd_version"] = version.payload or f"not captured; {version.error}"
-        runtime_identity["daprd_version_probe_pod"] = probe_pod
+    daprd_identity, daprd_observations = collect_daprd_runtime_identity(
+        running_pods,
+        lambda pod_name, executable, flag: _run_daprd(identity, pod_name, executable, flag),
+    )
+    observations.extend(daprd_observations)
+    runtime_identity.update(daprd_identity)
+    # The version is read from the first pod that answers while the digest set unions
+    # every pod, so a mid-rollout fleet would otherwise be reported as one runtime
+    # version running two different images with nothing saying so.
+    runtime_identity["sidecar_digest_is_uniform"] = (
+        len(sidecar_digests) == 1 if isinstance(sidecar_digests, list) else False
+    )
 
     if any(observation.exit_code != 0 or observation.payload is None for observation in observations[:5]):
         reason = "deployment identity could not be captured from every required read-only Kubernetes query"

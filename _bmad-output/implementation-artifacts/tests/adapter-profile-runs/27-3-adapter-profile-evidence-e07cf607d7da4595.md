@@ -1,6 +1,6 @@
 # Story 27.3 C1 Adapter Profile Evidence
 
-- captured_utc: `2026-07-27T19:35:02.108291+00:00`
+- captured_utc: `2026-07-27T17:56:34.255570+00:00`
 - checkpoint: `adapter-profile`
 - status: `rejected`
 - rejection_reason: lifecycle deployment is disabled; Production writes remain fail-closed
@@ -13,13 +13,13 @@
 - kube_namespace: `hexalith-memories`
 - deployment_id: `memories-production-2.11.0-c7c2ca21-hexalith-keys-r2`
 - profile_id: `postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1`
-- evidence_root: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/tests`
+- evidence_root: `_bmad-output/implementation-artifacts/tests`
 - declared_single_component_fault: `postgresql-pod-process-loss-retained-local-volume`
 
 ## Immutable Profile Material
 
-- profile_sha256: `01f6ce9f1cdf6fad022c6f86942d0a103c1685fcc9a54c47efc48ac58162d6cc`
-- mutation_manifest_sha256: `04c034b9e8c8012f4813d52877042adbda9edc385f32d87c36f2019ecc3e61da`
+- profile_sha256: `9b29cca6335b4b1679eff6f74892604cd50e54a5dfee690b3667a352b83931d3`
+- mutation_manifest_sha256: `c9a1f9a18e0da196de83cfd31301e43efef059fe244af3f8b25433a6e9649e48`
 - allowed_mutations: `[]`
 - profile_hash_covers: `runtime-observed profile constructed by this invocation from the supplied identity and the live component query`
 - reviewed_canonical_profile_sha256: `dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14`
@@ -28,7 +28,7 @@
 
 ## Reviewed Source Hashes
 
-- `tools/verify_access_telemetry_lifecycle.py`: `d57d6cbc6932d3e57c4ffb1fc4363d697af7e211a6245fc3a114c492b6e9adfa`
+- `tools/verify_access_telemetry_lifecycle.py`: `958cf2d1308ed8de0c3a2dd93cb5ab5b64b8aab158b995f81830d2f9fc33b893`
 - `tools/verify-access-telemetry-lifecycle.py`: `57f4e4b8d814172c82bfc82308134b2d4f0eb9b1afbd7cc3481e1adf00cae3a0`
 
 ## Workload Identity
@@ -79,14 +79,14 @@
 
 | Command | Started (UTC) | Finished (UTC) | Exit | Stdout SHA-256 | Stderr SHA-256 | Stderr excerpt | Result |
 | :-- | :-- | :-- | --: | :-- | :-- | :-- | :-- |
-| `kubectl --context jpiquot@local --namespace hexalith-memories get deployments -o json ` | `2026-07-27T19:35:00.293407+00:00` | `2026-07-27T19:35:00.475475+00:00` | 0 | `946daec4673995619631c6fbc0a489c5f3b47bd7ee5ce1c413ab4a01a90ba3a6` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
-| `kubectl --context jpiquot@local --namespace hexalith-memories get components.dapr.io -o json ` | `2026-07-27T19:35:00.475551+00:00` | `2026-07-27T19:35:00.664448+00:00` | 0 | `4722d3b30052c9f18e7bd164094b689ac9d4851ce6cf0f244b9bf97716a3d767` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
-| `kubectl --context jpiquot@local --namespace hexalith-memories get configurations.dapr.io -o json ` | `2026-07-27T19:35:00.664486+00:00` | `2026-07-27T19:35:00.852334+00:00` | 0 | `a2e2031e8c550b7af09ca31a15881bc5eebb48bc16805beb8ebec75a16d3a13e` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
-| `kubectl --context jpiquot@local --namespace hexalith-memories get statefulsets -o json ` | `2026-07-27T19:35:00.852366+00:00` | `2026-07-27T19:35:01.030018+00:00` | 0 | `42b485993580af61a5261c6944d7a5e8c22989f8d210bd7ff4d9c92640d4a752` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
-| `kubectl --context jpiquot@local --namespace hexalith-memories get pods -l app.kubernetes.io/name=memories -o json ` | `2026-07-27T19:35:01.030051+00:00` | `2026-07-27T19:35:01.209027+00:00` | 0 | `7b98c47c4d8cc5dab0c02f64ae2791171c556a351228a59f93140b95068d1d69` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
-| `kubectl --context jpiquot@local --namespace hexalith-memories exec memories-b667844cf-6s9j7 -c daprd -- /daprd --version ` | `2026-07-27T19:35:01.209237+00:00` | `2026-07-27T19:35:01.565948+00:00` | 0 | `71fc7bd16b1bc9b3681085fb0be8aea0b3a37d90d1685938dc2e8a31bf8c9b94` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
-| `kubectl --context jpiquot@local --namespace hexalith-memories exec memories-b667844cf-6s9j7 -c daprd -- /daprd --build-info ` | `2026-07-27T19:35:01.565995+00:00` | `2026-07-27T19:35:01.913852+00:00` | 0 | `ecb3b868c6d4a0a5a36132e09241c37fa5bcfa578d4c71d8f4663d2282ee153b` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
-| `kubectl --context jpiquot@local --namespace hexalith-memories get deployments -o json ` | `2026-07-27T19:35:01.913942+00:00` | `2026-07-27T19:35:02.108068+00:00` | 0 | `946daec4673995619631c6fbc0a489c5f3b47bd7ee5ce1c413ab4a01a90ba3a6` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get deployments -o json ` | `2026-07-27T17:56:32.413214+00:00` | `2026-07-27T17:56:32.603791+00:00` | 0 | `946daec4673995619631c6fbc0a489c5f3b47bd7ee5ce1c413ab4a01a90ba3a6` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get components.dapr.io -o json ` | `2026-07-27T17:56:32.603854+00:00` | `2026-07-27T17:56:32.800758+00:00` | 0 | `4722d3b30052c9f18e7bd164094b689ac9d4851ce6cf0f244b9bf97716a3d767` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get configurations.dapr.io -o json ` | `2026-07-27T17:56:32.800793+00:00` | `2026-07-27T17:56:32.981004+00:00` | 0 | `a2e2031e8c550b7af09ca31a15881bc5eebb48bc16805beb8ebec75a16d3a13e` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get statefulsets -o json ` | `2026-07-27T17:56:32.981035+00:00` | `2026-07-27T17:56:33.170413+00:00` | 0 | `42b485993580af61a5261c6944d7a5e8c22989f8d210bd7ff4d9c92640d4a752` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get pods -l app.kubernetes.io/name=memories -o json ` | `2026-07-27T17:56:33.170446+00:00` | `2026-07-27T17:56:33.354382+00:00` | 0 | `7b98c47c4d8cc5dab0c02f64ae2791171c556a351228a59f93140b95068d1d69` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories exec memories-b667844cf-6s9j7 -c daprd -- /daprd --version ` | `2026-07-27T17:56:33.354598+00:00` | `2026-07-27T17:56:33.705272+00:00` | 0 | `71fc7bd16b1bc9b3681085fb0be8aea0b3a37d90d1685938dc2e8a31bf8c9b94` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories exec memories-b667844cf-6s9j7 -c daprd -- /daprd --build-info ` | `2026-07-27T17:56:33.705324+00:00` | `2026-07-27T17:56:34.063814+00:00` | 0 | `ecb3b868c6d4a0a5a36132e09241c37fa5bcfa578d4c71d8f4663d2282ee153b` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
+| `kubectl --context jpiquot@local --namespace hexalith-memories get deployments -o json ` | `2026-07-27T17:56:34.063892+00:00` | `2026-07-27T17:56:34.255367+00:00` | 0 | `946daec4673995619631c6fbc0a489c5f3b47bd7ee5ce1c413ab4a01a90ba3a6` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | - | ok |
 
 The packet stores hashes, structural metadata, and redacted stderr excerpts only; it does not store secret values, backend credentials, or raw pod environment data.
 

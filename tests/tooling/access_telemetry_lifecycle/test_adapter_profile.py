@@ -349,6 +349,240 @@ class AdapterProfileTests(unittest.TestCase):
         # The approved profile pins maxConns 40, not the ADR's stale 64.
         self.assertEqual("40", manifest["canonical_profile"]["identity"]["maxConns"])
 
+    def _daprd_probe(
+        self,
+        *,
+        executable_that_works,
+        version_payload="1.18.1",
+        build_info_payload="Version: 1.18.1\nGit Commit: 4cef924a",
+    ):
+        """Return a probe modelling the real `ghcr.io/dapr/daprd` container.
+
+        The official image carries no shell and no populated `PATH`, so a bare
+        `daprd` exec fails with `executable file not found in $PATH` while the
+        image-layout path succeeds. `kubectl exec` surfaces that as exit 1.
+        """
+
+        calls = []
+
+        def probe(pod_name, executable, flag):
+            calls.append((pod_name, executable, flag))
+            if executable != executable_that_works:
+                return adapter_profile.CommandObservation(
+                    command=("kubectl", "exec", pod_name, "--", executable, flag),
+                    exit_code=1,
+                    stdout_sha256="",
+                    stderr_sha256="",
+                    payload=None,
+                    error="kubectl exited 1",
+                )
+            if flag == "--version":
+                payload = version_payload
+            else:
+                payload = build_info_payload
+            return adapter_profile.CommandObservation(
+                command=("kubectl", "exec", pod_name, "--", executable, flag),
+                exit_code=0,
+                stdout_sha256="",
+                stderr_sha256="",
+                payload=payload,
+            )
+
+        return probe, calls
+
+    def test_daprd_identity_probe_falls_back_to_the_image_layout_path(self):
+        """Gate C1.15's producer must be able to emit its observation.
+
+        `daprd` is not on the sidecar container's `PATH`, so probing only the
+        bare name recorded `not captured; kubectl exited 1` against a live
+        target that answers `1.18.1` on `/daprd`. A gate whose named producer
+        cannot emit stays `not complete` regardless of the environment.
+        """
+
+        probe, calls = self._daprd_probe(executable_that_works="/daprd")
+
+        fields, observations = adapter_profile.collect_daprd_runtime_identity(
+            ["memories-b667844cf-6s9j7"], probe
+        )
+
+        self.assertEqual("1.18.1", fields["daprd_version"])
+        self.assertEqual("/daprd", fields["daprd_executable"])
+        self.assertEqual("memories-b667844cf-6s9j7", fields["daprd_version_probe_pod"])
+        self.assertIn("Git Commit: 4cef924a", fields["daprd_build_info"])
+        self.assertIn("--build-info", [flag for _, _, flag in calls])
+        self.assertTrue(observations)
+
+    def test_daprd_identity_probe_tries_every_running_pod_and_stays_fail_closed(self):
+        """No candidate executable anywhere must record a blocker, never a claim."""
+
+        probe, calls = self._daprd_probe(executable_that_works="/nowhere")
+
+        fields, observations = adapter_profile.collect_daprd_runtime_identity(
+            ["pod-a", "pod-b"], probe
+        )
+
+        self.assertIn("not captured", fields["daprd_version"])
+        self.assertEqual(
+            sorted({pod for pod, _, _ in calls}), ["pod-a", "pod-b"]
+        )
+        # Pinned, not derived from the constant under test: deriving the expected
+        # count from DAPRD_EXECUTABLE_CANDIDATES made shrinking the candidate list
+        # green by construction.
+        self.assertEqual(("/daprd", "daprd"), adapter_profile.DAPRD_EXECUTABLE_CANDIDATES)
+        self.assertEqual(4, len(observations))
+        # Every branch publishes the same key set, so a field can never silently
+        # vanish from the packet in place of a recorded blocker.
+        self.assertEqual(set(adapter_profile.DAPRD_IDENTITY_FIELDS), set(fields))
+        self.assertIn("not captured", fields["daprd_executable"])
+        self.assertEqual("pod-a", fields["daprd_version_probe_pod"])
+        self.assertIn("not captured", fields["daprd_build_info"])
+
+        empty_fields, empty_observations = adapter_profile.collect_daprd_runtime_identity([], probe)
+        self.assertIn("not captured", empty_fields["daprd_version"])
+        self.assertEqual(set(adapter_profile.DAPRD_IDENTITY_FIELDS), set(empty_fields))
+        self.assertEqual([], empty_observations)
+
+    def test_daprd_probe_records_both_flags_as_observations_and_binds_argv_order(self):
+        """The packet's command ledger must show every exec that touched the target.
+
+        `--build-info` runs against the production target, so it needs its own row.
+        The argv order is pinned here because no test constructs the real command
+        line: swapping `executable` and `flag` restores `not captured` on every live
+        run while the fixture stays green.
+        """
+
+        probe, _ = self._daprd_probe(executable_that_works="/daprd")
+        _, observations = adapter_profile.collect_daprd_runtime_identity(["pod-a"], probe)
+
+        self.assertEqual(["--version", "--build-info"], [o.command[-1] for o in observations])
+        self.assertEqual(("/daprd", "--build-info"), tuple(observations[-1].command[-2:]))
+
+        identity = adapter_profile.EnvironmentIdentity.from_mapping(
+            {
+                "KUBE_CONTEXT": "ctx",
+                "KUBE_NAMESPACE": adapter_profile.EXPECTED_KUBE_NAMESPACE,
+                "DEPLOYMENT_ID": "d",
+                "PROFILE_ID": adapter_profile.EXPECTED_PROFILE_ID,
+                "EVIDENCE_ROOT": "root",
+                "DECLARED_SINGLE_COMPONENT_FAULT": "postgresql-pod-replacement",
+            }
+        )
+        command = adapter_profile._run_daprd(identity, "pod-a", "/daprd", "--version").command
+        self.assertEqual(("--", "/daprd", "--version"), command[-3:])
+        self.assertIn("-c", command)
+        self.assertIn("daprd", command)
+
+    def test_daprd_build_info_failure_records_a_blocker_not_the_version(self):
+        """A version that answers and a build-info that does not must not be merged."""
+
+        probe, _ = self._daprd_probe(executable_that_works="/daprd", build_info_payload="")
+        fields, _ = adapter_profile.collect_daprd_runtime_identity(["pod-a"], probe)
+
+        self.assertEqual("1.18.1", fields["daprd_version"])
+        self.assertTrue(fields["daprd_build_info"].startswith("not captured;"))
+        # A blocker must name a cause; `_run_command` leaves `error` unset on exit 0.
+        self.assertNotIn("None", fields["daprd_build_info"])
+
+    def test_daprd_probe_rejects_an_exit_zero_answer_that_is_not_a_version(self):
+        """Usage text or a shadowing binary must not be stamped in as the version."""
+
+        probe, _ = self._daprd_probe(
+            executable_that_works="/daprd", version_payload="Error: unknown flag --version"
+        )
+        fields, _ = adapter_profile.collect_daprd_runtime_identity(["pod-a"], probe)
+
+        self.assertTrue(fields["daprd_version"].startswith("not captured;"))
+        self.assertNotIn("None", fields["daprd_version"])
+        self.assertTrue(adapter_profile._is_daprd_version("1.18.1"))
+        self.assertTrue(adapter_profile._is_daprd_version("1.18.1-rc.1"))
+        self.assertFalse(adapter_profile._is_daprd_version(""))
+        self.assertFalse(adapter_profile._is_daprd_version("Usage of daprd:"))
+
+    def test_sidecar_digests_are_bound_to_the_digest_field_and_fail_closed(self):
+        """The published digest field must carry digests, and never silently empty.
+
+        Building it from `container_images` reintroduces the exact tag-not-digest
+        defect this change exists to fix, one layer above `_pod_summary`.
+        """
+
+        pods = [
+            {
+                "container_images": ["ghcr.io/dapr/daprd:1.18.1", "registry/memories:1"],
+                "container_image_ids": [
+                    "ghcr.io/dapr/daprd@sha256:b7f7d296",
+                    "registry/memories@sha256:71e49b6e",
+                ],
+            }
+        ]
+        images, digests = adapter_profile.collect_sidecar_image_identity(pods)
+        self.assertEqual(["ghcr.io/dapr/daprd:1.18.1"], images)
+        self.assertEqual(["ghcr.io/dapr/daprd@sha256:b7f7d296"], digests)
+
+        # Kubelet emits a bare `sha256:<id>` for an image with no repo digest; it is
+        # bound through its parallel tag rather than dropped.
+        bare = [
+            {
+                "container_images": ["ghcr.io/dapr/daprd:1.18.1"],
+                "container_image_ids": ["sha256:c68e099f4bee"],
+            }
+        ]
+        self.assertEqual(["sha256:c68e099f4bee"], adapter_profile.collect_sidecar_image_identity(bare)[1])
+
+        # A daprd tag seen with no imageID at all records a blocker, never `[]`.
+        missing = [{"container_images": ["ghcr.io/dapr/daprd:1.18.1"], "container_image_ids": [""]}]
+        self.assertIn("not captured", adapter_profile.collect_sidecar_image_identity(missing)[1])
+        self.assertEqual(([], []), adapter_profile.collect_sidecar_image_identity([]))
+
+    def test_pod_summary_records_the_running_image_digest_not_only_its_tag(self):
+        """AC1 and gate C1.15 require the sidecar image *digest*.
+
+        `spec`/`status` `image` carries the mutable tag (`daprd:1.18.1`);
+        only `status.containerStatuses[].imageID` carries the digest that
+        identifies the bytes actually running.
+        """
+
+        summary = adapter_profile._pod_summary(
+            {
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [
+                        {
+                            "name": "daprd",
+                            "image": "ghcr.io/dapr/daprd:1.18.1",
+                            "imageID": "ghcr.io/dapr/daprd@sha256:b7f7d296",
+                        }
+                    ],
+                }
+            }
+        )
+
+        self.assertEqual(["ghcr.io/dapr/daprd:1.18.1"], summary["container_images"])
+        self.assertEqual(["ghcr.io/dapr/daprd@sha256:b7f7d296"], summary["container_image_ids"])
+        self.assertEqual([], adapter_profile._pod_summary({"status": None})["container_image_ids"])
+
+        # The two lists are published side by side, so a container with no imageID
+        # (Waiting: ContainerCreating / ImagePullBackOff) must hold its slot rather
+        # than rebinding every later digest to the wrong container.
+        waiting = adapter_profile._pod_summary(
+            {
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [
+                        {"name": "daprd", "image": "ghcr.io/dapr/daprd:1.18.1", "imageID": ""},
+                        {
+                            "name": "memories",
+                            "image": "registry/memories:1",
+                            "imageID": "registry/memories@sha256:71e4",
+                        },
+                    ],
+                }
+            }
+        )
+        self.assertEqual(
+            len(waiting["container_images"]), len(waiting["container_image_ids"])
+        )
+        self.assertEqual("", waiting["container_image_ids"][0])
+
 
 if __name__ == "__main__":
     unittest.main()
