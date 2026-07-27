@@ -217,6 +217,16 @@ class AdapterProfileTests(unittest.TestCase):
         self.assertTrue(observation.started_utc)
         self.assertTrue(observation.finished_utc)
 
+    def test_invalid_utf8_output_becomes_an_observation_not_a_traceback(self):
+        """Fail-closed means never an escaping exception, including on invalid UTF-8."""
+
+        observation = adapter_profile._run_command(
+            ("/bin/sh", "-c", "printf '\\xff\\xfe not real utf-8'"),
+            parse_json=False,
+        )
+
+        self.assertEqual(0, observation.exit_code)
+
     def test_workload_matches_adr_operation_envelope(self):
         envelope = adapter_profile.ADR_TWO_WRITER_WORKLOAD
 

@@ -51,7 +51,8 @@ $healthFiles = @(Get-ChildItem -LiteralPath $evidencePath -File -Filter 'health-
 if ($healthFiles.Count -eq 0) {
     throw 'Production deployment evidence must include at least one authenticated health response.'
 }
-$healthStatusCodes = @()
+
+$healthRecords = @()
 foreach ($file in $healthFiles) {
     try {
         $health = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
@@ -61,9 +62,32 @@ foreach ($file in $healthFiles) {
     }
 
     # The envelope contract holds for every packet, succeeded or failed.
-    if ($health.schemaVersion -ne 1 -or [string]::IsNullOrWhiteSpace([string]$health.stage)) {
-        throw "Health response evidence '$($file.Name)' does not contain a valid schemaVersion and stage."
+    if ($health.schemaVersion -ne 1 -or [string]::IsNullOrWhiteSpace([string]$health.stage) -or $null -eq $health.attempt) {
+        throw "Health response evidence '$($file.Name)' does not contain a valid schemaVersion, stage, and attempt."
     }
+
+    $healthRecords += [pscustomobject]@{ File = $file; Health = $health }
+}
+
+# Each stage is polled repeatedly until it reaches its expected status (Wait-AggregateStatus,
+# every ~2s), and every poll's response is now retained as its own attempt file instead of being
+# overwritten. An in-flight poll observed before the app is ready - exactly what the
+# -MeasureFromContainerRunning startup window exists to tolerate - legitimately returns a
+# non-JSON transcript or a null status. Only the last attempt per stage proves that stage's
+# outcome, so only it is held to the succeeded-run body/status contract; earlier attempts are
+# retained evidence but are not required to already look healthy.
+$lastAttemptByStage = @{}
+foreach ($record in $healthRecords) {
+    $stage = [string]$record.Health.stage
+    if (-not $lastAttemptByStage.ContainsKey($stage) -or $record.Health.attempt -gt $lastAttemptByStage[$stage].Health.attempt) {
+        $lastAttemptByStage[$stage] = $record
+    }
+}
+
+$healthStatusCodes = @()
+foreach ($record in $healthRecords) {
+    $health = $record.Health
+    $file = $record.File
 
     # The body/status-code contract is gated on a succeeded run. A failed probe legitimately
     # records a null statusCode and a raw transcript body (Get-HealthJsonBody falls back to
@@ -74,6 +98,12 @@ foreach ($file in $healthFiles) {
         if ($null -ne $health.statusCode) {
             $healthStatusCodes += [int]$health.statusCode
         }
+        continue
+    }
+
+    if ($lastAttemptByStage[[string]$health.stage].File.FullName -ne $file.FullName) {
+        # A non-terminal attempt for this stage: an expected in-flight observation, not the
+        # attempt that proved the stage's outcome.
         continue
     }
 

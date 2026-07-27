@@ -55,6 +55,7 @@ def write_complete_evidence(
             {
                 "schemaVersion": 1,
                 "stage": "initial-server-health",
+                "attempt": 1,
                 "statusCode": 200,
                 "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
             }
@@ -66,6 +67,7 @@ def write_complete_evidence(
             {
                 "schemaVersion": 1,
                 "stage": "required-redis-unhealthy",
+                "attempt": 1,
                 "statusCode": 503,
                 "body": json.dumps({"schemaVersion": 1, "status": "Unhealthy"}),
             }
@@ -114,7 +116,7 @@ class ProductionDeploymentEvidenceTests(unittest.TestCase):
         self.assertIn("wgetExit=$?", verifier)
         self.assertIn("dapr-api-token: %s", verifier)
         self.assertIn("Connection: close\\r\\ndapr-api-token: %s\\r\\n\\r\\n", verifier)
-        self.assertIn("nc -w 6 127.0.0.1 8080", verifier)
+        self.assertIn("nc -w 3 127.0.0.1 8080", verifier)
         self.assertIn("$probeCommand = $probeCommand.Replace(\"`r\", '')", verifier)
         self.assertIn("Save-HealthResponseEvidence", verifier)
         self.assertIn("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }", verifier)
@@ -125,6 +127,52 @@ class ProductionDeploymentEvidenceTests(unittest.TestCase):
         # the evidence write, where Save-HealthResponseEvidence already applies it.
         self.assertNotIn("$text = Protect-EvidenceText ($output", verifier)
         self.assertIn("$text = $output -join [Environment]::NewLine", verifier)
+
+    def test_redaction_at_write_does_not_corrupt_the_health_decision(self) -> None:
+        """Exercise the actual scenario the source-text pins above only describe.
+
+        A short/common HEXALITH_ZOT_USERNAME value that collides with real response
+        content must not corrupt the parsed status: parsing runs on the raw transcript,
+        and Protect-EvidenceText only runs separately at the evidence write.
+        """
+
+        verifier = VERIFIER.read_text(encoding="utf-8-sig")
+        protect_fn = verifier.split("function Protect-EvidenceText {", 1)[1]
+        protect_fn = "function Protect-EvidenceText {" + protect_fn.split("\n}\n", 1)[0] + "\n}"
+
+        # "Healthy" is exactly the status value the health decision must observe; if
+        # redaction ran before parsing (the pre-fix shape), this value would corrupt it.
+        colliding_value = "Healthy"
+        raw = '{"schemaVersion":1,"status":"Healthy"}'
+        encoded = base64.b64encode(raw.encode("utf-8")).decode("ascii")
+
+        script = (
+            f"{protect_fn}\n"
+            ". ./tools/production-deployment-health.ps1\n"
+            "$t = [System.Text.Encoding]::UTF8.GetString("
+            f"[System.Convert]::FromBase64String('{encoded}'))\n"
+            "$body = Get-HealthJsonBody $t\n"
+            "$status = ($body | ConvertFrom-Json).status\n"
+            "$protected = Protect-EvidenceText $t\n"
+            "Write-Output \"status=$status\"\n"
+            "Write-Output \"protected=$protected\"\n"
+        )
+        env = os.environ.copy()
+        env["HEXALITH_ZOT_USERNAME"] = colliding_value
+        result = subprocess.run(
+            ["pwsh", "-NoLogo", "-NoProfile", "-Command", script],
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        # Parsing the raw transcript is unaffected by the colliding secret value.
+        self.assertIn("status=Healthy", result.stdout)
+        # Redaction still applies when run separately, at the evidence write.
+        self.assertIn("protected=" + '{"schemaVersion":1,"status":"***"}', result.stdout)
 
         health = HEALTH_MODULE.read_text(encoding="utf-8-sig")
         self.assertIn("function Get-HealthJsonBody", health)
@@ -376,6 +424,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                     {
                         "schemaVersion": 1,
                         "stage": "initial-server-health",
+                        "attempt": 1,
                         "statusCode": 200,
                         "body": "not json at all",
                     }
@@ -397,6 +446,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                     {
                         "schemaVersion": 1,
                         "stage": "initial-server-health",
+                        "attempt": 1,
                         "statusCode": 500,
                         "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
                     }
@@ -418,6 +468,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                     {
                         "schemaVersion": 2,
                         "stage": "initial-server-health",
+                        "attempt": 1,
                         "statusCode": 200,
                         "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
                     }
@@ -468,6 +519,88 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
             result = run_validator(root)
 
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_succeeded_run_tolerates_a_malformed_earlier_attempt_for_the_same_stage(self) -> None:
+        """Only the terminal attempt per stage proves the stage's outcome.
+
+        Every poll of a stage is now retained as its own attempt file instead of
+        overwriting the previous one, and Wait-AggregateStatus polls through the gap
+        between the container becoming Running and the app actually answering health
+        checks, so an early attempt legitimately observes a raw transcript with no
+        parsable body before the terminal attempt observes the real status. Requiring
+        every retained attempt to already look healthy would fail a succeeded run on
+        exactly the in-flight observation this diff started retaining.
+        """
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            (root / "health-initial-server-health.json").unlink()
+            (root / "health-initial-server-health-001.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "stage": "initial-server-health",
+                        "attempt": 1,
+                        "statusCode": None,
+                        "body": "wget: download timed out",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "health-initial-server-health-002.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "stage": "initial-server-health",
+                        "attempt": 2,
+                        "statusCode": 200,
+                        "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_validator(root)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_succeeded_run_fails_when_the_terminal_attempt_itself_is_malformed(self) -> None:
+        """The terminal attempt per stage is still held to the succeeded-run contract."""
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            (root / "health-initial-server-health.json").unlink()
+            (root / "health-initial-server-health-001.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "stage": "initial-server-health",
+                        "attempt": 1,
+                        "statusCode": 200,
+                        "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "health-initial-server-health-002.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "stage": "initial-server-health",
+                        "attempt": 2,
+                        "statusCode": None,
+                        "body": "wget: download timed out",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("unparsable body", result.stdout + result.stderr)
 
     def test_renderer_rejects_transposed_and_duplicated_image_arguments(self) -> None:
         """Placeholder counts and the version suffix say nothing about which image goes where."""

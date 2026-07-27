@@ -234,7 +234,10 @@ if [ "$wgetExit" -ne 0 ]; then
     # The netcat fallback exists for every wget failure that still has a retrievable body,
     # not only for an already-parsed 503. Gating it on a 503 line meant the slow-but-healthy
     # and timed-out cases - exactly what the fallback was added for - died on the deadline.
-    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 5; } | nc -w 6 127.0.0.1 8080
+    # It now fires on every failed poll rather than only a 503-line match, so its own timeouts
+    # are kept short (worst case ~5s, not ~11s): polling happens every ~2s against a 60s startup
+    # budget, and a same-loopback response does not need a long grace window.
+    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 2; } | nc -w 3 127.0.0.1 8080
 fi
 '@
     # The repository's checkout policy materializes this PowerShell file as CRLF. The

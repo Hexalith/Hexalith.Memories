@@ -498,6 +498,7 @@ def _run_command(command: tuple[str, ...], *, parse_json: bool) -> CommandObserv
             check=False,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=60,
         )
     except FileNotFoundError as exc:
@@ -896,10 +897,15 @@ def _write_rejection_evidence(
     lines.extend(["", "## Workload Identity", ""])
     lines.append(f"- pre_run: `{_canonical_json(workload_identity_before or {})}`")
     lines.append(f"- post_run: `{_canonical_json(workload_identity_after or {})}`")
-    lines.append(
-        "- unchanged_during_run: "
-        f"`{str((workload_identity_before or {}) == (workload_identity_after or {})).lower()}`"
-    )
+    if not workload_identity_before and not workload_identity_after:
+        # Both observations empty is not evidence of an unchanged workload; it means
+        # neither query observed anything, so "unchanged" would be vacuously true.
+        lines.append("- unchanged_during_run: `not observed`")
+    else:
+        lines.append(
+            "- unchanged_during_run: "
+            f"`{str((workload_identity_before or {}) == (workload_identity_after or {})).lower()}`"
+        )
 
     lines.extend(["", "## Runtime and Control-Plane Identity (AC1)", ""])
     for key, value in (runtime_identity or {"status": "unrecorded"}).items():
@@ -1112,15 +1118,23 @@ def run_adapter_profile_checkpoint(
             }
         ),
     }
-    probe_pod = next(
-        (summary["name"] for summary in summaries["pods"] if summary["phase"] == "Running"),
-        None,
-    )
-    if probe_pod is None:
+    running_pods = [summary["name"] for summary in summaries["pods"] if summary["phase"] == "Running"]
+    if not running_pods:
         runtime_identity["daprd_version"] = "not captured; no Running pod matched the label selector"
     else:
-        version = _run_dapr_version(identity, probe_pod)
-        observations.append(version)
+        # Try every Running pod, not only the first: a pod lacking the daprd sidecar
+        # container must not hide a version a later Running pod could have reported.
+        version = None
+        probe_pod = None
+        for candidate in running_pods:
+            attempt = _run_dapr_version(identity, candidate)
+            observations.append(attempt)
+            if attempt.payload:
+                version = attempt
+                probe_pod = candidate
+                break
+            version = version or attempt
+            probe_pod = probe_pod or candidate
         runtime_identity["daprd_version"] = version.payload or f"not captured; {version.error}"
         runtime_identity["daprd_version_probe_pod"] = probe_pod
 

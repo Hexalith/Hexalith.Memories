@@ -2406,8 +2406,8 @@ Chunk 3a of 3 (never-reviewed tooling/CI plus the post-2026-07-21 review-patch d
 `1ee36f77ef4446741e545663c6e386122ce4c93653f7a4448a258cdc9594aac3`). Six review layers ran with
 zero failed layers.
 
-- **27.3-CR17 - chunk 3b unreviewed; fail-closed for `done`.** (Renumbered 2026-07-26 by code review, chunk 3b: this entry was minted as `27.3-CR7`, colliding with the existing `DW 27.3-CR7` create-story-verifier entry. Both were open and both were cited as `done` blockers, so the ID resolved to two unrelated obligations. Resolved 2026-07-26: chunk 3b has now been reviewed; this entry is closed by that review.) The eight governance/planning record
-  - ID: 27.3-CR17
+- **27.3-CR18 - chunk 3b unreviewed; fail-closed for `done`.** (Renumbered 2026-07-26 by code review, chunk 3b: this entry was minted as `27.3-CR7`, colliding with the existing `DW 27.3-CR7` create-story-verifier entry. Both were open and both were cited as `done` blockers, so the ID resolved to two unrelated obligations. Resolved 2026-07-26: chunk 3b has now been reviewed; this entry is closed by that review. **Renumbered again 2026-07-27 by code review, chunk 3:** a later, unrelated entry — the AC6/C2 production-deployment-verification red-run record — was independently minted as `27.3-CR17`, recreating the identical collision this entry was renumbered once already to escape. This entry, being resolved and historical, is renumbered to `27.3-CR18` rather than the active, currently-cited `27.3-CR17`.) The eight governance/planning record
+  - ID: 27.3-CR18
   - Status: resolved 2026-07-26 — chunk 3b reviewed; all in-scope chunks are now complete.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3)
   - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md

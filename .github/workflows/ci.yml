@@ -234,8 +234,10 @@ jobs:
 
       - name: Run access-telemetry lifecycle C1 fixtures
         # Story 27.3's mandatory C1 inventory. PYTHONHASHSEED=0 matches the story's exact
-        # discovery command so the recorded sorted-case identity is reproducible here.
-        run: PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p "test_adapter_profile.py"
+        # discovery command so the recorded sorted-case identity is reproducible here. The
+        # pattern matches this directory's own "test_*.py" naming convention (unlike the
+        # sibling steps' "*_test.py"), so a future fixture file added here is also discovered.
+        run: PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p "test_*.py"
 
       - name: Run story file-scope gate fixtures
         run: python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"

@@ -379,6 +379,11 @@ public sealed class ProductionDeploymentArtifactsTests
             .ShouldBeLessThanOrEqualTo(
                 maxConnections,
                 $"{peakPods} peak lifecycle pods (declared {declaredReplicas}, C1 probe {c1ProbeReplicas}, maxSurge {maxSurge}) x maxConns {maxConns}, plus {superuserReservedConnections} superuser-reserved and {evidenceSessionHeadroom} evidence connections, must fit max_connections {maxConnections}.");
+
+        // maxUnavailable does not affect the peak-pod pool math above (it bounds old pods torn down,
+        // not new pods added), but it is pinned here structurally so a drift is caught rather than
+        // silently accepted, matching the deployment manifest's own pool-math comment.
+        ReadIntegerField(lifecycle, "maxUnavailable").ShouldBe(1);
     }
 
     [Fact]
@@ -483,7 +488,9 @@ public sealed class ProductionDeploymentArtifactsTests
         var rules = new List<string>();
         for (int index = start + 1; index < lines.Length; index++)
         {
-            string raw = lines[index];
+            // Normalize tabs before computing indent too, so a tab-indented pg_hba.conf line is
+            // measured on the same basis as the space-indented block key that bounds it.
+            string raw = lines[index].Replace('\t', ' ');
             if (raw.Trim().Length == 0)
             {
                 continue;
@@ -495,7 +502,7 @@ public sealed class ProductionDeploymentArtifactsTests
                 break;
             }
 
-            string rule = CollapseSpaces(raw.Replace('\t', ' ')).Trim();
+            string rule = CollapseSpaces(raw).Trim();
             if (rule.StartsWith('#'))
             {
                 continue;
@@ -554,9 +561,16 @@ public sealed class ProductionDeploymentArtifactsTests
                 continue;
             }
 
+            string trimmed = line.Trim();
+
+            // A comment at or past the sequence's own indent does not end the block.
+            if (trimmed.StartsWith('#') && Indent(line) >= keyIndent)
+            {
+                continue;
+            }
+
             // A block sequence may sit at the key's own indent or deeper; anything shallower, or any
             // line that is not a sequence item, ends the block.
-            string trimmed = line.Trim();
             if (Indent(line) < keyIndent || !trimmed.StartsWith("- ", StringComparison.Ordinal))
             {
                 break;

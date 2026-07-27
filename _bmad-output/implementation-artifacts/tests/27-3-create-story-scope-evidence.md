@@ -310,10 +310,18 @@ if current == "done":
     # the fail-closed rejection it currently carries.
     require(MATRIX.is_file(), f"missing canonical matrix: {MATRIX}")
     matrix_text = MATRIX.read_text(encoding="utf-8")
-    require(re.search(r"^profile_sha256: [0-9a-f]{64}$", matrix_text, re.MULTILINE) is not None, "matrix has no profile hash")
-    require(re.search(r"^mutation_manifest_sha256: [0-9a-f]{64}$", matrix_text, re.MULTILINE) is not None, "matrix has no mutation manifest hash")
-    require(re.search(r"^status: approved$", matrix_text, re.MULTILINE) is not None, "C1 evidence packet does not record an approved status")
-    require(re.search(r"^evidence_is_approval: true$", matrix_text, re.MULTILINE) is not None, "C1 evidence packet is not an approval")
+    # Code review (chunk 3, 2026-07-27): the matrix generator always writes bulleted,
+    # backtick-wrapped fields ("- field: `value`"), never the bare "field: value" form
+    # these four checks previously required - so none of them could ever match, even
+    # after a genuine C1 approval. Corrected to the actual generated format.
+    require(re.search(r"^- profile_sha256: `[0-9a-f]{64}`$", matrix_text, re.MULTILINE) is not None, "matrix has no profile hash")
+    require(re.search(r"^- mutation_manifest_sha256: `[0-9a-f]{64}`$", matrix_text, re.MULTILINE) is not None, "matrix has no mutation manifest hash")
+    require(re.search(r"^- status: `approved`$", matrix_text, re.MULTILINE) is not None, "C1 evidence packet does not record an approved status")
+    require(re.search(r"^- evidence_is_approval: `true`$", matrix_text, re.MULTILINE) is not None, "C1 evidence packet is not an approval")
+    # An approver could set status/evidence_is_approval without the runtime actually
+    # matching the reviewed canonical profile; require the packet's own comparison
+    # field to confirm it, not just the human-set approval flags.
+    require(re.search(r"^- runtime_matches_reviewed_profile: `true`$", matrix_text, re.MULTILINE) is not None, "matrix does not confirm the runtime matches the reviewed canonical profile")
     require(MATRIX_ANCHOR in story_text, "story does not cite the canonical matrix")
 PY
 ```

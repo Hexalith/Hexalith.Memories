@@ -1599,7 +1599,7 @@ Tenant Ops: minimal API endpoint → DaprWorkflowClient.ScheduleNewWorkflowAsync
 
 ### Coherence Validation
 
-**Decision Compatibility:** All 28 decisions validated. No version conflicts across .NET 10 + Aspire 13.1.3 + DAPR 1.17.6 (Client + Workflow + Actors + AspNetCore) + NRedisStack 1.3.0 + NFalkorDB 1.0.0 + MediatR 14.0.0 + FluentValidation 12.1.1.
+**Decision Compatibility:** All 31 decisions validated. No version conflicts across .NET 10 + Aspire 13.1.3 + DAPR 1.17.6 (Client + Workflow + Actors + AspNetCore) + NRedisStack 1.3.0 + NFalkorDB 1.0.0 + MediatR 14.0.0 + FluentValidation 12.1.1.
 
 **Pattern Consistency:** camelCase JSON / camelCase Redis / dot-separated DAPR / PascalCase C# — consistent. EventStore alignment verified across code style, test conventions, error handling, and DI patterns.
 
@@ -1672,7 +1672,7 @@ Tenant Ops: minimal API endpoint → DaprWorkflowClient.ScheduleNewWorkflowAsync
 
 **Key Strengths:**
 - Gate-blocking summary provides daily implementation compass
-- 28 decisions with explicit rationale prevent re-debates
+- 31 decisions with explicit rationale prevent re-debates
 - EventStore alignment ensures ecosystem consistency
 - Testability architecture enables TDD from day one
 - Phase-tagging prevents over-engineering MVP
