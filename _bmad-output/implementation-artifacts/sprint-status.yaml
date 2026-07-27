@@ -1,5 +1,5 @@
 # generated: 2026-07-05T17:40:39+02:00
-# last_updated: 2026-07-26
+# last_updated: 2026-07-27
 # project: memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-07-26
+last_updated: 2026-07-27
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -160,10 +160,18 @@ story_execution_order:
       - 29-1-openbao-backed-apphost-secret-topology
       - 29-2-provider-neutral-aspire-composition-and-secret-verification
   epic-30:
-    reason: "The guarded release requires a successful exact-source ci.yml contract, so shared CI alignment must complete before release migration."
+    reason: "The guarded release requires a successful exact-source ci.yml contract, so shared CI alignment must complete before release migration. Dispatch and manifest precede the publication contract that consumes them; recovery must be able to resume a four-image publish; cutover rehearses all of it. Document order in epics.md is numeric; this list is the execution order of record."
     order:
       - 30-2-shared-ci-core-and-module-specific-verification-lanes
-      - 30-1-four-image-container-release-and-partial-recovery-pipeline
+      - 30-1-guarded-release-dispatch-and-shared-caller-adoption
+      - 30-3-four-image-publication-contract
+      - 30-4-partial-release-recovery
+      - 30-5-release-cutover-parity-and-rollback
+  epic-31:
+    reason: "The runtime secret-store migration must be evaluated against a documented, hardened platform whose accepted single-node limitations are already on record."
+    order:
+      - 31-1-openbao-platform-hardening-and-documentation
+      - 31-2-runtime-dapr-secret-store-migration
 
 development_status:
 
@@ -454,17 +462,29 @@ development_status:
   # Epic 30: CI/CD Pipeline Ownership and Alignment
   # Expanded by the approved Memories CI/CD alignment course correction.
   # Story 30.2 precedes 30.1 because guarded release requires exact-source green CI.
+  # Story 30.1 renamed and Stories 30.3-30.5 registered on 2026-07-27 by the approved
+  # Sprint Change Proposal 2026-07-27, executing the DW 27.3-CR16 split. The pre-split
+  # 30-1-four-image-container-release-and-partial-recovery-pipeline bundled four
+  # independently demonstrable outcomes; no scope was added or dropped by the split.
   epic-30: backlog
-  30-1-four-image-container-release-and-partial-recovery-pipeline: backlog
+  30-1-guarded-release-dispatch-and-shared-caller-adoption: backlog
   30-2-shared-ci-core-and-module-specific-verification-lanes: backlog
+  30-3-four-image-publication-contract: backlog
+  30-4-partial-release-recovery: backlog
+  30-5-release-cutover-parity-and-rollback: backlog
   epic-30-retrospective: optional
 
   # Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
   # Registered on 2026-07-26 by the approved Sprint Change Proposal 2026-07-26, executing the
   # DW 27.3-CR6 split approved by the Administrator on 2026-07-21 during Story 27.3 code review.
   # Epic 29 owns Aspire-local topology; Epic 31 owns the deployed-cluster platform.
+  # Story 31.1 renamed and Story 31.2 registered on 2026-07-27 by the approved
+  # Sprint Change Proposal 2026-07-27, executing the DW 27.3-CR16 split. The pre-split
+  # 31-1-openbao-platform-hardening-and-runtime-secret-store-migration bundled two
+  # independently deployable outcomes; no scope was added or dropped by the split.
   epic-31: backlog
-  31-1-openbao-platform-hardening-and-runtime-secret-store-migration: backlog
+  31-1-openbao-platform-hardening-and-documentation: backlog
+  31-2-runtime-dapr-secret-store-migration: backlog
   epic-31-retrospective: optional
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done

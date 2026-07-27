@@ -881,7 +881,7 @@ spec:
     - name: cleanupInterval
       value: 5m
     - name: maxConns
-      value: "64"
+      value: "40"
     - name: connectionMaxIdleTime
       value: 5m
     - name: actorStateStore
@@ -891,6 +891,28 @@ auth:
 scopes:
   - memories-access-telemetry
 ```
+
+**`maxConns` corrected 2026-07-27 by approved Sprint Change Proposal 2026-07-27**
+(`_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-27-profile-hash-deployment-ac-and-epic-splits.md`).
+This block previously pinned `maxConns: "64"`. Two lifecycle replicas each open their
+own sidecar pool, so `"64"` demands 128 connections against `max_connections=100` and
+exhausts the server during the ADR two-writer probe. `"40"` yields
+`2 x 40 + 3 superuser-reserved + 10 evidence sessions = 93` and is the shipped value in
+`deploy/kubernetes/base/dapr/access-telemetry-store.yaml`, guarded by
+`ProductionDeploymentArtifactsTests.ProductionOverlay_AccessTelemetryConnectionPoolFitsPostgreSqlMaxConnections`.
+This is an approved profile change, not a documentation repair. It supersedes the
+`maxConns` pinning in Sprint Change Proposal 2026-07-20, which remains append-only and is
+not edited in place.
+
+**Authoritative profile hash.** The approved `PG-ONPREM-1` profile hashes to
+`profile_sha256 dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14` and
+`mutation_manifest_sha256 2983ccdebedbd12e34bb1aec363335eb825301ce92d1c4ed87f8956d9c176b84`.
+The artifact carrying the hash is `canonical_pg_onprem_profile()` in
+`tools/verify_access_telemetry_lifecycle.py`, pinned by
+`tests/tooling/access_telemetry_lifecycle/test_adapter_profile.py::AdapterProfileTests::test_canonical_pg_onprem_profile_hash_is_pinned`.
+The hash covers the canonical profile object - identity, capabilities and workload - not
+the rendered Kubernetes manifests and not the running cluster state. The AC4 hash-bound
+approvals of Story 27.3 bind to this value.
 
 `queryIndexes` is intentionally absent. PostgreSQL v2 does not implement the
 Dapr Query API, and the portable lifecycle owns explicit transactional

@@ -2334,7 +2334,7 @@ Chunk 2 = deployment manifests + docs (18 File-List paths). Intermediate chunked
   - Rationale: Five independent pre-enablement items on a workload that is scaled to zero: the exec probes require `wget` and `/bin/sh` in images that are still `:0.0.0` placeholders; there is no metrics/monitoring ingress, so Prometheus reports NoData; the 60s startup probe races the store's `initTimeout: 1m` on a cold start; `terminationGracePeriodSeconds: 120` plus a `minAvailable: 1` PDB on a single replica blocks node drain; and DB/OpenBao password and TLS-CA rotation need a manual sidecar restart because HotReload is off for an actor state store. Owner: Hexalith Platform Operations. Consequence: none today (replicas are zero); each becomes live at enablement.
 - Docs: release-runbook four-image expansion belongs with DW 27.3-CR5; ADR byte-bucket boundary overlap and `edgeTypeCount>16` ambiguity; verify ADR `Story 27.2 C1 mapping` block attribution. [docs/dev/release-runbook.md; docs/dev/adr-27.1-001-access-telemetry-lifecycle.md]
   - ID: 27.3-CR21
-  - Status: open (release-runbook arm transferred to Story 30.1 on 2026-07-26; the ADR arms remain Story 27.3's)
+  - Status: open (release-runbook arm transferred to Story 30.1 on 2026-07-26 and reassigned to Story 30.3 on 2026-07-27 by the approved Sprint Change Proposal 2026-07-27, which owns the four-image expansion of `docs/dev/release-runbook.md`; Story 30.5 owns its cutover and rollback sections. The ADR arms remain Story 27.3's)
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3)
   - Target artifact: docs/dev/adr-27.1-001-access-telemetry-lifecycle.md
   - Re-open trigger: before Story 27.3 advances to done; the ADR byte-bucket boundary overlap and the `edgeTypeCount>16` clamp-vs-reject ambiguity must be resolved.
@@ -2493,7 +2493,8 @@ zero failed layers.
 ### DW 27.3-CR14 - `maxConns` profile substitution needs a superseding course correction
 
   - ID: 27.3-CR14
-  - Status: open
+  - Status: resolved 2026-07-27 - approved Sprint Change Proposal 2026-07-27 corrected the ADR immutable component block to `maxConns: "40"`, named `profile_sha256 dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14` and `mutation_manifest_sha256 2983ccdebedbd12e34bb1aec363335eb825301ce92d1c4ed87f8956d9c176b84` as the approved hashes, and identified `canonical_pg_onprem_profile()` in `tools/verify_access_telemetry_lifecycle.py` as the artifact carrying them. The 2026-07-20 proposal is superseded by reference and was not edited in place.
+  - Evidence: _bmad-output/planning-artifacts/sprint-change-proposal-2026-07-27-profile-hash-deployment-ac-and-epic-splits.md; `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md` component block and the appended profile-hash note; hash recomputed live from `canonical_pg_onprem_profile().manifest()` and pinned by `tests/tooling/access_telemetry_lifecycle/test_adapter_profile.py::AdapterProfileTests::test_canonical_pg_onprem_profile_hash_is_pinned`.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
   - Target artifact: _bmad-output/planning-artifacts/sprint-change-proposal-2026-07-20-story-27-3-on-prem-postgresql-18-4.md
   - Re-open trigger: before Story 27.3 advances to done; an approved correction must pin `maxConns: "40"`, recompute `profile_sha256`, and name the artifact carrying the new hash.
@@ -2502,7 +2503,8 @@ zero failed layers.
 ### DW 27.3-CR15 - deployment-verification lane needs an acceptance criterion and a named checkpoint
 
   - ID: 27.3-CR15
-  - Status: open
+  - Status: resolved 2026-07-27 - approved Sprint Change Proposal 2026-07-27 added Story 27.3 acceptance criterion AC6, Task 2, and checkpoint C2 for the kind-based production-deployment-verification lane. C2 carries an accountable owner, a named CI-run evidence artifact, review state `pending`, and completion state `not complete`, and is explicitly independent of C1.
+  - Evidence: _bmad-output/planning-artifacts/sprint-change-proposal-2026-07-27-profile-hash-deployment-ac-and-epic-splits.md; `_bmad-output/planning-artifacts/epics.md` Story 27.3 AC6; `_bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md` AC6, Task 2, and the C2 checkpoint row.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
   - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
   - Re-open trigger: before Story 27.3 advances to done; the lane must have a declared acceptance criterion and a checkpoint row carrying owner, evidence command, review state and completion state.
@@ -2511,7 +2513,8 @@ zero failed layers.
 ### DW 27.3-CR16 - Stories 30.1 and 31.1 must be split before selection
 
   - ID: 27.3-CR16
-  - Status: open
+  - Status: resolved 2026-07-27 - approved Sprint Change Proposal 2026-07-27 split Story 30.1 into Stories 30.1, 30.3, 30.4 and 30.5, and Story 31.1 into Stories 31.1 and 31.2. Each new story carries one independently demonstrable outcome and an Implementation-evidence checkpoint requirement naming owner, evidence command or artifact, review state, and completion state. The external Hexalith.Builds activation gate narrowed to Stories 30.3, 30.4 and 30.5. No scope was added or dropped and no story status advanced; all remain `backlog`.
+  - Evidence: _bmad-output/planning-artifacts/sprint-change-proposal-2026-07-27-profile-hash-deployment-ac-and-epic-splits.md; `_bmad-output/planning-artifacts/epics.md` Epic 30 and Epic 31 story definitions; `_bmad-output/implementation-artifacts/sprint-status.yaml` `development_status` rows and `story_execution_order` for `epic-30` and `epic-31`.
   - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3b/3)
   - Target artifact: _bmad-output/planning-artifacts/epics.md
   - Re-open trigger: before Story 30.1, 30.2 or 31.1 is set `ready-for-dev`.

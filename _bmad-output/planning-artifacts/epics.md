@@ -4909,6 +4909,7 @@ So that deployment-shaped lifecycle verification starts only on an atomic, durab
 3. Forced loss and replacement of the PostgreSQL container/process proves zero loss of every acknowledged record while the single node and retained local volume remain healthy. Node, local-volume, control-plane, and site loss are explicitly outside profile; backup/restore evidence and the resulting nonzero RPO/RTO are published without an HA claim or overstatement.
 4. Hexalith Platform Operations approves node/storage capacity, operating cost, operation, bounded fault, backup/restore, upgrade, rollback, and reclamation evidence and explicitly acknowledges the absence of node/disk/site HA; a separate security reviewer approves identity, secrets, TLS, network, authorization, encryption, privacy, and evidence integrity.
 5. Any missing digest, placeholder, profile drift, failed probe, missing approval, or unreserved capacity keeps Production writes disabled, Story 27.3 `in-progress`, Story 27.4 `backlog`, and A41 open.
+6. The kind-based production-deployment-verification lane renders and applies the production manifests to a disposable cluster from the four release OCI archives, produces verification evidence, and validates that evidence, with any failed render, apply, health, or evidence-validation step failing the lane. Added 2026-07-27 by approved Sprint Change Proposal 2026-07-27 (DW 27.3-CR15). This criterion is independent of AC1-AC5: it neither requires nor unblocks C1, and passing it advances no C1 gate.
 
 ### Story 27.4: Retention Verification, Operations Runbook, and A41 Close-Out
 
@@ -5074,15 +5075,17 @@ Memories adopts the EventStore-shaped Hexalith CI/CD model: reusable Hexalith.Bu
 
 **Scope origin:** The pipeline artifacts already exist in the repository and were ledgered as an external CI/CD lane while bundled into Story 27.3's single C1 adapter-qualification slice. This epic gives them an owner, not a new implementation.
 
-### Story 30.1: Four-Image Container Release and Partial-Recovery Pipeline
+**Scope boundary (restated at epic level 2026-07-27; carried from the pre-split Story 30.1).** Epic 30 owns the release and publish lane only. Production deployment rendering, verification, and evidence tooling (`tools/render-production-deployment.ps1`, `tools/verify-production-deployment.ps1`, `tools/validate-production-deployment-evidence.ps1`) and the `production-deployment-verification` CI job remain owned by Story 27.3, which declares them under acceptance criterion AC6 and checkpoint C2. Story 30.3 owns `tools/publish-containers.ps1`, which produces the four archives that lane consumes, and must not regress it.
+
+### Story 30.1: Guarded Release Dispatch and Shared Caller Adoption
 
 **Status:** backlog. **Owner:** Memories Maintainer.
 
-**Activation gate:** Story 30.1 must not enter implementation until an owner-approved Hexalith.Builds revision supports a frozen multi-container publication identity, repeated per-container verification without phase collisions, and evidence sufficient for partial-release recovery. The current single `container_repository` identity and single-use container phase do not satisfy the four-image contract.
+**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16. The pre-split Story 30.1 carried seven Given/When/Then blocks and eight checkpoints with no owner, evidence command, review state or completion state, reproducing the anti-template shape its own split was executed to cure. Its scope is now Stories 30.1, 30.3, 30.4 and 30.5; no scope was added or dropped. The pre-split activation gate moved to Stories 30.3, 30.4 and 30.5, which are the stories that actually require multi-container Hexalith.Builds support. **Story 30.1 has no external activation gate.**
 
 As a maintainer,
-I want the nine-package and four-image release aligned to the guarded Hexalith release workflow,
-So that publication uses one auditable shared contract while preserving deterministic partial recovery.
+I want release publication to be reachable only from a guarded dispatch against a shared, pinned caller,
+So that no release can be published from an unverified source, an unprotected environment, or an unpinned shared workflow.
 
 **Acceptance Criteria:**
 
@@ -5103,38 +5106,9 @@ So that publication uses one auditable shared contract while preserving determin
 **Then** `tools/release-packages.json`, its schema, validators, pack scripts, recovery tooling, and fixtures migrate atomically from `packageId` to `id`
 **And** the canonical inventory remains exactly the existing nine package IDs.
 
-**Given** the approved multi-container Hexalith.Builds contract,
-**When** semantic-release publishes version `${nextRelease.version}`,
-**Then** the caller supplies exactly these mappings:
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: guarded-dispatch preflight rejection of a non-tip SHA; protected-environment and pinned-Builds-SHA configuration; no-publish-on-push proof; and the atomic `packageId` to `id` migration with the nine-ID inventory unchanged.
 
-- `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories`
-- `src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp`
-- `src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry`
-- `src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock`
-
-**And** every image is verified against its declared platforms and workload-appropriate health contract
-**And** Memories-specific production-deployment asset generation remains in the caller rather than being copied into Hexalith.Builds.
-
-**Given** a publish run that fails after some images are pushed,
-**When** recovery is authorized,
-**Then** `.github/workflows/recover-partial-release.yml` consumes immutable release evidence, proves the exact source/version/inventory, skips already-published members, and publishes only the missing members
-**And** recovery never overwrites, retags, or silently treats an ambiguous destination response as success.
-
-**Given** the existing automatic release and custom publisher,
-**When** migration is cut over,
-**Then** a dry run and controlled release rehearsal prove nine-package, four-image, GitHub Release asset, registry authorization, failure, and recovery parity
-**And** the old path is removed only after parity succeeds
-**And** rollback restores the prior caller without changing a published version or mutable tag.
-
-**Given** registry push authorization,
-**When** the pipeline authenticates,
-**Then** the authorization mode in use is recorded, and any registry-side limitation that blocks an authenticated push is captured as a named blocker with owner, consequence, and reopen trigger rather than worked around silently.
-
-**Implementation evidence:** The story file must track the Hexalith.Builds prerequisite SHA, manifest migration, four-image identity, release rehearsal, partial-failure exercise, recovery result, protected-environment configuration, and rollback proof as separate reviewable checkpoints.
-
-**Known risk (carried, not yet re-verified):** a prior investigation recorded that the zot registry rejected challenge-response push authentication — Docker and skopeo pushes returned 401 while a preemptive single-connection preflight probe succeeded — and suspected a registry-side replica/state issue requiring server-side diagnosis. Re-verify this against the current registry before treating the publish path as green; if it reproduces, record it as an accepted blocker per the acceptance criterion above.
-
-**Scope boundary:** Story 30.1 owns the release/publish lane only. Production deployment rendering, verification, and evidence tooling (`tools/render-production-deployment.ps1`, `tools/verify-production-deployment.ps1`, `tools/validate-production-deployment-evidence.ps1`) remain owned by Story 27.3.
+**Owned paths:** `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`. Story 27.3 retains the declared cross-story edit it made under the 2026-07-26 Administrator decision.
 
 ### Story 30.2: Shared CI Core and Module-Specific Verification Lanes
 
@@ -5171,6 +5145,91 @@ So that standard checks remain consistent across modules without losing Memories
 
 **Implementation evidence:** The story file must contain a lane-by-lane migration table naming the old owner, new owner, trigger, required-check name, validation command or artifact, and rollback path.
 
+### Story 30.3: Four-Image Publication Contract
+
+**Status:** backlog. **Owner:** Memories Maintainer.
+
+**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16, from the pre-split Story 30.1.
+
+**Activation gate:** Story 30.3 must not enter implementation until an owner-approved Hexalith.Builds revision supports a frozen multi-container publication identity and repeated per-container verification without phase collisions. The current single `container_repository` identity and single-use container phase do not satisfy the four-image contract.
+
+As a maintainer,
+I want all four release images published and verified under one declared mapping set,
+So that every shipped container has a provable identity, platform set, and health contract.
+
+**Acceptance Criteria:**
+
+**Given** the approved multi-container Hexalith.Builds contract,
+**When** semantic-release publishes version `${nextRelease.version}`,
+**Then** the caller supplies exactly these mappings:
+
+- `src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj|memories`
+- `src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj|memories-mcp`
+- `src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj|memories-access-telemetry`
+- `src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj|memories-access-telemetry-clock`
+
+**And** every image is verified against its declared platforms and workload-appropriate health contract
+**And** Memories-specific production-deployment asset generation remains in the caller rather than being copied into Hexalith.Builds.
+
+**Given** registry push authorization,
+**When** the pipeline authenticates,
+**Then** the authorization mode in use is recorded, and any registry-side limitation that blocks an authenticated push is captured as a named blocker with owner, consequence, and reopen trigger rather than worked around silently.
+
+**Known risk (carried, not yet re-verified):** a prior investigation recorded that the zot registry rejected challenge-response push authentication - Docker and skopeo pushes returned 401 while a preemptive single-connection preflight probe succeeded - and suspected a registry-side replica/state issue requiring server-side diagnosis. Re-verify this against the current registry before treating the publish path as green; if it reproduces, record it as an accepted blocker per the acceptance criterion above.
+
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the four declared mappings; per-image platform verification; per-image health verification; and the recorded registry authorization mode with any named blocker.
+
+**Owned paths:** `tools/publish-containers.ps1`, `tools/verify-container-registry.ps1`, the four `tests/tooling/publish_containers/*` suites, and the four-image expansion of `docs/dev/release-runbook.md`.
+
+**Downstream obligation:** `tools/publish-containers.ps1` produces the four `.tar.gz` archives consumed by the `production-deployment-verification` lane that Story 27.3 AC6 and checkpoint C2 declare. Story 30.3 must not regress that lane.
+
+### Story 30.4: Partial-Release Recovery
+
+**Status:** backlog. **Owner:** Memories Maintainer.
+
+**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16, from the pre-split Story 30.1.
+
+**Activation gate:** Story 30.4 must not enter implementation until the approved Hexalith.Builds revision emits evidence sufficient for partial-release recovery.
+
+As a maintainer,
+I want a publish run that fails after some images are pushed to recover deterministically,
+So that a partial release is completed exactly once without overwriting or retagging what already shipped.
+
+**Acceptance Criteria:**
+
+**Given** a publish run that fails after some images are pushed,
+**When** recovery is authorized,
+**Then** `.github/workflows/recover-partial-release.yml` consumes immutable release evidence, proves the exact source/version/inventory, skips already-published members, and publishes only the missing members
+**And** recovery never overwrites, retags, or silently treats an ambiguous destination response as success.
+
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: an exercised partial-failure scenario; the source/version/inventory proof; the skip-already-published result; and a negative proof that an ambiguous destination response fails rather than passes.
+
+**Owned paths:** `.github/workflows/recover-partial-release.yml`, `tools/complete-partial-release.ps1`.
+
+### Story 30.5: Release Cutover Parity and Rollback
+
+**Status:** backlog. **Owner:** Memories Maintainer.
+
+**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16, from the pre-split Story 30.1.
+
+**Activation gate:** Story 30.5 must not enter implementation until Stories 30.1, 30.3 and 30.4 are `done`, because parity is proven against their completed lanes.
+
+As a maintainer,
+I want the migration from the existing custom publisher proven at parity before the old path is removed,
+So that cutover cannot lose a capability and rollback cannot alter anything already published.
+
+**Acceptance Criteria:**
+
+**Given** the existing automatic release and custom publisher,
+**When** migration is cut over,
+**Then** a dry run and controlled release rehearsal prove nine-package, four-image, GitHub Release asset, registry authorization, failure, and recovery parity
+**And** the old path is removed only after parity succeeds
+**And** rollback restores the prior caller without changing a published version or mutable tag.
+
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the dry-run result; the controlled rehearsal result; the lane-by-lane parity comparison; the old-path removal, gated on parity; and a rollback proof showing no published version or mutable tag changed.
+
+**Owned paths:** the cutover and rollback sections of `docs/dev/release-runbook.md`.
+
 ---
 
 ## Epic 31: OpenBao Secrets Platform and Runtime Secret-Store Migration
@@ -5185,13 +5244,17 @@ The deployed OpenBao `hexalith-keys` platform and the runtime Dapr `secretstore`
 
 **Scope origin:** The platform is already deployed and operational — the 2026-07-20 live probe resolved the access-telemetry store through it. This epic formalizes ownership, hardening, and documentation of a running platform; it does not stand one up.
 
-### Story 31.1: OpenBao Platform Hardening and Runtime Secret-Store Migration
+### Story 31.1: OpenBao Platform Hardening and Documentation
 
 **Status:** backlog. **Owner:** Memories Maintainer + security reviewer.
 
+**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16. The pre-split Story 31.1 bundled platform hardening and the runtime secret-store migration - two independently deployable outcomes - with no checkpoint table. Its scope is now Stories 31.1 and 31.2; no scope was added or dropped.
+
+**Scope boundary:** Epic 29 owns the Aspire/AppHost-local OpenBao topology and provider-neutral composition. Story 31.1 owns the deployed-cluster platform only. Neither story may be closed on the other's evidence.
+
 As an operator and security reviewer,
-I want the deployed OpenBao platform and the runtime Dapr secret-store migration owned by one reviewable story,
-So that the secret-management boundary is hardened and approved on its own evidence rather than inside an adapter-qualification slice.
+I want the deployed OpenBao platform documented at its exact configuration and its limitations recorded as accepted,
+So that the secret-management boundary is reviewable on its own evidence before anything is migrated onto it.
 
 **Acceptance Criteria:**
 
@@ -5200,16 +5263,47 @@ So that the secret-management boundary is hardened and approved on its own evide
 **Then** `deploy/openbao/values.yaml`, `namespace.yaml`, `service-account-hardening.yaml`, and `smoke-test.yaml` are documented in `docs/operations/openbao.md` with their exact deployed configuration
 **And** the smoke test is runnable with a named command and recorded result.
 
+**Given** the single-node deployment profile,
+**When** the security reviewer evaluates it,
+**Then** the static file-based OpenBao seal - the unseal key held in a Kubernetes Secret beside the data - and the namespace-wide port 8200 ingress are surfaced explicitly as accepted single-node limitations with owner, consequence, compensating controls, and a reopen trigger
+**And** neither limitation is described as hardened or production-HA.
+
+**Given** platform documentation and evidence,
+**When** either is produced,
+**Then** no unseal key, recovery key, root or operator token, or other secret value appears in `docs/operations/openbao.md`, any evidence artifact, or any test snapshot (NFR9, project-context "Never expose secrets").
+
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the four documented topology files at their deployed configuration; the executed smoke test with its command and result; each accepted single-node limitation with owner, consequence, compensating controls and reopen trigger; and the security reviewer's recorded evaluation.
+
+**Owned paths:** `deploy/openbao/values.yaml`, `namespace.yaml`, `service-account-hardening.yaml`, `smoke-test.yaml`, `docs/operations/openbao.md`.
+
+### Story 31.2: Runtime Dapr Secret-Store Migration to `hashicorp.vault`
+
+**Status:** backlog. **Owner:** Memories Maintainer + security reviewer.
+
+**Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16, from the pre-split Story 31.1.
+
+**Activation gate:** Story 31.2 must not enter implementation until Story 31.1 is `done`, so that the migration is evaluated against a documented platform whose accepted limitations are already on record.
+
+**Scope boundary:** Epic 29 owns the Aspire/AppHost-local topology. Story 31.2 owns the deployed-cluster runtime secret-store component only. Neither story may be closed on the other's evidence.
+
+As an operator and security reviewer,
+I want the runtime Dapr secret store migrated from Kubernetes Secrets to `hashicorp.vault`,
+So that runtime secret resolution crosses one reviewed boundary and every remaining Kubernetes Secret is justified.
+
+**Acceptance Criteria:**
+
 **Given** the runtime `secretstore` component,
 **When** the migration completes,
 **Then** `deploy/kubernetes/base/dapr/secretstore.yaml` uses `hashicorp.vault` with the `eventstore` and `memories` scopes
 **And** every remaining Kubernetes Secret is documented as an unavoidable OpenBao bootstrap credential or a direct pod input outside the DAPR secret-store boundary (NFR9).
 
-**Given** the single-node deployment profile,
-**When** the security reviewer evaluates it,
-**Then** the static file-based OpenBao seal — the unseal key held in a Kubernetes Secret beside the data — and the namespace-wide port 8200 ingress are surfaced explicitly as accepted single-node limitations with owner, consequence, compensating controls, and a reopen trigger
-**And** neither limitation is described as hardened or production-HA.
-
 **Given** secret-resolution behavior,
 **When** structural and integration tests run,
 **Then** no product project contains an OpenBao SDK, HTTP client, endpoint, or provider credential, and secret values are never exposed in logs, telemetry, CLI output, or test snapshots (NFR9, project-context "Never expose secrets").
+
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the migrated component with both scopes proven by a live scoped read; a per-Secret justification inventory for every remaining Kubernetes Secret; the structural no-SDK proof; and a negative proof that a secret value cannot reach logs, telemetry, CLI output, or a snapshot.
+
+**Owned paths:** `deploy/kubernetes/base/dapr/secretstore.yaml`.
+
+**Retained by Story 27.3:** the access-telemetry-specific secret components and the `PG-ONPREM-1` secret backing remain in Story 27.3 adapter scope and are not migrated by this story.
+
