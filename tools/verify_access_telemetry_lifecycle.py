@@ -48,7 +48,10 @@ def _is_daprd_version(payload: str) -> bool:
     return bool(DAPRD_VERSION_PATTERN.match(payload))
 
 
-def _observation_cause(observation: "CommandObservation | None") -> str:
+def _observation_cause(
+    observation: "CommandObservation | None",
+    empty_reason: str = "no version-shaped output",
+) -> str:
     """Return a stated cause, never a bare `None`.
 
     `_run_command` leaves `error` unset on exit 0, so an exec that succeeds with
@@ -61,10 +64,26 @@ def _observation_cause(observation: "CommandObservation | None") -> str:
         return "no candidate command was executed"
     if observation.error:
         return observation.error
-    binary = observation.command[0] if observation.command else "command"
+    # `command[0]` is always `kubectl`; the probed executable is the argument after
+    # `--`, which is what a reader needs to know. Story 27.3 code review
+    # (eighth-invocation review): the previous form named `kubectl` and asserted
+    # "no version-shaped output" on every branch, including `--build-info`, whose
+    # output is never version-shaped.
+    binary = _probed_executable(observation)
     if observation.exit_code == 0:
-        return f"{binary} exited 0 with no version-shaped output"
+        return f"{binary} exited 0 with {empty_reason}"
     return f"{binary} exited {observation.exit_code}"
+
+
+def _probed_executable(observation: "CommandObservation") -> str:
+    """Return the executable `kubectl exec ... -- <executable> <flag>` actually probed."""
+
+    command = list(observation.command or ())
+    if "--" in command:
+        index = command.index("--")
+        if index + 1 < len(command):
+            return command[index + 1]
+    return command[0] if command else "command"
 
 
 _REQUIRED_IDENTITY_FIELDS = (
@@ -128,6 +147,42 @@ class EnvironmentIdentity:
             "declared_single_component_fault": self.declared_single_component_fault,
         }
 
+    def to_profile_identity(self) -> dict[str, str]:
+        """Return the hashed profile identity, in `canonical_pg_onprem_profile`'s key shape.
+
+        Story 27.3 code review (eighth-invocation review) fixed two defects here.
+
+        First, `to_dict()` carries `evidence_root`, an invocation parameter naming
+        where the operator wrote the packet. Hashing it made `profile_sha256` - the
+        field AC1 calls immutable profile material and AC5 treats as drift - a
+        function of the operator's working directory: the same target hashed
+        differently from a relative and an absolute `EVIDENCE_ROOT`, and the
+        committed packet's hash moved with no runtime change at all. `evidence_root`,
+        `deployment_id` and `declared_single_component_fault` remain published in the
+        packet; none of them is profile identity, so none is hashed.
+
+        Second, the runtime profile used `to_dict()`'s snake_case keys while the
+        reviewed profile uses camelCase backend keys, so the two objects were
+        structurally disjoint and `runtime_matches_reviewed_profile` could never be
+        `true` for any runtime, however perfect - the same failure class as the
+        `done`-gate verifier regex this story already fixed once. The two key shapes
+        are now the same, so the comparison is answerable.
+
+        The three backend fields are reviewed constants rather than live readings:
+        this identity binds *which profile the invocation declares it is running
+        against*. Whether the live cluster actually matches is proven by the C1 gate
+        rows, not by this hash.
+        """
+
+        return {
+            "profileId": self.profile_id,
+            "kubeContext": self.kube_context,
+            "kubeNamespace": self.kube_namespace,
+            "postgresqlImage": EXPECTED_POSTGRESQL_IMAGE,
+            "componentType": EXPECTED_COMPONENT_TYPE,
+            "maxConns": EXPECTED_MAX_CONNS,
+        }
+
 
 @dataclass(frozen=True)
 class WorkloadEnvelope:
@@ -185,6 +240,10 @@ EXPECTED_POSTGRESQL_IMAGE = (
     "docker.io/library/postgres:18.4-trixie@"
     "sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a"
 )
+# Shared by `canonical_pg_onprem_profile` and `EnvironmentIdentity.to_profile_identity`
+# so the reviewed profile and the runtime profile cannot drift apart silently.
+EXPECTED_COMPONENT_TYPE = "state.postgresql/v2"
+EXPECTED_MAX_CONNS = "40"
 
 
 # Approved PG-ONPREM-1 capacity thresholds (sprint-change-proposal-2026-07-20).
@@ -290,8 +349,8 @@ def canonical_pg_onprem_profile() -> AdapterProfile:
             "kubeContext": EXPECTED_KUBE_CONTEXT,
             "kubeNamespace": EXPECTED_KUBE_NAMESPACE,
             "postgresqlImage": EXPECTED_POSTGRESQL_IMAGE,
-            "componentType": "state.postgresql/v2",
-            "maxConns": "40",
+            "componentType": EXPECTED_COMPONENT_TYPE,
+            "maxConns": EXPECTED_MAX_CONNS,
         },
         capabilities={
             "actorStateStore": True,
@@ -656,33 +715,71 @@ def collect_sidecar_image_identity(
     indistinguishable from "no daprd container was observed", in the very field AC1
     requires. When a daprd tag was seen but no digest could be bound, record the
     blocker instead.
+
+    Story 27.3 code review (eighth-invocation review): the repo-name filter was the
+    *only* way the sidecar was identified, so when the daprd container's own `image`
+    was a bare `sha256:<id>` - precisely the side-loaded case named above - the tag
+    set came back empty, the `images and not digests` guard could not fire, and
+    `([], [])` was published as a positive observation. The container name is now
+    authoritative and the repo-name substring is a fallback for summaries predating
+    `container_names`. A pod set that was observed but yielded no daprd container at
+    all records a blocker rather than an empty list.
     """
 
-    images = sorted(
-        {
-            image
-            for summary in pod_summaries
-            for image in summary.get("container_images", [])
-            if "daprd" in image
-        }
-    )
-    digests: set[str] = set()
-    for summary in pod_summaries:
-        names = summary.get("container_images", [])
+    def _is_daprd(position: int, summary: Mapping[str, Any]) -> bool:
+        container_names = summary.get("container_names", [])
+        if position < len(container_names) and container_names[position]:
+            return "daprd" in container_names[position]
+        # Pre-`container_names` summaries: fall back to the repo-name substring on
+        # either parallel field.
+        images = summary.get("container_images", [])
         identifiers = summary.get("container_image_ids", [])
-        for position, image_id in enumerate(identifiers):
-            if not image_id:
+        image = images[position] if position < len(images) else ""
+        image_id = identifiers[position] if position < len(identifiers) else ""
+        return "daprd" in image or "daprd" in image_id
+
+    tags: set[str] = set()
+    digests: set[str] = set()
+    observed_daprd_container = False
+    for summary in pod_summaries:
+        identifiers = summary.get("container_image_ids", [])
+        images = summary.get("container_images", [])
+        for position in range(max(len(identifiers), len(images))):
+            if not _is_daprd(position, summary):
                 continue
-            # Bind by the parallel tag when the imageID itself carries no repo name.
-            name = names[position] if position < len(names) else ""
-            if "daprd" in image_id or "daprd" in name:
-                digests.add(image_id)
-    if images and not digests:
+            observed_daprd_container = True
+            if position < len(images) and images[position]:
+                tags.add(images[position])
+            if position < len(identifiers) and identifiers[position]:
+                digests.add(identifiers[position])
+
+    if pod_summaries and not observed_daprd_container:
         return (
-            images,
+            sorted(tags),
+            "not captured; no observed pod carried a daprd container",
+        )
+    if observed_daprd_container and not digests:
+        return (
+            sorted(tags),
             "not captured; no daprd containerStatus carried an imageID",
         )
-    return (images, sorted(digests))
+    return (sorted(tags), sorted(digests))
+
+
+def _digest_uniformity(sidecar_digests: list[str] | str) -> bool | str:
+    """Return uniformity as a claim only when digests were actually observed.
+
+    `True`/`False` are claims about the fleet; anything else is a stated blocker, so
+    an empty observation can never be read as "the fleet is not uniform".
+    """
+
+    if not isinstance(sidecar_digests, list):
+        # The collector already returned its own stated blocker; carry it through
+        # rather than inventing a second, weaker one.
+        return sidecar_digests
+    if not sidecar_digests:
+        return "not captured; no daprd image digest was observed"
+    return len(sidecar_digests) == 1
 
 
 def collect_daprd_runtime_identity(
@@ -715,6 +812,7 @@ def collect_daprd_runtime_identity(
         return (blocked("no Running pod matched the label selector"), observations)
 
     fallback: CommandObservation | None = None
+    fallback_pod: str | None = None
     for pod_name in running_pods:
         for executable in DAPRD_EXECUTABLE_CANDIDATES:
             version = probe(pod_name, executable, "--version")
@@ -725,7 +823,16 @@ def collect_daprd_runtime_identity(
                 # observation: a wrapper script, usage text printed with exit 0, or a
                 # binary shadowing the bare-name candidate would otherwise be stamped
                 # into the packet as the running runtime version.
-                fallback = fallback or version
+                #
+                # Story 27.3 code review (eighth-invocation review): `fallback or
+                # version` pinned the cause to the *first* attempt, and `/daprd`
+                # always precedes bare `daprd` with a plain exit 1 when the path is
+                # absent - so the shadowing-binary case this check exists to catch
+                # could never reach the packet. An exit-0 non-version answer is the
+                # more informative cause and now wins.
+                if fallback is None or (fallback.exit_code != 0 and version.exit_code == 0):
+                    fallback = version
+                    fallback_pod = pod_name
                 continue
             build_info = probe(pod_name, executable, "--build-info")
             observations.append(build_info)
@@ -735,8 +842,12 @@ def collect_daprd_runtime_identity(
                     "daprd_version": payload,
                     "daprd_version_probe_pod": pod_name,
                     "daprd_executable": executable,
-                    "daprd_build_info": build_payload
-                    or f"not captured; {_observation_cause(build_info)}",
+                    # `--build-info` output is free-form, so it cannot be shape-checked
+                    # the way the version is; it is bounded instead. An exit-0 answer
+                    # that looks like usage text is a claim, not an observation - the
+                    # same defect `_is_daprd_version` was added to close for the
+                    # version, one field over.
+                    "daprd_build_info": _bounded_build_info(build_payload, build_info),
                 },
                 observations,
             )
@@ -744,11 +855,31 @@ def collect_daprd_runtime_identity(
     return (
         blocked(
             _observation_cause(fallback),
-            daprd_version_probe_pod=running_pods[0],
+            daprd_version_probe_pod=fallback_pod or running_pods[0],
             daprd_executable="not captured; no candidate path returned a version-shaped answer",
         ),
         observations,
     )
+
+
+# `--build-info` prints a short provenance block. Usage text - which is what a
+# shadowing binary or a flag-rejecting build emits on exit 0 - always announces
+# itself with one of these.
+_BUILD_INFO_USAGE_MARKERS = ("usage of", "usage:", "unknown flag", "flag provided but not defined")
+
+
+def _bounded_build_info(payload: str, observation: "CommandObservation") -> str:
+    """Return the build-info payload, or a stated blocker when it is not build info."""
+
+    if not payload:
+        return f"not captured; {_observation_cause(observation, 'no output')}"
+    lowered = payload.lower()
+    if any(marker in lowered for marker in _BUILD_INFO_USAGE_MARKERS):
+        return (
+            "not captured; "
+            f"{_probed_executable(observation)} exited 0 with usage text rather than build info"
+        )
+    return payload
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -851,6 +982,15 @@ def _pod_summary(item: Mapping[str, Any]) -> dict[str, Any]:
         # positional parity: a Waiting container (ContainerCreating, ImagePullBackOff)
         # has an empty `imageID`, and dropping it would silently rebind every later
         # digest to the wrong container.
+        # The container name is the only identifier that survives a digest-pinned or
+        # side-loaded image, whose `image` and `imageID` are both a bare `sha256:<id>`.
+        # Without it the sidecar can only be found by repo-name substring, which is
+        # what let `collect_sidecar_image_identity` fail open. Same iteration, so this
+        # list holds positional parity with the two below.
+        "container_names": [
+            _mapping(container).get("name") or ""
+            for container in _sequence(status.get("containerStatuses"))
+        ],
         "container_images": [
             _mapping(container).get("image") or ""
             for container in _sequence(status.get("containerStatuses"))
@@ -1045,7 +1185,13 @@ def _write_rejection_evidence(
             # profile hash with no statement of what object it covered, so an
             # approval could bind the reviewed manifests or the divergent live
             # cluster and a reader could not tell which.
-            "- profile_hash_covers: `runtime-observed profile constructed by this invocation from the supplied identity and the live component query`",
+            # Story 27.3 code review (eighth-invocation review): this claimed the hash
+            # covered "the live component query". No component data enters the hash -
+            # it covers the declared profile identity, the reviewed backend constants
+            # and the ADR workload envelope, and nothing else. `evidence_root`,
+            # `deployment_id` and `declared_single_component_fault` are published in
+            # this packet but are deliberately outside the hash.
+            "- profile_hash_covers: `declared profile identity (profileId, kubeContext, kubeNamespace), the reviewed backend constants (postgresqlImage, componentType, maxConns), the C1 capability set, and the ADR two-writer workload envelope; no live query result and no invocation parameter`",
             f"- reviewed_canonical_profile_sha256: `{reviewed_manifest['profile_sha256']}`",
             "- reviewed_canonical_profile_source: `tools/verify_access_telemetry_lifecycle.py::canonical_pg_onprem_profile`",
             f"- runtime_matches_reviewed_profile: `{str(manifest['profile_sha256'] == reviewed_manifest['profile_sha256']).lower()}`",
@@ -1221,9 +1367,20 @@ def run_adapter_profile_checkpoint(
 
     capacity = collect_capacity_evidence()
     attestations = collect_attestations()
+    # Capabilities use the reviewed profile's key set so the two manifests are
+    # comparable. Every value is `False` because no C1 gate has passed: the runtime
+    # profile hash equals the reviewed one only once the gates actually prove these
+    # capabilities, which is the semantics `runtime_matches_reviewed_profile` was
+    # always meant to carry. The packet's separate `production_lifecycle_writes` and
+    # `evidence_is_approval` lines remain the fail-closed markers.
     profile = AdapterProfile(
-        identity=identity.to_dict(),
-        capabilities={"lifecycle_writes": False, "approval": False},
+        identity=identity.to_profile_identity(),
+        capabilities={
+            "actorStateStore": False,
+            "strongReads": False,
+            "transactionRollback": False,
+            "ttl": False,
+        },
         workload=ADR_TWO_WRITER_WORKLOAD.to_dict(),
     )
 
@@ -1275,26 +1432,37 @@ def run_adapter_profile_checkpoint(
 
     # AC1 requires the running Dapr runtime identity, captured from the deployment rather
     # than inferred from .NET package pins. This is gate C1.15's producer.
-    sidecar_images, sidecar_digests = collect_sidecar_image_identity(summaries["pods"])
+    # Story 27.3 code review (eighth-invocation review): the digest set used to union
+    # *every* pod while the version was read from Running pods only, so a terminated
+    # old-ReplicaSet pod could report the fleet as divergent while the running fleet
+    # was uniform. Both now observe the same population, and the packet names it.
+    running_pod_summaries = [summary for summary in summaries["pods"] if summary["phase"] == "Running"]
+    sidecar_images, sidecar_digests = collect_sidecar_image_identity(running_pod_summaries)
     runtime_identity: dict[str, Any] = {
         "kube_context_observed": identity.kube_context,
         "kube_context_is_reviewed_label": identity.kube_context == EXPECTED_KUBE_CONTEXT,
+        "sidecar_identity_population": f"{len(running_pod_summaries)} Running pod(s)",
         "sidecar_images": sidecar_images,
         "sidecar_image_digests": sidecar_digests,
     }
-    running_pods = [summary["name"] for summary in summaries["pods"] if summary["phase"] == "Running"]
+    running_pods = [summary["name"] for summary in running_pod_summaries]
     daprd_identity, daprd_observations = collect_daprd_runtime_identity(
         running_pods,
         lambda pod_name, executable, flag: _run_daprd(identity, pod_name, executable, flag),
     )
     observations.extend(daprd_observations)
     runtime_identity.update(daprd_identity)
-    # The version is read from the first pod that answers while the digest set unions
-    # every pod, so a mid-rollout fleet would otherwise be reported as one runtime
-    # version running two different images with nothing saying so.
-    runtime_identity["sidecar_digest_is_uniform"] = (
-        len(sidecar_digests) == 1 if isinstance(sidecar_digests, list) else False
-    )
+    # The version is read from the first Running pod that answers while the digest set
+    # unions the whole Running population, so a mid-rollout fleet would otherwise be
+    # reported as one runtime version running two different images with nothing saying
+    # so.
+    #
+    # Story 27.3 code review (eighth-invocation review): this collapsed a tri-state
+    # into a boolean. "Nothing was captured" and "the blocker string was returned"
+    # both rendered as `false`, which reads as the positive claim *the fleet is not
+    # uniform* - indistinguishable from a real mid-rollout divergence, and the exact
+    # claim-versus-blocker confusion the sibling fields fail closed to avoid.
+    runtime_identity["sidecar_digest_is_uniform"] = _digest_uniformity(sidecar_digests)
 
     if any(observation.exit_code != 0 or observation.payload is None for observation in observations[:5]):
         reason = "deployment identity could not be captured from every required read-only Kubernetes query"

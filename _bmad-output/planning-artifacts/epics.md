@@ -4846,11 +4846,13 @@ Operators can configure and verify a bounded lifecycle for access telemetry thro
 
 **Lifecycle label:** Operational Readiness / Security and Observability Hardening.
 
-**Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation), the approved Sprint Change Proposal 2026-07-19/20 (Story 27.3 C1 Production Adapter and Deployment Profile), and the approved Sprint Change Proposal 2026-07-20 (Story 27.3 On-Premises PostgreSQL 18.4 Profile).
+**Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation), the approved Sprint Change Proposal 2026-07-19/20 (Story 27.3 C1 Production Adapter and Deployment Profile), the approved Sprint Change Proposal 2026-07-20 (Story 27.3 On-Premises PostgreSQL 18.4 Profile), and the approved Sprint Change Proposal 2026-07-28 (blocked C1 gate split to Story 27.5 and C3/C4 ratification).
 
 **Sequencing gate:** Story 27.1 is decision-first. Stories 27.2 and 27.3 must not implement or claim a sink/store before its ownership, topology, failure, retention, purge, and validation contract is ratified.
 
 **Qualification and close-out split:** Story 27.3 owns exact Production-adapter qualification and the immutable deployment profile. Story 27.4 consumes only that approved profile and owns deployment-shaped lifecycle evidence, operations documentation, and A41 close-out. Adapter rejection is a complete Story 27.3 outcome only when it preserves fail-closed writes and routes a new correct-course decision; it never closes A41.
+
+**Amended 2026-07-28 by approved Sprint Change Proposal 2026-07-28.** Story 27.5 owns the thirteen C1 capability gates (C1.1-C1.12 and C1.14) for which no operator-executable producer can exist while the `PG-ONPREM-1` lifecycle environment is disabled, and owns authoring each gate's producer against the running target. Story 27.3 retains profile identity capture, capacity admission, declared-fault durability, backup/restore, both separated approvals, and the three non-C1 lanes (C2, C3, C4). Production lifecycle writes remain disabled until the gates of both stories pass: Story 27.3 reaching `done` does not enable them. Story 27.4's predecessor gate is met only when Stories 27.3 and 27.5 are both `done` at the same profile hash.
 
 ### Story 27.1: Access-Telemetry Retention Ownership Decision (Decision-First)
 
@@ -4905,11 +4907,13 @@ So that deployment-shaped lifecycle verification starts only on an atomic, durab
 **Acceptance Criteria:**
 
 1. The exact `PG-ONPREM-1` runtime, component, PostgreSQL 18.4 backend, Dapr control plane, application images, component/config manifests, actor/Scheduler identities, configuration epoch, profile hash, node/storage capacity, and operating cost are captured from the running on-premises target.
-2. CRUD, strong reads, ETags, rollback-atomic multi-key transactions, TTL, actor reactivation, Placement/Scheduler/reminder recovery, request bounds, two-writer 500 events/s throughput, 150,000-record purge catch-up, isolation, encryption, capacity, and cohort-attributable physical reclamation all pass without skip.
+2. Capacity is proven for the 1-hour, configured 24-hour, and 7-day horizons: every operand is normalized to integer bytes/counts, the arithmetic is checked, and the computed result is admitted against the approved 70/80/90% threshold table without skip. Narrowed 2026-07-28 by approved Sprint Change Proposal 2026-07-28: CRUD, strong reads, ETags, rollback-atomic multi-key transactions, TTL, actor reactivation, Placement/Scheduler/reminder recovery, request bounds, two-writer 500 events/s throughput, 150,000-record purge catch-up, isolation, encryption, and cohort-attributable physical reclamation transfer to Story 27.5 as gates C1.1-C1.12 and C1.14, keeping their gate identifiers. No gate is dropped, weakened, or made discharge-able by a unit lane.
 3. Forced loss and replacement of the PostgreSQL container/process proves zero loss of every acknowledged record while the single node and retained local volume remain healthy. Node, local-volume, control-plane, and site loss are explicitly outside profile; backup/restore evidence and the resulting nonzero RPO/RTO are published without an HA claim or overstatement.
 4. Hexalith Platform Operations approves node/storage capacity, operating cost, operation, bounded fault, backup/restore, upgrade, rollback, and reclamation evidence and explicitly acknowledges the absence of node/disk/site HA; a separate security reviewer approves identity, secrets, TLS, network, authorization, encryption, privacy, and evidence integrity.
-5. Any missing digest, placeholder, profile drift, failed probe, missing approval, or unreserved capacity keeps Production writes disabled, Story 27.3 `in-progress`, Story 27.4 `backlog`, and A41 open.
+5. Any missing digest, placeholder, profile drift, failed probe, missing approval, or unreserved capacity keeps Production writes disabled, Story 27.3 `in-progress`, Story 27.4 `backlog`, and A41 open. Extended 2026-07-28 by approved Sprint Change Proposal 2026-07-28: the same fail-closed rule binds the thirteen gates transferred to Story 27.5. Production writes remain disabled while any of them is unproven, and Story 27.3 reaching `done` neither enables them nor advances Story 27.4.
 6. The kind-based production-deployment-verification lane renders and applies the production manifests to a disposable cluster from the four release OCI archives, produces verification evidence, and validates that evidence, with any failed render, apply, health, or evidence-validation step failing the lane. Added 2026-07-27 by approved Sprint Change Proposal 2026-07-27 (DW 27.3-CR15). This criterion is independent of AC1-AC5: it neither requires nor unblocks C1, and passing it advances no C1 gate.
+7. The `Hexalith.Memories.AccessTelemetry.Tests` unit lane proves the `state.postgresql/v2` access-telemetry adapter contract — transactional record-plus-expiry-index write and delete, ETag and `FirstWrite` semantics, `Conflict`/`StaleIndex`/`VerificationFailed`/`AlreadyAbsent` classification, ordering parity, and bucket-identity matching — against in-process fakes, executed from a fresh Release build under the story's Checkpoint Execution Contract. Added 2026-07-28 by approved Sprint Change Proposal 2026-07-28, ratifying checkpoint C3. This criterion is independent of AC1-AC5: it proves the adapter code contract, never the running target; passing it advances no C1 gate, enables no Production lifecycle write, and does not satisfy C1.11, whose cross-tenant denial must be observed against the running profile.
+8. The `ProductionDeploymentArtifactsTests` lane statically binds the reviewed `PG-ONPREM-1` manifests — `connectionString` resolving only through `secretKeyRef`, `actorStateStore: "true"`, `skipVerify`/`tlsServerName`, the ordered first-match `pg_hba` rules, least-privilege init-SQL grants, the RBAC secret-reader Roles, the deny-default lifecycle ACL, and the connection-pool arithmetic against `max_connections` including `maxSurge`/`maxUnavailable` — executed under its own class selector from a fresh Release build under the story's Checkpoint Execution Contract. Added 2026-07-28 by approved Sprint Change Proposal 2026-07-28, ratifying checkpoint C4. This criterion is independent of AC1-AC5: it proves the manifests say what they must, never that the running deployment behaves as they say; passing it advances no C1 gate and enables no Production lifecycle write.
 
 ### Story 27.4: Retention Verification, Operations Runbook, and A41 Close-Out
 
@@ -4920,7 +4924,8 @@ So that A41 closes only after the policy works in the deployment shape.
 **Predecessor Gate:**
 
 - Story 27.3 is `done` with an immutable approved Production-profile C1 packet, currently `PG-ONPREM-1`, no skipped, stale, failed, or unapproved result, and both required approvals.
-- The live profile hash at Story 27.4 start exactly matches Story 27.3. A mismatch returns ownership to Story 27.3 and keeps writes disabled.
+- Story 27.5 is `done`: all thirteen transferred capability gates (C1.1-C1.12 and C1.14) are `passed` on operator-executed evidence from the running `PG-ONPREM-1` target at the same profile hash. Added 2026-07-28 by approved Sprint Change Proposal 2026-07-28.
+- The live profile hash at Story 27.4 start exactly matches Story 27.3. A mismatch returns ownership to Story 27.3 and keeps writes disabled. A mismatch between Stories 27.3, 27.5 and 27.4 has the same effect.
 
 **Acceptance Criteria:**
 
@@ -4937,6 +4942,48 @@ So that A41 closes only after the policy works in the deployment shape.
 **Then** `20.5-A41-ACCESS-TELEMETRY-RETENTION` is reconciled from `carried-forward`, the matching sprint action is closed, architecture and all A41 summaries cite the same canonical evidence, and Epic 20/Story 20.5 remain historical `done` records rather than being reopened.
 
 **Transferred scope:** Former Story 27.3 Tasks 2-8 move here without gate reduction: multi-writer/replacement/durability proof; expiry, purge, newer-record preservation, and cohort-attributable reclamation; failure/privacy/authority/health/metrics/alerts; runbook and exact-adapter appendix; residual reconciliation; evidence-backed A41 mutation; and terminal governed validation. A41 remains `carried-forward` and its sprint action remains `open` until every checkpoint and publish verification passes.
+
+### Story 27.5: Running PG-ONPREM-1 Capability Qualification
+
+As a Platform Operations and security review pair,
+I want the thirteen capability gates that can only be observed against the running `PG-ONPREM-1` target proven on operator-executed evidence,
+So that the Production adapter's behavior is qualified rather than asserted.
+
+**Origin:** split out of Story 27.3 on 2026-07-28 by approved Sprint Change Proposal 2026-07-28, executing the Administrator decision of 2026-07-27 (Story 27.3 code review, eighth-invocation review). The thirteen gates keep their existing identifiers — C1.1-C1.12 and C1.14 — so every prior citation in the Story 27.3 ledger, the deferred register, and the committed evidence packets stays resolvable.
+
+**Activation gate:** this story must not be set `ready-for-dev` until the `PG-ONPREM-1` lifecycle Deployments are scaled above zero with the production flag and profile hash set and the clock authorities pointed at real endpoints. Until then no operator-executable producer can exist for any of its gates and the story stays `backlog`. This is the reopen trigger recorded in Story 27.3's C1 gate table on 2026-07-27.
+
+**Predecessor gate:** Story 27.3 has captured and pinned the immutable `PG-ONPREM-1` profile identity (C1.15-C1.18) at the approved `profile_sha256 dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14`. Story 27.5 qualifies that exact profile; a hash mismatch at start returns ownership to Story 27.3.
+
+**Acceptance Criteria:**
+
+**Given** thirteen gates that no artifact in the repository can currently produce,
+**When** the running target becomes available,
+**Then** each gate's own operator-executed command is authored and recorded in its checkpoint row before any completion state changes, and no row is discharged by a shared or unrelated command.
+
+**Given** the running `PG-ONPREM-1` target at the approved profile hash,
+**When** the capability probe runs,
+**Then** CRUD, strong reads, ETags, rollback-atomic multi-key transactions with a fault injected on a later operation and no partial record or expiry-index commit, effective TTL, actor reactivation, and Placement/Scheduler/reminder recovery after control-plane disruption all pass without skip.
+
+**Given** the ADR two-writer workload at 500 events/s during purge,
+**When** the 30-minute steady-state window and the 10-minute 150,000-due-record purge backlog run,
+**Then** request bounds hold, acknowledged loss is zero, p99 transaction latency stays below the configured 3-second Dapr client timeout, p95 regression against the same-profile no-purge baseline stays at or below 10%, and the backlog drains within five minutes with oldest-due age below 15 minutes.
+
+**Given** two authorized tenant contexts against the running profile,
+**When** isolation and encryption are observed,
+**Then** physical cross-tenant denial is proven with focused negative evidence naming the affected surfaces, per the project-context tenant-isolation rule, and TLS `verify-full` plus the at-rest encryption posture are recorded. The existing `DeleteAndVerifyAsync_EntryCarryingAnotherTenantMarker_IsDeniedAndLeavesTheRecordPurgeable` unit test does not satisfy this criterion: both its records resolve to one state key, so it exercises envelope-hash mismatch rather than tenant isolation.
+
+**Given** a purge cohort,
+**When** reclamation is measured,
+**Then** the collector and its bound are named and physical space reclamation is attributed to that cohort.
+
+**Given** any gate that is unproven, skipped, stale, or discharged by a non-running-target artifact,
+**When** the story is evaluated,
+**Then** Production lifecycle writes remain disabled, Story 27.4 remains `backlog`, A41 remains open, and rejection of `PG-ONPREM-1` routes a new correct-course decision rather than a weakened gate or a substituted profile.
+
+**Implementation evidence:** one checkpoint row per gate, each carrying its accountable owner, its own evidence command or artifact, a review state, and a completion state — the `story-scope-guard.md:32-34` condition. Owners as recorded on 2026-07-27: Deployment adapter owner for C1.1-C1.8; plus Hexalith Platform Operations for C1.9, C1.10 and C1.14; plus the independent security reviewer for C1.11 and C1.12.
+
+**Boundary:** Story 27.5 does not own profile identity capture, capacity admission, declared-fault durability, backup/restore, the two separated approvals, or the C2/C3/C4 lanes — all retained by Story 27.3. No repository path transfers to it at this correction, because no producer exists today; it declares its own File Scope when `create-story` authors it. It never mutates `20.5-A41-ACCESS-TELEMETRY-RETENTION`.
 
 ## Epic 28: Owner-Approved EventStore Runtime Adoption
 
@@ -5263,16 +5310,17 @@ So that the secret-management boundary is reviewable on its own evidence before 
 **Then** `deploy/openbao/values.yaml`, `namespace.yaml`, `service-account-hardening.yaml`, and `smoke-test.yaml` are documented in `docs/operations/openbao.md` with their exact deployed configuration
 **And** the smoke test is runnable with a named command and recorded result.
 
-**Given** the single-node deployment profile,
+**Given** the deployed availability profile as measured - OpenBao Raft voters co-located on a single Kubernetes node, so the node is the whole failure domain regardless of voter count,
 **When** the security reviewer evaluates it,
-**Then** the static file-based OpenBao seal - the unseal key held in a Kubernetes Secret beside the data - and the namespace-wide port 8200 ingress are surfaced explicitly as accepted single-node limitations with owner, consequence, compensating controls, and a reopen trigger
-**And** neither limitation is described as hardened or production-HA.
+**Then** the static file-based OpenBao seal - the unseal key held in a Kubernetes Secret beside the data - and the namespace-wide port 8200 ingress are surfaced explicitly as accepted limitations of that single-node-hosted profile, each with owner, consequence, compensating controls, and a reopen trigger
+**And** neither limitation is described as hardened or production-HA
+**And** the documented voter count and HA mode match the running platform rather than the tracked manifest.
 
 **Given** platform documentation and evidence,
 **When** either is produced,
 **Then** no unseal key, recovery key, root or operator token, or other secret value appears in `docs/operations/openbao.md`, any evidence artifact, or any test snapshot (NFR9, project-context "Never expose secrets").
 
-**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the four documented topology files at their deployed configuration; the executed smoke test with its command and result; each accepted single-node limitation with owner, consequence, compensating controls and reopen trigger; and the security reviewer's recorded evaluation.
+**Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the four documented topology files at their deployed configuration; the executed smoke test with its command and result; each accepted limitation of the single-node-hosted profile with owner, consequence, compensating controls and reopen trigger; and the security reviewer's recorded evaluation.
 
 **Owned paths:** `deploy/openbao/values.yaml`, `namespace.yaml`, `service-account-hardening.yaml`, `smoke-test.yaml`, `docs/operations/openbao.md`.
 

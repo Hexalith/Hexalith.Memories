@@ -309,12 +309,38 @@ public sealed class ProductionDeploymentArtifactsTests
         values.ShouldContain("type: ClusterIP");
         values.ShouldContain("storage \"raft\"");
         values.ShouldContain("storageClass: openebs-hostpath-retain");
+
+        // Story 31.1 reconciled values.yaml to the deployed release, which runs three Raft voters, not
+        // the single standalone voter this file used to declare. The two `size: 10Gi` declarations are
+        // the `data` and `audit` volumeClaimTemplates; the StatefulSet materializes one of each per
+        // replica, so the deployed platform has 2 x 3 = 6 retained 10Gi PVCs. The declaration count is
+        // asserted here and the replica count immediately below, so neither half can drift alone.
         (values.Split("size: 10Gi").Length - 1).ShouldBe(2);
+        values.ShouldContain("  ha:\n    enabled: true\n    replicas: 3\n");
+        values.ShouldContain("    raft:\n      enabled: true");
+        values.ShouldContain("      setNodeId: true");
+        values.ShouldContain("  standalone:\n    enabled: false");
+        values.ShouldNotContain("  standalone:\n    enabled: true");
+        values.ShouldNotContain("  ha:\n    enabled: false");
+
+        // The HA shape brings its own required surfaces: leader/standby routing, the discovery RBAC that
+        // `service_registration "kubernetes"` needs, and the token-review binding. All three were
+        // measured on the deployed platform while this file still declared them off.
+        values.ShouldContain("    active:\n      enabled: true");
+        values.ShouldContain("    standby:\n      enabled: true");
+        values.ShouldContain("    serviceDiscovery:\n      enabled: true");
+        values.ShouldContain("  authDelegator:\n    enabled: true");
+        values.ShouldContain("service_registration \"kubernetes\" {}");
+        values.ShouldContain("retry_join");
+        values.ShouldContain("kubernetes.io/metadata.name: cert-manager");
+
         values.ShouldContain("audit \"file\" \"persistent\"");
         values.ShouldContain("tls_min_version = \"tls12\"");
+        values.ShouldContain("seal \"static\"");
         values.ShouldNotContain("tls_disable = 1");
         values.ShouldNotContain("enabled: true\n  publishNotReadyAddresses", Case.Insensitive);
         values.ShouldContain("injector:\n  enabled: false");
+        values.ShouldContain("csi:\n  enabled: false");
         values.ShouldContain("ui:\n  enabled: false");
 
         openBaoNamespace.ShouldContain("name: openbao");

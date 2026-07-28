@@ -1,6 +1,12 @@
 # Pinned deployment profile for the official OpenBao Helm chart.
 # Chart: oci://ghcr.io/openbao/charts/openbao, version 0.28.5
 # Chart digest: sha256:1c2e01185430b9bc426da870909fdccfbb4e3e4758f0c6f8cccfbceead4381ff
+#
+# Story 31.1 reconciled this file to the platform measured on 2026-07-28 against context
+# `jpiquot@local` at Helm revision 9. Before that reconciliation the file declared a
+# single standalone voter with HA disabled, which the running platform contradicted in
+# every one of those settings. See docs/operations/openbao.md for the measured profile,
+# the named divergences, and the two accepted limitations.
 global:
   enabled: true
   tlsDisable: false
@@ -30,25 +36,35 @@ server:
     limits:
       cpu: "1"
       memory: 1Gi
+  # Deployed: ClusterRoleBinding `hexalith-keys-server-binding` binds the server
+  # ServiceAccount to `system:auth-delegator`, so this is enabled on the platform.
   authDelegator:
-    enabled: false
+    enabled: true
   ingress:
     enabled: false
   service:
     enabled: true
     type: ClusterIP
     publishNotReadyAddresses: false
+    # Deployed: Services `hexalith-keys-active` and `hexalith-keys-standby` exist, which
+    # the chart only renders when HA leader/standby routing is enabled.
     active:
-      enabled: false
+      enabled: true
     standby:
-      enabled: false
+      enabled: true
   networkPolicy:
     enabled: true
     ingress:
+      # Namespace-wide, not consumer-scoped. A namespaceSelector without a podSelector
+      # admits EVERY pod in the matched namespace on 8200. This is accepted limitation
+      # `Namespace-wide port 8200 ingress` in docs/operations/openbao.md.
       - from:
           - namespaceSelector:
               matchLabels:
                 kubernetes.io/metadata.name: hexalith-memories
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: cert-manager
         ports:
           - port: 8200
             protocol: TCP
@@ -98,6 +114,9 @@ server:
     - name: openbao-seal
       mountPath: /openbao/userconfig/openbao-seal
       readOnly: true
+  # One `data` and one `audit` volumeClaimTemplate are declared here; the StatefulSet
+  # materializes one of each per replica. At three replicas that is six 10Gi PVCs
+  # (`data-hexalith-keys-0..2`, `audit-hexalith-keys-0..2`), all retained.
   dataStorage:
     enabled: true
     size: 10Gi
@@ -116,47 +135,70 @@ server:
     labels:
       app.kubernetes.io/part-of: hexalith-memories
   standalone:
-    enabled: true
-    config: |
-      ui = false
-      default_lease_ttl = "168h"
-      max_lease_ttl = "8760h"
-
-      listener "tcp" {
-        address = "[::]:8200"
-        cluster_address = "[::]:8201"
-        tls_disable = 0
-        tls_cert_file = "/openbao/userconfig/openbao-server-tls/tls.crt"
-        tls_key_file = "/openbao/userconfig/openbao-server-tls/tls.key"
-        tls_min_version = "tls12"
-      }
-
-      storage "raft" {
-        path = "/openbao/data"
-        node_id = "hexalith-keys-0"
-      }
-
-      seal "static" {
-        current_key_id = "kubernetes-openbao-seal-v1"
-        current_key = "file:///openbao/userconfig/openbao-seal/current.key"
-      }
-
-      audit "file" "persistent" {
-        description = "Persistent JSON audit trail"
-        options {
-          file_path = "/openbao/audit/openbao-audit.json"
-          format = "json"
-          hmac_accessor = "true"
-          mode = "0600"
-        }
-      }
-  ha:
     enabled: false
+  # Deployed: StatefulSet `.spec.replicas = 3`, `bao status` reports `ha_enabled: true`.
+  # Leader election and standby failover exist between the three Raft voters. All three
+  # are scheduled on the single Kubernetes node `node1`, so the node remains the whole
+  # failure domain and this profile provides no node-level availability.
+  ha:
+    enabled: true
+    replicas: 3
+    apiAddr: null
+    clusterAddr: null
+    raft:
+      enabled: true
+      # Deployed: container env `BAO_RAFT_NODE_ID` is sourced from `metadata.name`, so the
+      # node id comes from the pod name and is absent from the rendered HCL config.
+      setNodeId: true
+      config: |
+        ui = false
+        default_lease_ttl = "168h"
+        max_lease_ttl = "8760h"
+
+        listener "tcp" {
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_disable = 0
+          tls_cert_file = "/openbao/userconfig/openbao-server-tls/tls.crt"
+          tls_key_file = "/openbao/userconfig/openbao-server-tls/tls.key"
+          tls_min_version = "tls12"
+        }
+
+        storage "raft" {
+          path = "/openbao/data"
+
+          retry_join {
+            leader_api_addr = "https://hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local:8200"
+            leader_ca_cert_file = "/openbao/userconfig/openbao-server-tls/ca.crt"
+            leader_tls_servername = "hexalith-keys-0.hexalith-keys-internal.openbao.svc.cluster.local"
+          }
+        }
+
+        seal "static" {
+          current_key_id = "kubernetes-openbao-seal-v1"
+          current_key = "file:///openbao/userconfig/openbao-seal/current.key"
+        }
+
+        audit "file" "persistent" {
+          description = "Persistent JSON audit trail"
+          options {
+            file_path = "/openbao/audit/openbao-audit.json"
+            format = "json"
+            hmac_accessor = "true"
+            mode = "0600"
+          }
+        }
+
+        service_registration "kubernetes" {}
   serviceAccount:
     create: true
     createSecret: false
+    # Deployed: Role `hexalith-keys-discovery-role` (pods: get/watch/list/update/patch) and
+    # RoleBinding `hexalith-keys-discovery-rolebinding` exist, which is what
+    # `service_registration "kubernetes"` above requires to keep the `-active` and
+    # `-standby` Service endpoints correct.
     serviceDiscovery:
-      enabled: false
+      enabled: true
   statefulSet:
     securityContext:
       pod:

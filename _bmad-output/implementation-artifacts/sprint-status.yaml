@@ -1,5 +1,5 @@
 # generated: 2026-07-05T17:40:39+02:00
-# last_updated: 2026-07-27
+# last_updated: 2026-07-28
 # project: memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -154,6 +154,14 @@ story_execution_order:
       - 23-6-directory-batch-scalability
       - 23-7-index-provisioning-ownership
       - 23-8-workflow-config-determinism
+  epic-27:
+    reason: "Story 27.5 qualifies the running PG-ONPREM-1 target against the exact profile Story 27.3 pins and approves, so it follows 27.3; Story 27.4's deployment-shaped lifecycle verification and A41 close-out consume a fully qualified adapter, so it runs last. Document order in epics.md is numeric; this list is the execution order of record. Added 2026-07-28 by approved Sprint Change Proposal 2026-07-28."
+    order:
+      - 27-1-access-telemetry-retention-ownership-decision
+      - 27-2-bounded-retention-ttl-and-purge-implementation
+      - 27-3-production-adapter-and-deployment-profile
+      - 27-5-running-pg-onprem-1-capability-qualification
+      - 27-4-retention-verification-operations-runbook-and-a41-close-out
   epic-29:
     reason: "Story 29.2 consumes the executable OpenBao AppHost topology and isolation contract produced by Story 29.1."
     order:
@@ -442,6 +450,12 @@ development_status:
   27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-production-adapter-and-deployment-profile: in-progress
   27-4-retention-verification-operations-runbook-and-a41-close-out: backlog
+  # 27-5 added 2026-07-28 by approved
+  # sprint-change-proposal-2026-07-28-c1-blocked-gate-split-and-c3-c4-ratification.md:
+  # the thirteen C1 gates with no executable producer (C1.1-C1.12, C1.14) split out of Story 27.3.
+  # Its activation gate is owned by Hexalith Platform Operations; it stays backlog until the
+  # PG-ONPREM-1 lifecycle Deployments are scaled above zero.
+  27-5-running-pg-onprem-1-capability-qualification: backlog
   epic-27-retrospective: optional
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption
@@ -482,8 +496,8 @@ development_status:
   # Sprint Change Proposal 2026-07-27, executing the DW 27.3-CR16 split. The pre-split
   # 31-1-openbao-platform-hardening-and-runtime-secret-store-migration bundled two
   # independently deployable outcomes; no scope was added or dropped by the split.
-  epic-31: backlog
-  31-1-openbao-platform-hardening-and-documentation: backlog
+  epic-31: in-progress
+  31-1-openbao-platform-hardening-and-documentation: review
   31-2-runtime-dapr-secret-store-migration: backlog
   epic-31-retrospective: optional
 

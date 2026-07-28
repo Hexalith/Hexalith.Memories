@@ -83,7 +83,7 @@ before implementation is scheduled.
   - ID: 20.5-A41-ACCESS-TELEMETRY-RETENTION
   - Status: carried-forward
   - Source story: 20-5-inbound-rate-limiting-quotas-and-audit-completeness
-  - Backlog home: Epic 27, Stories 27.1-27.4. Story 27.3 qualifies the exact Production adapter; Story 27.4 owns deployment-shaped verification and close-out. Scheduling does not satisfy the resolution gate.
+  - Backlog home: Epic 27, Stories 27.1-27.5. Story 27.3 pins and approves the exact Production adapter profile; Story 27.5 qualifies the thirteen capability gates that require the running target (added 2026-07-28 by approved Sprint Change Proposal 2026-07-28); Story 27.4 owns deployment-shaped verification and close-out. Scheduling does not satisfy the resolution gate.
   - Target artifact: `docs/dev/telemetry.md`, the Story 27.1 architecture decision, the selected access-telemetry sink/storage deployment and purge implementation, and focused lifecycle/tenant-privacy tests, or this entry updated to a complete explicit accepted-debt disposition.
   - Resolution gate: Keep this entry `carried-forward` and the matching sprint action `open` until bounded retention/TTL is implemented, documented, and validated, or accepted debt records a named approver and owner, affected storage/scope, rationale, risk and consequence, compensating controls, and a time-bounded review/expiry date or measurable reopen trigger.
   - Re-open trigger: Review before any claim that A41 is fully closed, before any production-retention assurance is made, and at the accepted-debt review/expiry trigger if that path is selected.
@@ -2533,7 +2533,7 @@ zero failed layers.
 
   - ID: 27.3-CR17
   - Status: open
-  - Evidence: GitHub Actions run `30246564974`, job `production-deployment-verification` (job ID `89914854458`) at commit `fe19a27cf1b60457aa05f45dd075b37c1038b3e3`, conclusion `failure`; step `Verify disposable production rollout` failed at `tools/verify-production-deployment.ps1:359` with `[initial-server-health] memories did not report HTTP 200 aggregate Healthy within 60 seconds`; the uploaded `production-deployment-evidence` artifact records `level=fatal msg="Fatal error from runtime: failed to load components: rpc error: code = Unknown desc = Secret \"openbao-runtime-bootstrap\" not found"` in `memories-5b65756964-cxbxx-daprd-current.log`.
+  - Evidence: GitHub Actions run `30265014637`, job `production-deployment-verification` (job ID `89973572304`) at commit `b073aa577ad3006300a5d7192392bb0ca656944b`, conclusion `failure`; per-step outcomes `Publish local release OCI archives` success, `Verify disposable production rollout` failure, `Validate production deployment evidence` success, `Upload production deployment evidence` success, nothing skipped. Superseded citations, kept for provenance: run `30246564974` (job `89914854458`, commit `fe19a27c`) was this entry's original evidence, and run `30263029678` failed earlier at archive publication for the unrelated `Hexalith.EventStore.Client` reason discharged by commit `3c24f8c2`. Corrected 2026-07-27 by code review (eighth-invocation review): the preceding phase appended the current run into `Rationale` without retiring the superseded run named here, leaving the entry citing two different runs as its evidence. Original detail follows. step `Verify disposable production rollout` failed at `tools/verify-production-deployment.ps1:359` with `[initial-server-health] memories did not report HTTP 200 aggregate Healthy within 60 seconds`; the uploaded `production-deployment-evidence` artifact records `level=fatal msg="Fatal error from runtime: failed to load components: rpc error: code = Unknown desc = Secret \"openbao-runtime-bootstrap\" not found"` in `memories-5b65756964-cxbxx-daprd-current.log`.
   - Source story: 27-3-production-adapter-and-deployment-profile (dev-story, Task 2 / checkpoint C2)
   - Target artifact: deploy/kubernetes/base/dapr/secretstore.yaml
   - Re-open trigger: before Story 31.1 or Story 31.2 is set `done`, and before Story 27.3 checkpoint C2 can leave `not complete`; discharged when `production-deployment-verification` reports `success` with no skipped render, apply, health, or evidence-validation step.
@@ -2542,9 +2542,39 @@ zero failed layers.
 
 ## Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-27)
 
-- `DW 27.3-CR17`'s `status` field is corrupted at HEAD. `Evidence` is not a recognized field name in `tools/verify-integration-stub-closure.py:36-39`, so `read_deferred_entries` folds the entry's `Evidence:` bullet into `status`, which parses as `open - Evidence: GitHub Actions run ...`. `verify-integration-stub-closure.py:337` compares `status` to `accepted`, so this entry can never satisfy that check whatever its declared status. The register has no recognized `Evidence` field at all, so every entry using one has the same defect.
-- Story 27.3's `Historical Context Classification` table is an unrevised byte-for-byte copy of the superseded pre-split story's table, re-derived at neither the 2026-07-20 nor the 2026-07-26 split. The story discloses this itself; the finding demanding re-derivation was closed on two added rows plus a disclaimer rather than a fresh classification pass.
-- Story 27.3 Task 2's fourth subtask cites superseded external evidence (run `30246564974`) for four-archive producer attribution; publication subsequently failed at run `30263029678` and returned to `success` only at run `30265014637`. The subtask is human-owned task definition, outside both `dev-story`'s and `code-review`'s permitted sections.
+**Restructured 2026-07-27 by code review (eighth-invocation review).** These three items
+were originally filed as plain bullets carrying none of the register's fields, so
+`read_deferred_entries` returned nothing for them and no `done` gate - including the
+ID-uniqueness guard shipped in the same commit - could observe them. They are re-filed
+below as structured entries. Two are discharged by that same review pass.
+
+### DW 27.3-CR25 - the register parser does not recognize its own documented `Evidence` field
+
+  - ID: 27.3-CR25
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review 2026-07-27)
+  - Target artifact: tools/verify-integration-stub-closure.py
+  - Re-open trigger: if `DEFERRED_FIELD_RE` and the C# `DeferredConsumerFieldRegex` mirror in `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` ever diverge on the field vocabulary again.
+  - Rationale: `Evidence` was absent from `DEFERRED_FIELD_RE` although this register documents it as required ("One of `Evidence:` or `Rationale:`") and roughly twenty entries use it. An unrecognized `  - Evidence: ...` line starts with two spaces, so `read_deferred_entries`'s continuation branch folded it into the preceding field - usually `status`, which then parsed as `open - Evidence: GitHub Actions run ...` and could never equal `accepted` at the closure check on line 337. The original bullet stated this defect but overstated it as "the register has no recognized `Evidence` field at all", which is false: this file documents it and the C# reader honours it; only the Python consumer omitted it. Owner: Story 30.1 (it owns the CI/test-lane wiring for this tool; see `DW 27.3-CR24`). **Attempted and reverted 2026-07-27 by code review (eighth-invocation review).** The one-word fix was applied and verified - adding `Evidence` to the alternation made `27.3-CR17`'s `status` parse as `open` instead of `open - Evidence: GitHub Actions run ...`, with the `integration_stub_closure` lane still 7/7 - and was then reverted, because `tools/verify-integration-stub-closure.py` is not in Story 27.3's `## File Scope` allow-list and `tools/check-story-file-scope.py` exits `1` on it. Widening a fail-closed scope gate is a scope decision, not a review patch. Unblock with either a `Scope-Override: tools/verify-integration-stub-closure.py - register parser field vocabulary repair` line or by landing the fix under its owning story. Consequence: every entry using the documented `Evidence:` field still has its preceding field corrupted by the fold, so `status` can never equal `accepted` for those entries at the closure check.
+
+### DW 27.3-CR26 - `Historical Context Classification` was never re-derived for the narrowed story
+
+  - ID: 27.3-CR26
+  - Status: open
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review 2026-07-27)
+  - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
+  - Re-open trigger: before Story 27.3 is set `done`; discharged when all 21 classification rows are re-derived against current epics, architecture and source for the narrowed `PG-ONPREM-1` scope, replacing the 2026-07-26 disclaimer.
+  - Rationale: The table is an unrevised byte-for-byte copy of the superseded pre-split story's table and was re-derived at neither the 2026-07-20 nor the 2026-07-26 split. The story discloses this itself, and the finding demanding re-derivation was closed on two added rows plus a disclaimer rather than on a fresh classification pass. The source artifact is itself classified `anti-template` on three simultaneous triggers, so `story-scope-guard.md:35-36` requires the record to be produced for *this* story rather than inherited. The prior review closed it "deferred, pre-existing", which `story-scope-guard.md:50` forbids for a confirmed violation. Owner: Story 27.3 story owner (the classification is a human judgement over current epic intent, not a mechanical repair). Consequence: the guard-mandated provenance record for this story is unverified, so no reader can tell which historical influences were actually re-checked for the narrowed scope.
+
+### DW 27.3-CR27 - Task 2 subtask cited a superseded CI run
+
+  - ID: 27.3-CR27
+  - Status: resolved 2026-07-27
+  - Source story: 27-3-production-adapter-and-deployment-profile (code review 2026-07-27)
+  - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
+  - Re-open trigger: if a later `production-deployment-verification` run supersedes `30265014637` as the current four-archive producer-attribution evidence.
+  - Rationale: The subtask verified four-archive producer attribution against run `30246564974`; publication subsequently failed at run `30263029678` and returned to `success` only at run `30265014637`. The subtask sits in human-owned task definition, outside both `dev-story`'s and `code-review`'s permitted sections, so the prior review closed it "deferred, pre-existing" - valid for *who* repairs it, not for closing the finding. Owner: Story 27.3 story owner. Consequence: none remaining - the Administrator granted `code-review` a one-time authorization on 2026-07-27 confined to this run citation, and the subtask now cites run `30265014637`.
+  - Evidence: Story 27.3 Task 2's fourth subtask now cites GitHub Actions run `30265014637`, job `production-deployment-verification` (job ID `89973572304`), whose `Publish local release OCI archives` step reports `success` with all four archives present; the superseded runs `30246564974` and `30263029678` are named in the subtask as provenance. Placed after `Rationale` deliberately: `DEFERRED_FIELD_RE` in `tools/verify-integration-stub-closure.py` does not recognize `Evidence`, so this line is folded into the preceding field - putting it last means it lands in `rationale` rather than corrupting the load-bearing `status`, until `DW 27.3-CR25` is discharged.
 
 ## Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-27, eighth-invocation review)
 

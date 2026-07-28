@@ -583,6 +583,390 @@ class AdapterProfileTests(unittest.TestCase):
         )
         self.assertEqual("", waiting["container_image_ids"][0])
 
+    # --- Story 27.3 code review, eighth-invocation review -------------------------
+
+    def test_profile_hash_ignores_the_evidence_root_invocation_parameter(self):
+        """`EVIDENCE_ROOT` names where the packet is written, not which profile ran.
+
+        Hashing it made `profile_sha256` - the field AC1 calls immutable profile
+        material and AC5 treats as drift - a function of the operator's working
+        directory: the committed packet's hash moved from `9b29cca6...` to
+        `01f6ce9f...` with no runtime change at all, only a relative-to-absolute
+        `EVIDENCE_ROOT`. Two invocations differing in nothing else must agree.
+        """
+
+        def identity_for(evidence_root):
+            return adapter_profile.EnvironmentIdentity.from_mapping(
+                {
+                    "KUBE_CONTEXT": adapter_profile.EXPECTED_KUBE_CONTEXT,
+                    "KUBE_NAMESPACE": adapter_profile.EXPECTED_KUBE_NAMESPACE,
+                    "DEPLOYMENT_ID": "d1",
+                    "PROFILE_ID": adapter_profile.EXPECTED_PROFILE_ID,
+                    "EVIDENCE_ROOT": evidence_root,
+                    "DECLARED_SINGLE_COMPONENT_FAULT": "postgresql-pod-replacement",
+                }
+            )
+
+        relative = identity_for("_bmad-output/implementation-artifacts/tests")
+        absolute = identity_for("/home/operator/repo/_bmad-output/implementation-artifacts/tests")
+        trailing = identity_for("_bmad-output/implementation-artifacts/tests/")
+
+        self.assertEqual(relative.to_profile_identity(), absolute.to_profile_identity())
+        self.assertEqual(relative.to_profile_identity(), trailing.to_profile_identity())
+        self.assertNotIn("evidence_root", relative.to_profile_identity())
+        # `evidence_root` is still published for the reader; it is only unhashed.
+        self.assertIn("evidence_root", relative.to_dict())
+
+    def test_runtime_profile_is_comparable_to_the_reviewed_profile(self):
+        """`runtime_matches_reviewed_profile` must be answerable, not structurally false.
+
+        The runtime profile used `to_dict()`'s snake_case keys while the reviewed
+        profile uses camelCase backend keys, so the two objects were disjoint and the
+        published boolean could never be `true` for any runtime, however perfect -
+        the same failure class as the `done`-gate verifier regex this story already
+        fixed once.
+        """
+
+        reviewed = adapter_profile.canonical_pg_onprem_profile()
+        identity = adapter_profile.EnvironmentIdentity.from_mapping(
+            {
+                "KUBE_CONTEXT": adapter_profile.EXPECTED_KUBE_CONTEXT,
+                "KUBE_NAMESPACE": adapter_profile.EXPECTED_KUBE_NAMESPACE,
+                "DEPLOYMENT_ID": "d1",
+                "PROFILE_ID": adapter_profile.EXPECTED_PROFILE_ID,
+                "EVIDENCE_ROOT": "root",
+                "DECLARED_SINGLE_COMPONENT_FAULT": "postgresql-pod-replacement",
+            }
+        )
+
+        self.assertEqual(
+            sorted(reviewed.identity), sorted(identity.to_profile_identity())
+        )
+        # An approved profile whose capabilities are all proven hashes identically to
+        # the reviewed one; the gate can therefore actually go green.
+        proven = adapter_profile.AdapterProfile(
+            identity=identity.to_profile_identity(),
+            capabilities=dict(reviewed.capabilities),
+            workload=adapter_profile.ADR_TWO_WRITER_WORKLOAD.to_dict(),
+        )
+        self.assertEqual(
+            reviewed.manifest()["profile_sha256"], proven.manifest()["profile_sha256"]
+        )
+
+    def test_sidecar_is_identified_by_container_name_not_by_image_string(self):
+        """A digest-pinned sidecar must not vanish because its image has no repo name.
+
+        The repo-name substring was the only identifier, so when the daprd container's
+        own `image` was a bare `sha256:<id>` - the `kind load docker-image` case the
+        collector's docstring names as its motivation - the tag set came back empty,
+        the `images and not digests` guard could not fire, and `([], [])` shipped as a
+        positive observation.
+        """
+
+        side_loaded = [
+            {
+                "container_names": ["memories", "daprd"],
+                "container_images": ["sha256:c68e099f4bee", "sha256:aa11bb22"],
+                "container_image_ids": ["sha256:c68e099f4bee", "sha256:aa11bb22"],
+            }
+        ]
+        images, digests = adapter_profile.collect_sidecar_image_identity(side_loaded)
+        self.assertEqual(["sha256:aa11bb22"], digests)
+        self.assertNotIn("sha256:c68e099f4bee", digests)
+        self.assertEqual(["sha256:aa11bb22"], images)
+
+        # A mirrored registry path that does not contain "daprd" is still found.
+        mirrored = [
+            {
+                "container_names": ["memories", "daprd"],
+                "container_images": ["registry/memories:1", "mcr.microsoft.com/dapr/sidecar:1.18.1"],
+                "container_image_ids": [
+                    "registry/memories@sha256:71e49b6e",
+                    "mcr.microsoft.com/dapr/sidecar@sha256:9f9f9f9f",
+                ],
+            }
+        ]
+        self.assertEqual(
+            ["mcr.microsoft.com/dapr/sidecar@sha256:9f9f9f9f"],
+            adapter_profile.collect_sidecar_image_identity(mirrored)[1],
+        )
+
+        # Pods observed, but none carrying a daprd container, is a blocker - not `[]`.
+        sidecarless = [
+            {
+                "container_names": ["memories"],
+                "container_images": ["registry/memories:1"],
+                "container_image_ids": ["registry/memories@sha256:71e49b6e"],
+            }
+        ]
+        self.assertIn(
+            "not captured", adapter_profile.collect_sidecar_image_identity(sidecarless)[1]
+        )
+
+    def test_digest_uniformity_is_a_claim_only_when_digests_were_observed(self):
+        """`false` must mean "the fleet diverges", never "nothing was captured".
+
+        The boolean collapsed a tri-state: zero digests and the collector's blocker
+        string both rendered `false`, which reads as the positive claim that the fleet
+        is not uniform - indistinguishable from a real mid-rollout divergence.
+        """
+
+        self.assertIs(True, adapter_profile._digest_uniformity(["ghcr.io/dapr/daprd@sha256:b7f7"]))
+        self.assertIs(
+            False,
+            adapter_profile._digest_uniformity(
+                ["ghcr.io/dapr/daprd@sha256:b7f7", "ghcr.io/dapr/daprd@sha256:c0c0"]
+            ),
+        )
+        for empty in ([], "not captured; no daprd containerStatus carried an imageID"):
+            verdict = adapter_profile._digest_uniformity(empty)
+            self.assertNotIsInstance(verdict, bool)
+            self.assertIn("not captured", verdict)
+
+    def test_build_info_usage_text_is_rejected_like_a_non_version(self):
+        """An exit-0 answer that is usage text is a claim, not an observation.
+
+        `_is_daprd_version` closed this for `daprd_version`; `daprd_build_info` one
+        field over accepted any exit-0 stdout verbatim.
+        """
+
+        probe, _ = self._daprd_probe(
+            executable_that_works="/daprd",
+            build_info_payload="Usage of /daprd:\n  -app-id string",
+        )
+        fields, _ = adapter_profile.collect_daprd_runtime_identity(["pod-a"], probe)
+
+        self.assertEqual("1.18.1", fields["daprd_version"])
+        self.assertTrue(fields["daprd_build_info"].startswith("not captured;"))
+        self.assertIn("usage text", fields["daprd_build_info"])
+        # The cause names the probed executable, never `kubectl`.
+        self.assertIn("/daprd", fields["daprd_build_info"])
+        self.assertNotIn("kubectl", fields["daprd_build_info"])
+
+    def test_blocker_cause_names_the_probed_executable_and_the_right_reason(self):
+        """`command[0]` is always `kubectl`; the reader needs the probed binary.
+
+        The build-info branch also asserted "no version-shaped output", which its
+        output never is.
+        """
+
+        observation = adapter_profile.CommandObservation(
+            command=("kubectl", "exec", "pod-a", "-c", "daprd", "--", "/daprd", "--build-info"),
+            exit_code=0,
+            stdout_sha256="",
+            stderr_sha256="",
+            payload="",
+        )
+        cause = adapter_profile._observation_cause(observation, "no output")
+        self.assertIn("/daprd", cause)
+        self.assertNotIn("kubectl exited", cause)
+        self.assertIn("no output", cause)
+        self.assertNotIn("version-shaped", cause)
+        self.assertEqual("/daprd", adapter_profile._probed_executable(observation))
+
+    def test_exit_zero_non_version_wins_over_an_earlier_nonzero_exit_as_the_cause(self):
+        """The shadowing-binary case must be able to reach the packet.
+
+        `/daprd` always precedes bare `daprd` and exits 1 when absent, so
+        `fallback or version` pinned the cause to that plain exit 1 and the exit-0
+        usage-text answer - the informative one, and the whole reason
+        `_is_daprd_version` exists - could never be reported.
+        """
+
+        def probe(pod_name, executable, flag):
+            if executable == "/daprd":
+                return adapter_profile.CommandObservation(
+                    command=("kubectl", "exec", pod_name, "--", executable, flag),
+                    exit_code=1,
+                    stdout_sha256="",
+                    stderr_sha256="",
+                    payload=None,
+                    error="kubectl exited 1",
+                )
+            return adapter_profile.CommandObservation(
+                command=("kubectl", "exec", pod_name, "--", executable, flag),
+                exit_code=0,
+                stdout_sha256="",
+                stderr_sha256="",
+                payload="Usage of daprd:",
+            )
+
+        fields, _ = adapter_profile.collect_daprd_runtime_identity(["pod-a"], probe)
+
+        self.assertTrue(fields["daprd_version"].startswith("not captured;"))
+        self.assertIn("exited 0", fields["daprd_version"])
+        self.assertIn("daprd", fields["daprd_version"])
+        self.assertNotIn("exited 1", fields["daprd_version"])
+
+    def test_blocked_probe_names_the_pod_the_retained_cause_came_from(self):
+        """`daprd_version_probe_pod` was pinned to `running_pods[0]` unconditionally."""
+
+        def probe(pod_name, executable, flag):
+            if pod_name == "pod-b" and executable == "daprd":
+                return adapter_profile.CommandObservation(
+                    command=("kubectl", "exec", pod_name, "--", executable, flag),
+                    exit_code=0,
+                    stdout_sha256="",
+                    stderr_sha256="",
+                    payload="Usage of daprd:",
+                )
+            return adapter_profile.CommandObservation(
+                command=("kubectl", "exec", pod_name, "--", executable, flag),
+                exit_code=1,
+                stdout_sha256="",
+                stderr_sha256="",
+                payload=None,
+                error="kubectl exited 1",
+            )
+
+        fields, _ = adapter_profile.collect_daprd_runtime_identity(["pod-a", "pod-b"], probe)
+
+        self.assertEqual("pod-b", fields["daprd_version_probe_pod"])
+
+    def test_pod_summary_carries_container_names_in_positional_parity(self):
+        """The name list is what makes the sidecar findable; parity keeps it bindable."""
+
+        summary = adapter_profile._pod_summary(
+            {
+                "metadata": {"name": "memories-1"},
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [
+                        {"name": "memories", "image": "registry/memories:1", "imageID": "sha256:aa"},
+                        {"name": "daprd", "image": "ghcr.io/dapr/daprd:1.18.1", "imageID": ""},
+                    ],
+                },
+            }
+        )
+
+        self.assertEqual(["memories", "daprd"], summary["container_names"])
+        self.assertEqual(
+            len(summary["container_names"]), len(summary["container_image_ids"])
+        )
+        self.assertEqual(len(summary["container_names"]), len(summary["container_images"]))
+
+
+class AdapterProfileCheckpointPacketTests(unittest.TestCase):
+    """Drive `run_adapter_profile_checkpoint` and read the packet it writes.
+
+    Story 27.3 code review (eighth-invocation review): no test called this function
+    at all, so every collector was verified one layer below the artifact and the
+    wiring between them was unverified. Two mutations shipped green against the
+    21-case suite - swapping the tag and digest assignments, which republishes the
+    mutable tag in the field AC1/C1.15 require to be a digest and is the exact
+    pre-change defect one layer up; and deleting the daprd observation append, which
+    erases both `kubectl exec` rows from the packet's command ledger while the daprd
+    fields still claim a captured version.
+    """
+
+    POD = {
+        "metadata": {"name": "memories-1"},
+        "status": {
+            "phase": "Running",
+            "containerStatuses": [
+                {
+                    "name": "memories",
+                    "image": "registry/memories:1",
+                    "imageID": "registry/memories@sha256:71e49b6e",
+                },
+                {
+                    "name": "daprd",
+                    "image": "ghcr.io/dapr/daprd:1.18.1",
+                    "imageID": "ghcr.io/dapr/daprd@sha256:b7f7d296",
+                },
+            ],
+        },
+    }
+
+    def _run(self, evidence_path):
+        identity = adapter_profile.EnvironmentIdentity.from_mapping(
+            {
+                "KUBE_CONTEXT": adapter_profile.EXPECTED_KUBE_CONTEXT,
+                "KUBE_NAMESPACE": adapter_profile.EXPECTED_KUBE_NAMESPACE,
+                "DEPLOYMENT_ID": "memories-access-telemetry",
+                "PROFILE_ID": adapter_profile.EXPECTED_PROFILE_ID,
+                "EVIDENCE_ROOT": str(evidence_path.parent),
+                "DECLARED_SINGLE_COMPONENT_FAULT": "postgresql-pod-replacement",
+            }
+        )
+
+        def fake_kubectl(_identity, *arguments):
+            items = [self.POD] if "pods" in arguments else []
+            return adapter_profile.CommandObservation(
+                command=("kubectl", *arguments),
+                exit_code=0,
+                stdout_sha256="",
+                stderr_sha256="",
+                payload={"items": items},
+            )
+
+        def fake_daprd(_identity, pod_name, executable, flag):
+            payload = "1.18.1" if flag == "--version" else "Version: 1.18.1\nGit Commit: 4cef924a"
+            return adapter_profile.CommandObservation(
+                command=("kubectl", "exec", pod_name, "-c", "daprd", "--", executable, flag),
+                exit_code=0,
+                stdout_sha256="",
+                stderr_sha256="",
+                payload=payload,
+            )
+
+        original_kubectl = adapter_profile._run_kubectl
+        original_daprd = adapter_profile._run_daprd
+        adapter_profile._run_kubectl = fake_kubectl
+        adapter_profile._run_daprd = fake_daprd
+        try:
+            exit_code = adapter_profile.run_adapter_profile_checkpoint(
+                identity=identity,
+                workload_profile="adr-27.1-two-writer-500eps",
+                steady_state_minutes=30,
+                purge_backlog_records=150000,
+                evidence_path=evidence_path,
+            )
+        finally:
+            adapter_profile._run_kubectl = original_kubectl
+            adapter_profile._run_daprd = original_daprd
+        return exit_code, evidence_path.read_text(encoding="utf-8")
+
+    def test_packet_binds_each_collector_output_to_its_named_field(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_path = Path(directory) / "packet.md"
+            exit_code, packet = self._run(evidence_path)
+
+        # Lifecycle Deployments are absent from the stubbed target, so C1 is rejected.
+        self.assertEqual(1, exit_code)
+        self.assertIn("evidence_is_approval: `false`", packet)
+
+        # The digest field carries a digest and the tag field carries the tag. A swap
+        # publishes the mutable tag as the digest, which is what AC1 forbids.
+        self.assertIn("sidecar_image_digests: `[\"ghcr.io/dapr/daprd@sha256:b7f7d296\"]`", packet)
+        self.assertIn("sidecar_images: `[\"ghcr.io/dapr/daprd:1.18.1\"]`", packet)
+
+        # Both execs that touched the target appear as command-ledger rows.
+        self.assertIn("/daprd --version", packet)
+        self.assertIn("/daprd --build-info", packet)
+
+        # The captured runtime identity is published, not a blocker.
+        self.assertIn("daprd_version: `\"1.18.1\"`", packet)
+        self.assertIn("sidecar_digest_is_uniform: `true`", packet)
+
+    def test_packet_hash_is_stable_across_evidence_roots(self):
+        """The same target written to two roots must publish the same profile hash."""
+
+        import tempfile
+
+        hashes = []
+        for name in ("first", "second/nested"):
+            with tempfile.TemporaryDirectory() as directory:
+                evidence_path = Path(directory) / name / "packet.md"
+                _, packet = self._run(evidence_path)
+            line = [row for row in packet.splitlines() if row.startswith("- profile_sha256:")]
+            self.assertEqual(1, len(line))
+            hashes.append(line[0])
+
+        self.assertEqual(hashes[0], hashes[1])
+
 
 if __name__ == "__main__":
     unittest.main()

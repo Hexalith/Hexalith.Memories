@@ -965,6 +965,39 @@ public sealed partial class CiTestInventoryTests
         duplicates.ShouldBe(["S11-FX (x2)"]);
     }
 
+    [Fact]
+    public void FindDuplicateDeferredIds_MatchesTheRegisterConsumersIdLineLexicon()
+    {
+        // Story 27.3 code review (eighth-invocation review): the guard reused the C# reader's
+        // regex, so it disagreed with the register's real consumer in both directions. These
+        // three forms are all honoured by read_deferred_entries in
+        // tools/verify-integration-stub-closure.py, so each is a genuine second declaration
+        // under one key - a fourth recurrence of the collision class this guard exists to stop.
+        string[] honouredByTheConsumer =
+        [
+            "  - ID: 27.3-CRX",
+            "  - id: 27.3-CRX",
+        ];
+        FindDuplicateDeferredIds(honouredByTheConsumer).ShouldBe(["27.3-CRX (x2)"]);
+
+        string[] noSpaceAfterColon =
+        [
+            "  - ID: 27.3-CRY",
+            "  - ID:27.3-CRY",
+        ];
+        FindDuplicateDeferredIds(noSpaceAfterColon).ShouldBe(["27.3-CRY (x2)"]);
+
+        // The reverse direction: forms the consumer ignores must not turn the CI lane red.
+        // It requires a '-' bullet, so a '*' bullet and an unbulleted line are not declarations.
+        string[] ignoredByTheConsumer =
+        [
+            "  - ID: 27.3-CRZ",
+            "  * ID: 27.3-CRZ",
+            "  ID: 27.3-CRZ",
+        ];
+        FindDuplicateDeferredIds(ignoredByTheConsumer).ShouldBeEmpty();
+    }
+
     private static string[] OpenStructuredBaselineFixture(string id, string testName)
         =>
         [
@@ -1519,13 +1552,15 @@ public sealed partial class CiTestInventoryTests
 
     /// <summary>Returns every deferred-work ID declared more than once, with its occurrence count.</summary>
     /// <remarks>
-    /// Reuses <see cref="StructuredFieldRegex"/> so this guard and the structured-entry reader agree
-    /// on exactly which lines are ID declarations; a line the reader ignores cannot make this fail,
-    /// and a line the reader honours cannot escape it.
+    /// Uses <see cref="DeferredConsumerFieldRegex"/>, which mirrors the register's actual consumer
+    /// (<c>DEFERRED_FIELD_RE</c> in <c>tools/verify-integration-stub-closure.py</c>) rather than the
+    /// C# structured-entry reader. A line that consumer treats as an ID declaration cannot escape
+    /// this guard, and a line it ignores cannot make this guard fail. Values are grouped ordinally
+    /// because that consumer keys its entry dictionary on the raw ID string.
     /// </remarks>
     private static string[] FindDuplicateDeferredIds(IEnumerable<string> lines)
         => lines
-            .Select(static line => StructuredFieldRegex().Match(line))
+            .Select(static line => DeferredConsumerFieldRegex().Match(line))
             .Where(static match => match.Success
                 && string.Equals(match.Groups["label"].Value, "ID", StringComparison.OrdinalIgnoreCase))
             .Select(static match => match.Groups["value"].Value.Trim())
@@ -1554,6 +1589,17 @@ public sealed partial class CiTestInventoryTests
     // as nested Markdown sub-bullets.
     [GeneratedRegex(@"^\s*(?:[-*]\s+)?(?<label>ID|Status|Source story|Target artifact|Re-open trigger|Evidence|Rationale|Test):\s+(?<value>.+?)\s*$")]
     private static partial Regex StructuredFieldRegex();
+
+    // Story 27.3 code review (eighth-invocation review): the duplicate-ID guard reused
+    // StructuredFieldRegex above and so disagreed with the register's actual consumer,
+    // read_deferred_entries in tools/verify-integration-stub-closure.py, in BOTH directions.
+    // That consumer's DEFERRED_FIELD_RE is case-insensitive, accepts ':' with no following
+    // space, and requires a '-' bullet. So '- id: 27.3-CR18' and '- ID:27.3-CR18' each create
+    // a real second entry under one key that the guard could not see, while '* ID: x' and an
+    // unbulleted 'ID: x' were counted by the guard although no consumer honours them. This
+    // regex mirrors DEFERRED_FIELD_RE exactly so the guard binds the invariant that matters.
+    [GeneratedRegex(@"^\s*-\s+(?<label>ID|Status|Source story|Target artifact|Re-open trigger|Rationale):\s*(?<value>.*?)\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex DeferredConsumerFieldRegex();
 
     // Story 14.5: ID values must be a single token of alphanumerics, dot, and dash so that
     // similar-but-different IDs (12x4-RV6, 112.4-RV6) are captured verbatim and fail an exact
