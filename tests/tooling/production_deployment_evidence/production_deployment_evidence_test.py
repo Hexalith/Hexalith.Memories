@@ -74,6 +74,18 @@ def write_complete_evidence(
         ),
         encoding="utf-8",
     )
+    (root / "secret-store-substitution.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "reason": "redacted verification-scoped substitution disclosure",
+                "substitutedComponents": ["secretstore", "access-telemetry-secrets"],
+                "originalType": "secretstores.hashicorp.vault",
+                "substitutedType": "secretstores.kubernetes",
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def run_validator(root: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -660,6 +672,62 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
 
             self.assertNotEqual(0, result.returncode)
             self.assertFalse(output.exists())
+
+    def test_verifier_substitutes_openbao_secret_stores_for_the_disposable_cluster(self) -> None:
+        # DW 27.3-CR17 (Administrator decision 2026-07-28): the disposable cluster has no
+        # OpenBao, and the production `hashicorp.vault` secret stores route component
+        # secretKeyRef resolution through it, so daprd exits fatally at component load.
+        # The verifier substitutes both stores with verification-scoped
+        # `secretstores.kubernetes` aliases via a merge patch (names and scopes preserved
+        # by the cluster object) after the verbatim apply and while the applications are
+        # still scaled to zero, so no consumer pod ever loads the vault-typed component.
+        verifier = VERIFIER.read_text(encoding="utf-8")
+        apply_index = verifier.index("kubectl @('apply', '-f', $manifestPath)")
+        patch_payload = verifier.index('"type":"secretstores.kubernetes"')
+        scale_up = verifier.index("'--replicas=2')")
+        self.assertLess(apply_index, patch_payload)
+        self.assertLess(patch_payload, scale_up)
+        for component in ("secretstore", "access-telemetry-secrets"):
+            self.assertIn(f"'patch', 'component', '{component}'", verifier)
+        self.assertIn("secret-store-substitution.json", verifier)
+
+    def test_missing_secret_store_substitution_disclosure_fails(self) -> None:
+        # The substitution may never happen silently: the validator refuses a packet that
+        # does not carry the disclosure record, so an undisclosed substitution cannot pass
+        # evidence validation.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            (root / "secret-store-substitution.json").unlink()
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("substitution", (result.stdout + result.stderr).lower())
+
+    def test_incomplete_secret_store_substitution_disclosure_fails(self) -> None:
+        # A disclosure naming fewer components, or different types, than the declared
+        # substitution is a false record, not a formatting lapse.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            (root / "secret-store-substitution.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "reason": "redacted",
+                        "substitutedComponents": ["secretstore"],
+                        "originalType": "secretstores.hashicorp.vault",
+                        "substitutedType": "secretstores.kubernetes",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("substitution", (result.stdout + result.stderr).lower())
 
     def test_environment_secret_canary_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

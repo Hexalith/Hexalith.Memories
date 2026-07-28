@@ -128,6 +128,23 @@ if ($currentLogs.Count -eq 0 -or $previousLogs.Count -eq 0) {
     throw 'Production deployment evidence must include current and previous container log captures.'
 }
 
+# DW 27.3-CR17: the verifier substitutes the two OpenBao-backed secret stores with
+# verification-scoped kubernetes stores. That substitution may never happen silently, so a
+# packet without the complete disclosure record is invalid regardless of rollout outcome.
+$substitutionPath = Join-Path $evidencePath 'secret-store-substitution.json'
+if (-not (Test-Path -LiteralPath $substitutionPath)) {
+    throw 'Production deployment evidence must disclose the verification-scoped secret-store substitution (secret-store-substitution.json is missing).'
+}
+$substitution = Get-Content -LiteralPath $substitutionPath -Raw | ConvertFrom-Json
+$substitutedComponents = @($substitution.substitutedComponents)
+if ($substitution.schemaVersion -ne 1 -or
+    $substitution.originalType -ne 'secretstores.hashicorp.vault' -or
+    $substitution.substitutedType -ne 'secretstores.kubernetes' -or
+    $substitutedComponents -notcontains 'secretstore' -or
+    $substitutedComponents -notcontains 'access-telemetry-secrets') {
+    throw 'Production deployment evidence secret-store substitution disclosure is incomplete or does not match the declared verification-scoped substitution.'
+}
+
 $secretCanaries = @(
     'verification-redis-password',
     'verification-falkordb-password',

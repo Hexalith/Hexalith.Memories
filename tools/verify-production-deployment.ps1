@@ -610,6 +610,28 @@ try {
     Invoke-Checked kubectl @('apply', '--dry-run=client', '-f', $manifestPath) | Out-Host
     Invoke-Checked kubectl @('apply', '-f', $manifestPath) | Out-Host
 
+    # DW 27.3-CR17 (Administrator decision 2026-07-28): the production manifests carry two
+    # `secretstores.hashicorp.vault` stores (`secretstore`, `access-telemetry-secrets`) that route
+    # component secretKeyRef resolution through an OpenBao this disposable cluster does not have,
+    # so daprd exits fatally at component load. The manifests are applied verbatim above; this
+    # separate, disclosed step then substitutes both stores with verification-scoped
+    # `secretstores.kubernetes` aliases (merge patch: the cluster object keeps name and scopes),
+    # so the same secretKeyRef name/key pairs resolve from the seeded verification Secrets. It runs
+    # while the applications are scaled to zero below, so no consumer pod ever loads the
+    # vault-typed component. The OpenBao path is NOT exercised by this lane; proving it is
+    # Story 31.2 scope.
+    $secretStoreSubstitution = '{"spec":{"type":"secretstores.kubernetes","version":"v1","metadata":[]}}'
+    Invoke-Checked kubectl @('patch', 'component', 'secretstore', '-n', $namespace, '--type', 'merge', '-p', $secretStoreSubstitution) | Out-Null
+    Invoke-Checked kubectl @('patch', 'component', 'access-telemetry-secrets', '-n', $namespace, '--type', 'merge', '-p', $secretStoreSubstitution) | Out-Null
+    [ordered]@{
+        schemaVersion = 1
+        reason = 'DW 27.3-CR17: the disposable cluster has no OpenBao, so the production hashicorp.vault secret stores are substituted with verification-scoped kubernetes stores after the verbatim apply; component secretKeyRefs resolve from the seeded verification Secrets. The OpenBao path is not exercised by this lane (Story 31.2 scope).'
+        substitutedComponents = @('secretstore', 'access-telemetry-secrets')
+        originalType = 'secretstores.hashicorp.vault'
+        substitutedType = 'secretstores.kubernetes'
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidencePath 'secret-store-substitution.json') -Encoding utf8
+    Write-Host 'Substituted secret stores secretstore and access-telemetry-secrets with verification-scoped secretstores.kubernetes aliases (disclosed in secret-store-substitution.json).'
+
     # The release manifest assumes external Redis/FalkorDB services already exist. This disposable
     # cluster creates them in the same apply, so keep the applications stopped until those required
     # dependencies are Ready. Otherwise Dapr sidecars can repeatedly exit while Redis DNS/storage is
