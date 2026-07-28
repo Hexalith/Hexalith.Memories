@@ -25,7 +25,7 @@ documentation, evidence, or source control.
 | Application namespace | `hexalith-memories` |
 | Helm release, Service, StatefulSet | `hexalith-keys` |
 | Helm release revisions | 9 (`sh.helm.release.v1.hexalith-keys.v1` through `v9`) |
-| Chart | official `oci://ghcr.io/openbao/charts/openbao`, `0.28.5`, digest `sha256:1c2e01185430b9bc426da870909fdccfbb4e3e4758f0c6f8cccfbceead4381ff` |
+| Chart | official `oci://ghcr.io/openbao/charts/openbao`, `0.28.5`, digest `sha256:1c2e01185430b9bc426da870909fdccfbb4e3e4758f0c6f8cccfbceead4381ff` — **not measured**; carried from the header comment in `deploy/openbao/values.yaml` (commit `4d2e4e2f`). No read-only probe here yields a chart digest, so it re-derives only from a `helm` client, which is absent. See [Named divergences](#named-divergences) |
 | Server image | `quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653` |
 | Server version | `2.6.0` |
 | Raft voters | `3` — StatefulSet `.spec.replicas = 3`; pods `hexalith-keys-0`, `hexalith-keys-1`, `hexalith-keys-2`, each `1/1 Running` |
@@ -43,13 +43,15 @@ documentation, evidence, or source control.
 | TLS | on: `tls_disable = 0`, `tls_min_version = "tls12"`, cert and key from Secret `openbao-server-tls` |
 | Service registration | `service_registration "kubernetes" {}`, backed by Role `hexalith-keys-discovery-role` (pods: `get`, `watch`, `list`, `update`, `patch`) |
 | ServiceAccount token | ServiceAccount default is `false`, but pod spec sets `automountServiceAccountToken: true`, which wins — the server does receive and use a Kubernetes API token |
-| Token review binding | ClusterRoleBinding `hexalith-keys-server-binding` binds the ServiceAccount to `system:auth-delegator` |
+| Token review binding | **two** ClusterRoleBindings grant `system:auth-delegator` to the ServiceAccount: the chart-rendered `hexalith-keys-server-binding` and the untracked, non-Helm `hexalith-keys-tokenreview` |
 | Pod Security | namespace carries Restricted `enforce`, `audit`, and `warn` labels at `latest` |
 | Pod security context | `runAsNonRoot: true`, `runAsUser: 100`, `runAsGroup: 1000`, `fsGroup: 1000`, `seccompProfile: RuntimeDefault`, `allowPrivilegeEscalation: false`, all capabilities dropped |
 | NetworkPolicy | port 8200 from every pod in `hexalith-memories` and every pod in `cert-manager`; ports 8200 and 8201 from the OpenBao pods themselves |
 | Backup | CronJob `openbao-raft-snapshot` at `30 0 * * *`, ServiceAccount `openbao-snapshot`, 2Gi PVC `openbao-snapshots`, `concurrencyPolicy: Forbid`, two completed Jobs observed |
 | Update strategy | `OnDelete`, `podManagementPolicy: OrderedReady`, governing Service `hexalith-keys-internal` |
 | PVC retention | `whenDeleted: Retain`, `whenScaled: Retain` |
+| Evidence root | `_bmad-output/implementation-artifacts/tests` — preserved from the pre-Story-31.1 profile table because Story 27.3's C1 record cites it as one of its six production-target values |
+| Declared single-component fault | `dapr-sidecar-restart` — preserved for the same reason |
 | Deployment ID | annotation reads `memories-production-2.11.0-c7c2ca21-hexalith-keys-r2` — the value written for release `r2`, still present at Helm revision 9; see [Named divergences](#named-divergences) |
 | Profile ID | annotation reads `redis-state-v1-dapr-1.18.1-openbao-2.6.0-4183b741eac062d9` — likewise release-`r2` identity, not a current-state assertion |
 
@@ -166,17 +168,17 @@ This file is exact as deployed and Story 31.1 changed nothing in it.
 
 | Declared setting | Deployed value it binds |
 | :--------------- | :---------------------- |
-| `metadata.name: openbao` | the namespace the whole platform runs in |
+| `kubernetes.io/metadata.name: openbao` | the label the NetworkPolicy `namespaceSelector` matches peer namespaces by; the namespace the whole platform runs in |
 | `pod-security.kubernetes.io/enforce: restricted` | enforced Restricted profile, version `latest` |
 | `pod-security.kubernetes.io/audit: restricted` | audited Restricted profile, version `latest` |
 | `pod-security.kubernetes.io/warn: restricted` | warned Restricted profile, version `latest` |
-| `hexalith.io/platform-owner: jpiquot` | Platform Operations owner annotation |
-| `hexalith.io/security-reviewer: murat-tea-for-jpiquot` | security reviewer annotation |
+| `hexalith.io/platform-owner: jpiquot` | Platform Operations owner of record is `jpiquot` |
+| `hexalith.io/security-reviewer: murat-tea-for-jpiquot` | security reviewer of record is `murat-tea-for-jpiquot`; see [Named divergences](#named-divergences) for why that identity is not independent of the platform owner |
 
 The namespace also carries five profile-identity annotations that this file does **not** declare —
 `hexalith.io/composite-profile-sha256`, `hexalith.io/helm-manifest-sha256`,
 `hexalith.io/hardening-manifest-sha256`, `hexalith.io/deployment-id`, and `hexalith.io/profile-id`. They
-are applied by the production deployment renderer, not by this manifest. See
+are **not** applied by this manifest. No producer for them exists in this repository: `composite-profile`, `helm-manifest-sha256` and `hardening-manifest-sha256` appear only in the Story 31.1 records, and `tools/render-production-deployment.ps1` computes no annotation. Their origin is out-of-repo platform state with no identified owner. See
 [Named divergences](#named-divergences) for what they are and are not evidence of.
 
 ### `deploy/openbao/service-account-hardening.yaml`
@@ -207,8 +209,8 @@ enforced Restricted profile requires. Do not weaken the namespace policy to run 
 
 | Declared setting | Deployed value it binds |
 | :--------------- | :---------------------- |
-| `kind: Job`, `name: hexalith-keys-smoke-test` | the Job created by [Smoke test](#smoke-test) |
-| `BAO_ADDR: https://hexalith-keys.openbao.svc.cluster.local:8200` | the ClusterIP Service endpoint |
+| `kind: Job`, `name: hexalith-keys-smoke-test` | one-shot Job `hexalith-keys-smoke-test`, created by [Smoke test](#smoke-test) and reaped by its own TTL |
+| `BAO_ADDR: https://hexalith-keys.openbao.svc.cluster.local:8200` | the ClusterIP Service endpoint `hexalith-keys.openbao.svc.cluster.local:8200`, which round-robins across all three voters |
 | `BAO_CACERT: /openbao/tls/ca.crt` | `ca.crt` projected read-only from Secret `openbao-server-tls` via an explicit `items` list, so the server private key `tls.key` is **not** delivered to this pod |
 | `automountServiceAccountToken: false` | the Job needs no Kubernetes API access |
 | `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, capabilities `- ALL` dropped | Restricted profile compliance |
@@ -231,8 +233,11 @@ no retry, a re-run requires deleting the prior Job first with
 
 ### Recorded result
 
-Executed **2026-07-28T09:43:31Z** to **2026-07-28T09:43:38Z** against context `jpiquot@local`, namespace
-`openbao`. The Job reached `condition=complete`. Observed fields:
+Executed **2026-07-28T13:24:43Z** against context `jpiquot@local`, namespace `openbao`, under the current
+manifest — that is, with the `items: [ca.crt]` projection this document describes. The Job reached
+`condition met`, and the projection was confirmed on the Job and Pod objects the API server admitted rather
+than inferred from the file. An earlier run at **2026-07-28T09:43:31Z** produced identical fields but
+predates that projection; it is superseded and is retained only in the evidence artifact. Observed fields:
 
 | Field | Observed value |
 | :---- | :------------- |
@@ -275,6 +280,8 @@ trigger; none is presented above as measured.
 | `server.authDelegator.enabled: true` grants `system:auth-delegator` with no identified consumer | Hexalith Platform Operations (`jpiquot`) with security reviewer `murat-tea-for-jpiquot` | The chart-rendered ClusterRoleBinding `hexalith-keys-server-binding` grants the server ServiceAccount cluster-scoped TokenReview and SubjectAccessReview. No OpenBao Kubernetes auth method is configured anywhere in this repository, and Dapr authenticates its secret reads with a scoped OpenBao token rather than a Kubernetes ServiceAccount token, so no consumer of that privilege has been identified. The untracked `hexalith-keys-tokenreview` binding grants the same privilege out of band, so clearing the tracked value alone would not revoke it | A named consumer is documented, or both bindings are removed and `server.authDelegator.enabled` is set `false`. Raised by Story 31.1 code review 2026-07-28; AC2 fixes the accepted-limitations table at two rows, so promoting this to a third accepted limitation would need its own approved sprint change |
 | Raft snapshots have no off-cluster copy | Hexalith Platform Operations (`jpiquot`) | The `openbao-raft-snapshot` CronJob writes to PVC `openbao-snapshots`, which is `openebs-hostpath-retain` on `node1` — the same and only node that holds all three voters and all six data and audit PVCs. Losing that node loses the data and its backups together, so the platform currently has no recoverable state after node loss. Stated in [Availability profile](#availability-profile) but previously carried no owner or trigger | An off-cluster or off-node copy of the snapshot output exists and a restore has been rehearsed, at which point the CronJob and its retention become a tracked manifest |
 | Namespace manifest hashes no longer re-derive from the tracked files | Hexalith Platform Operations (`jpiquot`) | Story 31.1 changed `deploy/openbao/values.yaml` and `deploy/openbao/service-account-hardening.yaml`, both of which feed the `hexalith.io/helm-manifest-sha256` and `hexalith.io/hardening-manifest-sha256` annotations recorded below. Those annotations, the composite, `deployment-id` and `profile-id` all still identify release `r2` and are **not** re-derivable from the current tracked sources | The production deployment renderer recomputes and re-applies the profile annotations for the current revision |
+| Documented voter count and HA mode are pinned to a 2026-07-28 measurement, not to the live platform | Hexalith Platform Operations (`jpiquot`) | `OpenBaoPlatformDocumentationTests` compares the documented voter count and HA mode against constants in test source and against `deploy/openbao/values.yaml`. All three inputs are files in this repository, so they drift together and a cluster-only change — the exact shape of the recorded nine-revision drift — passes green. The guard states this in its own class summary; it is recorded here so the obligation has an owner rather than being carried by a checkpoint that is already `complete` | Any change to the Helm release revision count, any `kubectl -n openbao get statefulset hexalith-keys -o jsonpath='{.spec.replicas}'` result other than `3`, or any `bao status` `ha_enabled` other than `true`; re-measure and update the document, `values.yaml` and the `Measured*` constants together |
+| The security reviewer of record is not independent of the platform owner | Hexalith Platform Operations (`jpiquot`) | Checkpoint C7 is closed by a waiver whose approver (`jpiquot`) is also the Platform Operations owner, a co-accountable owner of both accepted limitations, and the human the reviewer persona `murat-tea-for-jpiquot` acts for. Story 27.3 withdrew this exact pairing on the ground that it "names one human plus a persona acting for that same human" and does not satisfy an independent-security-reviewer requirement; Story 31.1 records the same defect rather than repeating the claim | An evaluation recorded by an identity distinct from the waiver approver and from the checkpoint owner, or the waiver expiry on 2026-10-26, whichever comes first |
 
 The three manifest hashes recorded on both namespaces are
 `1deba6e0456bb44ea0624a0f436b209b5ede2c496cc9be98fea5b9dbee1db539` (application manifest),

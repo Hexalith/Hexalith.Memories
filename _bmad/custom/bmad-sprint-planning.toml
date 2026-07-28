@@ -1,0 +1,24 @@
+# Team-owned story-scope guard for the sprint planning route. This file is merged
+# over generated skill defaults and survives BMad skill refreshes.
+#
+# Added 2026-07-28 by approved Sprint Change Proposal
+# sprint-change-proposal-2026-07-28-story-slice-guard-route-and-binding-coverage.md.
+#
+# Extended 2026-07-28 by approved Sprint Change Proposal
+# sprint-change-proposal-2026-07-28-epic-ac-verification-route-and-binding-coverage.md
+# to also load the team epic-AC-verification policy. That guard was created the
+# same day covering only create-story, dev-story, and code-review, reproducing
+# the route-coverage defect this file's slice guard had just cured.
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/_bmad/custom/story-scope-guard.md",
+  "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
+  "file:{project-root}/_bmad/custom/epic-ac-verification.md",
+]
+
+activation_steps_append = [
+  "HISTORICAL_SLICE_GUARD: This route registers stories into sprint status. Apply the team story-scope policy before transcribing any story into sprint-status.yaml at any status including backlog. Do not promote a story whose registered shape violates the policy — an anti-template shape, multiple independently demonstrable outcomes bundled into one story, or more than five independently verifiable gates without a one-row-per-gate checkpoint table carrying owner, evidence command or artifact, review state, and completion state. Report the violation and its required split instead of transcribing it; transcription is not a neutral act.",
+  "EPIC_AC_VERIFICATION: This route promotes stories into sprint status. Apply the team epic-AC-verification policy and do not promote or re-status a story whose Epic AC Verification record is missing, whose corrected row lacks its planning-artifact correction or recorded escalation, or whose unverifiable row lacks its blocker, owner, consequence, and reopen trigger. Report the gap instead of transcribing the story. Registration at backlog grants no exemption. Fail closed on the affected row rather than writing it into sprint-status.yaml.",
+]

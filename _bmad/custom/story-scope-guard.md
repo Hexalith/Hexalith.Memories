@@ -24,11 +24,20 @@ unless current epics explicitly approve a narrower use.
 
 ## Creation gate
 
+This gate binds when a story is **authored or registered** — the moment it is
+written into a story file, `epics.md`, or `sprint-status.yaml` — at any status,
+including `backlog`. `ready-for-dev` is a second, stricter checkpoint, not the
+first one. A story that violates this policy is in violation while it sits in
+the backlog; it does not become compliant by not being selected yet.
+
 - Select work from current epic intent and current code evidence, not numeric
   story adjacency.
 - Do not copy an anti-template's tasks, AC density, file list, or proof shape.
 - Split multiple independently demonstrable outcomes into newly numbered
-  stories before setting `ready-for-dev`.
+  stories before the story is registered at any status.
+- A correction, split, or replan that creates stories must satisfy this policy
+  for every story it creates. A split must not reproduce the shape it was
+  executed to cure.
 - An explicitly approved umbrella/checkpoint story may remain one tracking
   story only when every checkpoint has its own owner, evidence command/artifact,
   review state, and completion state.
@@ -36,6 +45,20 @@ unless current epics explicitly approve a narrower use.
   generated story whenever any prior story influences it.
 - Treat an unresolved violation as a Critical Miss: do not set
   `ready-for-dev` and do not update sprint status.
+
+## Executable subset
+
+`tools/check-story-slice-scope.py` enforces the mechanically checkable subset of
+this policy: that the classification and slice-proof record exists, that every
+classification row carries exactly one of the three labels, that an
+`anti-template` row states its permitted use, and that a story enumerating more
+than five independently verifiable gates carries one checkpoint row per gate
+with owner, evidence command or artifact, review state, and completion state.
+
+The gate does not judge whether a label is **correct**, whether a reuse is
+genuinely narrow, or whether two outcomes are genuinely independently
+deployable. Those judgements stay with the creation and review gates below. A
+green gate is evidence the record exists, never evidence the record is right.
 
 ## Review gate
 

@@ -347,7 +347,12 @@ public sealed class ProductionDeploymentArtifactsTests
         values.ShouldContain("tls_min_version = \"tls12\"");
         values.ShouldContain("seal \"static\"");
         values.ShouldNotContain("tls_disable = 1");
-        values.ShouldNotContain("enabled: true\n  publishNotReadyAddresses", Case.Insensitive);
+        // Story 31.1 second-pass code review 2026-07-28: the previous literal
+        // "enabled: true\n  publishNotReadyAddresses" could never match — the key is indented four spaces
+        // and `type: ClusterIP` sits between the two lines — so this negative was dead while eleven
+        // assertions were added around it. Assert the reconciled value instead.
+        values.ShouldContain("publishNotReadyAddresses: false", Case.Sensitive);
+        values.ShouldNotContain("publishNotReadyAddresses: true", Case.Sensitive);
         values.ShouldContain("injector:\n  enabled: false");
         values.ShouldContain("csi:\n  enabled: false");
         values.ShouldContain("ui:\n  enabled: false");

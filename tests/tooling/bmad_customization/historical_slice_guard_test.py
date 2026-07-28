@@ -13,6 +13,23 @@ POLICY = REPO_ROOT / "_bmad" / "custom" / "story-scope-guard.md"
 POLICY_FACT = "file:{project-root}/_bmad/custom/story-scope-guard.md"
 LESSONS_FACT = "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md"
 MARKER = "HISTORICAL_SLICE_GUARD:"
+# Routes that author or register stories and must therefore load the policy.
+# Added 2026-07-28 alongside the four `_bmad/custom/*.toml` overrides.
+AUTHORING_ROUTES = (
+    "bmad-correct-course",
+    "bmad-create-epics-and-stories",
+    "bmad-spec",
+    "bmad-sprint-planning",
+)
+# bmad-spec is deliberately excluded: the cross-tenant project-context delivery
+# contract in bmad_customization_test.py pins its resolved persistent_facts to
+# exactly the bridge fact, so the policy reaches that route through its
+# activation directive instead. See _bmad/custom/bmad-spec.toml.
+AUTHORING_ROUTES_WITH_POLICY_FACT = (
+    "bmad-correct-course",
+    "bmad-create-epics-and-stories",
+    "bmad-sprint-planning",
+)
 
 
 def normalize_text(value: str) -> str:
@@ -69,6 +86,114 @@ def resolve_workflow(skill_name: str) -> dict:
 
 
 class HistoricalSliceGuardTests(unittest.TestCase):
+    def test_every_story_authoring_route_resolves_exactly_one_guard(self):
+        """Route coverage is refresh-safe on all four routes added 2026-07-28.
+
+        DW 27.3-CR16 recorded that the 2026-07-26 correct-course split produced two
+        anti-template stories because the splitting route never loaded the policy.
+        These four routes author or register stories; a refresh must not silently
+        drop the guard from any of them.
+        """
+        for skill_name in AUTHORING_ROUTES:
+            with self.subTest(skill=skill_name):
+                workflow = resolve_workflow(skill_name)
+
+                directives = [
+                    step
+                    for step in workflow["activation_steps_append"]
+                    if step.startswith(MARKER)
+                ]
+                self.assertEqual(len(directives), 1)
+                directive = directives[0]
+                self.assertIn("story-scope policy", directive)
+                # Every route must state that backlog grants no exemption -- the
+                # exact loophole DW 27.3-CR16 relied on.
+                self.assertIn("backlog", directive)
+
+        for skill_name in AUTHORING_ROUTES_WITH_POLICY_FACT:
+            with self.subTest(skill=skill_name, delivery="persistent_fact"):
+                facts = resolve_workflow(skill_name)["persistent_facts"]
+                self.assertEqual(facts.count(POLICY_FACT), 1)
+                self.assertEqual(facts.count(LESSONS_FACT), 1)
+
+    def test_spec_route_receives_policy_without_diluting_context_bridge(self):
+        """bmad-spec must get the policy by directive, not by persistent fact.
+
+        The cross-tenant project-context delivery contract pins this route's
+        resolved persistent_facts to exactly the bridge fact. That gate is not
+        weakened to accommodate the guard, so the directive must name the policy
+        files it requires the route to read.
+        """
+        workflow = resolve_workflow("bmad-spec")
+
+        self.assertEqual(
+            workflow["persistent_facts"],
+            ["file:{project-root}/project-context.md"],
+        )
+
+        directive = next(
+            step
+            for step in workflow["activation_steps_append"]
+            if step.startswith(MARKER)
+        )
+        self.assertIn("_bmad/custom/story-scope-guard.md", directive)
+        self.assertIn("story-creation-lessons.md", directive)
+
+    def test_authoring_routes_retain_generated_defaults(self):
+        """The team override must merge over defaults, never replace them."""
+        spec_workflow = resolve_workflow("bmad-spec")
+        self.assertIn("spec_template", spec_workflow)
+        self.assertEqual(spec_workflow["spec_filename"], "SPEC.md")
+        self.assertIn(
+            "file:{project-root}/project-context.md",
+            spec_workflow["persistent_facts"],
+        )
+
+        for skill_name in ("bmad-correct-course", "bmad-sprint-planning"):
+            with self.subTest(skill=skill_name):
+                workflow = resolve_workflow(skill_name)
+                self.assertIn(
+                    "file:{project-root}/**/project-context.md",
+                    workflow["persistent_facts"],
+                )
+
+    def test_policy_binds_at_authoring_not_only_at_ready_for_dev(self):
+        """The backlog exemption DW 27.3-CR16 relied on must be closed."""
+        policy = POLICY.read_text(encoding="utf-8")
+        creation_section = normalize_text(
+            policy.split("## Creation gate", maxsplit=1)[1].split("\n## ", maxsplit=1)[
+                0
+            ]
+        )
+
+        self.assertIn("authored or registered", creation_section)
+        self.assertIn("at any status, including `backlog`", creation_section)
+        self.assertIn(
+            "`ready-for-dev` is a second, stricter checkpoint, not the first one.",
+            creation_section,
+        )
+        self.assertIn(
+            "it does not become compliant by not being selected yet.",
+            creation_section,
+        )
+
+    def test_policy_scopes_the_executable_subset_without_overclaiming(self):
+        """The gate checks the record exists; it must not claim to judge correctness."""
+        policy = POLICY.read_text(encoding="utf-8")
+        subset = normalize_text(
+            policy.split("## Executable subset", maxsplit=1)[1].split(
+                "\n## ", maxsplit=1
+            )[0]
+        )
+
+        self.assertIn("tools/check-story-slice-scope.py", subset)
+        self.assertIn("does not judge whether a label is **correct**", subset)
+        self.assertIn(
+            "A green gate is evidence the record exists, never evidence the record "
+            "is right.",
+            subset,
+        )
+
     def test_create_story_resolves_exactly_one_fail_closed_guard(self):
         workflow = resolve_workflow("bmad-create-story")
 
@@ -136,7 +261,13 @@ class HistoricalSliceGuardTests(unittest.TestCase):
         )
         self.assertIn(
             "Split multiple independently demonstrable outcomes into newly numbered "
-            "stories before setting `ready-for-dev`.",
+            "stories before the story is registered at any status.",
+            creation_rules,
+        )
+        self.assertIn(
+            "A correction, split, or replan that creates stories must satisfy this "
+            "policy for every story it creates. A split must not reproduce the shape "
+            "it was executed to cure.",
             creation_rules,
         )
         self.assertIn(

@@ -1,0 +1,28 @@
+# Team-owned story-scope guard for the spec authoring route. This file is merged
+# over generated skill defaults and survives BMad skill refreshes.
+#
+# Added 2026-07-28 by approved Sprint Change Proposal
+# sprint-change-proposal-2026-07-28-story-slice-guard-route-and-binding-coverage.md.
+# A spec is a story-authoring route for multi-stage non-epic work, so the same
+# slice discipline binds it.
+#
+# DELIBERATE ASYMMETRY: unlike the other three authoring routes, this file adds
+# NO persistent_facts entry. The cross-tenant project-context delivery contract
+# (tests/tooling/bmad_customization/bmad_customization_test.py, bmad-spec subtest)
+# pins this skill's resolved persistent_facts to exactly the project-context
+# bridge fact, so that the bridge's fail-closed control cannot be diluted by
+# additional facts. That contract is not weakened here. The policy is delivered
+# through the activation directive instead, which names the file to read.
+#
+# Extended 2026-07-28 by approved Sprint Change Proposal
+# sprint-change-proposal-2026-07-28-epic-ac-verification-route-and-binding-coverage.md
+# to also load the team epic-AC-verification policy. That guard was created the
+# same day covering only create-story, dev-story, and code-review, reproducing
+# the route-coverage defect this file's slice guard had just cured.
+
+[workflow]
+
+activation_steps_append = [
+  "HISTORICAL_SLICE_GUARD: This route authors work items. Read {project-root}/_bmad/custom/story-scope-guard.md and {project-root}/_bmad-output/process-notes/story-creation-lessons.md, then apply the team story-scope policy before freezing intent. Classify every prior story or spec influence as current-narrow-pattern, historical-reference-only, or anti-template, and ignore numeric adjacency as a relevance signal. A spec covering multiple independently demonstrable outcomes must be split into separate specs or stories, or must carry an explicitly approved checkpoint table with one row per gate carrying owner, evidence command or artifact, review state, and completion state. Record the classification and slice proof in the spec whenever a prior artifact influences it. The policy binds at authoring, not at selection: a spec is bound the moment it is written, not when its work is later picked up, and backlog status grants no exemption. Fail closed before approval while any anti-template reuse or required split is unresolved.",
+  "EPIC_AC_VERIFICATION: This route freezes intent into a machine contract, so an unverified claim becomes a binding requirement. Read {project-root}/_bmad/custom/epic-ac-verification.md and verify every verifiable claim the spec inherits from epic, PRD, architecture, or audit text before freezing it, recording per claim a re-runnable command and a confirmed, corrected, or unverifiable verdict. Never carry an unverifiable claim as load-bearing justification for scope. A corrected claim must correct the source planning artifact or carry a dated correction note there. Fail closed before approval while any verifiable claim in the frozen contract lacks a verdict.",
+]

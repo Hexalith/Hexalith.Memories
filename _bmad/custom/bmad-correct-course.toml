@@ -1,0 +1,27 @@
+# Team-owned story-scope guard for the correct-course route. This file is merged
+# over generated skill defaults and survives BMad skill refreshes.
+#
+# Added 2026-07-28 by approved Sprint Change Proposal
+# sprint-change-proposal-2026-07-28-story-slice-guard-route-and-binding-coverage.md.
+# Rationale: DW 27.3-CR16 recorded that the 2026-07-26 correct-course split
+# produced two anti-template stories (30.1, 31.1) because this route never
+# loaded the policy. See epics.md:5131 and epics.md:5298.
+#
+# Extended 2026-07-28 by approved Sprint Change Proposal
+# sprint-change-proposal-2026-07-28-epic-ac-verification-route-and-binding-coverage.md
+# to also load the team epic-AC-verification policy. That guard was created the
+# same day covering only create-story, dev-story, and code-review, reproducing
+# the route-coverage defect this file's slice guard had just cured.
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/_bmad/custom/story-scope-guard.md",
+  "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
+  "file:{project-root}/_bmad/custom/epic-ac-verification.md",
+]
+
+activation_steps_append = [
+  "HISTORICAL_SLICE_GUARD: This route authors and registers stories. Apply the team story-scope policy to every story this correction creates, renames, or splits, before writing it into epics.md or sprint-status.yaml at any status including backlog. A split must not reproduce the shape it was executed to cure: each created story must carry one independently demonstrable outcome, or an explicitly approved checkpoint table with one row per gate carrying owner, evidence command or artifact, review state, and completion state. Classify every prior-story influence as current-narrow-pattern, historical-reference-only, or anti-template before reusing it, and ignore numeric adjacency as a relevance signal. Fail closed on the proposal before recording an approval that registers a story the policy forbids.",
+  "EPIC_AC_VERIFICATION: This route authors and amends acceptance criteria and registers stories. Apply the team epic-AC-verification policy to every verifiable claim this correction inherits from epic, PRD, architecture, or audit text and to every claim the proposal itself asserts, before writing an acceptance criterion into the proposal, epics.md, sprint-status.yaml, or a story file at any status including backlog. Record per claim a re-runnable command and a confirmed, corrected, or unverifiable verdict; quote the claim rather than paraphrasing it into something easier to confirm. A corrected claim must correct the source planning artifact in the same change or carry a dated correction note there, and a correction that changes scope, epic intent, or a ratified decision is escalated for a human decision rather than absorbed. State applicability explicitly when the inherited text carries no verifiable claim. Fail closed on the proposal before recording an approval while any verifiable claim lacks a verdict.",
+]

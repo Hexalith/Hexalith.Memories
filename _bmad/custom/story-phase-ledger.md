@@ -2,7 +2,18 @@
 
 This policy is the canonical, update-safe handoff contract for story-scoped
 test counts and changed-file ownership. Workflows must use the exact phase names
-`create-story`, `dev-story`, `qa-gap-closure`, and `code-review`.
+`create-story`, `correct-course`, `dev-story`, `qa-gap-closure`, and
+`code-review`.
+
+`correct-course` was admitted to the canonical set on 2026-07-28 by the
+Administrator, during Story 31.1's second-pass code review. An approved sprint
+change proposal that lands between creation and development changes the story's
+File List and can change its counts; before this amendment those effects had no
+row of their own, so a `correct-course` phase either went unrecorded or was
+folded into a later row that did not perform the work. Story 31.1 is the worked
+example: suppressing its row would have left the `epics.md` and ratification
+proposal paths joining the cumulative set with no row accounting for them. Like
+`qa-gap-closure`, the row is required only when that phase actually ran.
 
 ## Canonical Change Log
 

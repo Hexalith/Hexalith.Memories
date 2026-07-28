@@ -88,8 +88,11 @@ server:
             protocol: TCP
           - port: 8201
             protocol: TCP
-  # The chart supplies the readiness probe COMMAND, which this file cannot override: the
-  # deployed exec probe is `bao status -tls-skip-verify`. Verification is skipped only for
+  # The chart supplies the readiness probe COMMAND and this file does not override it: the
+  # deployed exec probe is `bao status -tls-skip-verify`. It is overridable — `livenessProbe.path`
+  # below is the chart's httpGet override and the chart templates one for the readiness probe too —
+  # so removing the flag is a live change Platform Operations can make, not a chart constraint.
+  # Verification is skipped only for
   # the kubelet's in-pod liveness/readiness check against the pod's own listener; it does
   # not relax `tls_disable = 0` or `tls_min_version = "tls12"` for any client, and the
   # smoke-test Job and every documented operator command verify against the CA. Recorded

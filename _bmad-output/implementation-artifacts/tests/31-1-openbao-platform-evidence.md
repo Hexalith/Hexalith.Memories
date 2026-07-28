@@ -350,6 +350,81 @@ Required fields: `initialized: true`, `sealed: false`, `storage_type: raft`, `ha
 and count, not share material. Logs were captured 7 seconds after creation, well inside
 `ttlSecondsAfterFinished: 300`.
 
+### 3.1 Re-run under the CA-only volume projection (dev-story, 2026-07-28)
+
+The run recorded above predates the `items: [ca.crt]` projection that code review added to
+`deploy/openbao/smoke-test.yaml`, which is why section 6.4 opened a re-run obligation. That obligation is
+discharged here. The apply and wait commands are unchanged; only the manifest they apply has changed.
+
+```text
+$ date -u +"%Y-%m-%dT%H:%M:%SZ"
+2026-07-28T13:24:43Z
+
+$ kubectl -n openbao get job hexalith-keys-smoke-test
+Error from server (NotFound): jobs.batch "hexalith-keys-smoke-test" not found
+
+$ kubectl apply -f deploy/openbao/smoke-test.yaml
+job.batch/hexalith-keys-smoke-test created
+
+$ kubectl -n openbao wait --for=condition=complete job/hexalith-keys-smoke-test --timeout=2m
+job.batch/hexalith-keys-smoke-test condition met
+
+$ date -u +"%Y-%m-%dT%H:%M:%SZ"
+2026-07-28T13:24:50Z
+
+$ kubectl -n openbao logs job/hexalith-keys-smoke-test
+{
+  "type": "static",
+  "initialized": true,
+  "sealed": false,
+  "t": 2,
+  "n": 3,
+  "progress": 0,
+  "nonce": "",
+  "version": "2.6.0",
+  "commit_date": "2026-07-14T16:39:27Z",
+  "migration": false,
+  "cluster_name": "vault-cluster-a3756bea",
+  "cluster_id": "47c0ef18-869d-7b96-edd0-b6006200c9c8",
+  "recovery_seal": true,
+  "recovery_seal_type": "shamir",
+  "storage_type": "raft",
+  "build_date": "",
+  "ha_enabled": true,
+  "leader_address": "https://10.233.102.188:8200",
+  "leader_cluster_address": "https://hexalith-keys-1.hexalith-keys-internal:8201",
+  "raft_committed_index": 512,
+  "raft_applied_index": 512
+}
+```
+
+The projection is verified against the admitted object rather than against the file that declares it, so
+this is evidence that the API server accepted it and the kubelet mounted it — not a restatement of the
+manifest:
+
+```text
+$ kubectl -n openbao get job hexalith-keys-smoke-test -o jsonpath='{.spec.template.spec.volumes}'
+[{"name":"tls","secret":{"defaultMode":288,"items":[{"key":"ca.crt","path":"ca.crt"}],"secretName":"openbao-server-tls"}}]
+
+$ kubectl -n openbao get pod hexalith-keys-smoke-test-fvc97 -o jsonpath='{.spec.volumes}'
+[{"name":"tls","secret":{"defaultMode":288,"items":[{"key":"ca.crt","path":"ca.crt"}],"secretName":"openbao-server-tls"}}]
+
+$ kubectl -n openbao get job hexalith-keys-smoke-test -o jsonpath='{.status.succeeded}|{.status.conditions[*].type}'
+1|SuccessCriteriaMet Complete
+```
+
+What this adds beyond a repeat of section 3: the container verified the endpoint with `BAO_CACERT`
+pointing at a mount that now contains `ca.crt` alone, and the check still passed. Removing the server
+private key `tls.key` from the throwaway status pod therefore cost nothing operationally — the security
+correction is proven non-regressive rather than assumed to be. The observed status fields are identical to
+section 3, and the platform was re-confirmed at three voters (`hexalith-keys-0/1/2`, all `1/1 Running`)
+immediately before the run. No Secret contents were read, printed, or stored: the two `jsonpath` probes
+above read volume *declarations*, which name keys and never their values.
+
+The one field that differs from section 3 is the pod name, `hexalith-keys-smoke-test-fvc97` against the
+earlier run's pod, because `backoffLimit: 0` and the reaped prior Job mean each execution is a fresh pod.
+`leader_address` and the Raft indices are unchanged, so no leader election intervened between the runs.
+
 ## 4. Security reviewer evaluation (Task 6, checkpoint C7)
 
 **No reviewer signature was obtained. Closed 2026-07-28 by an approved, time-bounded waiver — not by an
@@ -363,7 +438,8 @@ this platform.
 | Evaluation status | **Not signed.** No named evaluator reviewed the measured platform during the dev-story session or during code review |
 | Owner of the blocker | Security reviewer `murat-tea-for-jpiquot`, with Platform Operations (`jpiquot`) accountable for scheduling it |
 | Waiver approver | **Administrator / Jérôme Piquot (`jpiquot`)**, approved 2026-07-28 during Story 31.1 code review |
-| Waiver approved | 2026-07-28. Recorded as accepted debt in the shape `project-context.md` requires: named approver, scope, rationale, risk, compensating controls, and a time-bounded expiry |
+| Approver independence | **Not independent, and recorded as a defect rather than repeated as a claim.** The waiver approver (`jpiquot`) is simultaneously the Platform Operations owner, a co-accountable owner of checkpoints C4 and C5, and the human the reviewer persona `murat-tea-for-jpiquot` acts for. Story 27.3 withdrew this exact pairing on 2026-07-26 because it "names one human plus a persona acting for that same human" and does not satisfy an independent-security-reviewer requirement (`27-3-production-adapter-and-deployment-profile.md:706`). Story 31.1's second-pass code review 2026-07-28 found the same pairing closing C7 here. The Administrator's decision was to keep the waiver and record the independence defect explicitly, so nothing in this story claims an independent authority evaluated the platform. Carried as a `Named divergences` row in `docs/operations/openbao.md` with its own reopen trigger |
+| Waiver approved | 2026-07-28. Recorded as accepted debt in the shape the `20.5-A41` accepted-debt clause of `project-context.md` models — no project rule authorizes waiving a mandatory checkpoint in general, so this is an Administrator decision recorded by analogy, not a rule being followed: named approver, scope, rationale, risk, compensating controls, and a time-bounded expiry |
 | Waiver scope | Checkpoint C7 only — the reviewer's recorded evaluation. It waives **no** acceptance criterion, neither accepted limitation, and no other checkpoint. AC2's documentation obligations were met independently and are asserted executably |
 | Waiver rationale | The platform is already deployed and this story documents rather than changes it. Both limitations are recorded with owner, consequence, compensating controls and reopen trigger, and the documentation is bound by an executed guard, so the record is reviewable on its own evidence while the evaluation is scheduled |
 | Consequence | Both accepted limitations are documented, but no independent security authority has evaluated the platform **as measured**. The static file-based seal and the namespace-wide port 8200 ingress stand accepted without a countersignature. Story 31.1 code review additionally found the seal row's compensating controls overstated — the `shamir` 2-of-3 shares live in this same namespace and are not yet escrowed, and the port 8200 NetworkPolicy is the subject of the other limitation — and corrected the row before this waiver was recorded, so the waiver covers an accurate record rather than the original one |
@@ -487,7 +563,7 @@ git diff --check
 ```
 
 Clean; no whitespace error introduced. Markdown and C# files under this story are CRLF-terminated and
-the two YAML manifests are LF-terminated, per `.gitattributes`.
+the three `deploy/openbao` YAML manifests are LF-terminated, per `.gitattributes`.
 
 The three init-dump rows above deliberately name their labels without reproducing the trailing colon form. The guard scans this artifact too, so writing the literal label here would trip it -- which is itself a small confirmation that the check is looking where it claims to.
 
@@ -539,9 +615,73 @@ matching the documented text). Both failures are the intended behaviour of the s
 
 | Obligation | Owner | Reopen trigger |
 | :--------- | :---- | :------------- |
-| Re-run the smoke test under the new CA-only volume projection. The recorded result in section 3 was produced before `items: [ca.crt]` was added to `deploy/openbao/smoke-test.yaml`; the apply and wait commands are unchanged, and the reaped Job means no live object diverges, but the executed evidence predates the manifest that now describes it | Hexalith Platform Operations (`jpiquot`) | A re-executed smoke test recorded in section 3 under the current manifest |
+| **Discharged 2026-07-28 — see section 3.1.** Re-run the smoke test under the new CA-only volume projection. The recorded result in section 3 was produced before `items: [ca.crt]` was added to `deploy/openbao/smoke-test.yaml`; the apply and wait commands are unchanged, and the reaped Job means no live object diverges, but the executed evidence predates the manifest that now describes it | Hexalith Platform Operations (`jpiquot`) | Discharged: re-executed 2026-07-28T13:24:43Z under the current manifest, Job `condition met`, projection confirmed on the admitted Job and Pod objects. Reopens if `deploy/openbao/smoke-test.yaml` changes again without a re-run recorded in section 3.1 |
 | `helm diff` / `helm upgrade --dry-run` proving the reconciled `values.yaml` reproduces release `hexalith-keys`. `helm` is absent from the authoring environment, so this cannot be discharged here. Made an explicit `done` gate by this review | Hexalith Platform Operations (`jpiquot`) | An empty-diff run recorded in this artifact |
 | Narrow the `cert-manager` NetworkPolicy ingress source, sequenced live-policy-first then manifest, document and assertions together. Repo-side preparation is done: no test pins the source any more, and document/manifest agreement is asserted instead | Hexalith Platform Operations (`jpiquot`) | The live policy no longer admits namespace `cert-manager` on 8200 |
 | Identify or revoke the `system:auth-delegator` grant, including the untracked `hexalith-keys-tokenreview` duplicate | Hexalith Platform Operations (`jpiquot`) with `murat-tea-for-jpiquot` | A named consumer is documented, or both bindings are removed |
 | Establish an off-cluster copy of the Raft snapshots and rehearse a restore | Hexalith Platform Operations (`jpiquot`) | Snapshot output survives loss of `node1` and a restore has been rehearsed |
 | Checkpoint C7 waiver expires | Administrator (`jpiquot`) | 2026-10-26, or any earlier trigger in section 4 |
+
+## 7. Post-review re-verification (dev-story, 2026-07-28)
+
+This section records the second `dev-story` phase, which resumed the story after code review had applied
+its patches. It performed one substantive act — discharging the section 6.4 smoke-test re-run obligation,
+recorded in section 3.1 — and otherwise re-executed the story's whole evidence base to confirm the
+post-patch tree is green before the story is handed back for review.
+
+### 7.1 Build
+
+```text
+DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --disable-build-servers -m:1 /nr:false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0
+```
+
+`Build succeeded. 0 Warning(s) 0 Error(s)`, elapsed 21.64s.
+
+### 7.2 Discovery, named unit "xUnit test method"
+
+```text
+DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -list methods -noLogo
+```
+
+| Discovery scope | Code-review row records | Re-verified this phase | Phase delta |
+| :-------------- | ----------------------: | ---------------------: | ----------: |
+| `Hexalith.Memories.Server.Tests`, all xUnit methods | 2,200 | 2,200 | +0 |
+| `Hexalith.Memories.Server.Tests.Deployment` namespace | 58 | 58 | +0 |
+| `OpenBaoPlatformDocumentationTests` | 10 | 10 | +0 |
+| `ProductionDeploymentArtifactsTests` | 9 | 9 | +0 |
+| `DeploymentConfigurationContractTests` | 7 | 7 | +0 |
+| `OperationalRunbookSetTests` | 9 | 9 | +0 |
+
+Sorted method-set SHA-256 is `eab323be548a65055fe86d0a421909b238bdaa33975719b6c3fd50ee02b656ae`, byte-identical to the
+value the `code-review` row records as its post-patch hash. The method set is therefore unchanged by this
+phase, which is the expected result: this phase added executed evidence and documentation, not tests.
+
+### 7.3 Execution, named unit "xUnit test case"
+
+The `code-review` row discharges four checkpoint rows through one shared command, and its own finding
+required each row to cite its own selector. Re-run per lane:
+
+| Lane | Command scope | Result |
+| :--- | :------------ | :----- |
+| `OpenBaoPlatformDocumentationTests` | `-class …Deployment.OpenBaoPlatformDocumentationTests -parallel none -noLogo` | Total 10, Failed 0 |
+| `ProductionDeploymentArtifactsTests` (regression) | `-class …Deployment.ProductionDeploymentArtifactsTests -parallel none -noLogo` | Total 9, Failed 0 |
+| `OperationalRunbookSetTests` + `DeploymentConfigurationContractTests` | both `-class` selectors, `-parallel none -noLogo` | Total 16, Failed 0 |
+| Whole assembly (regression) | no filter | Total 2,755, Failed 0, Skipped 1 |
+
+The single skip is the pre-existing `SubmoduleGuardTests.CheckSubmodulesTarget_FailsBuildWhenSubmoduleGitMarkerIsMissing`,
+disabled by default because it mutates the shared worktree; it is not a Story 31.1 test and its skip
+predates this story's baseline.
+
+### 7.4 What this phase did not do
+
+Recorded so the next reader does not infer more than was proven:
+
+- No `helm diff` or `helm upgrade --dry-run` was run. `helm` remains absent from this environment
+  (`which helm` returns nothing), so the reconciled `values.yaml` still has **not** been proven to
+  reproduce the deployed release. That remains the explicit `done` gate set by code review.
+- No change was applied to the running platform. The smoke-test Job is the only object this phase created,
+  and it is self-reaping under `ttlSecondsAfterFinished: 300`.
+- No security evaluation was performed. Checkpoint C7 remains closed by the approved time-bounded waiver
+  recorded in section 4, and checkpoints C4 and C5 remain `pending` / `not complete` as the approved
+  Sprint Change Proposal 2026-07-28 requires.
+- No Secret contents were read at any point in this phase.

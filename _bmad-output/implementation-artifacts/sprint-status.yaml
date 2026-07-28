@@ -498,7 +498,7 @@ development_status:
   # independently deployable outcomes; no scope was added or dropped by the split.
   epic-31: in-progress
   31-1-openbao-platform-hardening-and-documentation: in-progress
-  31-2-runtime-dapr-secret-store-migration: backlog
+  31-2-runtime-dapr-secret-store-migration: ready-for-dev
   epic-31-retrospective: optional
 
 # Action items recorded from epic retrospectives. status: open | in-progress | done
@@ -514,7 +514,7 @@ action_items:
   - epic: 0
     action: "Strengthen story creation and review checks so historical broad slices are not reused as templates"
     owner: "Amelia, Murat"
-    status: open
+    status: in-progress  # 2026-07-28: Guard extended to all story-authoring routes (correct-course, create-epics-and-stories, spec, sprint-planning), bound at authoring/registration rather than ready-for-dev, and backed by tools/check-story-slice-scope.py per sprint-change-proposal-2026-07-28-story-slice-guard-route-and-binding-coverage.md. Remains active: the retro success criterion is forward-looking, so this closes only when a subsequent analogous split is authored compliantly on the first pass with no follow-up correction.
   - epic: 0
     action: "Keep cross-tenant negative validation evidence attached to future scope-sensitive changes"
     owner: "Murat, Amelia"
@@ -630,7 +630,7 @@ action_items:
   - epic: 22
     action: "Add an explicit File List and evidence-table pre-review check to future remediation story close-out"
     owner: "Amelia, Murat"
-    status: in-progress  # 2026-07-06 (Epic 23): reviews applied the check and caught repeated File List/evidence gaps; prevention still needs source-guard or checklist hardening.
+    status: in-progress  # 2026-07-28: superseded by the approved sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md and consolidated with the Epic 23, Epic 24, and Epic 25 item 7 chain into spec-executable-pre-review-story-gate.md. Not closed - the proposal is approved, not implemented. Closes when tools/check-story-review-readiness.py is merged, wired into .githooks/commit-msg and both ci.yml jobs, its tooling suite is green in test-unit-contract, Stories 31.2 and 27.3 are retrofitted with declared File List exclusions, and one real story has passed through the gate en route to review. Prior tracking follows. 2026-07-06 (Epic 23): reviews applied the check and caught repeated File List/evidence gaps; prevention still needs source-guard or checklist hardening.
   - epic: 22
     action: "Carry Epic 22 retrieval invariants into Epic 23 ingestion stories"
     owner: "Amelia, Winston, Murat"
@@ -650,7 +650,7 @@ action_items:
   - epic: 23
     action: "Turn File List and evidence-table checking into a pre-review source guard or checklist that runs before remediation story review"
     owner: "Amelia, Murat"
-    status: in-progress  # 2026-07-06 (Epic 24): review checks continued to catch hygiene gaps; executable pre-review guard still needed.
+    status: in-progress  # 2026-07-28: superseded by the approved sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md and consolidated with the Epic 22, Epic 24, and Epic 25 item 7 chain into spec-executable-pre-review-story-gate.md. Not closed - the proposal is approved, not implemented. Closes on the same criteria recorded against the Epic 22 item. Prior tracking follows. 2026-07-06 (Epic 24): review checks continued to catch hygiene gaps; executable pre-review guard still needed.
   - epic: 23
     action: "Keep Epic 23 ingestion invariants on Epic 24 and Epic 25 review checklists"
     owner: "Amelia, Winston, Murat"
@@ -670,7 +670,7 @@ action_items:
   - epic: 24
     action: "Implement an executable pre-review guard or checklist for remediation stories covering File List completeness, evidence-table status, story/spec status, and sprint-status sync"
     owner: "Amelia, Murat"
-    status: in-progress  # 2026-07-12 (Epic 25): applied as a convention and propagated 25.1->25.2->25.3, but reviews still caught falsely-passing drift guards; not yet an executable gate. Merged into Epic 25 action item 7.
+    status: in-progress  # 2026-07-28: superseded by the approved sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md, which was raised directly from this item and consolidates the Epic 22, Epic 23, and Epic 25 item 7 chain into spec-executable-pre-review-story-gate.md. The proposal defines the four executable checks C1 File List completeness in both directions, C2 ledger row presence and non-placeholder cells, C3 story/spec status validity, and C4 sprint-status agreement, enforced from .githooks/commit-msg and .github/workflows/ci.yml rather than as skill prose. Not closed - the proposal is approved, not implemented. Closes on the criteria recorded against the Epic 22 item. Prior tracking follows. 2026-07-12 (Epic 25): applied as a convention and propagated 25.1->25.2->25.3, but reviews still caught falsely-passing drift guards; not yet an executable gate. Merged into Epic 25 action item 7.
   - epic: 24
     action: "Resolve or formally accept the AppHost/EventStore validation-lane blocker before any future story claims full-stack Redis/FalkorDB or Aspire integration proof"
     owner: "Amelia, Winston"
@@ -698,7 +698,7 @@ action_items:
   - epic: 25
     action: "Add a pre-story verify-epic-AC-against-code step to story creation so planning counts and claims are reconciled before implementation (60 literals, no Client.Rest, double authorization were all false against code)"
     owner: "Amelia, John"
-    status: in-progress  # 2026-07-16 (Epic 26): stories reconciled stale premises during implementation, but story creation still lacks an enforced pre-story AC-vs-code step.
+    status: in-progress  # 2026-07-28: enforced by _bmad/custom/epic-ac-verification.md (4 claim classes, canonical "### Epic AC Verification" table, confirmed/corrected/unverifiable verdicts) and one EPIC_AC_VERIFICATION directive on all seven story-authoring routes (create-story, dev-story, code-review, correct-course, create-epics-and-stories, spec, sprint-planning), bound at authoring/registration rather than ready-for-dev, with the epics.md preflight aligned to the same moment and 5 resolver-fixture tests (19/19 pass), per sprint-change-proposal-2026-07-28-epic-ac-verification-route-and-binding-coverage.md extending sprint-change-proposal-2026-07-28-epic-ac-code-verification.md. Remains active: the retro success criterion ("stories stop opening with corrected premises") is forward-looking, so this closes only when a subsequent story is authored on a newly-covered route with a complete Epic AC Verification record on the first pass and no follow-up correction.
   - epic: 25
     action: "Add a submodule-pointer scope guard on the commit/CI lane so a story excluding submodule edits cannot advance root submodule pointers (25.3 8e92fe7; 25.4 94eb4c8/376096d)"
     owner: "Amelia, Winston"
@@ -718,7 +718,7 @@ action_items:
   - epic: 25
     action: "Turn the propagated review-discipline convention (File List completeness, constant-tied drift guards) into an executable pre-review gate; merges the still-open Epic 24 checklist item"
     owner: "Amelia, Murat"
-    status: open
+    status: in-progress  # 2026-07-28: open -> in-progress. This is the merge point of the Epic 22 -> 23 -> 24 chain, and all four are now tracked as one deliverable under the approved sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md and spec-executable-pre-review-story-gate.md. Scope note: the executable gate covers File List completeness; the constant-tied drift-guard arm of this item is NOT mechanically checkable by a commit hook and remains with the code-review layers. Not closed - the proposal is approved, not implemented. Closes on the criteria recorded against the Epic 22 item.
   - epic: 26
     action: "Restore the deterministic benchmark from 6/8 hybrid wins (75%) to the PRD hard line (at least 7/8), without weakening the thesis/reproducibility gates, or obtain an explicit product-governance change; Story 26.4 may complete when the truthful blocking lane lands, but Epic 26 cannot complete while this action remains open"
     owner: "Amelia, Murat, John, Winston"

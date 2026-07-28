@@ -1,0 +1,24 @@
+# Team-owned story-scope guard for the epic/story decomposition route. This file
+# is merged over generated skill defaults and survives BMad skill refreshes.
+#
+# Added 2026-07-28 by approved Sprint Change Proposal
+# sprint-change-proposal-2026-07-28-story-slice-guard-route-and-binding-coverage.md.
+#
+# Extended 2026-07-28 by approved Sprint Change Proposal
+# sprint-change-proposal-2026-07-28-epic-ac-verification-route-and-binding-coverage.md
+# to also load the team epic-AC-verification policy. That guard was created the
+# same day covering only create-story, dev-story, and code-review, reproducing
+# the route-coverage defect this file's slice guard had just cured.
+
+[workflow]
+
+persistent_facts = [
+  "file:{project-root}/_bmad/custom/story-scope-guard.md",
+  "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
+  "file:{project-root}/_bmad/custom/epic-ac-verification.md",
+]
+
+activation_steps_append = [
+  "HISTORICAL_SLICE_GUARD: This route authors and registers stories. Apply the team story-scope policy while decomposing requirements, before any story is written into epics.md at any status including backlog. A generated story must carry one independently demonstrable outcome; a story enumerating more than five independently verifiable gates must be split or must carry an explicitly approved checkpoint table with one row per gate carrying owner, evidence command or artifact, review state, and completion state. Never carry an anti-template's task shape, acceptance-criteria breadth, file breadth, or proof shape into a generated story list. Fail closed before writing a story list the policy forbids.",
+  "EPIC_AC_VERIFICATION: This route is where epic acceptance text originates, so an unverified claim written here becomes the false premise every downstream story inherits. Apply the team epic-AC-verification policy and verify every quantitative count, existence or absence assertion, behavioral description, and file, symbol, or line location against the current worktree before writing it into an epic or story. Record the re-runnable command and the observed value with the claim, or state the claim as intent rather than as fact. Do not write a count, an anchor, or a behavioral assertion that no command in this run confirmed. Fail closed before registering the generated epic or story list into epics.md or sprint-status.yaml at any status including backlog while any asserted claim is unverified.",
+]

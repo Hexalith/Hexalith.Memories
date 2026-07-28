@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Deployment;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -56,6 +57,8 @@ public sealed class OpenBaoPlatformDocumentationTests
     private const string UntrackedStateHeading = "Deployed platform state not tracked in this repository";
     private const string ReviewerEvaluationHeading =
         "4. Security reviewer evaluation (Task 6, checkpoint C7)";
+    private const string SmokeTestRerunHeading =
+        "3.1 Re-run under the CA-only volume projection (dev-story, 2026-07-28)";
     private const string SealLimitationKey = "Static file-based seal";
     private const string IngressLimitationKey = "Namespace-wide port 8200 ingress";
 
@@ -98,25 +101,45 @@ public sealed class OpenBaoPlatformDocumentationTests
     /// a security incident for a routine documentation edit and could only be cleared by editing test
     /// source. The trade is explicit: a pasted secret evades this check only if it is placed on a line, or
     /// in a paragraph, that also labels it as a digest or hash.
+    /// </para>
+    /// <para>
+    /// Story 31.1 second-pass code review 2026-07-28 anchored these to whole words. They were matched as
+    /// case-insensitive substrings, so <c>hash</c> fired inside <c>hashicorp</c> and <c>head</c> inside
+    /// <c>headless</c>/<c>headers</c> — which exempted the entire paragraph introducing
+    /// <c>secretstores.hashicorp.vault</c>, the one place an OpenBao token would plausibly be pasted.
+    /// Proven by inserting a 44-character base64 payload there and observing it excused.
     /// </para></summary>
     private static readonly string[] PublishedDigestMarkers =
     [
         "sha256",
         "sha-256",
         "digest",
+        "digests",
         "hash",
+        "hashes",
+        "hashed",
         "method-set",
         "manifest",
+        "manifests",
         "profile-id",
         "chart",
 
         // Git object ids are labelled by the vocabulary around them rather than by the word "sha".
         "commit",
+        "commits",
         "baseline",
         "revision",
-        "git ",
+        "revisions",
+        "git",
         "head",
     ];
+
+    /// <summary>Whole-word matcher for <see cref="PublishedDigestMarkers"/>. Substring matching excused a
+    /// paste merely because an unrelated word happened to contain a marker.</summary>
+    private static readonly Regex PublishedDigestMarkerPattern = new(
+        @"(?<![A-Za-z0-9])(" + string.Join("|", PublishedDigestMarkers.Select(Regex.Escape)) + @")(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+        TimeSpan.FromSeconds(5));
 
     [Fact]
     public void OpenBaoPlatformRecords_Exist()
@@ -161,22 +184,21 @@ public sealed class OpenBaoPlatformDocumentationTests
         // no separate entry, since GetSection already includes them in the H2 range. Whitespace is
         // normalized first, otherwise a multi-word claim such as "highly available" would evade the ban
         // simply by falling across a line break in this hard-wrapped document.
-        string[] scopes =
-        [
-            NormalizeWhitespace(document.GetSection(LimitationsHeading)),
-            NormalizeWhitespace(document.GetSection(AvailabilityHeading)),
-            NormalizeWhitespace(document.GetSection(ProfileHeading)),
-        ];
+        // Story 31.1 second-pass code review 2026-07-28: the three configured scopes were also redundant —
+        // GetSection includes subordinate sections — while the document PREAMBLE and five H2 sections
+        // (`Owned manifests`, `Named divergences`, `Dapr secret boundaries`, `Health and access checks`,
+        // `Rotation and recovery`) were unguarded. Writing "This is a production-ready secrets platform."
+        // into the preamble, the most prominent position in the file, defeated AC2 entirely. The ban is now
+        // document-wide: there is no section of an operations document for this platform in which a
+        // strength claim would be true.
+        string whole = NormalizeWhitespace(ReadDoc());
 
-        foreach (string scope in scopes)
+        foreach (string claim in ForbiddenStrengthClaims)
         {
-            foreach (string claim in ForbiddenStrengthClaims)
-            {
-                scope.ShouldNotContain(
-                    claim,
-                    Case.Insensitive,
-                    $"An accepted limitation must never be described as '{claim}' (AC2).");
-            }
+            whole.ShouldNotContain(
+                claim,
+                Case.Insensitive,
+                $"This platform must never be described as '{claim}' anywhere in the document (AC2).");
         }
     }
 
@@ -273,16 +295,39 @@ public sealed class OpenBaoPlatformDocumentationTests
             "deploy/openbao/values.yaml and the documented NetworkPolicy ingress row must agree about the cert-manager source; narrow or remove it in both together.");
         ingressRow[1].ShouldContain("hexalith-memories", Case.Sensitive, "The application namespace is the rule's only justified source and must stay documented.");
 
-        // The reconciled profile must never be silently weakened back.
-        values.ShouldNotContain("tls_disable = 1", Case.Sensitive, "TLS must stay enabled on the listener.");
+        // The reconciled profile must never be silently weakened back. Story 31.1 second-pass code review
+        // 2026-07-28: a lone ShouldNotContain("tls_disable = 1") pinned one spelling — the valid HCL
+        // `tls_disable = true` disabled TLS with every assertion green. Assert the positive and reject the
+        // enabling forms by pattern.
+        values.ShouldContain("tls_disable = 0", Case.Sensitive, "TLS must stay enabled on the listener.");
+        values.ShouldNotMatch(@"tls_disable\s*=\s*""?(1|true|yes|on)""?", "TLS must never be disabled on the listener, by any spelling.");
         values.ShouldNotContain("type: LoadBalancer", Case.Sensitive, "The Service must stay ClusterIP-only.");
+        values.ShouldNotContain("type: NodePort", Case.Sensitive, "The Service must stay ClusterIP-only.");
+
+        // Raft durability. Flipping either retention policy to `Delete` destroys the encrypted Raft store
+        // and the audit trail on StatefulSet deletion, while the document keeps promising retention and the
+        // suite stays green. Neither key had any assertion before this review.
+        values.ShouldContain("whenDeleted: Retain", Case.Sensitive, "The Raft data and audit PVCs must survive StatefulSet deletion.");
+        values.ShouldContain("whenScaled: Retain", Case.Sensitive, "The Raft data and audit PVCs must survive scale-down.");
+
+        // Secret file mode and the retry_join TLS identity: documented as deployed, previously unasserted.
+        values.ShouldContain("defaultMode: 288", Case.Sensitive, "Mounted secret files must stay 0440.");
+        values.ShouldContain("leader_ca_cert_file", Case.Sensitive, "retry_join must verify the leader's TLS identity.");
+        values.ShouldNotMatch(@"node_id\s*=", "A static node_id would give every voter one identity; setNodeId supplies it per pod.");
 
         // namespace.yaml — Restricted Pod Security and the two ownership annotations.
         const string namespaceHeading = "`deploy/openbao/namespace.yaml`";
         string openBaoNamespace = ReadRepoFile("deploy/openbao/namespace.yaml");
+        // Story 31.1 second-pass code review 2026-07-28: moving the assertion to row[1] closed the literal
+        // circularity but not the semantic one — several literals merely restated the row key in different
+        // words. Rewriting the platform-owner cell to "owner is nobody at all, unowned" left the suite green
+        // (proven by mutation). Each literal below is now a measured value that does NOT appear in its key.
         ShouldBindManifest("pod-security.kubernetes.io/enforce: restricted", document, namespaceHeading, "`pod-security.kubernetes.io/enforce: restricted`", openBaoNamespace, "Restricted profile");
-        ShouldBindManifest("hexalith.io/platform-owner: jpiquot", document, namespaceHeading, "`hexalith.io/platform-owner: jpiquot`", openBaoNamespace, "owner");
-        ShouldBindManifest("hexalith.io/security-reviewer: murat-tea-for-jpiquot", document, namespaceHeading, "`hexalith.io/security-reviewer: murat-tea-for-jpiquot`", openBaoNamespace, "reviewer");
+        ShouldBindManifest("hexalith.io/platform-owner: jpiquot", document, namespaceHeading, "`hexalith.io/platform-owner: jpiquot`", openBaoNamespace, "jpiquot");
+        ShouldBindManifest("hexalith.io/security-reviewer: murat-tea-for-jpiquot", document, namespaceHeading, "`hexalith.io/security-reviewer: murat-tea-for-jpiquot`", openBaoNamespace, "murat-tea-for-jpiquot");
+        ShouldBindManifest("pod-security.kubernetes.io/audit: restricted", document, namespaceHeading, "`pod-security.kubernetes.io/enforce: restricted`", openBaoNamespace, "Restricted profile");
+        ShouldBindManifest("pod-security.kubernetes.io/warn: restricted", document, namespaceHeading, "`pod-security.kubernetes.io/enforce: restricted`", openBaoNamespace, "Restricted profile");
+        ShouldBindManifest("kubernetes.io/metadata.name: openbao", document, namespaceHeading, "`kubernetes.io/metadata.name: openbao`", openBaoNamespace, "namespaceSelector");
 
         // service-account-hardening.yaml — the file's real effect, not the claim it used to carry.
         const string hardeningHeading = "`deploy/openbao/service-account-hardening.yaml`";
@@ -291,23 +336,37 @@ public sealed class OpenBaoPlatformDocumentationTests
 
         string hardeningSection = NormalizeWhitespace(document.GetSection(hardeningHeading));
         hardeningSection.ShouldContain("pod-level", Case.Insensitive, "The section must state that the pod-level setting overrides the ServiceAccount default.");
-        hardeningSection.ShouldNotContain(
+
+        // Story 31.1 second-pass code review 2026-07-28: this ban was section-scoped, so moving the sentence
+        // into the (previously unpinned) profile-table `ServiceAccount token` cell undid Task 2's explicit
+        // correction with the suite green. The claim is false about this platform wherever it is written.
+        NormalizeWhitespace(ReadDoc()).ShouldNotContain(
             "does not receive an unused Kubernetes API token",
             Case.Insensitive,
-            "The pre-Story-31.1 claim was measurably false as deployed and must not return.");
+            "The pre-Story-31.1 claim was measurably false as deployed and must not return anywhere in the document.");
 
         // smoke-test.yaml — endpoint, CA-only projection, one-shot semantics.
         const string smokeTestHeading = "`deploy/openbao/smoke-test.yaml`";
         string smokeTest = ReadRepoFile("deploy/openbao/smoke-test.yaml");
-        ShouldBindManifest("name: hexalith-keys-smoke-test", document, smokeTestHeading, "`kind: Job`, `name: hexalith-keys-smoke-test`", smokeTest, "Job");
-        ShouldBindManifest("https://hexalith-keys.openbao.svc.cluster.local:8200", document, smokeTestHeading, "`BAO_ADDR: https://hexalith-keys.openbao.svc.cluster.local:8200`", smokeTest, "Service endpoint");
-        ShouldBindManifest("/openbao/tls/ca.crt", document, smokeTestHeading, "`BAO_CACERT: /openbao/tls/ca.crt`", smokeTest, "ca.crt");
-        ShouldBindManifest("ttlSecondsAfterFinished: 300", document, smokeTestHeading, "`backoffLimit: 0`, `activeDeadlineSeconds: 60`, `ttlSecondsAfterFinished: 300`", smokeTest, "five minutes");
-        smokeTest.ShouldNotContain("tls-skip-verify", Case.Sensitive, "The smoke test must keep verifying OpenBao's TLS identity.");
+        ShouldBindManifest("name: hexalith-keys-smoke-test", document, smokeTestHeading, "`kind: Job`, `name: hexalith-keys-smoke-test`", smokeTest, "hexalith-keys-smoke-test");
+        ShouldBindManifest("https://hexalith-keys.openbao.svc.cluster.local:8200", document, smokeTestHeading, "`BAO_ADDR: https://hexalith-keys.openbao.svc.cluster.local:8200`", smokeTest, "hexalith-keys.openbao.svc.cluster.local");
+        ShouldBindManifest("/openbao/tls/ca.crt", document, smokeTestHeading, "`BAO_CACERT: /openbao/tls/ca.crt`", smokeTest, "openbao-server-tls");
+        ShouldBindManifest("ttlSecondsAfterFinished: 300", document, smokeTestHeading, "`backoffLimit: 0`, `activeDeadlineSeconds: 60`, `ttlSecondsAfterFinished: 300`", smokeTest, "one attempt");
+        ShouldBindManifest("backoffLimit: 0", document, smokeTestHeading, "`backoffLimit: 0`, `activeDeadlineSeconds: 60`, `ttlSecondsAfterFinished: 300`", smokeTest, "one attempt");
+        ShouldBindManifest("activeDeadlineSeconds: 60", document, smokeTestHeading, "`backoffLimit: 0`, `activeDeadlineSeconds: 60`, `ttlSecondsAfterFinished: 300`", smokeTest, "one minute");
+        smokeTest.ShouldNotMatch(
+            @"(?i)(tls-skip-verify|BAO_SKIP_VERIFY|VAULT_SKIP_VERIFY)",
+            "The smoke test must keep verifying OpenBao's TLS identity, by any spelling.");
 
         // The Job must project only the CA. Without `items` the whole Secret is mounted, which hands the
-        // server private key to a throwaway status pod.
+        // server private key to a throwaway status pod. Story 31.1 second-pass code review 2026-07-28:
+        // asserting the presence of the ca.crt entry did not stop a SECOND entry being added beside it, so
+        // the projection is now pinned to exactly one key.
         smokeTest.ShouldContain("items:\n              - key: ca.crt", Case.Sensitive, "smoke-test.yaml must project only ca.crt from Secret openbao-server-tls.");
+        Regex.Matches(smokeTest, @"^\s+- key: ", RegexOptions.Multiline, TimeSpan.FromSeconds(5)).Count.ShouldBe(
+            1,
+            "smoke-test.yaml must project exactly one Secret key; a second entry returns the server private key to the status pod.");
+        smokeTest.ShouldNotContain("- key: tls.key", Case.Sensitive, "The server private key must never be projected into the status pod.");
     }
 
     [Fact]
@@ -322,13 +381,34 @@ public sealed class OpenBaoPlatformDocumentationTests
         document.GetTableHeader(DivergencesHeading).ShouldBe(
             ["Divergence", "Owner", "Why it is open", "Reopen trigger"]);
         IReadOnlyList<IReadOnlyList<string>> divergences = document.GetTableRows(DivergencesHeading);
+
+        // Story 31.1 second-pass code review 2026-07-28: the previous `>= 5` floor against a table of eight
+        // rows permitted the deletion this method exists to prevent. Deleting the `authDelegator` row (an
+        // unrevoked cluster-scoped grant) and the off-cluster-snapshot row (total data loss on node failure)
+        // left the whole suite green — proven by mutation. Every row carrying open platform risk is now
+        // pinned by key, so shrinking the register fails by name rather than by count.
+        string[] requiredDivergenceKeys =
+        [
+            "has not been re-applied",
+            "authDelegator",
+            "off-cluster copy",
+            "cert-manager",
+            "profile annotations",
+            "manifest hashes",
+            "voter count",
+        ];
+
+        foreach (string requiredKey in requiredDivergenceKeys)
+        {
+            divergences.Select(static row => row[0]).ShouldContain(
+                key => key.Contains(requiredKey, StringComparison.OrdinalIgnoreCase),
+                1,
+                $"The '{requiredKey}' divergence must stay recorded with its owner and reopen trigger.");
+        }
+
         divergences.Count.ShouldBeGreaterThanOrEqualTo(
-            5,
+            requiredDivergenceKeys.Length,
             "Task 2 requires every unreconciled setting to stay named; silently shrinking this table hides an open item.");
-        divergences.Select(static row => row[0]).ShouldContain(
-            static key => key.Contains("has not been re-applied", StringComparison.OrdinalIgnoreCase),
-            1,
-            "The unproven reconciliation must stay recorded; without it the document implicitly claims the manifest reproduces the platform.");
         foreach (IReadOnlyList<string> row in divergences)
         {
             ShouldBeSubstantiveRow(row, DivergencesHeading);
@@ -342,6 +422,95 @@ public sealed class OpenBaoPlatformDocumentationTests
         {
             ShouldBeSubstantiveRow(row, UntrackedStateHeading);
         }
+    }
+
+    [Fact]
+    public void DeployedProfileTable_PinsEveryMeasuredRowByKey()
+    {
+        // Story 31.1 second-pass code review 2026-07-28. The table the document presents as THE measurement
+        // was the least-protected structure in the file: 30 of its 33 rows were unpinned, including
+        // `ServiceAccount token` — the row carrying this story's headline correction — and `Seal`. GetTable
+        // requires only two cells, so `| Seal |  |` parsed and asserted nothing.
+        var document = new MarkdownContractDocument(ReadDoc());
+
+        document.GetTableHeader(ProfileHeading).ShouldBe(["Contract", "Measured value on 2026-07-28"]);
+
+        string[] requiredProfileKeys =
+        [
+            "Chart", "Server image", "Raft voters", "HA mode", "Voter scheduling", "Seal",
+            "Persistent volumes", "PVC retention", "Pod Security", "ServiceAccount token",
+            "Token review binding", "NetworkPolicy", "Backup", "Update strategy",
+        ];
+
+        IReadOnlyList<IReadOnlyList<string>> rows = document.GetTableRows(ProfileHeading);
+        foreach (string key in requiredProfileKeys)
+        {
+            // Exact key match: `Seal`/`Recovery seal` and `Pod Security`/`Pod security context` are
+            // distinct rows that a substring test would conflate into one.
+            rows.Select(static row => row[0]).ShouldContain(
+                candidate => string.Equals(candidate, key, StringComparison.OrdinalIgnoreCase),
+                1,
+                $"The measured-profile table must keep its '{key}' row.");
+        }
+
+        // The VALUE cell must be present and not a placeholder. The 12-character floor used on the prose
+        // tables is deliberately NOT applied here: a measured value is often a short literal — `openbao`,
+        // `raft`, `3` — and padding it to satisfy a length rule would make the table worse, not better.
+        foreach (IReadOnlyList<string> row in rows)
+        {
+            row[1].Trim().ShouldNotBeNullOrWhiteSpace(
+                $"Row '{row[0]}' under '{ProfileHeading}' records no measured value.");
+            PlaceholderCells.ShouldNotContain(
+                row[1].Trim(),
+                $"Row '{row[0]}' under '{ProfileHeading}' records a placeholder instead of a measured value.");
+        }
+
+        // Both auth-delegator ClusterRoleBindings were measured; naming only the chart-rendered one
+        // understates the granted privilege.
+        ReadProfileRow(document, "Token review binding")[1].ShouldContain(
+            "hexalith-keys-tokenreview",
+            Case.Sensitive,
+            "The measured token-review row must name the untracked duplicate binding as well as the chart-rendered one.");
+    }
+
+    [Fact]
+    public void OperationalSections_StayBoundToTheirRecordedRemediations()
+    {
+        // Story 31.1 second-pass code review 2026-07-28: every prose remediation the FIRST review landed was
+        // deletable with the suite green — the multi-voter health loop, the endpoint-staleness detection,
+        // the `-tls-skip-verify` probe disclosure, and the Dapr boundary table. In a story whose deliverable
+        // is documentation accuracy, unbound prose is not a deliverable.
+        var document = new MarkdownContractDocument(ReadDoc());
+
+        string health = NormalizeWhitespace(document.GetSection("Health and access checks"));
+        health.ShouldContain("hexalith-keys-1", Case.Sensitive, "The health block must cover every voter, not only hexalith-keys-0.");
+        health.ShouldContain("hexalith-keys-2", Case.Sensitive, "The health block must cover every voter, not only hexalith-keys-0.");
+        health.ShouldContain("endpoints", Case.Insensitive, "The endpoint staleness re-check must stay documented.");
+
+        string probes = NormalizeWhitespace(document.GetSection("TLS posture of the probes"));
+        probes.ShouldContain("tls-skip-verify", Case.Sensitive, "The deployed readiness probe's skip-verify flag must stay disclosed (AC1 exact deployed configuration).");
+
+        string dapr = NormalizeWhitespace(document.GetSection("Dapr secret boundaries"));
+        dapr.ShouldContain("hashicorp.vault", Case.Sensitive, "The Dapr component type must stay documented.");
+
+        string rotation = NormalizeWhitespace(document.GetSection("Rotation and recovery"));
+        rotation.ShouldContain("do not delete", Case.Insensitive, "The do-not-delete-the-PVCs instruction must be preserved (Task 3).");
+    }
+
+    [Fact]
+    public void SecretShapeGuard_ExcusesALabelledDigestAndReportsAnUnlabelledPaste()
+    {
+        // Story 31.1 second-pass code review 2026-07-28. Positive control. Every one of the 22 long runs in
+        // the three scanned records is excused by context, so PlatformRecords_ContainNoSecretShapedMaterial
+        // currently passes for the same reason it would pass if the detector were disabled outright. This
+        // method exercises the reporting branch, so a regression in the marker logic fails here instead of
+        // silently disarming AC3's only negative guard.
+        const string labelled = "The image digest sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653 is pinned.";
+        FindUnexpectedLongRuns(labelled).ShouldBeEmpty("A run labelled as a published digest must stay excused.");
+
+        const string unlabelled = "Dapr reaches OpenBao through the component type `secretstores.hashicorp.vault`.\nThe value is 9Xk2Lm4Qp7Rt1Vw8Zc3Nb6Hj5Fd0Gs2Ay4Ue7Ik9Ol1Pr3Tw5=\n";
+        FindUnexpectedLongRuns(unlabelled).ShouldNotBeEmpty(
+            "An unlabelled key-shaped run must be reported even when a nearby word contains a marker substring such as 'hash' inside 'hashicorp'.");
     }
 
     [Fact]
@@ -360,7 +529,20 @@ public sealed class OpenBaoPlatformDocumentationTests
             // batch, `hvr.` recovery, and the legacy `s.`, `b.`, `r.` forms. The word boundary keeps
             // ordinary prose and namespaced identifiers such as `Server.Tests` out of scope.
             ShouldHaveNoMatch(text, @"\bhv[sbr]\.[A-Za-z0-9_-]{8,}", relativePath, "an OpenBao token value");
-            ShouldHaveNoMatch(text, @"\b[sbr]\.[A-Za-z0-9]{20,}", relativePath, "a legacy token value");
+
+            // Story 31.1 second-pass code review 2026-07-28: the legacy class omitted `_` and `-` while the
+            // line above included them, so base64url legacy batch and recovery tokens split below the
+            // threshold and evaded both this check and the long-run scan.
+            ShouldHaveNoMatch(text, @"\b[sbr]\.[A-Za-z0-9_-]{20,}", relativePath, "a legacy token value");
+
+            // A UUID-shaped credential — an AppRole role_id/secret_id or a Dapr API token — is hyphenated,
+            // which breaks every hex and base64 run, so it evaded AC3 entirely. Story 31.2 migrates the
+            // runtime store to hashicorp.vault, where AppRole is the common auth method. Kubernetes and
+            // OpenBao also publish non-secret UUIDs (`cluster_id`, object `uid`); those are excused only
+            // when their own line names them, so an unlabelled paste is still reported.
+            IReadOnlyList<string> credentialShapedIds = FindUnexpectedUuids(text);
+            credentialShapedIds.ShouldBeEmpty(
+                $"{relativePath} contains unlabelled UUID-shaped value(s) that could be an AppRole role_id/secret_id or a Dapr API token: {string.Join(", ", credentialShapedIds)}");
 
             // The labelled shapes `bao operator init` prints. Matching the label plus its colon keeps
             // ordinary prose about the seal, the recovery shares, and the revoked root token readable
@@ -382,12 +564,20 @@ public sealed class OpenBaoPlatformDocumentationTests
     {
         string evidence = ReadRepoFile(EvidenceRelativePath);
 
-        // C3: an executed command with its observed outcome, not a synthesized payload.
-        evidence.ShouldContain(SmokeTestApplyCommand, Case.Sensitive, "C3 requires the exact apply command.");
-        evidence.ShouldContain(SmokeTestWaitCommand, Case.Sensitive, "C3 requires the exact wait command.");
-        evidence.ShouldContain("condition met", Case.Sensitive, "C3 requires the observed completion outcome.");
-        evidence.ShouldContain("\"ha_enabled\": true", Case.Sensitive, "C3 requires the observed status fields.");
-        evidence.ShouldContain("\"storage_type\": \"raft\"", Case.Sensitive, "C3 requires the observed status fields.");
+        // C3: an executed command with its observed outcome, not a synthesized payload. Story 31.1
+        // second-pass code review 2026-07-28: these were whole-document ShouldContain calls — the exact
+        // pattern the first review rejected for the C7 half below and made structural. Every literal appears
+        // in the SUPERSEDED 09:43 run as well as the current-manifest 13:24 re-run, so deleting the re-run
+        // section left the method green while §6.4's own reopen trigger had no executable form at all. C3 is
+        // now read from the re-run section, which is the only run produced under the shipped manifest.
+        var evidenceStructure = new MarkdownContractDocument(evidence);
+        string rerun = NormalizeWhitespace(evidenceStructure.GetSection(SmokeTestRerunHeading));
+        rerun.ShouldContain(SmokeTestApplyCommand, Case.Sensitive, "C3 requires the exact apply command in the current-manifest re-run.");
+        rerun.ShouldContain(SmokeTestWaitCommand, Case.Sensitive, "C3 requires the exact wait command in the current-manifest re-run.");
+        rerun.ShouldContain("condition met", Case.Sensitive, "C3 requires the observed completion outcome of the current-manifest run.");
+        rerun.ShouldContain("\"ha_enabled\": true", Case.Sensitive, "C3 requires the observed status fields of the current-manifest run.");
+        rerun.ShouldContain("\"storage_type\": \"raft\"", Case.Sensitive, "C3 requires the observed status fields of the current-manifest run.");
+        rerun.ShouldContain("ca.crt", Case.Sensitive, "The re-run must record that it executed under the CA-only projection.");
 
         // C7 is read structurally from its own section, and every permitted outcome passes.
         //
@@ -410,11 +600,21 @@ public sealed class OpenBaoPlatformDocumentationTests
         {
             // Closed by an approved waiver rather than by an evaluation. project-context requires a named
             // approver plus a time-bounded expiry or a measurable reopen trigger.
-            foreach (string field in new[] { "Waiver approver", "Waiver expiry", "Consequence", "Reopen trigger" })
+            foreach (string field in new[] { "Waiver approver", "Waiver expiry", "Consequence", "Reopen trigger", "Approver independence" })
             {
                 record.ShouldContainKey(field, $"A waived C7 must record '{field}'.");
                 ShouldBeSubstantiveCell(record[field], field, ReviewerEvaluationHeading);
             }
+
+            // Story 31.1 second-pass code review 2026-07-28: the expiry was asserted present and never
+            // compared to a date. Replacing every `2026-10-26` with `2020-01-01` left the suite green —
+            // proven by mutation — so the "reopens automatically" the evidence promises was prose only.
+            Match expiry = Regex.Match(
+                record["Waiver expiry"], @"20\d{2}-\d{2}-\d{2}", RegexOptions.None, TimeSpan.FromSeconds(5));
+            expiry.Success.ShouldBeTrue("A waived C7 must record a parseable ISO expiry date.");
+            DateOnly.Parse(expiry.Value, CultureInfo.InvariantCulture).ShouldBeGreaterThan(
+                DateOnly.FromDateTime(DateTime.UtcNow),
+                "The C7 waiver has expired: checkpoint C7 reverts to `pending` / `not complete` and the security evaluation AC2 requires is owed.");
         }
         else if (state.Contains("not complete", StringComparison.OrdinalIgnoreCase)
             || state.Contains("pending", StringComparison.OrdinalIgnoreCase))
@@ -429,11 +629,13 @@ public sealed class OpenBaoPlatformDocumentationTests
         else
         {
             // Signed: the evaluation must be dated and attributed, per Task 6 — a recommendation to seek
-            // review is not a recorded evaluation.
+            // review is not a recorded evaluation. Story 31.1 second-pass code review 2026-07-28: requiring
+            // only a date let a cell reading "No evaluation performed as of 2026-07-28" close C7 as signed,
+            // so the signer must now be bound to the date.
             record.ShouldContainKey("Evaluation status");
             record["Evaluation status"].ShouldMatch(
-                @"20\d{2}-\d{2}-\d{2}",
-                "A signed C7 evaluation must carry its date.");
+                @"(?i)signed\s+by\s+\S+\s+on\s+20\d{2}-\d{2}-\d{2}",
+                "A signed C7 evaluation must name its evaluator and carry its date, in the form 'signed by <evaluator> on <YYYY-MM-DD>'.");
         }
     }
 
@@ -448,9 +650,27 @@ public sealed class OpenBaoPlatformDocumentationTests
         }
     }
 
-    /// <summary>The records AC3's "any evidence artifact" clause covers, plus the operations document.</summary>
+    /// <summary>The records AC3's "any evidence artifact" clause covers, plus the operations document.
+    /// <para>
+    /// Story 31.1 second-pass code review 2026-07-28 added the four owned manifests. AC3's subject is "no
+    /// unseal key, recovery key, root or operator token, or other secret value" — and
+    /// <c>deploy/openbao/values.yaml</c> carries the <c>seal "static"</c> stanza whose <c>current_key</c>
+    /// field accepts an inline key value in place of the <c>file://</c> reference. Replacing it with a
+    /// literal key failed nothing: the file was unscanned and no assertion read the field. A committed seal
+    /// key beside the committed data-PVC configuration is precisely the consequence the `Static file-based
+    /// seal` limitation row describes.
+    /// </para></summary>
     private static string[] ScannedRecords()
-        => [DocRelativePath, EvidenceRelativePath, CreateStoryEvidenceRelativePath];
+        =>
+        [
+            DocRelativePath,
+            EvidenceRelativePath,
+            CreateStoryEvidenceRelativePath,
+            "deploy/openbao/values.yaml",
+            "deploy/openbao/namespace.yaml",
+            "deploy/openbao/service-account-hardening.yaml",
+            "deploy/openbao/smoke-test.yaml",
+        ];
 
     /// <summary>Collapses every whitespace run to one space so a narrative assertion is independent of
     /// where the hard-wrapped document happens to break a line.</summary>
@@ -491,6 +711,36 @@ public sealed class OpenBaoPlatformDocumentationTests
         return unexpected;
     }
 
+    /// <summary>Non-secret UUID-bearing fields these records publish. A UUID on a line naming one of these
+    /// is a cluster or object identifier; anywhere else it is treated as possible credential material.
+    /// </summary>
+    private static readonly string[] PublishedIdentifierMarkers =
+        ["cluster_id", "cluster id", "uid", "resourceversion", "deployment-id", "deployment id"];
+
+    /// <summary>Finds UUID-shaped values that no identifier label on their own line accounts for.</summary>
+    private static IReadOnlyList<string> FindUnexpectedUuids(string text)
+    {
+        var unexpected = new List<string>();
+        foreach (Match match in Regex.Matches(
+            text,
+            @"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(5)))
+        {
+            int lineStart = text.LastIndexOf('\n', Math.Min(Math.Max(match.Index - 1, 0), text.Length - 1)) + 1;
+            int lineEnd = text.IndexOf('\n', match.Index);
+            string line = text[lineStart..(lineEnd < 0 ? text.Length : lineEnd)];
+
+            if (!PublishedIdentifierMarkers.Any(marker => line.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                && !unexpected.Contains(match.Value))
+            {
+                unexpected.Add(match.Value);
+            }
+        }
+
+        return unexpected;
+    }
+
     /// <summary>Decides whether a long run is labelled as a published digest, hash, or commit.
     /// <para>
     /// Inside a Markdown table the label must sit on the same row, which keeps one cell's digest from
@@ -506,14 +756,17 @@ public sealed class OpenBaoPlatformDocumentationTests
         string line = text[lineStart..lineEnd];
 
         string context = line.TrimStart().StartsWith('|') ? line : ReadParagraph(text, lineStart, lineEnd);
-        return PublishedDigestMarkers.Any(marker => context.Contains(marker, StringComparison.OrdinalIgnoreCase));
+        return PublishedDigestMarkerPattern.IsMatch(context);
     }
 
     private static string ReadParagraph(string text, int lineStart, int lineEnd)
     {
         int start = lineStart;
-        while (start > 0)
+        while (start > 1)
         {
+            // `start > 1` rather than `start > 0`: at start == 1 the index below is -1, which throws
+            // ArgumentOutOfRangeException on a non-empty string, so the AC3 guard would error rather than
+            // report. Reachable for any scanned record whose first character is a newline.
             int previousStart = text.LastIndexOf('\n', start - 2) + 1;
             if (previousStart >= start - 1 || string.IsNullOrWhiteSpace(text[previousStart..(start - 1)]))
             {
@@ -611,8 +864,16 @@ public sealed class OpenBaoPlatformDocumentationTests
     {
         string path = ResolveRepoPath(relativePath);
         File.Exists(path).ShouldBeTrue($"Authoritative file not found at {path}");
-        return File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        // Story 31.1 second-pass code review 2026-07-28: the chained form
+        // `.Replace("\r\n","\n").Replace('\r','\n')` turned a `\r\r\n`-corrupted file into `\n\n`, inserting
+        // a blank line that splits every Markdown table and reports as `GetTable ... found 0`. That is
+        // exactly the corruption a bare append-CR normalization produces, which this repo's own CRLF
+        // guidance warns about. One regex collapses any CR run plus optional LF to a single LF.
+        return CarriageReturnRuns.Replace(File.ReadAllText(path), "\n");
     }
+
+    private static readonly Regex CarriageReturnRuns =
+        new(@"\r+\n?", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(5));
 
     private static string ResolveRepoPath(string relativePath)
         => Path.Combine(ResolveRepoRoot(), Path.Combine(relativePath.Split('/')));

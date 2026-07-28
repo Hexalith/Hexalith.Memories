@@ -39,6 +39,9 @@ RUNTIME_CHECKLIST_FACT = (
     "file:{project-root}/_bmad/custom/remediation-runtime-checklist.md"
 )
 RUNTIME_CHECKLIST_MARKER = "REMEDIATION_RUNTIME_CHECKLIST:"
+AC_VERIFICATION_POLICY = REPO_ROOT / "_bmad" / "custom" / "epic-ac-verification.md"
+AC_VERIFICATION_FACT = "file:{project-root}/_bmad/custom/epic-ac-verification.md"
+AC_VERIFICATION_MARKER = "EPIC_AC_VERIFICATION:"
 SPEC_PROJECT_CONTEXT_FACT = "file:{project-root}/project-context.md"
 GENERATOR_PROJECT_CONTEXT_FACT = "file:{project-root}/**/project-context.md"
 PROJECT_CONTEXT_BRIDGE = """# Project Context Bridge
@@ -97,6 +100,53 @@ EPICS_CARRY_FORWARD_GUARD = (
     "If proof cannot run, record an explicit accepted blocker with owner, "
     "consequence, and reopen trigger. A scope-sensitive change cannot close on "
     "happy-path, broad-suite, build-only, or refactor-green evidence alone."
+)
+EPICS_AC_PREFLIGHT_GUARD = (
+    "**Audit-anchor and AC-claim preflight (2026-07-04; broadened 2026-07-28; "
+    "bound at authoring and registration 2026-07-28):** "
+    "Before any story is authored, registered, selected, created, or "
+    "implemented—regardless of epic number, and at any status, including "
+    "`backlog`—re-verify against the current repository both the code anchors and "
+    "implementation-state assumptions that story cites and every verifiable claim "
+    "in the epic, PRD, architecture, or audit text it inherits: quantitative "
+    "counts, existence and absence assertions, behavioral descriptions, and file, "
+    "symbol, or line locations. Epic acceptance text is planning intent recorded "
+    "at a point in time and is advisory until re-derived; where code and planning "
+    "text disagree, the code wins. Story files must record the re-verification "
+    "date, moved or renamed anchors, how the implementation adapts, and per claim "
+    "a re-runnable command with a `confirmed`, `corrected`, or `unverifiable` "
+    "verdict, as specified by `_bmad/custom/epic-ac-verification.md`. A corrected "
+    "claim must also correct this file or carry a dated correction note here, "
+    "because a story that fixes only its own text leaves the planning artifact "
+    "wrong for the next reader; a correction that changes scope, epic intent, or "
+    "a ratified decision is escalated for a human decision instead of absorbed. "
+    'Story 25.3\'s "60 server literals", Story 25.5\'s "no `Client.Rest` '
+    'reference", and Story 25.6\'s "double authorization" are the recorded '
+    "exemplars of claims that were false against the code. A story created by an "
+    "approved sprint change is bound at the moment that change registers it, not "
+    "at the moment it is later selected."
+)
+# Every route that authors or registers a story, or writes an epic acceptance
+# claim, must load the epic-AC-verification policy. Mirrors AUTHORING_ROUTES in
+# historical_slice_guard_test.py; the guard created on 2026-07-28 covered only
+# the first three and was widened by
+# sprint-change-proposal-2026-07-28-epic-ac-verification-route-and-binding-coverage.md.
+AC_AUTHORING_ROUTES = (
+    "bmad-create-story",
+    "bmad-dev-story",
+    "bmad-code-review",
+    "bmad-correct-course",
+    "bmad-create-epics-and-stories",
+    "bmad-spec",
+    "bmad-sprint-planning",
+)
+# bmad-spec is deliberately excluded from the policy-fact list: the cross-tenant
+# project-context delivery contract pins its resolved persistent_facts to exactly
+# the bridge fact so the bridge's fail-closed control cannot be diluted. It
+# receives the policy through its activation directive instead, which names the
+# file to read. See _bmad/custom/bmad-spec.toml.
+AC_AUTHORING_ROUTES_WITH_POLICY_FACT = tuple(
+    route for route in AC_AUTHORING_ROUTES if route != "bmad-spec"
 )
 SPRINT_ACTION = (
     'action: "Keep cross-tenant negative validation evidence attached to future '
@@ -477,11 +527,16 @@ class BMadCustomizationTests(unittest.TestCase):
         )
         for phase_name in (
             "`create-story`",
+            # Admitted to the canonical set 2026-07-28 by the Administrator, during Story 31.1's
+            # second-pass code review: an approved sprint change landing between creation and
+            # development changes the File List and can change counts, and had no row of its own.
+            "`correct-course`",
             "`dev-story`",
             "`qa-gap-closure`",
             "`code-review`",
         ):
             self.assertIn(phase_name, policy)
+        self.assertIn("`correct-course` was admitted to the canonical set", policy)
         self.assertIn("A repeated phase appends another row", policy)
         self.assertIn("runner, discovery scope, filters", policy)
         self.assertIn("create baseline + cumulative story delta + external delta", policy)
@@ -765,6 +820,230 @@ class BMadCustomizationTests(unittest.TestCase):
         self.assertIn("never overwritten", policy)
         self.assertIn("Independently re-derive applicability", policy)
         self.assertIn("not re-specified or separately tested here", policy)
+
+    def test_epic_ac_verification_wired_into_lifecycle_workflows(self):
+        # Each skill's directive must carry its own fail-closed gate, not just the
+        # marker prefix — otherwise a gutted or cross-wired directive still passes.
+        skill_directive_phrases = {
+            "bmad-create-story": (
+                "before drafting acceptance criteria",
+                "ready-for-dev",
+            ),
+            "bmad-dev-story": (
+                "re-derive any verdict the implementation contradicts",
+                "before setting review",
+            ),
+            "bmad-code-review": (
+                "Independently re-run the commands",
+                "fail-closed blocker for done",
+            ),
+            "bmad-correct-course": (
+                "every claim the proposal itself asserts",
+                "before recording an approval while any verifiable claim lacks a "
+                "verdict",
+            ),
+            "bmad-create-epics-and-stories": (
+                "where epic acceptance text originates",
+                "before registering the generated epic or story list",
+            ),
+            "bmad-spec": (
+                "freezes intent into a machine contract",
+                # No persistent fact on this route, so the directive itself must
+                # name the file to read or the policy never reaches the agent.
+                "{project-root}/_bmad/custom/epic-ac-verification.md",
+            ),
+            "bmad-sprint-planning": (
+                "do not promote or re-status a story",
+                "rather than writing it into sprint-status.yaml",
+            ),
+        }
+        # Every authoring route is covered; a route added to the tuple without a
+        # pinned phrase pair fails here rather than passing silently.
+        self.assertEqual(
+            tuple(skill_directive_phrases),
+            AC_AUTHORING_ROUTES,
+        )
+        # Routes carrying each sibling guard, so the non-clobber check below is
+        # asserted where the sibling actually applies rather than everywhere.
+        ledger_routes = {"bmad-create-story", "bmad-dev-story", "bmad-code-review"}
+        slice_routes = set(AC_AUTHORING_ROUTES) - {"bmad-dev-story"}
+
+        for surface in (".agents", ".claude"):
+            for skill_name, phrases in skill_directive_phrases.items():
+                with self.subTest(surface=surface, skill_name=skill_name):
+                    workflow = resolve_workflow(skill_name, surface)
+                    if skill_name in AC_AUTHORING_ROUTES_WITH_POLICY_FACT:
+                        self.assertIn(
+                            AC_VERIFICATION_FACT,
+                            workflow["persistent_facts"],
+                        )
+                    directives = [
+                        step
+                        for step in workflow["activation_steps_append"]
+                        if step.startswith(AC_VERIFICATION_MARKER)
+                    ]
+                    self.assertEqual(len(directives), 1)
+                    for phrase in phrases:
+                        self.assertIn(phrase, directives[0])
+                    # Adding this guard must not clobber the sibling guards.
+                    sibling_markers = []
+                    if skill_name in ledger_routes:
+                        sibling_markers += [LEDGER_MARKER, RUNTIME_CHECKLIST_MARKER]
+                    if skill_name in slice_routes:
+                        sibling_markers.append(MARKER)
+                    for sibling_marker in sibling_markers:
+                        siblings = [
+                            step
+                            for step in workflow["activation_steps_append"]
+                            if step.startswith(sibling_marker)
+                        ]
+                        self.assertEqual(len(siblings), 1)
+
+    def test_epic_ac_verification_binds_at_authoring_not_only_at_ready_for_dev(self):
+        """A claim registered at `backlog` must already carry its verdict.
+
+        The guard was created gating on `ready-for-dev`, which is the same
+        backlog exemption DW 27.3-CR16 exploited for story slice scope.
+        """
+        policy = AC_VERIFICATION_POLICY.read_text(encoding="utf-8")
+
+        canonical = normalize_text(
+            policy.split("## Canonical story section", maxsplit=1)[1].split(
+                "\n## ", maxsplit=1
+            )[0]
+        )
+        self.assertIn("authored or registered", canonical)
+        self.assertIn("at any status, including `backlog`", canonical)
+        self.assertIn(
+            "`ready-for-dev` is a second, stricter checkpoint, not the first one.",
+            canonical,
+        )
+        self.assertIn(
+            "it does not become compliant by not being selected yet.",
+            canonical,
+        )
+
+        creation = normalize_text(
+            policy.split("## Creation gate", maxsplit=1)[1].split("\n## ", maxsplit=1)[
+                0
+            ]
+        )
+        # The gate must name itself route-independent, and the fail-closed bullet
+        # must block the write itself, not only the ready-for-dev transition.
+        self.assertIn(
+            "binds every route that authors or registers a story or an epic "
+            "acceptance claim",
+            creation,
+        )
+        self.assertIn("The route that writes a claim owns verifying it", creation)
+        self.assertIn(
+            "do not write a verifiable claim into a story file, `epics.md`, or "
+            "`sprint-status.yaml` at any status",
+            creation,
+        )
+
+    def test_spec_route_receives_ac_policy_without_diluting_context_bridge(self):
+        """bmad-spec must get the policy by directive, not by persistent fact.
+
+        The cross-tenant project-context delivery contract pins this route's
+        resolved persistent_facts to exactly the bridge fact. The policy is
+        delivered through the activation directive, which names the file.
+        """
+        for surface in (".agents", ".claude"):
+            with self.subTest(surface=surface):
+                workflow = resolve_workflow("bmad-spec", surface)
+
+                self.assertEqual(
+                    workflow["persistent_facts"],
+                    [SPEC_PROJECT_CONTEXT_FACT],
+                )
+                self.assertNotIn(AC_VERIFICATION_FACT, workflow["persistent_facts"])
+
+                directives = [
+                    step
+                    for step in workflow["activation_steps_append"]
+                    if step.startswith(AC_VERIFICATION_MARKER)
+                ]
+                self.assertEqual(len(directives), 1)
+                # Without a persistent fact, the directive is the only delivery
+                # path, so it must name the policy file explicitly.
+                self.assertIn(
+                    "{project-root}/_bmad/custom/epic-ac-verification.md",
+                    directives[0],
+                )
+
+    def test_ac_authoring_routes_retain_generated_defaults(self):
+        """Widening route coverage must not drop any generated default."""
+        spec_workflow = resolve_workflow("bmad-spec")
+        self.assertEqual(spec_workflow.get("spec_filename"), "SPEC.md")
+        self.assertTrue(spec_workflow.get("spec_template"))
+
+        for skill_name in AC_AUTHORING_ROUTES_WITH_POLICY_FACT:
+            with self.subTest(skill_name=skill_name):
+                workflow = resolve_workflow(skill_name)
+                # The project-context bridge fact must survive on every route.
+                self.assertTrue(
+                    any(
+                        "project-context.md" in fact
+                        for fact in workflow["persistent_facts"]
+                    )
+                )
+
+    def test_epic_ac_verification_policy_defines_claims_verdicts_and_gates(self):
+        policy = normalize_text(AC_VERIFICATION_POLICY.read_text(encoding="utf-8"))
+
+        # The canonical story section and its table header must survive edits.
+        self.assertIn("### Epic AC Verification", policy)
+        self.assertIn(
+            "| Epic claim | Class | Command / evidence | Observed | Verdict |",
+            policy,
+        )
+        for claim_class in (
+            "**Quantitative**",
+            "**Existence and absence**",
+            "**Behavioral**",
+            "**Location**",
+        ):
+            self.assertIn(claim_class, policy)
+        for verdict in ("`confirmed`", "`corrected`", "`unverifiable`"):
+            self.assertIn(verdict, policy)
+        # The three Epic 25 claims this policy exists to catch.
+        for regression in (
+            "60 server literals",
+            "`Client.Rest`",
+            "double authorization",
+        ):
+            self.assertIn(regression, policy)
+        # Explicit escape hatch, mirroring the runtime checklist's not-applicable note.
+        self.assertIn(
+            "epic AC verification: no verifiable claim in inherited epic text",
+            policy,
+        )
+        # Fail-closed creation, development, and review gates.
+        self.assertIn("## Creation gate", policy)
+        self.assertIn("## Development gate", policy)
+        self.assertIn("## Review gate", policy)
+        for gated_status in ("`ready-for-dev`", "`review`", "`done`"):
+            self.assertIn(gated_status, policy)
+        # Obligation sentences must survive, not just headings and keywords.
+        self.assertIn("a command another agent can re-run", policy)
+        self.assertIn("not discharged by fixing the story alone", policy)
+        self.assertIn("Escalate for a human decision", policy)
+        self.assertIn("accept the author's verdict unchallenged", policy)
+        self.assertIn("blocks `done`", policy)
+
+        # The planning-side preflight must stay epic-number-independent and point
+        # at this policy; a single guard paragraph, not two overlapping ones.
+        epics_sections = markdown_sections(
+            EPICS.read_text(encoding="utf-8"),
+            "## Phase: Post-MVP — Audit Remediation (2026-07-04)",
+        )
+        self.assertEqual(len(epics_sections), 1)
+        preflight_guards = active_lines_starting_with(
+            epics_sections[0],
+            "**Audit-anchor",
+        )
+        self.assertEqual(preflight_guards, [EPICS_AC_PREFLIGHT_GUARD])
 
 
 if __name__ == "__main__":

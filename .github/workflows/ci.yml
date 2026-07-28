@@ -152,6 +152,12 @@ jobs:
       - name: Validate cross-tenant negative evidence
         run: python3 tools/check-tenant-isolation-evidence.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
+      - name: Validate story slice scope
+        # Epic 0 action item 3. Binds at authoring/registration, so a bundled or
+        # checkpoint-heavy story cannot be registered at `backlog` without its
+        # classification, slice-proof, and per-gate checkpoint record.
+        run: python3 tools/check-story-slice-scope.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
+
   build:
     name: build
     runs-on: ubuntu-latest
@@ -241,6 +247,9 @@ jobs:
 
       - name: Run story file-scope gate fixtures
         run: python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"
+
+      - name: Run story slice-scope gate fixtures
+        run: python3 -m unittest discover -s tests/tooling/story_slice_scope -p "*_test.py"
 
       - name: Run integration stub closure fixtures
         run: python3 -m unittest discover -s tests/tooling/integration_stub_closure -p "*_test.py"
