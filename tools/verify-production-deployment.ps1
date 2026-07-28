@@ -219,6 +219,34 @@ function Get-RunningPodName {
     return [string]$observation.PodName
 }
 
+function Get-HealthResponseViaPortForward {
+    param([Parameter(Mandatory)][string]$Pod)
+
+    # Runner-side last-resort body capture. BusyBox wget discards HTTP-error bodies, and the
+    # in-container netcat fallback returned zero bytes with exit 0 on every kind-cluster
+    # redis-fault poll of CI run 30402973401 while the same binaries capture delayed 503
+    # bodies in every local-docker and live-cluster reproduction (cause unresolved; the
+    # in-container branch is instrumented with markers so its behavior is recorded). GNU curl
+    # on the runner always returns HTTP-error bodies, so the aggregate JSON the stage contract
+    # requires is captured through a short-lived pod port-forward. Trade-off, disclosed: this
+    # path traverses the API server rather than the pod's own loopback, so it proves the
+    # endpoint's response, not the image-native client path the primary probe exercises.
+    $localPort = 18080
+    $forward = $null
+    try {
+        $forward = Start-Process -FilePath kubectl -ArgumentList @(
+            'port-forward', '-n', $namespace, "pod/$Pod", "${localPort}:8080") -PassThru
+        $curlOutput = @(& curl -sS -D - --max-time 10 --retry 3 --retry-connrefused --retry-delay 1 `
+            -H 'dapr-api-token: verification-app-api-token' "http://127.0.0.1:${localPort}/ready" 2>&1)
+        return ($curlOutput -join [Environment]::NewLine)
+    }
+    finally {
+        if ($null -ne $forward -and -not $forward.HasExited) {
+            Stop-Process -Id $forward.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Get-HealthResponse {
     param([Parameter(Mandatory)][string]$Pod, [Parameter(Mandatory)][string]$Container)
 
@@ -234,10 +262,15 @@ if [ "$wgetExit" -ne 0 ]; then
     # The netcat fallback exists for every wget failure that still has a retrievable body,
     # not only for an already-parsed 503. Gating it on a 503 line meant the slow-but-healthy
     # and timed-out cases - exactly what the fallback was added for - died on the deadline.
-    # It now fires on every failed poll rather than only a 503-line match, so its own timeouts
-    # are kept short (worst case ~5s, not ~11s): polling happens every ~2s against a 60s startup
-    # budget, and a same-loopback response does not need a long grace window.
-    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 2; } | nc -w 3 127.0.0.1 8080
+    # In CI run 30402973401 this fallback exited 0 with zero bytes on all 34 redis-fault polls
+    # while the same binaries capture delayed 503 bodies in every local and live-cluster
+    # reproduction, so it is instrumented with explicit markers: the transcript must show
+    # whether the branch ran and how nc exited, instead of silence that cannot be told apart
+    # from a skipped branch. The runner-side port-forward fallback below is the deterministic
+    # body producer when this in-container path yields nothing.
+    printf 'nc-fallback begin (wget exit %s)\n' "$wgetExit"
+    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 4; } | nc -w 8 127.0.0.1 8080 2>&1
+    printf '\nnc-fallback end (nc exit %s)\n' "$?"
 fi
 '@
     # The repository's checkout policy materializes this PowerShell file as CRLF. The
@@ -253,6 +286,28 @@ fi
     $text = $output -join [Environment]::NewLine
     $statusCode = Get-HealthStatusCode $text
     $body = Get-HealthJsonBody $text
+
+    # The stage contract needs the aggregate JSON, not only the status line. When neither the
+    # image-native probe nor its in-container fallback yielded a status-bearing JSON object,
+    # capture the body deterministically from the runner side and fold the transcript in, so
+    # the packet records both what the in-container path produced and what the endpoint
+    # actually serves.
+    $aggregate = $null
+    try {
+        $aggregate = $body | ConvertFrom-Json
+    }
+    catch {
+        # Raw fallback text is not JSON; the port-forward capture below supplies the body.
+    }
+    if ($null -eq $aggregate -or $null -eq $aggregate.status) {
+        $fallbackText = Get-HealthResponseViaPortForward $Pod
+        $text = $text + [Environment]::NewLine + 'port-forward fallback:' + [Environment]::NewLine + $fallbackText
+        $fallbackStatusCode = Get-HealthStatusCode $fallbackText
+        if ($null -ne $fallbackStatusCode) {
+            $statusCode = $fallbackStatusCode
+        }
+        $body = Get-HealthJsonBody $text
+    }
 
     return [pscustomobject]@{
         StatusCode = $statusCode

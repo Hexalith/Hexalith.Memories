@@ -128,10 +128,35 @@ class ProductionDeploymentEvidenceTests(unittest.TestCase):
         self.assertIn("wgetExit=$?", verifier)
         self.assertIn("dapr-api-token: %s", verifier)
         self.assertIn("Connection: close\\r\\ndapr-api-token: %s\\r\\n\\r\\n", verifier)
-        self.assertIn("nc -w 3 127.0.0.1 8080", verifier)
+        self.assertIn("nc -w 8 127.0.0.1 8080", verifier)
         self.assertIn("$probeCommand = $probeCommand.Replace(\"`r\", '')", verifier)
         self.assertIn("Save-HealthResponseEvidence", verifier)
         self.assertIn("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }", verifier)
+
+    def test_health_probe_records_fallback_markers_and_captures_body_via_port_forward(self) -> None:
+        # CI run 30402973401: the in-container netcat fallback exited 0 with zero bytes on all
+        # 34 redis-fault polls while the same binaries capture delayed 503 bodies in every
+        # local-docker and live-cluster reproduction. Two guarantees follow. The nc branch must
+        # be instrumented — begin/end markers with the wget and nc exit codes — so a silent
+        # transcript can be told apart from a skipped branch. And when no status-bearing JSON
+        # was captured in-container, the runner must capture the body deterministically through
+        # a pod port-forward with curl, whose HTTP-error bodies are never discarded.
+        verifier = VERIFIER.read_text(encoding="utf-8-sig")
+
+        self.assertIn("printf 'nc-fallback begin (wget exit %s)\\n' \"$wgetExit\"", verifier)
+        self.assertIn("printf '\\nnc-fallback end (nc exit %s)\\n' \"$?\"", verifier)
+        self.assertIn("function Get-HealthResponseViaPortForward", verifier)
+        self.assertIn("'port-forward', '-n', $namespace, \"pod/$Pod\", \"${localPort}:8080\"", verifier)
+        self.assertIn("--retry-connrefused", verifier)
+        # The fallback fires only when no status-bearing JSON object was captured, and its
+        # transcript is folded into the packet so both capture paths stay auditable.
+        self.assertIn("$fallbackText = Get-HealthResponseViaPortForward $Pod", verifier)
+        self.assertIn("'port-forward fallback:'", verifier)
+        # Ordering: the port-forward fallback decision happens inside Get-HealthResponse,
+        # after the in-container probe ran, never instead of it.
+        exec_index = verifier.index("kubectl exec -n $namespace $Pod -c $Container")
+        fallback_index = verifier.index("$fallbackText = Get-HealthResponseViaPortForward $Pod")
+        self.assertLess(exec_index, fallback_index)
 
         # Redaction must not sit on the health-decision path: Protect-EvidenceText replaces
         # values this script does not control ($env:HEXALITH_ZOT_USERNAME/_API_KEY), so a
