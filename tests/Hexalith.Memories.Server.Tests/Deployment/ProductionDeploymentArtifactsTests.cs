@@ -332,7 +332,16 @@ public sealed class ProductionDeploymentArtifactsTests
         values.ShouldContain("  authDelegator:\n    enabled: true");
         values.ShouldContain("service_registration \"kubernetes\" {}");
         values.ShouldContain("retry_join");
-        values.ShouldContain("kubernetes.io/metadata.name: cert-manager");
+
+        // The application namespace is the NetworkPolicy's only justified ingress source and stays pinned.
+        // The `cert-manager` source is deliberately NOT pinned: Story 31.1 measured that no cert-manager
+        // `Certificate` or `Issuer` exists in namespace `openbao`, and the operations document names
+        // removing that source as the limitation's reopen trigger. Asserting its presence here would have
+        // made executing the documented remediation a test failure. Document/manifest agreement about it is
+        // asserted instead by
+        // `OpenBaoPlatformDocumentationTests.OwnedManifests_EachHaveADocumentedSectionTiedToTheirSource`,
+        // so the two records cannot drift apart while the rule is either kept or removed.
+        values.ShouldContain("kubernetes.io/metadata.name: hexalith-memories");
 
         values.ShouldContain("audit \"file\" \"persistent\"");
         values.ShouldContain("tls_min_version = \"tls12\"");
@@ -777,7 +786,13 @@ public sealed class ProductionDeploymentArtifactsTests
     }
 
     private static string Read(string root, string relativePath)
-        => File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        // Line endings are normalized here so multi-line literal assertions (for example the
+        // `  ha:\n    enabled: true\n    replicas: 3\n` block) hold regardless of how the working tree
+        // materializes the file. `.gitattributes` pins `*.yaml` to LF today, which is the only reason the
+        // un-normalized form worked; the sibling OpenBaoPlatformDocumentationTests already normalized, so
+        // the pair would otherwise fail asymmetrically if that ever changed.
+        => File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
 
     private static string Run(string root, string fileName, params string[] arguments)
     {

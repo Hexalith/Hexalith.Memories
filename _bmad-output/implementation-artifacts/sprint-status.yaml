@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-07-27
+last_updated: 2026-07-28
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -497,7 +497,7 @@ development_status:
   # 31-1-openbao-platform-hardening-and-runtime-secret-store-migration bundled two
   # independently deployable outcomes; no scope was added or dropped by the split.
   epic-31: in-progress
-  31-1-openbao-platform-hardening-and-documentation: review
+  31-1-openbao-platform-hardening-and-documentation: in-progress
   31-2-runtime-dapr-secret-store-migration: backlog
   epic-31-retrospective: optional
 

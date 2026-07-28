@@ -61,3 +61,12 @@ spec:
           secret:
             secretName: openbao-server-tls
             defaultMode: 288
+            # Project ONLY the CA. Without `items` the whole Secret is mounted, which
+            # delivers the server private key `tls.key` into this throwaway status pod.
+            # The Job needs the CA alone to verify the endpoint's identity.
+            # Added by Story 31.1 code review 2026-07-28; the recorded smoke-test result in
+            # 31-1-openbao-platform-evidence.md predates this projection and a re-run under
+            # it is an owned follow-up.
+            items:
+              - key: ca.crt
+                path: ca.crt

@@ -5293,7 +5293,7 @@ The deployed OpenBao `hexalith-keys` platform and the runtime Dapr `secretstore`
 
 ### Story 31.1: OpenBao Platform Hardening and Documentation
 
-**Status:** backlog. **Owner:** Memories Maintainer + security reviewer.
+**Status:** in-progress (code review 2026-07-28: patches applied; `done` gated on the Platform Operations `helm diff` and on checkpoints C4/C5, which the approved 2026-07-28 sprint change keeps `not complete`). **Owner:** Memories Maintainer + security reviewer.
 
 **Split note (2026-07-27).** Created by approved Sprint Change Proposal 2026-07-27 executing DW 27.3-CR16. The pre-split Story 31.1 bundled platform hardening and the runtime secret-store migration - two independently deployable outcomes - with no checkpoint table. Its scope is now Stories 31.1 and 31.2; no scope was added or dropped.
 
@@ -5322,7 +5322,7 @@ So that the secret-management boundary is reviewable on its own evidence before 
 
 **Implementation evidence:** The story file must carry a checkpoint table in which every row has an accountable owner, an exact evidence command or artifact, a review state, and a completion state. Required rows: the four documented topology files at their deployed configuration; the executed smoke test with its command and result; each accepted limitation of the single-node-hosted profile with owner, consequence, compensating controls and reopen trigger; and the security reviewer's recorded evaluation.
 
-**Owned paths:** `deploy/openbao/values.yaml`, `namespace.yaml`, `service-account-hardening.yaml`, `smoke-test.yaml`, `docs/operations/openbao.md`.
+**Owned paths:** `deploy/openbao/values.yaml`, `namespace.yaml`, `service-account-hardening.yaml`, `smoke-test.yaml`, `docs/operations/openbao.md`, and — required by this story's own "exact evidence command" clause, and added by code review 2026-07-28 — `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs` (new) and `tests/Hexalith.Memories.Server.Tests/Deployment/ProductionDeploymentArtifactsTests.cs` (deliberate update of `OpenBaoDeploymentProfile_IsPinnedTlsOnlyPersistentAndInternal`).
 
 ### Story 31.2: Runtime Dapr Secret-Store Migration to `hashicorp.vault`
 

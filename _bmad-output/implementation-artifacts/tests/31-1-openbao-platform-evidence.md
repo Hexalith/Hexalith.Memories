@@ -352,17 +352,25 @@ and count, not share material. Logs were captured 7 seconds after creation, well
 
 ## 4. Security reviewer evaluation (Task 6, checkpoint C7)
 
-**Accepted blocker — no reviewer signature obtained.**
+**No reviewer signature was obtained. Closed 2026-07-28 by an approved, time-bounded waiver — not by an
+evaluation.** The distinction is load-bearing: nothing below asserts that a security authority reviewed
+this platform.
 
 | Field | Record |
 | :---- | :----- |
 | Reviewer of record | Murat TEA for Jérôme (`murat-tea-for-jpiquot`), carried as namespace annotation `hexalith.io/security-reviewer` |
 | Platform Operations owner | Jérôme Piquot (`jpiquot`) |
-| Evaluation status | **Not signed.** No named evaluator reviewed the measured platform during this dev-story session |
+| Evaluation status | **Not signed.** No named evaluator reviewed the measured platform during the dev-story session or during code review |
 | Owner of the blocker | Security reviewer `murat-tea-for-jpiquot`, with Platform Operations (`jpiquot`) accountable for scheduling it |
-| Consequence | Both accepted limitations are documented with owner, consequence, compensating controls, and reopen trigger, but no independent security authority has evaluated the platform **as measured**. The static file-based seal and the namespace-wide port 8200 ingress are recorded as accepted without a countersignature |
-| Reopen trigger | A dated, named evaluation by `murat-tea-for-jpiquot` covering the platform as measured, both accepted limitations, and the amended AC2 deployed-profile qualifier, appended to this artifact as its own row |
-| Checkpoint C7 state | `pending` / `not complete` |
+| Waiver approver | **Administrator / Jérôme Piquot (`jpiquot`)**, approved 2026-07-28 during Story 31.1 code review |
+| Waiver approved | 2026-07-28. Recorded as accepted debt in the shape `project-context.md` requires: named approver, scope, rationale, risk, compensating controls, and a time-bounded expiry |
+| Waiver scope | Checkpoint C7 only — the reviewer's recorded evaluation. It waives **no** acceptance criterion, neither accepted limitation, and no other checkpoint. AC2's documentation obligations were met independently and are asserted executably |
+| Waiver rationale | The platform is already deployed and this story documents rather than changes it. Both limitations are recorded with owner, consequence, compensating controls and reopen trigger, and the documentation is bound by an executed guard, so the record is reviewable on its own evidence while the evaluation is scheduled |
+| Consequence | Both accepted limitations are documented, but no independent security authority has evaluated the platform **as measured**. The static file-based seal and the namespace-wide port 8200 ingress stand accepted without a countersignature. Story 31.1 code review additionally found the seal row's compensating controls overstated — the `shamir` 2-of-3 shares live in this same namespace and are not yet escrowed, and the port 8200 NetworkPolicy is the subject of the other limitation — and corrected the row before this waiver was recorded, so the waiver covers an accurate record rather than the original one |
+| Compensating controls | Restricted Pod Security enforced on the namespace; RBAC scoped to the platform ServiceAccounts; all Services `ClusterIP` with no ingress; persistent JSON audit device; `OpenBaoPlatformDocumentationTests` executing over both published records on every CI run so the accepted-limitation text cannot silently soften |
+| Waiver expiry | **2026-10-26** (90 days). On that date checkpoint C7 reopens automatically as `pending` / `not complete` unless a dated, named evaluation has been recorded |
+| Reopen trigger | Whichever comes first: the 2026-10-26 expiry; a dated, named evaluation by `murat-tea-for-jpiquot` covering the platform as measured, both accepted limitations and the amended AC2 qualifier, appended to this artifact as its own row; any change to the seal configuration, the NetworkPolicy ingress, or the voter count; or Story 31.2 activation |
+| Checkpoint C7 state | `waived` until 2026-10-26 — closed by approved time-bounded waiver, **not** by evaluation |
 
 The Task 1 measurements (section 1), the Task 2 reconciliation (section 2), and the executed smoke test
 (section 3) are the handover package for that evaluation. Recording a recommendation to seek review
@@ -484,3 +492,56 @@ the two YAML manifests are LF-terminated, per `.gitattributes`.
 The three init-dump rows above deliberately name their labels without reproducing the trailing colon form. The guard scans this artifact too, so writing the literal label here would trip it -- which is itself a small confirmation that the check is looking where it claims to.
 
 The long-run check was tightened during development after it reported five of this story's own test method names. A base64-alphabet run is now treated as key-shaped only when it also mixes digits with upper and lower case, which encoded key material always does and a long PascalCase identifier never does. The final mutation row above re-proves the tightened rule still catches a real payload, so the fix removed a false positive without removing the check.
+
+## 6. Code review (2026-07-28)
+
+Six review layers ran over this story's eleven declared File List paths, baseline `327d1a9d` to `HEAD`
+`1868c8f9`. None failed. 38 findings were triaged: 8 `decision-needed` (all resolved by the Administrator
+on 2026-07-28), 29 `patch` (applied), 1 `defer`, 2 dismissed.
+
+### 6.1 Independent re-derivation of the dev-story evidence
+
+Every executable claim in the `dev-story` Change Log row was re-run and reproduced **exactly**, using the
+same commands recorded in section 5:
+
+| Claim | Re-derived |
+| :---- | :--------- |
+| `Hexalith.Memories.Server.Tests` 2,199 xUnit test methods | 2,199 |
+| `Deployment` namespace 57 | 57 |
+| `OpenBaoPlatformDocumentationTests` 9, `ProductionDeploymentArtifactsTests` 9, `DeploymentConfigurationContractTests` 7, `OperationalRunbookSetTests` 9 | 9 / 9 / 7 / 9 |
+| post-dev-story sorted method-set SHA-256 `2f99c8cd…c2630b` | byte-identical (ANSI escape stripped before hashing) |
+| focused lane 9 cases 0 failed; regression 9 and 16 cases 0 failed | 9 / 9 / 16, all 0 failed |
+| whole assembly 2,754 cases, 0 failed, 1 pre-existing skip | 2,754 / 0 / 1 |
+| `git diff --check` clean; File List `matched 11/11` | clean; 11 owned + 9 named exclusions = the 20-path range exactly |
+
+AC3 was independently re-verified by re-implementing all six negative patterns outside the test assembly:
+no PEM markers, no token shapes, no init-dump labels, and no unlabelled long runs in any story record. The
+`no external same-lane delta` claim is provable: the only other changed test source in the range is
+`CiTestInventoryTests.cs`, which belongs to the separate `Hexalith.Memories.Cli.Tests` assembly.
+
+### 6.2 Post-review discovery delta
+
+The review added one test method, `NamedDivergencesAndUntrackedState_CarryOwnerAndReopenTriggerPerRow`,
+so `OpenBaoPlatformDocumentationTests` moves 9 to 10 and the assembly moves 2,199 to 2,200 test methods.
+`ProductionDeploymentArtifactsTests` stays at 9: its cert-manager assertion was re-expressed, not added to.
+Exact discovery and execution commands are unchanged from section 5. Post-review lane results: the two
+Deployment classes together **19 cases, 0 failed**.
+
+### 6.3 Guard changes and why they were not vacuous
+
+Two of the review's own patches failed on first run and were corrected rather than relaxed: the
+context-based digest recognizer initially rejected the labelled baseline commit id in
+`31-1-create-story-scope-evidence.md` (fixed by admitting git-object vocabulary), and the namespace
+Pod-Security binding asserted a lower-case literal against a cell that reads `Restricted profile` (fixed by
+matching the documented text). Both failures are the intended behaviour of the strengthened assertions.
+
+### 6.4 Obligations this review opened
+
+| Obligation | Owner | Reopen trigger |
+| :--------- | :---- | :------------- |
+| Re-run the smoke test under the new CA-only volume projection. The recorded result in section 3 was produced before `items: [ca.crt]` was added to `deploy/openbao/smoke-test.yaml`; the apply and wait commands are unchanged, and the reaped Job means no live object diverges, but the executed evidence predates the manifest that now describes it | Hexalith Platform Operations (`jpiquot`) | A re-executed smoke test recorded in section 3 under the current manifest |
+| `helm diff` / `helm upgrade --dry-run` proving the reconciled `values.yaml` reproduces release `hexalith-keys`. `helm` is absent from the authoring environment, so this cannot be discharged here. Made an explicit `done` gate by this review | Hexalith Platform Operations (`jpiquot`) | An empty-diff run recorded in this artifact |
+| Narrow the `cert-manager` NetworkPolicy ingress source, sequenced live-policy-first then manifest, document and assertions together. Repo-side preparation is done: no test pins the source any more, and document/manifest agreement is asserted instead | Hexalith Platform Operations (`jpiquot`) | The live policy no longer admits namespace `cert-manager` on 8200 |
+| Identify or revoke the `system:auth-delegator` grant, including the untracked `hexalith-keys-tokenreview` duplicate | Hexalith Platform Operations (`jpiquot`) with `murat-tea-for-jpiquot` | A named consumer is documented, or both bindings are removed |
+| Establish an off-cluster copy of the Raft snapshots and rehearse a restore | Hexalith Platform Operations (`jpiquot`) | Snapshot output survives loss of `node1` and a restore has been rehearsed |
+| Checkpoint C7 waiver expires | Administrator (`jpiquot`) | 2026-10-26, or any earlier trigger in section 4 |

@@ -58,6 +58,16 @@ server:
       # Namespace-wide, not consumer-scoped. A namespaceSelector without a podSelector
       # admits EVERY pod in the matched namespace on 8200. This is accepted limitation
       # `Namespace-wide port 8200 ingress` in docs/operations/openbao.md.
+      #
+      # PENDING PLATFORM CHANGE (Story 31.1 code review 2026-07-28): the `cert-manager`
+      # source below has no measured consumer -- no cert-manager `Certificate` or `Issuer`
+      # exists in namespace `openbao`. It is retained here ONLY because the live
+      # NetworkPolicy carries it; removing it from this file while the platform still
+      # admits cert-manager would recreate the tracked-vs-deployed drift this story exists
+      # to correct. Owner: Hexalith Platform Operations (`jpiquot`). Sequence: narrow the
+      # LIVE policy first, then reconcile this file, the operations document, and the
+      # `CertManagerIngressSource_*` assertions together. Reopen trigger: the live policy
+      # no longer admits namespace `cert-manager` on 8200.
       - from:
           - namespaceSelector:
               matchLabels:
@@ -78,6 +88,12 @@ server:
             protocol: TCP
           - port: 8201
             protocol: TCP
+  # The chart supplies the readiness probe COMMAND, which this file cannot override: the
+  # deployed exec probe is `bao status -tls-skip-verify`. Verification is skipped only for
+  # the kubelet's in-pod liveness/readiness check against the pod's own listener; it does
+  # not relax `tls_disable = 0` or `tls_min_version = "tls12"` for any client, and the
+  # smoke-test Job and every documented operator command verify against the CA. Recorded
+  # here because docs/operations/openbao.md binds TLS posture per file (Story 31.1 AC1).
   readinessProbe:
     enabled: true
     failureThreshold: 3
@@ -143,6 +159,11 @@ server:
   ha:
     enabled: true
     replicas: 3
+    # Left null deliberately. The deployed pods take both addresses from container env
+    # (`BAO_API_ADDR=https://$(POD_IP):8200`,
+    # `BAO_CLUSTER_ADDR=https://$(HOSTNAME).hexalith-keys-internal:8201`), which the chart
+    # emits when these are unset. Setting either here would pin a single address across all
+    # three voters and break per-pod cluster addressing.
     apiAddr: null
     clusterAddr: null
     raft:
