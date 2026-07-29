@@ -93,9 +93,11 @@ git config core.hooksPath .githooks
 ```
 
 Do not use `--global`; this repository's hooks are intentionally project-local. The `pre-commit` hook
-checks the staged file list using branch or caller-provided story context. The `commit-msg` hook reads
-the proposed commit message and validates `Story:`, `Story-Key:`, and `Scope-Override:` trailers
-against the same staged file list. CI runs the same Python validator against PR and non-`main` push
+checks the staged file list using branch or caller-provided story context. The `commit-msg` hook first
+runs `commitlint --edit` against the proposed message, then validates `Story:`, `Story-Key:`, and
+`Scope-Override:` trailers against the same staged file list. The commitlint step is skipped with a
+warning when `node_modules/.bin/commitlint` is absent, so run `npm ci` after cloning to arm it locally;
+CI enforces it regardless. CI runs the same Python validator against PR and non-`main` push
 diffs, using the PR source branch and the real head commit message rather than the synthetic merge
 commit.
 

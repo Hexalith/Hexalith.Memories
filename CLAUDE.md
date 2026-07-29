@@ -46,8 +46,16 @@ Before working in a Hexalith repository, locate, read, and follow
 
 - Before Git work, inspect the current repository's branch, working tree,
   remotes, and recent history.
-- Use Conventional Commits whenever a commit is requested. Never bypass commit
-  validation.
+- Write every commit message, including an AI-generated draft, as a Conventional
+  Commit: `<type>[optional scope][!]: <description>`. Use one of `build`, `ci`,
+  `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, or `test`. Never
+  use the `chore` type; pick the type that describes the work.
+- Never propose a machine-shaped or bare-verb subject. Git's default
+  `Update subproject reference ...`, and a plain `Update ...`, `Add ...`,
+  `Fix ...`, or `Bump ...`, fail validation. Write, for example,
+  `build(deps): Bump the Hexalith.Memories submodule to 27bebfa`.
+- Validate commit messages with commitlint before and after committing. Never
+  bypass commit validation.
 - In an umbrella workspace, initialize or update only dependencies declared by
   the top-level workspace `.gitmodules` file.
 - Never initialize or update a submodule's nested submodules unless the user

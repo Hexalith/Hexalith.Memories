@@ -12,6 +12,19 @@ trap 'rm -f "$changed_file"' EXIT
 
 git diff --cached --name-only -- > "$changed_file"
 
+# Conventional Commits gate. semantic-release derives the version and changelog solely from
+# commit subjects, so a malformed message silently breaks releases. Runs before the trailer
+# gates below so a format failure surfaces first, and mirrors the CI commitlint workflow.
+commitlint_bin="$repo_root/node_modules/.bin/commitlint"
+if [ -x "$commitlint_bin" ]; then
+  if ! "$commitlint_bin" --edit "$message_file"; then
+    echo "commit-msg: message failed commitlint. Rewrite it; do not bypass with --no-verify." >&2
+    exit 1
+  fi
+else
+  echo "commit-msg: commitlint not found at node_modules/.bin/commitlint; run 'npm ci' to enable the local Conventional Commits gate. CI still enforces it." >&2
+fi
+
 if command -v python3 >/dev/null 2>&1; then
   py=python3
 else
