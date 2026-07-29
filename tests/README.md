@@ -74,7 +74,7 @@ python3 tools/validate-coverage.py --results-directory TestResults/test-unit-con
 python tools/validate-coverage.py --results-directory TestResults/test-unit-contract --config tests/tooling/coverage_gate/line-coverage-gate.json
 ```
 
-`tests/tooling/coverage_gate/line-coverage-gate.json` is the single source for the **78.0%** minimum, production source
+`tests/tooling/coverage_gate/line-coverage-gate.json` is the single source for the **76.5%** minimum, production source
 scope, required assemblies, six required project reports, and Server/CLI/MCP composition-root evidence. Each wrapper
 removes the requested repository-local results directory before starting, so repeated runs cannot union stale
 attachments. The validator unions

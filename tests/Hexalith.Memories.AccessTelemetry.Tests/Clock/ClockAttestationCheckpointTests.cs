@@ -9,9 +9,17 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 
+using Dapr.Client;
+
 using Hexalith.Memories.AccessTelemetry.Clock;
 using Hexalith.Memories.AccessTelemetry.Contracts;
+using Hexalith.Memories.ServiceDefaults.Security;
 
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
@@ -43,6 +51,63 @@ public sealed class ClockAttestationCheckpointTests
             Now,
             replay);
         result.IsValid.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task ClockHost_DevelopmentSources_ReturnsVerifiableSignedAttestationAsync()
+    {
+        using ECDsa signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        string encodedSigningKey = Convert.ToBase64String(signingKey.ExportPkcs8PrivateKey());
+        DaprClient daprClient = Substitute.For<DaprClient>();
+        daprClient.GetSecretAsync(
+                "clock-test-secret-store",
+                "clock-test-signing-key",
+                Arg.Any<Dictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new Dictionary<string, string>
+            {
+                ["signing-key-pkcs8"] = encodedSigningKey,
+            });
+        await using var factory = new ClockWebAppFactory(daprClient, new FakeTimeProvider(Now));
+        using HttpClient client = factory.CreateClient();
+        string? ambientAppApiToken = Environment.GetEnvironmentVariable(
+            DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(ambientAppApiToken))
+        {
+            client.DefaultRequestHeaders.Add(
+                DaprApplicationTokenMiddleware.DaprApiTokenHeader,
+                ambientAppApiToken);
+        }
+
+        ClockAttestationRequest request = CreateRequest("host-nonce");
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/v1/time/attest",
+            request,
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        SignedClockAttestation? attestation = await response.Content.ReadFromJsonAsync<SignedClockAttestation>(
+            TestContext.Current.CancellationToken);
+        attestation.ShouldNotBeNull();
+        factory.Services.GetServices<IAuthenticatedUtcSource>()
+            .Select(static source => source.SourceId)
+            .ShouldBe(["development-utc-a", "development-utc-b", "development-utc-c"]);
+        attestation.NotBeforeUnixMilliseconds.ShouldBe(Now.AddMilliseconds(-25).ToUnixTimeMilliseconds());
+        attestation.NotAfterUnixMilliseconds.ShouldBe(Now.AddMilliseconds(25).ToUnixTimeMilliseconds());
+        attestation.SignerKeyEpoch.ShouldBe("clock-test-key-epoch");
+        ClockAttestationValidationResult validation = ClockAttestationVerifier.Verify(
+            attestation,
+            CreateContext(request),
+            signingKey.ExportSubjectPublicKeyInfo(),
+            Now,
+            new BoundedNonceReplayCache(64));
+        validation.IsValid.ShouldBeTrue();
+        await daprClient.Received(1).GetSecretAsync(
+            "clock-test-secret-store",
+            "clock-test-signing-key",
+            Arg.Any<Dictionary<string, string>>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -269,6 +334,34 @@ public sealed class ClockAttestationCheckpointTests
         source.GetUtcSampleAsync(Arg.Any<CancellationToken>()).Returns<Task<AuthenticatedUtcSample>>(
             _ => throw new HttpRequestException("source unavailable"));
         return source;
+    }
+
+    private sealed class ClockWebAppFactory(DaprClient daprClient, TimeProvider timeProvider)
+        : WebApplicationFactory<ClockAttestationService>
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            _ = builder.UseEnvironment("Development");
+            _ = builder.UseSetting("Clock:AllowDevelopmentSources", "true");
+            _ = builder.UseSetting("Clock:SecretStoreName", "clock-test-secret-store");
+            _ = builder.UseSetting("Clock:SigningKeySecretName", "clock-test-signing-key");
+            _ = builder.UseSetting("Clock:SignerKeyEpoch", "clock-test-key-epoch");
+            builder.ConfigureTestServices(services =>
+            {
+                ServiceDescriptor[] sourceRegistrations = services
+                    .Where(static descriptor => descriptor.ServiceType == typeof(IAuthenticatedUtcSource))
+                    .ToArray();
+                foreach (ServiceDescriptor ambientSource in sourceRegistrations.Take(Math.Max(0, sourceRegistrations.Length - 3)))
+                {
+                    _ = services.Remove(ambientSource);
+                }
+
+                services.RemoveAll<DaprClient>();
+                services.AddSingleton(daprClient);
+                services.RemoveAll<TimeProvider>();
+                services.AddSingleton(timeProvider);
+            });
+        }
     }
 
     private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
