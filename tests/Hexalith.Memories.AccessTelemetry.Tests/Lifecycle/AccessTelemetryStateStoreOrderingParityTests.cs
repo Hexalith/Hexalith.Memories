@@ -8,6 +8,8 @@ namespace Hexalith.Memories.AccessTelemetry.Tests.Lifecycle;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Lifecycle;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Shouldly;
 
 /// <summary>
@@ -146,7 +148,7 @@ public sealed class AccessTelemetryStateStoreOrderingParityTests
             int limit)
     {
         var state = new TransactionalDaprState();
-        var dapr = new DaprAccessTelemetryStateStore(state.Client);
+        var dapr = new DaprAccessTelemetryStateStore(state.Client, new FakeTimeProvider(Expiry.AddHours(-1)));
         var inMemory = new InMemoryAccessTelemetryStateStore();
 
         foreach (AccessTelemetryRecord record in records)

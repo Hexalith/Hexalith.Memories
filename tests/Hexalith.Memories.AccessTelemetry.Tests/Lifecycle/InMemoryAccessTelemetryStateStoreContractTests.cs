@@ -179,6 +179,7 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
         AccessTelemetryExpiryEntry entry = AccessTelemetryStateStoreTestRecords.CreateEntry(record);
         _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
         AccessTelemetryExpiryEntry staleEntry = entry with { EnvelopeHash = new string('b', 64) };
+        store.Seed(staleEntry);
 
         AccessTelemetryDeleteStatus result = await store.DeleteAndVerifyAsync(staleEntry, CancellationToken.None);
 
