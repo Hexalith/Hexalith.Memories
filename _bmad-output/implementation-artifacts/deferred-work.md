@@ -2586,3 +2586,107 @@ below as structured entries. Two are discharged by that same review pass.
   - Target artifact: tools/verify-integration-stub-closure.py
   - Re-open trigger: before Story 27.3 is set `done`; discharged when `tools/verify-integration-stub-closure.py` is invoked by a CI workflow, script, or test-lane entry other than its own unit test, so that its `status`/`Owner`/`Re-open trigger` checks actually gate something.
   - Rationale: Repo-wide search finds exactly one caller of `tools/verify-integration-stub-closure.py` - its own unit test `tests/tooling/integration_stub_closure/`. No workflow, script, or tool invokes it, so the `status == accepted`, `Owner:` and `Re-open trigger` enforcement at `verify-integration-stub-closure.py:330-345` gates nothing today. This matters because several 2026-07-27 review decisions on this story were argued from that verifier's parsing behaviour - notably the patch that folded a `DW 27.3-CR17` `Evidence:` bullet into `Rationale` to satisfy its `DEFERRED_FIELD_RE`. A parser that gates nothing is a weak basis for a record change, and the same range shipped a C# guard (`CiTestInventoryTests.DeferredWorkRegister_RealRepo_DeclaresEachIdExactlyOnce`) whose lexical rules disagree with it in both directions. Pre-existing and not caused by this change. Owner: Story 30.1 (CI/test-lane wiring). Consequence: register-integrity checks that reviews rely on are advisory only, so a corrupted `status` or a missing `Re-open trigger` reaches `done` unobserved.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The readiness gate does not require completion dates for evidence rows at review or done.
+  evidence: `check_evidence_rows` reads only the status-column index, while the phase-ledger policy requires completed evidence to carry a date and forbids dateless rows at done.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The readiness gate accepts a bare blocked evidence status without accountability metadata.
+  evidence: Any non-pending value bypasses C6, so `blocked` passes without the policy-required owner, consequence, and reopen trigger.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The readiness gate accepts unknown evidence statuses as completed.
+  evidence: C6 rejects only values in `PENDING_CELLS`, so a typo or invented state such as `gibberish` passes without a recognized completed-state vocabulary.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The readiness gate silently ignores evidence rows whose review-status cell is absent.
+  evidence: `check_evidence_rows` continues when `status_index` exceeds the row length instead of reporting the missing status required by policy.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Readiness File List reconciliation checks changed-but-unlisted paths but not listed-but-unchanged paths.
+  evidence: C1 builds only an `unlisted` set even though the phase-ledger policy requires the cumulative File List and changed set to contain identical entries.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Readiness File List entries are treated as globs instead of exact historical paths.
+  evidence: C1 calls `matches_glob` for File List entries, allowing a broad entry such as `src/**` to replace the policy-required path-level inventory.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Cumulative readiness diff collection loses the source path of renames.
+  evidence: `derive_cumulative_changed` uses `git diff --name-only`, while policy requires a rename entry to identify both old and new paths.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: A review or done artifact can pass C2 without a create-story ledger row.
+  evidence: `check_ledger` requires `dev-story` for review/done and `code-review` for done but never requires the creation baseline mandated by policy.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The newest reconciliation cell accepts unstructured blocker substrings.
+  evidence: C2 accepts any cell containing markers such as `not run` or `blocker` without validating the required command, owner, consequence, and reopen trigger.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: A review artifact can carry governed File List or evidence data but no phase ledger and still pass.
+  evidence: When `find_ledger` returns none, validation emits a skipped note instead of enforcing the ledger required at review or done.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: An in-progress or review artifact can omit its File List and still pass readiness.
+  evidence: When `parse_section_paths` returns none, validation emits a skipped note instead of enforcing the core cumulative completeness input.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The readiness gate does not enforce chronological order of canonical ledger phases.
+  evidence: `check_ledger` records phase presence but never compares canonical phase indices, so an impossible lifecycle order can pass.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Canonical ledger rows can retain placeholder Date or Change cells.
+  evidence: C2 checks placeholders only in Test count and File List reconciliation despite the canonical five-column record requiring Date and Change too.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: A whitespace-only exclusion owner is accepted by the readiness parser.
+  evidence: `parse_exclusions` checks only that the owner regex matched and strips the captured value without rejecting an empty result.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Readiness hook and CI adoption lack an executable entry-point contract test.
+  evidence: Existing tests exercise the CLI and policy prose but do not pin the hook's `--derive-cumulative` invocation or CI's prepared changed-file invocation.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The local commitlint hook fails open when repository dependencies are absent.
+  evidence: `.githooks/commit-msg` prints an installation hint but exits successfully when `node_modules/.bin/commitlint` is unavailable, contrary to mandatory local validation policy.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Commitlint default ignores allow merge- and version-shaped messages through the stated every-commit policy.
+  evidence: `commitlint.config.mjs` does not disable default ignores, so commitlint's built-in ignored message shapes are outside the configured Conventional Commit rules.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Main-push commitlint runs can cancel an earlier range before it is validated.
+  evidence: The workflow groups all main pushes together with `cancel-in-progress: true`, while each reusable run validates only its event-specific before-to-after range.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Contributor guidance still recommends the forbidden chore branch and commit type.
+  evidence: `CONTRIBUTING.md` contains `chore/<short-name>` and `chore:` examples while the shared baseline and current commitlint type enum forbid `chore`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The dirty commitlint policy and PR-title workflow changes lack negative behavioral verification.
+  evidence: Repository tests do not execute the hook against an invalid message, reject forbidden message shapes through the pinned config, or contract-test PR-title edit wiring.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Plain internal OperationCanceledException timeout mapping in the Tenants REST client lacks regression tests.
+  evidence: The new header- and body-phase catches handle `OperationCanceledException`, but tests throw only the narrower `TaskCanceledException` unless caller cancellation is requested.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Tenants invalid-cursor transport mapping is not integrated with gateway retry coverage.
+  evidence: REST-client tests stop at the `InvalidCursor` enum and gateway tests inject an already mapped `invalid-cursor` exception, leaving `ToReasonCode` disconnected from page-one recovery tests.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Independent tenant-detail and member read fault containment lacks page-level verification.
+  evidence: The page now maps each faulted initial read to its own unavailable state, but existing tests cover pending success and cancellation rather than either read faulting independently.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The Tenants member paging state machine has only happy-path coverage.
+  evidence: Existing tests do not verify retained previous data, invalid-cursor recovery, failed-page state preservation, the 50-entry history cap, or navigation from an empty later page.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: Failed refresh-subscription retry and duplicate-subscription protection lack verification.
+  evidence: Tests do not assert `Empty.IsSubscribed` is false followed by successful retry, nor exercise the audit page's in-flight setup guard under overlapping parameter passes.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
+  summary: The Tenants command-side URI scheme gate lacks non-HTTP composition tests.
+  evidence: Existing malformed-scheme theories vary only `Tenants:BaseAddress` while retaining a valid EventStore address, so command-gateway fallback is not pinned.
