@@ -2,6 +2,11 @@ name: Commitlint
 on:
   pull_request:
     branches: [main]
+    # `edited` retriggers the gate when the PR title changes, because the title can become the
+    # squash-commit subject that semantic-release reads.
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
 concurrency:
   group: commitlint-${{ github.ref }}
   cancel-in-progress: true
@@ -10,3 +15,5 @@ permissions:
 jobs:
   commitlint:
     uses: Hexalith/Hexalith.Builds/.github/workflows/commitlint.yml@main
+    with:
+      pull-request-title: ${{ github.event.pull_request.title }}

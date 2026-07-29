@@ -17,16 +17,19 @@ context:
 **Problem:** The repository requires story-scope validation before every commit,
 but the validator recognizes only numeric story keys. Standalone `spec-*` work
 therefore cannot be committed from `main` or a spec-named branch, and a commit
-message trailer cannot rescue the earlier `pre-commit` gate. The current index
-also mixes standalone readiness-gate work, Story 27.3 corrections, and two
-submodule pointer changes, so assigning the whole set to Story 27.3 would record
-false ownership and still fail its declared scope.
+message trailer cannot rescue the earlier `pre-commit` gate. The original index
+also mixed standalone readiness-gate work, Story 27.3 corrections, and
+submodule pointer changes, so assigning the whole set to Story 27.3 would have
+recorded false ownership and still failed its declared scope. On 2026-07-29,
+the human owner separately approved the exact remaining policy and root
+submodule-pointer paths listed in this spec for the `/pushall` sync commit.
 
 **Approach:** Make exact `spec-*` artifact keys first-class scope owners across
 the three story-aware validators, preserving their existing source precedence
 and fail-closed conflict behavior. Give each standalone spec a machine-readable
-File Scope, then partition the current work into independently validated commit
-groups without altering or discarding any user changes.
+File Scope, partition the original work into independently validated commit
+groups, and record the later human-approved `/pushall` sync group without
+altering or discarding any user changes.
 
 ## Boundaries & Constraints
 
@@ -38,9 +41,10 @@ preserve all current index and worktree content while regrouping it; validate
 Conventional Commit messages before and after every commit.
 
 **Ask First:** Expanding any standalone spec's scope beyond its recorded Code
-Map and implementation evidence; attributing the Commons or Tenants submodule
-pointer changes to an owner; changing or committing files inside a submodule;
-combining Story 27.3 work with the standalone readiness-gate work.
+Map and implementation evidence; attributing root submodule pointer changes to
+an owner; changing or committing files inside a submodule; combining Story
+27.3 work with the standalone readiness-gate work. The 2026-07-29 `/pushall`
+approval satisfies this requirement only for the exact paths listed below.
 
 **Never:** Use `--no-verify`; invent a numeric story key; treat a partial
 `spec-*` substring as a key; let `Scope-Override` authorize forbidden-default
@@ -55,7 +59,7 @@ existing failure when changed files have no resolved owner.
 | Spec trailer | `Story-Key: spec-resolve-story-gate-commit-path` | Resolve from the trailer in `commit-msg` | Malformed or partial keys exit 1 |
 | Conflicting sources | Numeric story branch plus spec trailer | Reject and report both sources | Exit 1 without selecting either |
 | Unowned main commit | `main`, no trailer | Preserve the current fail-closed result | Actionable no-key diagnostic |
-| Mixed current index | Spec, 27.3, and submodule changes staged together | Partition into coherent groups before committing | Unowned groups remain uncommitted |
+| Mixed current index | Spec, policy, and submodule changes staged together | Partition by owner, or use the exact human-approved `/pushall` sync group recorded in File Scope | Unapproved groups remain uncommitted |
 
 </frozen-after-approval>
 
@@ -69,22 +73,32 @@ Allowed files for this story:
 - `tests/tooling/story_scope/story_scope_validator_test.py` -- scope-owner resolution regressions.
 - `tests/tooling/tenant_isolation_evidence/tenant_isolation_evidence_test.py` -- evidence-owner resolution regressions.
 - `tests/tooling/story_review_readiness/story_review_readiness_test.py` -- readiness-owner resolution regressions.
+- `.githooks/commit-msg` -- install the repository-local commitlint gate before story-aware trailer checks.
+- `.github/workflows/commitlint.yml` -- align CI commit-message validation with the repository-local configuration.
+- `commitlint.config.mjs` -- retain the approved Conventional Commit rules in the Node module format.
+- `AGENTS.md` -- synchronize the shared AI-assistant baseline.
+- `CLAUDE.md` -- synchronize the shared AI-assistant baseline.
+- `.github/copilot-instructions.md` -- synchronize the shared AI-assistant baseline.
 - `CONTRIBUTING.md` -- standalone-spec ownership guidance only.
 - `_bmad-output/implementation-artifacts/spec-executable-pre-review-story-gate.md` -- add its explicit File Scope.
 - `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` -- this fix's scope and implementation record.
 - `_bmad-output/implementation-artifacts/deferred-work.md` -- append confirmed pre-existing review findings.
+- `references/Hexalith.AI.Tools` -- record the root-declared submodule pointer synchronized by `/pushall`.
+- `references/Hexalith.Builds` -- record the root-declared submodule pointer synchronized by `/pushall`.
+- `references/Hexalith.Commons` -- record the root-declared submodule pointer synchronized by `/pushall`.
+- `references/Hexalith.EventStore` -- record the root-declared submodule pointer synchronized by `/pushall`.
+- `references/Hexalith.Tenants` -- record the root-declared submodule pointer synchronized by `/pushall`.
 
 Read/verify only:
 
 - `.githooks/pre-commit`
-- `.githooks/commit-msg`
 - `_bmad-output/implementation-artifacts/12-3-story-file-scope-enforcement.md`
 
 Forbidden by default:
 
-- unrelated staged governance changes
+- governance changes other than the exact approved paths above
 - Story 27.3 artifacts and implementation
-- submodule pointers and contents
+- submodule contents and pointers other than the exact approved paths above
 
 ## Code Map
 
@@ -94,10 +108,13 @@ Forbidden by default:
 - `tests/tooling/story_scope/story_scope_validator_test.py` -- numeric/spec resolution, malformed-key, and conflict regressions.
 - `tests/tooling/tenant_isolation_evidence/tenant_isolation_evidence_test.py` -- spec-owned evidence resolution regressions.
 - `tests/tooling/story_review_readiness/story_review_readiness_test.py` -- spec trailer/branch parity regressions.
+- `.githooks/commit-msg`, `.github/workflows/commitlint.yml`, and `commitlint.config.mjs` -- local and CI Conventional Commit enforcement.
+- `AGENTS.md`, `CLAUDE.md`, and `.github/copilot-instructions.md` -- synchronized shared assistant baseline.
 - `CONTRIBUTING.md` -- contributor-facing spec ownership and commit examples.
 - `_bmad-output/implementation-artifacts/spec-executable-pre-review-story-gate.md` -- completed standalone work requiring an explicit File Scope.
 - `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` -- this fix's owner and File Scope.
 - `_bmad-output/implementation-artifacts/deferred-work.md` -- review ledger for findings outside this fix's ownership.
+- The five exact `references/Hexalith.*` entries in File Scope -- root submodule pointers approved for the `/pushall` sync commit; no submodule contents are owned here.
 
 ## Tasks & Acceptance
 
@@ -107,16 +124,17 @@ Forbidden by default:
 - [x] `tools/check-story-review-readiness.py` and its focused tests -- extend existing CLI-only spec support to trailer and branch parity.
 - [x] `CONTRIBUTING.md` -- document spec branches/trailers, required File Scope, and the retained no-owner failure.
 - [x] Both standalone spec artifacts -- declare narrow allowed-file lists sufficient for their own coherent change groups.
-- [x] Git index -- unstage safely, restage by owner, run focused gates and commitlint, and leave submodule pointers or other unowned work uncommitted.
+- [x] Git index -- preserve the original owner partition, then stage the exact later policy and submodule-pointer set only after explicit human approval for the `/pushall` sync commit.
 
 **Acceptance Criteria:**
 - Given a branch, trailer, or CLI argument containing one exact existing spec key, when each validator resolves ownership, then it selects the same artifact and applies its normal checks.
 - Given absent, malformed, partial, multiple, or conflicting owner keys, when validation runs with changed files, then it exits 1 with the offending sources identified.
-- Given the current mixed working tree, when commit groups are prepared, then standalone-spec and Story 27.3 changes never share a commit and no unowned submodule pointer is committed.
+- Given the mixed working tree, when commit groups are prepared, then standalone-spec and Story 27.3 changes never share a commit, and only the exact human-approved root submodule pointers may join the `/pushall` sync commit.
 - Given a prepared commit, when local hooks and commitlint run, then validation passes without bypass flags and the post-commit message check remains green.
 
 ## Spec Change Log
 
+- 2026-07-29 -- Human approved the exact remaining commitlint-policy, synchronized assistant-baseline, and five root submodule-pointer paths for the `/pushall` sync commit; submodule contents and all other forbidden-default paths remain excluded.
 - 2026-07-29 -- Human approved adding the deferred-work ledger to File Scope so the mandatory review could record verified pre-existing findings; the frozen intent is unchanged.
 
 ## Design Notes
@@ -142,7 +160,7 @@ the required File Scope or evidence sections.
 - `5be50c24` -- executable story review-readiness gate, policy, fixtures, and explicit File Scope.
 - `5edfb8d5` -- scope-boundary regressions for standalone spec owners.
 - `e13e986e` -- exact ASCII owner parsing, duplicate-key rejection, bypass conflict checks, and review regressions.
-- Commitlint-policy files and all Commons, EventStore, and Tenants submodule pointer changes remain uncommitted and unstaged because neither approved standalone spec owns them.
+- The original commitlint-policy and submodule-pointer exclusions remained uncommitted until the human's 2026-07-29 `/pushall` approval; the exact paths now appear in this spec's File Scope for the validated sync commit.
 
 ## Suggested Review Order
 
