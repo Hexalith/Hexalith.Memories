@@ -100,12 +100,12 @@ Forbidden by default:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `tools/check-story-file-scope.py` and its focused tests -- recognize exact spec keys from all three sources without relaxing numeric-story behavior.
-- [ ] `tools/check-tenant-isolation-evidence.py` and its focused tests -- use the same spec-key resolution contract for sensitive changes.
-- [ ] `tools/check-story-review-readiness.py` and its focused tests -- extend existing CLI-only spec support to trailer and branch parity.
-- [ ] `CONTRIBUTING.md` -- document spec branches/trailers, required File Scope, and the retained no-owner failure.
-- [ ] Both standalone spec artifacts -- declare narrow allowed-file lists sufficient for their own coherent change groups.
-- [ ] Git index -- unstage safely, restage by owner, run focused gates and commitlint, and leave submodule pointers or other unowned work uncommitted.
+- [x] `tools/check-story-file-scope.py` and its focused tests -- recognize exact spec keys from all three sources without relaxing numeric-story behavior.
+- [x] `tools/check-tenant-isolation-evidence.py` and its focused tests -- use the same spec-key resolution contract for sensitive changes.
+- [x] `tools/check-story-review-readiness.py` and its focused tests -- extend existing CLI-only spec support to trailer and branch parity.
+- [x] `CONTRIBUTING.md` -- document spec branches/trailers, required File Scope, and the retained no-owner failure.
+- [x] Both standalone spec artifacts -- declare narrow allowed-file lists sufficient for their own coherent change groups.
+- [x] Git index -- unstage safely, restage by owner, run focused gates and commitlint, and leave submodule pointers or other unowned work uncommitted.
 
 **Acceptance Criteria:**
 - Given a branch, trailer, or CLI argument containing one exact existing spec key, when each validator resolves ownership, then it selects the same artifact and applies its normal checks.
@@ -125,8 +125,15 @@ the required File Scope or evidence sections.
 ## Verification
 
 **Commands:**
-- `python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"` -- all story-scope tests pass.
-- `python3 -m unittest discover -s tests/tooling/tenant_isolation_evidence -p "*_test.py"` -- all evidence tests pass.
-- `python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py"` -- all readiness tests pass.
+- `python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"` -- 47 tests pass.
+- `python3 -m unittest discover -s tests/tooling/tenant_isolation_evidence -p "*_test.py"` -- 36 tests pass.
+- `python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py"` -- 40 tests pass.
+- `python3 -m unittest discover -s tests/tooling/bmad_customization -p "*_test.py"` -- 33 tests pass.
 - `.githooks/pre-commit` -- each staged owner group passes from its matching branch.
 - `npx commitlint --edit <message-file> --verbose` and `npx commitlint --last --verbose` -- messages pass before and after commit.
+
+**Commit evidence:**
+
+- `5bf5870c` -- standalone-spec owner resolution, focused regressions, guidance, and this spec.
+- `5be50c24` -- executable story review-readiness gate, policy, fixtures, and explicit File Scope.
+- Commitlint-policy files and all Commons, EventStore, and Tenants submodule pointer changes remain uncommitted and unstaged because neither approved standalone spec owns them.

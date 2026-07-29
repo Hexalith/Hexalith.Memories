@@ -233,6 +233,55 @@ class StoryScopeValidatorTests(unittest.TestCase):
         self.assertIn("spec-scope-owner-extra.md", result.stdout)
         self.assertNotIn("Selected story key: spec-scope-owner\n", result.stdout)
 
+    def test_unowned_main_changed_set_fails_closed(self):
+        result = run_validator(
+            "--branch-name",
+            "main",
+            "--changed-file",
+            "docs/unowned.md",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No story key resolved", result.stdout)
+
+    def test_spec_owner_rejects_mixed_artifact_and_submodule_changes(self):
+        spec_key = "spec-scope-owner"
+        temp = self.fixture_artifacts(
+            """
+            # Standalone scope owner
+
+            ## File Scope
+
+            Allowed files for this story:
+
+            - `docs/spec-owned.md` - fixture-owned path
+            """,
+            story_key=spec_key,
+        )
+
+        result = run_validator(
+            "--artifacts-root",
+            temp.name,
+            "--story-key",
+            spec_key,
+            "--changed-file",
+            "docs/spec-owned.md",
+            "--changed-file",
+            "_bmad-output/implementation-artifacts/27-3-other-owner.md",
+            "--changed-file",
+            "references/Hexalith.Tenants",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "_bmad-output/implementation-artifacts/27-3-other-owner.md",
+            section_block(result.stdout, "Out-of-scope files:"),
+        )
+        self.assertIn(
+            "references/Hexalith.Tenants",
+            section_block(result.stdout, "Forbidden-default files (no override; D5-class):"),
+        )
+
     def test_story_trailer_discovery_allows_in_scope_file(self):
         message = self.write_message(
             """
