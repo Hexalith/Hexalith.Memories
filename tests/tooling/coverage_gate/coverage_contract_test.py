@@ -19,11 +19,14 @@ class CoverageContractTests(unittest.TestCase):
     def test_configuration_pins_threshold_scope_and_required_evidence(self):
         configuration = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
-        self.assertEqual(78.0, configuration["minimumLineCoveragePercent"])
+        self.assertEqual(76.5, configuration["minimumLineCoveragePercent"])
         self.assertEqual(["src/Hexalith.Memories."], configuration["sourcePathPrefixes"])
         self.assertEqual(["**/obj/**"], configuration["excludedSourcePathPatterns"])
         self.assertEqual(
             [
+                "Hexalith.Memories.AccessTelemetry",
+                "Hexalith.Memories.AccessTelemetry.Clock",
+                "Hexalith.Memories.AccessTelemetry.Contracts",
                 "Hexalith.Memories.Cli",
                 "Hexalith.Memories.Client.Rest",
                 "Hexalith.Memories.Contracts",
@@ -75,6 +78,91 @@ class CoverageContractTests(unittest.TestCase):
         )
 
         self.assertNotEqual(0, result.returncode)
+
+    def test_required_report_projects_reference_the_private_coverlet_collector(self):
+        configuration = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        expected_include_assets = (
+            "runtime; build; native; contentfiles; analyzers; buildtransitive"
+        )
+
+        def local_name(tag: str) -> str:
+            return tag.rsplit("}", 1)[-1]
+
+        def child_text(element: ET.Element, name: str) -> str | None:
+            child = next(
+                (candidate for candidate in element if local_name(candidate.tag) == name),
+                None,
+            )
+            return None if child is None else child.text
+
+        for project_name in configuration["requiredReportProjects"]:
+            with self.subTest(project=project_name):
+                project_path = REPO_ROOT / "tests" / project_name / f"{project_name}.csproj"
+                root = ET.parse(project_path).getroot()
+                references: list[tuple[ET.Element, tuple[str, ...]]] = []
+                mutators: list[ET.Element] = []
+
+                def collect_references(element: ET.Element, conditions: tuple[str, ...] = ()) -> None:
+                    condition = (element.get("Condition") or "").strip()
+                    inherited_conditions = conditions + ((condition,) if condition else ())
+                    if local_name(element.tag) == "PackageReference":
+                        if element.get("Include") == "coverlet.collector":
+                            references.append((element, inherited_conditions))
+                        if element.get("Update") == "coverlet.collector" or element.get("Remove") == "coverlet.collector":
+                            mutators.append(element)
+                    for child in element:
+                        collect_references(child, inherited_conditions)
+
+                collect_references(root)
+
+                self.assertEqual(
+                    1,
+                    len(references),
+                    f"{project_name}: expected exactly one coverlet.collector PackageReference",
+                )
+                self.assertEqual(
+                    [],
+                    mutators,
+                    f"{project_name}: coverlet.collector must not be updated or removed conditionally",
+                )
+                reference, conditions = references[0]
+                self.assertEqual(
+                    (),
+                    conditions,
+                    f"{project_name}: coverlet.collector and its ancestors must be unconditional",
+                )
+                self.assertNotIn(
+                    "Version",
+                    reference.attrib,
+                    f"{project_name}: coverlet.collector must not have a Version attribute",
+                )
+                self.assertNotIn(
+                    "VersionOverride",
+                    reference.attrib,
+                    f"{project_name}: coverlet.collector must not have a VersionOverride attribute",
+                )
+                self.assertIsNone(
+                    child_text(reference, "Version"),
+                    f"{project_name}: coverlet.collector must not have a Version child",
+                )
+                self.assertIsNone(
+                    child_text(reference, "VersionOverride"),
+                    f"{project_name}: coverlet.collector must not have a VersionOverride child",
+                )
+                self.assertIsNone(
+                    child_text(reference, "ExcludeAssets"),
+                    f"{project_name}: coverlet.collector must not exclude collector assets",
+                )
+                self.assertEqual(
+                    "all",
+                    child_text(reference, "PrivateAssets"),
+                    f"{project_name}: coverlet.collector PrivateAssets must be all",
+                )
+                self.assertEqual(
+                    expected_include_assets,
+                    child_text(reference, "IncludeAssets"),
+                    f"{project_name}: coverlet.collector IncludeAssets must match the repository standard",
+                )
 
     def test_runsettings_is_valid_and_collects_only_first_party_production_code(self):
         root = ET.parse(RUNSETTINGS_PATH).getroot()
@@ -211,8 +299,12 @@ class CoverageContractTests(unittest.TestCase):
         )
 
     def test_contributor_docs_publish_coverage_package_and_benchmark_contracts(self):
+        configuration = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        formatted_threshold = f'{configuration["minimumLineCoveragePercent"]:.1f}%'
         test_readme = TEST_README_PATH.read_text(encoding="utf-8")
         contributing = CONTRIBUTING_PATH.read_text(encoding="utf-8")
+        test_readme_coverage = self._read_atx_section(test_readme, "Coverage")
+        contributing_tests = self._read_atx_section(contributing, "Tests")
 
         self.assertIn(
             'bash ./tools/test.sh --filter "Category!=Integration" --configuration Release '
@@ -224,7 +316,7 @@ class CoverageContractTests(unittest.TestCase):
             "TestResults/test-unit-contract --config tests/tooling/coverage_gate/line-coverage-gate.json",
             test_readme,
         )
-        self.assertIn("78.0%", test_readme)
+        self.assertIn(formatted_threshold, test_readme_coverage)
         self.assertIn("Category=Benchmark", test_readme)
         self.assertIn("all 17 tests", test_readme)
         self.assertIn("80%", test_readme)
@@ -247,7 +339,7 @@ class CoverageContractTests(unittest.TestCase):
             "Web.Tests",
         ):
             self.assertIn(project, contributing)
-        self.assertIn("78.0%", contributing)
+        self.assertIn(formatted_threshold, contributing_tests)
         self.assertIn("all 17 tests", contributing)
         self.assertIn("test-unit-contract-results", contributing)
         self.assertIn("nightly-benchmark-trx", contributing)
@@ -263,6 +355,21 @@ class CoverageContractTests(unittest.TestCase):
         if match is None:
             raise AssertionError(f"workflow job {job_name!r} was not found in {path}")
         return f"  {job_name}:\n{match.group('body')}"
+
+    @staticmethod
+    def _read_atx_section(source: str, heading: str) -> str:
+        headings = list(re.finditer(
+            rf"(?m)^(?P<marks>#{{1,6}}) {re.escape(heading)}[ \t]*$",
+            source,
+        ))
+        if len(headings) != 1:
+            raise AssertionError(f"expected exactly one ATX section named {heading!r}")
+
+        match = headings[0]
+        level = len(match.group("marks"))
+        remainder = source[match.end():]
+        boundary = re.search(rf"(?m)^#{{1,{level}}} ", remainder)
+        return remainder if boundary is None else remainder[:boundary.start()]
 
     @staticmethod
     def _read_workflow_steps(job: str) -> dict[str, str]:

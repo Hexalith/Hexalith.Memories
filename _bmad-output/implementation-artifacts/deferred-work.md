@@ -2690,3 +2690,7 @@ below as structured entries. Two are discharged by that same review pass.
 - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md`
   summary: The Tenants command-side URI scheme gate lacks non-HTTP composition tests.
   evidence: Existing malformed-scheme theories vary only `Tenants:BaseAddress` while retaining a valid EventStore address, so command-gateway fallback is not pinned.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-30423676094-access-telemetry-coverage-collector.md`
+  summary: Contributor coverage guidance still describes six projects although the authoritative Docker-free inventory contains seven.
+  evidence: The mismatch predates this fix; `tests/README.md` and `CONTRIBUTING.md` omit AccessTelemetry while `tools/test-projects.unit-contract.txt` and `requiredReportProjects` include it.

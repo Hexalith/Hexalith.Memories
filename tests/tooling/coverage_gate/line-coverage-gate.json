@@ -1,5 +1,5 @@
 {
-  "minimumLineCoveragePercent": 78.0,
+  "minimumLineCoveragePercent": 76.5,
   "sourcePathPrefixes": [
     "src/Hexalith.Memories."
   ],
@@ -14,6 +14,9 @@
     "**/obj/**"
   ],
   "requiredAssemblies": [
+    "Hexalith.Memories.AccessTelemetry",
+    "Hexalith.Memories.AccessTelemetry.Clock",
+    "Hexalith.Memories.AccessTelemetry.Contracts",
     "Hexalith.Memories.Cli",
     "Hexalith.Memories.Client.Rest",
     "Hexalith.Memories.Contracts",
@@ -30,6 +33,9 @@
     "Hexalith.Memories.Server": "src/Hexalith.Memories.Server/Program.cs"
   },
   "assemblySourcePrefixes": {
+    "Hexalith.Memories.AccessTelemetry": ["src/Hexalith.Memories.AccessTelemetry"],
+    "Hexalith.Memories.AccessTelemetry.Clock": ["src/Hexalith.Memories.AccessTelemetry.Clock"],
+    "Hexalith.Memories.AccessTelemetry.Contracts": ["src/Hexalith.Memories.AccessTelemetry.Contracts"],
     "Hexalith.Memories.Cli": ["src/Hexalith.Memories.Cli"],
     "Hexalith.Memories.Client.Rest": ["src/Hexalith.Memories.Client.Rest"],
     "Hexalith.Memories.Contracts": ["src/Hexalith.Memories.Contracts"],

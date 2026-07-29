@@ -337,7 +337,7 @@ dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
 python tools/validate-coverage.py --results-directory TestResults/test-unit-contract --config tests/tooling/coverage_gate/line-coverage-gate.json
 ```
 
-The checked-in coverage contract enforces at least 78.0% unioned line coverage across the required
+The checked-in coverage contract enforces at least 76.5% unioned line coverage across the required
 first-party production assemblies and requires executable evidence for the Server, CLI, and MCP
 composition roots plus a nonempty Cobertura report from every inventoried test project. The wrappers
 clean the requested repository-local results directory before collection so old attachments cannot

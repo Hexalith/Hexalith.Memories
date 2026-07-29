@@ -130,6 +130,64 @@ public sealed class AccessTelemetryContractsCheckpointTests
         parsed.QueryParams.ShouldBe(record.QueryParams);
     }
 
+    [Theory]
+    [InlineData("search", 7501, "ok", null, 10, false, null)]
+    [InlineData("search", 7501, "partial", "dependency_unavailable", 5, false, null)]
+    [InlineData("search", 7511, "error", "unknown", null, false, null)]
+    [InlineData("ingest", 7502, "ok", null, null, false, null)]
+    [InlineData("ingest", 7512, "error", "unknown", null, false, null)]
+    [InlineData("traverse", 7503, "ok", null, 3, false, null)]
+    [InlineData("traverse", 7513, "error", "unknown", null, false, null)]
+    [InlineData("case-access", 7504, "ok", null, 1, true, null)]
+    [InlineData("case-access", 7514, "error", "unknown", null, true, null)]
+    [InlineData("delete", 7505, "ok", null, null, true, "memory-unit")]
+    [InlineData("delete", 7515, "error", "unknown", null, false, "tenant")]
+    [InlineData("tenant-lifecycle", 7506, "ok", null, null, false, null)]
+    [InlineData("tenant-lifecycle", 7516, "error", "unknown", null, false, null)]
+    [InlineData("tenant-config", 7507, "ok", null, null, false, null)]
+    [InlineData("tenant-config", 7517, "error", "unknown", null, false, null)]
+    [InlineData("case-member", 7508, "ok", null, null, true, null)]
+    [InlineData("case-member", 7518, "error", "unknown", null, true, null)]
+    [InlineData("annotation", 7509, "ok", null, null, true, null)]
+    [InlineData("annotation", 7519, "error", "unknown", null, true, null)]
+    public void Canonicalizer_SupportedOperationTuple_RoundTrips(
+        string operationType,
+        int eventId,
+        string outcome,
+        string? errorCode,
+        int? resultCount,
+        bool hasCaseMarker,
+        string? deleteTargetKind)
+    {
+        AccessTelemetryRecord unsigned = CreateRecord() with
+        {
+            EventId = eventId,
+            OperationType = operationType,
+            Outcome = outcome,
+            ErrorCode = errorCode,
+            ResultCount = resultCount,
+            CaseMarker = hasCaseMarker ? new string('e', 64) : null,
+            QueryParams = CreateQueryParams(operationType, deleteTargetKind),
+            EnvelopeHash = string.Empty,
+        };
+        AccessTelemetryRecord record = unsigned with
+        {
+            EnvelopeHash = AccessTelemetryCanonicalizer.CalculateEnvelopeHash(unsigned),
+        };
+
+        byte[] canonical = AccessTelemetryCanonicalizer.CanonicalizeRecord(record);
+        AccessTelemetryRecord parsed = AccessTelemetryCanonicalizer.ParseCanonicalRecord(canonical);
+
+        AccessTelemetryCanonicalizer.CanonicalizeRecord(parsed).ShouldBe(canonical);
+        parsed.OperationType.ShouldBe(operationType);
+        parsed.EventId.ShouldBe(eventId);
+        parsed.Outcome.ShouldBe(outcome);
+        parsed.ErrorCode.ShouldBe(errorCode);
+        parsed.ResultCount.ShouldBe(resultCount);
+        parsed.CaseMarker.ShouldBe(record.CaseMarker);
+        parsed.QueryParams.ShouldBe(record.QueryParams);
+    }
+
     [Fact]
     public void Canonicalizer_RejectsUnknownDuplicateWrongCaseAndNoncanonicalFields()
     {
@@ -252,4 +310,70 @@ public sealed class AccessTelemetryContractsCheckpointTests
             EnvelopeHash = AccessTelemetryCanonicalizer.CalculateEnvelopeHash(record),
         };
     }
+
+    private static IReadOnlyDictionary<string, object?> CreateQueryParams(
+        string operationType,
+        string? deleteTargetKind)
+        => operationType switch
+        {
+            "search" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["axis"] = "hybrid",
+                ["caseScope"] = "all-authorized",
+                ["explain"] = false,
+                ["queryLengthBucket"] = "33-128",
+                ["subjectPresent"] = true,
+                ["weightProfile"] = "configured",
+            },
+            "ingest" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["caseScope"] = "case",
+                ["contentKind"] = "document",
+                ["contentLengthBucket"] = "1-64KiB",
+                ["eventOutcome"] = "accepted",
+                ["sourceKind"] = "file",
+            },
+            "traverse" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["caseScope"] = "single",
+                ["depthBucket"] = "2",
+                ["direction"] = "out",
+                ["edgeTypeCount"] = 2,
+                ["includeGaps"] = false,
+            },
+            "case-access" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["accessKind"] = "memory-unit-id",
+                ["projection"] = "detail",
+                ["sourceKind"] = "file",
+            },
+            "delete" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["cascade"] = true,
+                ["targetKind"] = deleteTargetKind,
+            },
+            "tenant-lifecycle" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["action"] = "provision",
+                ["workflowState"] = "completed",
+            },
+            "tenant-config" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["action"] = "update",
+                ["changedFieldCountBucket"] = "2-3",
+                ["configKind"] = "embedding",
+                ["forceReindex"] = false,
+            },
+            "case-member" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["action"] = "add",
+                ["role"] = "unknown",
+            },
+            "annotation" => new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["action"] = "create",
+                ["annotationKind"] = "unknown",
+            },
+            _ => throw new InvalidOperationException($"Unsupported operation type '{operationType}'."),
+        };
 }
