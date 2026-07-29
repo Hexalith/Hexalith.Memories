@@ -282,6 +282,93 @@ class StoryScopeValidatorTests(unittest.TestCase):
             section_block(result.stdout, "Forbidden-default files (no override; D5-class):"),
         )
 
+    def test_malformed_spec_key_fails_from_cli_trailer_and_branch(self):
+        message = self.write_message(
+            """
+            test: reject malformed standalone spec key
+
+            Story-Key: spec-scope-owner.extra
+            """
+        )
+        cases = (
+            ("cli", ("--story-key", "spec-scope-owner.extra")),
+            ("trailer", ("--commit-message-file", str(message))),
+            ("branch", ("--branch-name", "fix/spec-scope-owner.extra")),
+        )
+
+        for source, source_args in cases:
+            with self.subTest(source=source):
+                result = run_validator(*source_args, "--changed-file", "docs/spec-owned.md")
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("valid standalone spec key", result.stdout)
+
+    def test_incomplete_spec_key_fails_from_cli_trailer_and_branch(self):
+        for malformed in ("spec-", "spec-scope-owner-"):
+            message = self.write_message(
+                f"test: reject incomplete standalone spec key\n\nStory-Key: {malformed}\n"
+            )
+            cases = (
+                ("cli", ("--story-key", malformed)),
+                ("trailer", ("--commit-message-file", str(message))),
+                ("branch", ("--branch-name", f"fix/{malformed}")),
+            )
+
+            for source, source_args in cases:
+                with self.subTest(malformed=malformed, source=source):
+                    result = run_validator(*source_args, "--changed-file", "docs/spec-owned.md")
+
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("valid standalone spec key", result.stdout)
+
+    def test_duplicate_spec_key_fails_from_cli_trailer_and_branch(self):
+        duplicate = "spec-scope-owner/spec-scope-owner"
+        message = self.write_message(
+            f"""
+            test: reject duplicate standalone spec key
+
+            Story-Key: {duplicate}
+            """
+        )
+        cases = (
+            ("cli", ("--story-key", duplicate)),
+            ("trailer", ("--commit-message-file", str(message))),
+            ("branch", ("--branch-name", f"fix/{duplicate}")),
+        )
+
+        for source, source_args in cases:
+            with self.subTest(source=source):
+                result = run_validator(*source_args, "--changed-file", "docs/spec-owned.md")
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("multiple story keys", result.stdout.lower())
+
+    def test_unicode_spec_key_does_not_alias_ascii_artifact(self):
+        temp = self.fixture_artifacts(
+            """
+            # Standalone scope owner
+
+            ## File Scope
+
+            Allowed files for this story:
+
+            - `docs/spec-owned.md` - fixture-owned path
+            """,
+            story_key="spec-key",
+        )
+
+        result = run_validator(
+            "--artifacts-root",
+            temp.name,
+            "--story-key",
+            "spec-Key",
+            "--changed-file",
+            "docs/spec-owned.md",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("valid standalone spec key", result.stdout)
+
     def test_story_trailer_discovery_allows_in_scope_file(self):
         message = self.write_message(
             """
