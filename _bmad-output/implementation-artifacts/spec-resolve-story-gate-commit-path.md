@@ -73,6 +73,7 @@ Allowed files for this story:
 - `_bmad-output/implementation-artifacts/spec-executable-pre-review-story-gate.md` -- add its explicit File Scope.
 - `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` -- this fix's scope and implementation record.
 - `_bmad-output/implementation-artifacts/deferred-work.md` -- append confirmed pre-existing review findings.
+- `.github/workflows/commitlint.yml` -- pass the exact PR title required by the reusable commitlint gate.
 
 Read/verify only:
 
@@ -98,6 +99,7 @@ Forbidden by default:
 - `_bmad-output/implementation-artifacts/spec-executable-pre-review-story-gate.md` -- completed standalone work requiring an explicit File Scope.
 - `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` -- this fix's owner and File Scope.
 - `_bmad-output/implementation-artifacts/deferred-work.md` -- review ledger for findings outside this fix's ownership.
+- `.github/workflows/commitlint.yml` -- root caller for mandatory pull-request title validation.
 
 ## Tasks & Acceptance
 
@@ -118,6 +120,7 @@ Forbidden by default:
 ## Spec Change Log
 
 - 2026-07-29 -- Human approved adding the deferred-work ledger to File Scope so the mandatory review could record verified pre-existing findings; the frozen intent is unchanged.
+- 2026-07-29 -- Human approved the minimal commitlint caller scope expansion after PR #46 proved the base caller omitted the reusable workflow's required PR-title input.
 
 ## Design Notes
 
@@ -173,6 +176,11 @@ the required File Scope or evidence sections.
 
 - Read the policy boundary that defines what a green gate proves.
   [`story-phase-ledger.md:148`](../../_bmad/custom/story-phase-ledger.md#L148)
+
+**Pull request validation**
+
+- Supply the exact PR title required by the reusable commitlint gate.
+  [`commitlint.yml:14`](../../.github/workflows/commitlint.yml#L14)
 
 **Verification and records**
 
