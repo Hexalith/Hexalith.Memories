@@ -211,6 +211,67 @@ follow these rules.
   above apply forward, not retroactively. A targeted edit is only justified when
   a parser, dashboard, or auditor proves it is required.
 
+## Story Review Readiness
+
+Enforced by `.githooks/commit-msg` and by the `story-file-scope` CI job, using
+`tools/check-story-review-readiness.py`. The gate resolves a story from
+`--story-key`, a `Story:`/`Story-Key:` trailer, or the branch name. If no story
+resolves the check is a documented no-op, so `correct-course` commits are
+unaffected.
+
+Five checks run against the resolved artifact:
+
+| Check | Fails when |
+| :---- | :--------- |
+| C1 | a changed path is absent from the story's `### File List` |
+| C2 | a required phase-ledger row is missing, a `Test count` or `File List reconciliation` cell holds a placeholder (`TBD`, `N/A`, `-`), or the newest row records neither `matched N/N` nor a blocked-evidence record |
+| C3 | the artifact declares no `Status:` line, or one outside `backlog`, `ready-for-dev`, `in-progress`, `review`, `done` |
+| C4 | the story's status disagrees with its `development_status` row in `sprint-status.yaml` (a `spec-*` artifact is not expected to carry a row) |
+| C6 | a row in any table with a `Review status`/`Review state` column is still `pending` or dateless once the story reads `review` or `done` |
+
+C1 evaluates only while the story is `in-progress` or `review`, since a
+cumulative diff is not meaningful outside that window.
+
+Exclusions must be machine-readable. Free prose in the File List records intent
+for a human reader but does not exempt a path:
+
+```markdown
+### File List Exclusions
+
+- `path/to/file` — owner: Another Story; concurrent work, not credited here
+```
+
+Every bullet needs a backticked path, a named owner, and a reason.
+
+Run it yourself before moving a story to review:
+
+```bash
+python3 tools/check-story-review-readiness.py --story-key <your-story-key> --derive-cumulative
+python3 tools/check-story-review-readiness.py --branch-name feature/<your-story-key> --changed-files-file changed-files.txt --commit-message-file commit-message.txt
+```
+
+Use `--derive-cumulative` locally: the staged set is one commit's files, not the
+story's cumulative diff, so without it C1 misreads a multi-commit story. CI
+passes the pull-request range directly and deliberately omits the flag.
+
+Genuine exceptions use a commit trailer with a non-empty reason:
+
+```
+Story-Review-Readiness-Bypass: platform outage blocks discovery, tracked as DW-123
+```
+
+**Two limits, so a green run is not over-read.** The gate skips C1 on `main`,
+where `baseline_commit..HEAD` returns unrelated work — that check first bites in
+CI against the PR range. And a green exit proves none of: count arithmetic,
+that recorded tests were executed, or that a cited command was truly run. Those
+remain the code-review ledger auditor's job.
+
+There is deliberately no `File List` / `File Scope` agreement check. `File
+Scope` is a forward-looking allow-list and `File List` a backward-looking
+record, so "allowed but unchanged" is normal, and a `Scope-Override:` trailer
+can legitimately place a changed path outside the declared scope. That relation
+is already enforced at commit time by `tools/check-story-file-scope.py`.
+
 ## Epic 14 Story Close-out Rules
 
 Epic 14 stories exist to take ownership of deferred review findings. The

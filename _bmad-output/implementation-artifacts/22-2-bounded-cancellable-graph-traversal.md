@@ -263,3 +263,20 @@ Checklist:
 - 2026-07-05: Created Story 22.2 context artifact and marked sprint status ready-for-dev.
 - 2026-07-05: Implemented bounded, semantic-only, server-timeout-backed graph traversal and added focused unit plus FalkorDB integration coverage. Story marked ready for review.
 - 2026-07-05: Senior developer review completed with automatic fixes for graph-scoped count-query server timeout, latency logging, line-ending hygiene, and review documentation. Story marked done.
+
+## Story Close-Out Gate Correction (2026-07-28)
+
+**5 evidence rows were left at `Pending` when this story closed.** The story
+reads `done` in `sprint-status.yaml`, so its `Review status` column asserts that its
+own declared proof was never produced.
+
+**Their status is not re-derived here, and no completion date is manufactured.**
+The actual completion evidence for this story is its code-review record and
+Change Log above; those are unaffected by this note. What is corrected is only
+the record of the discrepancy — recorded, not backdated. The story is not
+reopened and no review history is rewritten.
+
+Found by `tools/check-story-review-readiness.py` (check C6), added 2026-07-28 to
+close the Epic 22-25 action-item chain. This story is one of the two artifacts
+that motivated C6; the gate now fails closed on this shape, so a story reaching
+`review` or `done` with a `pending` evidence row is blocked at commit and in CI.

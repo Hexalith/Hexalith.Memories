@@ -419,3 +419,20 @@ OpenAI Codex (GPT-5)
 - 2026-07-16: Closed adversarial code-review chunk 2 — 21/21 High/Medium findings patched across tenant lifecycle, upgrade/migration, and monitoring/alerting; focused contracts pass 13/13 and the Docker-free Server lane passes 2,661 with 1 skipped and 0 failed.
 - 2026-07-15: Closed adversarial code-review chunk 1 — 16/16 High/Medium findings patched in capacity planning, incident response, and index rebuild; focused contracts pass 12/12.
 - 2026-07-14: Added six source-backed operational runbooks, direct navigation, safe production-aligned backup/recovery procedures, and one Docker-free documentation contract. Completed all focused, Server, Release-build, link, whitespace, and scope gates and moved the story to review.
+
+## Story Close-Out Gate Correction (2026-07-28)
+
+**10 evidence rows were left at `Pending` when this story closed.** The story
+reads `done` in `sprint-status.yaml`, so its `Review status` column asserts that its
+own declared proof was never produced.
+
+**Their status is not re-derived here, and no completion date is manufactured.**
+The actual completion evidence for this story is its code-review record and
+Change Log above; those are unaffected by this note. What is corrected is only
+the record of the discrepancy — recorded, not backdated. The story is not
+reopened and no review history is rewritten.
+
+Found by `tools/check-story-review-readiness.py` (check C6), added 2026-07-28 to
+close the Epic 22-25 action-item chain. This story is one of the two artifacts
+that motivated C6; the gate now fails closed on this shape, so a story reaching
+`review` or `done` with a `pending` evidence row is blocked at commit and in CI.

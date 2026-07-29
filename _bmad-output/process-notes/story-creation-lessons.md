@@ -158,3 +158,40 @@ party-mode review, advanced elicitation, and code-review automation.
   The recurrence was found by cross-reading the two proposals, not by either
   one's own review. When adding a guard, check the known defect shapes of its
   siblings before wiring it.
+
+## L13 - A Convention Repeated Across Four Epics Is a Missing Gate
+
+The same action item was raised by four consecutive retrospectives — Epic 22
+(`sprint-status.yaml:631`), Epic 23 (`:651`), Epic 24 (`:671`), and Epic 25
+(`:719`) — each restating it harder after the previous formulation failed:
+*check* -> *source guard or checklist* -> *executable guard* -> *executable
+pre-review gate*. Nothing closed for 23 days.
+
+- The requirement was never wrong and was never missing. `story-phase-ledger.md`
+  had encoded these exact rules, fail-closed, since 2026-07-16. What was missing
+  was a mechanism that does not depend on an agent choosing to comply. When a
+  retro item recurs unchanged for two epics, stop restating it and make it
+  executable.
+- Two `done` stories were asserting, in their own tables, that their declared
+  proof had never been produced: `26-5` with 10 checkpoint rows at `pending`
+  under a preamble reading "Complete every row before moving the story to
+  review", and `22-2` with 5. `26-5` had passed a three-chunk adversarial review
+  that closed 54 findings. Reviews do not reliably read a table's own status
+  column; a gate does.
+- **Measure the check against live artifacts before wiring it.** A proposed
+  `File List` == `File Scope` agreement check was approved, implemented, and
+  then refuted by running it: "allowed but unchanged" is the normal case in 17
+  of 21 artifacts, and a `Scope-Override:` commit trailer can legitimately place
+  a changed path outside the declared scope. It was generalised from Story 27.3,
+  one of only two artifacts where the sets happen to coincide. Withdrawn before
+  wiring.
+- The same run surfaced three parser defects that would each have shipped a gate
+  that was green and wrong: `Matched **27/27**` broke a regex anchored after
+  `matched`; ledger cells embedding `2>&1 \| grep` were split on escaped pipes,
+  shifting every column of nine rows; and `status: 'done'` in spec frontmatter
+  failed the status vocabulary on quote punctuation alone. None was findable by
+  reading the code.
+- Scope the gate to what the action item names. File List and evidence-table
+  status were in scope; count arithmetic was not, and stayed with the
+  code-review ledger auditor. State the limits in the policy, the directive, and
+  `CONTRIBUTING.md` so a green gate is never read as full verification.
