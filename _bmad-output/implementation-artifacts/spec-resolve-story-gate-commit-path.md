@@ -141,7 +141,7 @@ the required File Scope or evidence sections.
 - `5bf5870c` -- standalone-spec owner resolution, focused regressions, guidance, and this spec.
 - `5be50c24` -- executable story review-readiness gate, policy, fixtures, and explicit File Scope.
 - `5edfb8d5` -- scope-boundary regressions for standalone spec owners.
-- `e13e986e` -- exact ASCII owner parsing, duplicate-key rejection, bypass conflict checks, and review regressions.
+- `731ec938` -- exact ASCII owner parsing, duplicate-key rejection, bypass conflict checks, and review regressions.
 - Commitlint-policy files and all Commons, EventStore, and Tenants submodule pointer changes remain uncommitted and unstaged because neither approved standalone spec owns them.
 
 ## Suggested Review Order
