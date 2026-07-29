@@ -194,6 +194,89 @@ class OwnershipResolutionTests(VerifierTestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("spec-readiness-fixture-extra.md", out)
 
+    def test_malformed_spec_key_fails_from_cli_trailer_and_branch(self):
+        message = self.write_message(
+            "test: reject malformed standalone spec key\n\n"
+            "Story-Key: spec-readiness-fixture.extra\n"
+        )
+        cases = (
+            ("cli", ("--story-key", "spec-readiness-fixture.extra")),
+            ("trailer", ("--commit-message-file", str(message))),
+            ("branch", ("--branch-name", "fix/spec-readiness-fixture.extra")),
+        )
+
+        for source, source_args in cases:
+            with self.subTest(source=source):
+                code, out = self.run_cli(*source_args)
+
+                self.assertEqual(code, 1, out)
+                self.assertIn("valid standalone spec key", out)
+
+    def test_incomplete_spec_key_fails_from_cli_trailer_and_branch(self):
+        for malformed in ("spec-", "spec-readiness-fixture-"):
+            message = self.write_message(
+                f"test: reject incomplete standalone spec key\n\nStory-Key: {malformed}\n"
+            )
+            cases = (
+                ("cli", ("--story-key", malformed)),
+                ("trailer", ("--commit-message-file", str(message))),
+                ("branch", ("--branch-name", f"fix/{malformed}")),
+            )
+
+            for source, source_args in cases:
+                with self.subTest(malformed=malformed, source=source):
+                    code, out = self.run_cli(*source_args)
+
+                    self.assertEqual(code, 1, out)
+                    self.assertIn("valid standalone spec key", out)
+
+    def test_duplicate_spec_key_fails_from_cli_trailer_and_branch(self):
+        duplicate = "spec-readiness-fixture/spec-readiness-fixture"
+        message = self.write_message(
+            "test: reject duplicate standalone spec key\n\n"
+            f"Story-Key: {duplicate}\n"
+        )
+        cases = (
+            ("cli", ("--story-key", duplicate)),
+            ("trailer", ("--commit-message-file", str(message))),
+            ("branch", ("--branch-name", f"fix/{duplicate}")),
+        )
+
+        for source, source_args in cases:
+            with self.subTest(source=source):
+                code, out = self.run_cli(*source_args)
+
+                self.assertEqual(code, 1, out)
+                self.assertIn("multiple story keys", out.lower())
+
+    def test_unicode_spec_key_does_not_alias_ascii_artifact(self):
+        code, out = self.run_cli(
+            "--story-key",
+            "spec-Key",
+            artifacts={"spec-key.md": story(status="done")},
+            sprint="development_status:\n",
+        )
+
+        self.assertEqual(code, 1, out)
+        self.assertIn("valid standalone spec key", out)
+
+    def test_bypass_does_not_hide_owner_conflict(self):
+        message = self.write_message(
+            "test: reject conflicting owner under bypass\n\n"
+            "Story-Key: 99-9-fixture\n"
+            "Story-Review-Readiness-Bypass: verifier-only change\n"
+        )
+
+        code, out = self.run_cli(
+            "--branch-name",
+            "fix/spec-readiness-fixture",
+            "--commit-message-file",
+            str(message),
+        )
+
+        self.assertEqual(code, 1, out)
+        self.assertIn("Conflicting story keys", out)
+
 
 class C6EvidenceRowTests(VerifierTestCase):
     # The real 26-5 shape: `| pending | - |` under a done story.

@@ -337,6 +337,108 @@ class TenantIsolationEvidenceTests(unittest.TestCase):
         self.assertIn("trailer=spec-tenant-evidence-fixture", result.stdout)
         self.assertIn("branch=9-9-evidence-fixture", result.stdout)
 
+    def test_malformed_spec_key_fails_from_cli_trailer_and_branch(self):
+        surfaces = self.write_surfaces(["src/**/*.cs"])
+        message = self.write_message(
+            """\
+            test: reject malformed standalone spec key
+
+            Story-Key: spec-tenant-evidence.extra
+            """
+        )
+        cases = (
+            ("cli", {"story_key": "spec-tenant-evidence.extra"}),
+            ("trailer", {"commit_message_file": str(message)}),
+            ("branch", {"branch_name": "fix/spec-tenant-evidence.extra"}),
+        )
+
+        for source, source_args in cases:
+            with self.subTest(source=source):
+                args = self.base_args(["src/Foo/Tenant.cs"], surfaces, **source_args)
+                result = self.run_tool(args)
+
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("valid standalone spec key", result.stdout)
+
+    def test_incomplete_spec_key_fails_from_cli_trailer_and_branch(self):
+        surfaces = self.write_surfaces(["src/**/*.cs"])
+        for malformed in ("spec-", "spec-tenant-evidence-"):
+            message = self.write_message(
+                f"test: reject incomplete standalone spec key\n\nStory-Key: {malformed}\n"
+            )
+            cases = (
+                ("cli", {"story_key": malformed}),
+                ("trailer", {"commit_message_file": str(message)}),
+                ("branch", {"branch_name": f"fix/{malformed}"}),
+            )
+
+            for source, source_args in cases:
+                with self.subTest(malformed=malformed, source=source):
+                    args = self.base_args(["src/Foo/Tenant.cs"], surfaces, **source_args)
+                    result = self.run_tool(args)
+
+                    self.assertEqual(result.returncode, 1, result.stdout)
+                    self.assertIn("valid standalone spec key", result.stdout)
+
+    def test_duplicate_spec_key_fails_from_cli_trailer_and_branch(self):
+        surfaces = self.write_surfaces(["src/**/*.cs"])
+        duplicate = "spec-tenant-evidence/spec-tenant-evidence"
+        message = self.write_message(
+            f"""\
+            test: reject duplicate standalone spec key
+
+            Story-Key: {duplicate}
+            """
+        )
+        cases = (
+            ("cli", {"story_key": duplicate}),
+            ("trailer", {"commit_message_file": str(message)}),
+            ("branch", {"branch_name": f"fix/{duplicate}"}),
+        )
+
+        for source, source_args in cases:
+            with self.subTest(source=source):
+                args = self.base_args(["src/Foo/Tenant.cs"], surfaces, **source_args)
+                result = self.run_tool(args)
+
+                self.assertEqual(result.returncode, 1, result.stdout)
+                self.assertIn("multiple story keys", result.stdout.lower())
+
+    def test_unicode_spec_key_does_not_alias_ascii_artifact(self):
+        surfaces = self.write_surfaces(["src/**/*.cs"])
+        args = self.base_args(
+            ["src/Foo/Tenant.cs"],
+            surfaces,
+            story_key="spec-Key",
+        )
+
+        result = self.run_tool(args)
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("valid standalone spec key", result.stdout)
+
+    def test_bypass_does_not_hide_owner_conflict(self):
+        surfaces = self.write_surfaces(["src/**/*.cs"])
+        message = self.write_message(
+            """\
+            test: reject conflicting owner under bypass
+
+            Story-Key: 9-9-evidence-fixture
+            Tenant-Isolation-Evidence: not-applicable - verifier-only change
+            """
+        )
+        args = self.base_args(
+            ["src/Foo/Tenant.cs"],
+            surfaces,
+            branch_name="fix/spec-tenant-evidence-fixture",
+            commit_message_file=str(message),
+        )
+
+        result = self.run_tool(args)
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("Conflicting story keys", result.stdout)
+
     def test_heading_inside_code_fence_is_not_a_section(self):
         section = textwrap.dedent(
             """\

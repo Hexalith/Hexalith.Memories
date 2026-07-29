@@ -2,7 +2,7 @@
 title: 'Resolve the standalone-spec commit gate path'
 type: 'bugfix'
 created: '2026-07-28'
-status: 'in-progress'
+status: 'done'
 baseline_commit: 'fc92c4d8ac63601cbc01741bd92b91ee7e6bcdfe'
 review_loop_iteration: 0
 context:
@@ -72,6 +72,7 @@ Allowed files for this story:
 - `CONTRIBUTING.md` -- standalone-spec ownership guidance only.
 - `_bmad-output/implementation-artifacts/spec-executable-pre-review-story-gate.md` -- add its explicit File Scope.
 - `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` -- this fix's scope and implementation record.
+- `_bmad-output/implementation-artifacts/deferred-work.md` -- append confirmed pre-existing review findings.
 
 Read/verify only:
 
@@ -96,6 +97,7 @@ Forbidden by default:
 - `CONTRIBUTING.md` -- contributor-facing spec ownership and commit examples.
 - `_bmad-output/implementation-artifacts/spec-executable-pre-review-story-gate.md` -- completed standalone work requiring an explicit File Scope.
 - `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` -- this fix's owner and File Scope.
+- `_bmad-output/implementation-artifacts/deferred-work.md` -- review ledger for findings outside this fix's ownership.
 
 ## Tasks & Acceptance
 
@@ -115,6 +117,8 @@ Forbidden by default:
 
 ## Spec Change Log
 
+- 2026-07-29 -- Human approved adding the deferred-work ledger to File Scope so the mandatory review could record verified pre-existing findings; the frozen intent is unchanged.
+
 ## Design Notes
 
 Use one shared extraction contract per validator: numeric story keys and exact
@@ -125,9 +129,9 @@ the required File Scope or evidence sections.
 ## Verification
 
 **Commands:**
-- `python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"` -- 47 tests pass.
-- `python3 -m unittest discover -s tests/tooling/tenant_isolation_evidence -p "*_test.py"` -- 36 tests pass.
-- `python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py"` -- 40 tests pass.
+- `python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"` -- 51 tests pass.
+- `python3 -m unittest discover -s tests/tooling/tenant_isolation_evidence -p "*_test.py"` -- 41 tests pass.
+- `python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py"` -- 45 tests pass.
 - `python3 -m unittest discover -s tests/tooling/bmad_customization -p "*_test.py"` -- 33 tests pass.
 - `.githooks/pre-commit` -- each staged owner group passes from its matching branch.
 - `npx commitlint --edit <message-file> --verbose` and `npx commitlint --last --verbose` -- messages pass before and after commit.
@@ -136,4 +140,56 @@ the required File Scope or evidence sections.
 
 - `5bf5870c` -- standalone-spec owner resolution, focused regressions, guidance, and this spec.
 - `5be50c24` -- executable story review-readiness gate, policy, fixtures, and explicit File Scope.
+- `5edfb8d5` -- scope-boundary regressions for standalone spec owners.
+- `731ec938` -- exact ASCII owner parsing, duplicate-key rejection, bypass conflict checks, and review regressions.
 - Commitlint-policy files and all Commons, EventStore, and Tenants submodule pointer changes remain uncommitted and unstaged because neither approved standalone spec owns them.
+
+## Suggested Review Order
+
+**Standalone owner resolution**
+
+- Start with exact ASCII spec-token validation at the canonical scope gate.
+  [`check-story-file-scope.py:122`](../../tools/check-story-file-scope.py#L122)
+
+- Follow CLI, trailer, and branch precedence through fail-closed conflict handling.
+  [`check-story-file-scope.py:246`](../../tools/check-story-file-scope.py#L246)
+
+- Confirm tenant-evidence ownership is resolved before bypass acceptance.
+  [`check-tenant-isolation-evidence.py:516`](../../tools/check-tenant-isolation-evidence.py#L516)
+
+- Confirm readiness ownership conflicts are likewise checked before bypass.
+  [`check-story-review-readiness.py:759`](../../tools/check-story-review-readiness.py#L759)
+
+**Executable readiness gate**
+
+- Review the central readiness orchestration and five mechanically checked conditions.
+  [`check-story-review-readiness.py:755`](../../tools/check-story-review-readiness.py#L755)
+
+- Trace local commit integration with cumulative branch-diff derivation.
+  [`commit-msg:43`](../../.githooks/commit-msg#L43)
+
+- Trace CI integration using its already prepared pull-request changed set.
+  [`ci.yml:165`](../../.github/workflows/ci.yml#L165)
+
+- Read the policy boundary that defines what a green gate proves.
+  [`story-phase-ledger.md:148`](../../_bmad/custom/story-phase-ledger.md#L148)
+
+**Verification and records**
+
+- Inspect scope-owner success, conflict, partial, duplicate, and Unicode regressions.
+  [`story_scope_validator_test.py:145`](../../tests/tooling/story_scope/story_scope_validator_test.py#L145)
+
+- Inspect sensitive-surface ownership and bypass-conflict regressions.
+  [`tenant_isolation_evidence_test.py:292`](../../tests/tooling/tenant_isolation_evidence/tenant_isolation_evidence_test.py#L292)
+
+- Inspect readiness source parity and malformed-owner regressions.
+  [`story_review_readiness_test.py:144`](../../tests/tooling/story_review_readiness/story_review_readiness_test.py#L144)
+
+- Review contributor guidance for standalone spec ownership and required File Scope.
+  [`CONTRIBUTING.md:63`](../../CONTRIBUTING.md#L63)
+
+- Verify the separately committed readiness spec's explicit ownership boundary.
+  [`spec-executable-pre-review-story-gate.md:85`](spec-executable-pre-review-story-gate.md#L85)
+
+- Finish with pre-existing findings intentionally routed outside this fix.
+  [`deferred-work.md:2590`](deferred-work.md#L2590)
