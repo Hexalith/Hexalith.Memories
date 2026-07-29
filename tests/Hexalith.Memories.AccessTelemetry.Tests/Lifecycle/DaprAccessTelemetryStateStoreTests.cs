@@ -11,6 +11,8 @@ using Dapr.Client;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Lifecycle;
 
+using Microsoft.Extensions.Time.Testing;
+
 using NSubstitute;
 
 using Shouldly;
@@ -28,7 +30,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task WriteRecordAndIndexAsync_CommitsRecordBucketAndCatalogInOneTransaction()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
 
@@ -49,6 +51,8 @@ public sealed class DaprAccessTelemetryStateStoreTests
         ]);
         transaction[0].Metadata!["ttlInSeconds"].ShouldBe("3600");
         transaction.ShouldAllBe(static operation => operation.Metadata!["partitionKey"] == "access-telemetry");
+        transaction.ShouldAllBe(static operation => operation.Options!.Concurrency == ConcurrencyMode.FirstWrite);
+        transaction.ShouldAllBe(static operation => operation.Options!.Consistency == ConsistencyMode.Strong);
         state.Get<AccessTelemetryExpiryBucket>(transaction[1].Key).Entries.ShouldHaveSingleItem().ShouldBe(entry);
         state.Get<AccessTelemetryExpiryCatalog>("expiry-catalog").ActiveMinutes.ShouldBe([entry.ExpiryMinute]);
     }
@@ -57,7 +61,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task GetDueEntriesAsync_TraversesExplicitBucketsWithoutQueryApi()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord later = CreateRecord("01K0A000000000000000000002", Expiry.AddSeconds(20));
         AccessTelemetryRecord earlier = CreateRecord("01K0A000000000000000000001", Expiry.AddSeconds(5));
         await store.WriteRecordAndIndexAsync(later, CreateEntry(later), 3600, CancellationToken.None);
@@ -76,7 +80,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task DeleteAndVerifyAsync_RemovesRecordAndBucketEntryAndPrunesEmptyMinute()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
@@ -98,7 +102,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task WriteRecordAndIndexAsync_RetryIsIdempotentWithoutDuplicatingBucketEntry()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
 
@@ -113,10 +117,37 @@ public sealed class DaprAccessTelemetryStateStoreTests
     }
 
     [Fact]
+    public async Task WriteRecordAndIndexAsync_IdempotentRecordWithMissingIndex_RepairsBucketAndCatalog()
+    {
+        var state = new TransactionalDaprState();
+        DaprAccessTelemetryStateStore store = CreateStore(state);
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+        state.Seed(AccessTelemetryStateStoreTestRecords.RecordKey(record.RecordId), record);
+
+        AccessTelemetryStoreWriteStatus result = await store.WriteRecordAndIndexAsync(
+            record,
+            entry,
+            3600,
+            CancellationToken.None);
+
+        result.ShouldBe(AccessTelemetryStoreWriteStatus.Idempotent);
+        IReadOnlyList<StateTransactionRequest> repair = state.Transactions.ShouldHaveSingleItem();
+        repair.Select(static operation => operation.Key).ShouldBe(
+        [
+            AccessTelemetryStateStoreTestRecords.BucketKey(entry),
+            "expiry-catalog",
+        ]);
+        state.Get<AccessTelemetryExpiryBucket>(AccessTelemetryStateStoreTestRecords.BucketKey(entry))
+            .Entries.ShouldHaveSingleItem().ShouldBe(entry);
+        state.Get<AccessTelemetryExpiryCatalog>("expiry-catalog").ActiveMinutes.ShouldBe([entry.ExpiryMinute]);
+    }
+
+    [Fact]
     public async Task WriteRecordAndIndexAsync_SameRecordIdWithDifferentEnvelope_ReturnsConflictAndCommitsNothing()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord original = CreateRecord("01K0A000000000000000000001");
         await store.WriteRecordAndIndexAsync(original, CreateEntry(original), 3600, CancellationToken.None);
 
@@ -140,7 +171,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task WriteRecordAndIndexAsync_TtlReapedRecordWithLingeringBucketEntry_ReturnsConflictWithoutResurrection()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
@@ -165,7 +196,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task WriteRecordAndIndexAsync_ConcurrentCatalogWriteBetweenReadAndCommit_ThrowsAndCommitsNoPartialState()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord first = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry firstEntry = CreateEntry(first);
         await store.WriteRecordAndIndexAsync(first, firstEntry, 3600, CancellationToken.None);
@@ -190,10 +221,41 @@ public sealed class DaprAccessTelemetryStateStoreTests
     }
 
     [Fact]
+    public async Task GetDueEntriesAsync_ConcurrentDueMinuteWrite_InvalidatesEmptyMinutePruneAndKeepsEntryDiscoverable()
+    {
+        var state = new TransactionalDaprState();
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+        state.Seed("expiry-catalog", new AccessTelemetryExpiryCatalog([entry.ExpiryMinute]));
+        DaprAccessTelemetryStateStore store = CreateStore(state, Expiry.AddMinutes(2));
+        AccessTelemetryStoreWriteStatus? writeStatus = null;
+        state.BeforeTransaction = () =>
+        {
+            state.BeforeTransaction = null;
+            writeStatus = store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+        };
+
+        _ = await Should.ThrowAsync<DaprException>(() => store.GetDueEntriesAsync(
+            entry.ExpiryMinute,
+            10,
+            CancellationToken.None));
+
+        writeStatus.ShouldBe(AccessTelemetryStoreWriteStatus.Inserted);
+        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+            entry.ExpiryMinute,
+            10,
+            CancellationToken.None);
+        due.ShouldHaveSingleItem().ShouldBe(entry);
+        state.Get<AccessTelemetryExpiryCatalog>("expiry-catalog").ActiveMinutes.ShouldContain(entry.ExpiryMinute);
+    }
+
+    [Fact]
     public async Task DeleteAndVerifyAsync_IndexEntryRefersToSupersededEnvelope_ReturnsStaleIndexAndProtectsLiveRecord()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
@@ -203,6 +265,9 @@ public sealed class DaprAccessTelemetryStateStoreTests
         AccessTelemetryExpiryEntry staleEntry = entry with { EnvelopeHash = new string('b', 64) };
         AccessTelemetryStateStoreTestRecords.BucketKey(staleEntry)
             .ShouldBe(AccessTelemetryStateStoreTestRecords.BucketKey(entry));
+        state.Seed(
+            AccessTelemetryStateStoreTestRecords.BucketKey(entry),
+            new AccessTelemetryExpiryBucket(entry.ExpiryMinute, entry.Shard, [entry, staleEntry]));
 
         AccessTelemetryDeleteStatus result = await store.DeleteAndVerifyAsync(staleEntry, CancellationToken.None);
 
@@ -222,11 +287,42 @@ public sealed class DaprAccessTelemetryStateStoreTests
         due.ShouldHaveSingleItem().ShouldBe(entry);
     }
 
+    [Theory]
+    [InlineData("record-id")]
+    [InlineData("expiry-minute")]
+    [InlineData("shard")]
+    [InlineData("envelope-hash")]
+    [InlineData("expires-at")]
+    public async Task WriteRecordAndIndexAsync_ExpiryEntryIdentityDoesNotMatchRecord_Throws(string mismatch)
+    {
+        var state = new TransactionalDaprState();
+        DaprAccessTelemetryStateStore store = CreateStore(state);
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+        AccessTelemetryExpiryEntry mismatched = mismatch switch
+        {
+            "record-id" => entry with { RecordId = "01K0A000000000000000000002" },
+            "expiry-minute" => entry with { ExpiryMinute = entry.ExpiryMinute + 1 },
+            "shard" => entry with { Shard = (entry.Shard + 1) % 64 },
+            "envelope-hash" => entry with { EnvelopeHash = new string('b', 64) },
+            "expires-at" => entry with { ExpiresAtUtc = AccessTelemetryStateStoreTestRecords.Format(Expiry.AddMinutes(1)) },
+            _ => throw new InvalidOperationException($"Unknown mismatch '{mismatch}'."),
+        };
+
+        _ = await Should.ThrowAsync<ArgumentException>(() => store.WriteRecordAndIndexAsync(
+            record,
+            mismatched,
+            3600,
+            CancellationToken.None));
+
+        state.Transactions.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task DeleteAndVerifyAsync_TtlReapedRecordWithLingeringBucketEntry_ReturnsAlreadyAbsentAndPrunesEntry()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
@@ -242,7 +338,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task DeleteAndVerifyAsync_BackendKeepsRecordAfterAcknowledgedDelete_ReturnsVerificationFailed()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
@@ -270,7 +366,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
         // envelope and therefore participates in the authorisation decision. Gate C1.11 (physical
         // cross-tenant denial against the running profile) is not discharged by this test and says so.
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord tenantA = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entryA = CreateEntry(tenantA);
         await store.WriteRecordAndIndexAsync(tenantA, entryA, 3600, CancellationToken.None);
@@ -305,7 +401,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task GetDueEntriesAsync_EntriesNotYetDue_AreExcluded()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
@@ -325,7 +421,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
     public async Task GetDueEntriesAsync_LimitReachedInAnEarlierMinute_TruncatesAndStopsTraversal()
     {
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord firstMinute = CreateRecord("01K0A000000000000000000001", Expiry);
         AccessTelemetryRecord secondMinute = CreateRecord("01K0A000000000000000000002", Expiry.AddMinutes(1));
         await store.WriteRecordAndIndexAsync(firstMinute, CreateEntry(firstMinute), 3600, CancellationToken.None);
@@ -343,12 +439,48 @@ public sealed class DaprAccessTelemetryStateStoreTests
     }
 
     [Fact]
+    public async Task GetDueEntriesAsync_EmptyMinutePrefix_ScansAndPrunesAtMostFourMinutesPerTurn()
+    {
+        var state = new TransactionalDaprState();
+        DaprAccessTelemetryStateStore store = CreateStore(state);
+        long[] minutes = Enumerable.Range(0, 5).Select(offset => 1000L + offset).ToArray();
+        state.Seed("expiry-catalog", new AccessTelemetryExpiryCatalog(minutes));
+
+        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+            minutes[^1],
+            1,
+            CancellationToken.None);
+
+        due.ShouldBeEmpty();
+        state.ReadKeys.Count(static key => key.StartsWith("expiry-bucket/", StringComparison.Ordinal)).ShouldBe(4 * 64);
+        state.Get<AccessTelemetryExpiryCatalog>("expiry-catalog").ActiveMinutes.ShouldBe([minutes[^1]]);
+    }
+
+    [Fact]
+    public async Task GetDueEntriesAsync_BucketIdentityDoesNotMatchStateKey_Throws()
+    {
+        var state = new TransactionalDaprState();
+        DaprAccessTelemetryStateStore store = CreateStore(state);
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+        state.Seed("expiry-catalog", new AccessTelemetryExpiryCatalog([entry.ExpiryMinute]));
+        state.Seed(
+            AccessTelemetryStateStoreTestRecords.BucketKey(entry),
+            new AccessTelemetryExpiryBucket(entry.ExpiryMinute + 1, entry.Shard, [entry]));
+
+        _ = await Should.ThrowAsync<InvalidOperationException>(() => store.GetDueEntriesAsync(
+            entry.ExpiryMinute,
+            10,
+            CancellationToken.None));
+    }
+
+    [Fact]
     public async Task DeleteAndVerifyAsync_BackendKeepsTheBucketEntryAfterAcknowledgedRewrite_ReturnsVerificationFailed()
     {
         // The index side of the durability contract: the backend acknowledges the bucket rewrite
         // that drops this entry, but the strong re-read still observes it.
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         // Both identifiers hash to shard 1 and share the expiry minute, so both entries live in one
         // bucket and removing either is an Upsert of the surviving bucket, not a Delete of the key.
         AccessTelemetryRecord kept = CreateRecord("01K0A000000000000000000033");
@@ -376,7 +508,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
         // The stale-index prune runs outside the main transaction, so it verifies its own removal
         // and must refuse to report StaleIndex when the backend did not actually apply it.
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
@@ -406,7 +538,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
         // upsert drops `ttlInSeconds`, so this asserts the metadata contract rather than restating
         // the captured request.
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
 
@@ -436,7 +568,7 @@ public sealed class DaprAccessTelemetryStateStoreTests
         // for the delete transaction had no assertion to point at. Records expire natively, so a
         // delete must never carry ttlInSeconds while still carrying the co-location partition key.
         var state = new TransactionalDaprState();
-        var store = new DaprAccessTelemetryStateStore(state.Client);
+        var store = CreateStore(state);
         AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
         AccessTelemetryExpiryEntry entry = CreateEntry(record);
         _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
@@ -444,14 +576,28 @@ public sealed class DaprAccessTelemetryStateStoreTests
         AccessTelemetryDeleteStatus result = await store.DeleteAndVerifyAsync(entry, CancellationToken.None);
 
         result.ShouldBe(AccessTelemetryDeleteStatus.Deleted);
-        IReadOnlyList<StateTransactionRequest> deleteTransaction = state.Transactions
-            .Skip(1)
-            .SelectMany(static transaction => transaction)
-            .ToArray();
-        deleteTransaction.ShouldNotBeEmpty();
+        IReadOnlyList<StateTransactionRequest> deleteTransaction = state.Transactions.Skip(1).ShouldHaveSingleItem();
+        deleteTransaction.Count.ShouldBe(2);
         deleteTransaction.ShouldAllBe(static operation => operation.Metadata!["partitionKey"] == "access-telemetry");
         deleteTransaction.ShouldAllBe(static operation => !operation.Metadata!.ContainsKey("ttlInSeconds"));
-        deleteTransaction.ShouldContain(static operation => operation.OperationType == StateOperationType.Delete);
+        deleteTransaction.ShouldAllBe(static operation => operation.OperationType == StateOperationType.Delete);
+    }
+
+    [Fact]
+    public async Task DeleteAndVerifyAsync_SecondOperationFails_CommitsNoPartialDelete()
+    {
+        var state = new TransactionalDaprState();
+        DaprAccessTelemetryStateStore store = CreateStore(state);
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+        _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
+        state.FailAtOperationIndex = 1;
+
+        _ = await Should.ThrowAsync<DaprException>(() => store.DeleteAndVerifyAsync(entry, CancellationToken.None));
+
+        state.Contains(AccessTelemetryStateStoreTestRecords.RecordKey(record.RecordId)).ShouldBeTrue();
+        state.Get<AccessTelemetryExpiryBucket>(AccessTelemetryStateStoreTestRecords.BucketKey(entry))
+            .Entries.ShouldHaveSingleItem().ShouldBe(entry);
     }
 
     private static AccessTelemetryExpiryEntry CreateEntry(AccessTelemetryRecord record)
@@ -462,4 +608,9 @@ public sealed class DaprAccessTelemetryStateStoreTests
         DateTimeOffset? expiry = null,
         int durationMs = 42)
         => AccessTelemetryStateStoreTestRecords.CreateRecord(recordId, expiry, durationMs);
+
+    private static DaprAccessTelemetryStateStore CreateStore(
+        TransactionalDaprState state,
+        DateTimeOffset? now = null)
+        => new(state.Client, new FakeTimeProvider(now ?? Expiry.AddHours(-1)));
 }

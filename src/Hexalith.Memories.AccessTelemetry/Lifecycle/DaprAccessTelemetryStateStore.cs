@@ -13,9 +13,11 @@ using Dapr.Client;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 
 /// <summary>Dapr state adapter with strong reads and explicit transactional expiry buckets.</summary>
-internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAccessTelemetryStateStore
+internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeProvider timeProvider) : IAccessTelemetryStateStore
 {
+    private const int CatalogWriteGuardMinutes = 1;
     private const string ExpiryCatalogKey = "expiry-catalog";
+    private const int MaxMinutesPerDueScan = 4;
     private const string StoreName = AccessTelemetryOptions.RequiredStateStoreName;
     private static readonly IReadOnlyDictionary<string, string> PartitionMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -34,6 +36,9 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
         int ttlInSeconds,
         CancellationToken cancellationToken)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(ttlInSeconds, 0);
+        byte[] canonicalRecord = AccessTelemetryCanonicalizer.CanonicalizeRecord(record);
+        ValidateEntryMatchesRecord(record, expiryEntry);
         string recordKey = GetRecordKey(record.RecordId);
         (AccessTelemetryRecord? existing, string recordEtag) = await daprClient.GetStateAndETagAsync<AccessTelemetryRecord>(
             StoreName,
@@ -44,10 +49,14 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
         if (existing is not null)
         {
             _ = AccessTelemetryCanonicalizer.CanonicalizeRecord(NormalizeStoredRecord(existing));
-            return string.Equals(existing.EnvelopeHash, record.EnvelopeHash, StringComparison.Ordinal) &&
-                string.Equals(existing.ExpiresAtUtc, record.ExpiresAtUtc, StringComparison.Ordinal)
-                    ? AccessTelemetryStoreWriteStatus.Idempotent
-                    : AccessTelemetryStoreWriteStatus.Conflict;
+            if (!string.Equals(existing.EnvelopeHash, record.EnvelopeHash, StringComparison.Ordinal) ||
+                !string.Equals(existing.ExpiresAtUtc, record.ExpiresAtUtc, StringComparison.Ordinal))
+            {
+                return AccessTelemetryStoreWriteStatus.Conflict;
+            }
+
+            await EnsureIndexPresentAsync(expiryEntry, cancellationToken).ConfigureAwait(false);
+            return AccessTelemetryStoreWriteStatus.Idempotent;
         }
 
         string bucketKey = GetBucketKey(expiryEntry.ExpiryMinute, expiryEntry.Shard);
@@ -57,6 +66,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
             ConsistencyMode.Strong,
             PartitionMetadata,
             cancellationToken).ConfigureAwait(false);
+        ValidateBucket(bucket, expiryEntry.ExpiryMinute, expiryEntry.Shard);
         if (bucket?.Entries.Any(entry => string.Equals(entry.RecordId, expiryEntry.RecordId, StringComparison.Ordinal)) == true)
         {
             return AccessTelemetryStoreWriteStatus.Conflict;
@@ -86,6 +96,8 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
                     .Order()
                     .ToArray())
             : catalog!;
+        bool guardAgainstDueMinutePruning = expiryEntry.ExpiryMinute <= AccessTelemetryExpiryIndex.GetExpiryMinute(
+            timeProvider.GetUtcNow().AddMinutes(CatalogWriteGuardMinutes));
 
         IReadOnlyDictionary<string, string> ttlMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -96,7 +108,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
         {
             new(
                 recordKey,
-                AccessTelemetryCanonicalizer.CanonicalizeRecord(record),
+                canonicalRecord,
                 StateOperationType.Upsert,
                 string.IsNullOrEmpty(recordEtag) ? null : recordEtag,
                 metadata: ttlMetadata,
@@ -109,7 +121,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
                 metadata: PartitionMetadata,
                 options: StrongFirstWrite),
         };
-        if (addCatalogMinute)
+        if (addCatalogMinute || guardAgainstDueMinutePruning)
         {
             operations.Add(new StateTransactionRequest(
                 ExpiryCatalogKey,
@@ -152,7 +164,10 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
 
         var due = new List<AccessTelemetryExpiryEntry>(limit);
         var emptyMinutes = new List<long>();
-        foreach (long minute in catalog.ActiveMinutes.Where(minute => minute <= dueMinute).Order())
+        foreach (long minute in catalog.ActiveMinutes
+            .Where(minute => minute <= dueMinute)
+            .Order()
+            .Take(MaxMinutesPerDueScan))
         {
             var minuteEntries = new List<AccessTelemetryExpiryEntry>();
             for (int shard = 0; shard < 64; shard++)
@@ -165,6 +180,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
                     cancellationToken).ConfigureAwait(false);
                 if (bucket is not null)
                 {
+                    ValidateBucket(bucket, minute, shard);
                     minuteEntries.AddRange(bucket.Entries);
                 }
             }
@@ -213,6 +229,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
             ConsistencyMode.Strong,
             PartitionMetadata,
             cancellationToken).ConfigureAwait(false);
+        ValidateBucket(bucket, entry.ExpiryMinute, entry.Shard);
         // Match the complete entry identity, never the record identifier alone. A superseded or
         // foreign entry can share (ExpiryMinute, Shard) with the live record's own entry, and
         // pruning by RecordId would delete the live entry too. GetDueEntriesAsync reads purge
@@ -269,6 +286,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
             ConsistencyMode.Strong,
             PartitionMetadata,
             cancellationToken).ConfigureAwait(false);
+        ValidateBucket(remainingBucket, entry.ExpiryMinute, entry.Shard);
         if (remaining is not null || remainingBucket?.Entries.Any(candidate => candidate == entry) == true)
         {
             return AccessTelemetryDeleteStatus.VerificationFailed;
@@ -296,6 +314,79 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
             string.IsNullOrEmpty(bucketEtag) ? null : bucketEtag,
             PartitionMetadata,
             StrongFirstWrite);
+    }
+
+    private async Task EnsureIndexPresentAsync(
+        AccessTelemetryExpiryEntry entry,
+        CancellationToken cancellationToken)
+    {
+        string bucketKey = GetBucketKey(entry.ExpiryMinute, entry.Shard);
+        (AccessTelemetryExpiryBucket? bucket, string bucketEtag) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryBucket>(
+            StoreName,
+            bucketKey,
+            ConsistencyMode.Strong,
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+        ValidateBucket(bucket, entry.ExpiryMinute, entry.Shard);
+        (AccessTelemetryExpiryCatalog? catalog, string catalogEtag) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryCatalog>(
+            StoreName,
+            ExpiryCatalogKey,
+            ConsistencyMode.Strong,
+            PartitionMetadata,
+            cancellationToken).ConfigureAwait(false);
+
+        bool bucketContainsEntry = bucket?.Entries.Any(candidate => candidate == entry) == true;
+        bool catalogContainsMinute = catalog?.ActiveMinutes.Contains(entry.ExpiryMinute) == true;
+        if (bucketContainsEntry && catalogContainsMinute)
+        {
+            return;
+        }
+
+        var operations = new List<StateTransactionRequest>();
+        if (!bucketContainsEntry)
+        {
+            AccessTelemetryExpiryBucket repairedBucket = new(
+                entry.ExpiryMinute,
+                entry.Shard,
+                (bucket?.Entries ?? [])
+                    .Append(entry)
+                    .Distinct()
+                    .OrderBy(static candidate => candidate.ExpiresAtUtc, StringComparer.Ordinal)
+                    .ThenBy(static candidate => candidate.RecordId, StringComparer.Ordinal)
+                    .ToArray());
+            operations.Add(new StateTransactionRequest(
+                bucketKey,
+                JsonSerializer.SerializeToUtf8Bytes(repairedBucket),
+                StateOperationType.Upsert,
+                string.IsNullOrEmpty(bucketEtag) ? null : bucketEtag,
+                PartitionMetadata,
+                StrongFirstWrite));
+        }
+
+        // A missing bucket is repaired only while ETag-touching the catalog. This couples the
+        // repair to any empty-minute prune that may have observed the bucket before it appeared.
+        if (!catalogContainsMinute || !bucketContainsEntry)
+        {
+            AccessTelemetryExpiryCatalog repairedCatalog = new(
+                (catalog?.ActiveMinutes ?? [])
+                    .Append(entry.ExpiryMinute)
+                    .Distinct()
+                    .Order()
+                    .ToArray());
+            operations.Add(new StateTransactionRequest(
+                ExpiryCatalogKey,
+                JsonSerializer.SerializeToUtf8Bytes(repairedCatalog),
+                StateOperationType.Upsert,
+                string.IsNullOrEmpty(catalogEtag) ? null : catalogEtag,
+                PartitionMetadata,
+                StrongFirstWrite));
+        }
+
+        await daprClient.ExecuteStateTransactionAsync(
+            StoreName,
+            operations,
+            PartitionMetadata,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     private async Task RemoveBucketEntryAsync(
@@ -349,6 +440,47 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient) : IAc
 
     private static string GetRecordKey(string recordId)
         => $"records/{AccessTelemetryExpiryIndex.GetShard(recordId):D2}/{recordId}";
+
+    private static void ValidateBucket(AccessTelemetryExpiryBucket? bucket, long expectedMinute, int expectedShard)
+    {
+        if (bucket is null)
+        {
+            return;
+        }
+
+        if (bucket.ExpiryMinute != expectedMinute || bucket.Shard != expectedShard || bucket.Entries.Any(entry =>
+            entry.ExpiryMinute != expectedMinute ||
+            entry.Shard != expectedShard ||
+            AccessTelemetryExpiryIndex.GetShard(entry.RecordId) != expectedShard ||
+            !DateTimeOffset.TryParseExact(
+                entry.ExpiresAtUtc,
+                "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out DateTimeOffset expiresAt) ||
+            AccessTelemetryExpiryIndex.GetExpiryMinute(expiresAt) != expectedMinute))
+        {
+            throw new InvalidOperationException(
+                $"Expiry bucket '{GetBucketKey(expectedMinute, expectedShard)}' contains mismatched identity data.");
+        }
+    }
+
+    private static void ValidateEntryMatchesRecord(AccessTelemetryRecord record, AccessTelemetryExpiryEntry entry)
+    {
+        DateTimeOffset expiresAt = DateTimeOffset.ParseExact(
+            record.ExpiresAtUtc,
+            "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+        if (!string.Equals(entry.RecordId, record.RecordId, StringComparison.Ordinal) ||
+            !string.Equals(entry.EnvelopeHash, record.EnvelopeHash, StringComparison.Ordinal) ||
+            !string.Equals(entry.ExpiresAtUtc, record.ExpiresAtUtc, StringComparison.Ordinal) ||
+            entry.Shard != AccessTelemetryExpiryIndex.GetShard(record.RecordId) ||
+            entry.ExpiryMinute != AccessTelemetryExpiryIndex.GetExpiryMinute(expiresAt))
+        {
+            throw new ArgumentException("The expiry entry does not match the canonical record identity.", nameof(entry));
+        }
+    }
 
     private static AccessTelemetryRecord NormalizeStoredRecord(AccessTelemetryRecord record)
         => record with

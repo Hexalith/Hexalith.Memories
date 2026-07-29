@@ -2694,3 +2694,12 @@ below as structured entries. Two are discharged by that same review pass.
 - source_spec: `_bmad-output/implementation-artifacts/spec-gh-30423676094-access-telemetry-coverage-collector.md`
   summary: Contributor coverage guidance still describes six projects although the authoritative Docker-free inventory contains seven.
   evidence: The mismatch predates this fix; `tests/README.md` and `CONTRIBUTING.md` omit AccessTelemetry while `tools/test-projects.unit-contract.txt` and `requiredReportProjects` include it.
+
+## Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-29), chunk 1 of 3
+
+- `tools/check-story-review-readiness.py` exits `1` on committed `main` with `C1: the changed set is empty for a governed story`; the concurrent `spec-resolve-story-gate-commit-path` work owns this gate defect, and it remains a fail-closed blocker for Story 27.3 `done` until a passing invocation or accepted blocker is recorded.
+- Story 27.2's `FiveHundredComponentOperationsWhilePurgeRuns...` checkpoint runs purge to completion before starting writes because the in-memory store never yields; return genuine overlap evidence to the Story 27.2 owner.
+- Story 27.2's `AdmissionAt250EventsPerSecond...` checkpoint measures queue capacity/drop behavior, not elapsed rate or concurrent producer throughput.
+- Story 27.2's `TwoServerWriters...` checkpoint uses two sequential sanitizer instances in one process, not independent server processes/clocks or simultaneous state writes.
+- Story 27.2's `TemporarySixtySecondOutage...` checkpoint scripts one failure followed by success independently of clock time, so it does not prove a 60-second outage or retry scheduling.
+- Story 27.2's Kubernetes least-privilege checkpoint uses formatting-sensitive substring checks, including a short `appId` match satisfied by the longer inspector ID; replace it with structure-aware YAML verification under the predecessor owner.

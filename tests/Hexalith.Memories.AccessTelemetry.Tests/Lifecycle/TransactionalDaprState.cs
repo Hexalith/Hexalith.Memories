@@ -50,6 +50,9 @@ internal sealed class TransactionalDaprState
             .Returns(call =>
             {
                 IReadOnlyList<StateTransactionRequest> operations = call.ArgAt<IReadOnlyList<StateTransactionRequest>>(1);
+                RequirePartitionMetadata(
+                    call.ArgAt<IReadOnlyDictionary<string, string>?>(2),
+                    "transaction");
                 BeforeTransaction?.Invoke();
                 Apply(operations);
                 Transactions.Add(operations.ToArray());
@@ -59,6 +62,12 @@ internal sealed class TransactionalDaprState
 
     /// <summary>Gets the substituted Dapr client bound to this state.</summary>
     public DaprClient Client { get; }
+
+    /// <summary>Gets or sets the zero-based operation at which a transaction fails before applying any mutation.</summary>
+    public int? FailAtOperationIndex { get; set; }
+
+    /// <summary>Gets every state key read through the substituted client, in call order.</summary>
+    public List<string> ReadKeys { get; } = [];
 
     /// <summary>Gets every transaction the adapter committed, in order.</summary>
     public List<IReadOnlyList<StateTransactionRequest>> Transactions { get; } = [];
@@ -138,12 +147,19 @@ internal sealed class TransactionalDaprState
     private void Apply(IReadOnlyList<StateTransactionRequest> operations)
     {
         // Validate every operation before mutating anything: the transaction is all-or-nothing.
-        foreach (StateTransactionRequest operation in operations)
+        for (int index = 0; index < operations.Count; index++)
         {
+            StateTransactionRequest operation = operations[index];
             RequireMetadata(operation);
+            RequireStateOptions(operation);
+            if (FailAtOperationIndex == index)
+            {
+                throw new DaprException($"Injected transaction failure at operation {index}.");
+            }
+
             bool exists = _entries.TryGetValue(operation.Key, out (byte[] Value, string ETag) current);
             string currentEtag = exists ? current.ETag : string.Empty;
-            if (!string.IsNullOrEmpty(operation.ETag))
+            if (operation.Options!.Concurrency == ConcurrencyMode.FirstWrite && !string.IsNullOrEmpty(operation.ETag))
             {
                 if (!string.Equals(operation.ETag, currentEtag, StringComparison.Ordinal))
                 {
@@ -205,6 +221,29 @@ internal sealed class TransactionalDaprState
         }
     }
 
+    private static void RequirePartitionMetadata(
+        IReadOnlyDictionary<string, string>? metadata,
+        string operation)
+    {
+        if (metadata is null ||
+            !metadata.TryGetValue(PartitionKeyName, out string? partition) ||
+            !string.Equals(partition, PartitionKeyValue, StringComparison.Ordinal))
+        {
+            throw new DaprException(
+                $"The {operation} call is missing the required '{PartitionKeyName}: {PartitionKeyValue}' metadata.");
+        }
+    }
+
+    private static void RequireStateOptions(StateTransactionRequest operation)
+    {
+        if (operation.Options?.Concurrency != ConcurrencyMode.FirstWrite ||
+            operation.Options.Consistency != ConsistencyMode.Strong)
+        {
+            throw new DaprException(
+                $"Operation on '{operation.Key}' must use strong first-write state options.");
+        }
+    }
+
     private void SetupType<T>()
         where T : class
     {
@@ -217,6 +256,10 @@ internal sealed class TransactionalDaprState
             .Returns(call =>
             {
                 string key = call.ArgAt<string>(1);
+                RequirePartitionMetadata(
+                    call.ArgAt<IReadOnlyDictionary<string, string>?>(3),
+                    $"read of '{key}'");
+                ReadKeys.Add(key);
 
                 // Every read on this store is a strong read. Serving an eventual or unspecified
                 // read identically would make the post-delete verification meaningless, because a
