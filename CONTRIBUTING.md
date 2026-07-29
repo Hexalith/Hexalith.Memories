@@ -53,11 +53,25 @@ Changed-file inputs are normalized to repository-relative POSIX-style paths. Add
 renamed, and deleted paths are validated; for renames, Git's `--name-only` output supplies the
 destination path.
 
-The story scope check discovers the story key in the same order locally and in CI:
+The story scope check discovers the artifact owner key in the same order locally and in CI:
 
 1. explicit CLI argument, such as `--story-key 12-3-story-file-scope-enforcement`
 2. a commit trailer named `Story:` or `Story-Key:`
 3. a branch name containing a full story key, such as `feature/12-3-story-file-scope-enforcement`
+
+An owner key can be a numeric sprint story key or the exact filename stem of a standalone
+`spec-*` artifact. A standalone spec is eligible only when its artifact exists under
+`_bmad-output/implementation-artifacts/` and carries the same parseable `## File Scope` contract as
+a story. Keep the full spec key aligned across sources, for example:
+
+```text
+branch: fix/spec-resolve-story-gate-commit-path
+Story-Key: spec-resolve-story-gate-commit-path
+```
+
+An extended key does not fall back to a shorter artifact: `spec-example-extra` selects only
+`spec-example-extra.md`, never `spec-example.md`. A changed set on `main` with no numeric story or
+standalone-spec owner still fails closed.
 
 If two non-empty sources disagree, the check fails closed and reports each `source=key` pair so you
 know which input to fix. Keep the branch name and commit trailer aligned when both are present.

@@ -130,6 +130,71 @@ class NoOpTests(VerifierTestCase):
         self.assertIn("Story artifact not found", out)
 
 
+class OwnershipResolutionTests(VerifierTestCase):
+    def write_message(self, body: str) -> Path:
+        handle = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8")
+        try:
+            handle.write(body)
+        finally:
+            handle.close()
+        path = Path(handle.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+        return path
+
+    def test_spec_key_resolves_from_cli_trailer_and_branch(self):
+        spec_key = "spec-readiness-fixture"
+        artifact = story(status="done")
+        message = self.write_message(
+            f"test: verify standalone spec readiness\n\nStory-Key: {spec_key}\n"
+        )
+        cases = (
+            ("cli", ("--story-key", spec_key)),
+            ("trailer", ("--commit-message-file", str(message))),
+            ("branch", ("--branch-name", f"fix/{spec_key}")),
+        )
+
+        for expected_source, source_args in cases:
+            with self.subTest(source=expected_source):
+                code, out = self.run_cli(
+                    *source_args,
+                    artifacts={f"{spec_key}.md": artifact},
+                    sprint="development_status:\n",
+                )
+
+                self.assertEqual(code, 0, out)
+                self.assertIn(f"Selected story key: {spec_key}", out)
+                self.assertIn(f"Story source: {expected_source}", out)
+
+    def test_spec_trailer_conflicting_with_numeric_story_branch_fails(self):
+        message = self.write_message(
+            "test: verify standalone spec readiness\n\n"
+            "Story-Key: spec-readiness-fixture\n"
+        )
+
+        code, out = self.run_cli(
+            "--branch-name",
+            "feature/99-9-fixture",
+            "--commit-message-file",
+            str(message),
+        )
+
+        self.assertEqual(code, 1, out)
+        self.assertIn("Conflicting story keys", out)
+        self.assertIn("trailer=spec-readiness-fixture", out)
+        self.assertIn("branch=99-9-fixture", out)
+
+    def test_extended_spec_key_does_not_fall_back_to_shorter_artifact(self):
+        code, out = self.run_cli(
+            "--branch-name",
+            "fix/spec-readiness-fixture-extra",
+            artifacts={"spec-readiness-fixture.md": story(status="done")},
+            sprint="development_status:\n",
+        )
+
+        self.assertEqual(code, 1, out)
+        self.assertIn("spec-readiness-fixture-extra.md", out)
+
+
 class C6EvidenceRowTests(VerifierTestCase):
     # The real 26-5 shape: `| pending | - |` under a done story.
     REAL_26_5 = (
