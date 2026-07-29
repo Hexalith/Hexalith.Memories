@@ -18,7 +18,7 @@ STORY_KEY_PATTERN = re.compile(
 )
 SPEC_KEY_PATTERN = re.compile(
     r"(?<![\w-])(spec-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
-    re.IGNORECASE,
+    re.IGNORECASE | re.ASCII,
 )
 AND_JOINED_STORY_KEYS_PATTERN = re.compile(
     r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*?[a-z0-9])?)-and-(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
@@ -119,6 +119,24 @@ def extract_story_keys(value: str) -> list[str]:
     return keys
 
 
+def validate_exact_spec_value(value: str, source: str) -> None:
+    """Reject partial standalone-spec matches from CLI and trailer sources."""
+    if re.search(r"spec-", value, re.IGNORECASE | re.ASCII) and not SPEC_KEY_PATTERN.fullmatch(value.strip()):
+        raise ValidationError(
+            f"{source} must be exactly one valid standalone spec key: {value}",
+        )
+
+
+def validate_branch_spec_segments(branch_name: str) -> None:
+    """Require each branch segment that names a spec to be an exact spec key."""
+    for segment in re.split(r"[/\\]", branch_name):
+        if re.search(r"spec-", segment, re.IGNORECASE | re.ASCII) and not SPEC_KEY_PATTERN.fullmatch(segment):
+            raise ValidationError(
+                "Branch name segment must be exactly one valid standalone spec key: "
+                + segment,
+            )
+
+
 def extract_story_key(value: str) -> str | None:
     keys = extract_story_keys(value)
     return keys[0] if keys else None
@@ -211,6 +229,7 @@ def parse_trailers(message: str) -> tuple[list[str], list[str]]:
             keys_in_value = extract_story_keys(normalized_value)
             if len(keys_in_value) > 1:
                 raise ValidationError(f"Multiple story keys in single trailer: {line}")
+            validate_exact_spec_value(normalized_value, "Story trailer value")
             if not keys_in_value:
                 raise ValidationError(f"Malformed Story trailer: {line}")
             story_keys.append(keys_in_value[0])
@@ -230,35 +249,35 @@ def resolve_story_key(args: argparse.Namespace, trailer_keys: list[str]) -> Stor
     explicit_raw = (args.story_key or "").strip()
     if explicit_raw:
         explicit_keys = extract_story_keys(explicit_raw)
+        if len(explicit_keys) > 1:
+            raise ValidationError(
+                "--story-key value contains multiple story keys: "
+                + ", ".join(sorted(set(explicit_keys))),
+            )
+        validate_exact_spec_value(explicit_raw, "--story-key value")
         if not explicit_keys:
             raise ValidationError(
                 f"--story-key value is not a valid story key: {explicit_raw}",
             )
         unique_explicit = sorted(set(explicit_keys))
-        if len(unique_explicit) > 1:
-            # Mirror trailer multi-key rejection so CLI input cannot bypass the
-            # same guard (12.4-RV7). Report every detected key.
-            raise ValidationError(
-                "--story-key value contains multiple story keys: "
-                + ", ".join(unique_explicit),
-            )
         sources.append(StorySource("cli", unique_explicit[0]))
 
     if trailer_keys:
         sources.append(StorySource("trailer", trailer_keys[0]))
 
-    branch_keys = extract_story_keys(args.branch_name or "")
+    branch_name = args.branch_name or ""
+    branch_keys = extract_story_keys(branch_name)
     if branch_keys:
-        unique_branch = sorted(set(branch_keys))
-        if len(unique_branch) > 1:
-            # Mirror trailer/CLI multi-key rejection (12.4-RV8). Report every
-            # detected key so contributors can fix the branch name without
-            # guessing which key the validator picked.
+        if len(branch_keys) > 1:
             raise ValidationError(
                 "Branch name contains multiple story keys: "
-                + ", ".join(unique_branch),
+                + ", ".join(sorted(set(branch_keys))),
             )
+        validate_branch_spec_segments(branch_name)
+        unique_branch = sorted(set(branch_keys))
         sources.append(StorySource("branch", unique_branch[0]))
+    else:
+        validate_branch_spec_segments(branch_name)
 
     if not sources:
         raise ValidationError(

@@ -2,7 +2,7 @@
 title: 'Resolve the standalone-spec commit gate path'
 type: 'bugfix'
 created: '2026-07-28'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: 'fc92c4d8ac63601cbc01741bd92b91ee7e6bcdfe'
 review_loop_iteration: 0
 context:
@@ -125,9 +125,9 @@ the required File Scope or evidence sections.
 ## Verification
 
 **Commands:**
-- `python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"` -- 47 tests pass.
-- `python3 -m unittest discover -s tests/tooling/tenant_isolation_evidence -p "*_test.py"` -- 36 tests pass.
-- `python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py"` -- 40 tests pass.
+- `python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"` -- 51 tests pass.
+- `python3 -m unittest discover -s tests/tooling/tenant_isolation_evidence -p "*_test.py"` -- 41 tests pass.
+- `python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py"` -- 45 tests pass.
 - `python3 -m unittest discover -s tests/tooling/bmad_customization -p "*_test.py"` -- 33 tests pass.
 - `.githooks/pre-commit` -- each staged owner group passes from its matching branch.
 - `npx commitlint --edit <message-file> --verbose` and `npx commitlint --last --verbose` -- messages pass before and after commit.
@@ -136,4 +136,5 @@ the required File Scope or evidence sections.
 
 - `5bf5870c` -- standalone-spec owner resolution, focused regressions, guidance, and this spec.
 - `5be50c24` -- executable story review-readiness gate, policy, fixtures, and explicit File Scope.
+- `5edfb8d5` -- scope-boundary regressions for standalone spec owners.
 - Commitlint-policy files and all Commons, EventStore, and Tenants submodule pointer changes remain uncommitted and unstaged because neither approved standalone spec owns them.
