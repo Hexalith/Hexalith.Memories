@@ -23,3 +23,8 @@ fi
 # Cross-tenant negative evidence gate. Runs here (not pre-commit) because the
 # bypass/Story trailers live in the commit message, which pre-commit cannot see.
 "$py" tools/check-tenant-isolation-evidence.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file"
+
+# Story review-readiness gate. Runs here for the same trailer reason as the
+# gates above. --derive-cumulative anchors C1 on the story's baseline_commit,
+# because the staged set is one commit's files, not the story's cumulative diff.
+"$py" tools/check-story-review-readiness.py --branch-name "$branch_name" --commit-message-file "$message_file" --changed-files-file "$changed_file" --derive-cumulative

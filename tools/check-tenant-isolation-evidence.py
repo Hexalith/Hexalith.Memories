@@ -25,6 +25,10 @@ STORY_KEY_PATTERN = re.compile(
     r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
     re.IGNORECASE,
 )
+SPEC_KEY_PATTERN = re.compile(
+    r"(?<![\w-])(spec-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
+    re.IGNORECASE,
+)
 AND_JOINED_STORY_KEYS_PATTERN = re.compile(
     r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*?[a-z0-9])?)-and-(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
     re.IGNORECASE,
@@ -107,6 +111,8 @@ def extract_story_keys(value: str) -> list[str]:
         if any(start <= match.start() < end for start, end in joined_spans):
             continue
         keys.append(match.group(1).lower())
+
+    keys.extend(match.group(1).lower() for match in SPEC_KEY_PATTERN.finditer(text))
 
     return keys
 

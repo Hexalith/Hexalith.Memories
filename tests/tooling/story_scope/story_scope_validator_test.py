@@ -142,6 +142,146 @@ class StoryScopeValidatorTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("Selected story key: 12-3-story-file-scope-enforcement", result.stdout)
 
+    def test_spec_key_resolves_from_cli_trailer_and_branch(self):
+        spec_key = "spec-scope-owner"
+        temp = self.fixture_artifacts(
+            """
+            # Standalone scope owner
+
+            ## File Scope
+
+            Allowed files for this story:
+
+            - `docs/spec-owned.md` - fixture-owned path
+            """,
+            story_key=spec_key,
+        )
+        message = self.write_message(
+            f"""
+            docs: update standalone spec scope
+
+            Story-Key: {spec_key}
+            """
+        )
+
+        cases = (
+            ("cli", ("--story-key", spec_key)),
+            ("trailer", ("--commit-message-file", str(message))),
+            ("branch", ("--branch-name", f"fix/{spec_key}")),
+        )
+        for expected_source, source_args in cases:
+            with self.subTest(source=expected_source):
+                result = run_validator(
+                    "--artifacts-root",
+                    temp.name,
+                    *source_args,
+                    "--changed-file",
+                    "docs/spec-owned.md",
+                )
+
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                self.assertIn(f"Selected story key: {spec_key}", result.stdout)
+                self.assertIn(f"Story source: {expected_source}", result.stdout)
+
+    def test_spec_trailer_conflicting_with_numeric_story_branch_fails_closed(self):
+        message = self.write_message(
+            """
+            docs: update standalone spec scope
+
+            Story-Key: spec-scope-owner
+            """
+        )
+
+        result = run_validator(
+            "--branch-name",
+            "feature/12-3-story-file-scope-enforcement",
+            "--commit-message-file",
+            str(message),
+            "--changed-file",
+            "CONTRIBUTING.md",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Conflicting story keys", result.stdout)
+        self.assertIn("trailer=spec-scope-owner", result.stdout)
+        self.assertIn("branch=12-3-story-file-scope-enforcement", result.stdout)
+
+    def test_extended_spec_key_does_not_fall_back_to_shorter_artifact(self):
+        temp = self.fixture_artifacts(
+            """
+            # Standalone scope owner
+
+            ## File Scope
+
+            Allowed files for this story:
+
+            - `docs/spec-owned.md` - fixture-owned path
+            """,
+            story_key="spec-scope-owner",
+        )
+
+        result = run_validator(
+            "--artifacts-root",
+            temp.name,
+            "--branch-name",
+            "fix/spec-scope-owner-extra",
+            "--changed-file",
+            "docs/spec-owned.md",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("spec-scope-owner-extra.md", result.stdout)
+        self.assertNotIn("Selected story key: spec-scope-owner\n", result.stdout)
+
+    def test_unowned_main_changed_set_fails_closed(self):
+        result = run_validator(
+            "--branch-name",
+            "main",
+            "--changed-file",
+            "docs/unowned.md",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No story key resolved", result.stdout)
+
+    def test_spec_owner_rejects_mixed_artifact_and_submodule_changes(self):
+        spec_key = "spec-scope-owner"
+        temp = self.fixture_artifacts(
+            """
+            # Standalone scope owner
+
+            ## File Scope
+
+            Allowed files for this story:
+
+            - `docs/spec-owned.md` - fixture-owned path
+            """,
+            story_key=spec_key,
+        )
+
+        result = run_validator(
+            "--artifacts-root",
+            temp.name,
+            "--story-key",
+            spec_key,
+            "--changed-file",
+            "docs/spec-owned.md",
+            "--changed-file",
+            "_bmad-output/implementation-artifacts/27-3-other-owner.md",
+            "--changed-file",
+            "references/Hexalith.Tenants",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "_bmad-output/implementation-artifacts/27-3-other-owner.md",
+            section_block(result.stdout, "Out-of-scope files:"),
+        )
+        self.assertIn(
+            "references/Hexalith.Tenants",
+            section_block(result.stdout, "Forbidden-default files (no override; D5-class):"),
+        )
+
     def test_story_trailer_discovery_allows_in_scope_file(self):
         message = self.write_message(
             """

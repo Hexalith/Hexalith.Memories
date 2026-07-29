@@ -630,7 +630,7 @@ action_items:
   - epic: 22
     action: "Add an explicit File List and evidence-table pre-review check to future remediation story close-out"
     owner: "Amelia, Murat"
-    status: in-progress  # 2026-07-28: superseded by the approved sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md and consolidated with the Epic 23, Epic 24, and Epic 25 item 7 chain into spec-executable-pre-review-story-gate.md. Not closed - the proposal is approved, not implemented. Closes when tools/check-story-review-readiness.py is merged, wired into .githooks/commit-msg and both ci.yml jobs, its tooling suite is green in test-unit-contract, Stories 31.2 and 27.3 are retrofitted with declared File List exclusions, and one real story has passed through the gate en route to review. Prior tracking follows. 2026-07-06 (Epic 23): reviews applied the check and caught repeated File List/evidence gaps; prevention still needs source-guard or checklist hardening.
+    status: done  # 2026-07-28: superseded - consolidated into the Epic 25 executable pre-review gate item and closed by it. See spec-executable-pre-review-story-gate.md.
   - epic: 22
     action: "Carry Epic 22 retrieval invariants into Epic 23 ingestion stories"
     owner: "Amelia, Winston, Murat"
@@ -650,7 +650,7 @@ action_items:
   - epic: 23
     action: "Turn File List and evidence-table checking into a pre-review source guard or checklist that runs before remediation story review"
     owner: "Amelia, Murat"
-    status: in-progress  # 2026-07-28: superseded by the approved sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md and consolidated with the Epic 22, Epic 24, and Epic 25 item 7 chain into spec-executable-pre-review-story-gate.md. Not closed - the proposal is approved, not implemented. Closes on the same criteria recorded against the Epic 22 item. Prior tracking follows. 2026-07-06 (Epic 24): review checks continued to catch hygiene gaps; executable pre-review guard still needed.
+    status: done  # 2026-07-28: superseded - consolidated into the Epic 25 executable pre-review gate item and closed by it. See spec-executable-pre-review-story-gate.md.
   - epic: 23
     action: "Keep Epic 23 ingestion invariants on Epic 24 and Epic 25 review checklists"
     owner: "Amelia, Winston, Murat"
@@ -670,7 +670,7 @@ action_items:
   - epic: 24
     action: "Implement an executable pre-review guard or checklist for remediation stories covering File List completeness, evidence-table status, story/spec status, and sprint-status sync"
     owner: "Amelia, Murat"
-    status: in-progress  # 2026-07-28: superseded by the approved sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md, which was raised directly from this item and consolidates the Epic 22, Epic 23, and Epic 25 item 7 chain into spec-executable-pre-review-story-gate.md. The proposal defines the four executable checks C1 File List completeness in both directions, C2 ledger row presence and non-placeholder cells, C3 story/spec status validity, and C4 sprint-status agreement, enforced from .githooks/commit-msg and .github/workflows/ci.yml rather than as skill prose. Not closed - the proposal is approved, not implemented. Closes on the criteria recorded against the Epic 22 item. Prior tracking follows. 2026-07-12 (Epic 25): applied as a convention and propagated 25.1->25.2->25.3, but reviews still caught falsely-passing drift guards; not yet an executable gate. Merged into Epic 25 action item 7.
+    status: done  # 2026-07-28: superseded - consolidated into the Epic 25 executable pre-review gate item and closed by it. See spec-executable-pre-review-story-gate.md.
   - epic: 24
     action: "Resolve or formally accept the AppHost/EventStore validation-lane blocker before any future story claims full-stack Redis/FalkorDB or Aspire integration proof"
     owner: "Amelia, Winston"
@@ -718,7 +718,7 @@ action_items:
   - epic: 25
     action: "Turn the propagated review-discipline convention (File List completeness, constant-tied drift guards) into an executable pre-review gate; merges the still-open Epic 24 checklist item"
     owner: "Amelia, Murat"
-    status: in-progress  # 2026-07-28: open -> in-progress. This is the merge point of the Epic 22 -> 23 -> 24 chain, and all four are now tracked as one deliverable under the approved sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md and spec-executable-pre-review-story-gate.md. Scope note: the executable gate covers File List completeness; the constant-tied drift-guard arm of this item is NOT mechanically checkable by a commit hook and remains with the code-review layers. Not closed - the proposal is approved, not implemented. Closes on the criteria recorded against the Epic 22 item.
+    status: done  # 2026-07-28: closed by the executable gate the Epic 24/25 wording asked for, merging the Epic 22/23/24 rows. tools/check-story-review-readiness.py enforces C1 File List completeness, C2 ledger rows/non-placeholder cells/`matched N/N`, C3 status vocabulary, C4 sprint-status agreement, and C6 evidence-row status (no `Review status` row left `pending` at review/done - the Epic 22 wording's actual subject). Wired into .githooks/commit-msg (--derive-cumulative) and both ci.yml jobs: validation step in story-file-scope, fixture step in test-unit-contract. Fixtures: tests/tooling/story_review_readiness 37/37 OK; tests/tooling/bmad_customization 33/33 OK with directive-body + both-surface (.agents/.claude) assertions. Policy: story-phase-ledger.md gained Declared Exclusions, Evidence-Table Status Reconciliation, Executable Gate, and amended review/done gates; one STORY_REVIEW_READINESS_GATE directive on bmad-dev-story and bmad-code-review (creation route deliberately excluded - no File List to reconcile at backlog); existing code-review story-phase-ledger review layer extended rather than a 6th layer added; all 6 layers and all 4 prior directives preserved exactly once. Lesson L13. Live sweep of 22 governed artifacts: 19 pass, 3 fail, 0 false positives - 26-5 (10 pending rows) and 22-2 (5) annotated with dated correction notes, neither reopened nor backdated; 27-3's correct-course row cites '48 -> 49 paths' instead of `matched N/N` and is routed to its owning story. HONEST LIMITS: C1 self-skips on the default branch so it has never run against a real cumulative diff - it first bites in CI on a PR range; and a green gate proves no count arithmetic and no test execution. A proposed File List/File Scope agreement check was implemented then WITHDRAWN as unsound (allowed-but-unchanged is normal in 17/21 artifacts; Scope-Override trailers are invisible to a story-file check). Spec: spec-executable-pre-review-story-gate.md.
   - epic: 26
     action: "Restore the deterministic benchmark from 6/8 hybrid wins (75%) to the PRD hard line (at least 7/8), without weakening the thesis/reproducibility gates, or obtain an explicit product-governance change; Story 26.4 may complete when the truthful blocking lane lands, but Epic 26 cannot complete while this action remains open"
     owner: "Amelia, Murat, John, Winston"

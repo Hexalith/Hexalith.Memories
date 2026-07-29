@@ -115,16 +115,70 @@ exactly to its baseline leaves the cumulative set. The cumulative File List and
 the in-scope changed-file set must contain identical entries before handoff; a
 partial or phase-local-only File List is not reconciled.
 
+### Declared Exclusions
+
+A named exclusion is only honoured in machine-readable form. Free prose in the
+File List or a ledger cell records intent for a human reader; it does not exempt
+a path from the executable gate.
+
+```markdown
+### File List Exclusions
+
+- `path/to/file` — owner: <name>; <reason>
+```
+
+Every bullet needs a backticked path, a named owner, and a reason. An exclusion
+missing any of the three is a violation, not an exclusion.
+
+## Evidence-Table Status Reconciliation
+
+A governed story that declares an evidence, checkpoint, or gate table — any
+table carrying a `Review status` or `Review state` column — owns that table's
+truthfulness at every status transition. Before `review`, each row must hold
+either a completed state with its completion date, or an explicit blocked state
+naming owner, consequence, and reopen trigger. Before `done`, no row may remain
+`pending` or dateless.
+
+A row left at `pending` under a story that reads `review` or `done` is a false
+record, not a formatting lapse: it asserts that the story's own declared proof
+was never produced. Repair the row, or restate the story status.
+
+## Executable Gate
+
+`tools/check-story-review-readiness.py` enforces the mechanically checkable
+subset of this policy: File List completeness against the story's diff, required
+ledger rows with non-placeholder cells, a recognised status, sprint-status
+agreement, and evidence-row status. It does NOT verify count arithmetic,
+discovery evidence, or whether a recorded command was truly run — those remain
+with the code-review ledger auditor. **A green gate is a floor, never a
+ceiling.**
+
+Two limits are deliberate and must not be read as coverage. The gate skips its
+cumulative-diff check on the default branch, where `baseline_commit..HEAD`
+returns unrelated work; that check is enforced in CI against the pull-request
+range. And an empty changed set on a governed story fails closed rather than
+passing, inverting the vacuous no-op of `tools/check-story-file-scope.py`.
+
+There is deliberately no `File List` / `File Scope` set-agreement check. `File
+Scope` is a forward-looking allow-list and `File List` a backward-looking
+record, so "allowed but unchanged" is normal, and a `Scope-Override:` commit
+trailer can legitimately place a changed path outside the declared scope.
+`tools/check-story-file-scope.py` already enforces that relation at commit time,
+with override support.
+
 ## Fail-Closed Status Gates
 
 - Do not set `ready-for-dev` or mutate sprint status unless the canonical table
   and reconciled `create-story` row exist.
 - Do not set `review` unless the required create and development rows, discovery
-  evidence or precise blocker record, same-unit arithmetic, and cumulative File
-  List all reconcile.
+  evidence or precise blocker record, same-unit arithmetic, cumulative File
+  List, and evidence-table row states all reconcile, and
+  `python3 tools/check-story-review-readiness.py --story-key <key>` exits `0`.
+  Record the exact invocation and its final line. A run reporting no resolvable
+  story is a no-op, not evidence.
 - Do not set `done` unless every performed phase has an ordered row, the final
-  review row reflects post-patch evidence, live counts agree, and every in-scope
-  changed path is reconciled.
+  review row reflects post-patch evidence, live counts agree, every in-scope
+  changed path is reconciled, and no evidence-table row remains `pending`.
 
 For chunked review, the current invocation must carry explicit evidence that
 all in-scope chunks are complete before it appends the final review row or sets

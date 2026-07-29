@@ -441,7 +441,20 @@ The gate is removed from `.githooks/commit-msg` or `ci.yml`; or a governed story
 
 **Approved by the Administrator, 2026-07-28.** A second `bmad-correct-course` session ran concurrently on the same four-row action-item chain, entering from the **Epic 22** row rather than the Epic 24 row, and produced `sprint-change-proposal-2026-07-28-story-closeout-evidence-gate.md`. Rather than ship two overlapping verifiers, two fixture lanes, two hook invocations and two competing claims on the same four ledger rows, that proposal is **merged into this one and marked superseded**. This document is the single authority. `tools/check-story-closeout.py` is never created; the merged gate keeps this proposal's name, `tools/check-story-review-readiness.py`.
 
-**What the merge changes: two added checks, C5 and C6.** Everything in EP-1 through EP-6 above stands unaltered.
+**What the merge changes: one added check, C6.** Everything in EP-1 through EP-6 above stands unaltered.
+
+> ### ⚠ Implementation correction, 2026-07-28 — C5 withdrawn
+>
+> This amendment originally added **two** checks. **C5 was specified, implemented, measured, and withdrawn before wiring.** It is not to be built. The correction is recorded here rather than by rewriting §6.2, so the reasoning survives.
+>
+> C5 asserted `set(### File List) == set(## File Scope)`. Measurement against the live tree refuted it twice over:
+>
+> - **Equality is wrong.** `## File Scope` is a forward-looking allow-list and `### File List` is a backward-looking record, so "allowed but unchanged" is the *normal* case — **17 of 21** artifacts carrying both sections. The claim was over-generalised from Story 27.3, which measurement shows is one of only two artifacts where the two sets coincide exactly.
+> - **Subset is also wrong.** Story `15-4` legitimately lists `Hexalith.EventStore`, which sits under **"Forbidden by default:"** in its File Scope and was authorised by a `Scope-Override:` **commit trailer**. Those trailers live in the commit message, which a story-file check cannot see. Any story-file-only assertion in this direction produces false positives on every override.
+>
+> `tools/check-story-file-scope.py` already enforces this relation at commit time, with override support. Adding C5 would have put a false-positive generator inside a fail-closed gate — precisely the "guard passes without proving the thing" failure the Epic 25 retrospective named as its dominant review signature.
+>
+> **Consequently void in this amendment:** the C5 block in §6.2, the C5 fixture row in §6.4, and the C5 bullet in §6.7. The C5 half of §6.2's vacuous-pass argument is void; the C6 half stands unchanged and is what the anti-vacuity claim now rests on. §6.8's "assertion **A** becomes C5" no longer holds — assertion **A** is withdrawn outright, and only assertion **C** (→ C6) carries forward from the superseded proposal.
 
 ### 6.1 Why the merge was necessary, not merely tidy
 
@@ -547,3 +560,44 @@ Added to §5:
 `_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-28-story-closeout-evidence-gate.md` is superseded by this amendment and retained for provenance only. Its §4.1 assertion **A** becomes C5 and its assertion **C** becomes C6; its assertion **B** is dropped as strictly weaker than C1, which checks the same relation in both directions. Its remaining sections — verifier scaffolding, hook and CI wiring, spec, lesson L12, ledger consolidation — duplicate EP-2 through EP-6 and are **not** carried forward. Nothing in it is implemented separately.
 
 **The Epic 22 row (`sprint-status.yaml:631`) closes on C6 specifically.** That row is the one that names evidence-table status, and C1–C4 alone would have closed it without ever checking the thing it names.
+
+---
+
+## 7. Build Record 2026-07-28 — EP-1 and EP-2 delivered
+
+EP-1 and EP-2 are implemented and green. EP-3 through EP-6 are **not started**: every remaining surface (`ci.yml`, `story-phase-ledger.md`, the three lifecycle tomls, `bmad_customization_test.py`, `story-creation-lessons.md`, `sprint-status.yaml`) is held by a concurrent session building the separate `check-story-slice-scope.py` gate, and the Administrator elected on 2026-07-28 to wait for a settled tree rather than race append-only edits.
+
+| Artifact | State |
+| :------- | :---- |
+| `tools/check-story-review-readiness.py` | 886 lines, LF per `eol=lf`, stdlib only |
+| `tests/tooling/story_review_readiness/story_review_readiness_test.py` | 541 lines, **37/37 passing** |
+
+### 7.1 Live sweep — 22 governed artifacts, 19 pass, 3 fail
+
+Every failure is a true positive. No false positive was produced on any of the other 19.
+
+| Artifact | Status | Finding |
+| :------- | :----- | :------ |
+| `26-5-operational-runbook-set` | `done` | 10 evidence rows `pending` — predicted in §6.3 |
+| `22-2-bounded-cancellable-graph-traversal` | `done` | 5 rows `Pending`, empty completion dates — predicted in §6.3 |
+| `27-3-production-adapter-and-deployment-profile` | `in-progress` | **Newly discovered.** Its `correct-course` ledger row reconciles as *"48 -> 49 paths. One path joined…"* and never in the contracted `matched N/N` form |
+
+**The 27-3 finding is the gate's first live catch of something no human or review process had flagged.** The row was authored the same day, by the concurrent session, under the `correct-course` phase that was admitted to the canonical set hours earlier. Per the Administrator decision of 2026-07-28, C2 stays strict: `story-phase-ledger.md` requires `matched N/N` in the phase row, the row reconciles substantively but not in the contracted form, and a gate that accepts free-form alternatives is the "passes without proving the thing" failure the Epic 25 retrospective identified as its dominant review signature. The owning session repairs the cell; the gate is not relaxed.
+
+### 7.2 Defects found by measurement, not by reasoning
+
+Three parser defects were found only because the verifier was run against live artifacts before being wired. Each would have shipped a gate that was green and wrong.
+
+| Defect | Effect | Fix |
+| :----- | :----- | :-- |
+| `Matched **27/27**` | A pattern anchored directly after `matched` breaks on the bold markers. **2 false positives** (`29-1`, `31-2`) | Strip emphasis before matching |
+| `2>&1 \| grep …` in a ledger cell | Escaped pipes were split as delimiters, shifting every column in **9 rows** of `27-3` and silently misreading the phase and reconciliation cells | Tokenise on unescaped pipes only |
+| `status: 'done'` in spec frontmatter | YAML quotes leaked into the value, failing C3 on punctuation alone | Strip quotes in cell normalisation |
+
+Two further contract gaps were closed: `correct-course` was absent from `CANONICAL_PHASES` (admitted to the policy mid-build by the concurrent session), and `spec-*` artifacts were unreachable by `--story-key` despite §EP-1 governing them for C2/C3.
+
+### 7.3 Deliberate scope limits, stated rather than silent
+
+- **C1 is skipped on the default branch.** `baseline..HEAD` returns unrelated work there, so the tool prints an explicit skip note instead of fabricating violations. C1 is enforced in CI against the PR diff. The current tree is on `main`, so the sweep above did not exercise C1 against real cumulative diffs.
+- **An empty changed set fails closed** on a governed story, inverting the sibling gate's known vacuous pass.
+- The liveness test pins the measured 2026-07-28 state: **14** evidence-table bearers, at least **8** ledger bearers, and exactly two C6-violating artifacts. A new violation breaks the fixture rather than passing quietly.

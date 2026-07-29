@@ -158,6 +158,12 @@ jobs:
         # classification, slice-proof, and per-gate checkpoint record.
         run: python3 tools/check-story-slice-scope.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
 
+      - name: Validate story review readiness
+        # Epics 22-25 action-item chain. The PR base..head set IS the story diff,
+        # so --derive-cumulative is deliberately NOT passed here: re-deriving from
+        # baseline_commit would reintroduce the drift the CI range already avoids.
+        run: python3 tools/check-story-review-readiness.py --branch-name "$BRANCH_NAME" --commit-message-file "$COMMIT_MESSAGE_FILE" --changed-files-file "$CHANGED_FILES_FILE"
+
   build:
     name: build
     runs-on: ubuntu-latest
@@ -250,6 +256,9 @@ jobs:
 
       - name: Run story slice-scope gate fixtures
         run: python3 -m unittest discover -s tests/tooling/story_slice_scope -p "*_test.py"
+
+      - name: Run story review-readiness gate fixtures
+        run: python3 -m unittest discover -s tests/tooling/story_review_readiness -p "*_test.py"
 
       - name: Run integration stub closure fixtures
         run: python3 -m unittest discover -s tests/tooling/integration_stub_closure -p "*_test.py"

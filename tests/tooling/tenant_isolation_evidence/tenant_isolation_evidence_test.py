@@ -78,8 +78,9 @@ class TenantIsolationEvidenceTests(unittest.TestCase):
 
     # --- fixtures -----------------------------------------------------------
 
-    def write_spec(self, section: str) -> None:
-        (self.artifacts / f"{self.story_key}.md").write_text(build_spec(section), encoding="utf-8")
+    def write_spec(self, section: str, story_key: str | None = None) -> None:
+        key = story_key or self.story_key
+        (self.artifacts / f"{key}.md").write_text(build_spec(section), encoding="utf-8")
 
     def write_lines(self, name: str, lines: list[str]) -> Path:
         path = self.tmp / name
@@ -287,6 +288,54 @@ class TenantIsolationEvidenceTests(unittest.TestCase):
                               branch_name=f"feature/{self.story_key}")
         result = self.run_tool(args)
         self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_spec_key_from_cli_trailer_and_branch_passes(self):
+        spec_key = "spec-tenant-evidence-fixture"
+        self.write_spec(PROOF_SECTION, story_key=spec_key)
+        surfaces = self.write_surfaces(["src/**/*.cs"])
+        message = self.write_message(
+            f"""\
+            test: verify standalone spec evidence
+
+            Story-Key: {spec_key}
+            """
+        )
+        cases = (
+            ("cli", {"story_key": spec_key}),
+            ("trailer", {"branch_name": "main", "commit_message_file": str(message)}),
+            ("branch", {"branch_name": f"fix/{spec_key}"}),
+        )
+
+        for expected_source, source_args in cases:
+            with self.subTest(source=expected_source):
+                args = self.base_args(["src/Foo/Tenant.cs"], surfaces, **source_args)
+                result = self.run_tool(args)
+
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn(f"{spec_key}.md (source: {expected_source})", result.stdout)
+
+    def test_spec_trailer_conflicting_with_numeric_story_branch_fails(self):
+        surfaces = self.write_surfaces(["src/**/*.cs"])
+        message = self.write_message(
+            """\
+            test: verify standalone spec evidence
+
+            Story-Key: spec-tenant-evidence-fixture
+            """
+        )
+        args = self.base_args(
+            ["src/Foo/Tenant.cs"],
+            surfaces,
+            branch_name="feature/9-9-evidence-fixture",
+            commit_message_file=str(message),
+        )
+
+        result = self.run_tool(args)
+
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("Conflicting story keys", result.stdout)
+        self.assertIn("trailer=spec-tenant-evidence-fixture", result.stdout)
+        self.assertIn("branch=9-9-evidence-fixture", result.stdout)
 
     def test_heading_inside_code_fence_is_not_a_section(self):
         section = textwrap.dedent(

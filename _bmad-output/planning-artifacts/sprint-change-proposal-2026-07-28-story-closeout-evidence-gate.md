@@ -4,9 +4,11 @@
 >
 > A concurrent `bmad-correct-course` session targeted the same four action-item rows and produced **`sprint-change-proposal-2026-07-28-executable-pre-review-story-gate.md`**. By Administrator decision of 2026-07-28 the two are **merged into that document**, which is the single authority. See its **§6 Amendment**.
 >
-> **What was carried forward:** assertion **A** (File List ≡ File Scope) became **C5**; assertion **C** (`Review status` rows not `pending` under `review`/`done`) became **C6**; the `22-2` / `26-5` evidence, the 14-artifact governed set, the fixture cases, the policy section, and the two correction notes moved with them.
+> **What was carried forward:** assertion **C** (`Review status` rows not `pending` under `review`/`done`) became **C6**, and is implemented and green. The `22-2` / `26-5` evidence, the 14-artifact governed set, the fixture cases, the policy section, and the two correction notes moved with it.
 >
 > **What was dropped:** assertion **B** (`changed ⊆ File List`), as strictly weaker than that proposal's **C1**, which checks the same relation in both directions. `tools/check-story-closeout.py` is **never created** — the merged gate is `tools/check-story-review-readiness.py`.
+>
+> **What was withdrawn after measurement:** assertion **A** (File List ≡ File Scope). It briefly became C5, was implemented, and was then refuted against the live tree — "allowed but unchanged" is the normal case (17 of 21 artifacts), and `Scope-Override:` commit trailers make the subset direction unsound too. See §6.2's correction block and §7.2 in the superseding document. **Assertion A is not to be built in any form.**
 >
 > Sections 1–7 below are retained for provenance: the four-generation ledger analysis, the `22-2` / `26-5` violation evidence, and the reasoning that produced C5 and C6. Every implementation instruction here is void.
 

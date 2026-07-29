@@ -41,6 +41,10 @@ STORY_KEY_PATTERN = re.compile(
     r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
     re.IGNORECASE,
 )
+SPEC_KEY_PATTERN = re.compile(
+    r"(?<![\w-])(spec-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
+    re.IGNORECASE,
+)
 AND_JOINED_STORY_KEYS_PATTERN = re.compile(
     r"(?<![\w-])(\d+-\d+-[a-z](?:[a-z0-9-]*?[a-z0-9])?)-and-(\d+-\d+-[a-z](?:[a-z0-9-]*[a-z0-9])?)(?![\w-])",
     re.IGNORECASE,
@@ -48,7 +52,6 @@ AND_JOINED_STORY_KEYS_PATTERN = re.compile(
 BACKTICK_PATTERN = re.compile(r"`([^`]+)`")
 CODE_FENCE_PATTERN = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 STATUS_LINE_PATTERN = re.compile(r"^\s*(?:\*\*)?status(?:\*\*)?\s*:\s*(.+?)\s*$", re.IGNORECASE)
-SPEC_KEY_PATTERN = re.compile(r"spec-[a-z0-9][a-z0-9-]*", re.IGNORECASE)
 
 # The canonical phase-ledger header from story-phase-ledger.md. All five cells
 # must be present for the table to be the ledger rather than an unrelated table.
@@ -165,6 +168,8 @@ def extract_story_keys(value: str) -> list[str]:
         if any(start <= match.start() < end for start, end in joined_spans):
             continue
         keys.append(match.group(1).lower())
+
+    keys.extend(match.group(1).lower() for match in SPEC_KEY_PATTERN.finditer(text))
 
     return keys
 
@@ -293,11 +298,6 @@ def resolve_story_key(args: argparse.Namespace, trailer_keys: list[str]) -> Stor
 
     explicit_raw = (args.story_key or "").strip()
     if explicit_raw:
-        # Spec artifacts are governed for C2/C3 but carry no numeric story key,
-        # so they are addressable by name on the CLI only. A branch or trailer
-        # never names one.
-        if SPEC_KEY_PATTERN.fullmatch(explicit_raw):
-            return StorySource("cli", explicit_raw.lower())
         explicit_keys = extract_story_keys(explicit_raw)
         if not explicit_keys:
             raise ValidationError(f"--story-key value is not a valid story key: {explicit_raw}")

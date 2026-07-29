@@ -42,6 +42,10 @@ RUNTIME_CHECKLIST_MARKER = "REMEDIATION_RUNTIME_CHECKLIST:"
 AC_VERIFICATION_POLICY = REPO_ROOT / "_bmad" / "custom" / "epic-ac-verification.md"
 AC_VERIFICATION_FACT = "file:{project-root}/_bmad/custom/epic-ac-verification.md"
 AC_VERIFICATION_MARKER = "EPIC_AC_VERIFICATION:"
+READINESS_GATE_MARKER = "STORY_REVIEW_READINESS_GATE:"
+# Only the two phases that can advance a story's status carry the gate. Creation
+# cannot: a story has no File List or diff to reconcile at `backlog`.
+READINESS_GATE_ROUTES = ("bmad-dev-story", "bmad-code-review")
 SPEC_PROJECT_CONTEXT_FACT = "file:{project-root}/project-context.md"
 GENERATOR_PROJECT_CONTEXT_FACT = "file:{project-root}/**/project-context.md"
 PROJECT_CONTEXT_BRIDGE = """# Project Context Bridge
@@ -898,6 +902,110 @@ class BMadCustomizationTests(unittest.TestCase):
                             if step.startswith(sibling_marker)
                         ]
                         self.assertEqual(len(siblings), 1)
+
+    def test_story_review_readiness_gate_wired_into_status_advancing_workflows(self):
+        # Assert the directive BODY, not just the marker: a gutted or cross-wired
+        # directive still carries the prefix.
+        skill_directive_phrases = {
+            "bmad-dev-story": (
+                "Before setting review, run",
+                "tools/check-story-review-readiness.py",
+                "--derive-cumulative",
+                "Exit 1 is a fail-closed blocker",
+                # The vacuous-pass trap the sibling scope gate shipped with.
+                "vacuous no-op rather than a pass",
+            ),
+            "bmad-code-review": (
+                "re-run",
+                "independently rather than accepting the dev-story citation",
+                "decision_needed",
+                "fail-closed blocker for `done`",
+                "floor, never a ceiling",
+            ),
+        }
+        self.assertEqual(tuple(skill_directive_phrases), READINESS_GATE_ROUTES)
+
+        for surface in (".agents", ".claude"):
+            for skill_name, phrases in skill_directive_phrases.items():
+                with self.subTest(surface=surface, skill_name=skill_name):
+                    workflow = resolve_workflow(skill_name, surface)
+                    directives = [
+                        step
+                        for step in workflow["activation_steps_append"]
+                        if step.startswith(READINESS_GATE_MARKER)
+                    ]
+                    self.assertEqual(len(directives), 1)
+                    for phrase in phrases:
+                        self.assertIn(phrase, directives[0])
+                    # Appending this guard must not clobber any sibling.
+                    for sibling_marker in (
+                        LEDGER_MARKER,
+                        RUNTIME_CHECKLIST_MARKER,
+                        AC_VERIFICATION_MARKER,
+                    ):
+                        siblings = [
+                            step
+                            for step in workflow["activation_steps_append"]
+                            if step.startswith(sibling_marker)
+                        ]
+                        self.assertEqual(len(siblings), 1, sibling_marker)
+
+    def test_story_review_readiness_gate_absent_from_creation_route(self):
+        """Creation has no File List or diff to reconcile, so the gate must not bind there.
+
+        Wiring it into `bmad-create-story` would make every new story fail on an
+        empty changed set, which the verifier treats as fail-closed.
+        """
+        for surface in (".agents", ".claude"):
+            with self.subTest(surface=surface):
+                workflow = resolve_workflow("bmad-create-story", surface)
+                self.assertEqual(
+                    [
+                        step
+                        for step in workflow["activation_steps_append"]
+                        if step.startswith(READINESS_GATE_MARKER)
+                    ],
+                    [],
+                )
+
+    def test_phase_ledger_policy_defines_evidence_table_and_executable_gate(self):
+        policy = (REPO_ROOT / "_bmad" / "custom" / "story-phase-ledger.md").read_text(
+            encoding="utf-8"
+        )
+        for heading in (
+            "## Evidence-Table Status Reconciliation",
+            "## Executable Gate",
+            "### Declared Exclusions",
+        ):
+            self.assertIn(heading, policy)
+        # The evidence-row rule and its two status triggers.
+        self.assertIn("`Review status` or `Review state` column", policy)
+        self.assertIn("no row may remain\n`pending` or dateless", policy)
+        # The scope-limit paragraph. Without it a green gate becomes the next
+        # "reviews stopped looking" failure.
+        self.assertIn("A green gate is a floor, never a\nceiling", policy)
+        self.assertIn("does NOT verify count arithmetic", policy)
+        # The two deliberate limits must stay stated rather than implied.
+        self.assertIn("default branch", policy)
+        self.assertIn("empty changed set", policy)
+        # The withdrawn File List / File Scope check must stay withdrawn, with
+        # its reason, so a later reader does not reinstate it.
+        self.assertIn("no `File List` / `File Scope` set-agreement check", policy)
+        self.assertIn("Scope-Override:", policy)
+        # The review gate must name the executable command.
+        self.assertIn("tools/check-story-review-readiness.py", policy)
+
+    def test_code_review_ledger_layer_audits_evidence_rows(self):
+        for surface in (".agents", ".claude"):
+            with self.subTest(surface=surface):
+                workflow = resolve_workflow("bmad-code-review", surface)
+                layers = {layer["id"]: layer for layer in workflow["review_layers"]}
+                self.assertIn("story-phase-ledger", layers)
+                instruction = layers["story-phase-ledger"]["instruction"]
+                self.assertIn("`Review status` or `Review state` column", instruction)
+                self.assertIn("`pending` or dateless", instruction)
+                # Extending this layer must not have displaced any sibling layer.
+                self.assertEqual(len(workflow["review_layers"]), 6)
 
     def test_epic_ac_verification_binds_at_authoring_not_only_at_ready_for_dev(self):
         """A claim registered at `backlog` must already carry its verdict.
