@@ -56,6 +56,10 @@ else {
 New-Item -ItemType Directory -Path $evidencePath -Force | Out-Null
 $ownedEvidenceNames = @(
     'verification-result.json',
+    # Without this entry a reused evidence directory let a run that died before the
+    # substitution inherit the previous run's disclosure and pass the validator's gate on a
+    # substitution it never performed.
+    'secret-store-substitution.json',
     'last-stage.txt',
     'pods.txt',
     'events.txt',
@@ -219,8 +223,52 @@ function Get-RunningPodName {
     return [string]$observation.PodName
 }
 
+function Get-FreeLoopbackPort {
+    # A fixed port let a leaked forward from a previous poll answer the next one - plausibly
+    # from a pod deleted during fault injection - and be recorded as this pod's health. Bind
+    # port 0 and let the OS pick, so a leaked forward or a concurrent run cannot collide.
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    try {
+        $listener.Start()
+        return [int]$listener.LocalEndpoint.Port
+    }
+    finally {
+        $listener.Stop()
+    }
+}
+
+function Get-CapturedProcessText {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return ''
+    }
+
+    $captured = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue
+    if ($null -eq $captured) {
+        return ''
+    }
+
+    return ([string]$captured).Trim()
+}
+
+function Get-PodApplicationToken {
+    param([Parameter(Mandatory)][string]$Pod, [Parameter(Mandatory)][string]$Container)
+
+    # Read the pod's own APP_API_TOKEN instead of repeating the seeded literal. A hardcoded
+    # copy made the app-token authentication contract unfalsifiable by this lane: a pod whose
+    # token was wrong or unmounted answered 401 in-container, the runner-side probe then
+    # presented the correct literal, and the stage passed on the substitute credential.
+    $token = (& kubectl exec -n $namespace $Pod -c $Container -- /bin/sh -c 'printf %s "${APP_API_TOKEN}"' 2>&1) -join ''
+    if ($LASTEXITCODE -ne 0) {
+        return ''
+    }
+
+    return $token
+}
+
 function Get-HealthResponseViaPortForward {
-    param([Parameter(Mandatory)][string]$Pod)
+    param([Parameter(Mandatory)][string]$Pod, [Parameter(Mandatory)][string]$Container)
 
     # Runner-side last-resort body capture. BusyBox wget discards HTTP-error bodies, and the
     # in-container netcat fallback returned zero bytes with exit 0 on every kind-cluster
@@ -231,18 +279,78 @@ function Get-HealthResponseViaPortForward {
     # requires is captured through a short-lived pod port-forward. Trade-off, disclosed: this
     # path traverses the API server rather than the pod's own loopback, so it proves the
     # endpoint's response, not the image-native client path the primary probe exercises.
-    $localPort = 18080
+    #
+    # Every branch emits a marker, for the same reason the in-container fallback is
+    # instrumented: a silent transcript cannot be told apart from a branch that never ran.
+    $localPort = Get-FreeLoopbackPort
     $forward = $null
+    $stdoutPath = Join-Path ([System.IO.Path]::GetTempPath()) ('pf-{0}.out' -f [guid]::NewGuid().ToString('N'))
+    $stderrPath = [System.IO.Path]::ChangeExtension($stdoutPath, 'err')
+    $transcript = [System.Collections.Generic.List[string]]::new()
+    $transcript.Add("port-forward begin (pod $Pod, local port $localPort)")
     try {
         $forward = Start-Process -FilePath kubectl -ArgumentList @(
-            'port-forward', '-n', $namespace, "pod/$Pod", "${localPort}:8080") -PassThru
-        $curlOutput = @(& curl -sS -D - --max-time 10 --retry 3 --retry-connrefused --retry-delay 1 `
-            -H 'dapr-api-token: verification-app-api-token' "http://127.0.0.1:${localPort}/ready" 2>&1)
-        return ($curlOutput -join [Environment]::NewLine)
+            'port-forward', '-n', $namespace, "pod/$Pod", "${localPort}:8080") `
+            -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+
+        # Wait for the listener explicitly. The previous connection-refused retry flag masked
+        # the "nothing is listening" case by retrying it, making a failed bind
+        # indistinguishable from a slow one. Bounded at 2s so the capture stays inside its
+        # documented budget.
+        $established = $false
+        $establishDeadline = [DateTime]::UtcNow.AddSeconds(2)
+        while ([DateTime]::UtcNow -lt $establishDeadline -and -not $forward.HasExited) {
+            $probe = [System.Net.Sockets.TcpClient]::new()
+            try {
+                if ($probe.ConnectAsync([System.Net.IPAddress]::Loopback, $localPort).Wait(200)) {
+                    $established = $true
+                    break
+                }
+            }
+            catch {
+                # Not listening yet; retry until the establish deadline.
+            }
+            finally {
+                $probe.Dispose()
+            }
+            Start-Sleep -Milliseconds 100
+        }
+
+        if (-not $established) {
+            $transcript.Add("port-forward end (not established; forward exited=$($forward.HasExited))")
+            $forwardError = Get-CapturedProcessText $stderrPath
+            if (-not [string]::IsNullOrWhiteSpace($forwardError)) {
+                $transcript.Add("port-forward stderr: $forwardError")
+            }
+            return ($transcript -join [Environment]::NewLine)
+        }
+
+        # One request, no --retry: curl treats HTTP 503 as transient, so retrying would discard
+        # the exact response the fault stages exist to capture and multiply the persisted
+        # transcript. --max-time 6 keeps this capture inside its documented budget.
+        $token = Get-PodApplicationToken $Pod $Container
+        $curlOutput = @(& curl -sS -D - --max-time 6 `
+            -H "dapr-api-token: $token" "http://127.0.0.1:${localPort}/ready" 2>&1)
+        $curlExit = $LASTEXITCODE
+        foreach ($line in $curlOutput) {
+            $transcript.Add([string]$line)
+        }
+        $transcript.Add("port-forward end (curl exit $curlExit)")
+        $forwardError = Get-CapturedProcessText $stderrPath
+        if (-not [string]::IsNullOrWhiteSpace($forwardError)) {
+            $transcript.Add("port-forward stderr: $forwardError")
+        }
+        return ($transcript -join [Environment]::NewLine)
     }
     finally {
         if ($null -ne $forward -and -not $forward.HasExited) {
             Stop-Process -Id $forward.Id -Force -ErrorAction SilentlyContinue
+            # Await the exit. Polls are ~2s apart, so an un-awaited kill could leave the
+            # previous forward still holding its port when the next poll starts.
+            $null = $forward.WaitForExit(2000)
+        }
+        foreach ($path in @($stdoutPath, $stderrPath)) {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
         }
     }
 }
@@ -268,8 +376,19 @@ if [ "$wgetExit" -ne 0 ]; then
     # whether the branch ran and how nc exited, instead of silence that cannot be told apart
     # from a skipped branch. The runner-side port-forward fallback below is the deterministic
     # body producer when this in-container path yields nothing.
+    #
+    # Timeout budget, re-derived 2026-07-29 by code review (chunk 2). This branch is
+    # DIAGNOSTIC; the port-forward capture is the deterministic body producer, so the long
+    # grace window this branch briefly carried (sleep 4 | nc -w 8, ~12s) is not needed and was
+    # never sized against the startup budget - the comment that had justified the original
+    # bound was deleted in the same change that raised it. Restored to sleep 2 | nc -w 4
+    # (~4s). Worst case charged to the application is now wget -T 6 plus ~4s, about 10s per
+    # poll, against the 60-second startup budget with polls every ~2s - inside the ~11s the
+    # budget was originally sized for. The port-forward capture is excluded from the budget
+    # arithmetic in Wait-AggregateStatus because it is verifier-side work performed after the
+    # in-container probe already completed.
     printf 'nc-fallback begin (wget exit %s)\n' "$wgetExit"
-    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 4; } | nc -w 8 127.0.0.1 8080 2>&1
+    { printf "GET /ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\ndapr-api-token: %s\r\n\r\n" "$APP_API_TOKEN"; sleep 2; } | nc -w 4 127.0.0.1 8080 2>&1
     printf '\nnc-fallback end (nc exit %s)\n' "$?"
 fi
 '@
@@ -299,20 +418,42 @@ fi
     catch {
         # Raw fallback text is not JSON; the port-forward capture below supplies the body.
     }
+    $fallbackSeconds = 0.0
     if ($null -eq $aggregate -or $null -eq $aggregate.status) {
-        $fallbackText = Get-HealthResponseViaPortForward $Pod
+        $fallbackStartedAt = [DateTime]::UtcNow
+        $fallbackText = Get-HealthResponseViaPortForward $Pod $Container
+        $fallbackSeconds = ([DateTime]::UtcNow - $fallbackStartedAt).TotalSeconds
         $text = $text + [Environment]::NewLine + 'port-forward fallback:' + [Environment]::NewLine + $fallbackText
+
+        # Parse the fallback transcript in ISOLATION. Get-HealthJsonBody carries its brace and
+        # in-string state across the whole input, so an unbalanced '{' or an odd unescaped '"'
+        # in the in-container half swallows the clean fallback object and returns the raw
+        # transcript instead - and a malformed in-container transcript is precisely the
+        # precondition for firing this fallback, so scanning the concatenation defeated it.
+        # Get-HealthJsonBody returns its input unchanged when it finds no status-bearing
+        # object, so an unchanged result means the isolated scan found nothing.
+        $fallbackBody = Get-HealthJsonBody $fallbackText
+        if ($fallbackBody -ne $fallbackText) {
+            $body = $fallbackBody
+        }
+        else {
+            $body = Get-HealthJsonBody $text
+        }
+
+        # Only a status the stage contract recognizes may replace the in-container observation.
+        # Accepting any three-digit code let a probe-side 401 or an API-server 502 overwrite the
+        # pod's real answer, so the stage burned its deadline reporting the wrong code.
         $fallbackStatusCode = Get-HealthStatusCode $fallbackText
-        if ($null -ne $fallbackStatusCode) {
+        if ($fallbackStatusCode -in @(200, 503)) {
             $statusCode = $fallbackStatusCode
         }
-        $body = Get-HealthJsonBody $text
     }
 
     return [pscustomobject]@{
         StatusCode = $statusCode
         Body = $body
         Raw = $text
+        FallbackSeconds = $fallbackSeconds
     }
 }
 
@@ -320,7 +461,8 @@ function Save-HealthResponseEvidence {
     param(
         [Parameter(Mandatory)][string]$Stage,
         [Nullable[int]]$StatusCode,
-        [AllowEmptyString()][string]$Body
+        [AllowEmptyString()][string]$Body,
+        [AllowEmptyString()][string]$Transcript = ''
     )
 
     # Two stage names differing only outside [0-9A-Za-z_.-] used to collapse onto one file
@@ -344,6 +486,12 @@ function Save-HealthResponseEvidence {
         attempt = [int]$script:healthEvidenceAttempts[$safeStage]
         statusCode = $StatusCode
         body = Protect-EvidenceText $Body
+        # The full capture transcript, not only the decided body. Without it a
+        # port-forward-derived pass was byte-indistinguishable from an image-native pass:
+        # when the fallback yields clean JSON, Get-HealthJsonBody returns just that object, so
+        # the 'port-forward fallback:' and 'nc-fallback begin/end' markers were dropped and the
+        # packet could not answer which capture path decided the stage.
+        transcript = Protect-EvidenceText $Transcript
     }
     $evidence | ConvertTo-Json -Depth 5 |
         Set-Content -LiteralPath (Join-Path $evidencePath "health-$safeStage-$attempt.json") -Encoding utf8
@@ -368,6 +516,7 @@ function Wait-AggregateStatus {
     $runningContainerInstance = ''
     $lastBody = ''
     $lastStatusCode = $null
+    $probeOverheadSeconds = 0.0
     $expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }
     while ([DateTime]::UtcNow -lt $deadline) {
         $observation = Get-RunningContainerObservation $AppName $Container $RequiredPodAnnotationName $RequiredPodAnnotationValue
@@ -392,7 +541,13 @@ function Wait-AggregateStatus {
             $response = Get-HealthResponse $pod $Container
             $lastBody = $response.Body
             $lastStatusCode = $response.StatusCode
-            Save-HealthResponseEvidence -Stage $Stage -StatusCode $lastStatusCode -Body $lastBody
+            # The runner-side port-forward capture is verifier-side work performed after the
+            # in-container probe already returned, so it is not the application's startup
+            # latency. Accumulate it and exclude it from the budget arithmetic below; without
+            # this, a fallback-heavy stage charged its own capture time to the container and
+            # could fail a container that became ready well inside its budget.
+            $probeOverheadSeconds += [double]$response.FallbackSeconds
+            Save-HealthResponseEvidence -Stage $Stage -StatusCode $lastStatusCode -Body $lastBody -Transcript $response.Raw
             $health = $null
             try {
                 $health = $lastBody | ConvertFrom-Json
@@ -406,15 +561,15 @@ function Wait-AggregateStatus {
                 # after the wall-clock budget, use Kubernetes' recorded Ready transition to prove
                 # that the current container actually became ready inside its startup budget.
                 $healthyAt = if ($null -eq $readyAt) { [DateTime]::UtcNow } else { $readyAt }
-                if ($MeasureFromContainerRunning -and (($healthyAt - $runningAt).TotalSeconds -gt $TimeoutSeconds)) {
+                if ($MeasureFromContainerRunning -and ((($healthyAt - $runningAt).TotalSeconds - $probeOverheadSeconds) -gt $TimeoutSeconds)) {
                     throw "[$Stage] $AppName reached $ExpectedStatus after the $TimeoutSeconds-second startup limit."
                 }
 
                 return $lastBody
             }
 
-            if ($MeasureFromContainerRunning -and (([DateTime]::UtcNow - $runningAt).TotalSeconds -gt $TimeoutSeconds)) {
-                throw "[$Stage] $AppName did not report HTTP $expectedHttpStatus aggregate $ExpectedStatus within $TimeoutSeconds seconds after container $Container started. Last HTTP status: $lastStatusCode. Last response: $lastBody"
+            if ($MeasureFromContainerRunning -and ((([DateTime]::UtcNow - $runningAt).TotalSeconds - $probeOverheadSeconds) -gt $TimeoutSeconds)) {
+                throw "[$Stage] $AppName did not report HTTP $expectedHttpStatus aggregate $ExpectedStatus within $TimeoutSeconds seconds after container $Container started (excluding $([math]::Round($probeOverheadSeconds, 1))s of runner-side port-forward capture). Last HTTP status: $lastStatusCode. Last response: $lastBody"
             }
         }
 
@@ -592,7 +747,10 @@ function Assert-ImageContract {
 }
 
 try {
-    foreach ($command in @('docker', 'kind', 'kubectl', 'dapr', 'pwsh')) {
+    # `curl` backs the runner-side port-forward health capture. Without it here, a missing
+    # binary raised a terminating CommandNotFoundException from inside the poll loop, aborting
+    # mid-stage with an error unrelated to the deployment.
+    foreach ($command in @('docker', 'kind', 'kubectl', 'dapr', 'pwsh', 'curl')) {
         if ($null -eq (Get-Command $command -ErrorAction SilentlyContinue)) {
             throw "Required command '$command' is not available. The deployment verifier never skips prerequisites."
         }
@@ -671,21 +829,67 @@ try {
     # so daprd exits fatally at component load. The manifests are applied verbatim above; this
     # separate, disclosed step then substitutes both stores with verification-scoped
     # `secretstores.kubernetes` aliases (merge patch: the cluster object keeps name and scopes),
-    # so the same secretKeyRef name/key pairs resolve from the seeded verification Secrets. It runs
-    # while the applications are scaled to zero below, so no consumer pod ever loads the
-    # vault-typed component. The OpenBao path is NOT exercised by this lane; proving it is
-    # Story 31.2 scope.
+    # so the same secretKeyRef name/key pairs resolve from the seeded verification Secrets.
+    #
+    # ORDERING, corrected 2026-07-29 by code review (chunk 2). This block previously claimed it
+    # "runs while the applications are scaled to zero below, so no consumer pod ever loads the
+    # vault-typed component". That was false: `kubectl apply -f` above creates
+    # deployment/memories and deployment/memories-mcp at their manifest replica count, and the
+    # scale-to-zero happens AFTER this block. The qualifying run shows the window - apply at
+    # 22:45:22.193, substitution at 22:45:22.396. Consumer pods can therefore start against the
+    # vault-typed store inside that sub-second window and crash-loop at component load; the
+    # scale-to-zero below then clears them before the health stages begin. The window cannot be
+    # closed by reordering, because the pods are created by the apply itself; closing it would
+    # require rendering the manifests at zero replicas, which would no longer apply them
+    # verbatim. Recorded rather than papered over.
+    #
+    # The OpenBao path is NOT exercised by this lane; proving it is Story 31.2 scope.
+    # Guard the target before rewriting any Component's type. $namespace is the same name the
+    # reviewed live PG-ONPREM-1 target uses, and until now safety rested entirely on
+    # $env:KUBECONFIG having been repointed above. These are the first commands in this script
+    # that mutate a Dapr Component's spec.type, and `secretstore.yaml` is Story 31.2's artifact.
+    $activeContext = (Invoke-Checked kubectl @('config', 'current-context')) -join ''
+    if ($activeContext.Trim() -ne "kind-$ClusterName") {
+        throw "Refusing to substitute secret stores: active kubectl context is '$($activeContext.Trim())', not the disposable cluster 'kind-$ClusterName'."
+    }
+
+    # Enumerate the vault-typed stores from the cluster rather than hardcoding two names, so a
+    # third such component cannot be silently left unpatched while the disclosure still passes.
+    $componentsJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $namespace, '-o', 'json')) -join [Environment]::NewLine
+    $vaultComponents = @(($componentsJson | ConvertFrom-Json).items |
+        Where-Object { $_.spec.type -eq 'secretstores.hashicorp.vault' } |
+        ForEach-Object { [string]$_.metadata.name } |
+        Sort-Object)
+    if ($vaultComponents.Count -eq 0) {
+        throw 'Expected at least one secretstores.hashicorp.vault component to substitute; found none.'
+    }
+
     $secretStoreSubstitution = '{"spec":{"type":"secretstores.kubernetes","version":"v1","metadata":[]}}'
-    Invoke-Checked kubectl @('patch', 'component', 'secretstore', '-n', $namespace, '--type', 'merge', '-p', $secretStoreSubstitution) | Out-Null
-    Invoke-Checked kubectl @('patch', 'component', 'access-telemetry-secrets', '-n', $namespace, '--type', 'merge', '-p', $secretStoreSubstitution) | Out-Null
+    foreach ($component in $vaultComponents) {
+        Invoke-Checked kubectl @('patch', 'component', $component, '-n', $namespace, '--type', 'merge', '-p', $secretStoreSubstitution) | Out-Null
+    }
+
+    # Re-read the observed post-patch types. `Invoke-Checked` proves only that kubectl exited 0
+    # - a no-op patch also exits 0 - so an asserted disclosure could never disagree with the
+    # cluster and the validator was asserting back a literal this script had just written.
+    $observedJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $namespace, '-o', 'json')) -join [Environment]::NewLine
+    $observedTypes = @(($observedJson | ConvertFrom-Json).items |
+        Where-Object { $vaultComponents -contains [string]$_.metadata.name } |
+        ForEach-Object { [string]$_.spec.type } |
+        Sort-Object -Unique)
+    if ($observedTypes.Count -ne 1 -or $observedTypes[0] -ne 'secretstores.kubernetes') {
+        throw "Secret-store substitution did not take effect: observed post-patch types [$($observedTypes -join ', ')] for [$($vaultComponents -join ', ')]."
+    }
+
     [ordered]@{
         schemaVersion = 1
-        reason = 'DW 27.3-CR17: the disposable cluster has no OpenBao, so the production hashicorp.vault secret stores are substituted with verification-scoped kubernetes stores after the verbatim apply; component secretKeyRefs resolve from the seeded verification Secrets. The OpenBao path is not exercised by this lane (Story 31.2 scope).'
-        substitutedComponents = @('secretstore', 'access-telemetry-secrets')
+        reason = 'DW 27.3-CR17: the disposable cluster has no OpenBao, so the production hashicorp.vault secret stores are substituted with verification-scoped kubernetes stores after the verbatim apply. Consumers whose secretKeyRefs name a seeded verification Secret resolve through the substituted store; access-telemetry-store names Secret access-telemetry-postgresql, which this lane does not seed and memories-access-telemetry-secret-reader does not permit, but that component is scoped to memories-access-telemetry, whose Deployment stays at replicas 0 and is never started here, so it is never loaded. The OpenBao path is not exercised by this lane (Story 31.2 scope).'
+        substitutedComponents = $vaultComponents
         originalType = 'secretstores.hashicorp.vault'
         substitutedType = 'secretstores.kubernetes'
-    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidencePath 'secret-store-substitution.json') -Encoding utf8
-    Write-Host 'Substituted secret stores secretstore and access-telemetry-secrets with verification-scoped secretstores.kubernetes aliases (disclosed in secret-store-substitution.json).'
+        observedPostPatchTypes = $observedTypes
+    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidencePath 'secret-store-substitution.json') -Encoding utf8
+    Write-Host "Substituted secret stores $($vaultComponents -join ', ') with verification-scoped secretstores.kubernetes aliases (disclosed in secret-store-substitution.json)."
 
     # The release manifest assumes external Redis/FalkorDB services already exist. This disposable
     # cluster creates them in the same apply, so keep the applications stopped until those required

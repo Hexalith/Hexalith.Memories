@@ -12,7 +12,7 @@ trap 'rm -f "$changed_file"' EXIT
 git diff --cached --name-only -- > "$changed_file"
 
 if command -v python3 >/dev/null 2>&1; then
-  python3 tools/check-story-file-scope.py --branch-name "$branch_name" --changed-files-file "$changed_file"
+  python3 tools/check-story-file-scope.py --defer-unresolved-owner --branch-name "$branch_name" --changed-files-file "$changed_file"
 else
-  python tools/check-story-file-scope.py --branch-name "$branch_name" --changed-files-file "$changed_file"
+  python tools/check-story-file-scope.py --defer-unresolved-owner --branch-name "$branch_name" --changed-files-file "$changed_file"
 fi

@@ -82,6 +82,7 @@ def write_complete_evidence(
                 "substitutedComponents": ["secretstore", "access-telemetry-secrets"],
                 "originalType": "secretstores.hashicorp.vault",
                 "substitutedType": "secretstores.kubernetes",
+                "observedPostPatchTypes": ["secretstores.kubernetes"],
             }
         ),
         encoding="utf-8",
@@ -128,10 +129,21 @@ class ProductionDeploymentEvidenceTests(unittest.TestCase):
         self.assertIn("wgetExit=$?", verifier)
         self.assertIn("dapr-api-token: %s", verifier)
         self.assertIn("Connection: close\\r\\ndapr-api-token: %s\\r\\n\\r\\n", verifier)
-        self.assertIn("nc -w 8 127.0.0.1 8080", verifier)
+        self.assertIn("nc -w 4 127.0.0.1 8080", verifier)
         self.assertIn("$probeCommand = $probeCommand.Replace(\"`r\", '')", verifier)
         self.assertIn("Save-HealthResponseEvidence", verifier)
         self.assertIn("expectedHttpStatus = if ($ExpectedStatus -eq 'Unhealthy') { 503 } else { 200 }", verifier)
+
+        # Redaction must not sit on the health-decision path: Protect-EvidenceText replaces
+        # values this script does not control ($env:HEXALITH_ZOT_USERNAME/_API_KEY), so a
+        # short or common value would corrupt the status text the gate parses. It belongs at
+        # the evidence write, where Save-HealthResponseEvidence already applies it.
+        #
+        # These two assertions belong to THIS test. A later change inserted a new method
+        # mid-body and silently carried them into it, so this pin stopped asserting the
+        # contract its own name claims while aggregate coverage stayed unchanged.
+        self.assertNotIn("$text = Protect-EvidenceText ($output", verifier)
+        self.assertIn("$text = $output -join [Environment]::NewLine", verifier)
 
     def test_health_probe_records_fallback_markers_and_captures_body_via_port_forward(self) -> None:
         # CI run 30402973401: the in-container netcat fallback exited 0 with zero bytes on all
@@ -147,23 +159,115 @@ class ProductionDeploymentEvidenceTests(unittest.TestCase):
         self.assertIn("printf '\\nnc-fallback end (nc exit %s)\\n' \"$?\"", verifier)
         self.assertIn("function Get-HealthResponseViaPortForward", verifier)
         self.assertIn("'port-forward', '-n', $namespace, \"pod/$Pod\", \"${localPort}:8080\"", verifier)
-        self.assertIn("--retry-connrefused", verifier)
+        # No --retry: curl treats HTTP 503 as transient, so retrying would discard the exact
+        # response the fault stages exist to capture. The establishment race is handled by an
+        # explicit wait-for-listener instead, which --retry-connrefused used to mask.
+        self.assertNotIn("--retry-connrefused", verifier)
+        self.assertNotIn("--retry 3", verifier)
+        self.assertIn("$probe.ConnectAsync([System.Net.IPAddress]::Loopback, $localPort)", verifier)
+        # An ephemeral loopback port, not a fixed 18080 a leaked forward could still hold.
+        self.assertIn("$localPort = Get-FreeLoopbackPort", verifier)
+        self.assertNotIn("$localPort = 18080", verifier)
+        # The runner-side probe presents the pod's own token, never a hardcoded literal.
+        self.assertIn("$token = Get-PodApplicationToken $Pod $Container", verifier)
+        self.assertNotIn("-H 'dapr-api-token: verification-app-api-token'", verifier)
         # The fallback fires only when no status-bearing JSON object was captured, and its
-        # transcript is folded into the packet so both capture paths stay auditable.
-        self.assertIn("$fallbackText = Get-HealthResponseViaPortForward $Pod", verifier)
+        # transcript is persisted so both capture paths stay auditable.
+        self.assertIn("$fallbackText = Get-HealthResponseViaPortForward $Pod $Container", verifier)
         self.assertIn("'port-forward fallback:'", verifier)
+        self.assertIn("-Transcript $response.Raw", verifier)
+        self.assertIn("transcript = Protect-EvidenceText $Transcript", verifier)
         # Ordering: the port-forward fallback decision happens inside Get-HealthResponse,
         # after the in-container probe ran, never instead of it.
         exec_index = verifier.index("kubectl exec -n $namespace $Pod -c $Container")
-        fallback_index = verifier.index("$fallbackText = Get-HealthResponseViaPortForward $Pod")
+        fallback_index = verifier.index("$fallbackText = Get-HealthResponseViaPortForward $Pod $Container")
         self.assertLess(exec_index, fallback_index)
 
-        # Redaction must not sit on the health-decision path: Protect-EvidenceText replaces
-        # values this script does not control ($env:HEXALITH_ZOT_USERNAME/_API_KEY), so a
-        # short or common value would corrupt the status text the gate parses. It belongs at
-        # the evidence write, where Save-HealthResponseEvidence already applies it.
-        self.assertNotIn("$text = Protect-EvidenceText ($output", verifier)
-        self.assertIn("$text = $output -join [Environment]::NewLine", verifier)
+    def test_fallback_trigger_and_isolated_parse_decide_the_recorded_response(self) -> None:
+        """Execute the fallback decision instead of pinning its source text.
+
+        Three behaviours are proven against the real Get-HealthJsonBody /
+        Get-HealthStatusCode: the trigger fires only when the in-container capture has no
+        status-bearing JSON; the fallback transcript is parsed in ISOLATION so a malformed
+        in-container half cannot swallow it; and only a 200/503 from the fallback may replace
+        the in-container status code.
+        """
+
+        decision = """
+$ErrorActionPreference = 'Stop'
+. ./tools/production-deployment-health.ps1
+
+function Resolve-Response {
+    param([string]$Text, [string]$FallbackText)
+
+    $statusCode = Get-HealthStatusCode $Text
+    $body = Get-HealthJsonBody $Text
+    $aggregate = $null
+    try { $aggregate = $body | ConvertFrom-Json } catch { }
+    $fired = $false
+    if ($null -eq $aggregate -or $null -eq $aggregate.status) {
+        $fired = $true
+        $combined = $Text + [Environment]::NewLine + 'port-forward fallback:' + [Environment]::NewLine + $FallbackText
+        $fallbackBody = Get-HealthJsonBody $FallbackText
+        if ($fallbackBody -ne $FallbackText) { $body = $fallbackBody } else { $body = Get-HealthJsonBody $combined }
+        $fallbackStatusCode = Get-HealthStatusCode $FallbackText
+        if ($fallbackStatusCode -in @(200, 503)) { $statusCode = $fallbackStatusCode }
+    }
+    return [pscustomobject]@{ Fired = $fired; StatusCode = $statusCode; Body = $body }
+}
+
+$healthy = "HTTP/1.1 200 OK`r`n`r`n{""schemaVersion"":1,""status"":""Healthy""}"
+$fallback503 = "port-forward begin`nHTTP/1.1 503`r`n`r`n{""schemaVersion"":1,""status"":""Unhealthy""}`nport-forward end (curl exit 0)"
+$oddQuote = 'error: unable to upgrade connection: container "memories not found'
+$fallback401 = "HTTP/1.1 401 Unauthorized`r`n`r`n"
+
+$results = [ordered]@{
+    goodStaysInContainer = (Resolve-Response $healthy $fallback503)
+    poisonedIsolatedParse = (Resolve-Response $oddQuote $fallback503)
+    authErrorDoesNotOverwrite = (Resolve-Response $oddQuote $fallback401)
+}
+$results | ConvertTo-Json -Depth 6 -Compress
+"""
+        result = run_pwsh(decision)
+        self.assertEqual(0, result.returncode, result.stderr)
+        parsed = json.loads(result.stdout.strip().splitlines()[-1])
+
+        # A status-bearing in-container body must NOT trigger the runner-side capture.
+        # Inverting the trigger condition makes this assertion fail.
+        self.assertFalse(parsed["goodStaysInContainer"]["Fired"])
+        self.assertEqual(200, parsed["goodStaysInContainer"]["StatusCode"])
+
+        # An odd unescaped quote in the in-container half poisons Get-HealthJsonBody's
+        # in-string state across a concatenation, so the clean fallback object survives only
+        # because it is parsed in isolation.
+        poisoned = parsed["poisonedIsolatedParse"]
+        self.assertTrue(poisoned["Fired"])
+        self.assertEqual(503, poisoned["StatusCode"])
+        self.assertEqual({"schemaVersion": 1, "status": "Unhealthy"}, json.loads(poisoned["Body"]))
+
+        # A probe-side 401 must not overwrite the in-container observation.
+        self.assertTrue(parsed["authErrorDoesNotOverwrite"]["Fired"])
+        self.assertIsNone(parsed["authErrorDoesNotOverwrite"]["StatusCode"])
+
+    def test_free_loopback_port_helper_returns_a_bindable_ephemeral_port(self) -> None:
+        """The fixed 18080 let a leaked forward answer for a different pod."""
+
+        verifier = VERIFIER.read_text(encoding="utf-8-sig")
+        helper = verifier.split("function Get-FreeLoopbackPort {", 1)[1]
+        helper = "function Get-FreeLoopbackPort {" + helper.split("\n}\n", 1)[0] + "\n}"
+
+        result = run_pwsh(
+            helper
+            + "\n$ports = 1..3 | ForEach-Object { Get-FreeLoopbackPort }\n"
+            + "$ports -join ','"
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        ports = [int(value) for value in result.stdout.strip().splitlines()[-1].split(",")]
+        self.assertEqual(3, len(ports))
+        for port in ports:
+            self.assertGreater(port, 1024)
+            self.assertLess(port, 65536)
+            self.assertNotEqual(18080, port)
 
     def test_redaction_at_write_does_not_corrupt_the_health_decision(self) -> None:
         """Exercise the actual scenario the source-text pins above only describe.
@@ -702,24 +806,39 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
         # DW 27.3-CR17 (Administrator decision 2026-07-28): the disposable cluster has no
         # OpenBao, and the production `hashicorp.vault` secret stores route component
         # secretKeyRef resolution through it, so daprd exits fatally at component load.
-        # The verifier substitutes both stores with verification-scoped
-        # `secretstores.kubernetes` aliases via a merge patch (names and scopes preserved
-        # by the cluster object) after the verbatim apply and while the applications are
-        # still scaled to zero, so no consumer pod ever loads the vault-typed component.
-        verifier = VERIFIER.read_text(encoding="utf-8")
+        # The verifier substitutes them with verification-scoped `secretstores.kubernetes`
+        # aliases via a merge patch (names and scopes preserved by the cluster object) after
+        # the verbatim apply.
+        #
+        # NOTE, corrected 2026-07-29: the substitution does NOT run "while the applications
+        # are scaled to zero". `kubectl apply -f` creates the Deployments at their manifest
+        # replica count and the scale-to-zero happens after this block, so a sub-second
+        # admission window exists. The assertions below pin the ordering that is actually
+        # true and the comment records the window rather than asserting a false invariant.
+        verifier = VERIFIER.read_text(encoding="utf-8-sig")
         apply_index = verifier.index("kubectl @('apply', '-f', $manifestPath)")
         patch_payload = verifier.index('"type":"secretstores.kubernetes"')
-        scale_up = verifier.index("'--replicas=2')")
+        scale_down = verifier.index("'--replicas=0')")
         self.assertLess(apply_index, patch_payload)
-        self.assertLess(patch_payload, scale_up)
-        for component in ("secretstore", "access-telemetry-secrets"):
-            self.assertIn(f"'patch', 'component', '{component}'", verifier)
+        self.assertLess(patch_payload, scale_down)
+
+        # The substituted set is enumerated from the cluster by spec.type, so a third
+        # vault-typed component cannot be silently left unpatched.
+        self.assertIn("$_.spec.type -eq 'secretstores.hashicorp.vault'", verifier)
+        self.assertIn("'patch', 'component', $component", verifier)
+        self.assertNotIn("'patch', 'component', 'secretstore'", verifier)
+        # The disclosure records observed post-patch types read back from the cluster, so it
+        # cannot be a literal the validator merely asserts back.
+        self.assertIn("observedPostPatchTypes = $observedTypes", verifier)
+        self.assertIn("Secret-store substitution did not take effect", verifier)
+        # A Component type rewrite may only target the disposable cluster.
+        self.assertIn("Refusing to substitute secret stores", verifier)
         self.assertIn("secret-store-substitution.json", verifier)
 
-    def test_missing_secret_store_substitution_disclosure_fails(self) -> None:
-        # The substitution may never happen silently: the validator refuses a packet that
-        # does not carry the disclosure record, so an undisclosed substitution cannot pass
-        # evidence validation.
+    def test_undisclosed_substitution_is_accepted_and_reported_for_an_unmodified_run(self) -> None:
+        # Once Story 31.2 delivers the OpenBao path, a run that applies the manifests
+        # unmodified has nothing to disclose. Requiring the record unconditionally pinned the
+        # lane to a non-production secret-store topology forever.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             write_complete_evidence(root)
@@ -727,32 +846,82 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
 
             result = run_validator(root)
 
-            self.assertNotEqual(0, result.returncode)
-            self.assertIn("substitution", (result.stdout + result.stderr).lower())
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("applied the production secret stores unmodified", result.stdout)
 
-    def test_incomplete_secret_store_substitution_disclosure_fails(self) -> None:
-        # A disclosure naming fewer components, or different types, than the declared
-        # substitution is a false record, not a formatting lapse.
+    def test_failed_run_without_substitution_disclosure_still_validates(self) -> None:
+        # The disclosure is written only after cluster create, image loads, contract asserts,
+        # render and apply all succeed. Requiring it unconditionally made every honest earlier
+        # failure unvalidatable — and because CI runs this step with `if: always()`, it
+        # replaced the genuine terminal error with a message about a missing disclosure. This
+        # is the same regression this validator already recorded fixing for health bodies.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root, status="failed", stage="apply-production-manifests")
+            (root / "secret-store-substitution.json").unlink()
+
+            result = run_validator(root)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertNotIn("substitution", (result.stdout + result.stderr).lower())
+
+    def test_substitution_disclosure_without_observed_types_fails(self) -> None:
+        # A disclosure that asserts only the verifier's own literals proves nothing; the
+        # observed post-patch types are what bind it to the cluster.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             write_complete_evidence(root)
-            (root / "secret-store-substitution.json").write_text(
-                json.dumps(
-                    {
-                        "schemaVersion": 1,
-                        "reason": "redacted",
-                        "substitutedComponents": ["secretstore"],
-                        "originalType": "secretstores.hashicorp.vault",
-                        "substitutedType": "secretstores.kubernetes",
-                    }
-                ),
-                encoding="utf-8",
-            )
+            disclosure = json.loads((root / "secret-store-substitution.json").read_text(encoding="utf-8"))
+            del disclosure["observedPostPatchTypes"]
+            (root / "secret-store-substitution.json").write_text(json.dumps(disclosure), encoding="utf-8")
 
             result = run_validator(root)
 
             self.assertNotEqual(0, result.returncode)
-            self.assertIn("substitution", (result.stdout + result.stderr).lower())
+            self.assertIn("observed post-patch types", (result.stdout + result.stderr).lower())
+
+    def test_substitution_disclosure_with_empty_reason_fails(self) -> None:
+        # The reason narrative is the field an auditor reads. An empty one discloses nothing
+        # while satisfying every structural check.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            disclosure = json.loads((root / "secret-store-substitution.json").read_text(encoding="utf-8"))
+            disclosure["reason"] = "   "
+            (root / "secret-store-substitution.json").write_text(json.dumps(disclosure), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("non-empty reason", (result.stdout + result.stderr).lower())
+
+    def test_substitution_disclosure_with_wrong_cased_type_fails(self) -> None:
+        # The membership and type comparisons are case-SENSITIVE; PowerShell's default
+        # -eq/-contains are not, so a wrong-cased type used to satisfy the gate.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            disclosure = json.loads((root / "secret-store-substitution.json").read_text(encoding="utf-8"))
+            disclosure["substitutedType"] = "SecretStores.Kubernetes"
+            (root / "secret-store-substitution.json").write_text(json.dumps(disclosure), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("does not match the declared", (result.stdout + result.stderr).lower())
+
+    def test_unparsable_substitution_disclosure_fails_with_a_domain_message(self) -> None:
+        # A truncated file used to surface a raw ConvertFrom-Json parser error containing no
+        # domain vocabulary at all, unlike every other JSON read in this validator.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            (root / "secret-store-substitution.json").write_text('{"schemaVersion":1,', encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("not parsable json", (result.stdout + result.stderr).lower())
 
     def test_environment_secret_canary_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

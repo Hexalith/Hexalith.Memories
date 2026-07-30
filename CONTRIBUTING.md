@@ -71,7 +71,9 @@ Story-Key: spec-resolve-story-gate-commit-path
 
 An extended key does not fall back to a shorter artifact: `spec-example-extra` selects only
 `spec-example-extra.md`, never `spec-example.md`. A changed set on `main` with no numeric story or
-standalone-spec owner still fails closed.
+standalone-spec owner still fails closed at the definitive `commit-msg` and CI gates. The earlier
+`pre-commit` phase may defer only a completely absent owner because the proposed message does not
+exist yet.
 
 If two non-empty sources disagree, the check fails closed and reports each `source=key` pair so you
 know which input to fix. Keep the branch name and commit trailer aligned when both are present.
@@ -93,13 +95,18 @@ git config core.hooksPath .githooks
 ```
 
 Do not use `--global`; this repository's hooks are intentionally project-local. The `pre-commit` hook
-checks the staged file list using branch or caller-provided story context. The `commit-msg` hook first
-runs `commitlint --edit` against the proposed message, then validates `Story:`, `Story-Key:`, and
-`Scope-Override:` trailers against the same staged file list. The commitlint step is skipped with a
-warning when `node_modules/.bin/commitlint` is absent, so run `npm ci` after cloning to arm it locally;
-CI enforces it regardless. CI runs the same Python validator against PR and non-`main` push
-diffs, using the PR source branch and the real head commit message rather than the synthetic merge
-commit.
+checks the staged file list immediately when the branch supplies an owner. When no owner source is
+available before the commit message exists, it prints a deferral diagnostic and lets `commit-msg`
+perform the definitive check; malformed, multiple, conflicting, or resolved-but-out-of-scope owner
+metadata is never deferred. The `commit-msg` hook first runs `commitlint --edit` against the proposed
+message, then validates `Story:`, `Story-Key:`, and `Scope-Override:` trailers against the same staged
+file list. This makes a valid `Story-Key:` trailer usable on `main` while a changed commit with neither
+a trailer nor an owner-named branch still fails before creation.
+
+The commitlint step is skipped with a warning when `node_modules/.bin/commitlint` is absent, so run
+`npm ci` after cloning to arm it locally; CI enforces it regardless. CI runs the same Python validator
+without the local deferral mode against PR and non-`main` push diffs, using the PR source branch and
+the real head commit message rather than the synthetic merge commit.
 
 Local hook and direct CLI runs treat an empty changed-file list as a successful no-op (e.g., a
 `pre-commit` invocation with nothing staged). CI does not — the `story-file-scope` workflow job

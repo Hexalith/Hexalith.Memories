@@ -77,6 +77,10 @@ class ValidationError(Exception):
     """Raised for expected validation failures."""
 
 
+class MissingOwnerError(ValidationError):
+    """Raised when no story or standalone-spec owner source is available."""
+
+
 def normalize_path(value: str) -> str:
     cleaned = value.strip().strip("\"'`").replace("\\", "/")
     cleaned = re.sub(r"/+", "/", cleaned)
@@ -153,6 +157,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--changed-file", action="append", default=[], help="Changed file path. May be repeated.")
     parser.add_argument("--changed-files-file", help="File containing changed paths, one per line.")
     parser.add_argument("--staged", action="store_true", help="Use git diff --cached --name-only -- as changed files.")
+    parser.add_argument(
+        "--defer-unresolved-owner",
+        action="store_true",
+        help=(
+            "Defer only a completely absent owner to a guaranteed later definitive gate. "
+            "Intended for pre-commit, before the commit message exists."
+        ),
+    )
     parser.add_argument(
         "--artifacts-root",
         default="_bmad-output/implementation-artifacts",
@@ -280,7 +292,7 @@ def resolve_story_key(args: argparse.Namespace, trailer_keys: list[str]) -> Stor
         validate_branch_spec_segments(branch_name)
 
     if not sources:
-        raise ValidationError(
+        raise MissingOwnerError(
             "No story key resolved. Pass --story-key, add a Story:/Story-Key: trailer, or use a branch name containing a full story key.",
         )
 
@@ -475,7 +487,16 @@ def validate(args: argparse.Namespace) -> int:
 
     message = read_commit_message(args)
     trailer_keys, trailer_overrides = parse_trailers(message)
-    source = resolve_story_key(args, trailer_keys)
+    try:
+        source = resolve_story_key(args, trailer_keys)
+    except MissingOwnerError:
+        if not args.defer_unresolved_owner:
+            raise
+        print(
+            "No story key is available before the commit-message phase; "
+            "deferring story-scope validation to commit-msg."
+        )
+        return 0
 
     artifacts_root = Path(args.artifacts_root)
     story_path = artifacts_root / f"{source.key}.md"
