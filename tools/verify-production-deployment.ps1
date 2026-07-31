@@ -77,6 +77,186 @@ Get-ChildItem -LiteralPath $evidencePath -File -ErrorAction SilentlyContinue |
     } |
     Remove-Item -Force
 
+function Assert-DisposableClusterContext {
+    param([Parameter(Mandatory)][string]$ClusterName)
+
+    # Extracted from the substitution block so it can be executed by a test. Inverting this
+    # comparison in place previously left the whole suite green, and the mutation inverts the
+    # safety property exactly: the verifier would refuse on the disposable cluster and proceed
+    # to rewrite Dapr Component spec.types on any OTHER context.
+    #
+    # Read the context WITHOUT merging stderr. Invoke-Checked folds stderr into its output, so a
+    # single kubectl deprecation/warning line would concatenate onto the context name and make
+    # this exact-equality guard refuse a valid disposable cluster - aborting the lane after the
+    # manifests were already applied. Same hazard the RBAC probe defends against with 2>$null.
+    $activeContext = (& kubectl config current-context 2>$null) -join ''
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($activeContext)) {
+        throw 'Refusing to substitute secret stores: could not read the active kubectl context.'
+    }
+    # Case-SENSITIVE. kubectl context names are case-sensitive, so `KIND-hexalith-...` is a
+    # genuinely different context that `-ne` admitted - and this is the sole barrier before the
+    # script rewrites Dapr Component spec.types. Every other exactness check in this file uses -cne.
+    if ($activeContext.Trim() -cne "kind-$ClusterName") {
+        throw "Refusing to substitute secret stores: active kubectl context is '$($activeContext.Trim())', not the disposable cluster 'kind-$ClusterName'."
+    }
+}
+
+function Invoke-SecretStoreSubstitution {
+    # Extracted 2026-07-31 by code review so the substitution and its disclosure can be EXECUTED
+    # by a test. While this block was inline, seven independent mutations of it survived the whole
+    # suite - the disclosure write, the performed flag, both post-patch checks, the
+    # observedPostPatchTypes field, and the narrative - because its only coverage was source-text
+    # assertIn over the file. Extraction alone is not coverage: the call site is pinned separately,
+    # because moving Assert-DisposableClusterContext into a function is exactly what let its
+    # invocation be deleted while the pinned string still matched inside the function body.
+    param(
+        [Parameter(Mandatory)][string]$Namespace,
+        [Parameter(Mandatory)][string]$ClusterName,
+        [Parameter(Mandatory)][string]$DisclosurePath
+    )
+
+    Assert-DisposableClusterContext $ClusterName
+
+    # Enumerate the vault-typed stores from the cluster rather than hardcoding two names, so a
+    # third such component cannot be silently left unpatched while the disclosure still passes.
+    $componentsJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $Namespace, '-o', 'json')) -join [Environment]::NewLine
+    try {
+        $componentList = $componentsJson | ConvertFrom-Json
+    }
+    catch {
+        throw "Could not parse the Dapr Component list while preparing the secret-store substitution. kubectl exited 0 but its output was not JSON (a warning line on stderr is folded in by Invoke-Checked). Parser error: $($_.Exception.Message)"
+    }
+
+    # A FAILED enumeration must not look like the by-design "nothing to substitute" end state.
+    # kubectl can exit 0 with a payload carrying no `items` at all (a `Status` object, for
+    # example); `@($payload.items)` then yields a one-element array holding $null, `$null.spec.type`
+    # is $null, and the vault-typed set came out empty - so a render/apply/namespace regression was
+    # recorded as `substitutionPerformed=false` and the validator printed "the run applied the
+    # production secret stores unmodified" over a cluster nothing had verified.
+    if ($null -eq $componentList.PSObject.Properties['items']) {
+        throw "Could not enumerate Dapr Components while preparing the secret-store substitution: kubectl exited 0 but its JSON payload carried no 'items' property, so an enumeration failure is indistinguishable from an empty result."
+    }
+    $componentItems = @($componentList.items | Where-Object { $null -ne $_ })
+    if ($componentItems.Count -eq 0) {
+        throw "Could not enumerate Dapr Components while preparing the secret-store substitution: namespace '$Namespace' reports zero Dapr Components after the verbatim apply, which is a render or apply regression rather than the Story 31.2 end state (that state has components, none of them vault-typed)."
+    }
+    $vaultComponents = @($componentItems |
+        Where-Object { $_.spec.type -eq 'secretstores.hashicorp.vault' } |
+        ForEach-Object { [string]$_.metadata.name } |
+        Sort-Object)
+    # No throw when nothing is vault-typed. Story 31.2 delivers the real OpenBao path, after
+    # which a run applies the production manifests unmodified and has nothing to substitute -
+    # the desired end state, and the state DW 27.3-CR29/CR30 must be able to discharge. Making
+    # the substitution unconditional would have made AC6's own lane permanently incapable of
+    # proving the Production secret-resolution path it exists to qualify.
+    $secretStoreSubstitution = '{"spec":{"type":"secretstores.kubernetes","version":"v1","metadata":[]}}'
+    foreach ($component in $vaultComponents) {
+        Invoke-Checked kubectl @('patch', 'component', $component, '-n', $Namespace, '--type', 'merge', '-p', $secretStoreSubstitution) | Out-Null
+    }
+
+    # Re-read the observed post-patch type PER COMPONENT. `Invoke-Checked` proves only that
+    # kubectl exited 0 - a no-op patch also exits 0 - so an asserted disclosure could never
+    # disagree with the cluster. A set-of-types readback (Sort-Object -Unique) was not enough
+    # either: it collapses N components to one entry, so a component that disappeared between
+    # the patch loop and the readback still yielded a clean single type while the disclosure
+    # claimed every component was substituted.
+    # COLLECT verification failures instead of throwing on the spot. Every throw between the patch
+    # loop and the disclosure write left a cluster whose Component spec.types had already been
+    # rewritten while `secret-store-substitution.json` was never written at all - and the validator
+    # skips its disclosure branch entirely when the file is absent, so the packet validated clean
+    # over a silently mutated cluster. The disclosure is now written on every path and the failure
+    # is raised afterwards.
+    $substitutionFailures = [System.Collections.Generic.List[string]]::new()
+    $observedItems = @()
+    $observedByName = @{}
+    $observedJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $Namespace, '-o', 'json')) -join [Environment]::NewLine
+    try {
+        $observedPayload = $observedJson | ConvertFrom-Json
+        if ($null -eq $observedPayload.PSObject.Properties['items']) {
+            $substitutionFailures.Add('the post-patch Dapr Component list carried no items property')
+        }
+        else {
+            $observedItems = @($observedPayload.items | Where-Object { $null -ne $_ })
+        }
+    }
+    catch {
+        $substitutionFailures.Add("the post-patch Dapr Component list could not be parsed (parser error: $($_.Exception.Message))")
+    }
+    foreach ($item in $observedItems) {
+        $observedByName[[string]$item.metadata.name] = [string]$item.spec.type
+    }
+    $observedComponents = @()
+    foreach ($component in $vaultComponents) {
+        if (-not $observedByName.ContainsKey($component)) {
+            $substitutionFailures.Add("component '$component' was patched but is absent from the post-patch read")
+            continue
+        }
+        if ($observedByName[$component] -cne 'secretstores.kubernetes') {
+            $substitutionFailures.Add("component '$component' observed post-patch type '$($observedByName[$component])'")
+            continue
+        }
+        $observedComponents += [ordered]@{ name = $component; observedType = $observedByName[$component] }
+    }
+
+    # Scan the WHOLE post-patch list for a surviving vault-typed component, not only the names this
+    # run enumerated before patching. A component the pre-patch read missed (informer lag right
+    # after the apply) or one a controller re-created between the patch loop and the readback was
+    # never examined, so the run succeeded and the disclosure asserted it named "exactly the
+    # components observed and patched in this run" while a vault-typed store reached the health stages.
+    $residualVaultComponents = @($observedItems |
+        Where-Object { $_.spec.type -eq 'secretstores.hashicorp.vault' } |
+        ForEach-Object { [string]$_.metadata.name } |
+        Sort-Object)
+    if ($residualVaultComponents.Count -gt 0) {
+        $substitutionFailures.Add("vault-typed component(s) survived the substitution: $($residualVaultComponents -join ', ')")
+    }
+
+    # ALWAYS write the disclosure, including for a run that substituted nothing. Making the file
+    # optional made its absence indistinguishable from a substituted run whose disclosure was
+    # never written or was lost from the packet, and the validator then printed an unverified
+    # claim about production secret-store topology. An explicit substituted:false record is a
+    # positive assertion the validator can check; a missing file is not.
+    $substitutionPerformed = $vaultComponents.Count -gt 0
+    $substitutionReason = if ($substitutionPerformed) {
+        # Build the narrative from the components actually enumerated. A hardcoded two-component
+        # story re-introduced the staleness that dynamic enumeration was added to remove: a third
+        # vault-typed component would be correctly patched and listed while the auditor-facing
+        # narrative kept describing a topology that no longer existed, and the validator only
+        # checks that this field is non-empty.
+        "DW 27.3-CR17: the disposable cluster has no OpenBao, so the $($vaultComponents.Count) production hashicorp.vault secret store(s) applied by this run - $($vaultComponents -join ', ') - are substituted with verification-scoped kubernetes stores after the verbatim apply. Consumers whose secretKeyRefs name a seeded verification Secret resolve through the substituted store; a consumer naming a Secret this lane does not seed cannot resolve it, and any such component must stay at replicas 0 or the health stages will observe its component-load failure. Concretely, and restored 2026-07-31 after the dynamic rewrite dropped it: `access-telemetry-store` resolves its password through Secret `access-telemetry-postgresql` via the `memories-access-telemetry-secret-reader` RBAC binding, which this lane does not create, so that component must remain at replicas 0 - the auditor otherwise cannot tell which component is at risk, and the validator only checks that this field is non-empty. Components are enumerated from the cluster, so this record names exactly the components observed and patched in this run. The OpenBao path is not exercised by this lane (Story 31.2 scope)."
+    }
+    else {
+        'No secretstores.hashicorp.vault component was applied, so no substitution was performed and the production secret stores ran unmodified. Expected once Story 31.2 delivers the OpenBao path; before that, this state means the rendered manifests no longer carry the production vault-typed stores and AC6 no longer describes the applied topology.'
+    }
+
+    [ordered]@{
+        schemaVersion = 2
+        substitutionPerformed = $substitutionPerformed
+        reason = $substitutionReason
+        substitutedComponents = $vaultComponents
+        observedComponents = $observedComponents
+        originalType = 'secretstores.hashicorp.vault'
+        substitutedType = 'secretstores.kubernetes'
+        observedPostPatchTypes = @($observedComponents | ForEach-Object { $_.observedType } | Sort-Object -Unique)
+        substitutionVerified = ($substitutionFailures.Count -eq 0)
+        verificationFailures = @($substitutionFailures)
+        residualVaultComponents = $residualVaultComponents
+    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $DisclosurePath -Encoding utf8
+
+    # Raise AFTER the disclosure has reached disk, so a partially rewritten cluster is always
+    # accompanied by a packet that says so.
+    if ($substitutionFailures.Count -gt 0) {
+        throw "Secret-store substitution could not be verified; the cluster may be partially rewritten and secret-store-substitution.json records this failure. $($substitutionFailures -join '; ')."
+    }
+
+    if ($substitutionPerformed) {
+        Write-Host "Substituted secret stores $($vaultComponents -join ', ') with verification-scoped secretstores.kubernetes aliases (disclosed in secret-store-substitution.json)."
+    }
+    else {
+        Write-Host 'No secretstores.hashicorp.vault component found; recorded substitutionPerformed=false in secret-store-substitution.json.'
+    }
+}
+
 function Protect-EvidenceText {
     param([AllowEmptyString()][string]$Text)
 
@@ -244,8 +424,15 @@ function Get-CapturedProcessText {
         return ''
     }
 
-    $captured = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue
+    # Distinguish "unreadable" from "empty". The still-running kubectl port-forward holds this
+    # file open, so the read can fail while the file genuinely has content; returning '' for
+    # both dropped the bind/upgrade error that explains the failed capture, with no marker.
+    $captureError = $null
+    $captured = Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue -ErrorVariable captureError
     if ($null -eq $captured) {
+        if ($captureError) {
+            return "<unreadable: $($captureError[0].Exception.Message)>"
+        }
         return ''
     }
 
@@ -259,9 +446,25 @@ function Get-PodApplicationToken {
     # copy made the app-token authentication contract unfalsifiable by this lane: a pod whose
     # token was wrong or unmounted answered 401 in-container, the runner-side probe then
     # presented the correct literal, and the stage passed on the substitute credential.
-    $token = (& kubectl exec -n $namespace $Pod -c $Container -- /bin/sh -c 'printf %s "${APP_API_TOKEN}"' 2>&1) -join ''
+    # Discard stderr rather than merging it: kubectl exits 0 while writing deprecation and
+    # warning lines to stderr, and `-join ''` would concatenate them onto the token, yielding a
+    # corrupt dapr-api-token whose 401 the caller's @(200, 503) allowlist then discards - so a
+    # valid cluster looks like a pod that never answered. Same reason the RBAC probe uses 2>$null.
+    # --request-timeout bounds this call like every other kubectl invocation in the per-poll
+    # path. Without it this exec was the one unbounded term in the poll budget, so a wedged API
+    # server could stall a poll indefinitely while ProbeTimeoutBudgetTests still reported the
+    # worst case as bounded.
+    $token = (& kubectl --request-timeout=15s exec -n $namespace $Pod -c $Container -- /bin/sh -c 'printf %s "${APP_API_TOKEN}"' 2>$null) -join ''
     if ($LASTEXITCODE -ne 0) {
-        return ''
+        return '<unavailable: kubectl exec failed>'
+    }
+
+    # An unset or empty APP_API_TOKEN makes `printf %s ""` write nothing and exit 0, which was
+    # indistinguishable from the exec-failed path: both returned ''. The caller then sent an empty
+    # dapr-api-token, and the resulting 401 was discarded by its @(200, 503) allowlist, so the
+    # packet recorded neither the empty token nor the dropped probe. Every branch emits a marker.
+    if ([string]::IsNullOrEmpty($token)) {
+        return '<unavailable: APP_API_TOKEN is unset or empty in the container>'
     }
 
     return $token
@@ -316,43 +519,47 @@ function Get-HealthResponseViaPortForward {
             Start-Sleep -Milliseconds 100
         }
 
-        if (-not $established) {
-            $transcript.Add("port-forward end (not established; forward exited=$($forward.HasExited))")
-            $forwardError = Get-CapturedProcessText $stderrPath
-            if (-not [string]::IsNullOrWhiteSpace($forwardError)) {
-                $transcript.Add("port-forward stderr: $forwardError")
+        if ($established) {
+            # One request, no --retry: curl treats HTTP 503 as transient, so retrying would discard
+            # the exact response the fault stages exist to capture and multiply the persisted
+            # transcript. --max-time 6 keeps this capture inside its documented budget.
+            $token = Get-PodApplicationToken $Pod $Container
+            $curlOutput = @(& curl -sS -D - --max-time 6 `
+                -H "dapr-api-token: $token" "http://127.0.0.1:${localPort}/ready" 2>&1)
+            $curlExit = $LASTEXITCODE
+            foreach ($line in $curlOutput) {
+                $transcript.Add([string]$line)
             }
-            return ($transcript -join [Environment]::NewLine)
+            $transcript.Add("port-forward end (curl exit $curlExit)")
         }
-
-        # One request, no --retry: curl treats HTTP 503 as transient, so retrying would discard
-        # the exact response the fault stages exist to capture and multiply the persisted
-        # transcript. --max-time 6 keeps this capture inside its documented budget.
-        $token = Get-PodApplicationToken $Pod $Container
-        $curlOutput = @(& curl -sS -D - --max-time 6 `
-            -H "dapr-api-token: $token" "http://127.0.0.1:${localPort}/ready" 2>&1)
-        $curlExit = $LASTEXITCODE
-        foreach ($line in $curlOutput) {
-            $transcript.Add([string]$line)
+        else {
+            $transcript.Add("port-forward end (not established; forward exited=$($forward.HasExited))")
         }
-        $transcript.Add("port-forward end (curl exit $curlExit)")
         $forwardError = Get-CapturedProcessText $stderrPath
         if (-not [string]::IsNullOrWhiteSpace($forwardError)) {
             $transcript.Add("port-forward stderr: $forwardError")
         }
-        return ($transcript -join [Environment]::NewLine)
     }
     finally {
         if ($null -ne $forward -and -not $forward.HasExited) {
             Stop-Process -Id $forward.Id -Force -ErrorAction SilentlyContinue
             # Await the exit. Polls are ~2s apart, so an un-awaited kill could leave the
             # previous forward still holding its port when the next poll starts.
-            $null = $forward.WaitForExit(2000)
+            $exited = $forward.WaitForExit(2000)
+            if (-not $exited) {
+                $transcript.Add('port-forward kill: process did not exit within 2s; its port may still be held')
+            }
         }
         foreach ($path in @($stdoutPath, $stderrPath)) {
             Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
         }
     }
+
+    # Join AFTER the try/finally. PowerShell materializes a `return` expression BEFORE unwinding
+    # through `finally`, so joining inside the try wrote the kill marker to a list nobody read:
+    # a leaked port-forward left no trace in any evidence packet while a source-text pin asserted
+    # the marker existed. Every marker appended during cleanup is now part of the transcript.
+    return ($transcript -join [Environment]::NewLine)
 }
 
 function Get-HealthResponse {
@@ -536,6 +743,11 @@ function Wait-AggregateStatus {
                 # the elapsed lifetime of its failed predecessor.
                 $runningAt = if ($null -eq $containerStartedAt) { [DateTime]::UtcNow } else { $containerStartedAt }
                 $runningContainerInstance = $containerInstance
+                # Capture overhead accrued while probing the PREVIOUS container instance was charged
+                # against that instance's budget. Carrying it forward would pre-pay the replacement's
+                # budget, so a crash-looping container could earn its successor an arbitrarily large
+                # startup allowance. Reset it with $runningAt, for the same reason $runningAt resets.
+                $probeOverheadSeconds = 0.0
             }
 
             $response = Get-HealthResponse $pod $Container
@@ -560,16 +772,44 @@ function Wait-AggregateStatus {
                 # The Server and MCP checks run sequentially. If this probe observes a healthy pod
                 # after the wall-clock budget, use Kubernetes' recorded Ready transition to prove
                 # that the current container actually became ready inside its startup budget.
-                $healthyAt = if ($null -eq $readyAt) { [DateTime]::UtcNow } else { $readyAt }
-                if ($MeasureFromContainerRunning -and ((($healthyAt - $runningAt).TotalSeconds - $probeOverheadSeconds) -gt $TimeoutSeconds)) {
-                    throw "[$Stage] $AppName reached $ExpectedStatus after the $TimeoutSeconds-second startup limit."
+                # Subtract capture overhead ONLY when $healthyAt fell back to the runner's own clock.
+                # When Kubernetes recorded the Ready transition, ($healthyAt - $runningAt) is the
+                # difference of two cluster-side timestamps and contains none of this verifier's
+                # port-forward capture time, so subtracting it would credit time never charged and
+                # pass a container that genuinely became ready outside its budget.
+                # Kubernetes' recorded Ready transition is usable only when it belongs to the
+                # CURRENT container instance. A container that restarted inside the pod while the
+                # pod-level Ready condition still carried its predecessor's lastTransitionTime gave
+                # $readyAt < $runningAt - a NEGATIVE interval that can never exceed the budget, so a
+                # restarted container's startup was unenforceable. Fall back to the runner clock.
+                $readyAtIsUsable = ($null -ne $readyAt) -and ($readyAt -ge $runningAt)
+                $healthyAt = if ($readyAtIsUsable) { $readyAt } else { [DateTime]::UtcNow }
+                $startupElapsed = ($healthyAt - $runningAt).TotalSeconds
+
+                # The effective total is capped at $TimeoutSeconds (Administrator decision
+                # 2026-07-31). The previous form bounded the CREDIT at $TimeoutSeconds rather than
+                # bounding the RESULT, so the effective ceiling reached 2 x $TimeoutSeconds: a
+                # container Kubernetes recorded Ready 119s after start passed the "60-second startup
+                # limit". Accrued runner-side capture is reported for diagnosis but NOT credited,
+                # because a credit bounded only by the budget can always absorb a full budget's
+                # overrun. Trade-off, disclosed: a stage whose port-forward capture is genuinely
+                # large can now fail a container that became ready inside its own budget; that
+                # false red is preferable to a startup contract that silently states 60 and enforces 120.
+                if ($MeasureFromContainerRunning -and ($startupElapsed -gt $TimeoutSeconds)) {
+                    throw "[$Stage] $AppName reached $ExpectedStatus $([math]::Round($startupElapsed, 1))s after container $Container started, beyond the $TimeoutSeconds-second startup limit. Runner-side port-forward capture accrued $([math]::Round($probeOverheadSeconds, 1))s during this stage and is not credited against the limit."
                 }
 
                 return $lastBody
             }
 
-            if ($MeasureFromContainerRunning -and ((([DateTime]::UtcNow - $runningAt).TotalSeconds - $probeOverheadSeconds) -gt $TimeoutSeconds)) {
-                throw "[$Stage] $AppName did not report HTTP $expectedHttpStatus aggregate $ExpectedStatus within $TimeoutSeconds seconds after container $Container started (excluding $([math]::Round($probeOverheadSeconds, 1))s of runner-side port-forward capture). Last HTTP status: $lastStatusCode. Last response: $lastBody"
+            # This branch compares two runner-side clocks, so the capture overhead IS inside the
+            # interval and is legitimately excluded. Cap the credit at the budget itself: the
+            # fallback can fire on every poll and cost more than the ~2s cadence, so an uncapped
+            # credit grows faster than elapsed time and this throw would never fire, silently
+            # handing the outcome to the un-adjusted 4-minute deadline with no budget attribution.
+            $failureOverhead = [math]::Min($probeOverheadSeconds, $TimeoutSeconds)
+            if ($MeasureFromContainerRunning -and ((([DateTime]::UtcNow - $runningAt).TotalSeconds - $failureOverhead) -gt $TimeoutSeconds)) {
+                throw "[$Stage] $AppName did not report HTTP $expectedHttpStatus aggregate $ExpectedStatus within $TimeoutSeconds seconds after container $Container started (excluding $([math]::Round($failureOverhead, 1))s of runner-side port-forward capture, capped at the $TimeoutSeconds-second budget). Last HTTP status: $lastStatusCode. Last response: $lastBody"
             }
         }
 
@@ -848,48 +1088,7 @@ try {
     # reviewed live PG-ONPREM-1 target uses, and until now safety rested entirely on
     # $env:KUBECONFIG having been repointed above. These are the first commands in this script
     # that mutate a Dapr Component's spec.type, and `secretstore.yaml` is Story 31.2's artifact.
-    $activeContext = (Invoke-Checked kubectl @('config', 'current-context')) -join ''
-    if ($activeContext.Trim() -ne "kind-$ClusterName") {
-        throw "Refusing to substitute secret stores: active kubectl context is '$($activeContext.Trim())', not the disposable cluster 'kind-$ClusterName'."
-    }
-
-    # Enumerate the vault-typed stores from the cluster rather than hardcoding two names, so a
-    # third such component cannot be silently left unpatched while the disclosure still passes.
-    $componentsJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $namespace, '-o', 'json')) -join [Environment]::NewLine
-    $vaultComponents = @(($componentsJson | ConvertFrom-Json).items |
-        Where-Object { $_.spec.type -eq 'secretstores.hashicorp.vault' } |
-        ForEach-Object { [string]$_.metadata.name } |
-        Sort-Object)
-    if ($vaultComponents.Count -eq 0) {
-        throw 'Expected at least one secretstores.hashicorp.vault component to substitute; found none.'
-    }
-
-    $secretStoreSubstitution = '{"spec":{"type":"secretstores.kubernetes","version":"v1","metadata":[]}}'
-    foreach ($component in $vaultComponents) {
-        Invoke-Checked kubectl @('patch', 'component', $component, '-n', $namespace, '--type', 'merge', '-p', $secretStoreSubstitution) | Out-Null
-    }
-
-    # Re-read the observed post-patch types. `Invoke-Checked` proves only that kubectl exited 0
-    # - a no-op patch also exits 0 - so an asserted disclosure could never disagree with the
-    # cluster and the validator was asserting back a literal this script had just written.
-    $observedJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $namespace, '-o', 'json')) -join [Environment]::NewLine
-    $observedTypes = @(($observedJson | ConvertFrom-Json).items |
-        Where-Object { $vaultComponents -contains [string]$_.metadata.name } |
-        ForEach-Object { [string]$_.spec.type } |
-        Sort-Object -Unique)
-    if ($observedTypes.Count -ne 1 -or $observedTypes[0] -ne 'secretstores.kubernetes') {
-        throw "Secret-store substitution did not take effect: observed post-patch types [$($observedTypes -join ', ')] for [$($vaultComponents -join ', ')]."
-    }
-
-    [ordered]@{
-        schemaVersion = 1
-        reason = 'DW 27.3-CR17: the disposable cluster has no OpenBao, so the production hashicorp.vault secret stores are substituted with verification-scoped kubernetes stores after the verbatim apply. Consumers whose secretKeyRefs name a seeded verification Secret resolve through the substituted store; access-telemetry-store names Secret access-telemetry-postgresql, which this lane does not seed and memories-access-telemetry-secret-reader does not permit, but that component is scoped to memories-access-telemetry, whose Deployment stays at replicas 0 and is never started here, so it is never loaded. The OpenBao path is not exercised by this lane (Story 31.2 scope).'
-        substitutedComponents = $vaultComponents
-        originalType = 'secretstores.hashicorp.vault'
-        substitutedType = 'secretstores.kubernetes'
-        observedPostPatchTypes = $observedTypes
-    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidencePath 'secret-store-substitution.json') -Encoding utf8
-    Write-Host "Substituted secret stores $($vaultComponents -join ', ') with verification-scoped secretstores.kubernetes aliases (disclosed in secret-store-substitution.json)."
+    Invoke-SecretStoreSubstitution -Namespace $namespace -ClusterName $ClusterName -DisclosurePath (Join-Path $evidencePath 'secret-store-substitution.json')
 
     # The release manifest assumes external Redis/FalkorDB services already exist. This disposable
     # cluster creates them in the same apply, so keep the applications stopped until those required
