@@ -195,3 +195,42 @@ pre-review gate*. Nothing closed for 23 days.
   status were in scope; count arithmetic was not, and stayed with the
   code-review ledger auditor. State the limits in the policy, the directive, and
   `CONTRIBUTING.md` so a green gate is never read as full verification.
+
+## L14 - Cited Line Anchors Are Advisory Until Re-Derived
+
+L12 established that epic acceptance *claims* are advisory until re-derived. The
+2026-07-31 Story 27.3 correction found the same is true of the *anchors* those
+claims cite, and for a structural reason: a `[Review][Decision]` item records a
+line number against the worktree as it stood during the review, and the same
+review's own patches then move it. Drift is the normal case, not the exception.
+
+- Of twenty-one claims inherited from `DW 27.3-CR31`-`CR35`, five carried a wrong
+  anchor and **the underlying defect was real in every one of the five**.
+  `verify-production-deployment.ps1:918-926` pointed at unrelated Deployment
+  rollout code (the referenced throw had been at `:863-865` pre-patch);
+  `production_deployment_evidence_test.py:855` was an ordering assert, not the
+  named-shape prohibition at `:862`; a story's `:13-14` named the title, not the
+  quoted phrase at `:28`; proposal `:404` carried the approval date while the
+  quoted "complete proposal" wording was at `:410-411`; and "approximately 55
+  lines" was 52.
+- Neither failure mode is safe. Treating a stale anchor as a refuted premise
+  wrongly dismisses a real finding; treating it as correct writes a false
+  citation into a governance record the next reader trusts. Re-derive, record a
+  `corrected` verdict with the observed location per
+  `_bmad/custom/epic-ac-verification.md`, and keep acting on the substance.
+- DW rationales frequently omit **which file** an anchor belongs to. On this run
+  `:494` and `:497` resolved to the story artifact, not the proposal named
+  earlier in the same sentence. Resolve the file before resolving the line.
+- **A recorded decision's literal reading can contradict a deliberate in-code
+  design choice.** `DW 27.3-CR32` read as "restore the deleted zero-component
+  throw", but `tools/verify-production-deployment.ps1:147-151` documents that
+  no-throw as required for the Story 31.2 end state - without it, AC6's own lane
+  could never discharge `DW 27.3-CR29`/`CR30`. The correct execution was the
+  opposite of the literal reading. Surface the conflict to the decision owner
+  rather than silently picking a branch.
+- This binds the executing route, not only the recording one. `correct-course`,
+  `dev-story`, and `create-story` each act on anchors written by an earlier
+  phase; the route that acts on a citation owns re-deriving it, the same way
+  L12's route that writes a claim owns verifying it.
+- Fail closed: do not write an inherited anchor into `epics.md`, a story file,
+  `sprint-status.yaml`, or a proposal without re-deriving it first.

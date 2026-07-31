@@ -1,5 +1,7 @@
 # Sprint Change Proposal — 2026-07-30
 
+> **Citation note, added 2026-07-30 by code review.** A concurrent session created `sprint-change-proposal-2026-07-30-story-gate-hook-sequencing.md` on the same date, so the bare phrase "approved Sprint Change Proposal 2026-07-30" no longer resolves uniquely by date alone. Every such citation in `epics.md`, the Story 27.3 artifact, and `sprint-status.yaml` refers to THIS file - `sprint-change-proposal-2026-07-30.md` - which concerns the Story 27.3 C1 umbrella closure. Citations of the hook-sequencing proposal name it explicitly.
+
 **Status:** approved for implementation — Administrator approval recorded 2026-07-30
 **Author:** Developer (`correct-course`); approved by Administrator
 **Triggering story:** `27-3-production-adapter-and-deployment-profile` (Epic 27)
@@ -100,6 +102,10 @@ runtime-secret invariant remains unchanged; D1 discloses that AC6 does not prove
 - The story receives the missing `Historical Context Classification`, `Slice Proof`, and a
   one-row-per-gate checkpoint table. This is the approved-checkpoint exception to the normal
   split rule; the original Story 27.3 whole-story shape remains an anti-template.
+  *Corrected 2026-07-31 by approved Sprint Change Proposal 2026-07-31 (DW 27.3-CR33). As
+  executed, these records reached no registration surface — they were moved to Annex A of this
+  document, marked "held, not registered". The 2026-07-31 proposal registers them into
+  `epics.md`: Story 27.5 (C1.15-C1.25) and new Story 27.6 (C1.1-C1.14).*
 - Story 27.5 stays `backlog`. This proposal does not author its implementation story file or set
   it `ready-for-dev`.
 
@@ -110,10 +116,10 @@ runtime-secret invariant remains unchanged; D1 discloses that AC6 does not prove
 | PRD | No change. NFR9 still requires Dapr Secrets API backed by OpenBao in deployed environments. |
 | Architecture | No change. D31 and the Story 31.2 boundary still own the real OpenBao runtime path. |
 | UX | Not applicable; no interface or journey changes. |
-| `epics.md` | Ratify AC6; register the all-C1 ownership transfer; update Epic 27 and Stories 27.3-27.5; add Story 27.5 guard records and checkpoint table. |
+| `epics.md` | Ratify AC6; register the all-C1 ownership transfer; update Epic 27 and Stories 27.3-27.5; add Story 27.5 guard records and checkpoint table. **Corrected 2026-07-31 (DW 27.3-CR33): the diff removed these from `epics.md` rather than adding them; they are registered by the 2026-07-31 proposal across Stories 27.5 and 27.6.** |
 | Story 27.3 | Mirror AC6; close the C1 umbrella as transferred; remove twelve child rows; restate completion, task ownership, classifications, slice proof, course-correction record, File Scope/List, Change Log, and the two review actions. |
 | `sprint-status.yaml` | Register the amended Story 27.5 ownership and unchanged fail-closed execution order; no status value advances. |
-| `deferred-work.md` | No edit. CR29 and CR30 remain open. |
+| `deferred-work.md` | **Amended 2026-07-30 by code review, ratified by the Administrator.** The correction DID edit this file - the A41 `Backlog home` line was rewritten to cite this proposal - so the original "No edit" entry was false as executed. The edit is ratified as in-scope, matching the 2026-07-28 precedent which explicitly declared the same class of A41 reference edit in-scope. It remains status-neutral: CR29 and CR30 stay `open`, and no deferred entry's status changed. The changed-path count for this correction is therefore FIVE, not four. |
 
 ### 2.4 Technical and delivery impact
 
@@ -303,6 +309,10 @@ from their approved record. Normalize the destination to this fail-closed shape:
 The implementation edit expands this summary into twenty-five rows in `epics.md`; it does not
 collapse gate identifiers or use one status cell for multiple gates.
 
+*Corrected 2026-07-31 by approved Sprint Change Proposal 2026-07-31 (DW 27.3-CR33). No rows
+were written to `epics.md`; the twenty-five rows went to Annex A of this document. They are
+registered as 11 + 14 across Stories 27.5 and 27.6 by the 2026-07-31 proposal.*
+
 ### 4.6 `sprint-status.yaml`
 
 - Keep `epic-27: in-progress`, `27-3: in-progress`, `27-4: backlog`, and `27-5: backlog`.
@@ -364,6 +374,11 @@ existing stories.
    completion advance.
 5. Story 27.5 contains valid Historical Context Classification and Slice Proof records and does
    not inherit Story 27.3's mixed non-C1 shape.
+
+*Criteria 4 and 5 were not met as executed on 2026-07-30; corrected 2026-07-31 by approved
+Sprint Change Proposal 2026-07-31 (DW 27.3-CR33). Neither was true — Story 27.5 had no story
+file and no gate record on any binding surface. Both are satisfied by the 2026-07-31 proposal,
+with the gate set split 11/14 across Stories 27.5 and 27.6 per DW 27.3-CR31 and CR34.*
 6. Production writes stay disabled; Story 27.4 and Story 27.5 stay `backlog`; Story 27.3 stays
    `in-progress`; A41 stays open.
 7. CR29, CR30, CR28, thirteen chunk-1 patches, and chunk 3 remain open/untouched.
@@ -375,6 +390,12 @@ existing stories.
 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/production_deployment_evidence -p '*_test.py' -v
 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p 'test_adapter_profile.py' -v
 python3 tools/check-story-slice-scope.py --story-key 27-3-production-adapter-and-deployment-profile
+# SCOPE LIMIT (added 2026-07-31 by code review): this invocation validates the Story 27.3
+# artifact ONLY. tools/check-story-slice-scope.py:499-517 examines
+# _bmad-output/implementation-artifacts/<key>.md paths; epics.md and sprint-status.yaml merely set
+# the `registered` flag, and Story 27.5 has no story file, so no code path in the gate ever
+# examines it. A green result here is NOT evidence of Story 27.5 scope-guard compliance and must
+# not be cited as such. Registering Story 27.5's record is DW 27.3-CR31.
 python3 tools/check-story-review-readiness.py --story-key 27-3-production-adapter-and-deployment-profile
 python3 -m unittest discover -s tests/tooling/line_endings -p '*_test.py' -v
 git diff --check
@@ -401,3 +422,71 @@ record its exact result.
 
 **Approval recorded:** Administrator replied `yes` on 2026-07-30 after the complete proposal was
 presented for approval. Status: **approved for implementation**.
+
+**Second approval recorded 2026-07-31 (DW 27.3-CR33).** Approximately 52 lines of normative
+content (Annex A) and the rewritten authorization row at `:118` were added to this document
+after the 2026-07-30 approval. That approval, at `:351`, authorizes "only the artifact edits
+enumerated here" and, above, records approval of "the complete proposal" as presented on
+2026-07-30 — so it does not cover the post-approval content. The Administrator re-approved this
+document as amended on 2026-07-31, together with the four dated correction notes above, when
+approving Sprint Change Proposal 2026-07-31. Status: **approved as amended**.
+
+## Annex A — Story 27.5 checkpoint contract (superseded 2026-07-31; provenance record only)
+
+**Superseded 2026-07-31 by approved Sprint Change Proposal 2026-07-31 (DW 27.3-CR31, CR33,
+CR34).** These rows are now registered in `epics.md` — C1.15-C1.25 under Story 27.5 and
+C1.1-C1.14 under Story 27.6 — and `epics.md` is authoritative wherever the two differ. C1.13's
+row is rewritten there per DW 27.3-CR34: its running-target binding is retained and the passing
+unit lane is a precondition, not discharge. Annex A is retained as the provenance record of the
+2026-07-30 transfer and is no longer a live contract.
+
+Moved here verbatim from `epics.md` on 2026-07-30 by code review, under the Administrator's
+decision to hold the checkpoint contract in this proposal rather than register it as a live
+checkpoint record. `create-story` authors it into a Story 27.5 artifact when the activation gate
+opens. Holding it here changes no gate, owner, evidence definition, consequence, or reopen
+trigger; the rows are reproduced unchanged so nothing is lost by the move.
+
+#### Historical Context Classification — Story 27.5
+
+| Reference | Classification | Permitted influence on Story 27.5 |
+| :-------- | :------------- | :-------------------------------- |
+| Story 27.3 whole-story shape, including its original 25-gate C1 bundle | `anti-template` | Transfer only the exact ratified C1 gate identifiers, owners, evidence definitions, and fail-closed rules. Do not copy Story 27.3's tasks, non-C1 checkpoints, File List, ledger breadth, review history, or status shape. |
+| Approved 2026-07-28 C1 split proposal | `historical-reference-only` | Authority and provenance for C1.1-C1.12/C1.14 and the Story 27.5 activation gate; not a template for another partial split. |
+| Approved 2026-07-30 proposal | `historical-reference-only` | Authority and provenance for all-C1 ownership, the closed Story 27.3 umbrella, and preserved fail-closed consequences. |
+| Current ADR 27.1 `PG-ONPREM-1` profile and current C1 evidence definitions | `current-narrow-pattern` | Re-verified exact profile identity, thresholds, faults, and one-row-per-gate evidence contract only; whole-story shapes remain excluded. |
+
+#### Slice Proof — Story 27.5
+
+Story 27.5 has one outcome: accept or reject the single exact running `PG-ONPREM-1` profile. It remains one explicitly approved checkpoint story because all twenty-five independently verifiable C1 gates appear in one table, each with an accountable owner, its own evidence command or artifact/accepted activation blocker, review state, completion state, consequence, and reopen trigger. No shared umbrella state discharges a gate. Story 27.5 owns no C0, C2, C3, C4, runbook, A41 mutation, product-code, or manifest-authoring outcome. This bounded checkpoint form satisfies the story-scope guard without reproducing Story 27.3's former mixed C1/non-C1 umbrella shape.
+
+#### C1 Checkpoint Table — Story 27.5
+
+Every row remains `pending | not complete | —` at registration. For C1.1-C1.12 and C1.14, the accepted activation blocker is that no operator-executable producer can exist until the activation gate above opens; the required observation is preserved below and its own command must then be authored. For C1.13 and C1.15-C1.25, the transferred evidence definition remains unchanged. Transfer completes no gate.
+
+| Gate | AC | Accountable owner | Required evidence observation, command, artifact, or accepted blocker | Consequence and reopen trigger | Review state | Completion state | Completion date |
+| :--- | :-- | :---------------- | :--------------------------------------------------------------- | :----------------------------- | :----------- | :--------------- | :-------------- |
+| C1.1 CRUD | AC2 | Deployment adapter owner | **Accepted activation blocker:** required running-target create/read/update/delete round trip on `state.postgresql/v2`; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.2 Strong reads | AC2 | Deployment adapter owner | **Accepted activation blocker:** required post-write strong-consistency read observation; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.3 ETags | AC2 | Deployment adapter owner | **Accepted activation blocker:** required ETag match/mismatch and `FirstWrite` insert-semantics observation; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.4 Rollback-atomic multi-key transactions | AC2 | Deployment adapter owner | **Accepted activation blocker:** required later-operation fault injection with no partial record or expiry-index commit; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.5 TTL | AC2 | Deployment adapter owner | **Accepted activation blocker:** required effective TTL-expiry observation; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.6 Actor reactivation | AC2 | Deployment adapter owner | **Accepted activation blocker:** required actor-state survival across deactivation/reactivation; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.7 Placement / Scheduler / reminder recovery | AC2 | Deployment adapter owner | **Accepted activation blocker:** required Placement and Scheduler reconnection and reminder firing after control-plane disruption; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.8 Request bounds | AC2 | Deployment adapter owner | **Accepted activation blocker:** required request size/count bound enforcement; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.9 Two-writer 500 events/s throughput | AC2 | Deployment adapter owner + Hexalith Platform Operations | **Accepted activation blocker:** required `--workload-profile adr-27.1-two-writer-500eps --steady-state-minutes 30` observation: ADR mix, zero acknowledged loss, p99 below 3s, and no more than 10% p95 regression; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.10 150,000-record purge catch-up | AC2 | Deployment adapter owner + Hexalith Platform Operations | **Accepted activation blocker:** required `--purge-backlog-records 150000` observation: ten-minute backlog drains within five minutes and oldest-due age stays below fifteen minutes; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.11 Isolation | AC2 | Deployment adapter owner + independent security reviewer | **Accepted activation blocker:** required physical cross-tenant denial on the running profile; the one-key envelope-hash unit test is insufficient and the command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.12 Encryption | AC2 | Deployment adapter owner + independent security reviewer | **Accepted activation blocker:** required TLS `verify-full` and at-rest-encryption posture observation; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.13 Capacity | AC2 | Deployment adapter owner + Hexalith Platform Operations | `AdapterProfileTests.test_capacity_inputs_fail_closed` and `AdapterProfileTests.test_capacity_result_is_admitted_against_profile_thresholds`, plus the checked-arithmetic capacity result against the approved 70/80/90% table at 1h / 24h / 7d. *(Anchor restored 2026-07-31 by code review: the governing threshold table - its byte values and the rule that exactly 80% is critical, not an admissible peak - lives in `_bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md` under `### Production-Shaped Execution Contract`; the transfer left this row citing "the approved 70/80/90% table" with no path. Per `DW 27.3-CR34` this row's evidence stays bound to the running target and the named unit tests are a precondition, not discharge.)* | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact result is recorded, the owner transitions the row, and reviewer confirmation exists. | pending | not complete | — |
+| C1.14 Cohort-attributable physical reclamation | AC2 | Deployment adapter owner + Hexalith Platform Operations | **Accepted activation blocker:** required named collector/bound and cohort-attributable physical-space reclamation; command is not authorable until activation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the activation gate opens and this row's command is authored. | pending | not complete | — |
+| C1.15 Runtime and control-plane identity | AC1 | Deployment adapter owner | Packet observation: Dapr runtime version, sidecar image digest, Scheduler connections, actor types, enabled features and alpha opt-in, captured from the running deployment rather than package pins. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact packet observation, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.16 Component and backend identity | AC1 | Deployment adapter owner | Packet observation: component type, API version, capabilities, backend identity, and PostgreSQL 18.4 version. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact packet observation, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.17 Image, manifest and epoch identity | AC1 | Deployment adapter owner | Packet observation: application image digests, component/config manifest identity, configuration epoch, and component manifest/profile hash with its coverage statement. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact packet observation, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.18 Node/storage capacity and operating cost | AC1 | Hexalith Platform Operations | Packet observation: node/storage capacity, host-filesystem headroom for the non-reserving local PVC, and operating cost. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact packet observation, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.19 Declared-fault zero acknowledged-record loss | AC3 | Deployment adapter owner | Packet observation: PostgreSQL pod/process forcibly lost and its StatefulSet pod replaced while node and retained local volume remain healthy; every Dapr-acknowledged record remains present. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact packet observation, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.20 Out-of-profile statement | AC3 | Hexalith Platform Operations | Packet observation: node, local-volume, control-plane, and site loss explicitly published as outside profile. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact packet observation, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.21 Backup destination and successful restore | AC3 | Hexalith Platform Operations | Packet observation: named backup destination and successful restore result. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact packet observation, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.22 Published RPO/RTO without HA claim | AC3 | Hexalith Platform Operations | Packet observation: resulting nonzero RPO and RTO for out-of-profile failures, with no node/disk/site HA claim. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact packet observation, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.23 Platform Operations approval | AC4 | Hexalith Platform Operations | Packet observation: separate approval of node/storage capacity, operating cost, operation, bounded fault, backup/restore, upgrade, rollback, and reclamation. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact approval, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.24 Non-HA acknowledgement | AC4 | Hexalith Platform Operations | Packet observation: explicit acknowledgement of absent node, disk, and site HA. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when the exact acknowledgement, owner transition, and reviewer confirmation exist. | pending | not complete | — |
+| C1.25 Security reviewer approval | AC4 | Independent security reviewer | Packet observation: separate approval of identity, secrets, TLS, network, authorization, encryption, privacy, and evidence integrity. **Accepted blocker:** no independent security approver is currently assigned. | Writes disabled; Story 27.4 backlog; A41 open. Reopen when an independent approver is assigned and the exact approval, transition, and reviewer confirmation exist. | pending | not complete | — |

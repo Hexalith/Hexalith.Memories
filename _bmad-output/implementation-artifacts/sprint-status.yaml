@@ -161,6 +161,7 @@ story_execution_order:
       - 27-2-bounded-retention-ttl-and-purge-implementation
       - 27-3-production-adapter-and-deployment-profile
       - 27-5-running-pg-onprem-1-capability-qualification
+      - 27-6-running-pg-onprem-1-data-path-and-capability-proof
       - 27-4-retention-verification-operations-runbook-and-a41-close-out
   epic-29:
     reason: "Story 29.2 consumes the executable OpenBao AppHost topology and isolation contract produced by Story 29.1."
@@ -457,6 +458,16 @@ development_status:
   # PG-ONPREM-1 lifecycle Deployments are scaled above zero. Production writes remain disabled,
   # Story 27.4 remains backlog, and A41 remains open while any gate is unproven.
   27-5-running-pg-onprem-1-capability-qualification: backlog
+  # 27-6 added 2026-07-31 by approved Sprint Change Proposal 2026-07-31 (DW 27.3-CR31, CR34):
+  # the twenty-five C1 gates are split 11/14 by record shape. Story 27.5 retains C1.15-C1.25,
+  # whose rows carry an authored evidence artifact; Story 27.6 takes C1.1-C1.14, whose rows
+  # carry an accepted activation blocker. C1.13 moves to 27-6 because its epic AC binds
+  # configured-capacity admission to the exact running target and the passing unit lane is a
+  # precondition, not discharge. Both stories share the same unchanged activation gate and
+  # unblock at the same moment; the split is guard-satisfying registration under
+  # story-scope-guard.md:41-43, not two independently deliverable outcomes. No gate is dropped,
+  # weakened, or renumbered, and no status value advances.
+  27-6-running-pg-onprem-1-data-path-and-capability-proof: backlog
   epic-27-retrospective: optional
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption
