@@ -20,22 +20,25 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_requirements(path: Path) -> dict[str, str]:
-    requirements: dict[str, str] = {}
+def load_requirements(path: Path) -> dict[str, tuple[str, str | None]]:
+    requirements: dict[str, tuple[str, str | None]] = {}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
 
-        try:
-            surface, class_name = [part.strip() for part in line.split("|", 1)]
-        except ValueError as exc:
-            raise SystemExit(f"Invalid requirement line in {path}: {raw_line}") from exc
-
-        if not surface or not class_name:
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) not in (2, 3):
             raise SystemExit(f"Invalid requirement line in {path}: {raw_line}")
 
-        requirements[surface] = class_name
+        surface, class_name = parts[:2]
+        method_name = parts[2] if len(parts) == 3 else None
+        if not surface or not class_name or (len(parts) == 3 and not method_name):
+            raise SystemExit(f"Invalid requirement line in {path}: {raw_line}")
+        if surface in requirements:
+            raise SystemExit(f"Duplicate requirement surface in {path}: {surface}")
+
+        requirements[surface] = (class_name, method_name)
 
     if not requirements:
         raise SystemExit(f"No integration-fast requirements found in {path}.")
@@ -43,77 +46,87 @@ def load_requirements(path: Path) -> dict[str, str]:
     return requirements
 
 
-def executed_classes(results_directory: Path) -> set[str]:
-    classes: set[str] = set()
+def passed_tests(results_directory: Path) -> set[tuple[str, str]]:
+    passed: set[tuple[str, str]] = set()
     trx_files = sorted(results_directory.rglob("*.trx"))
     if not trx_files:
         raise SystemExit(f"No TRX files found under {results_directory}.")
 
-    # Aggregate executed counts across all TRX files. A single project with zero
-    # filter-matched tests is informational, not fatal: as integration projects grow,
-    # filtering may legitimately leave some TRX files empty. Failure fires only when
-    # the *total* across the lane is zero, or when no TestMethod className tags survive.
-    total_executed = 0
-    empty_trx_files: list[Path] = []
+    total_passed_results = 0
     for trx_file in trx_files:
         root = ET.parse(trx_file).getroot()
-        counters = root.find(".//{*}Counters")
-        executed = int(counters.attrib.get("executed", "0")) if counters is not None else 0
-        total_executed += executed
-        if executed <= 0:
-            empty_trx_files.append(trx_file)
-
+        definitions: dict[str, tuple[str, str]] = {}
         for unit_test in root.findall(".//{*}UnitTest"):
             method = unit_test.find(".//{*}TestMethod")
-            if method is not None and method.attrib.get("className"):
-                classes.add(method.attrib["className"])
+            test_id = unit_test.attrib.get("id")
+            class_name = method.attrib.get("className") if method is not None else None
+            method_name = method.attrib.get("name") if method is not None else None
+            if test_id and class_name and method_name:
+                definitions[test_id] = (class_name, method_name)
 
-    if total_executed <= 0:
+        for result in root.findall(".//{*}UnitTestResult"):
+            if result.attrib.get("outcome") != "Passed":
+                continue
+
+            total_passed_results += 1
+            identity = definitions.get(result.attrib.get("testId", ""))
+            if identity is not None:
+                passed.add(identity)
+
+    if total_passed_results <= 0:
         raise SystemExit(
-            f"All {len(trx_files)} TRX files under {results_directory} report zero executed tests."
+            f"No UnitTestResult with outcome=Passed was found under {results_directory}."
         )
 
-    if empty_trx_files:
-        # Informational; doesn't fail the verifier so long as the aggregate is non-zero
-        # and the required-surfaces check (below) still passes.
-        print(
-            f"integration-fast: {len(empty_trx_files)} TRX file(s) executed zero tests "
-            f"(aggregate executed={total_executed} across {len(trx_files)} TRX files):",
-            file=sys.stderr,
+    if not passed:
+        raise SystemExit(
+            f"Passed TRX results under {results_directory} did not map to TestMethod definitions."
         )
-        for trx_file in empty_trx_files:
-            print(f"  {trx_file}", file=sys.stderr)
 
-    if not classes:
-        raise SystemExit(f"No executed test classes were discovered under {results_directory}.")
+    return passed
 
-    return classes
+
+def missing_requirements(
+    requirements: dict[str, tuple[str, str | None]],
+    passed: set[tuple[str, str]],
+) -> dict[str, tuple[str, str | None]]:
+    passed_classes = {class_name for class_name, _ in passed}
+    return {
+        surface: (class_name, method_name)
+        for surface, (class_name, method_name) in requirements.items()
+        if (
+            class_name not in passed_classes
+            if method_name is None
+            else (class_name, method_name) not in passed
+        )
+    }
+
+
+def format_requirement(class_name: str, method_name: str | None) -> str:
+    return class_name if method_name is None else f"{class_name}.{method_name}"
 
 
 def main() -> int:
     args = parse_args()
     results_directory = Path(args.results_directory)
     requirements = load_requirements(Path(args.requirements))
-    classes = executed_classes(results_directory)
+    passed = passed_tests(results_directory)
+    classes = {class_name for class_name, _ in passed}
 
-    print("integration-fast executed classes:")
+    print("integration-fast classes with passed tests:")
     for class_name in sorted(classes):
         print(f"  {class_name}")
 
-    missing = {
-        surface: class_name
-        for surface, class_name in requirements.items()
-        if class_name not in classes
-    }
+    missing = missing_requirements(requirements, passed)
     if missing:
         print("integration-fast missing required surfaces:", file=sys.stderr)
-        for surface, class_name in missing.items():
-            print(f"  {surface}: {class_name}", file=sys.stderr)
+        for surface, (class_name, method_name) in missing.items():
+            print(f"  {surface}: {format_requirement(class_name, method_name)}", file=sys.stderr)
         return 1
 
     print("integration-fast required surfaces satisfied:")
-    for surface, class_name in requirements.items():
-        print(f"  {surface}: {class_name}")
+    for surface, (class_name, method_name) in requirements.items():
+        print(f"  {surface}: {format_requirement(class_name, method_name)}")
     return 0
 
 

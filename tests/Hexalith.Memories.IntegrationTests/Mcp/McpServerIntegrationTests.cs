@@ -33,6 +33,12 @@ public sealed class McpServerIntegrationTests
         "traverse_relations",
         "get_case_info",
     ];
+    private static readonly string[] DiagnosticResourceNames =
+    [
+        "memories",
+        "memories-mcp",
+        "memories-mcp-dapr-cli",
+    ];
 
     private readonly AspireIngestionPipelineFixture _fixture;
     private readonly ITestOutputHelper _output;
@@ -46,12 +52,22 @@ public sealed class McpServerIntegrationTests
     [Fact]
     public async Task ListTools_EndToEnd_ReturnsFourToolsWithTypedSchemas()
     {
+        int logStartIndex = _fixture.LogEntryCount;
+
         // Story 10.2 — `/mcp` requires bearer auth even for ListTools (the tenant-claim filter only
         // activates on tool invocations that bind tenantId; ListTools is a metadata operation that
         // any authenticated principal may call).
-        await using McpClient client = await CreateMcpClientAsync("tenant-listtools-probe");
-
-        IList<McpClientTool> tools = await client.ListToolsAsync();
+        IList<McpClientTool> tools;
+        try
+        {
+            await using McpClient client = await CreateMcpClientAsync("tenant-listtools-probe");
+            tools = await client.ListToolsAsync();
+        }
+        catch
+        {
+            await WriteFailureDiagnosticsAsync(logStartIndex);
+            throw;
+        }
 
         string[] names = [.. tools.Select(t => t.Name)];
         names.Length.ShouldBe(4);
@@ -70,13 +86,13 @@ public sealed class McpServerIntegrationTests
     [Fact]
     public async Task CallSearchMemory_EndToEnd_ExecutesAcrossDaprHop()
     {
+        int logStartIndex = _fixture.LogEntryCount;
+
         // Ensure a tenant exists so the search call hits an active routing path. Hybrid search
         // returns an empty result when the corpus is empty; the assertion is on the IsError flag,
         // not the result count, since 10.1's contract is "the call traverses the sidecar without
         // error", not "results are non-empty".
         string tenantId = await _fixture.ProvisionActiveTenantAsync();
-
-        await using McpClient client = await CreateMcpClientAsync(tenantId);
 
         var arguments = new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -85,11 +101,24 @@ public sealed class McpServerIntegrationTests
             ["axes"] = "hybrid",
         };
 
-        ModelContextProtocol.Protocol.CallToolResult result = await client
-            .CallToolAsync("search_memory", arguments)
-            ;
+        ModelContextProtocol.Protocol.CallToolResult result;
+        try
+        {
+            await using McpClient client = await CreateMcpClientAsync(tenantId);
+            result = await client.CallToolAsync("search_memory", arguments);
+        }
+        catch
+        {
+            await WriteFailureDiagnosticsAsync(logStartIndex);
+            throw;
+        }
 
         _output.WriteLine($"search_memory IsError={result.IsError}; Content={FormatContent(result.Content)}");
+        if (result.IsError == true)
+        {
+            await WriteFailureDiagnosticsAsync(logStartIndex);
+        }
+
         result.IsError.ShouldNotBe(true);
         result.Content.ShouldNotBeEmpty();
     }
@@ -119,4 +148,35 @@ public sealed class McpServerIntegrationTests
         => string.Join(
             " | ",
             content.OfType<ModelContextProtocol.Protocol.TextContentBlock>().Select(c => c.Text));
+
+    private async Task WriteFailureDiagnosticsAsync(int logStartIndex)
+    {
+        // Aspire resource output is forwarded asynchronously. Give the failing request's final
+        // Server/MCP entries a bounded chance to reach the fixture before taking the snapshot.
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        IEnumerable<AspireIngestionPipelineFixture.CapturedLogEntry> recent = _fixture
+            .GetLogEntriesSince(logStartIndex)
+            .Where(entry =>
+                (entry.Level >= Microsoft.Extensions.Logging.LogLevel.Warning ||
+                    IsDiagnosticResourceCategory(entry.Category)) &&
+                !entry.Message.Contains("__hexalith_activity__", StringComparison.Ordinal))
+            .TakeLast(200);
+
+        foreach (AspireIngestionPipelineFixture.CapturedLogEntry entry in recent)
+        {
+            _output.WriteLine(AspireIngestionPipelineFixture.RedactSensitiveDiagnostics(
+                $"{entry.Level}: {entry.Category}: {entry.Message}"));
+        }
+    }
+
+    /// <summary>Determines whether a log category represents an MCP failure-diagnostic resource.</summary>
+    /// <param name="category">Aspire log category in bare, prefixed, or suffixed form.</param>
+    /// <returns><see langword="true"/> when a dot-delimited category segment is a supported resource.</returns>
+    internal static bool IsDiagnosticResourceCategory(string category)
+    {
+        ArgumentNullException.ThrowIfNull(category);
+        return category
+            .Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(segment => DiagnosticResourceNames.Contains(segment, StringComparer.Ordinal));
+    }
 }

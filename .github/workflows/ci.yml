@@ -263,6 +263,9 @@ jobs:
       - name: Run integration stub closure fixtures
         run: python3 -m unittest discover -s tests/tooling/integration_stub_closure -p "*_test.py"
 
+      - name: Run integration-fast coverage verifier fixtures
+        run: python3 -m unittest discover -s tests/tooling/integration_fast_coverage -p "*_test.py"
+
       - name: Pack and validate release packages
         run: pwsh ./tools/pack-release.ps1 -Version 0.0.264 -OutputDirectory artifacts/packages/ci -PackageOnly
 

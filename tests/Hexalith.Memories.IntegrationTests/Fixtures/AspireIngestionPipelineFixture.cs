@@ -38,6 +38,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 {
     private const string StateStoreName = "statestore";
     private const string TenantRegistryIndexKey = "tenant-registry-index";
+    private const string OpenBaoRecoveryTenantId = "tenant-openbao-recovery";
     private const string AspireContainerCreatorProcessLabel = "com.microsoft.developer.usvc-dev.creatorProcessId";
     private const string AspireContainerCreatorStartTimeLabel = "com.microsoft.developer.usvc-dev.creatorProcessStartTime";
     internal const string OpenBaoRuntimeCanarySecretName = "story29-runtime-canary";
@@ -46,8 +47,18 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointReadyTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EndpointProbeTimeout = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan DaprSecretProbeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan EndpointPollInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan DockerVolumeCleanupTimeout = TimeSpan.FromSeconds(30);
+    private static readonly HttpStatusCode[] DaprSecretFailClosedStatusCodes =
+    [
+        HttpStatusCode.BadRequest,
+        HttpStatusCode.Unauthorized,
+        HttpStatusCode.Forbidden,
+        HttpStatusCode.MethodNotAllowed,
+        HttpStatusCode.NotAcceptable,
+        HttpStatusCode.UnsupportedMediaType,
+    ];
 
     private DistributedApplication? _app;
     private IDistributedApplicationTestingBuilder? _builder;
@@ -88,6 +99,18 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex SensitiveTokenRegex = new(
         @"(?<![A-Za-z0-9._~+/-])(?<token>[A-Za-z0-9._~+/-]{16,}={0,2})(?![A-Za-z0-9._~+/=-])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex DiagnosticBearerRegex = new(
+        """(?<prefix>\bBearer\s+)(?<value>[A-Za-z0-9._~+/=-]+)""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex DiagnosticCredentialRegex = new(
+        """(?<prefix>\b(?:authorization|api[_-]?key|client[_-]?secret|dapr-api-token|(?:access|refresh|id|client)[_-]?token|secret|token)\b["']?\s*[:=]\s*["']?)(?<value>[^\s,"';}\]]+)""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex DiagnosticJwtRegex = new(
+        """\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex DiagnosticOpenBaoTokenRegex = new(
+        """\b(?:hvs|hvb)\.[A-Za-z0-9_-]{8,}\b""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>Gets the HTTP client for the Memories Server resource.</summary>
@@ -512,12 +535,18 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         ?? throw new InvalidOperationException("Access-telemetry marker seed evidence is unavailable.");
 
     /// <summary>Restarts only OpenBao inside the current AppHost and waits for a new usable generation.</summary>
-    /// <returns><see langword="true"/> when identities rotated and permitted sidecar reads recovered.</returns>
+    /// <returns><see langword="true"/> when identities, secret reads, and MCP-to-Server Dapr invocation recovered.</returns>
     internal async Task<bool> RestartOpenBaoGenerationInPlaceAsync()
     {
         DistributedApplication app = _app
             ?? throw new InvalidOperationException("The topology is not running.");
+        int logStartIndex = _logProvider.Count;
         string before = await ReadScopedTokenFingerprintAsync().ConfigureAwait(false);
+        const string recoveryTenantId = OpenBaoRecoveryTenantId;
+        bool recoveryTenantActive = false;
+        string mcpRecoveryStage = "waiting for rotated OpenBao identities";
+        HttpStatusCode? mcpRecoveryStatus = null;
+        string? mcpRecoveryError = null;
         using var cts = new CancellationTokenSource(ResourceHealthyTimeout);
 
         await ExecuteResourceCommandAsync(
@@ -535,6 +564,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 identitiesRotated |= !string.Equals(before, after, StringComparison.Ordinal);
                 if (identitiesRotated)
                 {
+                    mcpRecoveryStage = "waiting for scoped OpenBao secret reads";
+                    mcpRecoveryStatus = null;
+                    mcpRecoveryError = null;
                     OpenBaoEndpoint = app.GetEndpoint(OpenBaoDevelopmentProfile.ResourceName, OpenBaoDevelopmentProfile.EndpointName);
                     Uri currentDaprEndpoint = app.GetEndpoint("memories-dapr-cli", "http");
                     if (currentDaprEndpoint != DaprSidecarHttpEndpoint)
@@ -547,15 +579,37 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                     if (await CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(false) &&
                         await CanReadOpenBaoAccessMarkerAsync().ConfigureAwait(false))
                     {
-                        return true;
+                        (bool TenantActive, bool SearchReady, string Stage, HttpStatusCode? Status, string? Error) recovery =
+                            await TryConfirmMcpDaprRecoveryAsync(
+                            recoveryTenantId,
+                            recoveryTenantActive,
+                            cts.Token).ConfigureAwait(false);
+                        recoveryTenantActive = recovery.TenantActive;
+                        mcpRecoveryStage = recovery.Stage;
+                        mcpRecoveryStatus = recovery.Status;
+                        mcpRecoveryError = recovery.Error;
+                        if (recovery.SearchReady)
+                        {
+                            return true;
+                        }
                     }
                 }
             }
             catch (Exception exception) when (
-                exception is IOException or HttpRequestException or TaskCanceledException &&
-                !cts.IsCancellationRequested)
+                !cts.IsCancellationRequested &&
+                exception is IOException or HttpRequestException or TaskCanceledException)
             {
                 // Generation files and sidecar endpoints are replaced independently; retry until both converge.
+            }
+
+            IReadOnlyList<CapturedLogEntry> generationLogs = _logProvider.GetEntriesSince(logStartIndex);
+            if (generationLogs.Any(entry =>
+                    entry.Level >= LogLevel.Error &&
+                    entry.Category.Contains("OpenBaoGeneration", StringComparison.Ordinal)))
+            {
+                throw new InvalidOperationException(
+                    "OpenBao generation recovery failed while waiting for the in-place restart."
+                    + $"{Environment.NewLine}{FormatRecentLogs(generationLogs, maxLines: 80)}");
             }
 
             try
@@ -568,8 +622,136 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             }
         }
 
-        throw new TimeoutException("OpenBao did not install a rotated in-place generation before the restart deadline.");
+        string timeoutSummary = identitiesRotated
+            ? "OpenBao installed rotated identities, but dependent recovery did not converge before the restart deadline."
+            : "OpenBao did not install a rotated in-place generation before the restart deadline.";
+        throw new TimeoutException(
+            timeoutSummary +
+            $" Last MCP recovery stage: {mcpRecoveryStage}." +
+            $" Last status: {mcpRecoveryStatus?.ToString() ?? "n/a"}." +
+            $" Last error: {mcpRecoveryError ?? "n/a"}."
+            + $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 80)}");
     }
+
+    private async Task<(bool TenantActive, bool SearchReady, string Stage, HttpStatusCode? Status, string? Error)>
+        TryConfirmMcpDaprRecoveryAsync(
+        string tenantId,
+        bool tenantActive,
+        CancellationToken cancellationToken)
+    {
+        string stage = tenantActive ? "MCP Dapr search" : "recovery tenant activation";
+        try
+        {
+            if (!tenantActive)
+            {
+                _ = await ProvisionActiveTenantAsync(
+                    tenantId,
+                    activationTimeout: TimeSpan.FromSeconds(20),
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                tenantActive = true;
+            }
+
+            stage = "MCP Dapr search";
+            using HttpClient mcpSidecar = CreateDaprSidecarClient("memories-mcp-dapr-cli");
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"/v1.0/invoke/{Uri.EscapeDataString(_daprAppId)}/method/api/v1/search"
+                    + $"?tenantId={Uri.EscapeDataString(tenantId)}&query=openbao-recovery&axis=hybrid");
+            _ = request.Headers.TryAddWithoutValidation(
+                "Authorization",
+                $"Bearer {MintDevBearer(tenantId)}");
+            using HttpResponseMessage response = await mcpSidecar.SendAsync(
+                request,
+                cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                if (IsTransientMcpDaprInvokeStatus(response.StatusCode))
+                {
+                    return (tenantActive, false, stage, response.StatusCode, Error: null);
+                }
+
+                throw new InvalidOperationException(
+                    $"MCP Dapr search returned non-transient status {(int)response.StatusCode} {response.StatusCode}.");
+            }
+
+            // The externally-addressed CLI probe above validates Dapr discovery, but the MCP
+            // application has its own DAPR_HTTP_ENDPOINT. Require its real readiness endpoint so
+            // an in-process invoke client cannot retain a transiently stale sidecar route.
+            stage = "MCP readiness";
+            using HttpResponseMessage mcpReadiness = await McpClient.GetAsync(
+                "/ready",
+                cancellationToken).ConfigureAwait(false);
+            if (mcpReadiness.StatusCode == HttpStatusCode.OK)
+            {
+                return (tenantActive, true, stage, mcpReadiness.StatusCode, Error: null);
+            }
+
+            if (IsTransientMcpReadinessStatus(mcpReadiness.StatusCode))
+            {
+                return (tenantActive, false, stage, mcpReadiness.StatusCode, Error: null);
+            }
+
+            throw new InvalidOperationException(
+                $"MCP readiness returned non-transient status {(int)mcpReadiness.StatusCode} {mcpReadiness.StatusCode}.");
+        }
+        catch (TimeoutException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return (
+                tenantActive,
+                false,
+                stage,
+                Status: null,
+                Error: RedactSensitiveDiagnostics(FormatException(exception)));
+        }
+        catch (HttpRequestException exception)
+        {
+            return (
+                tenantActive,
+                false,
+                stage,
+                exception.StatusCode,
+                Error: RedactSensitiveDiagnostics(FormatException(exception)));
+        }
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            return (
+                tenantActive,
+                false,
+                stage,
+                Status: null,
+                Error: RedactSensitiveDiagnostics(FormatException(exception)));
+        }
+    }
+
+    /// <summary>Determines whether a Dapr service-invocation response is retryable during sidecar recovery.</summary>
+    /// <param name="statusCode">HTTP status returned by the Dapr sidecar.</param>
+    /// <returns><see langword="true"/> only for known registration, throttling, timeout, or availability statuses.</returns>
+    internal static bool IsTransientMcpDaprInvokeStatus(HttpStatusCode statusCode)
+        => statusCode is
+            HttpStatusCode.NotFound or
+            HttpStatusCode.RequestTimeout or
+            HttpStatusCode.TooManyRequests or
+            HttpStatusCode.InternalServerError or
+            HttpStatusCode.BadGateway or
+            HttpStatusCode.ServiceUnavailable or
+            HttpStatusCode.GatewayTimeout;
+
+    /// <summary>Determines whether the MCP readiness response is retryable during sidecar recovery.</summary>
+    /// <param name="statusCode">HTTP status returned by the MCP readiness endpoint.</param>
+    /// <returns><see langword="true"/> only for known throttling, timeout, or availability statuses.</returns>
+    internal static bool IsTransientMcpReadinessStatus(HttpStatusCode statusCode)
+        => statusCode is
+            HttpStatusCode.RequestTimeout or
+            HttpStatusCode.TooManyRequests or
+            HttpStatusCode.BadGateway or
+            HttpStatusCode.ServiceUnavailable or
+            HttpStatusCode.GatewayTimeout;
+
+    /// <summary>Determines whether a Dapr secret readiness response is a permanent boundary failure.</summary>
+    /// <param name="statusCode">HTTP status returned by the Dapr secret endpoint.</param>
+    /// <returns><see langword="true"/> for authentication, authorization, request, or method contract failures.</returns>
+    internal static bool IsPermanentDaprSecretProbeStatus(HttpStatusCode statusCode)
+        => DaprSecretFailClosedStatusCodes.Contains(statusCode);
 
     /// <summary>Uses each mounted identity directly against the opposite OpenBao prefix.</summary>
     /// <returns><c>true</c> only when both identity probes receive authorization denial.</returns>
@@ -1593,6 +1775,34 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _daprStateClient.DefaultRequestHeaders.TryAddWithoutValidation("dapr-api-token", daprApiToken);
         }
 
+        using (HttpClient clockSecretProbe = CreateDaprSidecarClient("memories-access-telemetry-clock-dapr-cli"))
+        {
+            await WaitForEndpointAsync(
+                clockSecretProbe,
+                "/v1.0/secrets/access-telemetry-secrets/access-telemetry-clock-key",
+                [HttpStatusCode.OK],
+                EndpointReadyTimeout,
+                EndpointPollInterval,
+                logStartIndex,
+                cancellationToken,
+                DaprSecretProbeTimeout,
+                DaprSecretFailClosedStatusCodes).ConfigureAwait(false);
+        }
+
+        using (HttpClient lifecycleSecretProbe = CreateDaprSidecarClient("memories-access-telemetry-dapr-cli"))
+        {
+            await WaitForEndpointAsync(
+                lifecycleSecretProbe,
+                "/v1.0/secrets/access-telemetry-secrets/access-telemetry-marker-key",
+                [HttpStatusCode.OK],
+                EndpointReadyTimeout,
+                EndpointPollInterval,
+                logStartIndex,
+                cancellationToken,
+                DaprSecretProbeTimeout,
+                DaprSecretFailClosedStatusCodes).ConfigureAwait(false);
+        }
+
         Uri redisEndpoint = _app.GetEndpoint("memories-vectors", "redis");
         Uri falkorEndpoint = _app.GetEndpoint("memories-graphs", "falkordb");
 
@@ -2097,7 +2307,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         TimeSpan timeout,
         TimeSpan pollInterval,
         int logStartIndex,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan? probeTimeout = null,
+        IReadOnlyCollection<HttpStatusCode>? failClosedStatusCodes = null)
     {
         CancellationToken appStopping = _app?.Services.GetService<IHostApplicationLifetime>()?.ApplicationStopping
             ?? CancellationToken.None;
@@ -2105,34 +2317,25 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             cancellationToken,
             appStopping);
         CancellationToken waitToken = waitCts.Token;
-        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
-        Exception? lastException = null;
-        HttpStatusCode? lastStatusCode = null;
 
         try
         {
-            while (DateTimeOffset.UtcNow < deadline)
-            {
-                waitToken.ThrowIfCancellationRequested();
-                try
+            await WaitForEndpointProbeAsync(
+                async probeToken =>
                 {
-                    using CancellationTokenSource probeCts = CancellationTokenSource.CreateLinkedTokenSource(waitToken);
-                    probeCts.CancelAfter(EndpointProbeTimeout);
-                    using HttpResponseMessage response = await client.GetAsync(url, probeCts.Token).ConfigureAwait(false);
-                    lastStatusCode = response.StatusCode;
-
-                    if (expectedStatusCodes.Contains(response.StatusCode))
-                    {
-                        return;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    lastException = ex;
-                }
-
-                await Task.Delay(pollInterval, waitToken).ConfigureAwait(false);
-            }
+                    using HttpResponseMessage response = await client.GetAsync(
+                        url,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        probeToken).ConfigureAwait(false);
+                    return response.StatusCode;
+                },
+                url,
+                expectedStatusCodes,
+                failClosedStatusCodes,
+                timeout,
+                probeTimeout ?? EndpointProbeTimeout,
+                pollInterval,
+                waitToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException exception) when (
             appStopping.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
@@ -2142,18 +2345,151 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}",
                 exception);
         }
+        catch (TimeoutException exception)
+        {
+            throw new TimeoutException(
+                $"{exception.Message}" +
+                $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}",
+                exception);
+        }
+    }
+
+    /// <summary>Polls a status-only endpoint probe until it converges or reaches a bounded failure.</summary>
+    /// <param name="probeAsync">Status-only probe that must not read or return a response body.</param>
+    /// <param name="endpointLabel">Secret-safe endpoint label used in diagnostics.</param>
+    /// <param name="expectedStatusCodes">Statuses that complete readiness.</param>
+    /// <param name="failClosedStatusCodes">Statuses that represent a non-transient boundary failure.</param>
+    /// <param name="timeout">Overall readiness budget.</param>
+    /// <param name="probeTimeout">Per-request ceiling.</param>
+    /// <param name="pollInterval">Delay between transient attempts.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <returns>A task that completes only after an expected readiness status is observed.</returns>
+    internal static async Task WaitForEndpointProbeAsync(
+        Func<CancellationToken, Task<HttpStatusCode>> probeAsync,
+        string endpointLabel,
+        IReadOnlyCollection<HttpStatusCode> expectedStatusCodes,
+        IReadOnlyCollection<HttpStatusCode>? failClosedStatusCodes,
+        TimeSpan timeout,
+        TimeSpan probeTimeout,
+        TimeSpan pollInterval,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(probeAsync);
+        ArgumentException.ThrowIfNullOrWhiteSpace(endpointLabel);
+        ArgumentNullException.ThrowIfNull(expectedStatusCodes);
+        if (expectedStatusCodes.Count == 0)
+        {
+            throw new ArgumentException("At least one expected endpoint status is required.", nameof(expectedStatusCodes));
+        }
+
+        if (timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "The readiness timeout must be positive.");
+        }
+
+        if (probeTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(probeTimeout), "The probe timeout must be positive.");
+        }
+
+        if (pollInterval < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(pollInterval), "The poll interval cannot be negative.");
+        }
+
+        if (failClosedStatusCodes?.Any(expectedStatusCodes.Contains) == true)
+        {
+            throw new ArgumentException(
+                "Expected and fail-closed endpoint statuses cannot overlap.",
+                nameof(failClosedStatusCodes));
+        }
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
+        Exception? lastException = null;
+        HttpStatusCode? lastStatusCode = null;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            TimeSpan remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            HttpStatusCode? currentStatusCode = null;
+            try
+            {
+                using CancellationTokenSource probeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                TimeSpan probeBudget = probeTimeout < remaining ? probeTimeout : remaining;
+                probeCts.CancelAfter(probeBudget);
+                currentStatusCode = await probeAsync(probeCts.Token)
+                    .WaitAsync(probeBudget, cancellationToken)
+                    .ConfigureAwait(false);
+                lastStatusCode = currentStatusCode;
+                lastException = null;
+                if (expectedStatusCodes.Contains(currentStatusCode.Value))
+                {
+                    return;
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException exception)
+            {
+                lastException = exception;
+            }
+            catch (TimeoutException exception)
+            {
+                lastException = exception;
+            }
+            catch (HttpRequestException exception)
+            {
+                lastException = exception;
+            }
+
+            if (currentStatusCode is { } statusCode &&
+                failClosedStatusCodes?.Contains(statusCode) == true)
+            {
+                throw new InvalidOperationException(
+                    $"Endpoint '{endpointLabel}' returned non-transient status {(int)statusCode} {statusCode}.");
+            }
+
+            remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            TimeSpan delay = pollInterval < remaining ? pollInterval : remaining;
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        }
 
         throw new TimeoutException(
-            $"Endpoint '{url}' did not become ready within {timeout}. " +
+            $"Endpoint '{endpointLabel}' did not become ready within {timeout}. " +
             $"Last status: {lastStatusCode?.ToString() ?? "n/a"}. " +
-            $"Last error: {FormatException(lastException)}." +
-            $"{Environment.NewLine}{FormatRecentLogs(_logProvider.GetEntriesSince(logStartIndex), maxLines: 40)}");
+            $"Last error: {FormatException(lastException)}.");
     }
 
     private static string FormatException(Exception? exception)
         => exception is null
             ? "n/a"
-            : $"{exception.GetType().Name}: {exception.Message}";
+            : RedactSensitiveDiagnostics($"{exception.GetType().Name}: {exception.Message}");
+
+    /// <summary>Removes token-like credential values from failure diagnostics.</summary>
+    /// <param name="value">Potentially sensitive diagnostic text.</param>
+    /// <returns>Diagnostic text with recognized credential values replaced by a sentinel.</returns>
+    internal static string RedactSensitiveDiagnostics(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        string redacted = DiagnosticBearerRegex.Replace(value, "${prefix}[REDACTED]");
+        redacted = DiagnosticCredentialRegex.Replace(redacted, "${prefix}[REDACTED]");
+        redacted = DiagnosticJwtRegex.Replace(redacted, "[REDACTED]");
+        return DiagnosticOpenBaoTokenRegex.Replace(redacted, "[REDACTED]");
+    }
 
     private static string FormatRecentLogs(IReadOnlyList<CapturedLogEntry> entries, int maxLines)
     {
@@ -2165,9 +2501,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         IEnumerable<CapturedLogEntry> recent = entries
             .Skip(Math.Max(0, entries.Count - maxLines));
 
-        return "Recent captured logs:" + Environment.NewLine + string.Join(
+        string formatted = "Recent captured logs:" + Environment.NewLine + string.Join(
             Environment.NewLine,
             recent.Select(e => $"[{e.Level}] {e.Category}: {e.Message}"));
+        return RedactSensitiveDiagnostics(formatted);
     }
 
     /// <summary>Represents a captured integration-test log entry.</summary>

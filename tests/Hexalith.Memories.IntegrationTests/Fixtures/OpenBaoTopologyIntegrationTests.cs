@@ -127,6 +127,7 @@ public sealed class OpenBaoTopologyIntegrationTests(
     }
 
     [Fact]
+    [Trait("Category", "IntegrationSlow")]
     public async Task FullTopologyRestart_ReinitializesOpenBaoAndRecoversPermittedDaprReads()
     {
         (await fixture.CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(true)).ShouldBeTrue();
@@ -149,11 +150,18 @@ public sealed class OpenBaoTopologyIntegrationTests(
     }
 
     [Fact]
-    public async Task DiagnosticsModelGeneratedFilesAndLogs_ContainNoSensitiveMaterial_AndColdStartMeetsNfr7()
+    public async Task DiagnosticsModelGeneratedFilesAndLogs_ContainNoSensitiveMaterial()
     {
         (await fixture.HasOpenBaoSensitiveDisclosureAsync().ConfigureAwait(true)).ShouldBeFalse(
             "Seed canaries, scoped tokens, bootstrap tokens, and unseal keys must be absent from model, diagnostics, " +
             $"generated YAML/HCL, and logs. Surface: {fixture.OpenBaoSensitiveDisclosureSurface ?? "none"}.");
+    }
+
+    [Fact]
+    [Trait("Category", "IntegrationSlow")]
+    [Trait("Category", "Performance")]
+    public void OpenBaoColdStart_TopologyAcceptsQueriesWithinNfr7()
+    {
         fixture.OpenBaoColdStartDuration.ShouldBeLessThan(
             TimeSpan.FromSeconds(60),
             "NFR7 measures from all containers running until the root topology accepts queries, excluding image pull.");
