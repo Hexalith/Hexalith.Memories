@@ -60,6 +60,7 @@ def write_complete_evidence(
                 "attempt": 1,
                 "statusCode": 200,
                 "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
+                "transcript": "in-container health response",
             }
         ),
         encoding="utf-8",
@@ -72,6 +73,7 @@ def write_complete_evidence(
                 "attempt": 1,
                 "statusCode": 503,
                 "body": json.dumps({"schemaVersion": 1, "status": "Unhealthy"}),
+                "transcript": "in-container health response",
             }
         ),
         encoding="utf-8",
@@ -109,9 +111,16 @@ def flattened_output(result: subprocess.CompletedProcess[str]) -> str:
     contiguous-substring assertion.
     """
 
-    combined = (result.stdout or "") + (result.stderr or "")
+    # Join the two streams with a newline. Concatenating them directly welded the last stdout line
+    # onto the first stderr line, so a contiguous-substring assertion could match across the
+    # boundary of two unrelated streams and report a phrase neither stream contains.
+    combined = (result.stdout or "") + "\n" + (result.stderr or "")
     plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", combined)
-    unwrapped = [re.sub(r"^\s*(?:\d+\s*)?\|\s?", "", line) for line in plain.splitlines()]
+    # Strip ONLY PowerShell's own gutter shapes: the literal "Line |" header, and indented
+    # "NNN | " / "    | " continuations. The previous unanchored form stripped any line beginning
+    # with digits followed by a pipe, which is a plausible shape for a tool's own diagnostic
+    # output - so a negative assertion could pass because its evidence had been deleted.
+    unwrapped = [re.sub(r"^(?:Line \||\s+(?:\d+\s*)?\|)\s?", "", line) for line in plain.splitlines()]
     return " ".join(" ".join(unwrapped).split())
 
 
@@ -184,15 +193,16 @@ class ProductionDeploymentEvidenceTests(unittest.TestCase):
         self.assertIn("printf 'nc-fallback begin (wget exit %s)\\n' \"$wgetExit\"", verifier)
         self.assertIn("printf '\\nnc-fallback end (nc exit %s)\\n' \"$?\"", verifier)
         self.assertIn("function Get-HealthResponseViaPortForward", verifier)
-        self.assertIn("'port-forward', '-n', $namespace, \"pod/$Pod\", \"${localPort}:8080\"", verifier)
+        self.assertIn("'port-forward', '-n', $namespace, \"pod/$Pod\", ':8080'", verifier)
         # No --retry: curl treats HTTP 503 as transient, so retrying would discard the exact
         # response the fault stages exist to capture. The establishment race is handled by an
         # explicit wait-for-listener instead, which --retry-connrefused used to mask.
         self.assertNotIn("--retry-connrefused", verifier)
         self.assertNotIn("--retry 3", verifier)
-        self.assertIn("$probe.ConnectAsync([System.Net.IPAddress]::Loopback, $localPort)", verifier)
-        # An ephemeral loopback port, not a fixed 18080 a leaked forward could still hold.
-        self.assertIn("$localPort = Get-FreeLoopbackPort", verifier)
+        self.assertIn("Forwarding from (?:127\\.0\\.0\\.1|\\[::1\\]):(?<port>\\d+) -> 8080", verifier)
+        # Let kubectl atomically bind an ephemeral port. Selecting a free port and releasing it
+        # before Start-Process leaves a bind race with concurrent jobs on the same runner.
+        self.assertNotIn("function Get-FreeLoopbackPort", verifier)
         self.assertNotIn("$localPort = 18080", verifier)
         # The runner-side probe presents the pod's own token, never a hardcoded literal.
         self.assertIn("$token = Get-PodApplicationToken $Pod $Container", verifier)
@@ -205,7 +215,10 @@ class ProductionDeploymentEvidenceTests(unittest.TestCase):
         self.assertIn("transcript = Protect-EvidenceText $Transcript", verifier)
         # Ordering: the port-forward fallback decision happens inside Get-HealthResponse,
         # after the in-container probe ran, never instead of it.
-        exec_index = verifier.index("kubectl exec -n $namespace $Pod -c $Container")
+        # The probe exec carries --request-timeout as of 2026-07-31; it was the last unbounded
+        # kubectl call in the per-poll path. Anchor on the shell invocation that follows it, which
+        # is what distinguishes this exec from the token-read exec.
+        exec_index = verifier.index("exec -n $namespace $Pod -c $Container -- /bin/sh -ec")
         fallback_index = verifier.index("$fallbackText = Get-HealthResponseViaPortForward $Pod $Container")
         self.assertLess(exec_index, fallback_index)
 
@@ -274,29 +287,6 @@ $results | ConvertTo-Json -Depth 6 -Compress
         # A probe-side 401 must not overwrite the in-container observation.
         self.assertTrue(parsed["authErrorDoesNotOverwrite"]["Fired"])
         self.assertIsNone(parsed["authErrorDoesNotOverwrite"]["StatusCode"])
-
-    def test_free_loopback_port_helper_returns_a_bindable_ephemeral_port(self) -> None:
-        """The fixed 18080 let a leaked forward answer for a different pod."""
-
-        verifier = VERIFIER.read_text(encoding="utf-8-sig")
-        helper = verifier.split("function Get-FreeLoopbackPort {", 1)[1]
-        helper = "function Get-FreeLoopbackPort {" + helper.split("\n}\n", 1)[0] + "\n}"
-
-        result = run_pwsh(
-            helper
-            + "\n$ports = 1..3 | ForEach-Object { Get-FreeLoopbackPort }\n"
-            + "$ports -join ','"
-        )
-        self.assertEqual(0, result.returncode, result.stderr)
-        ports = [int(value) for value in result.stdout.strip().splitlines()[-1].split(",")]
-        self.assertEqual(3, len(ports))
-        for port in ports:
-            self.assertGreater(port, 1024)
-            self.assertLess(port, 65536)
-            # Deliberately NOT asserting `port != 18080`: the ephemeral range can legitimately
-            # include it, so that assertion fails with no defect present. The property that
-            # actually matters - distinctness while the previous port is still bound - is
-            # proven by FreeLoopbackPortExecutionTests.
 
     def test_redaction_at_write_does_not_corrupt_the_health_decision(self) -> None:
         """Exercise the actual scenario the source-text pins above only describe.
@@ -550,6 +540,14 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                 '{"detail":"unbalanced { in a string","status":"Healthy"}',
                 '{"detail":"unbalanced { in a string","status":"Healthy"}',
             ),
+            # A kubectl Status diagnostic is transport metadata, not aggregate health. The
+            # parser must keep the last aggregate body rather than replacing it with Failure.
+            (
+                '{"schemaVersion":1,"status":"Healthy"}\n'
+                'error: unable to upgrade connection: '
+                '{"kind":"Status","apiVersion":"v1","status":"Failure","message":"upgrade failed"}',
+                '{"schemaVersion":1,"status":"Healthy"}',
+            ),
         )
 
         for text, expected in cases:
@@ -597,6 +595,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                         "attempt": 1,
                         "statusCode": 200,
                         "body": "not json at all",
+                        "transcript": "captured malformed health response",
                     }
                 ),
                 encoding="utf-8",
@@ -606,6 +605,20 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
 
             self.assertNotEqual(0, result.returncode)
             self.assertIn("unparsable body", result.stdout + result.stderr)
+
+    def test_health_evidence_without_a_transcript_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            path = root / "health-initial-server-health.json"
+            health = json.loads(path.read_text(encoding="utf-8"))
+            health.pop("transcript")
+            path.write_text(json.dumps(health), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("transcript", flattened_output(result))
 
     def test_health_status_code_outside_200_or_503_fails_a_succeeded_run(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -619,6 +632,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                         "attempt": 1,
                         "statusCode": 500,
                         "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
+                        "transcript": "captured HTTP 500 health response",
                     }
                 ),
                 encoding="utf-8",
@@ -681,6 +695,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                         "attempt": 1,
                         "statusCode": None,
                         "body": "wget: download timed out",
+                        "transcript": "wget: download timed out",
                     }
                 ),
                 encoding="utf-8",
@@ -714,6 +729,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                         "attempt": 1,
                         "statusCode": None,
                         "body": "wget: download timed out",
+                        "transcript": "wget: download timed out",
                     }
                 ),
                 encoding="utf-8",
@@ -726,6 +742,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                         "attempt": 2,
                         "statusCode": 200,
                         "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
+                        "transcript": "captured Healthy response",
                     }
                 ),
                 encoding="utf-8",
@@ -750,6 +767,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                         "attempt": 1,
                         "statusCode": 200,
                         "body": json.dumps({"schemaVersion": 1, "status": "Healthy"}),
+                        "transcript": "captured Healthy response",
                     }
                 ),
                 encoding="utf-8",
@@ -762,6 +780,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
                         "attempt": 2,
                         "statusCode": None,
                         "body": "wget: download timed out",
+                        "transcript": "wget: download timed out",
                     }
                 ),
                 encoding="utf-8",
@@ -866,7 +885,12 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
         self.assertIn("observed post-patch type", verifier)
         # The disclosure must reach disk BEFORE any verification failure is raised, so a
         # partially rewritten cluster always ships a packet that says so.
-        disclosure_write = verifier.index("'secret-store-substitution.json'")
+        # Anchor to the WRITE, not to the first appearance of the file name. `verifier.index(...)`
+        # on the quoted literal resolved to the $ownedEvidenceNames stale-cleanup list near the top
+        # of the script, while the actual write uses $DisclosurePath and contains no such literal -
+        # so this comparison was 2250 < 15158 and held whether the disclosure was written before
+        # the throw, after it, or never at all.
+        disclosure_write = verifier.index("Set-Content -LiteralPath $DisclosurePath")
         failure_throw = verifier.index("the cluster may be partially rewritten and secret-store-substitution.json records this failure")
         self.assertLess(disclosure_write, failure_throw)
         # A component that vanished between the patch loop and the readback must not pass.
@@ -1203,6 +1227,14 @@ class GetHealthResponseExecutionTests(unittest.TestCase):
         )
         self.assertTrue(result["fallback_called"])
         self.assertEqual(200, result["status_code"], "a 401 overwrote the pod's own status code")
+        # The BODY must be refused too. This fixture already demonstrated the hole and asserted
+        # only the status code: the body was adopted before the allowlist filtered the code, so
+        # Wait-AggregateStatus - which gates on the body's status AND the code, both of which then
+        # held - passed the stage on a body served by a response the allowlist had just refused.
+        self.assertNotIn(
+            '"status":"Healthy"', str(result["body"]),
+            "a refused 401 response still supplied the authoritative body",
+        )
 
     def test_fallback_status_code_inside_the_stage_contract_replaces_the_pod_answer(self) -> None:
         """The allowlist must still admit the contract codes it exists to pass."""
@@ -1279,43 +1311,6 @@ class DisposableClusterGuardExecutionTests(unittest.TestCase):
         self.assertIn("could not read the active kubectl context", flattened_output(result))
 
 
-class FreeLoopbackPortExecutionTests(unittest.TestCase):
-    """The helper replaced a fixed 18080; returning any other constant is the same defect."""
-
-    def test_consecutive_calls_return_distinct_bindable_ports(self) -> None:
-        verifier = VERIFIER.read_text(encoding="utf-8-sig")
-        function = extract_ps_function(verifier, "Get-FreeLoopbackPort")
-
-        # Hold each port open while asking for the next one. The original test released every
-        # listener before the next call, so identical ports were a legal result and `return
-        # 18081` passed - the same defect under a different constant.
-        script = (
-            f"{function}\n"
-            "$held = @()\n"
-            "$ports = @()\n"
-            "try {\n"
-            "    1..3 | ForEach-Object {\n"
-            "        $port = Get-FreeLoopbackPort\n"
-            "        $ports += $port\n"
-            "        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port)\n"
-            "        $listener.Start()\n"
-            "        $held += $listener\n"
-            "    }\n"
-            "}\n"
-            "finally { $held | ForEach-Object { $_.Stop() } }\n"
-            "Write-Output ($ports -join ',')\n"
-        )
-        result = run_pwsh(script)
-        self.assertEqual(0, result.returncode, result.stderr)
-        ports = [int(v) for v in result.stdout.strip().splitlines()[-1].split(",")]
-        self.assertEqual(3, len(ports))
-        # Each port was still bound when the next was requested, so a constant cannot pass.
-        self.assertEqual(3, len(set(ports)), f"helper returned a repeated port: {ports}")
-        for port in ports:
-            self.assertGreater(port, 1024)
-            self.assertLess(port, 65536)
-
-
 class StaleEvidenceCleanupExecutionTests(unittest.TestCase):
     """A reused evidence directory must not let a stale disclosure survive into a new run."""
 
@@ -1358,10 +1353,19 @@ class ProbeTimeoutBudgetTests(unittest.TestCase):
             "wget_timeout": r"wget -S -O- -T (\d+) ",
             "nc_grace_sleep": r"sleep (\d+); \} \| nc ",
             "nc_timeout": r"\| nc -w (\d+) 127\.0\.0\.1 8080",
-            "curl_max_time": r"--max-time', '(\d+)'|--max-time (\d+)",
+            # Anchored to the INVOCATION. `re.search` returns the first match in the file, and the
+            # unanchored form resolved to the comment two lines above the call - so raising the
+            # executed `--max-time 6` to 600 left this class green while it reported the poll as
+            # bounded. Every other anchor here was checked and does resolve to real code.
+            "curl_max_time": r"& curl -sS -D - --max-time (\d+)",
             "establish_seconds": r"\$establishDeadline = \[DateTime\]::UtcNow\.AddSeconds\((\d+)\)",
             "forward_kill_wait_ms": r"\$forward\.WaitForExit\((\d+)\)",
-            "exec_request_timeout": r"kubectl --request-timeout=(\d+)s exec",
+            # Three DISTINCT per-poll kubectl round trips, each anchored to its own call site.
+            # A single `kubectl --request-timeout=(\d+)s exec` pattern matched only the first of
+            # them, so the probe exec and the running-container observation went unmodelled.
+            "token_exec_request_timeout": r"kubectl --request-timeout=(\d+)s exec -n \$namespace \$Pod -c \$Container -- /bin/sh -c '",
+            "probe_exec_request_timeout": r"kubectl --request-timeout=(\d+)s exec -n \$namespace \$Pod -c \$Container -- /bin/sh -ec ",
+            "observation_pods_request_timeout": r"kubectl --request-timeout=(\d+)s get pods -n \$namespace -l ",
             "outer_deadline_minutes": r"\$deadline = \[DateTime\]::UtcNow\.AddMinutes\((\d+)\)",
         }
         found: dict[str, int] = {}
@@ -1374,16 +1378,22 @@ class ProbeTimeoutBudgetTests(unittest.TestCase):
     def test_per_poll_worst_case_stays_inside_the_startup_budget(self) -> None:
         c = self.constants()
         in_container_worst_case = c["wget_timeout"] + c["nc_grace_sleep"] + c["nc_timeout"]
-        # The runner side owes three terms, not two: the port-forward kill wait added by the
-        # marker fix, and the token-read exec, which was the one unbounded kubectl call in the
-        # per-poll path. Omitting them let the class claim a bound it did not model.
-        runner_worst_case = (
-            c["establish_seconds"]
-            + c["curl_max_time"]
-            + c["forward_kill_wait_ms"] // 1000
-            + c["exec_request_timeout"]
+        # THREE kubectl round trips per poll, each bounded by its own --request-timeout: the
+        # running-container observation, the in-container probe exec, and the token-read exec.
+        # The model previously counted only the token exec, and the probe exec carried no bound at
+        # all, so an API server that accepted the connection and never returned could stall a poll
+        # indefinitely while this class reported the worst case as 37s. The probe exec's bound
+        # subsumes the in-container command's own wget/sleep/nc budget, asserted separately below.
+        kubectl_worst_case = (
+            c["observation_pods_request_timeout"]
+            + c["probe_exec_request_timeout"]
+            + c["token_exec_request_timeout"]
         )
-        per_poll = in_container_worst_case + runner_worst_case
+        # Runner-side capture: the establish deadline, the curl, and the port-forward kill wait.
+        runner_capture_worst_case = (
+            c["establish_seconds"] + c["curl_max_time"] + c["forward_kill_wait_ms"] // 1000
+        )
+        per_poll = kubectl_worst_case + runner_capture_worst_case
 
         # 60s is the -TimeoutSeconds contract of both startup stages. A single poll must not be
         # able to consume the whole budget, or one slow poll decides the stage.
@@ -1397,7 +1407,11 @@ class ProbeTimeoutBudgetTests(unittest.TestCase):
         # not at a slack ceiling. The previous limit of 30 was satisfied EXACTLY by the
         # sleep 2 -> 20 mutation, so the bound admitted the regression it existed to catch.
         self.assertLessEqual(in_container_worst_case, 12, f"in-container branch too slow: {c}")
-        self.assertLessEqual(runner_worst_case, 25, f"runner-side capture too slow: {c}")
+        self.assertLessEqual(runner_capture_worst_case, 18, f"runner-side capture too slow: {c}")
+        # A 10-second establishment allowance is resilient to slower CI control planes. Reduce
+        # the three kubectl request bounds in tandem so the modelled poll remains 54s, below the
+        # same 60-second startup contract.
+        self.assertLessEqual(kubectl_worst_case, 36, f"per-poll kubectl round trips too slow: {c}")
         # The outer deadline must allow several polls, not one or two.
         self.assertGreaterEqual(c["outer_deadline_minutes"] * 60, 4 * per_poll, f"outer deadline too tight: {c}")
         # ...and must not be so long that a wedged stage runs for most of a CI job.
@@ -1524,6 +1538,88 @@ class PodApplicationTokenExecutionTests(unittest.TestCase):
         )
 
 
+def drive_wait_aggregate_status(polls: list[dict[str, object]], timeout_seconds: int = 60) -> dict[str, object]:
+    """Drive the real Wait-AggregateStatus with scripted polls.
+
+    Module-level so StartupBudgetContractTests can use it without calling
+    StartupBudgetExecutionTests.drive unbound with a foreign `self` - which works only
+    while drive reads no instance state, and breaks silently the moment it does.
+    """
+
+    verifier = VERIFIER.read_text(encoding="utf-8-sig")
+    function = extract_ps_function(verifier, "Wait-AggregateStatus")
+
+    # Each poll scripts one Get-RunningContainerObservation + Get-HealthResponse pair.
+    # Offsets are seconds BEFORE the frozen reference instant, so a container that
+    # became Ready 90s after starting is started_ago=90, ready_ago=0.
+    entries = ",".join(
+        "@{{ StartedAgo = {started}; ReadyAgo = {ready}; Status = '{status}'; Code = {code}; Fallback = {fallback} }}".format(
+            started=poll["started_ago"],
+            ready="$null" if poll.get("ready_ago") is None else poll["ready_ago"],
+            status=poll["status"],
+            code=poll["code"],
+            fallback=poll["fallback"],
+        )
+        for poll in polls
+    )
+
+    script = (
+        f"{function}\n"
+        "$now = [DateTime]::UtcNow\n"
+        f"$polls = @({entries})\n"
+        "$script:index = 0\n"
+        "function Set-VerificationStage { param([string]$Stage) }\n"
+        "function Save-HealthResponseEvidence { param($Stage, $StatusCode, $Body, $Transcript) }\n"
+        "function Start-Sleep { param($Seconds) }\n"
+        "function Get-RunningContainerObservation {\n"
+        "    param($AppName, $Container, $RequiredPodAnnotationName, $RequiredPodAnnotationValue)\n"
+        "    $p = $polls[[math]::Min($script:index, $polls.Count - 1)]\n"
+        "    [pscustomobject]@{\n"
+        "        PodName = 'pod-' + $p.StartedAgo\n"
+        "        ContainerStartedAt = $now.AddSeconds(-1 * $p.StartedAgo)\n"
+        "        ReadyAt = $(if ($null -eq $p.ReadyAgo) { $null } else { $now.AddSeconds(-1 * $p.ReadyAgo) })\n"
+        "    }\n"
+        "}\n"
+        "function Get-HealthResponse {\n"
+        "    param($Pod, $Container)\n"
+        "    $p = $polls[[math]::Min($script:index, $polls.Count - 1)]\n"
+        "    $script:index++\n"
+        "    [pscustomobject]@{\n"
+        "        StatusCode = $p.Code\n"
+        "        Body = '{\"schemaVersion\":1,\"status\":\"' + $p.Status + '\"}'\n"
+        "        Raw = 'raw'\n"
+        "        FallbackSeconds = [double]$p.Fallback\n"
+        "    }\n"
+        "}\n"
+        "try {\n"
+        f"    $null = Wait-AggregateStatus -AppName 'memories' -Container 'server' -ExpectedStatus 'Healthy' -Stage 'test-stage' -TimeoutSeconds {timeout_seconds} -MeasureFromContainerRunning\n"
+        "    Write-Output 'OUTCOME=passed'\n"
+        "}\n"
+        "catch {\n"
+        "    Write-Output 'OUTCOME=threw'\n"
+        "    Write-Output \"MESSAGE=$($_.Exception.Message)\"\n"
+        "}\n"
+        # Report how many polls it took. Start-Sleep is stubbed out, so the loop spins and
+        # wall-clock elapsed creeps upward on its own: a budget mutation that merely DELAYS the
+        # throw still throws eventually, and an outcome-only assertion cannot tell the two apart.
+        # The poll count can.
+        "Write-Output \"POLLS=$script:index\"\n"
+    )
+
+    result = run_pwsh(script)
+    if result.returncode != 0:
+        raise AssertionError(f"driving Wait-AggregateStatus failed: {result.stderr}")
+    values: dict[str, object] = {"message": ""}
+    for line in result.stdout.splitlines():
+        if line.startswith("OUTCOME="):
+            values["outcome"] = line.split("=", 1)[1].strip()
+        elif line.startswith("MESSAGE="):
+            values["message"] = line.split("=", 1)[1].strip()
+        elif line.startswith("POLLS="):
+            values["polls"] = int(line.split("=", 1)[1].strip())
+    return values
+
+
 class StartupBudgetExecutionTests(unittest.TestCase):
     """Execute the real Wait-AggregateStatus startup-budget arithmetic.
 
@@ -1536,70 +1632,7 @@ class StartupBudgetExecutionTests(unittest.TestCase):
     """
 
     def drive(self, polls: list[dict[str, object]], timeout_seconds: int = 60) -> dict[str, object]:
-        verifier = VERIFIER.read_text(encoding="utf-8-sig")
-        function = extract_ps_function(verifier, "Wait-AggregateStatus")
-
-        # Each poll scripts one Get-RunningContainerObservation + Get-HealthResponse pair.
-        # Offsets are seconds BEFORE the frozen reference instant, so a container that
-        # became Ready 90s after starting is started_ago=90, ready_ago=0.
-        entries = ",".join(
-            "@{{ StartedAgo = {started}; ReadyAgo = {ready}; Status = '{status}'; Code = {code}; Fallback = {fallback} }}".format(
-                started=poll["started_ago"],
-                ready="$null" if poll.get("ready_ago") is None else poll["ready_ago"],
-                status=poll["status"],
-                code=poll["code"],
-                fallback=poll["fallback"],
-            )
-            for poll in polls
-        )
-
-        script = (
-            f"{function}\n"
-            "$now = [DateTime]::UtcNow\n"
-            f"$polls = @({entries})\n"
-            "$script:index = 0\n"
-            "function Set-VerificationStage { param([string]$Stage) }\n"
-            "function Save-HealthResponseEvidence { param($Stage, $StatusCode, $Body, $Transcript) }\n"
-            "function Start-Sleep { param($Seconds) }\n"
-            "function Get-RunningContainerObservation {\n"
-            "    param($AppName, $Container, $RequiredPodAnnotationName, $RequiredPodAnnotationValue)\n"
-            "    $p = $polls[[math]::Min($script:index, $polls.Count - 1)]\n"
-            "    [pscustomobject]@{\n"
-            "        PodName = 'pod-' + $p.StartedAgo\n"
-            "        ContainerStartedAt = $now.AddSeconds(-1 * $p.StartedAgo)\n"
-            "        ReadyAt = $(if ($null -eq $p.ReadyAgo) { $null } else { $now.AddSeconds(-1 * $p.ReadyAgo) })\n"
-            "    }\n"
-            "}\n"
-            "function Get-HealthResponse {\n"
-            "    param($Pod, $Container)\n"
-            "    $p = $polls[[math]::Min($script:index, $polls.Count - 1)]\n"
-            "    $script:index++\n"
-            "    [pscustomobject]@{\n"
-            "        StatusCode = $p.Code\n"
-            "        Body = '{\"schemaVersion\":1,\"status\":\"' + $p.Status + '\"}'\n"
-            "        Raw = 'raw'\n"
-            "        FallbackSeconds = [double]$p.Fallback\n"
-            "    }\n"
-            "}\n"
-            "try {\n"
-            f"    $null = Wait-AggregateStatus -AppName 'memories' -Container 'server' -ExpectedStatus 'Healthy' -Stage 'test-stage' -TimeoutSeconds {timeout_seconds} -MeasureFromContainerRunning\n"
-            "    Write-Output 'OUTCOME=passed'\n"
-            "}\n"
-            "catch {\n"
-            "    Write-Output 'OUTCOME=threw'\n"
-            "    Write-Output \"MESSAGE=$($_.Exception.Message)\"\n"
-            "}\n"
-        )
-
-        result = run_pwsh(script)
-        self.assertEqual(0, result.returncode, result.stderr)
-        values: dict[str, object] = {"message": ""}
-        for line in result.stdout.splitlines():
-            if line.startswith("OUTCOME="):
-                values["outcome"] = line.split("=", 1)[1].strip()
-            elif line.startswith("MESSAGE="):
-                values["message"] = line.split("=", 1)[1].strip()
-        return values
+        return drive_wait_aggregate_status(polls, timeout_seconds)
 
     def test_kubernetes_recorded_ready_interval_is_not_credited_with_capture_time(self) -> None:
         """The false-pass this arithmetic produced.
@@ -1623,36 +1656,68 @@ class StartupBudgetExecutionTests(unittest.TestCase):
         )
         self.assertEqual("passed", result["outcome"])
 
-    def test_reported_capture_credit_matches_the_overhead_actually_accrued(self) -> None:
-        """The wall-clock branch is the only place the credit is applied; pin its magnitude.
+    def test_accrued_overhead_is_reported_but_not_credited(self) -> None:
+        """The failure branch reports the accrued capture and credits none of it.
 
-        The other cases in this class either take the cluster-timestamp path (credit 0) or
-        reset the credit at a restart, so inflating the accumulator survived them. Here a
-        single instance accrues a known 5s and the throw must report exactly that: an
-        inflated accumulator reports the clamp (60s) instead.
+        Updated 2026-07-31 by code review (second pass). The branch previously subtracted
+        the overhead, bounding the CREDIT at the budget rather than bounding the RESULT -
+        the exact shape the healthy branch had already dropped under the same Administrator
+        decision. The magnitude must still be reported, because a stage whose capture is
+        genuinely large is the diagnosis for a red this change can now produce.
         """
 
         result = self.drive(
             [{"started_ago": 130, "ready_ago": None, "status": "Unhealthy", "code": 503, "fallback": 5}]
         )
         self.assertEqual("threw", result["outcome"])
-        self.assertIn("excluding 5s", str(result["message"]))
+        self.assertIn("accrued 5s", str(result["message"]))
+        self.assertIn("not credited against the limit", str(result["message"]))
+        self.assertNotIn("excluding", str(result["message"]))
 
-    def test_capture_credit_is_capped_at_the_budget(self) -> None:
-        """An uncapped credit grows faster than the ~2s cadence, so the throw never fires."""
+    def test_a_large_capture_cannot_absorb_a_budget_overrun(self) -> None:
+        """No credit means no accumulator can suppress the throw.
+
+        Under the previous form a 5000s accrual clamped to a 60s credit, so this same
+        observation was reported as 70s and still threw - but only because 130 exceeded
+        2 x the budget. See the 119s case below for the interval that did NOT throw.
+        """
 
         result = self.drive(
             [{"started_ago": 130, "ready_ago": None, "status": "Unhealthy", "code": 503, "fallback": 5000}]
         )
         self.assertEqual("threw", result["outcome"])
-        self.assertIn("excluding 60s", str(result["message"]))
-        self.assertIn("capped at the 60-second budget", str(result["message"]))
+        self.assertIn("accrued 5000s", str(result["message"]))
+        self.assertIn("not credited against the limit", str(result["message"]))
 
-    def test_capture_credit_does_not_survive_a_container_restart(self) -> None:
-        """Overhead charged while probing a failed predecessor must not pre-pay its replacement.
+    def test_a_never_healthy_container_fails_on_the_first_poll_past_the_budget(self) -> None:
+        """The interval the capped-credit form could not fail promptly.
 
-        Poll 1 accrues 50s against instance A. Poll 2 observes a different instance;
-        its own budget must start from zero, so the reported exclusion is 0s, not 50s.
+        Added 2026-07-31 by code review (second pass), then strengthened after a mutation
+        test: asserting only "threw" was NOT enough to kill the restored credit. Start-Sleep
+        is stubbed, so the loop spins and elapsed creeps upward until even the doubled bound
+        is crossed - the mutated form still threw, about a second later, with the same
+        message. 70s is inside the doubled ceiling (70 - 60 = 10 <= 60) but outside the real
+        one, and the poll count separates them: the correct contract throws on the FIRST poll.
+        """
+
+        result = self.drive(
+            [{"started_ago": 70, "ready_ago": None, "status": "Unhealthy", "code": 503, "fallback": 5000}]
+        )
+        self.assertEqual("threw", result["outcome"], "70s stuck Unhealthy passed the 60s contract")
+        self.assertIn("within 60 seconds", str(result["message"]))
+        self.assertEqual(
+            1, result["polls"],
+            "the throw must fire on the first poll past the budget, not after the loop spun to "
+            "twice the budget - a credited overhead only DELAYS it",
+        )
+
+    def test_reported_overhead_does_not_survive_a_container_restart(self) -> None:
+        """Overhead charged while probing a failed predecessor must not be reported against its replacement.
+
+        Poll 1 accrues 50s against instance A. Poll 2 observes a different instance; its
+        accumulator resets with $runningAt, so the reported figure is 0s, not 50s. The
+        figure is now diagnostic rather than credited, but a carried-over value would still
+        misattribute one container's capture cost to another.
         """
 
         result = self.drive(
@@ -1662,8 +1727,8 @@ class StartupBudgetExecutionTests(unittest.TestCase):
             ]
         )
         self.assertEqual("threw", result["outcome"])
-        self.assertIn("excluding 0s", str(result["message"]))
-        self.assertNotIn("excluding 50s", str(result["message"]))
+        self.assertIn("accrued 0s", str(result["message"]))
+        self.assertNotIn("accrued 50s", str(result["message"]))
 
 
 class CallSiteInvariantTests(unittest.TestCase):
@@ -1707,6 +1772,130 @@ class CallSiteInvariantTests(unittest.TestCase):
         self.assertIn("FallbackSeconds = $fallbackSeconds", body)
 
 
+def dapr_component(
+    name: str,
+    type_name: str,
+    *,
+    secret_store: str | None = None,
+    scopes: list[str] | None = None,
+    secret_refs: list[tuple[str, str]] | None = None,
+) -> dict[str, object]:
+    """A minimal Dapr Component payload item."""
+
+    spec: dict[str, object] = {"type": type_name}
+    if secret_refs:
+        spec["metadata"] = [
+            {"name": f"value-{index}", "secretKeyRef": {"name": secret, "key": key}}
+            for index, (secret, key) in enumerate(secret_refs)
+        ]
+    if secret_store:
+        spec["auth"] = {"secretStore": secret_store}
+    component: dict[str, object] = {"metadata": {"name": name}, "spec": spec}
+    if scopes is not None:
+        component["scopes"] = scopes
+    return component
+
+
+def run_secret_store_substitution(
+    *,
+    pre: object,
+    post: object,
+    context: str = "kind-verify",
+    cluster: str = "verify",
+    seeded_secrets: dict[str, list[str]] | None = None,
+    denied_reads: set[tuple[str, str]] | None = None,
+    patch_exit_code: int = 0,
+) -> dict[str, object]:
+    """Execute the real Invoke-SecretStoreSubstitution against a stubbed kubectl.
+
+    Module-level so other classes can drive the producer without bare-instantiating a
+    TestCase. SubstitutionDisclosureRoundTripTests constructed
+    SecretStoreSubstitutionExecutionTests() purely to reach this method, which works only
+    while the donor class defines no setUp - adding one later would silently skip it for
+    the borrowing class, presenting as an unrelated test error.
+    """
+    verifier = VERIFIER.read_text(encoding="utf-8-sig")
+    functions = "\n".join(
+        extract_ps_function(verifier, name)
+        for name in ("Invoke-Checked", "Assert-DisposableClusterContext", "Invoke-SecretStoreSubstitution")
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "pre.json").write_text(json.dumps(pre), encoding="utf-8")
+        (root / "post.json").write_text(json.dumps(post), encoding="utf-8")
+        counter = root / "get-count"
+        disclosure = root / "secret-store-substitution.json"
+        secret_dir = root / "secrets"
+        secret_dir.mkdir()
+        for secret_name, keys in (seeded_secrets or {}).items():
+            (secret_dir / f"{secret_name}.json").write_text(
+                json.dumps({"data": {key: "dmVyaWZpY2F0aW9u" for key in keys}}),
+                encoding="utf-8",
+            )
+        denied = root / "denied-reads.txt"
+        denied.write_text(
+            "".join(f"secret/{secret}|system:serviceaccount:ns:{app}\n" for secret, app in (denied_reads or set())),
+            encoding="utf-8",
+        )
+
+        bin_dir = root / "stub-bin"
+        bin_dir.mkdir()
+        stub = bin_dir / "kubectl"
+        stub.write_text(
+            "#!/bin/sh\n"
+            f"COUNTER={shlex.quote(str(counter))}\n"
+            f"SECRET_DIR={shlex.quote(str(secret_dir))}\n"
+            f"DENIED={shlex.quote(str(denied))}\n"
+            'case "$1" in\n'
+            f"  config) printf %s {shlex.quote(context)}; exit 0;;\n"
+            "  get)\n"
+            '    if [ "$2" = "secret" ]; then\n'
+            '      test -f "$SECRET_DIR/$3.json" || exit 1\n'
+            '      cat "$SECRET_DIR/$3.json"; exit 0\n'
+            "    fi\n"
+            '    n=$(cat "$COUNTER" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$COUNTER"\n'
+            '    if [ "$n" = "1" ]; then\n'
+            f"      cat {shlex.quote(str(root / 'pre.json'))}\n"
+            "    else\n"
+            f"      cat {shlex.quote(str(root / 'post.json'))}\n"
+            "    fi\n"
+            "    exit 0;;\n"
+            f"  patch) exit {patch_exit_code};;\n"
+            "  auth)\n"
+            '    resource="$4"; actor=""; previous=""\n'
+            '    for argument in "$@"; do\n'
+            '      if [ "$previous" = "--as" ]; then actor="$argument"; fi\n'
+            '      previous="$argument"\n'
+            "    done\n"
+            '    if grep -Fqx "$resource|$actor" "$DENIED"; then printf no; exit 1; fi\n'
+            "    printf yes; exit 0;;\n"
+            "esac\n"
+            "exit 0\n",
+            encoding="utf-8",
+        )
+        stub.chmod(0o755)
+
+        script = (
+            f"{functions}\n"
+            "try {\n"
+            f"    Invoke-SecretStoreSubstitution -Namespace 'ns' -ClusterName '{cluster}' "
+            f"-DisclosurePath {shlex.quote(str(disclosure))}\n"
+            "    Write-Output 'OUTCOME=passed'\n"
+            "}\n"
+            "catch {\n"
+            "    Write-Output 'OUTCOME=threw'\n"
+            "    Write-Output \"MESSAGE=$($_.Exception.Message)\"\n"
+            "}\n"
+        )
+        result = run_pwsh_with_stub_path(script, bin_dir)
+        text = flattened_output(result)
+        outcome = "threw" if "OUTCOME=threw" in text else ("passed" if "OUTCOME=passed" in text else "unknown")
+        written = json.loads(disclosure.read_text(encoding="utf-8")) if disclosure.exists() else None
+        return {"outcome": outcome, "message": text, "disclosure": written}
+
+
+
 class SecretStoreSubstitutionExecutionTests(unittest.TestCase):
     """Execute the real Invoke-SecretStoreSubstitution against a stubbed kubectl.
 
@@ -1717,71 +1906,12 @@ class SecretStoreSubstitutionExecutionTests(unittest.TestCase):
     every one of those mutations preserves.
     """
 
-    def run_substitution(
-        self,
-        *,
-        pre: object,
-        post: object,
-        context: str = "kind-verify",
-        cluster: str = "verify",
-    ) -> dict[str, object]:
-        verifier = VERIFIER.read_text(encoding="utf-8-sig")
-        functions = "\n".join(
-            extract_ps_function(verifier, name)
-            for name in ("Invoke-Checked", "Assert-DisposableClusterContext", "Invoke-SecretStoreSubstitution")
-        )
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "pre.json").write_text(json.dumps(pre), encoding="utf-8")
-            (root / "post.json").write_text(json.dumps(post), encoding="utf-8")
-            counter = root / "get-count"
-            disclosure = root / "secret-store-substitution.json"
-
-            bin_dir = root / "stub-bin"
-            bin_dir.mkdir()
-            stub = bin_dir / "kubectl"
-            stub.write_text(
-                "#!/bin/sh\n"
-                f"COUNTER={shlex.quote(str(counter))}\n"
-                'case "$1" in\n'
-                f"  config) printf %s {shlex.quote(context)}; exit 0;;\n"
-                "  get)\n"
-                '    n=$(cat "$COUNTER" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$COUNTER"\n'
-                '    if [ "$n" = "1" ]; then\n'
-                f"      cat {shlex.quote(str(root / 'pre.json'))}\n"
-                "    else\n"
-                f"      cat {shlex.quote(str(root / 'post.json'))}\n"
-                "    fi\n"
-                "    exit 0;;\n"
-                "  patch) exit 0;;\n"
-                "esac\n"
-                "exit 0\n",
-                encoding="utf-8",
-            )
-            stub.chmod(0o755)
-
-            script = (
-                f"{functions}\n"
-                "try {\n"
-                f"    Invoke-SecretStoreSubstitution -Namespace 'ns' -ClusterName '{cluster}' "
-                f"-DisclosurePath {shlex.quote(str(disclosure))}\n"
-                "    Write-Output 'OUTCOME=passed'\n"
-                "}\n"
-                "catch {\n"
-                "    Write-Output 'OUTCOME=threw'\n"
-                "    Write-Output \"MESSAGE=$($_.Exception.Message)\"\n"
-                "}\n"
-            )
-            result = run_pwsh_with_stub_path(script, bin_dir)
-            text = flattened_output(result)
-            outcome = "threw" if "OUTCOME=threw" in text else ("passed" if "OUTCOME=passed" in text else "unknown")
-            written = json.loads(disclosure.read_text(encoding="utf-8")) if disclosure.exists() else None
-            return {"outcome": outcome, "message": text, "disclosure": written}
+    def run_substitution(self, **kwargs: object) -> dict[str, object]:
+        return run_secret_store_substitution(**kwargs)  # type: ignore[arg-type]
 
     @staticmethod
     def component(name: str, type_name: str) -> dict[str, object]:
-        return {"metadata": {"name": name}, "spec": {"type": type_name}}
+        return dapr_component(name, type_name)
 
     def test_two_vault_components_are_substituted_and_disclosed(self) -> None:
         pre = {"items": [
@@ -1806,6 +1936,23 @@ class SecretStoreSubstitutionExecutionTests(unittest.TestCase):
         )
         self.assertEqual(["secretstores.kubernetes"], disclosure["observedPostPatchTypes"])
         self.assertEqual([], disclosure["residualVaultComponents"])
+
+        # The auditor-facing narrative is the field the validator only checks for emptiness, so
+        # nothing observed its CONTENT: deleting the concrete sentence left the suite green, and
+        # writing it in a double-quoted PowerShell string made `a an alert escape, so the shipped
+        # disclosure read "\x07ccess-telemetry-store" - naming a component that does not exist and
+        # embedding a control character in evidence JSON. Both directions are pinned here.
+        reason = str(disclosure["reason"])
+        for component in disclosure["substitutedComponents"]:
+            self.assertIn(component, reason, "the narrative must name every component it substituted")
+        self.assertIn("memories-access-telemetry-secret-reader", reason)
+        self.assertIn("access-telemetry-store", reason)
+        self.assertIn("access-telemetry-postgresql", reason)
+        self.assertNotIn("\x07", reason, "backtick escapes corrupted the narrative with BEL")
+        self.assertFalse(
+            [ch for ch in reason if ord(ch) < 32 and ch not in "\r\n\t"],
+            "the narrative must not carry control characters into the evidence packet",
+        )
 
     def test_no_vault_component_records_a_positive_unmodified_assertion(self) -> None:
         # The Story 31.2 end state: components exist, none of them vault-typed. This must
@@ -1847,6 +1994,13 @@ class SecretStoreSubstitutionExecutionTests(unittest.TestCase):
             "absent from the post-patch read" in f
             for f in result["disclosure"]["verificationFailures"]
         ))
+        # Arm (b), 2026-07-31: the vanished component is still RECORDED, with an explicit marker.
+        # Dropping it from observedComponents while leaving it in substitutedComponents made the
+        # verifier's own failed-run packet unvalidatable by its own validator.
+        self.assertEqual(
+            [{"name": "secretstore", "observedType": "<absent from post-patch read>"}],
+            result["disclosure"]["observedComponents"],
+        )
 
     def test_a_component_left_at_the_vault_type_still_writes_its_disclosure(self) -> None:
         pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
@@ -1856,6 +2010,14 @@ class SecretStoreSubstitutionExecutionTests(unittest.TestCase):
         disclosure = result["disclosure"]
         self.assertFalse(disclosure["substitutionVerified"])
         self.assertEqual(["secretstore"], list(disclosure["residualVaultComponents"]))
+        # Arm (b): the component that stayed at the vault type is recorded WITH that type, which
+        # is precisely the observation an auditor needs from a partially rewritten cluster. It
+        # was previously dropped, so observedPostPatchTypes came out empty on exactly this run.
+        self.assertEqual(
+            [{"name": "secretstore", "observedType": "secretstores.hashicorp.vault"}],
+            disclosure["observedComponents"],
+        )
+        self.assertEqual(["secretstores.hashicorp.vault"], disclosure["observedPostPatchTypes"])
 
     def test_a_vault_component_missed_before_patching_is_caught_on_readback(self) -> None:
         # Informer lag right after the apply, or a controller re-creating a component
@@ -1873,6 +2035,91 @@ class SecretStoreSubstitutionExecutionTests(unittest.TestCase):
             ["late-arriving-store"],
             list(result["disclosure"]["residualVaultComponents"]),
         )
+
+    def test_a_running_consumer_cannot_reference_an_unseeded_substituted_secret(self) -> None:
+        vault = self.component("third-store", "secretstores.hashicorp.vault")
+        consumer = dapr_component(
+            "third-consumer",
+            "state.redis",
+            secret_store="third-store",
+            scopes=["memories"],
+            secret_refs=[("not-seeded", "password")],
+        )
+        pre = {"items": [vault, consumer]}
+        post = {"items": [self.component("third-store", "secretstores.kubernetes"), consumer]}
+
+        result = self.run_substitution(pre=pre, post=post)
+
+        self.assertEqual("threw", result["outcome"], result["message"])
+        self.assertIn("requires Secret 'not-seeded'", str(result["message"]))
+        self.assertIsNone(result["disclosure"], "validation must fail before any component is patched")
+
+    def test_a_running_consumer_must_be_authorized_to_read_the_substituted_secret(self) -> None:
+        vault = self.component("third-store", "secretstores.hashicorp.vault")
+        consumer = dapr_component(
+            "third-consumer",
+            "state.redis",
+            secret_store="third-store",
+            scopes=["memories"],
+            secret_refs=[("third-secret", "password")],
+        )
+        pre = {"items": [vault, consumer]}
+        post = {"items": [self.component("third-store", "secretstores.kubernetes"), consumer]}
+
+        result = self.run_substitution(
+            pre=pre,
+            post=post,
+            seeded_secrets={"third-secret": ["password"]},
+            denied_reads={("third-secret", "memories")},
+        )
+
+        self.assertEqual("threw", result["outcome"], result["message"])
+        self.assertIn("cannot read Secret 'third-secret'", str(result["message"]))
+        self.assertIsNone(result["disclosure"], "validation must fail before any component is patched")
+
+    def test_a_seeded_readable_consumer_secret_is_disclosed(self) -> None:
+        vault = self.component("third-store", "secretstores.hashicorp.vault")
+        consumer = dapr_component(
+            "third-consumer",
+            "state.redis",
+            secret_store="third-store",
+            scopes=["memories"],
+            secret_refs=[("third-secret", "password")],
+        )
+        pre = {"items": [vault, consumer]}
+        post = {"items": [self.component("third-store", "secretstores.kubernetes"), consumer]}
+
+        result = self.run_substitution(
+            pre=pre,
+            post=post,
+            seeded_secrets={"third-secret": ["password"]},
+        )
+
+        self.assertEqual("passed", result["outcome"], result["message"])
+        self.assertEqual(
+            [{
+                "component": "third-consumer",
+                "secretStore": "third-store",
+                "appId": "memories",
+                "secret": "third-secret",
+                "key": "password",
+            }],
+            result["disclosure"]["validatedConsumerSecrets"],
+        )
+
+    def test_a_patch_failure_is_disclosed_before_the_failure_is_raised(self) -> None:
+        pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
+        post = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
+
+        result = self.run_substitution(pre=pre, post=post, patch_exit_code=1)
+
+        self.assertEqual("threw", result["outcome"], result["message"])
+        self.assertIsNotNone(result["disclosure"])
+        self.assertFalse(result["disclosure"]["substitutionVerified"])
+        self.assertTrue(any(
+            "could not be patched" in failure
+            for failure in result["disclosure"]["verificationFailures"]
+        ))
 
     def test_a_foreign_context_is_refused_before_any_patch(self) -> None:
         pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
@@ -1902,16 +2149,15 @@ class SubstitutionDisclosureRoundTripTests(unittest.TestCase):
     """
 
     def test_a_real_succeeded_disclosure_validates(self) -> None:
-        producer = SecretStoreSubstitutionExecutionTests()
         pre = {"items": [
-            producer.component("secretstore", "secretstores.hashicorp.vault"),
-            producer.component("access-telemetry-secrets", "secretstores.hashicorp.vault"),
+            dapr_component("secretstore", "secretstores.hashicorp.vault"),
+            dapr_component("access-telemetry-secrets", "secretstores.hashicorp.vault"),
         ]}
         post = {"items": [
-            producer.component("secretstore", "secretstores.kubernetes"),
-            producer.component("access-telemetry-secrets", "secretstores.kubernetes"),
+            dapr_component("secretstore", "secretstores.kubernetes"),
+            dapr_component("access-telemetry-secrets", "secretstores.kubernetes"),
         ]}
-        produced = producer.run_substitution(pre=pre, post=post)
+        produced = run_secret_store_substitution(pre=pre, post=post)
         self.assertEqual("passed", produced["outcome"], produced["message"])
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1924,9 +2170,8 @@ class SubstitutionDisclosureRoundTripTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, flattened_output(result))
 
     def test_a_real_unmodified_disclosure_validates(self) -> None:
-        producer = SecretStoreSubstitutionExecutionTests()
-        components = {"items": [producer.component("statestore", "state.postgresql")]}
-        produced = producer.run_substitution(pre=components, post=components)
+        components = {"items": [dapr_component("statestore", "state.postgresql")]}
+        produced = run_secret_store_substitution(pre=components, post=components)
         self.assertEqual("passed", produced["outcome"], produced["message"])
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1939,13 +2184,46 @@ class SubstitutionDisclosureRoundTripTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, flattened_output(result))
             self.assertIn("substitutionPerformed=false", flattened_output(result))
 
+    def test_a_real_failed_disclosure_validates_on_a_failed_packet(self) -> None:
+        """The direction that was missing, and the one that broke.
+
+        The class covered succeeded->succeeded, unmodified->succeeded and failed->succeeded,
+        but never failed->failed - so the producer emitting a packet its own validator
+        rejected went unnoticed. Both verifier failure modes are driven here, because the
+        CI validate step runs with `if: always()`: a rejected failed packet replaces the
+        genuine terminal error with a complaint about the disclosure's shape.
+        """
+
+        cases = {
+            "left at the vault type": (
+                {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]},
+                {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]},
+            ),
+            "absent from the readback": (
+                {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]},
+                {"items": [dapr_component("statestore", "state.postgresql")]},
+            ),
+        }
+        for label, (pre, post) in cases.items():
+            with self.subTest(failure=label):
+                produced = run_secret_store_substitution(pre=pre, post=post)
+                self.assertEqual("threw", produced["outcome"], produced["message"])
+
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    write_complete_evidence(root, status="failed")
+                    (root / "secret-store-substitution.json").write_text(
+                        json.dumps(produced["disclosure"]), encoding="utf-8"
+                    )
+                    result = run_validator(root)
+                    self.assertEqual(0, result.returncode, flattened_output(result))
+
     def test_a_real_failed_disclosure_is_rejected_on_a_succeeded_packet(self) -> None:
         # The verifier writes a disclosure even when verification failed. That packet is
         # legitimate on a failed run and must never validate as a succeeded one.
-        producer = SecretStoreSubstitutionExecutionTests()
-        pre = {"items": [producer.component("secretstore", "secretstores.hashicorp.vault")]}
-        post = {"items": [producer.component("secretstore", "secretstores.hashicorp.vault")]}
-        produced = producer.run_substitution(pre=pre, post=post)
+        pre = {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]}
+        post = {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]}
+        produced = run_secret_store_substitution(pre=pre, post=post)
         self.assertEqual("threw", produced["outcome"], produced["message"])
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -2066,12 +2344,207 @@ class SubstitutionDisclosureShapeTests(unittest.TestCase):
                 self.assertIn(expected, flattened_output(result))
 
     def test_a_failed_run_may_legitimately_record_an_unverified_substitution(self) -> None:
+        """Rebuilt 2026-07-31 to a shape the producer can actually emit.
+
+        The previous fixture set observedComponents to secretstores.kubernetes for
+        `secretstore` while also naming it in residualVaultComponents and in a
+        verificationFailure calling it vault-typed. Both fields derive from the SAME
+        post-patch read, so no run could produce that combination - and because this was the
+        only case defining a legitimate failed run, the failed-run contract was anchored to a
+        shape that never occurs. That is why the producer/validator contradiction shipped.
+        """
+
         disclosure = self.baseline()
         disclosure["substitutionVerified"] = False
         disclosure["verificationFailures"] = ["component 'secretstore' observed post-patch type 'secretstores.hashicorp.vault'"]
         disclosure["residualVaultComponents"] = ["secretstore"]
+        disclosure["observedComponents"] = [
+            {"name": "secretstore", "observedType": "secretstores.hashicorp.vault"},
+            {"name": "access-telemetry-secrets", "observedType": "secretstores.kubernetes"},
+        ]
+        disclosure["observedPostPatchTypes"] = ["secretstores.hashicorp.vault", "secretstores.kubernetes"]
         result = self.validate_with(disclosure, status="failed")
         self.assertEqual(0, result.returncode, flattened_output(result))
+
+    def test_a_performed_substitution_naming_no_component_is_rejected(self) -> None:
+        # Unexercised until 2026-07-31: guarding this `if` with `$false -and` left the suite
+        # green. No fixture had ever set substitutionPerformed=true with empty component lists.
+        disclosure = self.baseline()
+        disclosure["substitutedComponents"] = []
+        disclosure["observedComponents"] = []
+        disclosure["observedPostPatchTypes"] = []
+        result = self.validate_with(disclosure)
+        self.assertEqual(1, result.returncode)
+        self.assertIn("claims a substitution but names no component", flattened_output(result))
+
+    def test_more_observed_components_than_substituted_is_rejected(self) -> None:
+        # The cardinality rule, unexercised: `-notcontains` on both sides is a SET comparison,
+        # so a repeated observation produced empty missing/unexpected lists and validated clean.
+        disclosure = self.baseline()
+        disclosure["observedComponents"] = [
+            {"name": "secretstore", "observedType": "secretstores.kubernetes"},
+            {"name": "secretstore", "observedType": "secretstores.kubernetes"},
+            {"name": "access-telemetry-secrets", "observedType": "secretstores.kubernetes"},
+        ]
+        result = self.validate_with(disclosure)
+        self.assertEqual(1, result.returncode)
+        self.assertIn("but observes", flattened_output(result))
+
+    def test_an_unmodified_run_naming_observed_components_is_rejected(self) -> None:
+        # The `-or $observedComponents.Count -gt 0` half of the unmodified-run contradiction
+        # check: every prior fixture populated BOTH lists, so the substitutedComponents half
+        # alone satisfied the assertion and this clause was never reached.
+        disclosure = self.baseline()
+        disclosure["substitutionPerformed"] = False
+        disclosure["substitutedComponents"] = []
+        result = self.validate_with(disclosure)
+        self.assertEqual(1, result.returncode)
+        self.assertIn("while naming substituted components", flattened_output(result))
+
+    def test_a_succeeded_run_recording_verification_failures_is_rejected(self) -> None:
+        # Unexercised: no fixture paired substitutionVerified=true with a non-empty
+        # verificationFailures, so a packet could claim success while carrying its own failures.
+        disclosure = self.baseline()
+        disclosure["verificationFailures"] = ["component 'secretstore' was patched but is absent from the post-patch read"]
+        result = self.validate_with(disclosure)
+        self.assertEqual(1, result.returncode)
+        self.assertIn("records verification failures", flattened_output(result))
+
+    def test_a_failed_run_may_not_state_a_non_boolean_substitution_verified(self) -> None:
+        # The failed branch ran only the shape function, which never touched these fields, so a
+        # failed packet could assert substitutionVerified: "definitely-not-a-boolean" - a truthy
+        # STRING - with an empty verificationFailures while naming surviving vault components.
+        disclosure = self.baseline()
+        disclosure["substitutionVerified"] = "definitely-not-a-boolean"
+        result = self.validate_with(disclosure, status="failed")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("must state substitutionVerified as a boolean", flattened_output(result))
+
+    def test_a_failed_run_may_not_claim_verified_while_naming_residual_vault_components(self) -> None:
+        disclosure = self.baseline()
+        disclosure["substitutionVerified"] = True
+        disclosure["residualVaultComponents"] = ["secretstore"]
+        result = self.validate_with(disclosure, status="failed")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("claims substitutionVerified=true", flattened_output(result))
+
+
+class PortForwardCaptureExecutionTests(unittest.TestCase):
+    """Execute the real Get-HealthResponseViaPortForward.
+
+    Added 2026-07-31 by code review (second pass). The function had NO execution test: all
+    twelve extract_ps_function call sites targeted other functions and
+    GetHealthResponseExecutionTests stubs this one out, so its only coverage was source-text
+    assertIn. Four independent mutations survived the whole suite - inverting
+    `if ($established)`, moving the stderr capture back under the not-established branch,
+    inverting the kill-marker condition, and returning the join from inside the `try`. It is
+    described in-file as "the deterministic body producer" and its transcript reaches every
+    health-*.json artifact, so a silent inversion empties the aggregate body from every 503
+    fault-injection stage.
+    """
+
+    def drive(self, *, kill_exits: bool = True, token_exec_fails: bool = True) -> str:
+        verifier = VERIFIER.read_text(encoding="utf-8-sig")
+        functions = "\n".join(
+            extract_ps_function(verifier, name)
+            for name in ("Get-CapturedProcessText", "Get-PodApplicationToken", "Get-HealthResponseViaPortForward")
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bin_dir = root / "stub-bin"
+            bin_dir.mkdir()
+
+            kubectl = bin_dir / "kubectl"
+            kubectl.write_text(
+                "#!/bin/sh\n"
+                'for a in "$@"; do\n'
+                '  if [ "$a" = "exec" ]; then\n'
+                f"    {'exit 1' if token_exec_fails else 'printf %s stub-token; exit 0'}\n"
+                "  fi\n"
+                "done\n"
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            kubectl.chmod(0o755)
+
+            curl = bin_dir / "curl"
+            curl.write_text(
+                "#!/bin/sh\n"
+                "printf 'HTTP/1.1 503 Service Unavailable\\n'\n"
+                "printf 'Content-Type: application/json\\n\\n'\n"
+                'printf \'{"schemaVersion":1,"status":"Unhealthy"}\\n\'\n'
+                "exit 0\n",
+                encoding="utf-8",
+            )
+            curl.chmod(0o755)
+
+            # A real loopback listener makes the establish probe succeed, so the ESTABLISHED
+            # branch is the one under test. Start-Process and Stop-Process are shadowed by
+            # functions (which take precedence over cmdlets) so no real port-forward is spawned
+            # and the cleanup cannot signal this pwsh process.
+            script = (
+                f"{functions}\n"
+                "$namespace = 'ns'\n"
+                "$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)\n"
+                "$listener.Start()\n"
+                "$script:stubPort = $listener.LocalEndpoint.Port\n"
+                f"$script:killExits = ${'true' if kill_exits else 'false'}\n"
+                "function Start-Process {\n"
+                "    param($FilePath, $ArgumentList, [switch]$PassThru, $RedirectStandardOutput, $RedirectStandardError)\n"
+                "    Set-Content -LiteralPath $RedirectStandardOutput -Value \"Forwarding from 127.0.0.1:$script:stubPort -> 8080\"\n"
+                "    Set-Content -LiteralPath $RedirectStandardError -Value 'STUB-FORWARD-STDERR'\n"
+                "    $p = [pscustomobject]@{ HasExited = $false; Id = -1 }\n"
+                "    $p | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($ms) $script:killExits } -PassThru\n"
+                "}\n"
+                "function Stop-Process { param($Id, [switch]$Force, $ErrorAction) }\n"
+                "$out = Get-HealthResponseViaPortForward 'pod-1' 'server'\n"
+                "$listener.Stop()\n"
+                "Write-Output 'TRANSCRIPT-BEGIN'\n"
+                "Write-Output $out\n"
+            )
+            result = run_pwsh_with_stub_path(script, bin_dir)
+            self.assertIn("TRANSCRIPT-BEGIN", result.stdout, flattened_output(result))
+            return result.stdout.split("TRANSCRIPT-BEGIN", 1)[1]
+
+    def test_the_established_branch_captures_the_response_body(self) -> None:
+        transcript = self.drive()
+        self.assertIn('"status":"Unhealthy"', transcript, "the deterministic body was not captured")
+        self.assertIn("503", transcript)
+        self.assertIn("port-forward end (curl exit 0)", transcript)
+        self.assertNotIn("not established", transcript)
+
+    def test_the_forward_stderr_is_recorded_on_the_established_branch(self) -> None:
+        # The capture sits after BOTH branches. Moving it back under the not-established branch
+        # drops the bind/upgrade diagnostic on exactly the runs that produced a body.
+        transcript = self.drive()
+        self.assertIn("port-forward stderr: STUB-FORWARD-STDERR", transcript)
+
+    def test_the_forward_stdout_is_recorded_on_the_established_branch(self) -> None:
+        transcript = self.drive()
+        self.assertIn("port-forward stdout: Forwarding from 127.0.0.1:", transcript)
+
+    def test_a_leaked_port_forward_is_recorded_in_the_returned_transcript(self) -> None:
+        # Kills two mutations at once: inverting `if (-not $exited)`, and joining the transcript
+        # inside the `try` - PowerShell materializes a `return` expression BEFORE unwinding
+        # through `finally`, so the marker was appended to a list nobody read.
+        transcript = self.drive(kill_exits=False)
+        self.assertIn("port-forward kill: process did not exit within 2s", transcript)
+
+    def test_a_clean_kill_records_no_leak_marker(self) -> None:
+        transcript = self.drive(kill_exits=True)
+        self.assertNotIn("did not exit within 2s", transcript)
+
+    def test_an_unavailable_app_token_reaches_the_transcript(self) -> None:
+        # The marker's only other consumer is the request header, and `curl -D -` dumps RESPONSE
+        # headers only - so an unset or unmounted APP_API_TOKEN reached the packet solely as a
+        # 401 that the @(200, 503) allowlist then discarded.
+        transcript = self.drive(token_exec_fails=True)
+        self.assertIn("app token unavailable: <unavailable: kubectl exec failed>", transcript)
+
+    def test_an_available_app_token_emits_no_unavailable_marker(self) -> None:
+        transcript = self.drive(token_exec_fails=False)
+        self.assertNotIn("app token unavailable", transcript)
 
 
 class StartupBudgetContractTests(unittest.TestCase):
@@ -2083,7 +2556,7 @@ class StartupBudgetContractTests(unittest.TestCase):
     """
 
     def drive(self, polls: list[dict[str, object]], timeout_seconds: int = 60) -> dict[str, object]:
-        return StartupBudgetExecutionTests.drive(self, polls, timeout_seconds)
+        return drive_wait_aggregate_status(polls, timeout_seconds)
 
     def test_a_119_second_start_fails_the_60_second_contract(self) -> None:
         # Administrator decision 2026-07-31. Previously passed: $healthyAt fell back to the

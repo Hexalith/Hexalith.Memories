@@ -51,7 +51,10 @@ function Get-HealthJsonBody {
                 try {
                     $parsed = $candidate | ConvertFrom-Json -ErrorAction Stop
                     if ($null -ne $parsed.PSObject.Properties['status']) {
-                        $lastValidBody = $candidate
+                        $candidateStatus = [string]$parsed.status
+                        if ($candidateStatus -cin @('Healthy', 'Degraded', 'Unhealthy')) {
+                            $lastValidBody = $candidate
+                        }
                     }
                 }
                 catch {

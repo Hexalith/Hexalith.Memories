@@ -66,6 +66,10 @@ foreach ($file in $healthFiles) {
         throw "Health response evidence '$($file.Name)' does not contain a valid schemaVersion, stage, and attempt."
     }
 
+    if ($null -eq $health.PSObject.Properties['transcript'] -or [string]::IsNullOrWhiteSpace([string]$health.transcript)) {
+        throw "Health response evidence '$($file.Name)' does not contain a non-empty transcript."
+    }
+
     $healthRecords += [pscustomobject]@{ File = $file; Health = $health }
 }
 
@@ -132,11 +136,12 @@ if ($currentLogs.Count -eq 0 -or $previousLogs.Count -eq 0) {
 # verification-scoped kubernetes stores. That substitution may never happen silently, so a
 # packet that omits or misstates the disclosure record is invalid.
 #
-# Gated on a succeeded run, for the reason recorded above for health bodies: the disclosure is
-# written only after cluster create, image loads, contract asserts, render and apply all
-# succeed, so requiring it unconditionally made every honest earlier failure unvalidatable -
-# and, because the CI validate step runs with `if: always()`, replaced the genuine terminal
-# error with a message blaming a missing substitution disclosure.
+# PRESENCE is gated on a succeeded run; SHAPE is validated on both. The disclosure is written
+# only after cluster create, image loads, contract asserts, render and apply all succeed, so
+# REQUIRING it unconditionally made every honest earlier failure unvalidatable - and, because the
+# CI validate step runs with `if: always()`, replaced the genuine terminal error with a message
+# blaming a missing substitution disclosure. A failed run that did get far enough to write one is
+# held to the same structural contract, with only the 'was it verified' obligation relaxed.
 #
 # The file is REQUIRED on a succeeded run. Making it optional made its absence the off-switch
 # for its own gate: a substituted run whose disclosure was never written, or was lost from the
@@ -201,9 +206,18 @@ function Assert-SubstitutionDisclosureShape {
         if ($observedNames.Count -ne $substitutedComponents.Count) {
             throw "Production deployment evidence secret-store substitution disclosure on a $RunOutcome run claims $($substitutedComponents.Count) substituted component(s) but observes $($observedNames.Count)."
         }
-        $wrongType = @($observedComponents | Where-Object { [string]$_.observedType -cne 'secretstores.kubernetes' })
-        if ($wrongType.Count -gt 0) {
-            throw "Production deployment evidence secret-store substitution disclosure on a $RunOutcome run records a component whose observed post-patch type is not secretstores.kubernetes: [$(($wrongType | ForEach-Object { "$($_.name)=$($_.observedType)" }) -join ', ')]."
+        # Scoped to a SUCCEEDED run (2026-07-31, Administrator decision arm (b)). A failed run now
+        # records every substituted component with the type actually read back - including the wrong
+        # type, and an explicit marker for one that vanished - because that is exactly the evidence
+        # an auditor needs from a partially rewritten cluster, and AC6 requires the per-Component
+        # readback on every run. Applying this rule to failed packets made the verifier's own honest
+        # failure disclosure unvalidatable and, under the CI step's `if: always()`, replaced the
+        # genuine terminal error with a complaint about the disclosure's shape.
+        if ($RunOutcome -eq 'succeeded') {
+            $wrongType = @($observedComponents | Where-Object { [string]$_.observedType -cne 'secretstores.kubernetes' })
+            if ($wrongType.Count -gt 0) {
+                throw "Production deployment evidence secret-store substitution disclosure on a $RunOutcome run records a component whose observed post-patch type is not secretstores.kubernetes: [$(($wrongType | ForEach-Object { "$($_.name)=$($_.observedType)" }) -join ', ')]."
+            }
         }
     }
     else {
@@ -217,6 +231,24 @@ function Assert-SubstitutionDisclosureShape {
     # writes observedPostPatchTypes into every packet and nothing validated it, so a packet could
     # contradict itself - all components recorded as secretstores.kubernetes while this field
     # asserted secretstores.hashicorp.vault.
+    # Constrain the verification fields on BOTH outcomes. The failed branch runs only this shape
+    # function, which never touched them, so a failed packet could assert
+    # substitutionVerified: "definitely-not-a-boolean" - a truthy STRING - with an empty
+    # verificationFailures while naming surviving vault-typed components, and validate clean. That
+    # is the same false-record class the shared-shape refactor was written to close.
+    if ($Disclosure.substitutionVerified -isnot [bool]) {
+        throw "Production deployment evidence secret-store substitution disclosure on a $RunOutcome run must state substitutionVerified as a boolean."
+    }
+    $declaredFailures = @($Disclosure.verificationFailures | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    $declaredResidual = @($Disclosure.residualVaultComponents | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    # Scoped to a FAILED run. A succeeded run is already held to the stricter, better-worded rules
+    # below (substitutionVerified must be true, verificationFailures and residualVaultComponents
+    # must be empty); firing here first would replace those specific diagnostics with this generic
+    # one for the case they exist to name.
+    if ($RunOutcome -eq 'failed' -and $Disclosure.substitutionVerified -and ($declaredFailures.Count -gt 0 -or $declaredResidual.Count -gt 0)) {
+        throw "Production deployment evidence secret-store substitution disclosure on a $RunOutcome run claims substitutionVerified=true while recording verification failures [$($declaredFailures -join '; ')] or surviving vault-typed components [$($declaredResidual -join ', ')]."
+    }
+
     $expectedTypes = @($observedComponents | ForEach-Object { [string]$_.observedType } | Sort-Object -Unique)
     $declaredTypes = @($Disclosure.observedPostPatchTypes | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | ForEach-Object { [string]$_ } | Sort-Object -Unique)
     if (@(Compare-Object -ReferenceObject $expectedTypes -DifferenceObject $declaredTypes -CaseSensitive).Count -gt 0) {
@@ -226,12 +258,7 @@ function Assert-SubstitutionDisclosureShape {
     return $substitutedComponents
 }
 
-# The file is REQUIRED on a succeeded run. Making it optional made its absence the off-switch
-# for its own gate: a substituted run whose disclosure was never written, or was lost from the
-# uploaded packet, validated clean while this script printed an unverified claim that the
-# production secret stores had run unmodified. The verifier now always writes the record - with
-# substitutionPerformed=false when it substituted nothing - so absence is a real defect again,
-# and the Story 31.2 unmodified-run case is expressed as a positive, checkable assertion.
+# Presence rule restated at the call site above; see the gating comment there.
 if ($result.status -eq 'succeeded') {
     if (-not (Test-Path -LiteralPath $substitutionPath -PathType Leaf)) {
         throw 'Production deployment evidence must disclose the verification-scoped secret-store substitution (secret-store-substitution.json is missing). A succeeded run always writes this record, including when no substitution was performed.'

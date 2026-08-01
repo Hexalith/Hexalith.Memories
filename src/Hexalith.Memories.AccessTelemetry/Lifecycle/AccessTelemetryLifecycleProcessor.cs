@@ -179,7 +179,7 @@ internal sealed class AccessTelemetryLifecycleProcessor
     {
         long purgeStarted = Stopwatch.GetTimestamp();
         long dueMinute = AccessTelemetryExpiryIndex.GetExpiryMinute(now);
-        IReadOnlyList<AccessTelemetryExpiryEntry> due = await _store.GetDueEntriesAsync(
+        (IReadOnlyList<AccessTelemetryExpiryEntry> due, bool hasMoreDueEntries) = await _store.GetDueEntriesAsync(
             dueMinute,
             (_optionsProvider?.Current ?? _testOptions!).PurgeRecordLimit + 1,
             cancellationToken).ConfigureAwait(false);
@@ -235,7 +235,7 @@ internal sealed class AccessTelemetryLifecycleProcessor
             processed,
             purged,
             verified,
-            due.Count > processed,
+            hasMoreDueEntries || due.Count > processed,
             last?.ExpiryMinute,
             last?.Shard);
     }

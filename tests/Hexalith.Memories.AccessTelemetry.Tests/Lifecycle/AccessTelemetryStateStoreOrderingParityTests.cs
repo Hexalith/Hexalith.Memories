@@ -162,7 +162,7 @@ public sealed class AccessTelemetryStateStoreOrderingParityTests
 
         long dueMinute = AccessTelemetryExpiryIndex.GetExpiryMinute(dueThrough);
         return (
-            await dapr.GetDueEntriesAsync(dueMinute, limit, CancellationToken.None),
-            await inMemory.GetDueEntriesAsync(dueMinute, limit, CancellationToken.None));
+            (await dapr.GetDueEntriesAsync(dueMinute, limit, CancellationToken.None)).Entries,
+            (await inMemory.GetDueEntriesAsync(dueMinute, limit, CancellationToken.None)).Entries);
     }
 }

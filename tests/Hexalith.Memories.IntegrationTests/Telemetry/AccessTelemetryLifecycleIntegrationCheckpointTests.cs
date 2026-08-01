@@ -136,14 +136,10 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
         purgeResult.Purged.ShouldBe(1);
         store.RecordCount.ShouldBe(500);
         store.IndexCount.ShouldBe(500);
-        // Atomic pairing is proven from the committed operation set, not from a constant. 501 writes
-        // committed: two of them opened a new expiry minute and so carried the catalog operation as
-        // well (the due record's minute and the live records' minute), the other 499 wrote exactly
-        // the record/index pair. No write committed a lone operation.
+        // Every atomic write carries record, bucket, and the permanent catalog ETag fence.
         IReadOnlyList<int> committed = store.TransactionOperationCounts;
         committed.Count.ShouldBe(501);
-        committed.Count(static count => count == 3).ShouldBe(2);
-        committed.Count(static count => count == 2).ShouldBe(499);
+        committed.ShouldAllBe(static count => count == 3);
     }
 
     [Fact]
@@ -368,7 +364,7 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
             return inner.WriteRecordAndIndexAsync(record, expiryEntry, ttlInSeconds, cancellationToken);
         }
 
-        public Task<IReadOnlyList<AccessTelemetryExpiryEntry>> GetDueEntriesAsync(
+        public Task<(IReadOnlyList<AccessTelemetryExpiryEntry> Entries, bool HasMoreDueEntries)> GetDueEntriesAsync(
             long dueMinute,
             int limit,
             CancellationToken cancellationToken)

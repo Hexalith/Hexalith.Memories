@@ -19,9 +19,9 @@ using NSubstitute;
 /// <summary>
 /// Deterministic in-process substitute for a strongly consistent, transactional Dapr state store.
 /// It models the store contract the PG-ONPREM-1 profile must honour: all-or-nothing transactions,
-/// ETag validation, empty-ETag first-write insert semantics, required partition and TTL metadata,
-/// strong-only reads, component TTL reaping, and a backend that can acknowledge a write or delete
-/// the strong re-read still contradicts.
+/// ETag validation, Dapr's last-write-wins behaviour when an ETag is omitted, required partition
+/// and TTL metadata, strong-only reads, component TTL reaping, and a backend that can acknowledge
+/// a write or delete the strong re-read still contradicts.
 /// </summary>
 internal sealed class TransactionalDaprState
 {
@@ -165,13 +165,6 @@ internal sealed class TransactionalDaprState
                 {
                     throw new DaprException("ETag conflict");
                 }
-            }
-            else if (exists &&
-                operation.OperationType == StateOperationType.Upsert &&
-                operation.Options?.Concurrency == ConcurrencyMode.FirstWrite)
-            {
-                // An empty ETag under first-write concurrency is an insert, never a clobber.
-                throw new DaprException("First-write conflict: an empty ETag cannot overwrite an existing key.");
             }
         }
 

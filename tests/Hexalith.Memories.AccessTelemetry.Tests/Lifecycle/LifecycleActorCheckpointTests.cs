@@ -318,11 +318,11 @@ public sealed class LifecycleActorCheckpointTests
             CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
-        public Task<IReadOnlyList<AccessTelemetryExpiryEntry>> GetDueEntriesAsync(
+        public Task<(IReadOnlyList<AccessTelemetryExpiryEntry> Entries, bool HasMoreDueEntries)> GetDueEntriesAsync(
             long dueMinute,
             int limit,
             CancellationToken cancellationToken)
-            => Task.FromResult<IReadOnlyList<AccessTelemetryExpiryEntry>>([entry]);
+            => Task.FromResult<(IReadOnlyList<AccessTelemetryExpiryEntry>, bool)>(([entry], false));
 
         public Task<AccessTelemetryDeleteStatus> DeleteAndVerifyAsync(
             AccessTelemetryExpiryEntry expiryEntry,

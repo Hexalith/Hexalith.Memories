@@ -204,7 +204,7 @@ claims cite, and for a structural reason: a `[Review][Decision]` item records a
 line number against the worktree as it stood during the review, and the same
 review's own patches then move it. Drift is the normal case, not the exception.
 
-- Of twenty-one claims inherited from `DW 27.3-CR31`-`CR35`, five carried a wrong
+- Of twenty **[corrected 2026-08-01 by code review: the source table has twenty-one rows, but the last is labelled "New -" and is authored there rather than inherited]** claims inherited from `DW 27.3-CR31`-`CR35`, five carried a wrong
   anchor and **the underlying defect was real in every one of the five**.
   `verify-production-deployment.ps1:918-926` pointed at unrelated Deployment
   rollout code (the referenced throw had been at `:863-865` pre-patch);

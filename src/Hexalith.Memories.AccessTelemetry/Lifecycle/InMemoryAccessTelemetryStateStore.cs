@@ -23,6 +23,7 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 /// </summary>
 internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateStore
 {
+    private const int MaxMinutesPerDueScan = 3;
     private readonly Dictionary<string, AccessTelemetryRecord> _records = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AccessTelemetryExpiryEntry> _entries = new(StringComparer.Ordinal);
     private readonly HashSet<long> _activeMinutes = [];
@@ -69,9 +70,9 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
     }
 
     /// <summary>
-    /// Gets the operation count of every committed atomic write, in completion order. A write that
-    /// opens a new expiry minute commits three operations (record, bucket, catalog); a write into
-    /// an already-active minute commits two, exactly as the Dapr adapter does.
+    /// Gets the operation count of every committed atomic write, in completion order. Every new
+    /// write commits three operations (record, bucket, catalog); the catalog touch is the shared
+    /// serialization fence even when the expiry minute is already active, exactly as in the Dapr adapter.
     /// </summary>
     public IReadOnlyList<int> TransactionOperationCounts
     {
@@ -187,6 +188,30 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         }
     }
 
+    /// <summary>Removes one expiry entry to model index loss before an idempotent repair.</summary>
+    public void RemoveIndexEntry(AccessTelemetryExpiryEntry entry)
+    {
+        lock (_gate)
+        {
+            if (!_entries.Remove(GetEntryKey(entry)))
+            {
+                throw new KeyNotFoundException("The expiry entry selected for removal is not retained.");
+            }
+        }
+    }
+
+    /// <summary>Removes one catalog minute to model catalog loss before an idempotent repair.</summary>
+    public void RemoveActiveMinute(long expiryMinute)
+    {
+        lock (_gate)
+        {
+            if (!_activeMinutes.Remove(expiryMinute))
+            {
+                throw new KeyNotFoundException("The expiry minute selected for removal is not active.");
+            }
+        }
+    }
+
     /// <inheritdoc/>
     public Task<AccessTelemetryStoreWriteStatus> WriteRecordAndIndexAsync(
         AccessTelemetryRecord record,
@@ -196,6 +221,7 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(ttlInSeconds, 0);
+        ValidateEntryMatchesRecord(record, expiryEntry);
         lock (_gate)
         {
             if (_records.TryGetValue(record.RecordId, out AccessTelemetryRecord? existing))
@@ -205,6 +231,18 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
                     string.Equals(existing.ExpiresAtUtc, record.ExpiresAtUtc, StringComparison.Ordinal)
                         ? AccessTelemetryStoreWriteStatus.Idempotent
                         : AccessTelemetryStoreWriteStatus.Conflict;
+                if (existingStatus == AccessTelemetryStoreWriteStatus.Idempotent)
+                {
+                    bool entryMissing = !_entries.ContainsKey(GetEntryKey(expiryEntry));
+                    bool catalogMinuteMissing = !_activeMinutes.Contains(expiryEntry.ExpiryMinute);
+                    if (entryMissing || catalogMinuteMissing)
+                    {
+                        _entries[GetEntryKey(expiryEntry)] = expiryEntry;
+                        _ = _activeMinutes.Add(expiryEntry.ExpiryMinute);
+                        _transactionOperationCounts.Add(3);
+                    }
+                }
+
                 return Task.FromResult(existingStatus);
             }
 
@@ -219,17 +257,17 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
                 return Task.FromResult(AccessTelemetryStoreWriteStatus.Conflict);
             }
 
-            bool addCatalogMinute = _activeMinutes.Add(expiryEntry.ExpiryMinute);
+            _ = _activeMinutes.Add(expiryEntry.ExpiryMinute);
             _records.Add(record.RecordId, record);
             _entries.Add(GetEntryKey(expiryEntry), expiryEntry);
             _lastTtlInSeconds = ttlInSeconds;
-            _transactionOperationCounts.Add(addCatalogMinute ? 3 : 2);
+            _transactionOperationCounts.Add(3);
             return Task.FromResult(AccessTelemetryStoreWriteStatus.Inserted);
         }
     }
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<AccessTelemetryExpiryEntry>> GetDueEntriesAsync(
+    public Task<(IReadOnlyList<AccessTelemetryExpiryEntry> Entries, bool HasMoreDueEntries)> GetDueEntriesAsync(
         long dueMinute,
         int limit,
         CancellationToken cancellationToken)
@@ -237,7 +275,7 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         cancellationToken.ThrowIfCancellationRequested();
         if (limit <= 0)
         {
-            return Task.FromResult<IReadOnlyList<AccessTelemetryExpiryEntry>>([]);
+            return Task.FromResult<(IReadOnlyList<AccessTelemetryExpiryEntry>, bool)>(([], false));
         }
 
         lock (_gate)
@@ -247,8 +285,12 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
             // minute, stopping at the limit without visiting - or pruning - later minutes.
             var due = new List<AccessTelemetryExpiryEntry>(limit);
             var emptyMinutes = new List<long>();
-            foreach (long minute in _activeMinutes.Where(minute => minute <= dueMinute).Order())
+            long[] dueMinutes = _activeMinutes.Where(minute => minute <= dueMinute).Order().ToArray();
+            long[] scannedMinutes = dueMinutes.Take(MaxMinutesPerDueScan).ToArray();
+            bool hasMoreDueEntries = dueMinutes.Length > scannedMinutes.Length;
+            for (int minuteIndex = 0; minuteIndex < scannedMinutes.Length; minuteIndex++)
             {
+                long minute = scannedMinutes[minuteIndex];
                 AccessTelemetryExpiryEntry[] minuteEntries = _entries.Values
                     .Where(entry => entry.ExpiryMinute == minute)
                     .ToArray();
@@ -258,13 +300,23 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
                     continue;
                 }
 
-                due.AddRange(minuteEntries
+                foreach (AccessTelemetryExpiryEntry entry in minuteEntries)
+                {
+                    ValidateEntryIdentity(entry);
+                }
+
+                AccessTelemetryExpiryEntry[] orderedEntries = minuteEntries
                     .OrderBy(static entry => entry.ExpiresAtUtc, StringComparer.Ordinal)
                     .ThenBy(static entry => entry.Shard)
                     .ThenBy(static entry => entry.RecordId, StringComparer.Ordinal)
-                    .Take(limit - due.Count));
+                    .ToArray();
+                int remainingCapacity = limit - due.Count;
+                due.AddRange(orderedEntries.Take(remainingCapacity));
                 if (due.Count >= limit)
                 {
+                    hasMoreDueEntries = hasMoreDueEntries ||
+                        orderedEntries.Length > remainingCapacity ||
+                        minuteIndex < dueMinutes.Length - 1;
                     break;
                 }
             }
@@ -274,7 +326,7 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
                 _ = _activeMinutes.Remove(minute);
             }
 
-            return Task.FromResult<IReadOnlyList<AccessTelemetryExpiryEntry>>(due);
+            return Task.FromResult<(IReadOnlyList<AccessTelemetryExpiryEntry>, bool)>((due, hasMoreDueEntries));
         }
     }
 
@@ -333,4 +385,36 @@ internal sealed class InMemoryAccessTelemetryStateStore : IAccessTelemetryStateS
         => string.Create(
             CultureInfo.InvariantCulture,
             $"{entry.ExpiryMinute:D12}/{entry.Shard:D2}/{entry.RecordId}/{entry.EnvelopeHash}/{entry.ExpiresAtUtc}");
+
+    private static void ValidateEntryIdentity(AccessTelemetryExpiryEntry entry)
+    {
+        if (entry.Shard != AccessTelemetryExpiryIndex.GetShard(entry.RecordId) ||
+            !DateTimeOffset.TryParseExact(
+                entry.ExpiresAtUtc,
+                "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out DateTimeOffset expiresAt) ||
+            entry.ExpiryMinute != AccessTelemetryExpiryIndex.GetExpiryMinute(expiresAt))
+        {
+            throw new InvalidOperationException("The in-memory expiry entry contains mismatched identity data.");
+        }
+    }
+
+    private static void ValidateEntryMatchesRecord(AccessTelemetryRecord record, AccessTelemetryExpiryEntry entry)
+    {
+        DateTimeOffset expiresAt = DateTimeOffset.ParseExact(
+            record.ExpiresAtUtc,
+            "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+        if (!string.Equals(entry.RecordId, record.RecordId, StringComparison.Ordinal) ||
+            !string.Equals(entry.EnvelopeHash, record.EnvelopeHash, StringComparison.Ordinal) ||
+            !string.Equals(entry.ExpiresAtUtc, record.ExpiresAtUtc, StringComparison.Ordinal) ||
+            entry.Shard != AccessTelemetryExpiryIndex.GetShard(record.RecordId) ||
+            entry.ExpiryMinute != AccessTelemetryExpiryIndex.GetExpiryMinute(expiresAt))
+        {
+            throw new ArgumentException("The expiry entry does not match the canonical record identity.", nameof(entry));
+        }
+    }
 }

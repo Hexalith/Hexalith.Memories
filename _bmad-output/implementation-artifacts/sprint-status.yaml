@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-07-30
+last_updated: 2026-08-01
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -155,13 +155,11 @@ story_execution_order:
       - 23-7-index-provisioning-ownership
       - 23-8-workflow-config-determinism
   epic-27:
-    reason: "Story 27.5 owns proof and completion of all C1.1-C1.25 gates against the exact PG-ONPREM-1 profile definition and follows Story 27.3's retained C0/C2/C3/C4 work; Story 27.3 completion alone enables no Production write and does not advance Story 27.4. Story 27.4's deployment-shaped lifecycle verification and A41 close-out consume the fully qualified Story 27.5 result, so it runs last. Document order in epics.md is numeric; this list is the execution order of record. Added 2026-07-28 and amended 2026-07-30 by approved Sprint Change Proposals."
+    reason: "Corrected 2026-08-01 by approved Sprint Change Proposal 2026-08-01: the invalid Story 27.5/27.6 registrations are withdrawn. Story 27.3 owns C0 and its independent C2/C3/C4 work; all twenty-five C1 gate definitions are held, not registered, and have no current story owner. Story 27.4 remains backlog and cannot start until later-approved, separately tracked story files register and pass all C1.1-C1.25 gates on real per-gate producers. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record."
     order:
       - 27-1-access-telemetry-retention-ownership-decision
       - 27-2-bounded-retention-ttl-and-purge-implementation
       - 27-3-production-adapter-and-deployment-profile
-      - 27-5-running-pg-onprem-1-capability-qualification
-      - 27-6-running-pg-onprem-1-data-path-and-capability-proof
       - 27-4-retention-verification-operations-runbook-and-a41-close-out
   epic-29:
     reason: "Story 29.2 consumes the executable OpenBao AppHost topology and isolation contract produced by Story 29.1."
@@ -451,23 +449,11 @@ development_status:
   27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-production-adapter-and-deployment-profile: in-progress
   27-4-retention-verification-operations-runbook-and-a41-close-out: backlog
-  # 27-5 added 2026-07-28 and amended 2026-07-30 by approved Sprint Change Proposals:
-  # it owns proof and completion of all twenty-five C1 child gates (C1.1-C1.25); Story 27.3's
-  # closed C1 umbrella is an administrative transfer record and advances no gate.
-  # Its activation gate is owned by Hexalith Platform Operations; it stays backlog until the
-  # PG-ONPREM-1 lifecycle Deployments are scaled above zero. Production writes remain disabled,
-  # Story 27.4 remains backlog, and A41 remains open while any gate is unproven.
-  27-5-running-pg-onprem-1-capability-qualification: backlog
-  # 27-6 added 2026-07-31 by approved Sprint Change Proposal 2026-07-31 (DW 27.3-CR31, CR34):
-  # the twenty-five C1 gates are split 11/14 by record shape. Story 27.5 retains C1.15-C1.25,
-  # whose rows carry an authored evidence artifact; Story 27.6 takes C1.1-C1.14, whose rows
-  # carry an accepted activation blocker. C1.13 moves to 27-6 because its epic AC binds
-  # configured-capacity admission to the exact running target and the passing unit lane is a
-  # precondition, not discharge. Both stories share the same unchanged activation gate and
-  # unblock at the same moment; the split is guard-satisfying registration under
-  # story-scope-guard.md:41-43, not two independently deliverable outcomes. No gate is dropped,
-  # weakened, or renumbered, and no status value advances.
-  27-6-running-pg-onprem-1-data-path-and-capability-proof: backlog
+  # Corrected 2026-08-01 by approved Sprint Change Proposal 2026-08-01: Stories 27.5 and 27.6
+  # are withdrawn from registration. Their twenty-five C1 definitions are held only in the
+  # proposal annex and have no current story owner or status. Production writes remain disabled,
+  # Story 27.4 remains backlog, and A41 remains open until compliant successor story files exist
+  # and all C1.1-C1.25 gates pass on real per-gate producers.
   epic-27-retrospective: optional
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption
@@ -508,6 +494,12 @@ development_status:
   # Sprint Change Proposal 2026-07-27, executing the DW 27.3-CR16 split. The pre-split
   # 31-1-openbao-platform-hardening-and-runtime-secret-store-migration bundled two
   # independently deployable outcomes; no scope was added or dropped by the split.
+  # Story 31.2's activation gate amended 2026-08-01 by approved Sprint Change Proposal 2026-08-01
+  # (Story 31.1 checkpoint split and Epic 31 activation gate). It now binds on Story 31.1's
+  # documentation checkpoints C1/C2/C3/C4a/C5a/C6 rather than on Story 31.1 reaching 'done'.
+  # Story 31.1 stays in-progress: checkpoints C4b, C5b and C7 carry an un-obtained independent
+  # security countersignature, owner unassigned, reopen trigger 2026-10-26. No status value was
+  # changed by that proposal; Story 31.2 is developable at ready-for-dev.
   epic-31: in-progress
   31-1-openbao-platform-hardening-and-documentation: in-progress
   31-2-runtime-dapr-secret-store-migration: ready-for-dev

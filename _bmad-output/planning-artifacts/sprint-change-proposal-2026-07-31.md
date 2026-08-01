@@ -451,7 +451,7 @@ summary, although the evidence for it existed before §4 was drafted.
 Verified 2026-07-31 against the working tree at branch `main` (commit `a1f64d55` plus the
 uncommitted Story 27.3 review patch output).
 
-Twenty-one verifiable claims inherited from `DW 27.3-CR31` through `CR35` and asserted by
+Twenty-one verifiable claims inherited from `DW 27.3-CR31` through `CR35` and asserted by **[Corrected 2026-08-01 by code review (second pass): **twenty** are inherited. The section-5 table has twenty-one rows, but the last is explicitly labelled "New -", so it is authored here rather than inherited. `_bmad-output/process-notes/story-creation-lessons.md` L14 repeats the figure and carries the same correction.]**
 this proposal. Sixteen `confirmed`, five `corrected`. Every `corrected` verdict is anchor
 drift with the underlying defect intact; each correction is applied to this document's own
 text, and the source `deferred-work.md` rationales carry a dated correction note.
@@ -481,6 +481,8 @@ text, and the source `deferred-work.md` rationales carry a dated correction note
 | **New —** the lane deliberately does not throw when zero Components are vault-typed | Behavioral | `awk` over `verify-production-deployment.ps1:147-151` | "No throw when nothing is vault-typed. Story 31.2 delivers the real OpenBao path … the state DW 27.3-CR29/CR30 must be able to discharge." Constrains E2: AC6 must drop "required substitution", not re-tighten it. | `confirmed` |
 
 No claim is left without a verdict. No `corrected` claim lacks its planning-artifact
+
+> **CORRECTION 2026-08-01 by code review (second pass).** The attestation above, and the sentence at `:457` claiming "the source `deferred-work.md` rationales carry a dated correction note", were **false for three of the five `corrected` verdicts** when written. `DW 27.3-CR32`, `CR33` and `CR35` carried no dated correction note and still cited their refuted anchors; `deferred-work.md` was in the same change, so the correction was writable at the time. The three notes were added 2026-08-01 and each records the re-derived value: CR32's `verify-production-deployment.ps1:918-926` pointed at unrelated rollout code (the throw was at `:863-865` pre-patch) and `production_deployment_evidence_test.py:855` is an ordering assert rather than the named-shape prohibition at `:862`; CR33's "approximately 55 lines" of Annex A is **59** and its `:404` citation is at `:423`; CR35's `:13-14` named the title, not the quoted phrase at `:28`. Every underlying claim held - only the citations drifted. This is a false claim inside the section whose sole function is to certify every other claim in the document, which is why it is corrected here rather than only in the register.
 correction. No `unverifiable` claim is used as load-bearing justification for scope.
 
 ---

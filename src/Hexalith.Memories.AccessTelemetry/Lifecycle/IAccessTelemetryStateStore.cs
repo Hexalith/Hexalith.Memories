@@ -17,8 +17,8 @@ internal interface IAccessTelemetryStateStore
         int ttlInSeconds,
         CancellationToken cancellationToken);
 
-    /// <summary>Reads at most the bounded number of due expiry entries.</summary>
-    Task<IReadOnlyList<AccessTelemetryExpiryEntry>> GetDueEntriesAsync(
+    /// <summary>Reads at most the bounded number of due expiry entries and reports deferred due work.</summary>
+    Task<(IReadOnlyList<AccessTelemetryExpiryEntry> Entries, bool HasMoreDueEntries)> GetDueEntriesAsync(
         long dueMinute,
         int limit,
         CancellationToken cancellationToken);

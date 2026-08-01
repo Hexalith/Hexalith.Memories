@@ -90,6 +90,108 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
     }
 
     [Fact]
+    public async Task WriteRecordAndIndexAsync_WritesIntoAnActiveMinute_StillTouchesTheCatalog()
+    {
+        var store = new InMemoryAccessTelemetryStateStore();
+        AccessTelemetryRecord first = AccessTelemetryStateStoreTestRecords.CreateRecord(
+            "01K0A000000000000000000001",
+            Expiry);
+        AccessTelemetryRecord second = AccessTelemetryStateStoreTestRecords.CreateRecord(
+            "01K0A000000000000000000002",
+            Expiry.AddMilliseconds(1));
+
+        _ = await store.WriteRecordAndIndexAsync(
+            first,
+            AccessTelemetryStateStoreTestRecords.CreateEntry(first),
+            3600,
+            CancellationToken.None);
+        _ = await store.WriteRecordAndIndexAsync(
+            second,
+            AccessTelemetryStateStoreTestRecords.CreateEntry(second),
+            3600,
+            CancellationToken.None);
+
+        store.TransactionOperationCounts.ShouldBe([3, 3]);
+    }
+
+    [Fact]
+    public async Task WriteRecordAndIndexAsync_IdempotentRetryRepairsMissingIndexAndCatalog()
+    {
+        var store = new InMemoryAccessTelemetryStateStore();
+        AccessTelemetryRecord record = AccessTelemetryStateStoreTestRecords.CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = AccessTelemetryStateStoreTestRecords.CreateEntry(record);
+        _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
+        store.RemoveIndexEntry(entry);
+        store.RemoveActiveMinute(entry.ExpiryMinute);
+
+        AccessTelemetryStoreWriteStatus result = await store.WriteRecordAndIndexAsync(
+            record,
+            entry,
+            3600,
+            CancellationToken.None);
+
+        result.ShouldBe(AccessTelemetryStoreWriteStatus.Idempotent);
+        store.IndexCount.ShouldBe(1);
+        store.ActiveMinuteCount.ShouldBe(1);
+        store.TransactionOperationCounts.ShouldBe([3, 3]);
+    }
+
+    [Theory]
+    [InlineData("record-id")]
+    [InlineData("expiry-minute")]
+    [InlineData("shard")]
+    [InlineData("envelope-hash")]
+    [InlineData("expires-at")]
+    public async Task WriteRecordAndIndexAsync_ExpiryEntryIdentityDoesNotMatchRecord_Throws(string mismatch)
+    {
+        var store = new InMemoryAccessTelemetryStateStore();
+        AccessTelemetryRecord record = AccessTelemetryStateStoreTestRecords.CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = AccessTelemetryStateStoreTestRecords.CreateEntry(record);
+        AccessTelemetryExpiryEntry mismatched = mismatch switch
+        {
+            "record-id" => entry with { RecordId = "01K0A000000000000000000002" },
+            "expiry-minute" => entry with { ExpiryMinute = entry.ExpiryMinute + 1 },
+            "shard" => entry with { Shard = (entry.Shard + 1) % 64 },
+            "envelope-hash" => entry with { EnvelopeHash = new string('b', 64) },
+            "expires-at" => entry with { ExpiresAtUtc = AccessTelemetryStateStoreTestRecords.Format(Expiry.AddMinutes(1)) },
+            _ => throw new InvalidOperationException($"Unknown mismatch '{mismatch}'."),
+        };
+
+        _ = await Should.ThrowAsync<ArgumentException>(() => store.WriteRecordAndIndexAsync(
+            record,
+            mismatched,
+            3600,
+            CancellationToken.None));
+
+        store.RecordCount.ShouldBe(0);
+        store.IndexCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task GetDueEntriesAsync_EmptyMinutePrefix_UsesTheSameThreeMinuteBoundAndContinuationSignal()
+    {
+        var store = new InMemoryAccessTelemetryStateStore();
+        for (int offset = 0; offset < 4; offset++)
+        {
+            AccessTelemetryRecord record = AccessTelemetryStateStoreTestRecords.CreateRecord(
+                $"01K0A00000000000000000000{offset + 1}",
+                Expiry.AddMinutes(offset));
+            AccessTelemetryExpiryEntry entry = AccessTelemetryStateStoreTestRecords.CreateEntry(record);
+            _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
+            _ = await store.DeleteAndVerifyAsync(entry, CancellationToken.None);
+        }
+
+        (IReadOnlyList<AccessTelemetryExpiryEntry> entries, bool hasMoreDueEntries) = await store.GetDueEntriesAsync(
+            AccessTelemetryExpiryIndex.GetExpiryMinute(Expiry.AddMinutes(5)),
+            1,
+            CancellationToken.None);
+
+        entries.ShouldBeEmpty();
+        hasMoreDueEntries.ShouldBeTrue();
+        store.ActiveMinuteCount.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task GetDueEntriesAsync_AfterAMinuteIsFullyPurged_PrunesThatMinuteOnTheNextScan()
     {
         // The due scan had no catalog and no empty-minute side effect, so repeat scans diverged
@@ -113,7 +215,7 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
 
         // The drained minute is still active until a scan observes it empty, then it is gone.
         store.ActiveMinuteCount.ShouldBe(2);
-        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+        (IReadOnlyList<AccessTelemetryExpiryEntry> due, _) = await store.GetDueEntriesAsync(
             dueThrough,
             10,
             CancellationToken.None);
@@ -141,7 +243,7 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
             3600,
             CancellationToken.None);
 
-        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+        (IReadOnlyList<AccessTelemetryExpiryEntry> due, _) = await store.GetDueEntriesAsync(
             AccessTelemetryExpiryIndex.GetExpiryMinute(Expiry.AddMinutes(5)),
             1,
             CancellationToken.None);
@@ -160,7 +262,7 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
         (await store.DeleteAndVerifyAsync(entry, CancellationToken.None))
             .ShouldBe(AccessTelemetryDeleteStatus.Deleted);
 
-        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+        (IReadOnlyList<AccessTelemetryExpiryEntry> due, _) = await store.GetDueEntriesAsync(
             entry.ExpiryMinute,
             0,
             CancellationToken.None);
@@ -186,7 +288,7 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
         result.ShouldBe(AccessTelemetryDeleteStatus.StaleIndex);
         store.ContainsRecord(record.RecordId).ShouldBeTrue();
         store.IndexCount.ShouldBe(1);
-        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+        (IReadOnlyList<AccessTelemetryExpiryEntry> due, _) = await store.GetDueEntriesAsync(
             entry.ExpiryMinute,
             10,
             CancellationToken.None);
@@ -215,7 +317,7 @@ public sealed class InMemoryAccessTelemetryStateStoreContractTests
 
         // The failed prune must not have cost the live record its own index entry.
         store.ContainsRecord(record.RecordId).ShouldBeTrue();
-        IReadOnlyList<AccessTelemetryExpiryEntry> due = await store.GetDueEntriesAsync(
+        (IReadOnlyList<AccessTelemetryExpiryEntry> due, _) = await store.GetDueEntriesAsync(
             entry.ExpiryMinute,
             10,
             CancellationToken.None);
