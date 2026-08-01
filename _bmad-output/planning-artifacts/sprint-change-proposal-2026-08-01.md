@@ -7,6 +7,13 @@
 **Change classification:** Major
 **Evidence base:** current worktree at reachable HEAD `1d9e9c89ef53d877b4ec09face575c36e5889854`
 
+**Dated correction 2026-08-01.** The held C1.13 definition below had regressed to an
+unanchored “70/80/90%” reference. Approved Sprint Change Proposal
+`sprint-change-proposal-2026-08-01-story-27-3-review-readiness-blockers.md` restores the stable
+ADR/story anchors, the 400 GiB byte total, all three threshold byte values, and the controlling
+rule that exactly 80% is critical rather than an admissible reclamation peak. This correction
+does not register or complete C1.13.
+
 ## 1. Executive Decision
 
 Adopt arm **(a)** of the central `DW 27.3-CR31` decision:
@@ -548,7 +555,7 @@ concurrent-session exclusions and three reference-gitlink exclusions remain.
 | C1.10 150,000-record purge catch-up | 27.6 | Adapter owner + Platform Operations | Ten-minute backlog and bounded drain/oldest-due result. | Missing — activation blocker is not a producer. |
 | C1.11 Isolation | 27.6 | Adapter owner + security reviewer | Physical cross-tenant denial with attached negative evidence. | Missing — activation blocker is not a producer. |
 | C1.12 Encryption | 27.6 | Adapter owner + security reviewer | TLS `verify-full` and at-rest posture observation. | Missing — activation blocker is not a producer. |
-| C1.13 Capacity | 27.6 | Adapter owner + Platform Operations | Running-target 1h/24h/7d admission against 70/80/90%. | Missing — unit tests are preconditions, not discharge. |
+| C1.13 Capacity | 27.6 | Adapter owner + Platform Operations | Running-target 1h/24h/7d admission against the table anchored at `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md#capacity-evidence-and-admission-envelope` and Story 27.3 `### Production-Shaped Execution Contract`: 400 GiB = 429,496,729,600 bytes; maximum steady-state admission 70% = 300,647,710,720 bytes; critical boundary 80% = 343,597,383,680 bytes; Unhealthy boundary 90% = 386,547,056,640 bytes. The threshold table controls over the raw profile size: 100% occupancy is inadmissible and exactly 80% is critical, not an admissible reclamation peak. | Missing — unit tests are preconditions, not discharge. |
 | C1.14 Physical reclamation | 27.6 | Adapter owner + Platform Operations | Named collector/bound and cohort-attributed reclaimed space. | Missing — activation blocker is not a producer. |
 | C1.15 Runtime/control-plane identity | 27.5 | Deployment adapter owner | Runtime, sidecar digest, Scheduler, actors, features, alpha opt-in. | Missing — packet schema is not a producer. |
 | C1.16 Component/backend identity | 27.5 | Deployment adapter owner | Component/API/capabilities/backend/PostgreSQL identity. | Missing — packet schema is not a producer. |
@@ -595,8 +602,14 @@ proof, table breadth, and registration claim may not be copied.
 12. **C1.12:** TLS `verify-full` and the approved at-rest encryption posture
     are observed on the exact target.
 13. **C1.13:** configured capacity is admitted against the exact running target
-    for 1h/24h/7d using the approved 70/80/90% table. Adapter-profile unit
-    tests are mandatory preconditions and never discharge this criterion.
+    for 1h/24h/7d using the threshold table anchored at
+    `docs/dev/adr-27.1-001-access-telemetry-lifecycle.md#capacity-evidence-and-admission-envelope`
+    and Story 27.3 `### Production-Shaped Execution Contract`: 400 GiB =
+    429,496,729,600 bytes; 70% = 300,647,710,720 bytes; 80% =
+    343,597,383,680 bytes; and 90% = 386,547,056,640 bytes. The table controls
+    over raw profile size: 100% occupancy is inadmissible and exactly 80% is
+    critical, not an admissible reclamation peak. Adapter-profile unit tests
+    are mandatory preconditions and never discharge this criterion.
 14. **C1.14:** a named collector and bound attribute physical reclaimed space
     to the tested purge cohort.
 
