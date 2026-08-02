@@ -666,7 +666,7 @@ action_items:
   - epic: 23
     action: "Add an Epic 23 documentation verification pass for rate limiting, failure recovery, directory ingestion, index readiness, and workflow determinism"
     owner: "Paige, Amelia"
-    status: open
+    status: done  # 2026-08-02: all five current-tree documentation checkpoints are confirmed/corrected in epic-23-documentation-verification-2026-08-02.md; focused lane passed 127/127.
   - epic: 23
     action: "Preserve deterministic workflow scheduling through IIngestionWorkflowScheduler or explicit captured config for every new ingestion entry point"
     owner: "Amelia"

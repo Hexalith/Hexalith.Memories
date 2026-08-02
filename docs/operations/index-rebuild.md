@@ -75,6 +75,55 @@ Current limitations and ownership are decision inputs:
   Missing NL state requires original-source republishing/re-ingestion through Path D; Path A or logical
   Path C cannot make it whole.
 
+### Ingestion-time readiness vs. provisioning ownership
+
+`TenantProvisioningWorkflow` and its RediSearch/Redis Vector provisioning activities
+own creation of the tenant's syntactic, raw semantic, and natural-language semantic
+indexes. The tenant must complete provisioning and become active before normal
+ingestion. See [Tenant Onboarding and Offboarding](./tenant-onboarding-offboarding.md)
+for the lifecycle gates; ingestion is not a substitute for provisioning or a way to
+reactivate a deleted/inactive tenant.
+
+Before a hash/vector write, `IndexSyntacticActivity`, `IndexSemanticActivity`,
+`IndexSemanticChunksActivity`, and `IndexNaturalLanguageSemanticActivity` call
+`ITenantIndexReadinessVerifier`. The verifier checks the existing index with
+`FT.INFO`; it never repairs a missing index with `FT.CREATE` and never writes the
+hash/vector until readiness succeeds.
+
+Successful readiness is memoized only in the current server process, keyed by tenant,
+index family, and expected vector dimensions (syntactic uses no dimension). Concurrent
+first writes for the same key share one verification. A server restart clears the
+cache. Failures are never cached: a later write re-runs readiness after an operator has
+restored the prerequisite. Incomplete `FT.INFO` metadata alone receives up to ten
+non-blocking checks separated by 100 ms; missing indexes and genuine schema drift fail
+closed.
+
+The only automatic schema changes are additive missing `TAG` fields, and only when
+the actual field set is otherwise an exact subset of the expected schema:
+
+| Index family | Fields allowed to be added with `FT.ALTER ... SCHEMA ADD ... TAG` |
+|--------------|------------------------------------------------------------------|
+| Syntactic | `cloudeventSubject`, `attributeTags` |
+| Raw semantic | `cloudeventSubject` |
+| Natural-language semantic | None |
+
+An unexpected field, missing non-approved field, wrong prefix, or wrong vector
+dimension remains `TenantIndexSchemaMismatchException`; an absent index becomes
+`TenantIndexNotProvisionedException`. Neither path is cached as ready.
+
+Use this operator decision path:
+
+1. For a transient backend/readiness-verification failure, restore Redis health and
+   retry ingestion; the failed check will execute again.
+2. For an absent index on a tenant that did not finish provisioning, complete or
+   repeat the approved tenant provisioning/reprovisioning lifecycle. Do not issue
+   ingestion-owned `FT.CREATE`.
+3. For an intentional provider/model/dimension transition, use Path B's blue/green
+   migration. A dimension mismatch is not fixed by retrying readiness.
+4. For incompatible drift or projection loss, stop intake and select the supported
+   consistency, restore, or destructive rebuild path in the matrix below. Do not use
+   the additive upgrade allowance to conceal unrelated schema drift.
+
 ## Procedure
 
 ### 1. Select a supported path

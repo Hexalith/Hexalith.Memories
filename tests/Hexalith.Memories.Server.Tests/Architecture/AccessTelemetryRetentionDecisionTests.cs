@@ -453,11 +453,17 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
             Case.Sensitive);
         security.ShouldNotContain("MVP: structured log file", Case.Sensitive);
 
-        // Story 27.3 code review (chunk 3b): the PG-ONPREM-1 assurance boundary
-        // was unguarded here, so the sentence could be deleted or rewritten into
-        // an HA claim while this class stayed green and the ADR-side guard kept
-        // passing - letting the two records diverge silently.
-        security.ShouldContain("Story 27.3 now qualifies `PG-ONPREM-1`", Case.Sensitive);
+        // The approved 2026-08-01 ownership correction retained Story 27.3's
+        // independent qualification work but removed its ownership of the exact
+        // running-target C1 qualification. Guard both sides of that correction so
+        // the architecture cannot silently revert to the superseded assignment.
+        security.ShouldContain(
+            "Story 27.3 owns C0 and independent C2/C3/C4 adapter qualification",
+            Case.Sensitive);
+        security.ShouldContain(
+            "Exact running-target C1 qualification is held without a registered story owner",
+            Case.Sensitive);
+        security.ShouldNotContain("Story 27.3 now qualifies `PG-ONPREM-1`", Case.Sensitive);
         security.ShouldContain(
             "in-profile zero-loss fault is PostgreSQL pod/process replacement",
             Case.Sensitive);
