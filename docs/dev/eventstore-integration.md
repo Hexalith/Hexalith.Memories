@@ -19,6 +19,21 @@ modules (`hexalith/tenants` and `hexalith/parties`) on one topic.
 
 ---
 
+## Evidence claim boundary
+
+`Hexalith.Memories.EventStore` names the Memories adapter package; its participation does not prove that
+an EventStore command gateway produced the event. The focused Aspire integration coverage exercises two
+Memories-owned intake paths: direct `POST /events/ingest` and Dapr publish to the Memories `pubsub`
+subscription. Those paths prove the Memories Redis/FalkorDB + Dapr event-intake boundary.
+
+The current AppHost does not provision an `eventstore` gateway resource. EventStore-to-Memories or
+unqualified full-stack EventStore proof therefore remains unavailable under accepted blocker
+`23.7-APPHOST-EVENTSTORE-FULLSTACK`. Story 28.1 owns closure through exact approved identity adoption,
+single-owner `statestore`/`pubsub` composition, and a real EventStore-originating publish with persisted,
+searchable, duplicate-replay, and tenant-isolation evidence.
+
+---
+
 ## 1. Setup
 
 ### 1.1 Add the package (consumer) or project reference (in-repo host)

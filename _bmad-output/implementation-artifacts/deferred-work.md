@@ -1865,7 +1865,26 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
 
 ## Deferred from: story-21.2 dev (2026-07-04)
 
-- **`eventstore` service not yet provisioned in the AppHost topology** [src/Hexalith.Memories.AppHost/Program.cs] — Story 21.2 routes case/annotation/memory-unit/case-deletion mutations through the `Hexalith.EventStore.Client` gateway (`IEventStoreGatewayClient`), targeting Dapr app-id `eventstore` by default (`EventStoreIntegration:CommandGateway:BaseAddress` overrides). The Aspire AppHost does not yet run an EventStore platform service (`AddHexalithEventStore(...)` from `Hexalith.EventStore.Aspire` is available), so Docker-lane Aspire integration tests that create cases via live HTTP (e.g. `tests/Hexalith.Memories.IntegrationTests/Cases/CaseEndpointIntegrationTests.cs`) will fail against the new write boundary until the topology provisions the service or the fixture configures a gateway base address. Topology/deployment work, not part of the A3 write-boundary closure; unit/workflow/architecture suites cover the boundary (2120 server tests green). Re-open trigger: integration lane runs `CaseEndpointIntegrationTests` against a topology without an `eventstore` app.
+- **23.7-APPHOST-EVENTSTORE-FULLSTACK - accepted.** Current package/source compilation and the
+  Memories-owned Aspire Redis/FalkorDB + Dapr ingestion lane pass, but the AppHost does not provision
+  an `eventstore` gateway resource and current source/package identities do not match EventStore Story
+  1.20's exact approved pins. The focused event-ingestion lane publishes directly to Memories and is not
+  EventStore-to-Memories proof. This preserves the original Story 21.2 finding: case, annotation,
+  memory-unit, and case-deletion mutations target the `Hexalith.EventStore.Client` gateway at Dapr app-id
+  `eventstore` by default, while topology/deployment work remained outside the A3 write-boundary closure.
+  The historical 2120-server-test result remains provenance, not current full-stack evidence.
+
+  - ID: 23.7-APPHOST-EVENTSTORE-FULLSTACK
+  - Status: accepted
+  - Source story: story-21.2 dev; Epic 23 retrospective corrective action
+  - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 28.1)
+  - Resolution criteria: adopt the exact owner-approved EventStore source/package identities; compose one
+    `eventstore` gateway resource with unambiguous `statestore`/`pubsub` ownership; run a real
+    EventStore-originating publish through Dapr into Memories; prove persisted/searchable Redis and
+    FalkorDB outcomes plus ignored duplicate replay; attach tenant-isolation negative evidence.
+  - Re-open trigger: Story 28.1 is selected; any story or review claims EventStore-to-Memories or
+    unqualified full-stack EventStore proof; or the AppHost adds an `eventstore` resource without closing
+    every resolution criterion.
 - source_spec: `_bmad-output/implementation-artifacts/spec-24-3-physical-tenant-isolation-and-verifier-scaling.md`
   summary: Add graph content-level tenant isolation evidence beyond Story 24.3 target graph existence checks.
   evidence: Review found `CheckGraphIsolationAsync` only verifies the target FalkorDB database appears in `GRAPH.LIST`; that is structural evidence, not node/edge tenant-marker or traversal leakage evidence.

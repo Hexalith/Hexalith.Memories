@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-08-01
+last_updated: 2026-08-02
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -457,9 +457,9 @@ development_status:
   epic-27-retrospective: optional
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption
-  # Registered on 2026-07-17 by approved direct course correction. Story 28.1 remains backlog and
-  # has no implementation file until EventStore Story 1.20 durably authorizes consumer migration
-  # and pins the approved source SHA plus exact package version/hashes.
+  # Registered on 2026-07-17 by approved direct course correction. EventStore Story 1.20's external
+  # authorization prerequisite is satisfied as of 2026-08-02. Story 28.1 remains backlog and has no
+  # implementation file pending explicit selection and exact source/package identity adoption.
   epic-28: backlog
   28-1-adopt-owner-approved-eventstore-runtime-identity: backlog
   epic-28-retrospective: optional
@@ -642,7 +642,7 @@ action_items:
   - epic: 22
     action: "Resolve or explicitly accept the AppHost/EventStore duplicate assembly validation blocker before using full-solution build as ingestion close-out evidence"
     owner: "Amelia, Winston"
-    status: open
+    status: done  # 2026-08-02: Current package/source compile validation is green; the narrower missing EventStore-originating gateway and exact-identity proof is formally accepted as 23.7-APPHOST-EVENTSTORE-FULLSTACK. Memories-owned Redis/FalkorDB + Dapr intake evidence remains valid, but this closure does not make EventStore-to-Memories full-stack proof available.
   - epic: 22
     action: "Keep raw Redis command response parsing on review checklists for search and ingestion indexing changes"
     owner: "Amelia, Murat"
@@ -658,11 +658,11 @@ action_items:
   - epic: 23
     action: "Keep Epic 23 ingestion invariants on Epic 24 and Epic 25 review checklists"
     owner: "Amelia, Winston, Murat"
-    status: in-progress  # 2026-07-06 (Epic 24): Epic 24 preserved the invariants; Epic 25 carry-forward remains active.
+    status: done  # 2026-08-02: Closed by the approved 2026-08-02 sprint change and completed quick-dev spec. Epic 24/25 canonical definitions and contexts now carry the same six-row gate; both retrospectives contain dated corrective current-tree matrices; the serialized focused lane passed 337/337.
   - epic: 23
     action: "Resolve or formally accept the AppHost/EventStore.Aspire integration validation blocker before treating full-stack Redis/FalkorDB proof as available"
     owner: "Amelia, Winston"
-    status: open
+    status: done  # 2026-08-02: Current package/source compile validation is green; the narrower missing EventStore-originating gateway and exact-identity proof is formally accepted as 23.7-APPHOST-EVENTSTORE-FULLSTACK. Memories-owned Redis/FalkorDB + Dapr intake evidence remains valid, but this closure does not make EventStore-to-Memories full-stack proof available.
   - epic: 23
     action: "Add an Epic 23 documentation verification pass for rate limiting, failure recovery, directory ingestion, index readiness, and workflow determinism"
     owner: "Paige, Amelia"
@@ -678,7 +678,7 @@ action_items:
   - epic: 24
     action: "Resolve or formally accept the AppHost/EventStore validation-lane blocker before any future story claims full-stack Redis/FalkorDB or Aspire integration proof"
     owner: "Amelia, Winston"
-    status: open
+    status: done  # 2026-08-02: Current package/source compile validation is green; the narrower missing EventStore-originating gateway and exact-identity proof is formally accepted as 23.7-APPHOST-EVENTSTORE-FULLSTACK. Memories-owned Redis/FalkorDB + Dapr intake evidence remains valid, but this closure does not make EventStore-to-Memories full-stack proof available.
   - epic: 24
     action: "Convert Story 24.3 verifier residuals into explicit backlog decisions for graph leakage evidence, vector dimensions, semantic marker false positives, and remediation semantics"
     owner: "Winston, Murat"

@@ -19,9 +19,11 @@ using Shouldly;
 
 using StackExchange.Redis;
 
-/// <summary>End-to-end event-surface coverage for Story 9.1. Publishes a CloudEvents envelope through
-/// <c>POST /events/ingest</c>, waits for the workflow to complete, and proves the resulting memory unit is
-/// queryable through the search API with exact <c>subject</c> filtering.</summary>
+/// <summary>End-to-end coverage for the Memories event-intake surface. Exercises both direct
+/// <c>POST /events/ingest</c> and Dapr pub/sub publish into the Memories subscription, then proves
+/// workflow completion, searchable persistence, subject filtering, and duplicate suppression against
+/// the Memories-owned Aspire Redis/FalkorDB topology. The fixture does not provision an EventStore
+/// gateway resource, so this class is not EventStore-to-Memories full-stack evidence.</summary>
 [Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
 public sealed class EventIngestionPipelineIntegrationTests
