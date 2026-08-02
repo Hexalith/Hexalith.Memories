@@ -1,10 +1,10 @@
 # AI Assistant Instructions
 
 This is a location-independent baseline. Its normalized text is intentionally
-shared by Codex, Claude, and GitHub Copilot entry points in the superproject
-and its root-declared submodules. It contains shared safeguards only; repository
-documentation and configuration remain authoritative for repository-specific
-rules.
+shared by Codex, Claude, Cursor, and GitHub Copilot entry points in the
+superproject and its root-declared submodules. It contains shared safeguards
+only; repository documentation and configuration remain authoritative for
+repository-specific rules.
 
 ## Required Hexalith LLM Baseline
 
@@ -46,7 +46,7 @@ Before working in a Hexalith repository, locate, read, and follow
 
 - Before Git work, inspect the current repository's branch, working tree,
   remotes, and recent history.
-- Write every commit message, including an AI-generated draft, as a Conventional
+- Write every commit message, including drafts from Claude, Codex, Cursor, or Copilot, as a Conventional
   Commit: `<type>[optional scope][!]: <description>`. Use one of `build`, `ci`,
   `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, or `test`. Never
   use the `chore` type; pick the type that describes the work.
