@@ -56,6 +56,7 @@ Allowed files for this story:
 - `docs/operations/failure-recovery.md`
 - `docs/operations/index-rebuild.md`
 - `docs/operations/rate-limiting.md`
+- `tests/Hexalith.Memories.Server.Tests/Architecture/AccessTelemetryRetentionDecisionTests.cs`
 
 ## Tasks & Acceptance
 
