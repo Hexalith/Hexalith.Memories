@@ -1878,6 +1878,9 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Status: accepted
   - Source story: story-21.2 dev; Epic 23 retrospective corrective action
   - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Story 28.1)
+  - Rationale: the AppHost lacks the approved `eventstore` gateway topology and the current
+    Memories-owned ingestion lane is not EventStore-to-Memories proof, so Story 28.1 retains the
+    full-stack work and its explicit evidence requirements.
   - Resolution criteria: adopt the exact owner-approved EventStore source/package identities; compose one
     `eventstore` gateway resource with unambiguous `statestore`/`pubsub` ownership; run a real
     EventStore-originating publish through Dapr into Memories; prove persisted/searchable Redis and

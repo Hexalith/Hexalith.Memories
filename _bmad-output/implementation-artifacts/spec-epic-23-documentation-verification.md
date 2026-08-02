@@ -47,6 +47,7 @@ context:
 Allowed files for this story:
 
 - `_bmad-output/implementation-artifacts/epic-23-documentation-verification-2026-08-02.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 - `_bmad-output/implementation-artifacts/review-prompt-epic-23-documentation-verification-gap.md`
 - `_bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
