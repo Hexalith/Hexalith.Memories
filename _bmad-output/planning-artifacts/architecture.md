@@ -1230,6 +1230,18 @@ var server = builder.AddProject<Projects.Hexalith_Memories_Server>("memories")
 - **Tier 2:** Integration tests (requires DAPR slim init + Redis/FalkorDB)
 - **Tier 3:** Aspire e2e (requires full DAPR init + Docker)
 
+**Evidence claim boundary:** A tier identifies infrastructure depth, not every service boundary
+traversed. Evidence must name both the tier and the exercised system boundary.
+
+- Package/source build evidence proves compile and dependency-graph compatibility only.
+- Memories Aspire evidence may claim the concrete resources observed, including Redis Stack,
+  FalkorDB, OpenBao, and Memories Dapr sidecars.
+- Direct `POST /events/ingest` or Dapr publish to the Memories `pubsub` subscription proves the
+  Memories event-intake contract; it does not prove an EventStore producer or gateway.
+- EventStore-to-Memories full-stack evidence requires an AppHost-provisioned `eventstore` resource,
+  Story 1.20-aligned source/package identity, an EventStore-originating event, persisted/searchable
+  Redis and FalkorDB outcomes, duplicate replay proof, and tenant-isolation negative evidence.
+
 **Test naming:** `{ClassName}Tests.cs` with descriptive methods. Shouldly assertions.
 ```csharp
 result.CompositeScore.ShouldBeInRange(0.0f, 1.0f);

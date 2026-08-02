@@ -649,7 +649,7 @@ Operators can configure and verify a bounded lifecycle for access telemetry thro
 Memories source and package modes converge on the exact EventStore runtime identity authorized by EventStore Story 1.20 while preserving the existing zero-code DAPR ingestion contract.
 **Lifecycle label:** Operational Readiness / EventStore Dependency Adoption
 **Driven by:** Approved direct course correction 2026-07-17
-**Activation gate:** Externally gated on EventStore Story 1.20 recording `final_decision: available`, `authorize_consumer_migration: true`, a 40-hex `tested_runtime_sha`, named owner approval, and the approved package version and SHA-256 inventory.
+**Activation state (2026-08-02):** EventStore Story 1.20 now records `final_decision: available`, `authorize_consumer_migration: true`, a 40-hex `tested_runtime_sha`, named owner approval, and the approved package version and SHA-256 inventory. The external gate is satisfied; Epic 28 and Story 28.1 remain backlog pending explicit selection and implementation.
 
 ### Epic 29: OpenBao-First Dapr Secret Management
 Aspire-hosted services resolve application secrets exclusively through Dapr secret-store components backed by OpenBao. Kubernetes Secrets remain permitted only for unavoidable bootstrap credentials or direct pod inputs that Dapr cannot inject.
@@ -4523,6 +4523,17 @@ Operators can trace ingestion end-to-end, the read path stops paying avoidable r
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A19, A26, A36, A46
 **NFRs reinforced:** NFR8, NFR12, NFR28
 
+**Epic 23 ingestion invariant review gate (corrected 2026-08-02):** Every story review that touches ingestion, workflow scheduling/orchestration, payload persistence, semantic indexing, tenant lifecycle/readiness, Story 23.5 ingestion embedding provider calls, or factorization of those surfaces must record a command-backed verdict for each applicable invariant below. Aggregate epic closeout must contain one explicit verdict per row. `N/A` is permitted only when diff inspection proves the reviewed change cannot affect the invariant; a blocker must name its owner, consequence, proof boundary, and reopen trigger.
+
+1. Non-URL source bytes and large intermediate text/vectors remain claim-checked; raw payloads do not leak into workflow history.
+2. Retry and natural-language workflow configuration is captured at scheduling time; orchestrator logic does not read mutable host configuration.
+3. Raw semantic vectors remain chunk-addressed under `{tenant}:vec:{memoryUnitId}:{sequence}` while the base memory-unit identifier remains the product identity.
+4. Failed non-URL ingestion retains a valid source-payload reference for re-ingestion or returns the actionable `NON_URL_REINGESTION_UNAVAILABLE` outcome without scheduling a doomed retry.
+5. Ingestion/indexing verifies memoized tenant/index/schema readiness and never creates indexes on demand; `TenantProvisioningWorkflow` remains the sole creation owner, while Story 23.7's approved in-place upgrades for known additive TAG fields remain allowed before readiness is cached.
+6. Story 23.5 ingestion embedding generation performs exactly one rate-limiter admission for the single operation in `GenerateEmbeddingActivity` and one admission per bounded batch in `GenerateChunkEmbeddingsActivity`.
+
+Each verdict records the evidence command or artifact, reviewer, date, and pass/fail/blocked result. The corrective 2026-08-02 verdicts for this completed epic are recorded in its retrospective addendum.
+
 ### Story 24.1: Trace Propagation Across the Workflow Boundary
 
 As an operator,
@@ -4588,6 +4599,17 @@ Maintainers get a thin composition root, centralized error/telemetry handling, a
 **Lifecycle label:** Operational Readiness / Code Health
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A7, A21, A32, A37, A38, A39, A40, A43, A45
 **NFRs reinforced:** NFR15
+
+**Epic 23 ingestion invariant review gate (corrected 2026-08-02):** Every story review that touches ingestion, workflow scheduling/orchestration, payload persistence, semantic indexing, tenant lifecycle/readiness, Story 23.5 ingestion embedding provider calls, or factorization of those surfaces must record a command-backed verdict for each applicable invariant below. Aggregate epic closeout must contain one explicit verdict per row. `N/A` is permitted only when diff inspection proves the reviewed change cannot affect the invariant; a blocker must name its owner, consequence, proof boundary, and reopen trigger.
+
+1. Non-URL source bytes and large intermediate text/vectors remain claim-checked; raw payloads do not leak into workflow history.
+2. Retry and natural-language workflow configuration is captured at scheduling time; orchestrator logic does not read mutable host configuration.
+3. Raw semantic vectors remain chunk-addressed under `{tenant}:vec:{memoryUnitId}:{sequence}` while the base memory-unit identifier remains the product identity.
+4. Failed non-URL ingestion retains a valid source-payload reference for re-ingestion or returns the actionable `NON_URL_REINGESTION_UNAVAILABLE` outcome without scheduling a doomed retry.
+5. Ingestion/indexing verifies memoized tenant/index/schema readiness and never creates indexes on demand; `TenantProvisioningWorkflow` remains the sole creation owner, while Story 23.7's approved in-place upgrades for known additive TAG fields remain allowed before readiness is cached.
+6. Story 23.5 ingestion embedding generation performs exactly one rate-limiter admission for the single operation in `GenerateEmbeddingActivity` and one admission per bounded batch in `GenerateChunkEmbeddingsActivity`.
+
+Each verdict records the evidence command or artifact, reviewer, date, and pass/fail/blocked result. The corrective 2026-08-02 verdicts for this completed epic are recorded in its retrospective addendum.
 
 ### Story 25.1: Program.cs Decomposition
 
@@ -4961,11 +4983,12 @@ EventStore Story 1.20 while preserving the existing zero-code DAPR ingestion con
 
 **Lifecycle label:** Operational Readiness / EventStore Dependency Adoption.
 
-**Activation gate:** Epic 28 remains backlog and Story 28.1 has no implementation file until
-EventStore Story 1.20 durably records `final_decision: available`,
-`authorize_consumer_migration: true`, a 40-hex `tested_runtime_sha`, named owner approval, and the
-approved package version and SHA-256 inventory. A current tag, repository HEAD, or unapproved package
-version is insufficient.
+**Activation state (2026-08-02):** EventStore Story 1.20 durably records
+`final_decision: available`, `authorize_consumer_migration: true`, a 40-hex `tested_runtime_sha`, named
+owner approval, and the approved package version and SHA-256 inventory. The external gate is satisfied;
+Epic 28 and Story 28.1 remain backlog and Story 28.1 has no implementation file pending explicit
+selection. A current tag, repository HEAD, or unapproved package version remains insufficient for
+implementation.
 
 ### Story 28.1: Adopt Owner-Approved EventStore Runtime Identity
 
@@ -5005,6 +5028,13 @@ gitlink already exposes that version.
 **Then** Debug/source and Release/package builds pass, exact Client/Aspire assets are proven, focused
 EventStore/Server contract tests pass, and a real DAPR publish proves a persisted and searchable
 memory result while duplicate replay is ignored.
+
+**Given** `23.7-APPHOST-EVENTSTORE-FULLSTACK` is accepted,
+**When** Story 28.1 claims the blocker resolved,
+**Then** the AppHost provisions one `eventstore` gateway resource without duplicate `statestore` or
+`pubsub` ownership, a real EventStore-originating publish reaches Memories through Dapr, the resulting
+memory is persisted and searchable through Redis and FalkorDB, duplicate replay is ignored, and attached
+negative evidence proves no cross-tenant result leakage.
 
 **Given** adoption exposes a behavioral incompatibility,
 **When** it cannot be resolved without changing the zero-code ingestion contract or topology,
