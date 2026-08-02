@@ -210,6 +210,22 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Initialize root release-tooling Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install root release tooling
+        run: npm ci
+
+      - name: Audit root release tooling
+        run: npm audit --audit-level=low
+
+      - name: Verify semantic-release configuration offline
+        run: npm run verify:semantic-release-config
+
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here

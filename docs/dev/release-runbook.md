@@ -9,16 +9,19 @@ artifacts from a workstation.
 - Releases are produced by `.github/workflows/release.yml` on `push` events targeting `main`. With
   branch protection now enabled, those `push` events come from PR-merge commits, not direct pushes
   from a workstation.
-- The release job restores, builds, runs `tools/test-release.ps1`, installs npm tooling, validates
-  package inventory, runs the release preflight, and runs `npx semantic-release`. Semantic-release
-  then drives the prepare, publish, and post-publish phases through its plugin chain —
+- The release job restores, builds, runs `tools/test-release.ps1`, installs and audits npm tooling,
+  verifies the release configuration, validates package inventory, runs the release preflight, and
+  runs `npx semantic-release`. Semantic-release then drives the prepare, publish, and post-publish
+  phases through its plugin chain —
   `pack-release.ps1` and
   `publish-release.ps1` are not invoked as separate workflow steps; they are invoked by
   `@semantic-release/exec` during the corresponding semantic-release lifecycle phase.
 - Semantic-release uses `.releaserc.json`.
 - Release tooling restore uses `npm ci` from the tracked root `package-lock.json`. `npm ci` is the
   release contract because it fails when `package.json` and the lockfile disagree and removes any
-  existing `node_modules` tree instead of reusing workstation state.
+  existing `node_modules` tree instead of reusing workstation state. The release job then blocks on
+  the full `npm audit --audit-level=low` and combined configuration-verifier/self-test gates before
+  it can reach release preflight or semantic-release.
 - `tools/release-preflight.ps1` runs after package inventory validation and before `npx
   semantic-release`. It executes the existing `release:dry-run` script to read the next version
   from semantic-release without running prepare or publish hooks, converts that version through
@@ -64,6 +67,40 @@ artifacts from a workstation.
 
 The required-check names mapping to `.github/workflows/ci.yml` job IDs is documented in
 [`branch-protection.md`](./branch-protection.md).
+
+### Release-Tooling Dependency Safety
+
+The repository-root npm graph is development-only release tooling. Its previous lockfile reported
+six low-or-higher advisories: commitlint reached vulnerable `fast-uri` and `js-yaml` versions, while
+semantic-release installed its unused default `@semantic-release/npm` plugin and that plugin's
+bundled npm CLI. The web E2E workspace and production .NET artifacts use separate dependency graphs
+and were not affected.
+
+`semantic-release` is intentionally pinned to `25.0.8`. The offline configuration verifier loads
+that installed version's configuration and constructs its plugin lifecycle without invoking any
+lifecycle hook, so the pin is a reviewed compatibility boundary rather than a general update
+policy. The normal verifier command also runs fail-closed mutation self-tests. The explicit
+`.releaserc.json` allowlist uses only commit analysis, release-note generation, the repository-owned
+exec hooks, and GitHub publication. Because `@semantic-release/npm` is not used, the root override
+scopes its dependency edge to the official `@semantic-release/error@4.0.0` package alias and
+removes the vulnerable npm CLI bundle from the installed and locked graph.
+
+The Hexalith.Memories release and CI maintainers own this exception. Pull requests fail closed when
+configuration precedence changes, lifecycle keys shadow the plugin list, the actual installed
+package graph differs from the reviewed alias, or any low-or-higher npm advisory returns. Validate
+the contract from the repository root with:
+
+```bash
+npm ci
+npm audit --audit-level=low
+npm run verify:semantic-release-config
+```
+
+Remove the alias and exact semantic-release pin when upstream semantic-release no longer installs
+`@semantic-release/npm` by default, or when an upstream plugin release no longer brings the
+vulnerable npm bundle. The owning maintainers must confirm a clean low-level audit, migrate the
+verifier away from any obsolete internal API, and keep all release configuration and workflow
+contract tests green in the same pull request.
 
 ### Release Skip Instructions
 

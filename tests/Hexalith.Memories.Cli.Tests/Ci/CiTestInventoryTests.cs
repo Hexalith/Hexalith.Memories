@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Cli.Tests.Ci;
 
 using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 using Shouldly;
@@ -173,17 +174,227 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
-    public void ReleaseWorkflow_ReleasePreflight_RunsBeforeSemanticRelease()
+    public void ReleaseTooling_ManifestAndLockPinSecureSemanticReleaseGraph()
+    {
+        string repoRoot = GetRepoRoot();
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(repoRoot, "package.json")));
+        using JsonDocument lockFile = JsonDocument.Parse(File.ReadAllText(Path.Combine(repoRoot, "package-lock.json")));
+
+        Dictionary<string, string> expectedDirectDependencies = new(StringComparer.Ordinal)
+        {
+            ["@commitlint/cli"] = "^21.1.0",
+            ["@commitlint/config-conventional"] = "^21.1.0",
+            ["@semantic-release/commit-analyzer"] = "^13.0.1",
+            ["@semantic-release/exec"] = "^7.1.0",
+            ["@semantic-release/github"] = "^12.0.8",
+            ["@semantic-release/release-notes-generator"] = "^14.1.1",
+            ["cosmiconfig"] = "9.0.2",
+            ["semantic-release"] = "25.0.8",
+        };
+
+        Dictionary<string, string> manifestDependencies = ReadStringMapping(manifest.RootElement.GetProperty("devDependencies"));
+        manifestDependencies.ShouldBe(expectedDirectDependencies, ignoreOrder: true);
+        JsonElement scripts = manifest.RootElement.GetProperty("scripts");
+        scripts.GetProperty("verify:semantic-release-config").GetString()
+            .ShouldBe("node ./tools/verify-semantic-release-config.mjs && node ./tools/verify-semantic-release-config.mjs --self-test");
+        string[] scriptNames = [.. scripts.EnumerateObject().Select(static property => property.Name)];
+        foreach (string lifecycleScript in new[] { "preinstall", "install", "postinstall", "prepublish", "prepublishOnly", "preprepare", "prepare", "postprepare" })
+        {
+            scriptNames.ShouldNotContain(lifecycleScript, "root npm ci must not execute repository-defined install lifecycle code.");
+        }
+
+        foreach (string forbiddenSection in new[] { "workspaces", "dependencies", "optionalDependencies", "peerDependencies", "peerDependenciesMeta", "bundleDependencies", "bundledDependencies" })
+        {
+            manifest.RootElement.TryGetProperty(forbiddenSection, out _).ShouldBeFalse($"root release tooling must not define the '{forbiddenSection}' section.");
+        }
+
+        JsonElement overrides = manifest.RootElement.GetProperty("overrides");
+        overrides.EnumerateObject().Select(static property => property.Name).ShouldBe(["fast-uri", "js-yaml", "semantic-release"]);
+        overrides.GetProperty("fast-uri").GetString().ShouldBe("3.1.5");
+        overrides.GetProperty("js-yaml").GetString().ShouldBe("4.3.1");
+        JsonElement semanticReleaseOverride = overrides.GetProperty("semantic-release");
+        semanticReleaseOverride.EnumerateObject().Select(static property => property.Name).ShouldBe(["@semantic-release/npm"]);
+        semanticReleaseOverride.GetProperty("@semantic-release/npm").GetString().ShouldBe("npm:@semantic-release/error@4.0.0");
+        overrides.TryGetProperty("npm", out _).ShouldBeFalse("the vulnerable npm CLI bundle must not be restored through a global override.");
+
+        lockFile.RootElement.GetProperty("lockfileVersion").GetInt32().ShouldBe(3);
+        JsonElement lockedPackages = lockFile.RootElement.GetProperty("packages");
+        ReadStringMapping(lockedPackages.GetProperty(string.Empty).GetProperty("devDependencies"))
+            .ShouldBe(expectedDirectDependencies, ignoreOrder: true);
+
+        Dictionary<string, string> expectedLockedVersions = new(StringComparer.Ordinal)
+        {
+            ["node_modules/@commitlint/cli"] = "21.1.0",
+            ["node_modules/@commitlint/config-conventional"] = "21.1.0",
+            ["node_modules/@semantic-release/commit-analyzer"] = "13.0.1",
+            ["node_modules/@semantic-release/exec"] = "7.1.0",
+            ["node_modules/@semantic-release/github"] = "12.0.8",
+            ["node_modules/@semantic-release/release-notes-generator"] = "14.1.1",
+            ["node_modules/cosmiconfig"] = "9.0.2",
+            ["node_modules/fast-uri"] = "3.1.5",
+            ["node_modules/js-yaml"] = "4.3.1",
+            ["node_modules/semantic-release"] = "25.0.8",
+            ["node_modules/undici"] = "7.28.0",
+        };
+        foreach ((string packagePath, string expectedVersion) in expectedLockedVersions)
+        {
+            lockedPackages.GetProperty(packagePath).GetProperty("version").GetString().ShouldBe(expectedVersion);
+        }
+
+        JsonProperty[] npmPluginLockPaths = [.. lockedPackages.EnumerateObject()
+            .Where(static package => package.Name.EndsWith("node_modules/@semantic-release/npm", StringComparison.Ordinal))];
+        npmPluginLockPaths.Length.ShouldBe(1, "every semantic-release npm plugin lock path must collapse to the single reviewed alias.");
+        GetLockedPackageName(npmPluginLockPaths[0]).ShouldBe("@semantic-release/error");
+        npmPluginLockPaths[0].Value.GetProperty("version").GetString().ShouldBe("4.0.0");
+
+        string[] installedPackageNames = [.. lockedPackages.EnumerateObject()
+            .Select(static package => GetLockedPackageName(package))
+            .OfType<string>()];
+        installedPackageNames.ShouldNotContain("@semantic-release/npm");
+        installedPackageNames.ShouldNotContain("npm");
+        installedPackageNames.ShouldNotContain("tar");
+        installedPackageNames.ShouldNotContain("brace-expansion");
+    }
+
+    [Fact]
+    public void ReleaseConfiguration_UsesSingleExplicitAllowlistedPluginSource()
+    {
+        string repoRoot = GetRepoRoot();
+        using JsonDocument manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(repoRoot, "package.json")));
+        using JsonDocument releaseConfig = JsonDocument.Parse(File.ReadAllText(Path.Combine(repoRoot, ".releaserc.json")));
+
+        manifest.RootElement.TryGetProperty("release", out _).ShouldBeFalse("package.json must not shadow the canonical .releaserc.json configuration.");
+        manifest.RootElement.TryGetProperty("cosmiconfig", out _).ShouldBeFalse("package.json must not redirect semantic-release configuration discovery.");
+
+        string[] forbiddenConfigPaths =
+        [
+            ".releaserc", ".releaserc.yaml", ".releaserc.yml", ".releaserc.js", ".releaserc.ts", ".releaserc.cjs", ".releaserc.mjs",
+            ".config/releaserc", ".config/releaserc.json", ".config/releaserc.yaml", ".config/releaserc.yml", ".config/releaserc.js", ".config/releaserc.ts", ".config/releaserc.cjs", ".config/releaserc.mjs",
+            "release.config.js", "release.config.ts", "release.config.cjs", "release.config.mjs",
+            "package.yaml", ".config/config.json", ".config/config.yaml", ".config/config.yml", ".config/config.js", ".config/config.ts", ".config/config.cjs", ".config/config.mjs",
+        ];
+        forbiddenConfigPaths.ShouldAllBe(path => !File.Exists(Path.Combine(repoRoot, path)), "alternate cosmiconfig sources must not take precedence over .releaserc.json.");
+
+        JsonElement config = releaseConfig.RootElement;
+        config.TryGetProperty("$import", out _).ShouldBeFalse();
+        config.TryGetProperty("extends", out _).ShouldBeFalse();
+        string[] lifecycleKeys = ["addChannel", "analyzeCommits", "fail", "generateNotes", "prepare", "publish", "success", "verifyConditions", "verifyRelease"];
+        string[] configKeys = [.. config.EnumerateObject().Select(static property => property.Name)];
+        configKeys.ShouldBe(["branches", "tagFormat", "plugins"]);
+        foreach (string lifecycleKey in lifecycleKeys)
+        {
+            configKeys.ShouldNotContain(lifecycleKey, "top-level lifecycle hooks must not shadow the reviewed plugin graph.");
+        }
+
+        config.GetProperty("branches").EnumerateArray().Select(static branch => branch.GetString()).ShouldBe(["main"]);
+        config.GetProperty("tagFormat").GetString().ShouldBe("v${version}");
+        string[] plugins = [.. config.GetProperty("plugins").EnumerateArray().Select(static plugin => plugin.ValueKind == JsonValueKind.Array ? plugin[0].GetString()! : plugin.GetString()!)];
+        plugins.ShouldBe(
+        [
+            "@semantic-release/commit-analyzer",
+            "@semantic-release/release-notes-generator",
+            "@semantic-release/exec",
+            "@semantic-release/github",
+        ]);
+        plugins.ShouldNotContain("@semantic-release/npm");
+
+        JsonElement execPlugin = config.GetProperty("plugins")[2];
+        execPlugin.GetArrayLength().ShouldBe(2);
+        JsonElement execOptions = execPlugin[1];
+        execOptions.EnumerateObject().Select(static property => property.Name).ShouldBe(["verifyReleaseCmd", "prepareCmd", "publishCmd"]);
+        execOptions.GetProperty("verifyReleaseCmd").GetString().ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/verify-container-registry.ps1");
+        execOptions.GetProperty("prepareCmd").GetString()
+            .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/pack-release.ps1 -Version ${nextRelease.version} -OutputDirectory ./artifacts/packages/release");
+        execOptions.GetProperty("publishCmd").GetString()
+            .ShouldBe("pwsh -NoLogo -NoProfile -File ./tools/publish-release.ps1 -Version ${nextRelease.version}");
+
+        JsonElement githubPlugin = config.GetProperty("plugins")[3];
+        githubPlugin.GetArrayLength().ShouldBe(2);
+        JsonElement githubOptions = githubPlugin[1];
+        githubOptions.EnumerateObject().Select(static property => property.Name).ShouldBe(["assets"]);
+        githubOptions.GetProperty("assets").EnumerateArray().Select(static asset => asset.GetString()).ShouldBe(
+        [
+            "artifacts/packages/release/*.nupkg",
+            "artifacts/deployment/hexalith-memories-production.yaml",
+        ]);
+    }
+
+    [Fact]
+    public void CiWorkflow_RequiredUnitContractJob_BlocksOnRootReleaseToolingGates()
+    {
+        string repoRoot = GetRepoRoot();
+        string[] workflowLines = File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
+        string workflow = string.Join('\n', workflowLines);
+        workflow.ShouldContain("pull_request:");
+        string[] pullRequestLines = GetWorkflowEventLines(workflowLines, "pull_request");
+        pullRequestLines.ShouldNotContain(static line => line.TrimStart().StartsWith("paths:", StringComparison.Ordinal), "the blocking release-tooling gates must run for every pull-request path.");
+        pullRequestLines.ShouldNotContain(static line => line.TrimStart().StartsWith("paths-ignore:", StringComparison.Ordinal), "pull-request path exclusions must not bypass release-tooling gates.");
+        workflowLines.ShouldNotContain(static line => string.Equals(line.TrimEnd(), "defaults:", StringComparison.Ordinal), "workflow-level default working-directory redirection must not move root release-tooling gates.");
+
+        string[] requiredJobLines = GetWorkflowJobLines(workflowLines, "test-unit-contract");
+        requiredJobLines.ShouldNotContain(static line => line.StartsWith("    if:", StringComparison.Ordinal), "the required PR job must not be conditionally skipped.");
+        requiredJobLines.ShouldNotContain(static line => line.StartsWith("    continue-on-error:", StringComparison.Ordinal), "the required PR job must fail when a root release-tooling gate fails.");
+        requiredJobLines.ShouldNotContain(static line => line.StartsWith("    defaults:", StringComparison.Ordinal), "the required PR job must not redirect root release-tooling commands through a default working directory.");
+        ReleaseWorkflowStep[] requiredJobSteps = ParseReleaseWorkflowSteps(requiredJobLines);
+        int setupIndex = Array.FindIndex(requiredJobSteps, static step => step.Name == "Initialize root release-tooling Node.js");
+        int installIndex = Array.FindIndex(requiredJobSteps, static step => step.Name == "Install root release tooling");
+        int auditIndex = Array.FindIndex(requiredJobSteps, static step => step.Name == "Audit root release tooling");
+        int verifierIndex = Array.FindIndex(requiredJobSteps, static step => step.Name == "Verify semantic-release configuration offline");
+
+        setupIndex.ShouldBeGreaterThanOrEqualTo(0);
+        setupIndex.ShouldBeLessThan(installIndex);
+        installIndex.ShouldBeLessThan(auditIndex);
+        auditIndex.ShouldBeLessThan(verifierIndex);
+        requiredJobSteps[installIndex].Run.ShouldBe("npm ci");
+        requiredJobSteps[auditIndex].Run.ShouldBe("npm audit --audit-level=low");
+        requiredJobSteps[verifierIndex].Run.ShouldBe("npm run verify:semantic-release-config");
+        requiredJobSteps[setupIndex].Uses.ShouldBe("actions/setup-node@v6");
+        requiredJobSteps[setupIndex].WorkingDirectory.ShouldBeNull();
+        requiredJobSteps[installIndex].WorkingDirectory.ShouldBeNull();
+        requiredJobSteps[auditIndex].WorkingDirectory.ShouldBeNull();
+        requiredJobSteps[verifierIndex].WorkingDirectory.ShouldBeNull();
+        foreach (ReleaseWorkflowStep gate in new[] { requiredJobSteps[installIndex], requiredJobSteps[auditIndex], requiredJobSteps[verifierIndex] })
+        {
+            gate.If.ShouldBeNull("root release-tooling gates must run unconditionally in the required PR job.");
+            gate.ContinueOnError.ShouldBeNull("root release-tooling gate failures must fail the required PR job.");
+        }
+
+        ReleaseWorkflowStep[] webE2eSteps = ParseReleaseWorkflowSteps(GetWorkflowJobLines(workflowLines, "web-e2e-specimen"));
+        ReleaseWorkflowStep webE2eInstall = webE2eSteps.Single(static step => step.Name == "Install Memories web E2E dependencies");
+        webE2eInstall.Run.ShouldBe("npm ci");
+        webE2eInstall.WorkingDirectory.ShouldBe("tests/Hexalith.Memories.Web.E2E");
+    }
+
+    [Fact]
+    public void ReleaseWorkflow_ReleaseToolingGatesAndPreflight_RunBeforeSemanticRelease()
     {
         string repoRoot = GetRepoRoot();
         ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(File.ReadAllLines(Path.Combine(repoRoot, ".github", "workflows", "release.yml")));
 
+        int installIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Install release tooling", StringComparison.Ordinal));
+        int auditIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Audit root release tooling", StringComparison.Ordinal));
+        int verifierIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Verify semantic-release configuration offline", StringComparison.Ordinal));
         int preflightIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run release preflight", StringComparison.Ordinal));
         int semanticReleaseIndex = Array.FindIndex(steps, static step => string.Equals(step.Name, "Run semantic-release", StringComparison.Ordinal));
 
+        installIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must install the reviewed root lockfile before release preflight.");
+        auditIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must audit the complete root release-tooling graph.");
+        verifierIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must run the combined configuration verifier and negative self-tests.");
         preflightIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must run the repository-owned release preflight before semantic-release can prepare or publish packages.");
         semanticReleaseIndex.ShouldBeGreaterThanOrEqualTo(0, "release.yml must retain the semantic-release step.");
+        installIndex.ShouldBeLessThan(auditIndex, "release tooling installation must complete before its audit.");
+        auditIndex.ShouldBeLessThan(verifierIndex, "the full low-level audit must pass before configuration verification.");
+        verifierIndex.ShouldBeLessThan(preflightIndex, "the combined configuration verifier must pass before release preflight.");
         preflightIndex.ShouldBeLessThan(semanticReleaseIndex, "release preflight must run before semantic-release starts publish-capable work.");
+
+        steps[auditIndex].Run.ShouldBe("npm audit --audit-level=low");
+        steps[verifierIndex].Run.ShouldBe("npm run verify:semantic-release-config");
+        foreach (ReleaseWorkflowStep gate in new[] { steps[installIndex], steps[auditIndex], steps[verifierIndex] })
+        {
+            gate.If.ShouldBeNull("release-tooling gates must run unconditionally in the production release job.");
+            gate.ContinueOnError.ShouldBeNull("release-tooling gate failures must block production release.");
+            gate.WorkingDirectory.ShouldBeNull("production release-tooling gates must operate on the root lockfile.");
+        }
 
         ReleaseWorkflowStep step = steps[preflightIndex];
         step.Shell.ShouldBe("pwsh");
@@ -1113,6 +1324,50 @@ public sealed partial class CiTestInventoryTests
         return matches[0];
     }
 
+    private static string[] GetWorkflowEventLines(string[] lines, string eventName)
+    {
+        string header = $"  {eventName}:";
+        int start = Array.FindIndex(lines, line => string.Equals(line.TrimEnd(), header, StringComparison.Ordinal));
+        start.ShouldBeGreaterThanOrEqualTo(0, $"workflow must declare on.{eventName}.");
+
+        int end = start + 1;
+        while (end < lines.Length)
+        {
+            string line = lines[end].TrimEnd();
+            if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith("    ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            end++;
+        }
+
+        return lines[start..end];
+    }
+
+    private static string[] GetWorkflowJobLines(string[] lines, string jobName)
+    {
+        string header = $"  {jobName}:";
+        int start = Array.FindIndex(lines, line => string.Equals(line.TrimEnd(), header, StringComparison.Ordinal));
+        start.ShouldBeGreaterThanOrEqualTo(0, $"workflow must declare jobs.{jobName}.");
+
+        int end = start + 1;
+        while (end < lines.Length)
+        {
+            string line = lines[end].TrimEnd();
+            if (line.StartsWith("  ", StringComparison.Ordinal) &&
+                !line.StartsWith("    ", StringComparison.Ordinal) &&
+                line.EndsWith(':'))
+            {
+                break;
+            }
+
+            end++;
+        }
+
+        return lines[start..end];
+    }
+
     // Hand-rolled step parser: release.yml has a single 'release' job whose steps are at the
     // 6-space indent level. Each step starts with `      - name: <NAME>` and continues at 8-space
     // body indent until the next sibling step or the end of the steps array. The release.yml
@@ -1140,6 +1395,7 @@ public sealed partial class CiTestInventoryTests
             string? continueOnError = null;
             string? run = null;
             string? uses = null;
+            string? workingDirectory = null;
             Dictionary<string, string> environment = new(StringComparer.Ordinal);
             List<string> runBlockLines = [];
             bool inRunBlock = false;
@@ -1216,6 +1472,10 @@ public sealed partial class CiTestInventoryTests
                 {
                     uses = trimmed["uses:".Length..].Trim();
                 }
+                else if (trimmed.StartsWith("working-directory:", StringComparison.Ordinal))
+                {
+                    workingDirectory = StripQuotes(trimmed["working-directory:".Length..].Trim());
+                }
                 else if (string.Equals(trimmed, "env:", StringComparison.Ordinal))
                 {
                     inEnvironment = true;
@@ -1243,6 +1503,7 @@ public sealed partial class CiTestInventoryTests
                 ContinueOnError: continueOnError,
                 Run: run,
                 Uses: uses,
+                WorkingDirectory: workingDirectory,
                 Environment: environment,
                 RunBlock: string.Join('\n', runBlockLines)));
         }
@@ -1356,6 +1617,30 @@ public sealed partial class CiTestInventoryTests
         return value;
     }
 
+    private static Dictionary<string, string> ReadStringMapping(JsonElement mapping)
+    {
+        return mapping.EnumerateObject().ToDictionary(
+            static property => property.Name,
+            static property => property.Value.GetString()!,
+            StringComparer.Ordinal);
+    }
+
+    private static string? GetLockedPackageName(JsonProperty package)
+    {
+        if (package.Value.TryGetProperty("name", out JsonElement explicitName) && explicitName.ValueKind == JsonValueKind.String)
+        {
+            string? name = explicitName.GetString();
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                return name;
+            }
+        }
+
+        const string NodeModulesMarker = "node_modules/";
+        int markerIndex = package.Name.LastIndexOf(NodeModulesMarker, StringComparison.Ordinal);
+        return markerIndex < 0 ? null : package.Name[(markerIndex + NodeModulesMarker.Length)..];
+    }
+
     private sealed record ReleaseWorkflowStep(
         string Name,
         string? Shell,
@@ -1363,6 +1648,7 @@ public sealed partial class CiTestInventoryTests
         string? ContinueOnError,
         string? Run,
         string? Uses,
+        string? WorkingDirectory,
         Dictionary<string, string> Environment,
         string RunBlock);
 

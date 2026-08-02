@@ -82,6 +82,12 @@ jobs:
       - name: Install release tooling
         run: npm ci
 
+      - name: Audit root release tooling
+        run: npm audit --audit-level=low
+
+      - name: Verify semantic-release configuration offline
+        run: npm run verify:semantic-release-config
+
       - name: Validate package inventory before release
         shell: pwsh
         run: ./tools/validate-release-packages.ps1

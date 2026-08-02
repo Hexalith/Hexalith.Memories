@@ -4,7 +4,8 @@
   "scripts": {
     "commitlint": "commitlint --from HEAD~1 --to HEAD",
     "release": "semantic-release",
-    "release:dry-run": "semantic-release --dry-run --no-ci"
+    "release:dry-run": "semantic-release --dry-run --no-ci",
+    "verify:semantic-release-config": "node ./tools/verify-semantic-release-config.mjs && node ./tools/verify-semantic-release-config.mjs --self-test"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.1.0",
@@ -13,16 +14,14 @@
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/github": "^12.0.8",
     "@semantic-release/release-notes-generator": "^14.1.1",
-    "semantic-release": "^25.0.5"
+    "cosmiconfig": "9.0.2",
+    "semantic-release": "25.0.8"
   },
   "overrides": {
     "fast-uri": "3.1.5",
     "js-yaml": "4.3.1",
-    "npm": {
-      ".": "11.18.0",
-      "brace-expansion": "5.0.9",
-      "tar": "7.5.22",
-      "undici": "6.28.0"
+    "semantic-release": {
+      "@semantic-release/npm": "npm:@semantic-release/error@4.0.0"
     }
   }
 }
