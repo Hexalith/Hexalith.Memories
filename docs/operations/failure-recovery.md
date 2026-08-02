@@ -1,8 +1,8 @@
-# Failure Recovery & Re-Ingestion (Story 6.3)
+# Failure Recovery & Re-Ingestion
 
-This page documents the ingestion-pipeline observability and recovery layer that ships in Story 6.3:
-configurable per-activity retry, the durable failed-units registry, the per-case ingestion counter
-actor, and the operator-driven re-ingestion endpoints.
+This page retains the Story 6.3 ingestion-pipeline recovery contract and records its
+Epic 23 verification corrections: captured retry behavior, failed-unit persistence,
+retained non-URL source payloads, and operator-driven re-ingestion.
 
 ## Per-Activity Retry Configuration
 
@@ -29,8 +29,10 @@ Retry behavior is controlled per activity class via `appsettings.json`:
 
 ## Failed-Units Registry
 
-Every workflow that exhausts retries writes a durable record before re-throwing — NFR19 (never silently
-dropped) is enforced by **persistence**, not just by an event on the activity stream.
+Every workflow that reaches its terminal failure path attempts to write a durable
+record before re-throwing. Failed-unit persistence is best effort: if that write also
+fails, event 6309 records the persistence failure without masking the original
+workflow exception. Operators must treat that log as a recovery-evidence gap.
 
 Key shapes:
 
@@ -41,16 +43,29 @@ Key shapes:
 
 Hash + ZADD execute in one Lua round-trip — no half-write.
 
-**Retention:** failed units accumulate indefinitely (NFR19). Operators must re-ingest (which deletes the
-record on success) or, for outright pruning, delete via the Redis CLI. A `DELETE /failed-units/{id}`
-endpoint is Phase 2.
+**Retention has two different bounds.** The failed-unit hash and case sorted-set row
+have no automatic TTL; they remain until a re-ingestion claim removes them or an
+operator-managed backend action. A scheduling failure restores the claimed record.
+The source bytes referenced by a supported non-URL
+failure are separate state and carry a Dapr TTL of
+`max(1, Ingestion:WorkflowPayloadStore:TtlHours)` hours: the default is **24 hours**
+and non-positive configured values become **1 hour**. The implementation does not
+apply an upper clamp.
 
-For non-URL failures, the failed-unit hash stores only a safe `WorkflowPayloadReference`, not raw file
-bytes or raw event JSON. The referenced source bytes remain in the workflow payload store for
-`Ingestion:WorkflowPayloadStore:TtlHours` hours, default `24`. After that window, or for legacy records
-that predate source-payload retention, re-ingestion returns `NON_URL_REINGESTION_UNAVAILABLE` and leaves
-the failed-unit hash, case sorted-set row, and dedup key untouched. Operators should ingest again from
-the original file/event source when the retained source payload is unavailable.
+The registry's internal `SourcePayloadReference` field stores only an opaque,
+tenant-scoped source reference, never raw file bytes or event JSON. A normal non-URL
+scheduling path first moves source bytes into the payload store; on terminal failure,
+that source reference can be retained while
+derived extraction, chunk-text, and vector payloads remain transient and are cleaned
+up on a best-effort basis. URL fetch payloads are transient because URL re-ingestion
+refetches. Legacy or direct scheduling paths without a valid source reference cannot
+be reconstructed after failure.
+
+After source-payload expiry, or when a record never had a valid retained source,
+re-ingestion returns `NON_URL_REINGESTION_UNAVAILABLE` and leaves the failed-unit
+hash, case sorted-set row, and dedup key untouched. Ingest again from the original
+file, event, annotation, command, or projection source. Do not copy or expose the
+opaque internal reference as a substitute for the original source.
 
 ## `FailedCount` vs `FailedUnitsPage.TotalCount`
 
@@ -78,20 +93,30 @@ POST /api/v1/tenants/{tenantId}/cases/{caseId}/failed-units/re-ingest
 Per-unit flow:
 
 1. **Read** the failed-unit hash → `FailedUnitRecord`.
-2. **Validate non-URL source payload availability before claim.** URL records skip this because the
-   server fetches the URL again. File, directory, annotation, command/projection, and event records
-   require a valid tenant-scoped source-byte payload reference.
+2. **Validate non-URL source payload availability before claim.** URL records skip
+   this because the server fetches the URL again. File, directory, annotation,
+   command/projection, and event records require a readable reference with the
+   expected tenant, payload kind, and memory-unit/dedup scope. Validation failure
+   returns `NON_URL_REINGESTION_UNAVAILABLE` before any registry or dedup deletion.
 3. **Atomically claim**: delete the hash + sorted-set entry + dedup key in one Lua call. If the hash
    was already gone (concurrent re-ingestion), return **409 Conflict** (`RE_INGESTION_IN_PROGRESS`).
-4. **Rebuild** an `IngestionInput` from the persisted record. URL records refetch from `SourceUri`;
-   supported non-URL records pass `ContentBytes = null` and the retained `PayloadReference`.
+4. **Rebuild** an `IngestionInput` from the persisted record. URL records refetch
+   from `SourceUri`; supported non-URL records schedule with `ContentBytes = null`
+   and the validated retained source reference.
 5. **Schedule** a new `IngestionWorkflow` instance, passing `memoryUnitId` as the DAPR workflow
    `instanceId`. The workflow's existing `context.InstanceId`-based memory-unit-id fallback picks it
    up — **annotations and graph edges survive** because the id is preserved.
+6. If scheduling fails after claim, restore the complete original failed-unit record:
+   tenant/case/source/audit fields, failure details and timestamps, metadata,
+   causation/correlation identifiers, and the optional source reference. If restore
+   itself fails, the coordinator raises a combined failure for operator escalation.
 
-Bulk endpoint enumerates per-unit outcomes; one missing/conflicted/error unit does **not** abort the
-batch. The endpoint returns 200 OK with a `BulkReIngestionResponse` listing each outcome — only request
-validation (400) or missing case (404) abort.
+Bulk endpoint enumerates per-unit outcomes; one missing, conflicted, unsupported, or
+errored unit does **not** abort the batch. Unsupported sources keep the explicit
+`unsupported-source-payload` outcome and `NON_URL_REINGESTION_UNAVAILABLE` code; they
+are not collapsed into generic scheduling errors. The endpoint returns 200 OK with a
+`BulkReIngestionResponse` listing each outcome — only request validation (400) or a
+missing case (404) aborts the request.
 
 `IngestedBy` is preserved from the failed-unit record (audit trail), not the caller's identity.
 
@@ -143,6 +168,8 @@ Queued | Extracting | Embedding | Indexing
 
 ## Operational runbooks
 
+- [Rate limiting and provider recovery](./rate-limiting.md)
+- [Directory ingestion](./directory-ingestion.md)
 - [Capacity planning](./capacity-planning.md)
 - [Incident response](./incident-response.md)
 - [Index rebuild and recovery decisions](./index-rebuild.md)
