@@ -10,6 +10,12 @@ probes against cluster context `jpiquot@local`, namespace `hexalith-memories`
 **Trigger:** Story 31.2's own Open Decisions **D1** and **D2**, settled before development rather than
 mid-implementation
 
+> **Correction 2026-08-02:** This proposal retargeted Story 31.2 itself to `DW 27.3-CR29`/`CR30` and moved
+> `tools/verify-production-deployment.ps1` to Preserve/out-of-scope, but Epic 31's Story 31.2 **Owned paths**
+> copy retained `CR17` and conditional verifier ownership. The “implemented” status was therefore incomplete
+> across the governed copies. The Administrator-approved 2026-08-02 Story 31.2 Dapr/OpenBao
+> artifact-alignment proposal corrects the Epic copy. Historical text below remains unchanged for provenance.
+
 > **Second of two proposals dated 2026-08-01 for Epic 31.** The first,
 > `sprint-change-proposal-2026-08-01-story-31-1-checkpoint-split-and-epic-31-activation-gate.md`, made Story
 > 31.2 developable. This one settles the two scope questions the story correctly routed rather than resolving

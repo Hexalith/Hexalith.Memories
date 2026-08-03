@@ -1,0 +1,69 @@
+{
+  "context": "jpiquot@local",
+  "pods": {
+    "apiVersion": "v1",
+    "kind": "List",
+    "items": [
+      {
+        "metadata": {
+          "name": "memories-access-telemetry-7cc55d9fd8-proof",
+          "labels": {
+            "app.kubernetes.io/name": "memories-access-telemetry"
+          }
+        },
+        "status": {
+          "phase": "Running",
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True"
+            }
+          ],
+          "containerStatuses": [
+            {
+              "name": "lifecycle",
+              "ready": true,
+              "imageID": "docker-pullable://registry.hexalith.com/memories-access-telemetry@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            {
+              "name": "daprd",
+              "ready": true,
+              "imageID": "docker-pullable://ghcr.io/dapr/daprd@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "daprdVersions": {
+    "memories-access-telemetry-7cc55d9fd8-proof": "1.18.1"
+  },
+  "metadata": {
+    "memories-access-telemetry-7cc55d9fd8-proof": {
+      "id": "memories-access-telemetry",
+      "runtimeVersion": "1.18.1",
+      "scheduler": {
+        "connectedAddresses": [
+          "dapr-scheduler-server-0.dapr-system.svc.cluster.local:50006",
+          "dapr-scheduler-server-1.dapr-system.svc.cluster.local:50006",
+          "dapr-scheduler-server-2.dapr-system.svc.cluster.local:50006"
+        ]
+      },
+      "actors": [
+        {
+          "type": "AccessTelemetryLifecycleActor",
+          "count": 1
+        }
+      ],
+      "enabledFeatures": [
+        "Actor.Reentrancy"
+      ]
+    }
+  },
+  "alphaOptIn": {
+    "memories-access-telemetry-7cc55d9fd8-proof": [
+      "false",
+      "false"
+    ]
+  }
+}

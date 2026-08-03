@@ -155,11 +155,12 @@ story_execution_order:
       - 23-7-index-provisioning-ownership
       - 23-8-workflow-config-determinism
   epic-27:
-    reason: "Corrected 2026-08-01 by approved Sprint Change Proposal 2026-08-01: the invalid Story 27.5/27.6 registrations are withdrawn. Story 27.3 owns C0 and its independent C2/C3/C4 work; all twenty-five C1 gate definitions are held, not registered, and have no current story owner. Story 27.4 remains backlog and cannot start until later-approved, separately tracked story files register and pass all C1.1-C1.25 gates on real per-gate producers. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record."
+    reason: "Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 is the first registered one-gate successor and owns only C1.15 as backlog. Its producer and fixture exist, but C1.15 remains pending/not complete and is not passed. Story 27.3 still owns C0 and its independent C2/C3/C4 work; the remaining twenty-four C1 gates are held, unregistered, and unowned. Story 27.4 remains backlog and cannot start until all twenty-five successors are registered, done, and passed on real per-gate evidence under one profile hash. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record."
     order:
       - 27-1-access-telemetry-retention-ownership-decision
       - 27-2-bounded-retention-ttl-and-purge-implementation
       - 27-3-production-adapter-and-deployment-profile
+      - 27-21-runtime-and-control-plane-identity
       - 27-4-retention-verification-operations-runbook-and-a41-close-out
   epic-29:
     reason: "Story 29.2 consumes the executable OpenBao AppHost topology and isolation contract produced by Story 29.1."
@@ -448,12 +449,13 @@ development_status:
   27-1-access-telemetry-retention-ownership-decision: done
   27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-production-adapter-and-deployment-profile: in-progress
+  27-21-runtime-and-control-plane-identity: backlog
   27-4-retention-verification-operations-runbook-and-a41-close-out: backlog
-  # Corrected 2026-08-01 by approved Sprint Change Proposal 2026-08-01: Stories 27.5 and 27.6
-  # are withdrawn from registration. Their twenty-five C1 definitions are held only in the
-  # proposal annex and have no current story owner or status. Production writes remain disabled,
-  # Story 27.4 remains backlog, and A41 remains open until compliant successor story files exist
-  # and all C1.1-C1.25 gates pass on real per-gate producers.
+  # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
+  # C1.15 as backlog; producer existence does not pass that gate. The remaining twenty-four C1
+  # definitions are held without a current story owner or status. Production writes remain
+  # disabled, Story 27.4 remains backlog, and A41 remains open until all C1.1-C1.25 gates pass
+  # on real per-gate evidence under the same immutable profile hash.
   epic-27-retrospective: optional
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption

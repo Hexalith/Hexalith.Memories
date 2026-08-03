@@ -8,6 +8,13 @@
 **Evidence base:** current worktree at HEAD `1d9e9c89ef53d877b4ec09face575c36e5889854`
 **Trigger:** `dev-story 31.2` halted at its own Task 0 activation gate on 2026-08-01
 
+> **Correction 2026-08-02:** This proposal amended Epic 31's activation-gate copy but did not amend Story
+> 31.2's local `## Blocking Activation Gate` or Task 0. Those copies retained the superseded requirement that
+> Story 31.1 be `done`, so the claim below that Story 31.2 became developable was incomplete. The
+> Administrator-approved 2026-08-02 Story 31.2 Dapr/OpenBao artifact-alignment proposal corrects both local
+> copies and adds a planned executable coherence guard. Historical text below remains unchanged for
+> provenance.
+
 > **Distinct from** `sprint-change-proposal-2026-08-01.md` (Story 27.3 / Stories 27.5–27.6 registration
 > rollback). That proposal states at its section 3 that "Story 31.2 remains the source of the future
 > non-vault-typed end state referenced by AC6". This proposal does not disturb that; it changes when Story
