@@ -404,7 +404,7 @@ Decisions made during context analysis, extracted for quick reference:
 | D8 | TenantAuthorizationMiddleware no longer deferred | Epic 20 implemented Server auth and tenant-claim authorization; preserve the guard on every tenant-scoped ingress path | Security Architecture |
 | D9 | Safety interfaces (IGraphQueryBuilder) are interfaces; extensibility points are concrete classes | Avoids abstraction tax; extract when second implementation arrives | Architectural Components |
 | D10 | Index rebuild: accept degradation in MVP, design naming for concurrent versions | Solo developer; no production tenants during thesis validation | Open Decision |
-| D29 | Redis physical isolation target is per-tenant ACL users plus tenant-scoped backend resolution | Prefix-only naming is insufficient as a security boundary; verifier evidence must prove target tenant storage and metadata without pairwise deep scans | Resolved Design Questions |
+| D29 | Redis physical isolation target is per-tenant ACL users plus tenant-scoped backend resolution | Prefix-only naming is insufficient as a security boundary; verifier evidence must prove target tenant storage and metadata without pairwise deep scans and use the classified evidence semantics below | Resolved Design Questions |
 
 ## Starter Template Evaluation
 
@@ -600,9 +600,21 @@ Captured in Decision Registry D1-D31. D1-D10 from context analysis, D11-D17 from
 | D26 | DAPR Conversation API for LLM communication | Provider-agnostic LLM abstraction via `Dapr.AI`. Swap providers (OpenAI, Anthropic, Google, Mistral) by changing component YAML only. Alpha status accepted — suppress `DAPR_CONVERSATION` warning. | MVP (enrichment optional), Phase 1.5 (full AI features) |
 | D27 | Dapr Agents as Python sidecar service | Dapr Agents SDK is Python-only (GA 1.0.0). Run as a polyglot sidecar service (`ai-agent`) called by C# workflows via DAPR service invocation. Python owns AI enrichment, NLP, causal inference. C# owns core domain. | MVP (optional enrichment), Phase 1.5 (full AI features) |
 | D28 | Polyglot services via DAPR service invocation | When a Python/other-language library is the best fit, create a service in that language. DAPR service invocation makes the calling language invisible. Aspire AppHost orchestrates all services regardless of language. | MVP |
-| D29 | Redis physical isolation target | Per-tenant ACL users plus tenant-scoped backend resolution; prefixes/hash tags/logical DBs are placement aids, not the security boundary | Operational readiness |
+| D29 | Redis physical isolation target | Per-tenant ACL users plus tenant-scoped backend resolution; prefixes/hash tags/logical DBs are placement aids, not the security boundary; verifier evidence semantics are classified below | Operational readiness |
 | D30 | No infrastructure dependency in product code | Product projects (`Server`, `Cli`, `Mcp`, `Web`, `Client.Rest`) reach infrastructure only via Dapr building blocks or Aspire-injected connections/config; direct infra clients and endpoint construction live only in boundary projects (`AppHost`, `Aspire`, `ServiceDefaults`, `Redis`, `EventStore`). Sanctioned exceptions are enumerated below. See ADR-IDA-001. | Operational readiness |
 | D31 | OpenBao-first DAPR secret provider | Application runtime secrets are resolved through DAPR secret-store components backed by OpenBao. Local-file and Kubernetes secret stores are not application-secret providers. Aspire secret parameters or protected files may bootstrap and seed local OpenBao. Kubernetes Secrets are permitted only for required OpenBao tokens/CA material or direct pod inputs that DAPR cannot inject; every exception must be documented and tested. | Operational readiness |
+
+#### D29 — Tenant isolation verifier evidence semantics
+
+`GraphIsolation` database existence is structural evidence only. It proves the requested FalkorDB database appears in `GRAPH.LIST`; it is not graph content-leakage proof. NFR8 content evidence comes from a real tenant A/B fixture with identical graph structures, colliding edge identifiers, tenant-distinct payload markers, and authenticated traversal assertions that return zero foreign nodes and edges.
+
+Raw and natural-language semantic index dimensions are each valid only when they independently match the requested tenant's configured embedding dimension. Equality between the two index values is a secondary consistency assertion, not the source of truth, and configuration lookup fails closed.
+
+Active semantic marker evidence uses explicit, collision-safe key-family classification. Active raw base/chunk and current natural-language records are evidence; migration staging and legacy nested natural-language records are not. Memory-unit identifiers are opaque and may contain colon-delimited reserved-looking text, so a string prefix or suffix alone cannot establish family membership. Canonical namespace provenance and record shape decide membership; unresolved ambiguity is an evidence-classification gap, not an invented tenant-marker mismatch, and future families require an explicit guarded classification.
+
+A foreign non-empty marker on a proven-active record is a confirmed marker mismatch and possible contamination. A missing marker on a proven-active record is incomplete evidence. Both outcomes fail closed, but neither authorizes blanket deletion. Recovery is exact-key inspection and quarantine followed by tenant-scoped marker repair or reindex only after provenance verification, with distinct guidance for missing and foreign values.
+
+These semantics clarify verifier evidence and remediation. They do not claim that the per-tenant ACL and tenant-scoped backend-resolution enforcement target has been implemented.
 
 #### D30 — No infrastructure dependency in product code (sanctioned exceptions)
 

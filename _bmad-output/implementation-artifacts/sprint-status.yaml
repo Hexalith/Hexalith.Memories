@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-08-02
+last_updated: 2026-08-04
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -154,6 +154,13 @@ story_execution_order:
       - 23-6-directory-batch-scalability
       - 23-7-index-provisioning-ownership
       - 23-8-workflow-config-determinism
+  epic-24:
+    reason: "Verifier correctness and evidence semantics precede physical-isolation enforcement evidence; Stories 24.6-24.8 are independent, and Story 24.9 depends on Story 24.8."
+    order:
+      - 24-6-graph-content-level-tenant-isolation-evidence
+      - 24-7-tenant-configured-vector-dimension-verification
+      - 24-8-semantic-isolation-key-family-classification
+      - 24-9-non-destructive-tenant-marker-diagnostics
   epic-27:
     reason: "Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 is the first registered one-gate successor and owns only C1.15 as backlog. Its producer and fixture exist, but C1.15 remains pending/not complete and is not passed. Story 27.3 still owns C0 and its independent C2/C3/C4 work; the remaining twenty-four C1 gates are held, unregistered, and unowned. Story 27.4 remains backlog and cannot start until all twenty-five successors are registered, done, and passed on real per-gate evidence under one profile hash. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record."
     order:
@@ -410,12 +417,16 @@ development_status:
   epic-23-retrospective: done
 
   # Epic 24: Observability & Performance Hardening
-  epic-24: done
+  epic-24: in-progress
   24-1-trace-propagation-across-the-workflow-boundary: done
   24-2-read-path-caching-and-tenant-list-bounding: done
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
+  24-6-graph-content-level-tenant-isolation-evidence: backlog
+  24-7-tenant-configured-vector-dimension-verification: backlog
+  24-8-semantic-isolation-key-family-classification: backlog
+  24-9-non-destructive-tenant-marker-diagnostics: backlog
   epic-24-retrospective: done
 
   # Epic 25: Architecture Factorization & Code Health
@@ -684,7 +695,7 @@ action_items:
   - epic: 24
     action: "Convert Story 24.3 verifier residuals into explicit backlog decisions for graph leakage evidence, vector dimensions, semantic marker false positives, and remediation semantics"
     owner: "Winston, Murat"
-    status: open
+    status: done  # 2026-08-04: approved correction registered Stories 24.6-24.9, structured all four residual dispositions, and clarified D29; implementation remains backlog.
   - epic: 24
     action: "Convert Story 24.5 concurrency and rollout residuals into explicit backlog decisions for case activity summaries, NL retry atomicity, in-flight registry bounds, and rollout marker behavior"
     owner: "Amelia, Winston"

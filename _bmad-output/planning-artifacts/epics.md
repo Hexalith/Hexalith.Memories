@@ -4518,7 +4518,7 @@ So that a config change mid-flight cannot break replay determinism.
 **Then** retry-policy/NL options are captured into the workflow input at scheduling time and no mutable static is read in orchestrator code, with a replay-determinism test. Closes A35.
 
 ## Epic 24: Observability & Performance Hardening
-Operators can trace ingestion end-to-end, the read path stops paying avoidable round trips, tenant isolation moves toward physical enforcement with a scalable verifier, metrics land in one naming family with a committed dashboard, and hot-path write amplification is removed.
+Operators can trace ingestion end-to-end, the read path stops paying avoidable round trips, tenant isolation moves toward physical enforcement with a scalable verifier whose residual evidence semantics have explicit backlog homes, metrics land in one naming family with a committed dashboard, and hot-path write amplification is removed.
 **Lifecycle label:** Operational Readiness / Observability & Performance
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A19, A26, A36, A46
 **NFRs reinforced:** NFR8, NFR12, NFR28
@@ -4593,6 +4593,72 @@ So that latency and memory stay bounded under load.
 **Given** `CorpusStatisticsActor` writes state on every read, activity streams are unbounded, the replay gate scans all instances per 5s, and the NL retry queue removes by JSON identity,
 **When** these paths run,
 **Then** reads return cached values, streams use `XADD MAXLEN` + a counter, the replay gate uses an app-owned in-flight set, and the NL queue is id-keyed. Closes A46.
+
+### Story 24.6: Graph Content-Level Tenant Isolation Evidence
+
+**Status:** backlog · **Owner:** Murat / Test Architect and Developer  
+**Dedicated artifact:** [24-6-graph-content-level-tenant-isolation-evidence.md](../implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md)
+
+As an operator,
+I want executable proof that graph content remains tenant-local when identifiers collide,
+So that structural database existence is not mistaken for NFR8 leakage evidence.
+
+**Acceptance Criteria:**
+
+1. A real tenant A/B fixture uses identical node identifiers, identical graph shapes, colliding edge identifiers, and tenant-distinct payload markers; authenticated traversal of each tenant returns zero foreign node or edge markers.
+2. `VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` implements and asserts its name. The redundant `VerifyTenant_SearchFromOtherContext_ZeroResultsAcrossAllAxes` is removed only after the current axis-specific tenant search negatives are cited and pass.
+3. Runtime `GraphIsolation` remains explicitly labeled structural `GRAPH.LIST` database-existence evidence; content-leakage claims cite the focused real-backend integration command and do not add a runtime graph-content scan.
+4. If the real integration lane cannot run, the story remains blocked or records an accepted blocker with owner, consequence, proof boundary, and reopen trigger; unit mocks, test names, and comments are not NFR8 graph evidence.
+
+### Story 24.7: Tenant-Configured Vector Dimension Verification
+
+**Status:** backlog · **Owner:** Winston / Architect and Developer  
+**Dedicated artifact:** [24-7-tenant-configured-vector-dimension-verification.md](../implementation-artifacts/24-7-tenant-configured-vector-dimension-verification.md)
+
+As an operator,
+I want semantic index dimensions checked against the requested tenant's embedding configuration,
+So that two equally wrong indexes cannot pass isolation verification.
+
+**Acceptance Criteria:**
+
+1. Raw and natural-language `FT.INFO` dimensions are compared independently with the requested tenant's configured dimension; the check passes only when all three values agree.
+2. An equally wrong raw/NL pair fails with expected and actual dimensions plus tenant-scoped reindex guidance.
+3. Verification of tenant A requests only tenant A's `ITenantEmbeddingConfigProvider` value; another tenant's dimension cannot satisfy or fail the check.
+4. An unavailable or invalid configuration source fails closed with actionable configuration/backend guidance and never falls back to raw-versus-NL equality; this story does not recreate indexes or run migration.
+
+### Story 24.8: Semantic Isolation Key-Family Classification
+
+**Status:** backlog · **Owner:** Developer and Murat / Test Architect  
+**Dedicated artifact:** [24-8-semantic-isolation-key-family-classification.md](../implementation-artifacts/24-8-semantic-isolation-key-family-classification.md)
+
+As an operator,
+I want tenant-marker scans limited to proven active semantic key families,
+So that migration staging and legacy hashes do not create false isolation failures.
+
+**Acceptance Criteria:**
+
+1. Active raw base/chunk, active current-NL, raw/NL staging, and legacy nested-NL shapes receive explicit classifications; only proven active raw and current-NL records enter active marker evidence.
+2. Markerless staging and legacy records do not become marker-mismatch evidence, while markerless or foreign-marked proven-active records still fail closed.
+3. Canonical namespace provenance and record shape—not broad prefix/suffix shortcuts—classify opaque, colon-bearing memory-unit identifiers; collision-shaped tests prevent legitimate active keys from being excluded, and ambiguity is reported as an evidence-classification gap rather than an invented marker mismatch.
+4. Unknown future namespaces fail a schema/architecture guard, and verification neither deletes nor mutates Story 21.9 staging state.
+
+### Story 24.9: Non-Destructive Tenant-Marker Diagnostics
+
+**Status:** backlog · **Owner:** Winston / Architect, Murat / Test Architect, and Developer  
+**Dedicated artifact:** [24-9-non-destructive-tenant-marker-diagnostics.md](../implementation-artifacts/24-9-non-destructive-tenant-marker-diagnostics.md)
+
+As an operator,
+I want missing and foreign tenant markers reported with distinct, safe recovery guidance,
+So that incomplete evidence is not mislabeled as confirmed leakage or remediated by broad deletion.
+
+**Acceptance Criteria:**
+
+1. A foreign non-empty marker on a proven-active record fails closed as confirmed marker mismatch/possible contamination and reports the exact key, expected tenant, and observed tenant without payload data.
+2. A missing marker on a proven-active record fails closed as incomplete evidence, not confirmed cross-tenant leakage.
+3. Both outcomes direct named-key inspection/quarantine followed by tenant-scoped marker repair or reindex after provenance verification; remediation never recommends blanket prefix deletion and differs by outcome.
+4. Distinct semantics remain compatible with V1 `Details` and `Remediation`; a machine-readable issue taxonomy requires a separate versioned-contract story. Story 24.9 follows Story 24.8.
+
+**Held physical-isolation identity correction (approved 2026-08-04):** The held and unregistered candidates approved on 2026-08-03 are re-keyed from 24.6-24.9 to 24.10-24.13 respectively: qualification becomes 24.10, enforcement 24.11, migration 24.12, and runtime evidence 24.13. They remain unregistered until their existing registration gates pass; the old identities are historical aliases only.
 
 ## Epic 25: Architecture Factorization & Code Health
 Maintainers get a thin composition root, centralized error/telemetry handling, a shared route table, a separated contract/persistence boundary, a consolidated CLI/MCP, a UX-conformant evidence cockpit, and a clean project topology — without changing product behavior.

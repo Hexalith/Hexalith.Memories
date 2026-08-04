@@ -1888,21 +1888,49 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Re-open trigger: Story 28.1 is selected; any story or review claims EventStore-to-Memories or
     unqualified full-stack EventStore proof; or the AppHost adds an `eventstore` resource without closing
     every resolution criterion.
-- source_spec: `_bmad-output/implementation-artifacts/spec-24-3-physical-tenant-isolation-and-verifier-scaling.md`
-  summary: Add graph content-level tenant isolation evidence beyond Story 24.3 target graph existence checks.
-  evidence: Review found `CheckGraphIsolationAsync` only verifies the target FalkorDB database appears in `GRAPH.LIST`; that is structural evidence, not node/edge tenant-marker or traversal leakage evidence.
-- source_spec: `_bmad-output/implementation-artifacts/spec-24-3-physical-tenant-isolation-and-verifier-scaling.md`
-  summary: Align graph/search leakage integration test scenarios with their names or rename them.
-  evidence: `VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` and `VerifyTenant_SearchFromOtherContext_ZeroResultsAcrossAllAxes` currently provision tenants and call verify, but do not ingest identical graph structures, execute cross-tenant search, or assert zero leaked results.
-- source_spec: `_bmad-output/implementation-artifacts/spec-24-3-physical-tenant-isolation-and-verifier-scaling.md`
-  summary: Compare semantic index vector dimensions against tenant embedding configuration in verifier evidence.
-  evidence: Story 24.3 compares raw semantic and natural-language semantic dimensions to each other, but an equally wrong pair can still pass unless the verifier has a tenant configuration source of truth.
-- source_spec: `_bmad-output/implementation-artifacts/spec-24-3-physical-tenant-isolation-and-verifier-scaling.md`
-  summary: Verifier semantic prefix scans over-capture staging and legacy natural-language key families that lack a `tenantId` marker, producing false SemanticIsolation failures.
-  evidence: The raw-semantic scan pattern `{tenantId}:vec:*` (and NL `{tenantId}:vecnl:*`) also match embedding-migration staging hashes (`RedisEmbeddingMigrationStore` writes staging vectors without a `tenantId` field, keys `{tenantId}:vec:staging:...`/`{tenantId}:vecnl:staging:...`) and un-migrated legacy `{tenantId}:vec:nl:...` hashes; the new missing-marker-fails-closed rule flags them, so verify can report a false `SemanticIsolation` failure during an embedding-migration window or while legacy data exists.
-- source_spec: `_bmad-output/implementation-artifacts/spec-24-3-physical-tenant-isolation-and-verifier-scaling.md`
-  summary: Decide the missing-`tenantId`-marker diagnostic semantics and non-destructive remediation for target-prefix semantic hashes, given the "never migrate existing data" constraint.
-  evidence: Semantic hashes indexed before Story 24.3 added the `tenantId` marker have no such field and cannot be backfilled (the spec's Never-migrate constraint), yet the verifier now treats a missing marker like a foreign one and emits the destructive remediation "remove mismatched target-prefix hashes"; because the target key prefix already proves tenant ownership, a healthy pre-existing tenant can be reported as leaking.
+- **Story 24.3 graph content and honest test evidence.**
+
+  - ID: 24.3-GRAPH-CONTENT-EVIDENCE
+  - Status: carried-forward
+  - Source story: 24-3-physical-tenant-isolation-and-verifier-scaling
+  - Target artifact: _bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md
+  - Backlog home: Story 24.6
+  - Owner: Murat / Test Architect and Developer
+  - Rationale: `CheckGraphIsolationAsync` proves only target FalkorDB database existence through `GRAPH.LIST`; the two named graph/search tests provision and verify but do not build identical graph structures, traverse colliding edges, execute cross-tenant search, or assert zero foreign content. Story 24.6 owns one real collision-shaped graph fixture, honest test naming, and the canonical axis-specific search evidence.
+  - Re-open trigger: Story 24.6 is selected, or any claim treats `GRAPH.LIST`, current test names, comments, or unit mocks as graph content-isolation proof.
+
+- **Story 24.3 configured vector-dimension authority.**
+
+  - ID: 24.3-VECTOR-DIMENSION-SOURCE
+  - Status: carried-forward
+  - Source story: 24-3-physical-tenant-isolation-and-verifier-scaling
+  - Target artifact: _bmad-output/implementation-artifacts/24-7-tenant-configured-vector-dimension-verification.md
+  - Backlog home: Story 24.7
+  - Owner: Winston / Architect and Developer
+  - Rationale: Story 24.3 compares raw and natural-language semantic dimensions only with each other, so an equally wrong pair can pass. Story 24.7 makes the requested tenant's existing `ITenantEmbeddingConfigProvider` value authoritative without recreating indexes or running migration.
+  - Re-open trigger: Story 24.7 is selected, or any verifier assurance relies only on raw-versus-natural-language dimension equality.
+
+- **Story 24.3 collision-safe semantic key-family membership.**
+
+  - ID: 24.3-SEMANTIC-KEY-FAMILY
+  - Status: carried-forward
+  - Source story: 24-3-physical-tenant-isolation-and-verifier-scaling
+  - Target artifact: _bmad-output/implementation-artifacts/24-8-semantic-isolation-key-family-classification.md
+  - Backlog home: Story 24.8
+  - Owner: Developer and Murat / Test Architect
+  - Rationale: Broad `{tenantId}:vec:*` and `{tenantId}:vecnl:*` scans include markerless raw/NL migration staging hashes and legacy nested-NL hashes, causing false marker-mismatch evidence. Because memory-unit IDs are opaque, Story 24.8 requires canonical provenance and record shape rather than prefix-only shortcuts, plus collision-shaped tests and a guarded unknown-family outcome.
+  - Re-open trigger: Story 24.8 is selected, a migration or legacy tenant reports false `SemanticIsolation`, a new semantic namespace appears, or a classifier assumes reserved-looking colon text cannot occur inside an opaque memory-unit ID.
+
+- **Story 24.3 distinct and non-destructive marker remediation.**
+
+  - ID: 24.3-MARKER-REMEDIATION
+  - Status: carried-forward
+  - Source story: 24-3-physical-tenant-isolation-and-verifier-scaling
+  - Target artifact: _bmad-output/implementation-artifacts/24-9-non-destructive-tenant-marker-diagnostics.md
+  - Backlog home: Story 24.9
+  - Owner: Winston / Architect, Murat / Test Architect, and Developer
+  - Rationale: Pre-Story-24.3 active hashes can lack `tenantId`, yet current verification combines missing and foreign markers and recommends removing mismatched target-prefix hashes. Story 24.9 keeps both outcomes fail-closed but classifies missing markers as incomplete evidence, foreign values as possible contamination, and limits remediation to named-key inspection/quarantine plus tenant-scoped repair or reindex after provenance verification.
+  - Re-open trigger: Story 24.9 is selected, missing markers are described as confirmed leakage, or operator guidance recommends broad prefix deletion.
 
 ## Deferred from: code review of 24-2-read-path-caching-and-tenant-list-bounding (2026-07-05)
 
