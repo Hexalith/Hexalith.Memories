@@ -14,6 +14,10 @@ using Aspire.Hosting.Testing;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AppHost;
+using Hexalith.Memories.IntegrationTests.Fixtures;
+
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using Shouldly;
 
@@ -32,6 +36,8 @@ public sealed class AccessTelemetryAspireRoutedIntegrationTests
 {
     private const string ConfigurationEpoch = "01J00000000000000000000000";
     private const string ComponentProfileHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string ClockSidecarResourceName = "memories-access-telemetry-clock-dapr-cli";
+    private const string LifecycleSidecarResourceName = "memories-access-telemetry-dapr-cli";
     private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(3);
 
     [Fact]
@@ -40,21 +46,53 @@ public sealed class AccessTelemetryAspireRoutedIntegrationTests
         IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Hexalith_Memories_AppHost>()
             .ConfigureAwait(true);
+        var logProvider = new AspireIngestionPipelineFixture.TestLogProvider();
+        _ = builder.Services.AddLogging(logging =>
+        {
+            _ = logging.SetMinimumLevel(LogLevel.Warning);
+            _ = logging.AddFilter((category, level) =>
+            {
+                if (AspireIngestionPipelineFixture.IsExactDaprSidecarLogCategory(
+                        category,
+                        ClockSidecarResourceName) ||
+                    AspireIngestionPipelineFixture.IsExactDaprSidecarLogCategory(
+                        category,
+                        LifecycleSidecarResourceName))
+                {
+                    return level >= LogLevel.Information;
+                }
+
+                return level >= LogLevel.Warning;
+            });
+            _ = logging.AddProvider(logProvider);
+        });
         await using DistributedApplication app = await builder.BuildAsync().ConfigureAwait(true);
         using var timeout = new CancellationTokenSource(StartupTimeout);
         await app.StartAsync(timeout.Token).ConfigureAwait(true);
 
         try
         {
-            await WaitForHealthyAsync(app, "memories-access-telemetry-clock-dapr-cli", timeout.Token).ConfigureAwait(true);
-            await WaitForHealthyAsync(app, "memories-access-telemetry-dapr-cli", timeout.Token).ConfigureAwait(true);
+            await WaitForHealthyAsync(app, ClockSidecarResourceName, timeout.Token).ConfigureAwait(true);
+            await WaitForHealthyAsync(app, LifecycleSidecarResourceName, timeout.Token).ConfigureAwait(true);
             await WaitForHealthyAsync(app, "memories-access-telemetry-clock", timeout.Token).ConfigureAwait(true);
             await WaitForHealthyAsync(app, "memories-access-telemetry", timeout.Token).ConfigureAwait(true);
 
-            using HttpClient lifecycleSidecar = app.CreateHttpClient("memories-access-telemetry-dapr-cli", "http");
-            using HttpClient clockSidecar = app.CreateHttpClient("memories-access-telemetry-clock-dapr-cli", "http");
-            lifecycleSidecar.Timeout = TimeSpan.FromSeconds(30);
-            clockSidecar.Timeout = TimeSpan.FromSeconds(30);
+            Uri lifecycleSidecarEndpoint = await AspireIngestionPipelineFixture.WaitForDaprSidecarHttpEndpointAsync(
+                LifecycleSidecarResourceName,
+                () => logProvider.GetEntriesSince(0),
+                StartupTimeout,
+                TimeSpan.FromMilliseconds(100),
+                timeout.Token).ConfigureAwait(true);
+            Uri clockSidecarEndpoint = await AspireIngestionPipelineFixture.WaitForDaprSidecarHttpEndpointAsync(
+                ClockSidecarResourceName,
+                () => logProvider.GetEntriesSince(0),
+                StartupTimeout,
+                TimeSpan.FromMilliseconds(100),
+                timeout.Token).ConfigureAwait(true);
+            using HttpClient lifecycleSidecar = CreateDirectDaprSidecarClient(
+                lifecycleSidecarEndpoint);
+            using HttpClient clockSidecar = CreateDirectDaprSidecarClient(
+                clockSidecarEndpoint);
 
             SignedClockAttestation lifecycleAttestation = await RequestAttestationAsync(
                 lifecycleSidecar,
@@ -153,6 +191,22 @@ public sealed class AccessTelemetryAspireRoutedIntegrationTests
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<SignedClockAttestation>(cancellationToken).ConfigureAwait(true)
             ?? throw new InvalidOperationException("The routed clock response was empty.");
+    }
+
+    private static HttpClient CreateDirectDaprSidecarClient(Uri endpoint)
+    {
+        var client = new HttpClient
+        {
+            BaseAddress = endpoint,
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+        string? daprApiToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
+        if (!string.IsNullOrWhiteSpace(daprApiToken))
+        {
+            client.DefaultRequestHeaders.TryAddWithoutValidation("dapr-api-token", daprApiToken);
+        }
+
+        return client;
     }
 
     private static async Task<AccessTelemetryRuntimeValidationResponse> WaitForValidationAsync(

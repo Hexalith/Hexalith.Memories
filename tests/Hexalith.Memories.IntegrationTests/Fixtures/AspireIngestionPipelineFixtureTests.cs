@@ -12,6 +12,7 @@ using System.Reflection;
 using Hexalith.Memories.AppHost;
 using Hexalith.Memories.IntegrationTests.Mcp;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
 
 using Shouldly;
@@ -71,6 +72,148 @@ public sealed class AspireIngestionPipelineFixtureTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public void ResolveDaprSidecarHttpEndpoint_DistinctExactResources_ReturnDistinctDirectPorts()
+    {
+        AspireIngestionPipelineFixture.CapturedLogEntry[] entries =
+        [
+            new(
+                LogLevel.Information,
+                "memories-dapr-cli.stdout",
+                "HTTP server listening on TCP address: :41001"),
+            new(
+                LogLevel.Information,
+                "Hexalith.Memories.AppHost.Resources.memories-access-telemetry-clock-dapr-cli",
+                "HTTP server listening on TCP address: :41002"),
+            new(
+                LogLevel.Information,
+                "Hexalith.Memories.AppHost.Resources.memories-access-telemetry-dapr-cli.stderr",
+                "HTTP server listening on TCP address: :41003"),
+        ];
+
+        AspireIngestionPipelineFixture.ResolveDaprSidecarHttpEndpoint(
+            "memories-dapr-cli",
+            entries).ShouldBe(new Uri("http://127.0.0.1:41001"));
+        AspireIngestionPipelineFixture.ResolveDaprSidecarHttpEndpoint(
+            "memories-access-telemetry-clock-dapr-cli",
+            entries).ShouldBe(new Uri("http://127.0.0.1:41002"));
+        AspireIngestionPipelineFixture.ResolveDaprSidecarHttpEndpoint(
+            "memories-access-telemetry-dapr-cli",
+            entries).ShouldBe(new Uri("http://127.0.0.1:41003"));
+    }
+
+    [Fact]
+    public void ResolveDaprSidecarHttpEndpoint_NewerMalformedAndSimilarEntries_ReturnLatestExactValidPort()
+    {
+        const string resourceName = "memories-access-telemetry-clock-dapr-cli";
+        AspireIngestionPipelineFixture.CapturedLogEntry[] entries =
+        [
+            new(
+                LogLevel.Information,
+                resourceName,
+                "HTTP server listening on TCP address: :42001"),
+            new(
+                LogLevel.Information,
+                resourceName + ".stdout",
+                "HTTP server listening on TCP address: :42002"),
+            new(
+                LogLevel.Information,
+                "Hexalith.Memories.AppHost.Resources." + resourceName + "-extra",
+                "HTTP server listening on TCP address: :42991"),
+            new(
+                LogLevel.Information,
+                resourceName + "-extra.stdout",
+                "HTTP server listening on TCP address: :42992"),
+            new(
+                LogLevel.Information,
+                resourceName + ".stdout",
+                "HTTP server listening on TCP address: :42003x"),
+            new(
+                LogLevel.Information,
+                resourceName + ".stdout",
+                "HTTP server listening on TCP address: :42004-extra"),
+            new(
+                LogLevel.Information,
+                resourceName + ".stdout",
+                "HTTP server listening on TCP address: :0"),
+            new(
+                LogLevel.Information,
+                resourceName + ".stdout",
+                "HTTP server listening on TCP address: :65536"),
+        ];
+
+        Uri endpoint = AspireIngestionPipelineFixture.ResolveDaprSidecarHttpEndpoint(resourceName, entries);
+
+        endpoint.ShouldBe(new Uri("http://127.0.0.1:42002"));
+    }
+
+    [Fact]
+    public void ResolveDaprSidecarHttpEndpoint_MissingExactValidEvidence_FailsClosed()
+    {
+        const string resourceName = "memories-access-telemetry-clock-dapr-cli";
+        AspireIngestionPipelineFixture.CapturedLogEntry[] entries =
+        [
+            new(
+                LogLevel.Information,
+                resourceName + "-extra",
+                "HTTP server listening on TCP address: :43001"),
+            new(
+                LogLevel.Information,
+                "Hexalith.Memories.AppHost.Resources." + resourceName + ".stdout",
+                "HTTP server listening on TCP address: :invalid"),
+        ];
+
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(() =>
+            AspireIngestionPipelineFixture.ResolveDaprSidecarHttpEndpoint(resourceName, entries));
+
+        exception.Message.ShouldContain(resourceName);
+        exception.Message.ShouldContain("direct daprd HTTP endpoint");
+        exception.Message.ShouldNotContain("proxy", Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task WaitForDaprSidecarHttpEndpointAsync_DelayedExactEvidence_Converges()
+    {
+        const string resourceName = "memories-access-telemetry-clock-dapr-cli";
+        int snapshotCount = 0;
+
+        Uri endpoint = await AspireIngestionPipelineFixture.WaitForDaprSidecarHttpEndpointAsync(
+            resourceName,
+            () => Interlocked.Increment(ref snapshotCount) == 1
+                ? []
+                :
+                [
+                    new(
+                        LogLevel.Information,
+                        "Aspire.Hosting.Resources." + resourceName + ".stdout",
+                        "HTTP server listening on TCP address: :44001"),
+                ],
+            TimeSpan.FromSeconds(1),
+            TimeSpan.Zero,
+            CancellationToken.None);
+
+        endpoint.ShouldBe(new Uri("http://127.0.0.1:44001"));
+        snapshotCount.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task WaitForDaprSidecarHttpEndpointAsync_MissingEvidenceUntilDeadline_FailsClosed()
+    {
+        const string resourceName = "memories-access-telemetry-dapr-cli";
+
+        TimeoutException exception = await Should.ThrowAsync<TimeoutException>(() =>
+            AspireIngestionPipelineFixture.WaitForDaprSidecarHttpEndpointAsync(
+                resourceName,
+                static () => [],
+                TimeSpan.FromMilliseconds(25),
+                TimeSpan.FromMilliseconds(5),
+                CancellationToken.None));
+
+        exception.Message.ShouldContain(resourceName);
+        exception.Message.ShouldContain("direct daprd HTTP endpoint");
+        exception.Message.ShouldNotContain("proxy", Case.Insensitive);
     }
 
     [Fact]
@@ -278,6 +421,8 @@ public sealed class AspireIngestionPipelineFixtureTests
     [InlineData(HttpStatusCode.Unauthorized, true)]
     [InlineData(HttpStatusCode.Forbidden, true)]
     [InlineData(HttpStatusCode.MethodNotAllowed, true)]
+    [InlineData(HttpStatusCode.NotAcceptable, true)]
+    [InlineData(HttpStatusCode.UnsupportedMediaType, true)]
     [InlineData(HttpStatusCode.NotFound, false)]
     [InlineData(HttpStatusCode.ServiceUnavailable, false)]
     public void DaprSecretReadinessStatus_PermanentAndTransientBoundaries_AreExplicit(

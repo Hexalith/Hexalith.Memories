@@ -93,9 +93,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private byte[]? _accessTelemetrySeedFingerprint;
     private string[] _accessTelemetrySeedValues = [];
     private string? _tempDaprConfigPath;
+    private int _topologyLogStartIndex;
     private readonly TestLogProvider _logProvider = new();
     private static readonly Regex DaprHttpPortRegex = new(
-        @"HTTP server listening on TCP address: :(?<port>\d+)",
+        @"HTTP server listening on TCP address: :(?<port>\d+)(?=$|[\s""'])",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex SensitiveTokenRegex = new(
         @"(?<![A-Za-z0-9._~+/-])(?<token>[A-Za-z0-9._~+/-]{16,}={0,2})(?![A-Za-z0-9._~+/=-])",
@@ -568,7 +569,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                     mcpRecoveryStatus = null;
                     mcpRecoveryError = null;
                     OpenBaoEndpoint = app.GetEndpoint(OpenBaoDevelopmentProfile.ResourceName, OpenBaoDevelopmentProfile.EndpointName);
-                    Uri currentDaprEndpoint = app.GetEndpoint("memories-dapr-cli", "http");
+                    Uri currentDaprEndpoint = ResolveDaprSidecarHttpEndpoint(
+                        "memories-dapr-cli",
+                        _logProvider.GetEntriesSince(_topologyLogStartIndex));
                     if (currentDaprEndpoint != DaprSidecarHttpEndpoint)
                     {
                         DaprSidecarHttpEndpoint = currentDaprEndpoint;
@@ -1081,11 +1084,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     private HttpClient CreateDaprSidecarClient(string sidecarResourceName)
     {
-        DistributedApplication app = _app
-            ?? throw new InvalidOperationException("The topology is not running.");
-        Uri endpoint = string.Equals(sidecarResourceName, "memories-dapr-cli", StringComparison.Ordinal)
-            ? DaprSidecarHttpEndpoint
-            : app.GetEndpoint(sidecarResourceName, "http");
+        _ = _app ?? throw new InvalidOperationException("The topology is not running.");
+        Uri endpoint = ResolveDaprSidecarHttpEndpoint(
+            sidecarResourceName,
+            _logProvider.GetEntriesSince(_topologyLogStartIndex));
         var client = new HttpClient
         {
             BaseAddress = endpoint,
@@ -1650,6 +1652,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private async Task StartTopologyAsync(CancellationToken cancellationToken)
     {
         int logStartIndex = _logProvider.Count;
+        _topologyLogStartIndex = logStartIndex;
 
         _builder = await DistributedApplicationTestingBuilder
             .CreateAsync<Projects.Hexalith_Memories_AppHost>(
@@ -1689,14 +1692,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _ = logging.SetMinimumLevel(LogLevel.Warning);
             _ = logging.AddFilter((category, level) =>
             {
-                if (category?.StartsWith("Aspire.", StringComparison.Ordinal) == true)
-                {
-                    return level >= LogLevel.Warning;
-                }
-
                 if (IsMemoriesServerCategory(category))
                 {
                     return level >= LogLevel.Information;
+                }
+
+                if (category?.StartsWith("Aspire.", StringComparison.Ordinal) == true)
+                {
+                    return level >= LogLevel.Warning;
                 }
 
                 return level >= LogLevel.Warning;
@@ -1763,7 +1766,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             logStartIndex,
             cancellationToken).ConfigureAwait(false);
 
-        DaprSidecarHttpEndpoint = ResolveDaprSidecarHttpEndpoint(logStartIndex);
+        DaprSidecarHttpEndpoint = await WaitForDaprSidecarHttpEndpointAsync(
+            "memories-dapr-cli",
+            () => _logProvider.GetEntriesSince(logStartIndex),
+            EndpointReadyTimeout,
+            EndpointPollInterval,
+            cancellationToken).ConfigureAwait(false);
         _daprStateClient = new HttpClient
         {
             BaseAddress = DaprSidecarHttpEndpoint,
@@ -1775,7 +1783,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             _daprStateClient.DefaultRequestHeaders.TryAddWithoutValidation("dapr-api-token", daprApiToken);
         }
 
-        using (HttpClient clockSecretProbe = CreateDaprSidecarClient("memories-access-telemetry-clock-dapr-cli"))
+        const string clockSidecarResourceName = "memories-access-telemetry-clock-dapr-cli";
+        _ = await WaitForDaprSidecarHttpEndpointAsync(
+            clockSidecarResourceName,
+            () => _logProvider.GetEntriesSince(logStartIndex),
+            EndpointReadyTimeout,
+            EndpointPollInterval,
+            cancellationToken).ConfigureAwait(false);
+        using (HttpClient clockSecretProbe = CreateDaprSidecarClient(clockSidecarResourceName))
         {
             await WaitForEndpointAsync(
                 clockSecretProbe,
@@ -1789,7 +1804,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                 DaprSecretFailClosedStatusCodes).ConfigureAwait(false);
         }
 
-        using (HttpClient lifecycleSecretProbe = CreateDaprSidecarClient("memories-access-telemetry-dapr-cli"))
+        const string lifecycleSidecarResourceName = "memories-access-telemetry-dapr-cli";
+        _ = await WaitForDaprSidecarHttpEndpointAsync(
+            lifecycleSidecarResourceName,
+            () => _logProvider.GetEntriesSince(logStartIndex),
+            EndpointReadyTimeout,
+            EndpointPollInterval,
+            cancellationToken).ConfigureAwait(false);
+        using (HttpClient lifecycleSecretProbe = CreateDaprSidecarClient(lifecycleSidecarResourceName))
         {
             await WaitForEndpointAsync(
                 lifecycleSecretProbe,
@@ -1891,57 +1913,134 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return next is '-' or '.';
     }
 
-    private Uri ResolveDaprSidecarHttpEndpoint(int logStartIndex)
+    /// <summary>Resolves the direct daprd HTTP endpoint for one exact named Dapr CLI resource.</summary>
+    /// <param name="sidecarResourceName">The exact Aspire Dapr CLI resource name.</param>
+    /// <param name="entries">Captured Aspire log entries for the current topology generation.</param>
+    /// <returns>An IPv4-loopback URI for the latest valid daprd HTTP listening port.</returns>
+    internal static Uri ResolveDaprSidecarHttpEndpoint(
+        string sidecarResourceName,
+        IReadOnlyList<CapturedLogEntry> entries)
     {
-        try
-        {
-            return ResolveDaprSidecarHttpEndpoint(_logProvider.GetEntriesSince(logStartIndex));
-        }
-        catch (InvalidOperationException)
-        {
-            // Fall back to Aspire resource endpoints when the DAPR CLI log line is unavailable.
-        }
-
-        if (_app is not null)
-        {
-            foreach (string resourceName in new[] { "memories-dapr", "memories-dapr-cli" })
-            {
-                try
-                {
-                    return _app.GetEndpoint(resourceName, "http");
-                }
-                catch (ArgumentException)
-                {
-                    // Continue probing known sidecar resource names.
-                }
-            }
-        }
-
-        throw new InvalidOperationException(
-            "Could not determine the Memories Server Dapr sidecar HTTP endpoint from Aspire resources or captured logs.");
-    }
-
-    private static Uri ResolveDaprSidecarHttpEndpoint(IReadOnlyList<CapturedLogEntry> entries)
-    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sidecarResourceName);
         ArgumentNullException.ThrowIfNull(entries);
+        if (!sidecarResourceName.EndsWith("-dapr-cli", StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The sidecar resource name must identify an exact Dapr CLI resource.",
+                nameof(sidecarResourceName));
+        }
 
         for (int i = entries.Count - 1; i >= 0; i--)
         {
             CapturedLogEntry entry = entries[i];
-            if (!entry.Category.Contains("memories-dapr-cli", StringComparison.OrdinalIgnoreCase))
+            if (!IsExactDaprSidecarLogCategory(entry.Category, sidecarResourceName))
             {
                 continue;
             }
 
             Match match = DaprHttpPortRegex.Match(entry.Message);
-            if (match.Success && int.TryParse(match.Groups["port"].Value, out int port) && port > 0)
+            if (match.Success &&
+                int.TryParse(match.Groups["port"].Value, out int port) &&
+                port is > 0 and <= 65535)
             {
                 return new Uri($"http://127.0.0.1:{port}");
             }
         }
 
         throw new InvalidOperationException(
-            "Could not determine the Memories Server Dapr sidecar HTTP endpoint from the captured Aspire logs.");
+            $"Could not determine the direct daprd HTTP endpoint for exact sidecar resource '{sidecarResourceName}' " +
+            "from captured Aspire logs. Ensure the resource emitted a valid HTTP listening port.");
+    }
+
+    /// <summary>Waits within a bounded budget for one exact sidecar's direct daprd endpoint evidence.</summary>
+    /// <param name="sidecarResourceName">The exact Aspire Dapr CLI resource name.</param>
+    /// <param name="getEntries">Gets a fresh captured-log snapshot for each attempt.</param>
+    /// <param name="timeout">The overall endpoint-resolution budget.</param>
+    /// <param name="pollInterval">The delay between missing-evidence attempts.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <returns>The resolved IPv4-loopback daprd endpoint.</returns>
+    internal static async Task<Uri> WaitForDaprSidecarHttpEndpointAsync(
+        string sidecarResourceName,
+        Func<IReadOnlyList<CapturedLogEntry>> getEntries,
+        TimeSpan timeout,
+        TimeSpan pollInterval,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sidecarResourceName);
+        ArgumentNullException.ThrowIfNull(getEntries);
+        if (timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "The endpoint-resolution timeout must be positive.");
+        }
+
+        if (pollInterval < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(pollInterval), "The endpoint-resolution poll interval cannot be negative.");
+        }
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.Add(timeout);
+        InvalidOperationException? lastException = null;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return ResolveDaprSidecarHttpEndpoint(sidecarResourceName, getEntries());
+            }
+            catch (InvalidOperationException exception)
+            {
+                lastException = exception;
+            }
+
+            TimeSpan remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            TimeSpan delay = pollInterval < remaining ? pollInterval : remaining;
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException(
+            $"Could not determine the direct daprd HTTP endpoint for exact sidecar resource '{sidecarResourceName}' " +
+            $"within {timeout}. Last error: {FormatException(lastException)}.",
+            lastException);
+    }
+
+    /// <summary>Checks whether a logger category belongs to one exact Dapr CLI resource.</summary>
+    /// <param name="category">The logger category emitted by Aspire.</param>
+    /// <param name="sidecarResourceName">The exact Aspire Dapr CLI resource name.</param>
+    /// <returns><see langword="true"/> for the exact resource or one of its dot-delimited streams.</returns>
+    internal static bool IsExactDaprSidecarLogCategory(string? category, string sidecarResourceName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sidecarResourceName);
+        if (string.IsNullOrEmpty(category))
+        {
+            return false;
+        }
+
+        if (string.Equals(category, sidecarResourceName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (category.StartsWith(sidecarResourceName, StringComparison.OrdinalIgnoreCase) &&
+            category.Length > sidecarResourceName.Length &&
+            category[sidecarResourceName.Length] == '.')
+        {
+            return true;
+        }
+
+        string resourceMarker = ".Resources." + sidecarResourceName;
+        int resourceIndex = category.IndexOf(resourceMarker, StringComparison.OrdinalIgnoreCase);
+        if (resourceIndex < 0)
+        {
+            return false;
+        }
+
+        int suffixStart = resourceIndex + resourceMarker.Length;
+        return category.Length == suffixStart || category[suffixStart] == '.';
     }
 
     private static async Task SaveDaprStateAsync<T>(
@@ -2511,12 +2610,14 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     public sealed record CapturedLogEntry(LogLevel Level, string Category, string Message);
 
 
-    private sealed class TestLogProvider : ILoggerProvider
+    /// <summary>Captures Aspire integration-test logs for direct endpoint resolution and diagnostics.</summary>
+    internal sealed class TestLogProvider : ILoggerProvider
     {
         private readonly object _gate = new();
         private readonly List<CapturedLogEntry> _entries = [];
 
-        public int Count
+        /// <summary>Gets the number of entries captured so far.</summary>
+        internal int Count
         {
             get
             {
@@ -2527,13 +2628,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             }
         }
 
-        public ILogger CreateLogger(string categoryName) => new TestLogger(categoryName, this);
+        ILogger ILoggerProvider.CreateLogger(string categoryName) => new TestLogger(categoryName, this);
 
-        public void Dispose()
+        void IDisposable.Dispose()
         {
         }
 
-        public IReadOnlyList<CapturedLogEntry> GetEntriesSince(int startIndex)
+        /// <summary>Gets a stable snapshot of entries at or after the specified index.</summary>
+        /// <param name="startIndex">The first entry index to include.</param>
+        /// <returns>The captured log snapshot.</returns>
+        internal IReadOnlyList<CapturedLogEntry> GetEntriesSince(int startIndex)
         {
             lock (_gate)
             {
