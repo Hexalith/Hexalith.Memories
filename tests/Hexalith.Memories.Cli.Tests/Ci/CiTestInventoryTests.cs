@@ -234,12 +234,23 @@ public sealed partial class CiTestInventoryTests
             ["node_modules/fast-uri"] = "3.1.5",
             ["node_modules/js-yaml"] = "4.3.1",
             ["node_modules/semantic-release"] = "25.0.8",
-            ["node_modules/undici"] = "7.28.0",
+            ["node_modules/undici"] = "7.29.0",
         };
         foreach ((string packagePath, string expectedVersion) in expectedLockedVersions)
         {
             lockedPackages.GetProperty(packagePath).GetProperty("version").GetString().ShouldBe(expectedVersion);
         }
+
+        JsonElement lockedUndici = lockedPackages.GetProperty("node_modules/undici");
+        lockedUndici.GetProperty("resolved").GetString()
+            .ShouldBe("https://registry.npmjs.org/undici/-/undici-7.29.0.tgz");
+        lockedUndici.GetProperty("integrity").GetString()
+            .ShouldBe("sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==");
+        lockedPackages.GetProperty("node_modules/@semantic-release/github")
+            .GetProperty("dependencies")
+            .GetProperty("undici")
+            .GetString()
+            .ShouldBe("^7.0.0");
 
         JsonProperty[] npmPluginLockPaths = [.. lockedPackages.EnumerateObject()
             .Where(static package => package.Name.EndsWith("node_modules/@semantic-release/npm", StringComparison.Ordinal))];
