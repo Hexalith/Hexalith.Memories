@@ -2948,3 +2948,13 @@ Five 2026-07-31 `[Review][Decision]` items resolved by the Administrator that a 
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-2-lifecycle-checkpoint-gaps-cr42-cr46.md`
   summary: Make the normal story-readiness gate require an executed C0 receipt and reviewer-owned command evidence before accepting review or done.
   evidence: The current readiness gate can accept a story whose C0 remains blocked because it validates declared paths, status vocabulary, sprint-status agreement, and evidence-table row state, but does not mechanically require this receipt row or prove that its recorded commands executed; independent review remains the fail-closed control.
+
+- source_spec: none
+  summary: Fix integration-fast Dapr actor Connection refused failures from CI run 30990821240 (rate limiting + tenant configuration tests against 127.0.0.1:35131).
+  evidence: Split from the CI fix intent so BMAD customization fixture drift can ship independently without waiting on sidecar/harness diagnosis.
+
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-30990821240-bmad-customization-fixtures.md`
+  summary: Refresh historical governance docs that still cite `_bmad/custom/bmad-generate-project-context.toml` after the skill rename.
+  evidence: Cross-tenant carry-forward and related process notes still document the deleted generate custom path and generate-skill verification commands; this fixture fix deleted that path without updating those historical references.
+

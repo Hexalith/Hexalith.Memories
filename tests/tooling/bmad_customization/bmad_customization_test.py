@@ -23,8 +23,8 @@ EPICS = REPO_ROOT / "_bmad-output" / "planning-artifacts" / "epics.md"
 SPRINT_STATUS = (
     REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
 )
-GENERATOR_CUSTOMIZATION = (
-    REPO_ROOT / "_bmad" / "custom" / "bmad-generate-project-context.toml"
+PROJECT_CONTEXT_CUSTOMIZATION = (
+    REPO_ROOT / "_bmad" / "custom" / "bmad-project-context.toml"
 )
 BMM_CONFIG = REPO_ROOT / "_bmad" / "bmm" / "config.yaml"
 POLICY_FACT = "file:{project-root}/_bmad/custom/story-scope-guard.md"
@@ -47,7 +47,6 @@ READINESS_GATE_MARKER = "STORY_REVIEW_READINESS_GATE:"
 # cannot: a story has no File List or diff to reconcile at `backlog`.
 READINESS_GATE_ROUTES = ("bmad-dev-story", "bmad-code-review")
 SPEC_PROJECT_CONTEXT_FACT = "file:{project-root}/project-context.md"
-GENERATOR_PROJECT_CONTEXT_FACT = "file:{project-root}/**/project-context.md"
 PROJECT_CONTEXT_BRIDGE = """# Project Context Bridge
 
 Resolve paths from the repository root. You MUST fully load
@@ -158,74 +157,23 @@ SPRINT_ACTION = (
 )
 SPEC_ACTIVATION_CONTRACT = """1. Resolve customization: `uv run {project-root}/_bmad/scripts/resolve_customization.py --skill {skill-root} --key workflow`. On failure, read `{skill-root}/customize.toml` directly.
 2. Run `{workflow.activation_steps_prepend}`. Treat `{workflow.persistent_facts}` as foundational context (`file:` entries are loaded).
-3. Load `{project-root}/_bmad/core/config.yaml` (and `config.user.yaml` if present), root level and `bmm` section. Resolve `{user_name}`, `{communication_language}`, `{document_output_language}`, `{planning_artifacts}`, `{project_name}`, `{date}`.
+3. Resolve config: `uv run {project-root}/_bmad/scripts/resolve_config.py --project-root {project-root}` (merges `_bmad/config.toml`, `_bmad/config.user.toml`, and the `_bmad/custom/` overrides). From the merged JSON resolve `{user_name}`, `{communication_language}`, `{document_output_language}`, `{project_name}`, `{output_folder}` (under `core`), and `{date}`.
 4. Detect mode. **Headless** when any of: no TTY, programmatic caller (another skill or non-interactive runner), or the first message pre-supplies all inputs and asks for an artifact path back. **Interactive** otherwise. In interactive mode, greet by `{user_name}` in `{communication_language}`, stay in that language, and mention that `bmad-party-mode` and `bmad-advanced-elicitation` are available for deeper exploration on any field.
 
 Run `{workflow.activation_steps_append}`.
 
 Activation is complete. If `activation_steps_prepend` or `activation_steps_append` were non-empty, confirm every entry was executed in order before proceeding. Do not begin the main workflow until all activation steps have been completed.
 """
-GENERATOR_ACTIVATION_CONTRACT = """### Step 1: Resolve the Workflow Block
-
-Run: `python3 {project-root}/_bmad/scripts/resolve_customization.py --skill {skill-root} --key workflow`
-
-**If the script fails**, resolve the `workflow` block yourself by reading these three files in base → team → user order and applying the same structural merge rules as the resolver:
-
-1. `{skill-root}/customize.toml` — defaults
-2. `{project-root}/_bmad/custom/{skill-name}.toml` — team overrides
-3. `{project-root}/_bmad/custom/{skill-name}.user.toml` — personal overrides
-
-Any missing file is skipped. Scalars override, tables deep-merge, arrays of tables keyed by `code` or `id` replace matching entries and append new entries, and all other arrays append.
-
-### Step 2: Execute Prepend Steps
-
-Execute each entry in `{workflow.activation_steps_prepend}` in order before proceeding.
-
-### Step 3: Load Persistent Facts
-
-Treat every entry in `{workflow.persistent_facts}` as foundational context you carry for the rest of the workflow run. Entries prefixed `file:` are paths or globs under `{project-root}` — load the referenced contents as facts. All other entries are facts verbatim.
-
-### Step 4: Load Config
-
-Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
-- Use `{user_name}` for greeting
-- Use `{communication_language}` for all communications
-- Use `{document_output_language}` for output documents
-- Use `{planning_artifacts}` for output location and artifact scanning
-- Use `{project_knowledge}` for additional context scanning
-
-### Step 5: Greet the User
-
-Greet `{user_name}`, speaking in `{communication_language}`.
-
-### Step 6: Execute Append Steps
-
-Execute each entry in `{workflow.activation_steps_append}` in order.
-
-Activation is complete. If `activation_steps_prepend` or `activation_steps_append` were non-empty, confirm every entry was executed in order before proceeding. Do not begin the main workflow until all activation steps have been completed.
+PROJECT_CONTEXT_ACTIVATION_CONTRACT = """1. Resolve customization: `uv run {project-root}/_bmad/scripts/resolve_customization.py --skill {skill-root} --key workflow`. On failure, read `{skill-root}/customize.toml` directly and use defaults. Execute `{workflow.activation_steps_prepend}`; treat `{workflow.persistent_facts}` entries as standing context (`file:` = paths/globs to load, others verbatim).
+2. Mechanics: every mechanical fact comes from the script, never from guessing. If `{project-root}/_bmad/scripts/context.py` is missing (standalone repo), run `uv run {skill-root}/scripts/context.py bootstrap` once — it installs itself there. All later calls: `uv run {project-root}/_bmad/scripts/context.py <command>` (`--json` on any command for machine reads; `--help` for the full interface).
+3. Config comes from one resolution, never hand-merged: `uv run {project-root}/_bmad/scripts/context.py config --json`. It delegates to the installed BMad resolver (`resolve_config.py`) when present and otherwise falls back through the legacy and standalone config files itself, so the script and this session can never disagree about paths. Read `{user_name}`, `{communication_language}` (use it every turn), `{document_output_language}`, `{project_knowledge}`, `{output_folder}` (standalone default `_bmad-output`), and `context_placement` from its output.
+4. **First run** (no kernel at `{project_knowledge}/kernel.md`), interactive only: load `references/placement.md` and settle the bundle location and placement there. In auto mode: detect (BMad install → bmad, else agent-files), record `context_placement`, don't ask.
+5. Init or resume the memlog at `{project_knowledge}/.memlog.md` (`uv run {project-root}/_bmad/scripts/memlog.py init --path ...` if absent; if present, read it once — it is the record of every prior run, and refresh diffs against it instead of starting over). If `memlog.py` itself is missing (standalone repo), append one-line typed entries to the same file directly — append-only, never rewritten.
+6. Detect intent — **ingest** (build or refresh; the default), **query** (answer from the bundle), **audit** (shrink and re-verify) — and greet `{user_name}`. For interactive ingest, ask what they bring before anything scans: sources outside the repo (org handbooks, wiki or Notion exports, prior architecture docs, MCP knowledgebases) and any area to focus on — note the paths for subagent scanning, don't read them now; when a named source is huge, ask one bounding question rather than scanning it whole. Fold `{workflow.external_sources}` entries into the same source list. Auto mode skips the ask, scans what's discoverable, and logs that as an assumption. Execute `{workflow.activation_steps_append}`.
 """
-GENERATOR_CONTEXT_REFERENCES = {
-    "SKILL.md": [
-        "description: 'Create project-context.md with AI rules. Use when the user says \"generate project context\" or \"create project context\"'",
-        "**Goal:** Create a concise, optimized `project-context.md` file containing critical rules, patterns, and guidelines that AI agents must follow when implementing code. This file focuses on unobvious details that LLMs need to be reminded of.",
-        "- `output_file` = `{output_folder}/project-context.md`",
-    ],
-    "customize.toml": [
-        '"file:{project-root}/**/project-context.md",',
-        "# after the project-context.md file is optimized and saved. Override wins.",
-    ],
-    "steps/step-01-discover.md": [
-        "- Look for file at `{project_knowledge}/project-context.md or {project-root}/**/project-context.md`",
-        "Copy template from `../project-context-template.md` to `{output_folder}/project-context.md`",
-    ],
-    "steps/step-02-generate.md": [
-        "When user selects 'C' for a category, append the content directly to `{output_folder}/project-context.md` using the structure from step 8.",
-    ],
-    "steps/step-03-complete.md": [
-        "File saved to: `{output_folder}/project-context.md`",
-        "`{output_folder}/project-context.md`",
-    ],
-}
+DEPRECATED_GENERATE_FORWARD_PATTERN = re.compile(
+    r"(?is)invoke [`']bmad-project-context[`'] with .*?\bingest\b.*? intent"
+)
 LEDGER_EQUATION = re.compile(
     r"create baseline `(?P<baseline>\d+)`.*?"
     r"cumulative story `(?P<cumulative>[+-]\d+)`.*?"
@@ -283,9 +231,9 @@ def active_lines_starting_with(value: str, prefix: str) -> list[str]:
     return matches
 
 
-def resolve_workflow(skill_name: str, surface: str = ".agents") -> dict:
+def run_resolve_workflow(skill_name: str, surface: str = ".agents") -> subprocess.CompletedProcess:
     skill_dir = REPO_ROOT / surface / "skills" / skill_name
-    result = subprocess.run(
+    return subprocess.run(
         [
             sys.executable,
             str(RESOLVER),
@@ -299,6 +247,10 @@ def resolve_workflow(skill_name: str, surface: str = ".agents") -> dict:
         capture_output=True,
         check=False,
     )
+
+
+def resolve_workflow(skill_name: str, surface: str = ".agents") -> dict:
+    result = run_resolve_workflow(skill_name, surface)
     if result.returncode != 0:
         raise AssertionError(result.stderr or result.stdout)
     return json.loads(result.stdout)["workflow"]
@@ -377,11 +329,11 @@ class BMadCustomizationTests(unittest.TestCase):
                     normalize_text(SPEC_ACTIVATION_CONTRACT),
                 )
 
-        generator_customization = tomllib.loads(
-            GENERATOR_CUSTOMIZATION.read_text(encoding="utf-8")
+        project_context_customization = tomllib.loads(
+            PROJECT_CONTEXT_CUSTOMIZATION.read_text(encoding="utf-8")
         )["workflow"]
         self.assertEqual(
-            generator_customization["activation_steps_append"],
+            project_context_customization["activation_steps_append"],
             [PROJECT_CONTEXT_WRITER_DIRECTIVE],
         )
         output_folders = re.findall(
@@ -389,25 +341,22 @@ class BMadCustomizationTests(unittest.TestCase):
             BMM_CONFIG.read_text(encoding="utf-8"),
         )
         self.assertEqual(output_folders, ["{project-root}/_bmad-output"])
+        self.assertFalse(
+            (
+                REPO_ROOT / "_bmad" / "custom" / "bmad-generate-project-context.toml"
+            ).exists()
+        )
 
         for surface in (".agents", ".claude"):
-            with self.subTest(surface=surface, skill="bmad-generate-project-context"):
-                skill_dir = (
-                    REPO_ROOT / surface / "skills" / "bmad-generate-project-context"
-                )
+            with self.subTest(surface=surface, skill="bmad-project-context"):
+                skill_dir = REPO_ROOT / surface / "skills" / "bmad-project-context"
                 defaults = tomllib.loads(
                     (skill_dir / "customize.toml").read_text(encoding="utf-8")
                 )["workflow"]
-                self.assertEqual(
-                    defaults["persistent_facts"],
-                    [GENERATOR_PROJECT_CONTEXT_FACT],
-                )
+                self.assertEqual(defaults["persistent_facts"], [])
                 self.assertEqual(defaults["activation_steps_append"], [])
 
-                workflow = resolve_workflow(
-                    "bmad-generate-project-context",
-                    surface,
-                )
+                workflow = resolve_workflow("bmad-project-context", surface)
                 self.assertEqual(
                     workflow["activation_steps_append"],
                     [PROJECT_CONTEXT_WRITER_DIRECTIVE],
@@ -422,21 +371,26 @@ class BMadCustomizationTests(unittest.TestCase):
                 self.assertEqual(len(activation_sections), 1)
                 self.assertEqual(
                     normalize_text(activation_sections[0]),
-                    normalize_text(GENERATOR_ACTIVATION_CONTRACT),
+                    normalize_text(PROJECT_CONTEXT_ACTIVATION_CONTRACT),
                 )
 
-                references = {}
-                for path in sorted(skill_dir.rglob("*")):
-                    if not path.is_file() or path.suffix not in {".md", ".toml"}:
-                        continue
-                    lines = [
-                        line.strip()
-                        for line in path.read_text(encoding="utf-8").splitlines()
-                        if "project-context.md" in line
-                    ]
-                    if lines:
-                        references[path.relative_to(skill_dir).as_posix()] = lines
-                self.assertEqual(references, GENERATOR_CONTEXT_REFERENCES)
+        for surface in (".agents", ".claude"):
+            with self.subTest(surface=surface, skill="bmad-generate-project-context"):
+                skill_dir = (
+                    REPO_ROOT / surface / "skills" / "bmad-generate-project-context"
+                )
+                self.assertFalse((skill_dir / "customize.toml").exists())
+                skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+                self.assertRegex(skill, r"(?m)^#\s+DEPRECATED")
+                self.assertRegex(skill, DEPRECATED_GENERATE_FORWARD_PATTERN)
+                self.assertEqual(markdown_sections(skill, "## On Activation"), [])
+
+                result = run_resolve_workflow(
+                    "bmad-generate-project-context",
+                    surface,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("customize.toml", result.stderr)
 
     def test_policy_contract_extractor_rejects_inactive_markdown(self):
         rule = CANONICAL_ATTACHED_EVIDENCE_RULE
