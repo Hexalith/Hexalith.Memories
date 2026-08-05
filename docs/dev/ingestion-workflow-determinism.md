@@ -41,6 +41,28 @@ Every path that starts `IngestionWorkflow` has one of these obligations:
   contains no configuration because activity execution is an I/O boundary, not
   replayed orchestration.
 
+The Server inventory is intentionally closed to these four reviewed starts:
+
+| Start owner | Classification | Required data-flow proof |
+|-------------|----------------|--------------------------|
+| `DaprIngestionWorkflowScheduler` | Shared top-level scheduler | Capture configuration and trace, then claim-check, then pass the prepared input to Dapr |
+| URL endpoint in `IngestionEndpoints` | Direct URL exception | Assign captured configuration/trace to the same byte-free input passed to Dapr |
+| `ScheduleAnnotationIngestionActivity` | Activity-owned exception | Preserve parent configuration (or capture the legacy fallback), claim-check inline bytes, then pass the prepared input to Dapr |
+| `AnnotationProjectionWorkflow` | Observed child exception | Copy the parent's captured configuration unchanged and preserve the existing child failure/compensation semantics |
+
+The annotation child is deliberately not claim-checked a second time. Its content is
+already part of the durable `AnnotationProjectionInput`; the child construction copies
+that durable content and the identical captured configuration. By contrast, the legacy
+activity-owned annotation path creates new inline bytes at an activity boundary, so it
+must claim-check those bytes before its direct Dapr call.
+
+Server EventStore composition must resolve
+`IEventIngestionWorkflowScheduler` as `EventIngestionWorkflowSchedulerAdapter`. The
+adapter delegates the exact instance ID, full input, and cancellation token through
+`IIngestionWorkflowScheduler`, which owns Server capture and claim-check behavior. The
+package-owned direct Dapr fallback is not evidence for Server composition because it
+does not perform those Server-owned preparations.
+
 Changing an entry point includes reviewing every retry, re-ingestion, bulk, directory,
 event, annotation, command/projection, and adapter path that can reach it. A path that
 preserves `PayloadReference` but drops `WorkflowConfiguration` is incomplete.
@@ -94,7 +116,11 @@ not current, then run:
 DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll \
   -class Hexalith.Memories.Server.Tests.Architecture.IngestionWorkflowDeterminismGuardTests \
   -class Hexalith.Memories.Server.Tests.Ingestion.DaprIngestionWorkflowSchedulerTests \
+  -class Hexalith.Memories.Server.Tests.Ingestion.IngestionPayloadClaimCheckTests \
+  -class Hexalith.Memories.Server.Tests.Cases.CaseServiceTests \
+  -class Hexalith.Memories.Server.Tests.Workflows.AnnotationProjectionWorkflowTests \
   -class Hexalith.Memories.Server.Tests.Workflows.IngestionWorkflowTests \
+  -class Hexalith.Memories.Server.Tests.EventStoreIntegration.EventIngestionWorkflowSchedulerAdapterTests \
   -parallel none -noLogo
 
 dotnet exec tests/Hexalith.Memories.Contracts.Tests/bin/Debug/net10.0/Hexalith.Memories.Contracts.Tests.dll \
@@ -102,12 +128,27 @@ dotnet exec tests/Hexalith.Memories.Contracts.Tests/bin/Debug/net10.0/Hexalith.M
   -parallel none -noLogo
 ```
 
-The source guards reject the known mutable snapshot types, ambient trace capture, and
-direct URL capture-order drift. Scheduler/workflow tests verify captured retry behavior
-and scheduling. They are targeted guards, not a general determinism analyzer: they do
-not recognize every new static, clock, random source, I/O API, or newly invented entry
-point. Code review must apply the boundary rules above and add/extend a guard whenever
-a new path or mutable dependency is introduced.
+The source guards reject the known mutable snapshot types and ambient trace capture,
+inventory every supported Server start exactly once, and bind each reviewed exception
+to its capture/claim-check data flow. The matcher recognizes a direct
+`ScheduleNewWorkflowAsync` or `CallChildWorkflowAsync<T>` invocation when its first
+argument is positional or named `workflowName:` and uses an unqualified or qualified
+compile-time `nameof(...IngestionWorkflow)` form, or the exact `"IngestionWorkflow"`
+literal. Whitespace, multiline variants, and child calls with a balanced one-level
+nested generic result type are supported. API identifiers and workflow-name expressions
+must end at their real token boundaries. The scanner lexically masks actual comments,
+character literals, and non-workflow string text so invocation-shaped prose is not
+inventoried and comment markers inside strings cannot hide a following real start;
+executable interpolation holes remain visible to the inventory.
+
+This remains a targeted textual guard, not a C# semantic analyzer. It does not resolve
+dynamic or indirect workflow names, constants/aliases, reflection, or wrapper methods,
+and conditional-compilation blocks are deliberately ignored rather than evaluated.
+It also does not recognize every new static, clock, random source, I/O API, or generic
+shape deeper than the documented balanced matcher. Code review must apply the boundary
+rules above and extend the guard whenever a new path or mutable dependency is
+introduced; weakening the matcher or adding a direct/child exception requires explicit
+review.
 
 ## New entry-point review checklist
 

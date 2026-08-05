@@ -46,6 +46,114 @@ public sealed class DaprIngestionWorkflowSchedulerTests
     }
 
     [Fact]
+    public async Task ScheduleAsync_InlineBytes_SendsCapturedClaimCheckedInputToDapr()
+    {
+        IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
+        workflowClient.ScheduleNewWorkflowAsync(
+            nameof(IngestionWorkflow),
+            "instance-claim-check",
+            Arg.Any<IngestionInput>(),
+            null,
+            Arg.Any<CancellationToken>())
+            .Returns("instance-claim-check");
+        IWorkflowPayloadStore payloadStore = Substitute.For<IWorkflowPayloadStore>();
+        byte[] contentBytes = [4, 8, 15, 16, 23, 42];
+        WorkflowPayloadReference payloadReference = new(
+            "instance-claim-check:sourcebytes:hash:source",
+            "hash",
+            contentBytes.Length,
+            WorkflowPayloadKind.SourceBytes,
+            "tenant-a",
+            "instance-claim-check");
+        payloadStore.SaveAsync(
+            "tenant-a",
+            "instance-claim-check",
+            WorkflowPayloadKind.SourceBytes,
+            Arg.Any<ReadOnlyMemory<byte>>(),
+            "source",
+            Arg.Any<CancellationToken>())
+            .Returns(payloadReference);
+        IngestionWorkflowConfigurationCapture configurationCapture = new(
+            Options.Create(new IngestionSettings
+            {
+                RetryPolicies = new Dictionary<string, ActivityRetryPolicy>(StringComparer.Ordinal)
+                {
+                    ["ExtractContentActivity"] = new ActivityRetryPolicy
+                    {
+                        MaxAttempts = 7,
+                        FirstRetryIntervalSeconds = 11,
+                        BackoffCoefficient = 1.25,
+                        MaxRetryIntervalSeconds = 71,
+                    },
+                },
+            }),
+            Options.Create(new NaturalLanguageDescriptionOptions { PersistInMetadata = true }));
+        IIngestionWorkflowInFlightRegistry registry = Substitute.For<IIngestionWorkflowInFlightRegistry>();
+        DaprIngestionWorkflowScheduler scheduler = CreateScheduler(
+            workflowClient,
+            registry,
+            payloadStore,
+            configurationCapture);
+        WorkflowTraceContext traceContext = new()
+        {
+            TraceParent = "00-11111111111111111111111111111111-2222222222222222-01",
+            TraceState = "vendor=scheduler-proof",
+        };
+        IngestionInput input = CreateInput() with
+        {
+            SourceUri = "file:///evidence.txt",
+            SourceType = SourceType.File,
+            ContentBytes = contentBytes,
+            ContentType = "application/x-scheduler-proof",
+            IngestedBy = "scheduler-proof@test.local",
+            CausationId = "causation-scheduler-proof",
+            CorrelationId = "correlation-scheduler-proof",
+            TraceContext = traceContext,
+            Metadata = new Dictionary<string, MetadataField>(StringComparer.Ordinal)
+            {
+                ["evidence.kind"] = new("schedule-proof", MetadataOrigin.Human, 1.0f),
+            },
+        };
+        using CancellationTokenSource cancellationSource = new();
+        CancellationToken cancellationToken = cancellationSource.Token;
+
+        string result = await scheduler.ScheduleAsync("instance-claim-check", input, cancellationToken);
+
+        result.ShouldBe("instance-claim-check");
+        await workflowClient.Received(1).ScheduleNewWorkflowAsync(
+            nameof(IngestionWorkflow),
+            "instance-claim-check",
+            Arg.Is<IngestionInput>(scheduled =>
+                scheduled!.TenantId == input.TenantId
+                && scheduled.CaseId == input.CaseId
+                && scheduled.SourceUri == input.SourceUri
+                && scheduled.SourceType == input.SourceType
+                && scheduled.ContentType == input.ContentType
+                && scheduled.IngestedBy == input.IngestedBy
+                && scheduled.CausationId == input.CausationId
+                && scheduled.CorrelationId == input.CorrelationId
+                && ReferenceEquals(scheduled.TraceContext, traceContext)
+                && scheduled.ContentBytes == null
+                && scheduled.PayloadReference == payloadReference
+                && scheduled.Metadata == input.Metadata
+                && scheduled.WorkflowConfiguration != null
+                && scheduled.WorkflowConfiguration.NaturalLanguage.PersistInMetadata
+                && scheduled.WorkflowConfiguration.Retry.ActivityOverrides["ExtractContentActivity"].MaxAttempts == 7
+                && scheduled.WorkflowConfiguration.Retry.ActivityOverrides["ExtractContentActivity"].FirstRetryIntervalSeconds == 11
+                && scheduled.WorkflowConfiguration.Retry.ActivityOverrides["ExtractContentActivity"].BackoffCoefficient == 1.25
+                && scheduled.WorkflowConfiguration.Retry.ActivityOverrides["ExtractContentActivity"].MaxRetryIntervalSeconds == 71),
+            null,
+            cancellationToken);
+        await payloadStore.Received(1).SaveAsync(
+            "tenant-a",
+            "instance-claim-check",
+            WorkflowPayloadKind.SourceBytes,
+            Arg.Is<ReadOnlyMemory<byte>>(payload => payload!.ToArray().SequenceEqual(contentBytes)),
+            "source",
+            cancellationToken);
+    }
+
+    [Fact]
     public async Task ScheduleAsync_WhenWorkflowScheduleFails_RemovesTrackedInstance()
     {
         IDaprWorkflowClient workflowClient = Substitute.For<IDaprWorkflowClient>();
@@ -86,11 +194,13 @@ public sealed class DaprIngestionWorkflowSchedulerTests
 
     private static DaprIngestionWorkflowScheduler CreateScheduler(
         IDaprWorkflowClient workflowClient,
-        IIngestionWorkflowInFlightRegistry registry)
+        IIngestionWorkflowInFlightRegistry registry,
+        IWorkflowPayloadStore? payloadStore = null,
+        IngestionWorkflowConfigurationCapture? workflowConfigurationCapture = null)
         => new(
             workflowClient,
-            Substitute.For<IWorkflowPayloadStore>(),
-            new IngestionWorkflowConfigurationCapture(
+            payloadStore ?? Substitute.For<IWorkflowPayloadStore>(),
+            workflowConfigurationCapture ?? new IngestionWorkflowConfigurationCapture(
                 Options.Create(new IngestionSettings()),
                 Options.Create(new NaturalLanguageDescriptionOptions())),
             new WorkflowTraceContextCapture(),

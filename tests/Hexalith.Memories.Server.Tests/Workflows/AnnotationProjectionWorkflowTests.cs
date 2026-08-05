@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Tests.Workflows;
 
+using System.Text;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -70,7 +72,10 @@ public class AnnotationProjectionWorkflowTests
                     && i.SourceUri == Input.SourceUri
                     && i.SourceType == SourceType.Annotation
                     && i.CausationId == Input.TargetMemoryUnitId
-                    && i.WorkflowConfiguration == Input.WorkflowConfiguration
+                    && ReferenceEquals(i.WorkflowConfiguration, Input.WorkflowConfiguration)
+                    && i.ContentBytes != null
+                    && i.ContentBytes.SequenceEqual(Encoding.UTF8.GetBytes(Input.Content))
+                    && i.PayloadReference == null
                     && i.TraceContext == TraceContext),
                 Arg.Is<ChildWorkflowTaskOptions>(o => o!.InstanceId == Input.AnnotationMemoryUnitId));
             context.CallActivityAsync<bool>(

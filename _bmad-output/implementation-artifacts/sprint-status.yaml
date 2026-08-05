@@ -683,7 +683,7 @@ action_items:
   - epic: 23
     action: "Preserve deterministic workflow scheduling through IIngestionWorkflowScheduler or explicit captured config for every new ingestion entry point"
     owner: "Amelia"
-    status: in-progress  # 2026-07-06 (Epic 24): trace propagation and hot-path cleanup preserved explicit scheduler/state-reader paths; keep active for future ingestion entry points.
+    status: done  # 2026-08-05: closed-source Server inventory and bound data-flow proofs cover all four reviewed starts; Server/Contracts builds 0 warnings/errors, focused Server lane 131/0/0/0, serialization lane 11/0/0/0.
   - epic: 24
     action: "Implement an executable pre-review guard or checklist for remediation stories covering File List completeness, evidence-table status, story/spec status, and sprint-status sync"
     owner: "Amelia, Murat"

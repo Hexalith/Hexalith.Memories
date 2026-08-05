@@ -1,5 +1,6 @@
 namespace Hexalith.Memories.Server.Tests.Cases;
 
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -13,10 +14,13 @@ using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 using NSubstitute;
 
@@ -141,6 +145,26 @@ public class CaseServiceTests
         List<string> operationLog = [];
         CapturingCommandStore commandStore = new(operationLog);
         CapturingProjectionWorkflowScheduler workflowScheduler = new(operationLog);
+        IngestionWorkflowConfigurationCapture workflowConfigurationCapture = new(
+            Options.Create(new IngestionSettings
+            {
+                RetryPolicies = new Dictionary<string, ActivityRetryPolicy>(StringComparer.Ordinal)
+                {
+                    ["ExtractContentActivity"] = new ActivityRetryPolicy
+                    {
+                        MaxAttempts = 9,
+                        FirstRetryIntervalSeconds = 13,
+                        BackoffCoefficient = 1.75,
+                        MaxRetryIntervalSeconds = 97,
+                    },
+                },
+            }),
+            Options.Create(new NaturalLanguageDescriptionOptions { PersistInMetadata = true }));
+        using Activity activity = new("annotation-parent-capture");
+        activity.SetIdFormat(ActivityIdFormat.W3C);
+        activity.SetParentId("00-33333333333333333333333333333333-4444444444444444-01");
+        activity.TraceStateString = "vendor=case-service-proof";
+        activity.Start();
         CaseService service = new(
             redis,
             falkorDb,
@@ -150,7 +174,9 @@ public class CaseServiceTests
             CreateMockActorProxyFactory(),
             NullLogger<CaseService>.Instance,
             commandStore,
-            workflowScheduler);
+            workflowScheduler,
+            workflowConfigurationCapture,
+            new WorkflowTraceContextCapture());
 
         redisDb.HashGetAllAsync(Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>())
             .Returns(
@@ -186,6 +212,18 @@ public class CaseServiceTests
         ScheduledProjectionWorkflow workflow = workflowScheduler.ScheduledWorkflows.ShouldHaveSingleItem();
         workflow.WorkflowName.ShouldBe(nameof(AnnotationProjectionWorkflow));
         workflow.InstanceId.ShouldBe($"annotation-project-{result.Value.Annotation.Id}");
+        AnnotationProjectionInput projectionInput = workflow.Input.ShouldBeOfType<AnnotationProjectionInput>();
+        IngestionWorkflowConfiguration capturedConfiguration = projectionInput.WorkflowConfiguration.ShouldNotBeNull();
+        capturedConfiguration.NaturalLanguage.PersistInMetadata.ShouldBeTrue();
+        WorkflowActivityRetryPolicy capturedRetry =
+            capturedConfiguration.Retry.ActivityOverrides["ExtractContentActivity"];
+        capturedRetry.MaxAttempts.ShouldBe(9);
+        capturedRetry.FirstRetryIntervalSeconds.ShouldBe(13);
+        capturedRetry.BackoffCoefficient.ShouldBe(1.75);
+        capturedRetry.MaxRetryIntervalSeconds.ShouldBe(97);
+        WorkflowTraceContext capturedTrace = projectionInput.TraceContext.ShouldNotBeNull();
+        capturedTrace.TraceParent.ShouldBe(activity.Id);
+        capturedTrace.TraceState.ShouldBe("vendor=case-service-proof");
 
         operationLog.ShouldBe(
         [
