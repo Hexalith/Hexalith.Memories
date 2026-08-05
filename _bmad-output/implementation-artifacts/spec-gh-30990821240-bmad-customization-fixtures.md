@@ -63,6 +63,16 @@ context:
 
 ## Spec Change Log
 
+## File Scope
+
+Allowed files for this story:
+
+- `_bmad-output/implementation-artifacts/spec-gh-30990821240-bmad-customization-fixtures.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+- `_bmad/custom/bmad-project-context.toml`
+- `_bmad/custom/bmad-generate-project-context.toml`
+- `tests/tooling/bmad_customization/bmad_customization_test.py`
+
 ## Verification
 
 **Commands:**
