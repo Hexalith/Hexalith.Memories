@@ -56,32 +56,44 @@ else {
 }
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 
-$images = @(
+# Candidate unit members. Historical recovery checkouts (pre-access-telemetry) omit later
+# projects; publish only members whose project file exists in the selected source tree.
+$imageCandidates = @(
     [ordered]@{
         name = 'server'
         project = 'src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj'
         repository = $RepositoryPrefix
         archive = Join-Path $outputPath 'server.tar.gz'
+        renderParameter = 'ServerImage'
     },
     [ordered]@{
         name = 'mcp'
         project = 'src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj'
         repository = "$RepositoryPrefix-mcp"
         archive = Join-Path $outputPath 'mcp.tar.gz'
+        renderParameter = 'McpImage'
     },
     [ordered]@{
         name = 'access-telemetry'
         project = 'src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj'
         repository = "$RepositoryPrefix-access-telemetry"
         archive = Join-Path $outputPath 'access-telemetry.tar.gz'
+        renderParameter = 'AccessTelemetryImage'
     },
     [ordered]@{
         name = 'access-telemetry-clock'
         project = 'src/Hexalith.Memories.AccessTelemetry.Clock/Hexalith.Memories.AccessTelemetry.Clock.csproj'
         repository = "$RepositoryPrefix-access-telemetry-clock"
         archive = Join-Path $outputPath 'access-telemetry-clock.tar.gz'
+        renderParameter = 'AccessTelemetryClockImage'
     }
 )
+$images = @($imageCandidates | Where-Object {
+        Test-Path -LiteralPath (Join-Path $repoRoot $_.project)
+    })
+if (@($images | Where-Object { $_.name -in @('server', 'mcp') }).Count -ne 2) {
+    throw "Container publication requires Server and MCP projects under '$repoRoot'; found: $((@($images.name) -join ', '))."
+}
 
 function Protect-LogText {
     param([AllowEmptyString()][string]$Text)
@@ -393,18 +405,50 @@ Remove-Item -LiteralPath $deploymentPath -Force -ErrorAction SilentlyContinue
 
 Push-Location $repoRoot
 try {
-    $serverImage = "$Registry/$RepositoryPrefix`:$Version"
-    $mcpImage = "$Registry/$RepositoryPrefix-mcp`:$Version"
-    $accessTelemetryImage = "$Registry/$RepositoryPrefix-access-telemetry`:$Version"
-    $accessTelemetryClockImage = "$Registry/$RepositoryPrefix-access-telemetry-clock`:$Version"
-    $render = Invoke-NativeCommand -Command 'pwsh' -Arguments @(
-        '-NoLogo', '-NoProfile', '-File', './tools/render-production-deployment.ps1',
-        '-Version', $Version,
-        '-ServerImage', $serverImage,
-        '-McpImage', $mcpImage,
-        '-AccessTelemetryImage', $accessTelemetryImage,
-        '-AccessTelemetryClockImage', $accessTelemetryClockImage,
-        '-OutputPath', $deploymentPath)
+    $renderScript = Join-Path $repoRoot 'tools/render-production-deployment.ps1'
+    if (-not (Test-Path -LiteralPath $renderScript)) {
+        throw "Production deployment render script '$renderScript' is required."
+    }
+
+    # Pass only image parameters the tagged render script declares. Current tooling recovers
+    # historical tags whose render script predates access-telemetry parameters.
+    $parseErrors = $null
+    $renderAst = [System.Management.Automation.Language.Parser]::ParseFile(
+        $renderScript,
+        [ref]$null,
+        [ref]$parseErrors)
+    if ($null -ne $parseErrors -and $parseErrors.Count -gt 0) {
+        throw "Production deployment render script '$renderScript' could not be parsed."
+    }
+
+    $renderParameterNames = @(
+        $renderAst.ParamBlock.Parameters |
+            ForEach-Object { $_.Name.VariablePath.UserPath }
+    )
+    $renderArguments = [System.Collections.Generic.List[string]]::new()
+    $renderArguments.AddRange([string[]]@(
+            '-NoLogo', '-NoProfile', '-File', $renderScript,
+            '-Version', $Version,
+            '-OutputPath', $deploymentPath))
+    foreach ($image in $images) {
+        $parameterName = [string]$image.renderParameter
+        if ($parameterName -notin $renderParameterNames) {
+            throw "Selected container member '$($image.name)' requires render parameter '-$parameterName', but '$renderScript' does not declare it."
+        }
+
+        $renderArguments.Add("-$parameterName")
+        $renderArguments.Add("$Registry/$($image.repository):$Version")
+    }
+
+    $unsupportedImageParameters = @(
+        $renderParameterNames |
+            Where-Object { $_ -like '*Image' -and $_ -notin @($images.renderParameter) }
+    )
+    if ($unsupportedImageParameters.Count -gt 0) {
+        throw "Render script '$renderScript' requires image parameter(s) ($($unsupportedImageParameters -join ', ')) that are not present in the selected source tree."
+    }
+
+    $render = Invoke-NativeCommand -Command 'pwsh' -Arguments @($renderArguments.ToArray())
     if ($render.ExitCode -ne 0) {
         $reason = "Production release deployment render failed: $(Get-FailureText $render)"
         $outcomes = @($images | ForEach-Object {

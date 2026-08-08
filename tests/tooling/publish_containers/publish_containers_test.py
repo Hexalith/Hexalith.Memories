@@ -300,6 +300,7 @@ def run_publish(
     kubectl_exit: int = 0,
     kubectl_warning: str = "",
     extra_arguments: list[str] | None = None,
+    repository_root: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     invocation = [
         "pwsh",
@@ -314,6 +315,8 @@ def run_publish(
     ]
     if registry is not None:
         invocation.extend(["-Registry", registry])
+    if repository_root is not None:
+        invocation.extend(["-RepositoryRoot", str(repository_root)])
     if push:
         invocation.append("-Push")
     if extra_arguments:
@@ -886,6 +889,59 @@ class PublishContainersTests(unittest.TestCase):
             combined = result.stdout + result.stderr
             self.assertIn("CONTAINER PUBLISH FAILED", combined)
             self.assertNotIn("PARTIAL CONTAINER PUBLISH", combined)
+
+    def test_historical_source_publishes_only_server_and_mcp_unit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "historical-source"
+            tools = source / "tools"
+            tools.mkdir(parents=True)
+            for relative in (
+                "src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj",
+                "src/Hexalith.Memories.Mcp/Hexalith.Memories.Mcp.csproj",
+            ):
+                project = source / relative
+                project.parent.mkdir(parents=True, exist_ok=True)
+                project.write_text("<Project />\n", encoding="utf-8")
+            (tools / "render-production-deployment.ps1").write_text(
+                textwrap.dedent(
+                    """
+                    param(
+                        [Parameter(Mandatory)][string]$Version,
+                        [Parameter(Mandatory)][string]$ServerImage,
+                        [Parameter(Mandatory)][string]$McpImage,
+                        [Parameter(Mandatory)][string]$OutputPath
+                    )
+                    Set-Content -LiteralPath $OutputPath -Value @"
+                    apiVersion: v1
+                    kind: List
+                    items:
+                      - image: $ServerImage
+                      - image: $McpImage
+                    "@
+                    """
+                ).strip()
+                + "\n",
+                encoding="utf-8",
+            )
+            _, env = prepare_environment(root)
+            output = root / "artifacts"
+
+            result = run_publish(output, env, push=False, repository_root=source)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            summary = json.loads((output / "build-summary.json").read_text(encoding="utf-8-sig"))
+            self.assertEqual("succeeded", summary["status"])
+            self.assertEqual(
+                [SERVER_IMAGE, MCP_IMAGE],
+                [image["image"] for image in summary["images"]],
+            )
+            self.assertTrue((output / "server.tar.gz").exists())
+            self.assertTrue((output / "mcp.tar.gz").exists())
+            self.assertFalse((output / "access-telemetry.tar.gz").exists())
+            self.assertFalse((output / "access-telemetry-clock.tar.gz").exists())
+            calls = [entry for entry in command_log(root) if entry["command"] == "dotnet"]
+            self.assertEqual(["server", "mcp"], [entry["image"] for entry in calls])
 
 
 if __name__ == "__main__":

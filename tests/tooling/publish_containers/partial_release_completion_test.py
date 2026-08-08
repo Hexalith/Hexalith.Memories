@@ -39,7 +39,11 @@ def git(root: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True)
 
 
-def prepare_tagged_source(root: Path) -> tuple[Path, Path]:
+def prepare_tagged_source(
+    root: Path,
+    image_repositories: list[str] | None = None,
+) -> tuple[Path, Path]:
+    repositories = list(image_repositories or IMAGE_REPOSITORIES)
     tools = root / "tools"
     tools.mkdir(parents=True)
     (tools / "release-packages.json").write_text(
@@ -71,7 +75,7 @@ def prepare_tagged_source(root: Path) -> tuple[Path, Path]:
                         "status": "succeeded",
                         "disposition": "pushed" if index % 2 == 0 else "already-present",
                     }
-                    for index, repository in enumerate(IMAGE_REPOSITORIES)
+                    for index, repository in enumerate(repositories)
                 ],
             }
         ),
@@ -80,7 +84,7 @@ def prepare_tagged_source(root: Path) -> tuple[Path, Path]:
     deployment = root / "production-deployment.yaml"
     deployment.write_text(
         "images:\n"
-        + "".join(f"- registry.test/{repository}:{VERSION}\n" for repository in IMAGE_REPOSITORIES),
+        + "".join(f"- registry.test/{repository}:{VERSION}\n" for repository in repositories),
         encoding="utf-8",
     )
     return container_summary, deployment
@@ -257,10 +261,14 @@ def run_completion(
 
 
 class PartialReleaseCompletionTests(unittest.TestCase):
-    def prepare(self, root: Path) -> tuple[Path, Path, Path, dict[str, str]]:
+    def prepare(
+        self,
+        root: Path,
+        image_repositories: list[str] | None = None,
+    ) -> tuple[Path, Path, Path, dict[str, str]]:
         source = root / "source"
         source.mkdir()
-        summary, deployment = prepare_tagged_source(source)
+        summary, deployment = prepare_tagged_source(source, image_repositories=image_repositories)
         fake_bin = root / "bin"
         fake_bin.mkdir()
         write_fake_gh(fake_bin)
@@ -300,6 +308,36 @@ class PartialReleaseCompletionTests(unittest.TestCase):
             self.assertEqual(1, sum(command[:2] == ["issue", "close"] for command in commands))
             combined = first.stdout + first.stderr + second.stdout + second.stderr
             self.assertNotIn(env["GH_TOKEN"], combined)
+
+    def test_historical_two_image_unit_completes_without_access_telemetry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
+            root = Path(temp)
+            source, container_summary, deployment, env = self.prepare(
+                root,
+                image_repositories=["memories", "memories-mcp"],
+            )
+
+            result = run_completion(source, container_summary, deployment, nuget.origin, env)
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            evidence = json.loads(
+                (source / "recovery-output" / "completion-summary.json").read_text(encoding="utf-8-sig")
+            )
+            self.assertEqual("succeeded", evidence["status"])
+            self.assertEqual(2, len(evidence["images"]))
+            self.assertEqual(
+                [
+                    f"registry.test/memories:{VERSION}",
+                    f"registry.test/memories-mcp:{VERSION}",
+                ],
+                [image["image"] for image in evidence["images"]],
+            )
+            commands = [
+                json.loads(line)
+                for line in Path(env["FAKE_GH_LOG"]).read_text(encoding="utf-8").splitlines()
+            ]
+            comment = next(command for command in commands if command[:2] == ["issue", "comment"])
+            self.assertTrue(any("2 immutable image(s)" in arg for arg in comment))
 
     def test_existing_release_asset_conflict_fails_before_incident_closure(self) -> None:
         with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:

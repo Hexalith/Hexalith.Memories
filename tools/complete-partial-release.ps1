@@ -193,16 +193,24 @@ try {
     }
 
     $images = @($containerSummary.images)
-    $expectedImages = @(
+    # Required baseline for every Memories release; access-telemetry members appear only on
+    # tags that published them (v2.16.0+). Accept the exact set publish-containers emitted.
+    $requiredImages = @(
         "$Registry/memories:$Version",
-        "$Registry/memories-mcp:$Version",
-        "$Registry/memories-access-telemetry:$Version",
-        "$Registry/memories-access-telemetry-clock:$Version"
+        "$Registry/memories-mcp:$Version"
     )
-    if ($images.Count -ne 4 -or
-        @($images.image | Where-Object { $_ -notin $expectedImages }).Count -gt 0 -or
-        @($expectedImages | Where-Object { $_ -notin $images.image }).Count -gt 0) {
-        throw 'Container recovery evidence does not contain the exact four-image release unit.'
+    $allowedImages = @(
+        $requiredImages +
+        @(
+            "$Registry/memories-access-telemetry:$Version",
+            "$Registry/memories-access-telemetry-clock:$Version"
+        )
+    )
+    $summaryImages = @($images.image)
+    if (@($requiredImages | Where-Object { $_ -notin $summaryImages }).Count -gt 0 -or
+        @($summaryImages | Where-Object { $_ -notin $allowedImages }).Count -gt 0 -or
+        $summaryImages.Count -ne @($summaryImages | Select-Object -Unique).Count) {
+        throw "Container recovery evidence must include the Server/MCP unit and only allowed image repositories for '$Version'."
     }
 
     foreach ($image in $images) {
@@ -357,7 +365,7 @@ try {
             $issueNumber = [string]$matchingIssues[0].number
             $comment = Invoke-NativeCommand -Command 'gh' -Arguments @(
                 'issue', 'comment', $issueNumber, '--repo', $Repository,
-                '--body', "Recovery verified tag $tag, nine NuGet packages, both immutable images, the versioned deployment, and all GitHub Release assets. Evidence: partial-release-completion-v$Version.")
+                '--body', "Recovery verified tag $tag, nine NuGet packages, $($images.Count) immutable image(s), the versioned deployment, and all GitHub Release assets. Evidence: partial-release-completion-v$Version.")
             Assert-NativeSuccess -Result $comment -Action "Attach recovery evidence to issue #$issueNumber"
             $close = Invoke-NativeCommand -Command 'gh' -Arguments @(
                 'issue', 'close', $issueNumber, '--repo', $Repository,

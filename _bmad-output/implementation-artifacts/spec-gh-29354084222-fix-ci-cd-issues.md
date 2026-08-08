@@ -61,6 +61,23 @@ context:
 
 ## Spec Change Log
 
+- 2026-08-08: Confirmed org `HEXALITH_ZOT_*` secrets/vars are present and write-scope probe succeeds on recovery. First recoveries for `2.6.0`/`2.6.7` failed at build because current tooling assumed the four-image access-telemetry unit; historical `2.6.x` tags only publish Server+MCP. Locally fixed `tools/publish-containers.ps1` and `tools/complete-partial-release.ps1` to select members from the tagged source (with tests). Awaiting push to `main` before re-dispatching recoveries.
+
+## File Scope
+
+Allowed files for this story:
+
+- `_bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md`
+- `.releaserc.json`
+- `.github/workflows/recover-partial-release.yml`
+- `docs/dev/release-runbook.md`
+- `tools/verify-container-registry.ps1`
+- `tools/publish-containers.ps1`
+- `tools/complete-partial-release.ps1`
+- `tools/create-partial-publish-issue.ps1`
+- `tests/tooling/publish_containers/**`
+- `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`
+
 ## Design Notes
 
 Zot serves `/v2/` anonymously, so login success does not prove writes. OCI upload-session `POST` plus cancellation `DELETE` tests exact repository scope during `verifyRelease`. Docker's local image ID matches `SchemaV2Manifest.config.digest`; `Descriptor.digest` identifies the manifest.
