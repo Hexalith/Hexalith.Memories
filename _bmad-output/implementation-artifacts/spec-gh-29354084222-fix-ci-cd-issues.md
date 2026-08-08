@@ -2,7 +2,7 @@
 title: 'Recover Zot-backed releases and fail before partial publication'
 type: 'bugfix'
 created: '2026-07-14'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '1c7e33fb63116aa4ab87045dced0824df32de3f3'
 context:
@@ -95,3 +95,35 @@ Zot serves `/v2/` anonymously, so login success does not prove writes. OCI uploa
 
 **Manual checks:**
 - With repaired organization secrets, run tagged recoveries and inspect Zot digests, NuGet URLs, Release assets, evidence, and issue closures.
+
+## Suggested Review Order
+
+**Tagged-source image unit selection**
+
+- Entry point: publish only projects present in the checked-out tagged tree
+  [`publish-containers.ps1:61`](../../tools/publish-containers.ps1#L61)
+
+- Fail closed unless the selected unit is exactly two or four members
+  [`publish-containers.ps1:97`](../../tools/publish-containers.ps1#L97)
+
+- Pass only Image parameters the tagged render script declares
+  [`publish-containers.ps1:426`](../../tools/publish-containers.ps1#L426)
+
+**Release completion evidence**
+
+- Accept Server/MCP with optional telemetry as a 2- or 4-image allowed set
+  [`complete-partial-release.ps1:209`](../../tools/complete-partial-release.ps1#L209)
+
+- Require the versioned deployment to reference every summary image
+  [`complete-partial-release.ps1:277`](../../tools/complete-partial-release.ps1#L277)
+
+**Workflow gates**
+
+- Historical recoveries must present Server/MCP and only allowed repositories
+  [`recover-partial-release.yml:143`](../../.github/workflows/recover-partial-release.yml#L143)
+
+**Tests**
+
+- Prove a mismatched deployment fails before Release creation
+  [`partial_release_completion_test.py:340`](../../tests/tooling/publish_containers/partial_release_completion_test.py#L340)
+
