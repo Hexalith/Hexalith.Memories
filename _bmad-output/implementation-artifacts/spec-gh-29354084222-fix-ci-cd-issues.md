@@ -61,7 +61,8 @@ context:
 
 ## Spec Change Log
 
-- 2026-08-08: Confirmed org `HEXALITH_ZOT_*` secrets/vars are present and write-scope probe succeeds on recovery. First recoveries for `2.6.0`/`2.6.7` failed at build because current tooling assumed the four-image access-telemetry unit; historical `2.6.x` tags only publish Server+MCP. Locally fixed `tools/publish-containers.ps1` and `tools/complete-partial-release.ps1` to select members from the tagged source (with tests). Awaiting push to `main` before re-dispatching recoveries.
+- 2026-08-08: Confirmed org `HEXALITH_ZOT_*` secrets/vars are present and write-scope probe succeeds on recovery. First recoveries for `2.6.0`/`2.6.7` failed at build because current tooling assumed the four-image access-telemetry unit; historical `2.6.x` tags only publish Server+MCP. Locally fixed `tools/publish-containers.ps1` and `tools/complete-partial-release.ps1` to select members from the tagged source (with tests). Pushed to `main` as `578d005c`.
+- 2026-08-08: Re-ran recovery: `2.6.0` hit immutable digest conflict (remote already present with a different config digest). `2.6.5` built and pushed both images, then failed workflow evidence validation still requiring exactly four images. Updated `.github/workflows/recover-partial-release.yml` to accept the tagged 2- or 4-image unit.
 
 ## File Scope
 

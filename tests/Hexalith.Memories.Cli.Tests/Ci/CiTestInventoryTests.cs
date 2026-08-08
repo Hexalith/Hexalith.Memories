@@ -491,8 +491,10 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("complete-partial-release.ps1");
         workflow.ShouldContain("GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
         workflow.ShouldContain("@($summary.packages).Count -ne 9");
-        workflow.ShouldContain("@($summary.images).Count -ne 4");
+        workflow.ShouldContain("@($summary.images).Count -notin @(2, 4)");
         workflow.ShouldContain("@($summary.releaseAssets).Count -ne 10");
+        workflow.ShouldContain("tagged immutable image unit (2 or 4 members)");
+        workflow.ShouldContain("/memories-mcp:");
         workflow.ShouldContain("@('pushed', 'already-present')");
         workflow.ShouldContain("if: always()");
         workflow.IndexOf("Stage trusted recovery tooling", StringComparison.Ordinal).ShouldBeLessThan(

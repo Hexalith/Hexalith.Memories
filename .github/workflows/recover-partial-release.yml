@@ -135,8 +135,15 @@ jobs:
           }
 
           $images = @($summary.images)
-          if ($images.Count -ne 4) {
-            throw "Container recovery must reconcile exactly four immutable image tags."
+          $imageCount = $images.Count
+          if ($imageCount -notin @(2, 4)) {
+            throw "Container recovery must reconcile the tagged immutable image unit (2 or 4 members); found $imageCount."
+          }
+          $summaryImages = @($images.image)
+          $hasServer = @($summaryImages | Where-Object { $_ -match '/memories:' }).Count -eq 1
+          $hasMcp = @($summaryImages | Where-Object { $_ -match '/memories-mcp:' }).Count -eq 1
+          if (-not $hasServer -or -not $hasMcp) {
+            throw "Container recovery evidence is missing the required Server/MCP image unit."
           }
           foreach ($image in $images) {
             if ($image.status -ne 'succeeded' -or $image.disposition -notin @('pushed', 'already-present')) {
@@ -169,8 +176,10 @@ jobs:
           if ($summary.status -ne 'succeeded' -or $summary.version -ne $env:RECOVERY_VERSION) {
             throw "Partial-release completion evidence did not report success."
           }
-          if (@($summary.packages).Count -ne 9 -or @($summary.images).Count -ne 4 -or @($summary.releaseAssets).Count -ne 10) {
-            throw "Partial-release completion evidence does not contain the complete release unit."
+          if (@($summary.packages).Count -ne 9 -or
+              @($summary.images).Count -notin @(2, 4) -or
+              @($summary.releaseAssets).Count -ne 10) {
+            throw "Partial-release completion evidence does not contain the complete release unit for this tagged source."
           }
 
       - name: Upload container recovery evidence
