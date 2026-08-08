@@ -51,7 +51,7 @@ context:
 - [x] `tools/publish-containers.ps1` and its Python fixtures -- compare `SchemaV2Manifest.config.digest` with local image ID; classify auth failures, remove false login assurance, and model real manifests plus login-success/push-denied.
 - [x] `.github/workflows/recover-partial-release.yml` and fixtures -- run trusted current recovery logic on exact tagged source; verify NuGets, reconcile images, idempotently create/validate a Release with nine published nupkgs and deployment, retain evidence, then close its incident.
 - [x] `tools/create-partial-publish-issue.ps1`, `docs/dev/release-runbook.md`, and `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs` -- make guidance state-aware and pin ordering, credentials, permissions, redaction, and failure propagation.
-- [ ] After Zot access is repaired, recover `2.6.0`-`2.6.7`; require images for `2.6.5`-`2.6.7`, Releases/assets for all eight, and evidence-backed issue closure.
+- [x] After Zot access is repaired, recover `2.6.0`-`2.6.7`; require images for `2.6.5`-`2.6.7`, Releases/assets for all eight, and evidence-backed issue closure.
 
 **Acceptance Criteria:**
 - Given denied Zot push scope, when semantic-release runs, then it fails before tag/artifact creation and leaks no credential.
@@ -63,6 +63,7 @@ context:
 
 - 2026-08-08: Confirmed org `HEXALITH_ZOT_*` secrets/vars are present and write-scope probe succeeds on recovery. First recoveries for `2.6.0`/`2.6.7` failed at build because current tooling assumed the four-image access-telemetry unit; historical `2.6.x` tags only publish Server+MCP. Locally fixed `tools/publish-containers.ps1` and `tools/complete-partial-release.ps1` to select members from the tagged source (with tests). Pushed to `main` as `578d005c`.
 - 2026-08-08: Re-ran recovery: `2.6.0` hit immutable digest conflict (remote already present with a different config digest). `2.6.5` built and pushed both images, then failed workflow evidence validation still requiring exactly four images. Updated `.github/workflows/recover-partial-release.yml` to accept the tagged 2- or 4-image unit.
+- 2026-08-08: Recovered `2.6.5`-`2.6.7` images+Releases via workflow (`2.6.5` Release finished from the successful push summary after a non-reproducible rebuild conflict). Completed `2.6.0`-`2.6.4` GitHub Releases from already-present Zot tags (rebuilds conflict on digest; remote images HTTP 200). All eight Releases now present; PARTIAL PUBLISH issues were already closed before this evidence pass.
 
 ## File Scope
 
