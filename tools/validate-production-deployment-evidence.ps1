@@ -132,24 +132,126 @@ if ($currentLogs.Count -eq 0 -or $previousLogs.Count -eq 0) {
     throw 'Production deployment evidence must include current and previous container log captures.'
 }
 
-# DW 27.3-CR17: the verifier substitutes the OpenBao-backed secret stores with
-# verification-scoped kubernetes stores. That substitution may never happen silently, so a
-# packet that omits or misstates the disclosure record is invalid.
+# The disposable verifier stages TLS OpenBao and leaves the production hashicorp.vault
+# secret stores unmodified (substitutionPerformed=false). Kubernetes-store substitution is
+# rejected. A packet that omits or misstates the disclosure / OpenBao bootstrap record is invalid.
 #
 # PRESENCE is gated on a succeeded run; SHAPE is validated on both. The disclosure is written
-# only after cluster create, image loads, contract asserts, render and apply all succeed, so
-# REQUIRING it unconditionally made every honest earlier failure unvalidatable - and, because the
-# CI validate step runs with `if: always()`, replaced the genuine terminal error with a message
-# blaming a missing substitution disclosure. A failed run that did get far enough to write one is
-# held to the same structural contract, with only the 'was it verified' obligation relaxed.
+# after OpenBao bootstrap and the verbatim apply, so REQUIRING it unconditionally made every
+# honest earlier failure unvalidatable - and, because the CI validate step runs with
+# `if: always()`, replaced the genuine terminal error with a message blaming a missing
+# disclosure. A failed run that did get far enough to write one is held to the same structural
+# contract, with only the 'was it verified' obligation relaxed.
 #
 # The file is REQUIRED on a succeeded run. Making it optional made its absence the off-switch
-# for its own gate: a substituted run whose disclosure was never written, or was lost from the
-# uploaded packet, validated clean while this script printed an unverified claim that the
-# production secret stores had run unmodified. The verifier now always writes the record - with
-# substitutionPerformed=false when it substituted nothing - so absence is a real defect again,
-# and the Story 31.2 unmodified-run case is expressed as a positive, checkable assertion.
+# for its own gate. Absence of the positive unmodified assertion is a real defect.
 $substitutionPath = Join-Path $evidencePath 'secret-store-substitution.json'
+$openBaoPinnedImage = 'quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653'
+$openBaoRequiredStages = @(
+    'service-ready',
+    'initialized',
+    'unsealed',
+    'kv-v2',
+    'policies',
+    'seeded',
+    'scoped-tokens',
+    'isolation-verified',
+    'bootstrap-secrets',
+    'root-revoked'
+)
+
+function Assert-OpenBaoBootstrapSucceededShape {
+    param([Parameter(Mandatory)]$Bootstrap)
+
+    if ($Bootstrap.schemaVersion -ne 1) {
+        throw "Production deployment evidence OpenBao bootstrap disclosure declares schemaVersion '$($Bootstrap.schemaVersion)'; this validator only accepts schemaVersion 1."
+    }
+    if ($Bootstrap.skipVerify -isnot [bool] -or $Bootstrap.skipVerify) {
+        throw 'Production deployment evidence OpenBao bootstrap disclosure must state skipVerify=false.'
+    }
+    if ($Bootstrap.tlsVerify -isnot [bool] -or -not $Bootstrap.tlsVerify) {
+        throw 'Production deployment evidence OpenBao bootstrap disclosure must state tlsVerify=true.'
+    }
+    if ([string]$Bootstrap.endpoint -cnotlike 'https://hexalith-keys.openbao.svc.cluster.local:8200') {
+        throw "Production deployment evidence OpenBao bootstrap disclosure endpoint '$($Bootstrap.endpoint)' is not the production TLS endpoint."
+    }
+    if ([string]$Bootstrap.image -cne $openBaoPinnedImage) {
+        throw "Production deployment evidence OpenBao bootstrap disclosure image '$($Bootstrap.image)' is not the pinned OpenBao digest."
+    }
+
+    $stages = @($Bootstrap.stages | ForEach-Object { [string]$_ })
+    $missingStages = @($openBaoRequiredStages | Where-Object { $stages -notcontains $_ })
+    if ($missingStages.Count -gt 0) {
+        throw "Production deployment evidence OpenBao bootstrap disclosure is missing required stage(s): [$($missingStages -join ', ')]."
+    }
+    # Require the succeeded sequence in order (extra intermediate stages are allowed).
+    $cursor = 0
+    foreach ($required in $openBaoRequiredStages) {
+        $foundAt = -1
+        for ($i = $cursor; $i -lt $stages.Count; $i++) {
+            if ($stages[$i] -ceq $required) {
+                $foundAt = $i
+                break
+            }
+        }
+        if ($foundAt -lt 0) {
+            throw "Production deployment evidence OpenBao bootstrap disclosure stage sequence is missing '$required' in order."
+        }
+        $cursor = $foundAt + 1
+    }
+
+    $isolation = $Bootstrap.isolation
+    if ($null -eq $isolation) {
+        throw 'Production deployment evidence OpenBao bootstrap disclosure must include isolation results.'
+    }
+    foreach ($flag in @('runtimeAllowed', 'runtimeDeniedCrossPrefix', 'accessAllowed', 'accessDeniedCrossPrefix')) {
+        $value = $isolation.$flag
+        if ($value -isnot [bool] -or -not $value) {
+            throw "Production deployment evidence OpenBao bootstrap disclosure must state isolation.$flag=true."
+        }
+    }
+}
+
+function Assert-OpenBaoBootstrapFailedRunClaims {
+    param([Parameter(Mandatory)]$Bootstrap)
+
+    # Failed packets may be incomplete, but must not assert contradictory false-success claims.
+    if ($Bootstrap.skipVerify -is [bool] -and $Bootstrap.skipVerify) {
+        throw 'Production deployment evidence OpenBao bootstrap disclosure on a failed run must not claim skipVerify=true.'
+    }
+
+    $isolation = $Bootstrap.isolation
+    if ($null -eq $isolation) {
+        return
+    }
+
+    $successFlags = @(
+        ($isolation.runtimeAllowed -is [bool] -and $isolation.runtimeAllowed),
+        ($isolation.runtimeDeniedCrossPrefix -is [bool] -and $isolation.runtimeDeniedCrossPrefix),
+        ($isolation.accessAllowed -is [bool] -and $isolation.accessAllowed),
+        ($isolation.accessDeniedCrossPrefix -is [bool] -and $isolation.accessDeniedCrossPrefix)
+    )
+    if (($successFlags | Where-Object { $_ }).Count -eq 4) {
+        $stages = @($Bootstrap.stages | ForEach-Object { [string]$_ })
+        if ($stages -notcontains 'isolation-verified' -or $stages -notcontains 'root-revoked') {
+            throw 'Production deployment evidence OpenBao bootstrap disclosure on a failed run claims full isolation success without isolation-verified and root-revoked stages.'
+        }
+    }
+}
+
+function Assert-VerifiedVaultComponents {
+    param([Parameter(Mandatory)]$Disclosure, [Parameter(Mandatory)][string]$RunOutcome)
+
+    $verified = @($Disclosure.verifiedVaultComponents | Where-Object { $null -ne $_ })
+    foreach ($name in @('secretstore', 'access-telemetry-secrets')) {
+        $match = @($verified | Where-Object {
+                [string]$_.name -ceq $name -and [string]$_.observedType -ceq 'secretstores.hashicorp.vault'
+            })
+        if ($match.Count -eq 0) {
+            throw "Production deployment evidence secret-store substitution disclosure on a $RunOutcome unmodified run must name verifiedVaultComponents '$name' as secretstores.hashicorp.vault."
+        }
+    }
+}
 
 # ONE structural contract for both outcomes. The failed-run branch previously checked 2 of the 8
 # fields, so a failed packet could assert substitutionPerformed=true naming components that were
@@ -263,6 +365,17 @@ if ($result.status -eq 'succeeded') {
     if (-not (Test-Path -LiteralPath $substitutionPath -PathType Leaf)) {
         throw 'Production deployment evidence must disclose the verification-scoped secret-store substitution (secret-store-substitution.json is missing). A succeeded run always writes this record, including when no substitution was performed.'
     }
+    $openBaoBootstrapPath = Join-Path $evidencePath 'openbao-bootstrap.json'
+    if (-not (Test-Path -LiteralPath $openBaoBootstrapPath -PathType Leaf)) {
+        throw 'Production deployment evidence must disclose disposable OpenBao bootstrap (openbao-bootstrap.json is missing).'
+    }
+    try {
+        $openBaoBootstrap = (Get-Content -LiteralPath $openBaoBootstrapPath -Raw) | ConvertFrom-Json
+    }
+    catch {
+        throw "Production deployment evidence OpenBao bootstrap disclosure is not parsable JSON: $($_.Exception.Message)"
+    }
+    Assert-OpenBaoBootstrapSucceededShape -Bootstrap $openBaoBootstrap
     try {
         $substitution = (Get-Content -LiteralPath $substitutionPath -Raw) | ConvertFrom-Json
     }
@@ -270,11 +383,14 @@ if ($result.status -eq 'succeeded') {
         throw "Production deployment evidence secret-store substitution disclosure is not parsable JSON: $($_.Exception.Message)"
     }
 
-    [void](Assert-SubstitutionDisclosureShape -Disclosure $substitution -RunOutcome 'succeeded')
+    if ($substitution.substitutionPerformed -is [bool] -and $substitution.substitutionPerformed) {
+        throw 'Succeeded production deployment evidence must not substitute OpenBao-backed secret stores with secretstores.kubernetes; disposable OpenBao staging is required.'
+    }
 
-    # A succeeded run must additionally have VERIFIED the substitution. The verifier now writes the
-    # disclosure before raising, so a packet can legitimately record an unverified substitution -
-    # but only on a failed run.
+    [void](Assert-SubstitutionDisclosureShape -Disclosure $substitution -RunOutcome 'succeeded')
+    # A succeeded run must additionally have VERIFIED the unmodified vault stores. The verifier
+    # writes the disclosure before raising, so a packet can legitimately record an unverified
+    # confirmation - but only on a failed run.
     if ($substitution.substitutionVerified -isnot [bool] -or -not $substitution.substitutionVerified) {
         throw 'Production deployment evidence secret-store substitution disclosure on a succeeded run must state substitutionVerified=true.'
     }
@@ -284,24 +400,37 @@ if ($result.status -eq 'succeeded') {
     }
     $residualVault = @($substitution.residualVaultComponents | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
     if ($residualVault.Count -gt 0) {
-        throw "Production deployment evidence secret-store substitution disclosure on a succeeded run records vault-typed components that survived the substitution: [$($residualVault -join ', ')]."
+        throw "Production deployment evidence secret-store substitution disclosure on a succeeded unmodified run records unexpected residual vault-typed components: [$($residualVault -join ', ')]."
     }
 
     if (-not $substitution.substitutionPerformed) {
+        Assert-VerifiedVaultComponents -Disclosure $substitution -RunOutcome 'succeeded'
         Write-Host 'Secret-store substitution disclosure records substitutionPerformed=false; the run applied the production secret stores unmodified.'
     }
 }
-elseif (Test-Path -LiteralPath $substitutionPath -PathType Leaf) {
-    # A failed run may legitimately carry a disclosure: the verifier writes it before raising any
-    # verification failure, so any post-substitution failure produces one. Validate the SAME shape
-    # as a succeeded run - only substitutionVerified may be false here.
-    try {
-        $failedSubstitution = (Get-Content -LiteralPath $substitutionPath -Raw) | ConvertFrom-Json
+else {
+    $openBaoBootstrapPath = Join-Path $evidencePath 'openbao-bootstrap.json'
+    if (Test-Path -LiteralPath $openBaoBootstrapPath -PathType Leaf) {
+        try {
+            $failedOpenBaoBootstrap = (Get-Content -LiteralPath $openBaoBootstrapPath -Raw) | ConvertFrom-Json
+        }
+        catch {
+            throw "Production deployment evidence OpenBao bootstrap disclosure is not parsable JSON: $($_.Exception.Message)"
+        }
+        Assert-OpenBaoBootstrapFailedRunClaims -Bootstrap $failedOpenBaoBootstrap
     }
-    catch {
-        throw "Production deployment evidence secret-store substitution disclosure is not parsable JSON: $($_.Exception.Message)"
+
+    if (Test-Path -LiteralPath $substitutionPath -PathType Leaf) {
+        # A failed run may legitimately carry a disclosure: the verifier writes it before raising.
+        # Validate the SAME shape as a succeeded run - only substitutionVerified may be false here.
+        try {
+            $failedSubstitution = (Get-Content -LiteralPath $substitutionPath -Raw) | ConvertFrom-Json
+        }
+        catch {
+            throw "Production deployment evidence secret-store substitution disclosure is not parsable JSON: $($_.Exception.Message)"
+        }
+        [void](Assert-SubstitutionDisclosureShape -Disclosure $failedSubstitution -RunOutcome 'failed')
     }
-    [void](Assert-SubstitutionDisclosureShape -Disclosure $failedSubstitution -RunOutcome 'failed')
 }
 
 $secretCanaries = @(
@@ -313,6 +442,7 @@ $secretCanaries = @(
     'verification-app-api-token',
     'verification-dapr-api-token',
     'verification-invalid-dapr-api-token',
+    'verification-access-telemetry-marker',
     $env:HEXALITH_ZOT_USERNAME,
     $env:HEXALITH_ZOT_API_KEY
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }

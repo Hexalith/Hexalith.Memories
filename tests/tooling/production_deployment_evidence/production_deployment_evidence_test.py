@@ -82,19 +82,55 @@ def write_complete_evidence(
         json.dumps(
             {
                 "schemaVersion": 2,
-                "substitutionPerformed": True,
-                "reason": "redacted verification-scoped substitution disclosure",
-                "substitutedComponents": ["secretstore", "access-telemetry-secrets"],
-                "observedComponents": [
-                    {"name": "secretstore", "observedType": "secretstores.kubernetes"},
-                    {"name": "access-telemetry-secrets", "observedType": "secretstores.kubernetes"},
-                ],
+                "substitutionPerformed": False,
+                "reason": "Disposable TLS OpenBao was staged; production hashicorp.vault stores ran unmodified",
+                "substitutedComponents": [],
+                "observedComponents": [],
                 "originalType": "secretstores.hashicorp.vault",
                 "substitutedType": "secretstores.kubernetes",
-                "observedPostPatchTypes": ["secretstores.kubernetes"],
+                "observedPostPatchTypes": [],
                 "substitutionVerified": True,
                 "verificationFailures": [],
                 "residualVaultComponents": [],
+                "verifiedVaultComponents": [
+                    {"name": "secretstore", "observedType": "secretstores.hashicorp.vault"},
+                    {
+                        "name": "access-telemetry-secrets",
+                        "observedType": "secretstores.hashicorp.vault",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "openbao-bootstrap.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "image": "quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653",
+                "endpoint": "https://hexalith-keys.openbao.svc.cluster.local:8200",
+                "tlsVerify": True,
+                "skipVerify": False,
+                "runtimePrefix": "hexalith/memories/runtime",
+                "accessTelemetryPrefix": "hexalith/memories/access-telemetry",
+                "stages": [
+                    "service-ready",
+                    "initialized",
+                    "unsealed",
+                    "kv-v2",
+                    "policies",
+                    "seeded",
+                    "scoped-tokens",
+                    "isolation-verified",
+                    "bootstrap-secrets",
+                    "root-revoked",
+                ],
+                "isolation": {
+                    "runtimeAllowed": True,
+                    "runtimeDeniedCrossPrefix": True,
+                    "accessAllowed": True,
+                    "accessDeniedCrossPrefix": True,
+                },
             }
         ),
         encoding="utf-8",
@@ -303,17 +339,21 @@ $results | ConvertTo-Json -Depth 6 -Compress
         # "Healthy" is exactly the status value the health decision must observe; if
         # redaction ran before parsing (the pre-fix shape), this value would corrupt it.
         colliding_value = "Healthy"
+        openbao_list_secret = "openbao-list-redaction-canary"
         raw = '{"schemaVersion":1,"status":"Healthy"}'
         encoded = base64.b64encode(raw.encode("utf-8")).decode("ascii")
 
         script = (
+            "function Get-OpenBaoRedactionSecrets { "
+            f"@('{openbao_list_secret}') "
+            "}\n"
             f"{protect_fn}\n"
             ". ./tools/production-deployment-health.ps1\n"
             "$t = [System.Text.Encoding]::UTF8.GetString("
             f"[System.Convert]::FromBase64String('{encoded}'))\n"
             "$body = Get-HealthJsonBody $t\n"
             "$status = ($body | ConvertFrom-Json).status\n"
-            "$protected = Protect-EvidenceText $t\n"
+            f"$protected = Protect-EvidenceText ($t + ' {openbao_list_secret}')\n"
             "Write-Output \"status=$status\"\n"
             "Write-Output \"protected=$protected\"\n"
         )
@@ -332,7 +372,8 @@ $results | ConvertTo-Json -Depth 6 -Compress
         # Parsing the raw transcript is unaffected by the colliding secret value.
         self.assertIn("status=Healthy", result.stdout)
         # Redaction still applies when run separately, at the evidence write.
-        self.assertIn("protected=" + '{"schemaVersion":1,"status":"***"}', result.stdout)
+        self.assertIn("protected=" + '{"schemaVersion":1,"status":"***"} ***', result.stdout)
+        self.assertNotIn(openbao_list_secret, result.stdout.split("protected=", 1)[-1])
 
         health = HEALTH_MODULE.read_text(encoding="utf-8-sig")
         self.assertIn("function Get-HealthJsonBody", health)
@@ -462,6 +503,20 @@ printf 'HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\n\r
 
             self.assertNotEqual(0, result.returncode)
             self.assertIn("unredacted secret canary", result.stdout + result.stderr)
+
+    def test_access_telemetry_marker_canary_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            (root / "events.txt").write_text(
+                "leaked verification-access-telemetry-marker",
+                encoding="utf-8",
+            )
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("unredacted secret canary", flattened_output(result))
 
     def test_health_probe_falls_back_to_netcat_on_any_wget_failure(self) -> None:
         """A slow or timed-out wget must still reach the fallback.
@@ -850,54 +905,83 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
             self.assertNotEqual(0, result.returncode)
             self.assertFalse(output.exists())
 
-    def test_verifier_substitutes_openbao_secret_stores_for_the_disposable_cluster(self) -> None:
-        # DW 27.3-CR17 (Administrator decision 2026-07-28): the disposable cluster has no
-        # OpenBao, and the production `hashicorp.vault` secret stores route component
-        # secretKeyRef resolution through it, so daprd exits fatally at component load.
-        # The verifier substitutes them with verification-scoped `secretstores.kubernetes`
-        # aliases via a merge patch (names and scopes preserved by the cluster object) after
-        # the verbatim apply.
-        #
-        # NOTE, corrected 2026-07-29: the substitution does NOT run "while the applications
-        # are scaled to zero". `kubectl apply -f` creates the Deployments at their manifest
-        # replica count and the scale-to-zero happens after this block, so a sub-second
-        # admission window exists. The assertions below pin the ordering that is actually
-        # true and the comment records the window rather than asserting a false invariant.
+    def test_verifier_stages_tls_openbao_before_application_scale_up(self) -> None:
+        # The disposable verifier must stage pinned TLS OpenBao and leave the production
+        # hashicorp.vault components unmodified. Kubernetes-store substitution is rejected
+        # because it bypasses architecture decision D31.
         verifier = VERIFIER.read_text(encoding="utf-8-sig")
-        # Assert ordering at the CALL SITE. The substitution now lives in a function defined
-        # near the top of the file, so the file offset of its patch payload no longer tells
-        # you anything about when it runs; the invocation does.
+        openbao = (REPO_ROOT / "tools" / "production-deployment-openbao.ps1").read_text(encoding="utf-8-sig")
+        bootstrap_call = verifier.index("Invoke-DisposableOpenBaoBootstrap")
         apply_index = verifier.index("kubectl @('apply', '-f', $manifestPath)")
-        substitution_call = verifier.index("Invoke-SecretStoreSubstitution -Namespace $namespace")
+        confirm_call = verifier.index("Confirm-UnmodifiedOpenBaoSecretStores `")
         scale_down = verifier.index("'--replicas=0')")
-        self.assertLess(apply_index, substitution_call)
-        self.assertLess(substitution_call, scale_down)
-        self.assertIn('"type":"secretstores.kubernetes"', verifier)
-
-        # The substituted set is enumerated from the cluster by spec.type, so a third
-        # vault-typed component cannot be silently left unpatched.
-        self.assertIn("$_.spec.type -eq 'secretstores.hashicorp.vault'", verifier)
-        self.assertIn("'patch', 'component', $component", verifier)
-        self.assertNotIn("'patch', 'component', 'secretstore'", verifier)
-        # The disclosure records observed post-patch types read back from the cluster, so it
-        # cannot be a literal the validator merely asserts back.
-        self.assertIn("$observedComponents += [ordered]@{ name = $component", verifier)
-        self.assertIn("observed post-patch type", verifier)
-        # The disclosure must reach disk BEFORE any verification failure is raised, so a
-        # partially rewritten cluster always ships a packet that says so.
-        # Anchor to the WRITE, not to the first appearance of the file name. `verifier.index(...)`
-        # on the quoted literal resolved to the $ownedEvidenceNames stale-cleanup list near the top
-        # of the script, while the actual write uses $DisclosurePath and contains no such literal -
-        # so this comparison was 2250 < 15158 and held whether the disclosure was written before
-        # the throw, after it, or never at all.
-        disclosure_write = verifier.index("Set-Content -LiteralPath $DisclosurePath")
-        failure_throw = verifier.index("the cluster may be partially rewritten and secret-store-substitution.json records this failure")
-        self.assertLess(disclosure_write, failure_throw)
-        # A component that vanished between the patch loop and the readback must not pass.
-        self.assertIn("was patched but is absent from the post-patch read", verifier)
-        # A Component type rewrite may only target the disposable cluster.
-        self.assertIn("Refusing to substitute secret stores", verifier)
+        scale_up = verifier.index("'--replicas=2')")
+        health_timeout = verifier.index("TimeoutSeconds 60 -MeasureFromContainerRunning")
+        self.assertLess(bootstrap_call, apply_index)
+        self.assertLess(apply_index, confirm_call)
+        self.assertLess(confirm_call, scale_down)
+        self.assertLess(scale_down, scale_up)
+        self.assertLess(scale_up, health_timeout)
+        self.assertIn("substitutionPerformed = $false", verifier)
+        self.assertIn("secretstores.hashicorp.vault", verifier)
+        self.assertNotIn("'patch', 'component'", verifier)
+        self.assertNotIn('"type":"secretstores.kubernetes"', verifier)
+        self.assertIn("Refusing to confirm production secret stores", verifier)
         self.assertIn("secret-store-substitution.json", verifier)
+        self.assertIn("openbao-bootstrap.json", verifier)
+        self.assertIn("hexalith/memories/runtime", openbao)
+        self.assertIn("hexalith/memories/access-telemetry", openbao)
+        self.assertIn("hexalith-memories-runtime", openbao)
+        self.assertIn("hexalith-memories-access-telemetry", openbao)
+        self.assertIn("quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653", openbao)
+        self.assertNotIn("-dev", openbao)
+        self.assertNotIn("BAO_DEV", openbao)
+        self.assertIn('tls_min_version = "tls12"', openbao)
+        self.assertIn("skipVerify = $false", openbao)
+        self.assertIn("$initJson.unseal_keys_b64", openbao)
+        self.assertNotIn("$initJson.keys_base64", openbao)
+        self.assertIn("OpenBaoPinnedImage", openbao)
+        self.assertIn("OpenBaoPinnedImage", verifier)
+        self.assertNotIn("$script:OpenBaoImagePin = $env:OPENBAO_IMAGE", verifier)
+        self.assertIn("does not match the immutable pinned", verifier)
+        self.assertIn("Assert-OpenBaoAclDenial", openbao)
+        self.assertIn("permission denied|not authorized", openbao)
+        self.assertIn("--request-timeout=12s", openbao)
+        self.assertIn("access-telemetry-secrets/access-telemetry-marker-key", verifier)
+        self.assertIn("access-telemetry-secrets/llm-secret", verifier)
+        self.assertIn("dapr-secret-store-access", verifier)
+        self.assertIn("verification-access-telemetry-marker", verifier)
+        self.assertIn("Get-OpenBaoRedactionSecrets", verifier)
+
+    def test_openbao_from_file_path_concatenations_are_parenthesized(self) -> None:
+        # PowerShell's comma operator outranks '+'. Inside '@(...)' an unparenthesized
+        # '--from-file=key=' + $path becomes two array elements ('--from-file=key=' and
+        # the path), so kubectl sees extra NAME tokens
+        # ("exactly one NAME is required, got 4"). Parentheses keep each --from-file
+        # argument a single argv token.
+        openbao = (REPO_ROOT / "tools" / "production-deployment-openbao.ps1").read_text(
+            encoding="utf-8-sig"
+        )
+        unparenthesized = re.compile(r"(?m)^[ \t]*'--from-file=[^'\n]+=' \+ \$")
+        offenders = [
+            f"L{index}: {line.rstrip()}"
+            for index, line in enumerate(openbao.splitlines(), start=1)
+            if unparenthesized.search(line)
+        ]
+        self.assertEqual(
+            [],
+            offenders,
+            "unparenthesized --from-file=...=' + $path inside an @() array splits kubectl argv",
+        )
+        parenthesized = re.findall(
+            r"(?m)^[ \t]*\('--from-file=[^'\n]+=' \+ \$[^)]+\)",
+            openbao,
+        )
+        self.assertGreaterEqual(
+            len(parenthesized),
+            6,
+            "expected parenthesized --from-file concatenations for TLS, config, and bootstrap secrets",
+        )
 
     def test_missing_substitution_disclosure_fails_a_succeeded_run(self) -> None:
         # Absence must never be the off-switch for this gate. A substituted run whose
@@ -914,6 +998,117 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
 
             self.assertNotEqual(0, result.returncode)
             self.assertIn("secret-store-substitution.json is missing", flattened_output(result))
+
+    def test_missing_openbao_bootstrap_fails_a_succeeded_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            (root / "openbao-bootstrap.json").unlink()
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("openbao-bootstrap.json is missing", flattened_output(result))
+
+    def test_openbao_bootstrap_skip_verify_true_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            bootstrap = json.loads((root / "openbao-bootstrap.json").read_text(encoding="utf-8"))
+            bootstrap["skipVerify"] = True
+            (root / "openbao-bootstrap.json").write_text(json.dumps(bootstrap), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("skipVerify=false", flattened_output(result))
+
+    def test_openbao_bootstrap_wrong_endpoint_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            bootstrap = json.loads((root / "openbao-bootstrap.json").read_text(encoding="utf-8"))
+            bootstrap["endpoint"] = "https://openbao.example.invalid:8200"
+            (root / "openbao-bootstrap.json").write_text(json.dumps(bootstrap), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("is not the production TLS endpoint", flattened_output(result))
+
+    def test_openbao_bootstrap_wrong_image_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            bootstrap = json.loads((root / "openbao-bootstrap.json").read_text(encoding="utf-8"))
+            bootstrap["image"] = "quay.io/openbao/openbao:2.6.0@sha256:deadbeef"
+            (root / "openbao-bootstrap.json").write_text(json.dumps(bootstrap), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("is not the pinned OpenBao digest", flattened_output(result))
+
+    def test_openbao_bootstrap_incomplete_stages_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            bootstrap = json.loads((root / "openbao-bootstrap.json").read_text(encoding="utf-8"))
+            bootstrap["stages"] = ["service-ready", "initialized"]
+            (root / "openbao-bootstrap.json").write_text(json.dumps(bootstrap), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("missing required stage", flattened_output(result))
+
+    def test_openbao_bootstrap_incomplete_isolation_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            bootstrap = json.loads((root / "openbao-bootstrap.json").read_text(encoding="utf-8"))
+            bootstrap["isolation"]["runtimeDeniedCrossPrefix"] = False
+            (root / "openbao-bootstrap.json").write_text(json.dumps(bootstrap), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("isolation.runtimeDeniedCrossPrefix=true", flattened_output(result))
+
+    def test_failed_openbao_bootstrap_false_success_isolation_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root, status="failed", stage="openbao-initialize")
+            bootstrap = {
+                "schemaVersion": 1,
+                "skipVerify": False,
+                "stages": ["service-ready"],
+                "isolation": {
+                    "runtimeAllowed": True,
+                    "runtimeDeniedCrossPrefix": True,
+                    "accessAllowed": True,
+                    "accessDeniedCrossPrefix": True,
+                },
+            }
+            (root / "openbao-bootstrap.json").write_text(json.dumps(bootstrap), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("claims full isolation success without", flattened_output(result))
+
+    def test_unmodified_run_without_verified_vault_components_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_complete_evidence(root)
+            disclosure = json.loads((root / "secret-store-substitution.json").read_text(encoding="utf-8"))
+            disclosure.pop("verifiedVaultComponents", None)
+            (root / "secret-store-substitution.json").write_text(json.dumps(disclosure), encoding="utf-8")
+
+            result = run_validator(root)
+
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("verifiedVaultComponents", flattened_output(result))
 
     def test_unmodified_run_is_accepted_only_via_a_positive_assertion(self) -> None:
         # Once Story 31.2 delivers the OpenBao path, a run applies the manifests unmodified.
@@ -943,6 +1138,11 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
             write_complete_evidence(root)
             disclosure = json.loads((root / "secret-store-substitution.json").read_text(encoding="utf-8"))
             disclosure["substitutionPerformed"] = False
+            disclosure["substitutedComponents"] = ["secretstore"]
+            disclosure["observedComponents"] = [
+                {"name": "secretstore", "observedType": "secretstores.kubernetes"}
+            ]
+            disclosure["observedPostPatchTypes"] = ["secretstores.kubernetes"]
             (root / "secret-store-substitution.json").write_text(json.dumps(disclosure), encoding="utf-8")
 
             result = run_validator(root)
@@ -956,9 +1156,22 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
         # the unique-collapsed type list could not cross-check either.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            write_complete_evidence(root)
-            disclosure = json.loads((root / "secret-store-substitution.json").read_text(encoding="utf-8"))
-            disclosure["substitutedComponents"] = ["secretstore", "something-else"]
+            write_complete_evidence(root, status="failed")
+            disclosure = {
+                "schemaVersion": 2,
+                "substitutionPerformed": True,
+                "reason": "redacted verification-scoped substitution disclosure",
+                "substitutedComponents": ["secretstore", "something-else"],
+                "observedComponents": [
+                    {"name": "secretstore", "observedType": "secretstores.kubernetes"},
+                ],
+                "originalType": "secretstores.hashicorp.vault",
+                "substitutedType": "secretstores.kubernetes",
+                "observedPostPatchTypes": ["secretstores.kubernetes"],
+                "substitutionVerified": True,
+                "verificationFailures": [],
+                "residualVaultComponents": [],
+            }
             (root / "secret-store-substitution.json").write_text(json.dumps(disclosure), encoding="utf-8")
 
             result = run_validator(root)
@@ -967,19 +1180,32 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
             self.assertIn("does not observe exactly the components", flattened_output(result))
 
     def test_disclosure_with_a_component_left_at_the_vault_type_fails(self) -> None:
-        # Per-component observation: one component still vault-typed must fail even though the
-        # others are correct. A set-of-types check could not see this.
+        # Succeeded runs must not claim a Kubernetes substitution at all.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             write_complete_evidence(root)
-            disclosure = json.loads((root / "secret-store-substitution.json").read_text(encoding="utf-8"))
-            disclosure["observedComponents"][1]["observedType"] = "secretstores.hashicorp.vault"
+            disclosure = {
+                "schemaVersion": 2,
+                "substitutionPerformed": True,
+                "reason": "redacted verification-scoped substitution disclosure",
+                "substitutedComponents": ["secretstore", "access-telemetry-secrets"],
+                "observedComponents": [
+                    {"name": "secretstore", "observedType": "secretstores.kubernetes"},
+                    {"name": "access-telemetry-secrets", "observedType": "secretstores.hashicorp.vault"},
+                ],
+                "originalType": "secretstores.hashicorp.vault",
+                "substitutedType": "secretstores.kubernetes",
+                "observedPostPatchTypes": ["secretstores.hashicorp.vault", "secretstores.kubernetes"],
+                "substitutionVerified": True,
+                "verificationFailures": [],
+                "residualVaultComponents": [],
+            }
             (root / "secret-store-substitution.json").write_text(json.dumps(disclosure), encoding="utf-8")
 
             result = run_validator(root)
 
             self.assertNotEqual(0, result.returncode)
-            self.assertIn("observed post-patch type is not secretstores.kubernetes", flattened_output(result))
+            self.assertIn("must not substitute", flattened_output(result))
 
     def test_failed_run_with_a_false_disclosure_fails(self) -> None:
         # A failed packet may legitimately carry a disclosure, since the verifier writes it
@@ -1015,14 +1241,22 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
 
     def test_substitution_disclosure_without_observed_components_fails(self) -> None:
         # A disclosure that asserts only the verifier's own literals proves nothing; the
-        # per-component observations read back from the cluster are what bind it. Deleting
-        # observedPostPatchTypes no longer suffices as the test target: that field is a
-        # unique-collapsed summary and cannot cross-check names or per-component types.
+        # per-component observations read back from the cluster are what bind it.
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            write_complete_evidence(root)
-            disclosure = json.loads((root / "secret-store-substitution.json").read_text(encoding="utf-8"))
-            del disclosure["observedComponents"]
+            write_complete_evidence(root, status="failed")
+            disclosure = {
+                "schemaVersion": 2,
+                "substitutionPerformed": True,
+                "reason": "redacted verification-scoped substitution disclosure",
+                "substitutedComponents": ["secretstore", "access-telemetry-secrets"],
+                "originalType": "secretstores.hashicorp.vault",
+                "substitutedType": "secretstores.kubernetes",
+                "observedPostPatchTypes": ["secretstores.kubernetes"],
+                "substitutionVerified": True,
+                "verificationFailures": [],
+                "residualVaultComponents": [],
+            }
             (root / "secret-store-substitution.json").write_text(json.dumps(disclosure), encoding="utf-8")
 
             result = run_validator(root)
@@ -1431,22 +1665,21 @@ class VerifierInvariantPinTests(unittest.TestCase):
         # disclosure. The validator now rejects that, but only the verifier decides where the
         # file lands, and nothing here can run the verifier end to end.
         verifier = VERIFIER.read_text(encoding="utf-8-sig")
-        # Two halves now: the call site names the path the validator reads, and the function
-        # writes to the path it was given. Asserting only one half would let the other drift.
         self.assertIn(
             "-DisclosurePath (Join-Path $evidencePath 'secret-store-substitution.json')",
             verifier,
         )
-        body = extract_ps_function(verifier, "Invoke-SecretStoreSubstitution")
+        body = extract_ps_function(verifier, "Confirm-UnmodifiedOpenBaoSecretStores")
         self.assertIn("Set-Content -LiteralPath $DisclosurePath -Encoding utf8", body)
-        self.assertIn("substitutionPerformed = $substitutionPerformed", verifier)
+        self.assertIn("substitutionPerformed = $false", verifier)
+        self.assertIn("openbao-bootstrap.json", verifier)
 
     def test_curl_is_a_declared_prerequisite(self) -> None:
         # The runner-side capture shells out to curl. Without the preflight entry the failure
         # is a terminating CommandNotFoundException raised from inside the poll loop, aborting
         # mid-stage with an error unrelated to the deployment.
         verifier = VERIFIER.read_text(encoding="utf-8-sig")
-        self.assertRegex(verifier, r"@\('docker', 'kind', 'kubectl', 'dapr', 'pwsh', 'curl'\)")
+        self.assertRegex(verifier, r"@\('docker', 'kind', 'kubectl', 'dapr', 'pwsh', 'curl', 'openssl'\)")
 
     def test_port_forward_kill_is_awaited_and_its_outcome_recorded(self) -> None:
         # Without the wait, a forward that outlives its Stop-Process keeps holding its port;
@@ -1747,21 +1980,22 @@ class CallSiteInvariantTests(unittest.TestCase):
         self.verifier = VERIFIER.read_text(encoding="utf-8-sig")
 
     def test_disposable_cluster_guard_is_invoked_inside_the_substitution_function(self) -> None:
-        body = extract_ps_function(self.verifier, "Invoke-SecretStoreSubstitution")
+        body = extract_ps_function(self.verifier, "Confirm-UnmodifiedOpenBaoSecretStores")
         self.assertIn("Assert-DisposableClusterContext $ClusterName", body)
 
-    def test_substitution_function_is_invoked_outside_its_own_definition(self) -> None:
-        call = "Invoke-SecretStoreSubstitution -Namespace $namespace"
-        body = extract_ps_function(self.verifier, "Invoke-SecretStoreSubstitution")
-        self.assertNotIn(call, body)
-        self.assertIn(call, self.verifier)
+    def test_confirmation_function_is_invoked_outside_its_own_definition(self) -> None:
+        body = extract_ps_function(self.verifier, "Confirm-UnmodifiedOpenBaoSecretStores")
+        self.assertNotIn("Confirm-UnmodifiedOpenBaoSecretStores -Namespace", body)
+        self.assertIn("Confirm-UnmodifiedOpenBaoSecretStores", self.verifier)
+        self.assertIn("-DisclosurePath (Join-Path $evidencePath 'secret-store-substitution.json')", self.verifier)
 
-    def test_guard_precedes_every_component_patch(self) -> None:
-        body = extract_ps_function(self.verifier, "Invoke-SecretStoreSubstitution")
+    def test_guard_precedes_component_enumeration(self) -> None:
+        body = extract_ps_function(self.verifier, "Confirm-UnmodifiedOpenBaoSecretStores")
         self.assertLess(
             body.index("Assert-DisposableClusterContext"),
-            body.index("'patch', 'component'"),
+            body.index("components.dapr.io"),
         )
+        self.assertNotIn("'patch', 'component'", body)
 
     def test_fallback_seconds_is_carried_from_the_measured_capture(self) -> None:
         # Source pin, stated as such: the only producer of the startup credit is this
@@ -1796,80 +2030,34 @@ def dapr_component(
     return component
 
 
-def run_secret_store_substitution(
+def run_confirm_openbao_secret_stores(
     *,
-    pre: object,
-    post: object,
+    components: object,
     context: str = "kind-verify",
     cluster: str = "verify",
-    seeded_secrets: dict[str, list[str]] | None = None,
-    denied_reads: set[tuple[str, str]] | None = None,
-    patch_exit_code: int = 0,
 ) -> dict[str, object]:
-    """Execute the real Invoke-SecretStoreSubstitution against a stubbed kubectl.
-
-    Module-level so other classes can drive the producer without bare-instantiating a
-    TestCase. SubstitutionDisclosureRoundTripTests constructed
-    SecretStoreSubstitutionExecutionTests() purely to reach this method, which works only
-    while the donor class defines no setUp - adding one later would silently skip it for
-    the borrowing class, presenting as an unrelated test error.
-    """
+    """Execute Confirm-UnmodifiedOpenBaoSecretStores against a stubbed kubectl."""
     verifier = VERIFIER.read_text(encoding="utf-8-sig")
     functions = "\n".join(
         extract_ps_function(verifier, name)
-        for name in ("Invoke-Checked", "Assert-DisposableClusterContext", "Invoke-SecretStoreSubstitution")
+        for name in ("Invoke-Checked", "Assert-DisposableClusterContext", "Confirm-UnmodifiedOpenBaoSecretStores")
     )
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / "pre.json").write_text(json.dumps(pre), encoding="utf-8")
-        (root / "post.json").write_text(json.dumps(post), encoding="utf-8")
-        counter = root / "get-count"
+        (root / "components.json").write_text(json.dumps(components), encoding="utf-8")
         disclosure = root / "secret-store-substitution.json"
-        secret_dir = root / "secrets"
-        secret_dir.mkdir()
-        for secret_name, keys in (seeded_secrets or {}).items():
-            (secret_dir / f"{secret_name}.json").write_text(
-                json.dumps({"data": {key: "dmVyaWZpY2F0aW9u" for key in keys}}),
-                encoding="utf-8",
-            )
-        denied = root / "denied-reads.txt"
-        denied.write_text(
-            "".join(f"secret/{secret}|system:serviceaccount:ns:{app}\n" for secret, app in (denied_reads or set())),
-            encoding="utf-8",
-        )
 
         bin_dir = root / "stub-bin"
         bin_dir.mkdir()
         stub = bin_dir / "kubectl"
         stub.write_text(
             "#!/bin/sh\n"
-            f"COUNTER={shlex.quote(str(counter))}\n"
-            f"SECRET_DIR={shlex.quote(str(secret_dir))}\n"
-            f"DENIED={shlex.quote(str(denied))}\n"
+            f"COMPONENTS={shlex.quote(str(root / 'components.json'))}\n"
             'case "$1" in\n'
             f"  config) printf %s {shlex.quote(context)}; exit 0;;\n"
             "  get)\n"
-            '    if [ "$2" = "secret" ]; then\n'
-            '      test -f "$SECRET_DIR/$3.json" || exit 1\n'
-            '      cat "$SECRET_DIR/$3.json"; exit 0\n'
-            "    fi\n"
-            '    n=$(cat "$COUNTER" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$COUNTER"\n'
-            '    if [ "$n" = "1" ]; then\n'
-            f"      cat {shlex.quote(str(root / 'pre.json'))}\n"
-            "    else\n"
-            f"      cat {shlex.quote(str(root / 'post.json'))}\n"
-            "    fi\n"
-            "    exit 0;;\n"
-            f"  patch) exit {patch_exit_code};;\n"
-            "  auth)\n"
-            '    resource="$4"; actor=""; previous=""\n'
-            '    for argument in "$@"; do\n'
-            '      if [ "$previous" = "--as" ]; then actor="$argument"; fi\n'
-            '      previous="$argument"\n'
-            "    done\n"
-            '    if grep -Fqx "$resource|$actor" "$DENIED"; then printf no; exit 1; fi\n'
-            "    printf yes; exit 0;;\n"
+            '    cat "$COMPONENTS"; exit 0;;\n'
             "esac\n"
             "exit 0\n",
             encoding="utf-8",
@@ -1879,7 +2067,7 @@ def run_secret_store_substitution(
         script = (
             f"{functions}\n"
             "try {\n"
-            f"    Invoke-SecretStoreSubstitution -Namespace 'ns' -ClusterName '{cluster}' "
+            f"    Confirm-UnmodifiedOpenBaoSecretStores -Namespace 'ns' -ClusterName '{cluster}' "
             f"-DisclosurePath {shlex.quote(str(disclosure))}\n"
             "    Write-Output 'OUTCOME=passed'\n"
             "}\n"
@@ -1889,289 +2077,114 @@ def run_secret_store_substitution(
             "}\n"
         )
         result = run_pwsh_with_stub_path(script, bin_dir)
-        text = flattened_output(result)
-        outcome = "threw" if "OUTCOME=threw" in text else ("passed" if "OUTCOME=passed" in text else "unknown")
+        text_out = flattened_output(result)
+        outcome = "threw" if "OUTCOME=threw" in text_out else ("passed" if "OUTCOME=passed" in text_out else "unknown")
         written = json.loads(disclosure.read_text(encoding="utf-8")) if disclosure.exists() else None
-        return {"outcome": outcome, "message": text, "disclosure": written}
+        return {"outcome": outcome, "message": text_out, "disclosure": written}
 
+
+# Backward-compatible alias used by older round-trip helpers during migration.
+def run_secret_store_substitution(**kwargs: object) -> dict[str, object]:
+    components = kwargs.get("pre") or kwargs.get("components")
+    return run_confirm_openbao_secret_stores(
+        components=components,  # type: ignore[arg-type]
+        context=str(kwargs.get("context", "kind-verify")),
+        cluster=str(kwargs.get("cluster", "verify")),
+    )
 
 
 class SecretStoreSubstitutionExecutionTests(unittest.TestCase):
-    """Execute the real Invoke-SecretStoreSubstitution against a stubbed kubectl.
+    """Execute Confirm-UnmodifiedOpenBaoSecretStores against a stubbed kubectl."""
 
-    While this block was inline script, seven independent mutations of it survived the
-    whole suite: the disclosure write, the substitutionPerformed flag, both post-patch
-    checks, the observedPostPatchTypes field, the reason narrative, and the validator's
-    boolean type check. Its only coverage was source-text assertIn over the file, which
-    every one of those mutations preserves.
-    """
-
-    def run_substitution(self, **kwargs: object) -> dict[str, object]:
-        return run_secret_store_substitution(**kwargs)  # type: ignore[arg-type]
+    def run_confirm(self, **kwargs: object) -> dict[str, object]:
+        return run_confirm_openbao_secret_stores(**kwargs)  # type: ignore[arg-type]
 
     @staticmethod
     def component(name: str, type_name: str) -> dict[str, object]:
         return dapr_component(name, type_name)
 
-    def test_two_vault_components_are_substituted_and_disclosed(self) -> None:
-        pre = {"items": [
+    def test_vault_components_are_confirmed_unmodified(self) -> None:
+        components = {"items": [
             self.component("secretstore", "secretstores.hashicorp.vault"),
             self.component("access-telemetry-secrets", "secretstores.hashicorp.vault"),
-            self.component("statestore", "state.postgresql"),
+            self.component("statestore", "state.redis"),
         ]}
-        post = {"items": [
-            self.component("secretstore", "secretstores.kubernetes"),
-            self.component("access-telemetry-secrets", "secretstores.kubernetes"),
-            self.component("statestore", "state.postgresql"),
-        ]}
-        result = self.run_substitution(pre=pre, post=post)
+        result = self.run_confirm(components=components)
         self.assertEqual("passed", result["outcome"], result["message"])
         disclosure = result["disclosure"]
         self.assertIsNotNone(disclosure)
-        self.assertTrue(disclosure["substitutionPerformed"])
-        self.assertTrue(disclosure["substitutionVerified"])
-        self.assertEqual(
-            ["access-telemetry-secrets", "secretstore"],
-            sorted(disclosure["substitutedComponents"]),
-        )
-        self.assertEqual(["secretstores.kubernetes"], disclosure["observedPostPatchTypes"])
-        self.assertEqual([], disclosure["residualVaultComponents"])
-
-        # The auditor-facing narrative is the field the validator only checks for emptiness, so
-        # nothing observed its CONTENT: deleting the concrete sentence left the suite green, and
-        # writing it in a double-quoted PowerShell string made `a an alert escape, so the shipped
-        # disclosure read "\x07ccess-telemetry-store" - naming a component that does not exist and
-        # embedding a control character in evidence JSON. Both directions are pinned here.
-        reason = str(disclosure["reason"])
-        for component in disclosure["substitutedComponents"]:
-            self.assertIn(component, reason, "the narrative must name every component it substituted")
-        self.assertIn("memories-access-telemetry-secret-reader", reason)
-        self.assertIn("access-telemetry-store", reason)
-        self.assertIn("access-telemetry-postgresql", reason)
-        self.assertNotIn("\x07", reason, "backtick escapes corrupted the narrative with BEL")
-        self.assertFalse(
-            [ch for ch in reason if ord(ch) < 32 and ch not in "\r\n\t"],
-            "the narrative must not carry control characters into the evidence packet",
-        )
-
-    def test_no_vault_component_records_a_positive_unmodified_assertion(self) -> None:
-        # The Story 31.2 end state: components exist, none of them vault-typed. This must
-        # pass and must be recorded as an explicit substitutionPerformed=false, because it
-        # is the state DW 27.3-CR29/CR30 have to be able to discharge.
-        components = {"items": [self.component("statestore", "state.postgresql")]}
-        result = self.run_substitution(pre=components, post=components)
-        self.assertEqual("passed", result["outcome"], result["message"])
-        disclosure = result["disclosure"]
         self.assertFalse(disclosure["substitutionPerformed"])
         self.assertTrue(disclosure["substitutionVerified"])
         self.assertEqual([], list(disclosure["substitutedComponents"]))
         self.assertEqual([], list(disclosure["observedComponents"]))
+        reason = str(disclosure["reason"])
+        self.assertIn("secretstore", reason)
+        self.assertIn("access-telemetry-secrets", reason)
+        self.assertIn("OpenBao", reason)
+        self.assertIn("D31", reason)
+        self.assertNotIn("\x07", reason)
 
-    def test_a_payload_without_items_is_not_read_as_nothing_to_substitute(self) -> None:
-        # kubectl can exit 0 with a Status object. `@($payload.items)` then yields a
-        # one-element array holding $null and the vault-typed set came out empty, so a
-        # failed enumeration was recorded as the by-design unmodified end state.
-        result = self.run_substitution(pre={"kind": "Status"}, post={"items": []})
+    def test_kubernetes_fallback_is_rejected(self) -> None:
+        components = {"items": [
+            self.component("secretstore", "secretstores.kubernetes"),
+            self.component("access-telemetry-secrets", "secretstores.hashicorp.vault"),
+        ]}
+        result = self.run_confirm(components=components)
+        self.assertEqual("threw", result["outcome"], result["message"])
+        self.assertIsNotNone(result["disclosure"])
+        self.assertFalse(result["disclosure"]["substitutionVerified"])
+        self.assertTrue(any(
+            "secretstores.kubernetes" in f for f in result["disclosure"]["verificationFailures"]
+        ))
+
+    def test_missing_required_store_is_rejected(self) -> None:
+        components = {"items": [
+            self.component("secretstore", "secretstores.hashicorp.vault"),
+        ]}
+        result = self.run_confirm(components=components)
+        self.assertEqual("threw", result["outcome"], result["message"])
+        self.assertTrue(any(
+            "access-telemetry-secrets" in f for f in result["disclosure"]["verificationFailures"]
+        ))
+
+    def test_a_payload_without_items_is_rejected(self) -> None:
+        result = self.run_confirm(components={"kind": "Status"})
         self.assertEqual("threw", result["outcome"], result["message"])
         self.assertIn("no 'items' property", str(result["message"]))
 
-    def test_zero_components_is_treated_as_a_render_or_apply_regression(self) -> None:
-        result = self.run_substitution(pre={"items": []}, post={"items": []})
+    def test_zero_components_is_rejected(self) -> None:
+        result = self.run_confirm(components={"items": []})
         self.assertEqual("threw", result["outcome"], result["message"])
         self.assertIn("zero Dapr Components", str(result["message"]))
 
-    def test_a_component_absent_from_the_readback_still_writes_its_disclosure(self) -> None:
-        # Every throw between the patch loop and the disclosure write previously left a
-        # rewritten cluster with no disclosure at all, and the validator skips its
-        # disclosure branch entirely when the file is absent.
-        pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
-        post = {"items": [self.component("statestore", "state.postgresql")]}
-        result = self.run_substitution(pre=pre, post=post)
-        self.assertEqual("threw", result["outcome"], result["message"])
-        self.assertIsNotNone(result["disclosure"])
-        self.assertFalse(result["disclosure"]["substitutionVerified"])
-        self.assertTrue(any(
-            "absent from the post-patch read" in f
-            for f in result["disclosure"]["verificationFailures"]
-        ))
-        # Arm (b), 2026-07-31: the vanished component is still RECORDED, with an explicit marker.
-        # Dropping it from observedComponents while leaving it in substitutedComponents made the
-        # verifier's own failed-run packet unvalidatable by its own validator.
-        self.assertEqual(
-            [{"name": "secretstore", "observedType": "<absent from post-patch read>"}],
-            result["disclosure"]["observedComponents"],
-        )
-
-    def test_a_component_left_at_the_vault_type_still_writes_its_disclosure(self) -> None:
-        pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
-        post = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
-        result = self.run_substitution(pre=pre, post=post)
-        self.assertEqual("threw", result["outcome"], result["message"])
-        disclosure = result["disclosure"]
-        self.assertFalse(disclosure["substitutionVerified"])
-        self.assertEqual(["secretstore"], list(disclosure["residualVaultComponents"]))
-        # Arm (b): the component that stayed at the vault type is recorded WITH that type, which
-        # is precisely the observation an auditor needs from a partially rewritten cluster. It
-        # was previously dropped, so observedPostPatchTypes came out empty on exactly this run.
-        self.assertEqual(
-            [{"name": "secretstore", "observedType": "secretstores.hashicorp.vault"}],
-            disclosure["observedComponents"],
-        )
-        self.assertEqual(["secretstores.hashicorp.vault"], disclosure["observedPostPatchTypes"])
-
-    def test_a_vault_component_missed_before_patching_is_caught_on_readback(self) -> None:
-        # Informer lag right after the apply, or a controller re-creating a component
-        # between the patch loop and the readback: the readback iterated only the names
-        # enumerated BEFORE patching, so a surviving vault-typed store reached the health
-        # stages while the disclosure claimed it named exactly what it observed.
-        pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
-        post = {"items": [
-            self.component("secretstore", "secretstores.kubernetes"),
-            self.component("late-arriving-store", "secretstores.hashicorp.vault"),
+    def test_wrong_context_is_refused(self) -> None:
+        components = {"items": [
+            self.component("secretstore", "secretstores.hashicorp.vault"),
+            self.component("access-telemetry-secrets", "secretstores.hashicorp.vault"),
         ]}
-        result = self.run_substitution(pre=pre, post=post)
+        result = self.run_confirm(components=components, context="jpiquot@local")
         self.assertEqual("threw", result["outcome"], result["message"])
-        self.assertEqual(
-            ["late-arriving-store"],
-            list(result["disclosure"]["residualVaultComponents"]),
-        )
+        self.assertIn("Refusing to confirm production secret stores", str(result["message"]))
 
-    def test_a_running_consumer_cannot_reference_an_unseeded_substituted_secret(self) -> None:
-        vault = self.component("third-store", "secretstores.hashicorp.vault")
-        consumer = dapr_component(
-            "third-consumer",
-            "state.redis",
-            secret_store="third-store",
-            scopes=["memories"],
-            secret_refs=[("not-seeded", "password")],
-        )
-        pre = {"items": [vault, consumer]}
-        post = {"items": [self.component("third-store", "secretstores.kubernetes"), consumer]}
-
-        result = self.run_substitution(pre=pre, post=post)
-
+    def test_case_mismatched_kind_context_is_refused(self) -> None:
+        components = {"items": [
+            self.component("secretstore", "secretstores.hashicorp.vault"),
+            self.component("access-telemetry-secrets", "secretstores.hashicorp.vault"),
+        ]}
+        result = self.run_confirm(components=components, context="KIND-verify")
         self.assertEqual("threw", result["outcome"], result["message"])
-        self.assertIn("requires Secret 'not-seeded'", str(result["message"]))
-        self.assertIsNone(result["disclosure"], "validation must fail before any component is patched")
-
-    def test_a_running_consumer_must_be_authorized_to_read_the_substituted_secret(self) -> None:
-        vault = self.component("third-store", "secretstores.hashicorp.vault")
-        consumer = dapr_component(
-            "third-consumer",
-            "state.redis",
-            secret_store="third-store",
-            scopes=["memories"],
-            secret_refs=[("third-secret", "password")],
-        )
-        pre = {"items": [vault, consumer]}
-        post = {"items": [self.component("third-store", "secretstores.kubernetes"), consumer]}
-
-        result = self.run_substitution(
-            pre=pre,
-            post=post,
-            seeded_secrets={"third-secret": ["password"]},
-            denied_reads={("third-secret", "memories")},
-        )
-
-        self.assertEqual("threw", result["outcome"], result["message"])
-        self.assertIn("cannot read Secret 'third-secret'", str(result["message"]))
-        self.assertIsNone(result["disclosure"], "validation must fail before any component is patched")
-
-    def test_a_seeded_readable_consumer_secret_is_disclosed(self) -> None:
-        vault = self.component("third-store", "secretstores.hashicorp.vault")
-        consumer = dapr_component(
-            "third-consumer",
-            "state.redis",
-            secret_store="third-store",
-            scopes=["memories"],
-            secret_refs=[("third-secret", "password")],
-        )
-        pre = {"items": [vault, consumer]}
-        post = {"items": [self.component("third-store", "secretstores.kubernetes"), consumer]}
-
-        result = self.run_substitution(
-            pre=pre,
-            post=post,
-            seeded_secrets={"third-secret": ["password"]},
-        )
-
-        self.assertEqual("passed", result["outcome"], result["message"])
-        self.assertEqual(
-            [{
-                "component": "third-consumer",
-                "secretStore": "third-store",
-                "appId": "memories",
-                "secret": "third-secret",
-                "key": "password",
-            }],
-            result["disclosure"]["validatedConsumerSecrets"],
-        )
-
-    def test_a_patch_failure_is_disclosed_before_the_failure_is_raised(self) -> None:
-        pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
-        post = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
-
-        result = self.run_substitution(pre=pre, post=post, patch_exit_code=1)
-
-        self.assertEqual("threw", result["outcome"], result["message"])
-        self.assertIsNotNone(result["disclosure"])
-        self.assertFalse(result["disclosure"]["substitutionVerified"])
-        self.assertTrue(any(
-            "could not be patched" in failure
-            for failure in result["disclosure"]["verificationFailures"]
-        ))
-
-    def test_a_foreign_context_is_refused_before_any_patch(self) -> None:
-        pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
-        result = self.run_substitution(pre=pre, post=pre, context="jpiquot@local")
-        self.assertEqual("threw", result["outcome"], result["message"])
-        self.assertIn("Refusing to substitute secret stores", str(result["message"]))
-        self.assertIsNone(result["disclosure"])
-
-    def test_a_case_variant_context_is_refused(self) -> None:
-        # kubectl context names are case-sensitive, so KIND-verify is a genuinely
-        # different context. `-ne` admitted it; this is the sole barrier before the
-        # script rewrites Dapr Component spec.types.
-        pre = {"items": [self.component("secretstore", "secretstores.hashicorp.vault")]}
-        result = self.run_substitution(pre=pre, post=pre, context="KIND-verify")
-        self.assertEqual("threw", result["outcome"], result["message"])
-        self.assertIn("Refusing to substitute secret stores", str(result["message"]))
+        self.assertIn("Refusing to confirm production secret stores", str(result["message"]))
 
 
 class SubstitutionDisclosureRoundTripTests(unittest.TestCase):
-    """Feed the verifier's REAL disclosure to the real validator.
-
-    Every disclosure case in this suite was hand-written Python JSON built by
-    write_complete_evidence, so the two producers were coupled only by human
-    transcription plus two assertIn source pins. A field-name or type drift on either
-    side was undetectable, which is the structural reason the substitution-block
-    mutations all survived at once.
-    """
+    """Feed the verifier's REAL disclosure to the real validator."""
 
     def test_a_real_succeeded_disclosure_validates(self) -> None:
-        pre = {"items": [
+        components = {"items": [
             dapr_component("secretstore", "secretstores.hashicorp.vault"),
             dapr_component("access-telemetry-secrets", "secretstores.hashicorp.vault"),
         ]}
-        post = {"items": [
-            dapr_component("secretstore", "secretstores.kubernetes"),
-            dapr_component("access-telemetry-secrets", "secretstores.kubernetes"),
-        ]}
-        produced = run_secret_store_substitution(pre=pre, post=post)
-        self.assertEqual("passed", produced["outcome"], produced["message"])
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            write_complete_evidence(root)
-            (root / "secret-store-substitution.json").write_text(
-                json.dumps(produced["disclosure"]), encoding="utf-8"
-            )
-            result = run_validator(root)
-            self.assertEqual(0, result.returncode, flattened_output(result))
-
-    def test_a_real_unmodified_disclosure_validates(self) -> None:
-        components = {"items": [dapr_component("statestore", "state.postgresql")]}
-        produced = run_secret_store_substitution(pre=components, post=components)
+        produced = run_confirm_openbao_secret_stores(components=components)
         self.assertEqual("passed", produced["outcome"], produced["message"])
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -2185,55 +2198,21 @@ class SubstitutionDisclosureRoundTripTests(unittest.TestCase):
             self.assertIn("substitutionPerformed=false", flattened_output(result))
 
     def test_a_real_failed_disclosure_validates_on_a_failed_packet(self) -> None:
-        """The direction that was missing, and the one that broke.
-
-        The class covered succeeded->succeeded, unmodified->succeeded and failed->succeeded,
-        but never failed->failed - so the producer emitting a packet its own validator
-        rejected went unnoticed. Both verifier failure modes are driven here, because the
-        CI validate step runs with `if: always()`: a rejected failed packet replaces the
-        genuine terminal error with a complaint about the disclosure's shape.
-        """
-
-        cases = {
-            "left at the vault type": (
-                {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]},
-                {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]},
-            ),
-            "absent from the readback": (
-                {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]},
-                {"items": [dapr_component("statestore", "state.postgresql")]},
-            ),
-        }
-        for label, (pre, post) in cases.items():
-            with self.subTest(failure=label):
-                produced = run_secret_store_substitution(pre=pre, post=post)
-                self.assertEqual("threw", produced["outcome"], produced["message"])
-
-                with tempfile.TemporaryDirectory() as tmp:
-                    root = Path(tmp)
-                    write_complete_evidence(root, status="failed")
-                    (root / "secret-store-substitution.json").write_text(
-                        json.dumps(produced["disclosure"]), encoding="utf-8"
-                    )
-                    result = run_validator(root)
-                    self.assertEqual(0, result.returncode, flattened_output(result))
-
-    def test_a_real_failed_disclosure_is_rejected_on_a_succeeded_packet(self) -> None:
-        # The verifier writes a disclosure even when verification failed. That packet is
-        # legitimate on a failed run and must never validate as a succeeded one.
-        pre = {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]}
-        post = {"items": [dapr_component("secretstore", "secretstores.hashicorp.vault")]}
-        produced = run_secret_store_substitution(pre=pre, post=post)
+        components = {"items": [
+            dapr_component("secretstore", "secretstores.kubernetes"),
+            dapr_component("access-telemetry-secrets", "secretstores.hashicorp.vault"),
+        ]}
+        produced = run_confirm_openbao_secret_stores(components=components)
         self.assertEqual("threw", produced["outcome"], produced["message"])
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write_complete_evidence(root)
+            write_complete_evidence(root, status="failed")
             (root / "secret-store-substitution.json").write_text(
                 json.dumps(produced["disclosure"]), encoding="utf-8"
             )
             result = run_validator(root)
-            self.assertEqual(1, result.returncode, flattened_output(result))
+            self.assertEqual(0, result.returncode, flattened_output(result))
 
 
 class SubstitutionDisclosureShapeTests(unittest.TestCase):
@@ -2257,6 +2236,29 @@ class SubstitutionDisclosureShapeTests(unittest.TestCase):
     def baseline() -> dict[str, object]:
         return {
             "schemaVersion": 2,
+            "substitutionPerformed": False,
+            "reason": "Disposable TLS OpenBao was staged; production hashicorp.vault stores ran unmodified",
+            "substitutedComponents": [],
+            "observedComponents": [],
+            "originalType": "secretstores.hashicorp.vault",
+            "substitutedType": "secretstores.kubernetes",
+            "observedPostPatchTypes": [],
+            "substitutionVerified": True,
+            "verificationFailures": [],
+            "residualVaultComponents": [],
+            "verifiedVaultComponents": [
+                {"name": "secretstore", "observedType": "secretstores.hashicorp.vault"},
+                {
+                    "name": "access-telemetry-secrets",
+                    "observedType": "secretstores.hashicorp.vault",
+                },
+            ],
+        }
+
+    @staticmethod
+    def substituted_baseline() -> dict[str, object]:
+        return {
+            "schemaVersion": 2,
             "substitutionPerformed": True,
             "reason": "redacted verification-scoped substitution disclosure",
             "substitutedComponents": ["secretstore", "access-telemetry-secrets"],
@@ -2275,6 +2277,11 @@ class SubstitutionDisclosureShapeTests(unittest.TestCase):
     def test_the_baseline_disclosure_validates(self) -> None:
         result = self.validate_with(self.baseline())
         self.assertEqual(0, result.returncode, flattened_output(result))
+
+    def test_a_succeeded_kubernetes_substitution_is_rejected(self) -> None:
+        result = self.validate_with(self.substituted_baseline())
+        self.assertEqual(1, result.returncode)
+        self.assertIn("must not substitute", flattened_output(result))
 
     def test_a_schema_version_1_packet_is_rejected(self) -> None:
         # The shape the pre-2026-07-30 verifier wrote, including the DW 27.3-CR17 discharge
@@ -2297,18 +2304,18 @@ class SubstitutionDisclosureShapeTests(unittest.TestCase):
     def test_a_duplicated_component_name_is_rejected(self) -> None:
         # `-notcontains` on both sides is a set comparison, so claiming three
         # substitutions while observing two produced empty missing/unexpected lists.
-        disclosure = self.baseline()
+        disclosure = self.substituted_baseline()
         disclosure["substitutedComponents"] = ["secretstore", "secretstore", "access-telemetry-secrets"]
-        result = self.validate_with(disclosure)
+        result = self.validate_with(disclosure, status="failed")
         self.assertEqual(1, result.returncode)
         self.assertIn("more than once", flattened_output(result))
 
     def test_observed_post_patch_types_must_agree_with_the_per_component_record(self) -> None:
         # The verifier writes this field into every packet and nothing validated it, so a
         # packet could record every component as kubernetes while this field said vault.
-        disclosure = self.baseline()
+        disclosure = self.substituted_baseline()
         disclosure["observedPostPatchTypes"] = ["secretstores.hashicorp.vault"]
-        result = self.validate_with(disclosure)
+        result = self.validate_with(disclosure, status="failed")
         self.assertEqual(1, result.returncode)
         self.assertIn("observedPostPatchTypes", flattened_output(result))
 
@@ -2324,7 +2331,7 @@ class SubstitutionDisclosureShapeTests(unittest.TestCase):
         disclosure["residualVaultComponents"] = ["late-arriving-store"]
         result = self.validate_with(disclosure)
         self.assertEqual(1, result.returncode)
-        self.assertIn("survived the substitution", flattened_output(result))
+        self.assertIn("unexpected residual vault-typed components", flattened_output(result))
 
     def test_a_failed_run_disclosure_is_held_to_the_same_shape(self) -> None:
         # Previously the failed branch checked originalType and substitutedType only, so
@@ -2344,17 +2351,9 @@ class SubstitutionDisclosureShapeTests(unittest.TestCase):
                 self.assertIn(expected, flattened_output(result))
 
     def test_a_failed_run_may_legitimately_record_an_unverified_substitution(self) -> None:
-        """Rebuilt 2026-07-31 to a shape the producer can actually emit.
+        """Failed packets may record an attempted Kubernetes substitution that did not verify."""
 
-        The previous fixture set observedComponents to secretstores.kubernetes for
-        `secretstore` while also naming it in residualVaultComponents and in a
-        verificationFailure calling it vault-typed. Both fields derive from the SAME
-        post-patch read, so no run could produce that combination - and because this was the
-        only case defining a legitimate failed run, the failed-run contract was anchored to a
-        shape that never occurs. That is why the producer/validator contradiction shipped.
-        """
-
-        disclosure = self.baseline()
+        disclosure = self.substituted_baseline()
         disclosure["substitutionVerified"] = False
         disclosure["verificationFailures"] = ["component 'secretstore' observed post-patch type 'secretstores.hashicorp.vault'"]
         disclosure["residualVaultComponents"] = ["secretstore"]
@@ -2369,24 +2368,24 @@ class SubstitutionDisclosureShapeTests(unittest.TestCase):
     def test_a_performed_substitution_naming_no_component_is_rejected(self) -> None:
         # Unexercised until 2026-07-31: guarding this `if` with `$false -and` left the suite
         # green. No fixture had ever set substitutionPerformed=true with empty component lists.
-        disclosure = self.baseline()
+        disclosure = self.substituted_baseline()
         disclosure["substitutedComponents"] = []
         disclosure["observedComponents"] = []
         disclosure["observedPostPatchTypes"] = []
-        result = self.validate_with(disclosure)
+        result = self.validate_with(disclosure, status="failed")
         self.assertEqual(1, result.returncode)
         self.assertIn("claims a substitution but names no component", flattened_output(result))
 
     def test_more_observed_components_than_substituted_is_rejected(self) -> None:
         # The cardinality rule, unexercised: `-notcontains` on both sides is a SET comparison,
         # so a repeated observation produced empty missing/unexpected lists and validated clean.
-        disclosure = self.baseline()
+        disclosure = self.substituted_baseline()
         disclosure["observedComponents"] = [
             {"name": "secretstore", "observedType": "secretstores.kubernetes"},
             {"name": "secretstore", "observedType": "secretstores.kubernetes"},
             {"name": "access-telemetry-secrets", "observedType": "secretstores.kubernetes"},
         ]
-        result = self.validate_with(disclosure)
+        result = self.validate_with(disclosure, status="failed")
         self.assertEqual(1, result.returncode)
         self.assertIn("but observes", flattened_output(result))
 
@@ -2397,6 +2396,10 @@ class SubstitutionDisclosureShapeTests(unittest.TestCase):
         disclosure = self.baseline()
         disclosure["substitutionPerformed"] = False
         disclosure["substitutedComponents"] = []
+        disclosure["observedComponents"] = [
+            {"name": "secretstore", "observedType": "secretstores.kubernetes"}
+        ]
+        disclosure["observedPostPatchTypes"] = ["secretstores.kubernetes"]
         result = self.validate_with(disclosure)
         self.assertEqual(1, result.returncode)
         self.assertIn("while naming substituted components", flattened_output(result))

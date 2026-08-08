@@ -31,7 +31,15 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 # Health-response parsing lives in its own dot-sourceable file so it can be exercised
 # directly by tests/tooling/production_deployment_evidence with real transcripts.
 . (Join-Path $PSScriptRoot 'production-deployment-health.ps1')
+. (Join-Path $PSScriptRoot 'production-deployment-openbao.ps1')
 $namespace = 'hexalith-memories'
+# OPENBAO_IMAGE may only restate the immutable pin; never overwrite $script:OpenBaoPinnedImage.
+if (-not [string]::IsNullOrWhiteSpace($env:OPENBAO_IMAGE)) {
+    $requestedOpenBaoImage = $env:OPENBAO_IMAGE.Trim()
+    if ($requestedOpenBaoImage -cne $script:OpenBaoPinnedImage) {
+        throw "OPENBAO_IMAGE '$requestedOpenBaoImage' does not match the immutable pinned OpenBao image '$script:OpenBaoPinnedImage'."
+    }
+}
 $serverImage = "registry.hexalith.com/memories:$Version"
 $mcpImage = "registry.hexalith.com/memories-mcp:$Version"
 $accessTelemetryImage = "registry.hexalith.com/memories-access-telemetry:$Version"
@@ -60,6 +68,7 @@ $ownedEvidenceNames = @(
     # substitution inherit the previous run's disclosure and pass the validator's gate on a
     # substitution it never performed.
     'secret-store-substitution.json',
+    'openbao-bootstrap.json',
     'last-stage.txt',
     'pods.txt',
     'events.txt',
@@ -123,255 +132,91 @@ function Assert-DisposableClusterContext {
     }
 }
 
-function Invoke-SecretStoreSubstitution {
-    # Extracted 2026-07-31 by code review so the substitution and its disclosure can be EXECUTED
-    # by a test. While this block was inline, seven independent mutations of it survived the whole
-    # suite - the disclosure write, the performed flag, both post-patch checks, the
-    # observedPostPatchTypes field, and the narrative - because its only coverage was source-text
-    # assertIn over the file. Extraction alone is not coverage: the call site is pinned separately,
-    # because moving Assert-DisposableClusterContext into a function is exactly what let its
-    # invocation be deleted while the pinned string still matched inside the function body.
+function Confirm-UnmodifiedOpenBaoSecretStores {
+    # Confirms the production hashicorp.vault secret stores remain unmodified after the
+    # disposable OpenBao bootstrap. Writes secret-store-substitution.json with
+    # substitutionPerformed=false so the existing evidence validator still receives a
+    # positive unmodified assertion (no Kubernetes-store fallback).
     param(
         [Parameter(Mandatory)][string]$Namespace,
         [Parameter(Mandatory)][string]$ClusterName,
         [Parameter(Mandatory)][string]$DisclosurePath
     )
 
-    Assert-DisposableClusterContext $ClusterName
+    Assert-DisposableClusterContext $ClusterName -RefusalPrefix 'Refusing to confirm production secret stores'
 
-    # Enumerate the vault-typed stores from the cluster rather than hardcoding two names, so a
-    # third such component cannot be silently left unpatched while the disclosure still passes.
-    $componentsJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $Namespace, '-o', 'json')) -join [Environment]::NewLine
     try {
-        $componentList = $componentsJson | ConvertFrom-Json
+        $componentJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $Namespace, '-o', 'json')) -join [Environment]::NewLine
+        $componentList = $componentJson | ConvertFrom-Json
     }
     catch {
-        throw "Could not parse the Dapr Component list while preparing the secret-store substitution. kubectl exited 0 but its output was not JSON (a warning line on stderr is folded in by Invoke-Checked). Parser error: $($_.Exception.Message)"
+        throw "Could not enumerate Dapr Components while confirming the OpenBao secret stores: $($_.Exception.Message)"
     }
 
-    # A FAILED enumeration must not look like the by-design "nothing to substitute" end state.
-    # kubectl can exit 0 with a payload carrying no `items` at all (a `Status` object, for
-    # example); `@($payload.items)` then yields a one-element array holding $null, `$null.spec.type`
-    # is $null, and the vault-typed set came out empty - so a render/apply/namespace regression was
-    # recorded as `substitutionPerformed=false` and the validator printed "the run applied the
-    # production secret stores unmodified" over a cluster nothing had verified.
     if ($null -eq $componentList.PSObject.Properties['items']) {
-        throw "Could not enumerate Dapr Components while preparing the secret-store substitution: kubectl exited 0 but its JSON payload carried no 'items' property, so an enumeration failure is indistinguishable from an empty result."
+        throw "Could not enumerate Dapr Components while confirming the OpenBao secret stores: kubectl exited 0 but its JSON payload carried no 'items' property."
     }
     $componentItems = @($componentList.items | Where-Object { $null -ne $_ })
     if ($componentItems.Count -eq 0) {
-        throw "Could not enumerate Dapr Components while preparing the secret-store substitution: namespace '$Namespace' reports zero Dapr Components after the verbatim apply, which is a render or apply regression rather than the Story 31.2 end state (that state has components, none of them vault-typed)."
-    }
-    $vaultComponents = @($componentItems |
-        Where-Object { $_.spec.type -eq 'secretstores.hashicorp.vault' } |
-        ForEach-Object { [string]$_.metadata.name } |
-        Sort-Object)
-
-    # A dynamically discovered vault store can be substituted safely only if every Component
-    # it serves for an application this lane actually starts can resolve its Kubernetes Secret.
-    # Otherwise a new store/consumer pair is patched successfully and the later pod crash-loop is
-    # reported as an unrelated health failure. The namespace is fresh, so an existing Secret was
-    # seeded by this run or applied by its manifest; verify the exact key and the consumer service
-    # account's read permission before mutating any Component.
-    $runningServiceAccounts = [ordered]@{
-        memories = 'memories'
-        'memories-mcp' = 'memories-mcp'
-    }
-    $validatedConsumerSecrets = [System.Collections.Generic.List[object]]::new()
-    foreach ($consumer in $componentItems) {
-        $secretStoreName = [string]$consumer.spec.auth.secretStore
-        if ([string]::IsNullOrWhiteSpace($secretStoreName) -or $vaultComponents -cnotcontains $secretStoreName) {
-            continue
-        }
-
-        $declaredScopes = @($consumer.scopes |
-            ForEach-Object { [string]$_ } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-        $runningScopes = @($runningServiceAccounts.Keys | Where-Object {
-            $declaredScopes.Count -eq 0 -or $declaredScopes -ccontains $_
-        })
-        if ($runningScopes.Count -eq 0) {
-            continue
-        }
-
-        $secretReferences = @($consumer.spec.metadata |
-            Where-Object { $null -ne $_ -and $null -ne $_.secretKeyRef })
-        foreach ($reference in $secretReferences) {
-            $secretName = [string]$reference.secretKeyRef.name
-            $secretKey = [string]$reference.secretKeyRef.key
-            if ([string]::IsNullOrWhiteSpace($secretName) -or [string]::IsNullOrWhiteSpace($secretKey)) {
-                throw "Component '$($consumer.metadata.name)' uses substituted secret store '$secretStoreName' for a running application but carries an incomplete secretKeyRef."
-            }
-
-            try {
-                $secretJson = (Invoke-Checked kubectl @('get', 'secret', $secretName, '-n', $Namespace, '-o', 'json')) -join [Environment]::NewLine
-                $secret = $secretJson | ConvertFrom-Json
-            }
-            catch {
-                throw "Component '$($consumer.metadata.name)' uses substituted secret store '$secretStoreName' for a running application and requires Secret '$secretName', but that Secret was not seeded or could not be read from namespace '$Namespace'. $($_.Exception.Message)"
-            }
-            $matchingKeys = @($secret.data.PSObject.Properties |
-                Where-Object { $_.Name -ceq $secretKey -and -not [string]::IsNullOrWhiteSpace([string]$_.Value) })
-            if ($matchingKeys.Count -ne 1) {
-                throw "Component '$($consumer.metadata.name)' requires key '$secretKey' in Secret '$secretName', but the seeded Secret does not contain that non-empty key."
-            }
-
-            foreach ($appId in $runningScopes) {
-                $serviceAccount = [string]$runningServiceAccounts[$appId]
-                $canRead = (@(& kubectl auth can-i get "secret/$secretName" -n $Namespace --as "system:serviceaccount:${Namespace}:$serviceAccount" 2>$null) -join '').Trim()
-                $canReadExitCode = $LASTEXITCODE
-                if ($canReadExitCode -notin @(0, 1)) {
-                    throw "Could not evaluate whether running application '$appId' can read Secret '$secretName' (kubectl exit $canReadExitCode)."
-                }
-                if ($canRead -cne 'yes') {
-                    throw "Running application '$appId' cannot read Secret '$secretName' required by Component '$($consumer.metadata.name)' through substituted secret store '$secretStoreName'."
-                }
-                $validatedConsumerSecrets.Add([ordered]@{
-                    component = [string]$consumer.metadata.name
-                    secretStore = $secretStoreName
-                    appId = [string]$appId
-                    secret = $secretName
-                    key = $secretKey
-                })
-            }
-        }
+        throw "Could not enumerate Dapr Components while confirming the OpenBao secret stores: namespace '$Namespace' reports zero Dapr Components after the verbatim apply."
     }
 
-    # No throw when nothing is vault-typed. Story 31.2 delivers the real OpenBao path, after
-    # which a run applies the production manifests unmodified and has nothing to substitute -
-    # the desired end state, and the state DW 27.3-CR29/CR30 must be able to discharge. Making
-    # the substitution unconditional would have made AC6's own lane permanently incapable of
-    # proving the Production secret-resolution path it exists to qualify.
-    $secretStoreSubstitution = '{"spec":{"type":"secretstores.kubernetes","version":"v1","metadata":[]}}'
-    # COLLECT patch failures instead of throwing on the spot. A `kubectl patch` that exits non-zero
-    # on component N - a webhook rejection or an API-server 5xx - left components 1..N-1 already
-    # rewritten and threw BEFORE the disclosure write below, so no secret-store-substitution.json
-    # was produced, the validator skipped its disclosure branch entirely, and the packet validated
-    # clean over a silently mutated cluster. That is the exact hole the redesign comment below
-    # claims to have closed; it was closed for the readback and not for the patch itself.
-    $substitutionFailures = [System.Collections.Generic.List[string]]::new()
-    foreach ($component in $vaultComponents) {
-        try {
-            Invoke-Checked kubectl @('patch', 'component', $component, '-n', $Namespace, '--type', 'merge', '-p', $secretStoreSubstitution) | Out-Null
-        }
-        catch {
-            $substitutionFailures.Add("component '$component' could not be patched: $($_.Exception.Message)")
-        }
-    }
-
-    # Re-read the observed post-patch type PER COMPONENT. `Invoke-Checked` proves only that
-    # kubectl exited 0 - a no-op patch also exits 0 - so an asserted disclosure could never
-    # disagree with the cluster. A set-of-types readback (Sort-Object -Unique) was not enough
-    # either: it collapses N components to one entry, so a component that disappeared between
-    # the patch loop and the readback still yielded a clean single type while the disclosure
-    # claimed every component was substituted.
-    # COLLECT verification failures instead of throwing on the spot. Every throw between the patch
-    # loop and the disclosure write left a cluster whose Component spec.types had already been
-    # rewritten while `secret-store-substitution.json` was never written at all - and the validator
-    # skips its disclosure branch entirely when the file is absent, so the packet validated clean
-    # over a silently mutated cluster. The disclosure is now written on every path and the failure
-    # is raised afterwards.
-    $observedItems = @()
+    $requiredStores = @('secretstore', 'access-telemetry-secrets')
+    $verificationFailures = [System.Collections.Generic.List[string]]::new()
+    $observedComponents = @()
     $observedByName = @{}
-    try {
-        # The readback invocation is INSIDE the try. It sat outside, with the try wrapping only
-        # ConvertFrom-Json, so a transient non-zero exit on the post-patch `get` threw with the
-        # cluster fully rewritten and no disclosure written at all.
-        $observedJson = (Invoke-Checked kubectl @('get', 'components.dapr.io', '-n', $Namespace, '-o', 'json')) -join [Environment]::NewLine
-        $observedPayload = $observedJson | ConvertFrom-Json
-        if ($null -eq $observedPayload.PSObject.Properties['items']) {
-            $substitutionFailures.Add('the post-patch Dapr Component list carried no items property')
-        }
-        else {
-            $observedItems = @($observedPayload.items | Where-Object { $null -ne $_ })
-        }
-    }
-    catch {
-        $substitutionFailures.Add("the post-patch Dapr Component list could not be read or parsed (error: $($_.Exception.Message))")
-    }
-    foreach ($item in $observedItems) {
+    foreach ($item in $componentItems) {
         $observedByName[[string]$item.metadata.name] = [string]$item.spec.type
     }
-    # Record EVERY substituted component with the type actually read back - including a wrong type,
-    # and an explicit marker for one that vanished (Administrator decision 2026-07-31, arm (b)).
-    # Previously a failed component was `continue`d out of $observedComponents while it remained in
-    # $substitutedComponents, so the verifier's own failed-run disclosure was REJECTED by its own
-    # validator ("does not observe exactly the components it claims to have substituted"). Because
-    # the CI validate step runs with `if: always()`, that bogus shape error then replaced the
-    # genuine terminal error - the precise regression the validator's header comment exists to
-    # prevent. It also left observedPostPatchTypes empty on exactly the failed runs where an auditor
-    # needs the observed type, which AC6 requires to be recorded per Component on every run.
-    $observedComponents = @()
-    foreach ($component in $vaultComponents) {
+
+    foreach ($component in $requiredStores) {
         if (-not $observedByName.ContainsKey($component)) {
-            $substitutionFailures.Add("component '$component' was patched but is absent from the post-patch read")
-            $observedComponents += [ordered]@{ name = $component; observedType = '<absent from post-patch read>' }
+            $verificationFailures.Add("required vault-typed component '$component' is absent")
+            $observedComponents += [ordered]@{ name = $component; observedType = '<absent>' }
             continue
         }
-        if ($observedByName[$component] -cne 'secretstores.kubernetes') {
-            $substitutionFailures.Add("component '$component' observed post-patch type '$($observedByName[$component])'")
+        $observedType = $observedByName[$component]
+        $observedComponents += [ordered]@{ name = $component; observedType = $observedType }
+        if ($observedType -cne 'secretstores.hashicorp.vault') {
+            $verificationFailures.Add("component '$component' observed type '$observedType' instead of secretstores.hashicorp.vault")
         }
-        $observedComponents += [ordered]@{ name = $component; observedType = $observedByName[$component] }
+        if ($observedType -ceq 'secretstores.kubernetes') {
+            $verificationFailures.Add("component '$component' fell back to secretstores.kubernetes; the disposable verifier must exercise the production OpenBao path")
+        }
     }
 
-    # Scan the WHOLE post-patch list for a surviving vault-typed component, not only the names this
-    # run enumerated before patching. A component the pre-patch read missed (informer lag right
-    # after the apply) or one a controller re-created between the patch loop and the readback was
-    # never examined, so the run succeeded and the disclosure asserted it named "exactly the
-    # components observed and patched in this run" while a vault-typed store reached the health stages.
-    $residualVaultComponents = @($observedItems |
-        Where-Object { $_.spec.type -eq 'secretstores.hashicorp.vault' } |
+    # Case-sensitive type compare, matching the vault confirmation above (-ceq).
+    $kubernetesFallbacks = @($componentItems |
+        Where-Object {
+            [string]$_.metadata.name -in $requiredStores -and
+            [string]$_.spec.type -ceq 'secretstores.kubernetes'
+        } |
         ForEach-Object { [string]$_.metadata.name } |
         Sort-Object)
-    if ($residualVaultComponents.Count -gt 0) {
-        $substitutionFailures.Add("vault-typed component(s) survived the substitution: $($residualVaultComponents -join ', ')")
-    }
 
-    # ALWAYS write the disclosure, including for a run that substituted nothing. Making the file
-    # optional made its absence indistinguishable from a substituted run whose disclosure was
-    # never written or was lost from the packet, and the validator then printed an unverified
-    # claim about production secret-store topology. An explicit substituted:false record is a
-    # positive assertion the validator can check; a missing file is not.
-    $substitutionPerformed = $vaultComponents.Count -gt 0
-    $substitutionReason = if ($substitutionPerformed) {
-        # Build the narrative from the components actually enumerated. A hardcoded two-component
-        # story re-introduced the staleness that dynamic enumeration was added to remove: a third
-        # vault-typed component would be correctly patched and listed while the auditor-facing
-        # narrative kept describing a topology that no longer existed, and the validator only
-        # checks that this field is non-empty.
-        "DW 27.3-CR17: the disposable cluster has no OpenBao, so the $($vaultComponents.Count) production hashicorp.vault secret store(s) applied by this run - $($vaultComponents -join ', ') - are substituted with verification-scoped kubernetes stores after the verbatim apply. Consumers whose secretKeyRefs name a seeded verification Secret resolve through the substituted store; a consumer naming a Secret this lane does not seed cannot resolve it, and any such component must stay at replicas 0 or the health stages will observe its component-load failure. Concretely, and restored 2026-07-31 after the dynamic rewrite dropped it: ``access-telemetry-store`` resolves its password through Secret ``access-telemetry-postgresql`` via the ``memories-access-telemetry-secret-reader`` RBAC binding, which this lane does not create, so that component must remain at replicas 0 - the auditor otherwise cannot tell which component is at risk, and the validator only checks that this field is non-empty. Components are enumerated from the cluster, so this record names exactly the components observed and patched in this run. The OpenBao path is not exercised by this lane (Story 31.2 scope)."
-    }
-    else {
-        'No secretstores.hashicorp.vault component was applied, so no substitution was performed and the production secret stores ran unmodified. Expected once Story 31.2 delivers the OpenBao path; before that, this state means the rendered manifests no longer carry the production vault-typed stores and AC6 no longer describes the applied topology.'
-    }
+    $reason = "Disposable TLS OpenBao was staged before application scale-up, so the $($requiredStores.Count) production hashicorp.vault secret store(s) - $($requiredStores -join ', ') - ran unmodified. Kubernetes secret-store substitution is rejected because it bypasses architecture decision D31 and would not validate the shipped production topology."
 
     [ordered]@{
         schemaVersion = 2
-        substitutionPerformed = $substitutionPerformed
-        reason = $substitutionReason
-        substitutedComponents = $vaultComponents
-        observedComponents = $observedComponents
+        substitutionPerformed = $false
+        reason = $reason
+        substitutedComponents = @()
+        observedComponents = @()
         originalType = 'secretstores.hashicorp.vault'
         substitutedType = 'secretstores.kubernetes'
-        observedPostPatchTypes = @($observedComponents | ForEach-Object { $_.observedType } | Sort-Object -Unique)
-        substitutionVerified = ($substitutionFailures.Count -eq 0)
-        verificationFailures = @($substitutionFailures)
-        residualVaultComponents = $residualVaultComponents
-        validatedConsumerSecrets = @($validatedConsumerSecrets)
+        observedPostPatchTypes = @()
+        substitutionVerified = ($verificationFailures.Count -eq 0)
+        verificationFailures = @($verificationFailures)
+        residualVaultComponents = @()
+        verifiedVaultComponents = @($observedComponents)
+        kubernetesFallbackComponents = @($kubernetesFallbacks)
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $DisclosurePath -Encoding utf8
 
-    # Raise AFTER the disclosure has reached disk, so a partially rewritten cluster is always
-    # accompanied by a packet that says so.
-    if ($substitutionFailures.Count -gt 0) {
-        throw "Secret-store substitution could not be verified; the cluster may be partially rewritten and secret-store-substitution.json records this failure. $($substitutionFailures -join '; ')."
+    if ($verificationFailures.Count -gt 0) {
+        throw "Production OpenBao secret stores could not be confirmed unmodified; secret-store-substitution.json records this failure. $($verificationFailures -join '; ')."
     }
 
-    if ($substitutionPerformed) {
-        Write-Host "Substituted secret stores $($vaultComponents -join ', ') with verification-scoped secretstores.kubernetes aliases (disclosed in secret-store-substitution.json)."
-    }
-    else {
-        Write-Host 'No secretstores.hashicorp.vault component found; recorded substitutionPerformed=false in secret-store-substitution.json.'
-    }
+    Write-Host "Confirmed production secret stores $($requiredStores -join ', ') remain secretstores.hashicorp.vault (substitutionPerformed=false)."
 }
 
 function Protect-EvidenceText {
@@ -387,14 +232,26 @@ function Protect-EvidenceText {
         'verification-app-api-token',
         'verification-dapr-api-token',
         'verification-invalid-dapr-api-token',
+        'verification-access-telemetry-marker',
         $env:HEXALITH_ZOT_USERNAME,
         $env:HEXALITH_ZOT_API_KEY
-    )
+    ) + @(Get-OpenBaoRedactionSecrets)
     foreach ($secret in $secrets) {
         if (-not [string]::IsNullOrWhiteSpace($secret)) {
             $sanitized = $sanitized.Replace($secret, '***', [StringComparison]::Ordinal)
         }
     }
+
+    # Strip PEM private-key blocks and common OpenBao token prefixes if any leak into diagnostics.
+    $sanitized = [regex]::Replace(
+        $sanitized,
+        '-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----',
+        '***',
+        [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    $sanitized = [regex]::Replace(
+        $sanitized,
+        '\b(?:hvs|hvb|hvr|s|b|r)\.[A-Za-z0-9_-]{16,}\b',
+        '***')
 
     return $sanitized
 }
@@ -1131,7 +988,7 @@ try {
     # `curl` backs the runner-side port-forward health capture. Without it here, a missing
     # binary raised a terminating CommandNotFoundException from inside the poll loop, aborting
     # mid-stage with an error unrelated to the deployment.
-    foreach ($command in @('docker', 'kind', 'kubectl', 'dapr', 'pwsh', 'curl')) {
+    foreach ($command in @('docker', 'kind', 'kubectl', 'dapr', 'pwsh', 'curl', 'openssl')) {
         if ($null -eq (Get-Command $command -ErrorAction SilentlyContinue)) {
             throw "Required command '$command' is not available. The deployment verifier never skips prerequisites."
         }
@@ -1204,6 +1061,14 @@ try {
         '--dry-run=client', '-o', 'yaml')
     $registrySecret | & kubectl apply -f - | Out-Null
 
+    # Stage disposable TLS OpenBao and publish token/CA-only bootstrap Secrets BEFORE the
+    # production manifests are applied so daprd can load the unchanged hashicorp.vault stores.
+    Invoke-DisposableOpenBaoBootstrap `
+        -ApplicationNamespace $namespace `
+        -ClusterName $ClusterName `
+        -EvidencePath $evidencePath `
+        -Image $script:OpenBaoPinnedImage
+
     Invoke-Checked pwsh @(
         '-NoLogo', '-NoProfile', '-File', (Join-Path $PSScriptRoot 'render-production-deployment.ps1'),
         '-Version', $Version, '-ServerImage', $serverImage, '-McpImage', $mcpImage,
@@ -1213,32 +1078,12 @@ try {
     Invoke-Checked kubectl @('apply', '--dry-run=client', '-f', $manifestPath) | Out-Host
     Invoke-Checked kubectl @('apply', '-f', $manifestPath) | Out-Host
 
-    # DW 27.3-CR17 (Administrator decision 2026-07-28): the production manifests carry two
-    # `secretstores.hashicorp.vault` stores (`secretstore`, `access-telemetry-secrets`) that route
-    # component secretKeyRef resolution through an OpenBao this disposable cluster does not have,
-    # so daprd exits fatally at component load. The manifests are applied verbatim above; this
-    # separate, disclosed step then substitutes both stores with verification-scoped
-    # `secretstores.kubernetes` aliases (merge patch: the cluster object keeps name and scopes),
-    # so the same secretKeyRef name/key pairs resolve from the seeded verification Secrets.
-    #
-    # ORDERING, corrected 2026-07-29 by code review (chunk 2). This block previously claimed it
-    # "runs while the applications are scaled to zero below, so no consumer pod ever loads the
-    # vault-typed component". That was false: `kubectl apply -f` above creates
-    # deployment/memories and deployment/memories-mcp at their manifest replica count, and the
-    # scale-to-zero happens AFTER this block. The qualifying run shows the window - apply at
-    # 22:45:22.193, substitution at 22:45:22.396. Consumer pods can therefore start against the
-    # vault-typed store inside that sub-second window and crash-loop at component load; the
-    # scale-to-zero below then clears them before the health stages begin. The window cannot be
-    # closed by reordering, because the pods are created by the apply itself; closing it would
-    # require rendering the manifests at zero replicas, which would no longer apply them
-    # verbatim. Recorded rather than papered over.
-    #
-    # The OpenBao path is NOT exercised by this lane; proving it is Story 31.2 scope.
-    # Guard the target before rewriting any Component's type. $namespace is the same name the
-    # reviewed live PG-ONPREM-1 target uses, and until now safety rested entirely on
-    # $env:KUBECONFIG having been repointed above. These are the first commands in this script
-    # that mutate a Dapr Component's spec.type, and `secretstore.yaml` is Story 31.2's artifact.
-    Invoke-SecretStoreSubstitution -Namespace $namespace -ClusterName $ClusterName -DisclosurePath (Join-Path $evidencePath 'secret-store-substitution.json')
+    # Confirm the production OpenBao-backed stores remain unmodified. Do not substitute them
+    # with secretstores.kubernetes — that bypasses D31 and leaves the production path unproven.
+    Confirm-UnmodifiedOpenBaoSecretStores `
+        -Namespace $namespace `
+        -ClusterName $ClusterName `
+        -DisclosurePath (Join-Path $evidencePath 'secret-store-substitution.json')
 
     # The release manifest assumes external Redis/FalkorDB services already exist. This disposable
     # cluster creates them in the same apply, so keep the applications stopped until those required
@@ -1269,6 +1114,93 @@ try {
 
     Wait-AggregateStatus 'memories' 'memories' 'Healthy' -Stage 'initial-server-health' -TimeoutSeconds 60 -MeasureFromContainerRunning | Out-Null
     Wait-AggregateStatus 'memories-mcp' 'memories-mcp' 'Healthy' -Stage 'initial-mcp-health' -TimeoutSeconds 60 -MeasureFromContainerRunning | Out-Null
+
+    Set-VerificationStage 'dapr-secret-store-access'
+    $serverPod = Get-RunningPodName 'memories' 'memories'
+    if ([string]::IsNullOrWhiteSpace($serverPod)) {
+        throw 'No running Server pod was available for the Dapr secret-store access check.'
+    }
+
+    $allowedSecret = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/secretstore/redis-secret"' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -ne 0) {
+        throw "Dapr secretstore allow-listed read failed: $(Protect-EvidenceText $allowedSecret)"
+    }
+    try {
+        $allowedObject = $allowedSecret | ConvertFrom-Json
+    }
+    catch {
+        throw 'Dapr secretstore allow-listed read returned non-JSON output.'
+    }
+    finally {
+        $allowedSecret = $null
+    }
+    if ($null -eq $allowedObject.PSObject.Properties['password'] -or [string]::IsNullOrWhiteSpace([string]$allowedObject.password)) {
+        throw 'Dapr secretstore allow-listed read did not return the redis-secret password field.'
+    }
+    Register-OpenBaoRedactionSecret ([string]$allowedObject.password)
+    $allowedObject = $null
+
+    $deniedCross = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/secretstore/access-telemetry-marker-key"' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -eq 0) {
+        throw 'Dapr secretstore unexpectedly allowed a cross-prefix access-telemetry secret name.'
+    }
+    if ($deniedCross -match 'verification-access-telemetry-marker') {
+        throw 'Dapr secretstore denial transcript leaked an access-telemetry secret value.'
+    }
+
+    $deniedUnknown = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/secretstore/not-allow-listed"' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -eq 0) {
+        throw 'Dapr secretstore unexpectedly allowed a non-allow-listed secret name.'
+    }
+
+    # Matching allow/deny probes through the production access-telemetry-secrets component.
+    $accessAllowedSecret = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/access-telemetry-secrets/access-telemetry-marker-key"' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -ne 0) {
+        throw "Dapr access-telemetry-secrets allow-listed marker read failed: $(Protect-EvidenceText $accessAllowedSecret)"
+    }
+    try {
+        $accessAllowedObject = $accessAllowedSecret | ConvertFrom-Json
+    }
+    catch {
+        throw 'Dapr access-telemetry-secrets allow-listed marker read returned non-JSON output.'
+    }
+    finally {
+        $accessAllowedSecret = $null
+    }
+    $markerProperty = $accessAllowedObject.PSObject.Properties['access-telemetry-marker-key']
+    if ($null -eq $markerProperty -or [string]::IsNullOrWhiteSpace([string]$markerProperty.Value)) {
+        throw 'Dapr access-telemetry-secrets allow-listed read did not return the access-telemetry-marker-key field.'
+    }
+    Register-OpenBaoRedactionSecret ([string]$markerProperty.Value)
+    $accessAllowedObject = $null
+
+    $accessDeniedCross = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/access-telemetry-secrets/llm-secret"' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -eq 0) {
+        throw 'Dapr access-telemetry-secrets unexpectedly allowed a cross-prefix runtime secret name.'
+    }
+    if ($accessDeniedCross -match 'verification-openai-key|verification-access-telemetry-marker') {
+        throw "Dapr access-telemetry-secrets cross-prefix denial transcript leaked a secret value: $(Protect-EvidenceText $accessDeniedCross)"
+    }
+
+    $accessDeniedUnknown = @(& kubectl --request-timeout=12s exec -n $namespace $serverPod -c memories -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/access-telemetry-secrets/not-allow-listed"' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -eq 0) {
+        throw 'Dapr access-telemetry-secrets unexpectedly allowed a non-allow-listed secret name.'
+    }
+    if ($accessDeniedUnknown -match 'verification-') {
+        throw "Dapr access-telemetry-secrets unknown-name denial transcript leaked a secret value: $(Protect-EvidenceText $accessDeniedUnknown)"
+    }
+
+    $mcpPodForSecrets = Get-RunningPodName 'memories-mcp' 'memories-mcp'
+    if ([string]::IsNullOrWhiteSpace($mcpPodForSecrets)) {
+        throw 'No running MCP pod was available for the Dapr secret-store denial check.'
+    }
+    $mcpDenied = @(& kubectl --request-timeout=12s exec -n $namespace $mcpPodForSecrets -c memories-mcp -- /bin/sh -ec 'wget -qO- --header="dapr-api-token: $DAPR_API_TOKEN" "http://127.0.0.1:3500/v1.0/secrets/secretstore/redis-secret"' 2>&1) -join [Environment]::NewLine
+    if ($LASTEXITCODE -eq 0) {
+        throw 'memories-mcp unexpectedly resolved secretstore/redis-secret despite being outside the component scopes.'
+    }
+    if ($mcpDenied -match 'verification-redis-password') {
+        throw 'memories-mcp secret denial transcript leaked the redis password.'
+    }
 
     Set-VerificationStage 'dapr-allowed-invocation'
     $mcpPod = Get-RunningPodName 'memories-mcp' 'memories-mcp'

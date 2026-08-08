@@ -63,7 +63,7 @@ The `memories-config` and `memories-access-telemetry-config` DAPR configurations
 2. Create the external resources above and make the two versioned images pullable through `registry-credentials`.
 3. Render and run client-side validation using the commands above, then apply the rendered file.
 4. Wait until the `memories` and `memories-mcp` application containers are running. Within 60 seconds, parse `/ready` and require top-level JSON `status` to equal `Healthy`; HTTP 200 alone is insufficient because `Degraded` also returns 200.
-5. Run `tools/verify-production-deployment.ps1` with the two locally published OCI archives. The verifier creates a disposable DAPR-enabled cluster, checks schema/RBAC/ACL behavior, proves startup timing, and exercises optional-axis degradation plus critical Redis/DAPR/MCP-upstream failures. It has no skip path.
+5. Run `tools/verify-production-deployment.ps1` with the four locally published OCI archives. The verifier creates a disposable DAPR-enabled cluster, stages a pinned TLS OpenBao (`2.6.0`) with the production endpoint DNS and bootstrap Secrets, leaves the production `secretstores.hashicorp.vault` components unmodified, checks schema/RBAC/ACL and Dapr secret allow/deny behavior, proves startup timing within the existing 60-second contract, and exercises optional-axis degradation plus critical Redis/DAPR/MCP-upstream failures. It has no skip path and must not fall back to `secretstores.kubernetes`.
 
 The application port `8080` has no direct Service target. The committed `memories` and `memories-mcp` Services target DAPR port `3500`; any public ingress, TLS issuer, hostname, or network edge remains infrastructure-owned and must terminate at that DAPR seam.
 

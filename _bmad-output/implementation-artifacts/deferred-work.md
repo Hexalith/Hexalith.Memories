@@ -2994,3 +2994,23 @@ Five 2026-07-31 `[Review][Decision]` items resolved by the Administrator that a 
 - source_spec: `_bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md`
   summary: Reconcile AccessTelemetry C1 ownership guard text with Story 27.21 C1.15 registration and the frozen Never/test File Scope carve-out.
   evidence: This story co-shipped AccessTelemetryRetentionDecisionTests pinning unowned C1 text; later 27.21 registration and planning copies partially supersede that pin without updating the guard.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md`
+  summary: OpenBao root/unseal/scoped tokens and KV field values still ride kubectl exec / bao argv during disposable bootstrap.
+  evidence: Review found BAO_TOKEN= and key=value on process argv; Protect-EvidenceText redacts evidence output but cannot hide argv from node process lists or kubectl audit trails without redesigning away from bao CLI over kubectl exec.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md`
+  summary: Disposable OpenBao namespace objects and unseal material are not retired by OpenBao helper code beyond local work-dir deletion.
+  evidence: Review noted only the local TLS/work directory is deleted; cluster-scoped OpenBao Deployment/Secrets/ConfigMaps and unseal keys rely on kind cluster teardown rather than an explicit OpenBao cleanup stage.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md`
+  summary: Protect-EvidenceText token regex can redact ordinary s./b./r. substrings in diagnostics.
+  evidence: Blind-hunter noted `\b(?:hvs|hvb|hvr|s|b|r)\.[A-Za-z0-9_-]{16,}\b` is broader than OpenBao/Vault token shapes and can over-redact unrelated diagnostics.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md`
+  summary: Disposable OpenBao container still runs with readOnlyRootFilesystem false despite emptyDir data volume.
+  evidence: Edge/hardening review; securityContext is otherwise hardened but root filesystem writability remains a residual disposable-verifier hardening gap.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md`
+  summary: Full stubbed-kubectl execution suite for OpenBao init/unseal/KV/policy/seed/token paths is not unit-tested beyond source pins and kind e2e.
+  evidence: Verification-gap review; kind verification exercised the live path, but Confirm/Get-HealthResponse-style stub execution coverage was not added for every OpenBao helper function.
