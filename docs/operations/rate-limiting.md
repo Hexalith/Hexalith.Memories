@@ -23,9 +23,10 @@ Rejected requests return HTTP `429` with `ErrorResponse.Code = RATE_LIMIT_EXCEED
 ## Embedding-provider admission (Stories 6.2, 23.3, and 23.5)
 
 Each tenant has an `EmbeddingRateLimiterActor` (Actor ID = tenant ID). It enforces
-the `RateLimitPerMinute` ceiling from `TenantEmbeddingConfig` (Story 1.7 / 5.5). The
-actor state is independent per tenant. This outbound provider-admission path is
-separate from the ASP.NET inbound HTTP limiter above.
+the `RateLimitPerMinute` ceiling from `TenantEmbeddingConfig` (Story 1.7 / 5.5).
+Configuration validation rejects a non-positive `RateLimitPerMinute` before admission
+can use it. The actor state is independent per tenant. This outbound provider-admission
+path is separate from the ASP.NET inbound HTTP limiter above.
 
 Embedding activities read tenant embedding configuration through a process-local,
 tenant-keyed cache. `Ingestion:EmbeddingConfigCache:CacheTtlSeconds` defaults to **30**
@@ -56,6 +57,10 @@ limit.
 **Mitigation for MVP:** assign distinct `ApiSecretKeyName` values per tenant via the
 operator secrets store. The per-tenant ceiling enforced by the actor is a *protection*,
 not an *isolation*, when keys are shared.
+
+A former Phase 3 sketch for a cross-tenant `SharedEmbeddingRateLimiterActor` is **not**
+an approved current delivery commitment. Treat shared-key coordination as deferred
+product work; do not expect that actor in the current tree.
 
 ## Provider 429 handling (Stories 6.2, 23.3)
 
@@ -151,3 +156,4 @@ System Health). Inbound HTTP request rejections use the Story 20.5
 
 - [Failure recovery and re-ingestion](./failure-recovery.md)
 - [Directory ingestion](./directory-ingestion.md)
+- [Ingestion workflow determinism (contributor)](../dev/ingestion-workflow-determinism.md)

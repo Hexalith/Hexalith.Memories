@@ -50,8 +50,8 @@ The default unsupported overlay is `.exe`, `.dll`, `.bin`, `.iso`, `.dmg`, `.so`
 
 | Setting | Default | Effective behavior |
 |---------|---------|--------------------|
-| `Ingestion:MaxBatchSize` | `500` | Reject with `BATCH_TOO_LARGE` when accepted candidates exceed the configured count. |
-| `Ingestion:MaxSkippedReportSize` | `100` | Retain at most this many skip-detail rows; continue counting discovery and set `SkippedTruncated` in the POST result when more are omitted. |
+| `Ingestion:MaxBatchSize` | `500` | Reject with `BATCH_TOO_LARGE` when accepted candidates exceed the configured count. Unlike parallelism/checkpoint settings, this value is **not** clamped: `0` or negative rejects every non-empty accepted-candidate set. |
+| `Ingestion:MaxSkippedReportSize` | `100` | Retain at most this many skip-detail rows; continue counting discovery and set `SkippedTruncated` in the POST result when more are omitted. Unlike parallelism/checkpoint settings, this value is **not** clamped: `0` or negative retains no skip-detail rows and marks truncation for every skip. |
 | `Ingestion:DirectorySchedulingParallelism` | `4` | Clamp to `1..32` concurrent scheduling workers. |
 | `Ingestion:DirectoryBatchCheckpointSize` | `50` | Clamp to `1..250` successful schedules between progress checkpoints. |
 | `Ingestion:BatchStateTtlHours` | `24` | Persist batch state with an effective TTL of `max(1, configured)` hours. |
@@ -94,11 +94,13 @@ Therefore the later status response's `Skipped` field is also the retained repor
 count, not the total number skipped when the original POST response was truncated.
 Preserve the POST response as evidence.
 
-The status endpoint reads workflow state with at most 50 concurrent lookups. It reports
-missing/pending/suspended workflow state as `queued`, running or otherwise unclassified
-state as `extracting`, completed output by its memory-unit status, and failed/terminated
-state as `failed`. Its aggregate `Counts` are derived from those per-instance rows;
-they are a lookup-time view, not proof that the entire batch reached a terminal state.
+The status endpoint gates workflow-state reads with a `SemaphoreSlim(50)`, so at most
+50 lookups run concurrently and any remaining `InstanceIds` wait their turn in the same
+request. Aggregate `Counts` still include every instance after all lookups finish. It
+reports missing/pending/suspended workflow state as `queued`, running or otherwise
+unclassified state as `extracting`, completed output by its memory-unit status, and
+failed/terminated state as `failed`. Those counts are a lookup-time view, not proof that
+the entire batch reached a terminal state.
 
 ## Cancellation, partial failure, and payload cleanup
 
@@ -123,5 +125,6 @@ response means zero side effects.
 - [Rate limiting and shared provider admission](./rate-limiting.md)
 - [Failure recovery and re-ingestion](./failure-recovery.md)
 - [Invocable route and operation surface](./route-surface.md)
+- [Ingestion workflow determinism (contributor)](../dev/ingestion-workflow-determinism.md)
 - [`DirectoryIngestionService`](../../src/Hexalith.Memories.Server/Ingestion/DirectoryIngestionService.cs)
 - [`IngestionSettings`](../../src/Hexalith.Memories.Server/Ingestion/IngestionSettings.cs)

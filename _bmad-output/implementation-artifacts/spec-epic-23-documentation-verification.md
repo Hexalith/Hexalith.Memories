@@ -2,7 +2,7 @@
 title: 'Epic 23 documentation verification pass'
 type: 'chore'
 created: '2026-08-02'
-status: 'in-review'
+status: 'done'
 baseline_commit: 'feac22bbc78c290f7ed8b1c2d5e1bfedf4dab133'
 review_loop_iteration: 0
 context:
@@ -90,3 +90,37 @@ The rows are one checkpoint set. Correct the upgrade matrix: syntactic accepts `
 - `rg -n 'TryConsumeWithCeilingAsync|SourcePayloadReference|DirectorySchedulingParallelism|ITenantIndexReadinessVerifier|WorkflowConfiguration' docs src tests --glob '*.{md,cs}'` -- expected: five current anchor sets.
 - `dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Deployment.OperationalRunbookSetTests -parallel none -noLogo` -- expected: operational documentation links and preserved runbook contracts pass.
 - `git diff --check` -- expected: no whitespace errors.
+
+## Suggested Review Order
+
+**Index readiness fail-closed**
+
+- Document incomplete `FT.INFO` budget exhaustion as schema-mismatch fail-closed.
+  [`index-rebuild.md:99`](../../docs/operations/index-rebuild.md#L99)
+
+- Keep readiness under Signals as H3 so Story 26.5 shared H2 contract stays green.
+  [`index-rebuild.md:78`](../../docs/operations/index-rebuild.md#L78)
+
+**Rate limiting precision**
+
+- Reject non-positive `RateLimitPerMinute` at config validation, not at admission.
+  [`rate-limiting.md:27`](../../docs/operations/rate-limiting.md#L27)
+
+- Retire the former shared-key actor roadmap without inventing a delivery commitment.
+  [`rate-limiting.md:61`](../../docs/operations/rate-limiting.md#L61)
+
+**Directory bounds and status**
+
+- Call out unclamped `MaxBatchSize` / `MaxSkippedReportSize` zero/negative effects.
+  [`directory-ingestion.md:53`](../../docs/operations/directory-ingestion.md#L53)
+
+- Clarify status lookups queue behind `SemaphoreSlim(50)` while Counts stay complete.
+  [`directory-ingestion.md:97`](../../docs/operations/directory-ingestion.md#L97)
+
+**Cross-links and deferrals**
+
+- Point operators from ops runbooks to the contributor determinism contract.
+  [`rate-limiting.md:159`](../../docs/operations/rate-limiting.md#L159)
+
+- Park route-surface back-link and C1 guard drift for focused follow-up.
+  [`deferred-work.md`](deferred-work.md)

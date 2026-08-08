@@ -95,8 +95,10 @@ index family, and expected vector dimensions (syntactic uses no dimension). Conc
 first writes for the same key share one verification. A server restart clears the
 cache. Failures are never cached: a later write re-runs readiness after an operator has
 restored the prerequisite. Incomplete `FT.INFO` metadata alone receives up to ten
-non-blocking checks separated by 100 ms; missing indexes and genuine schema drift fail
-closed.
+non-blocking checks separated by 100 ms. If metadata is still incomplete after that
+budget, the verifier fails closed with `TenantIndexSchemaMismatchException` (same as
+genuine schema drift) and does not cache readiness. Missing indexes fail closed as
+`TenantIndexNotProvisionedException`.
 
 The only automatic schema changes are additive missing `TAG` fields, and only when
 the actual field set is otherwise an exact subset of the expected schema:

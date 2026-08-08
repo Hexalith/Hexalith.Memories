@@ -2987,3 +2987,10 @@ Five 2026-07-31 `[Review][Decision]` items resolved by the Administrator that a 
 - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md`
   summary: Name the concrete RedisEmbeddingMigrationStoreTests method required by Story 24.8 Cross-Tenant Negative Evidence.
   evidence: Planned Verification commands the migration store tests without a named assertion contract in the evidence table.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md`
+  summary: Add a reciprocal pointer from docs/operations/route-surface.md to the new directory-ingestion authoritative contract.
+  evidence: Directory guidance links to route-surface as the prior route home, but route-surface is outside this story File Scope and gained no back-link.
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md`
+  summary: Reconcile AccessTelemetry C1 ownership guard text with Story 27.21 C1.15 registration and the frozen Never/test File Scope carve-out.
+  evidence: This story co-shipped AccessTelemetryRetentionDecisionTests pinning unowned C1 text; later 27.21 registration and planning copies partially supersede that pin without updating the guard.

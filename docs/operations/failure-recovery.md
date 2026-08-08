@@ -170,6 +170,7 @@ Queued | Extracting | Embedding | Indexing
 
 - [Rate limiting and provider recovery](./rate-limiting.md)
 - [Directory ingestion](./directory-ingestion.md)
+- [Ingestion workflow determinism (contributor)](../dev/ingestion-workflow-determinism.md)
 - [Capacity planning](./capacity-planning.md)
 - [Incident response](./incident-response.md)
 - [Index rebuild and recovery decisions](./index-rebuild.md)
