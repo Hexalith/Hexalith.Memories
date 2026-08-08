@@ -2,7 +2,7 @@
 title: 'Authorize the 2026-08-04 Epic 24 verifier residual backlog registration'
 type: 'maintenance'
 created: '2026-08-04'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: 'e902181dcdce599187e74fd2c3c9b12f995dcc18'
 context:
@@ -54,8 +54,8 @@ Allowed files for this story:
 
 **Execution:**
 - [x] Establish the exact owner-valid synchronization envelope without changing underlying story ownership.
-- [ ] Stage exactly the declared File Scope and commit with a commitlint-valid subject plus `Story-Key: spec-epic-24-verifier-residual-backlog-2026-08-04`.
-- [ ] Push `main` after the outgoing commit range passes commitlint.
+- [x] Stage exactly the declared File Scope and commit with a commitlint-valid subject plus `Story-Key: spec-epic-24-verifier-residual-backlog-2026-08-04`.
+- [x] Push `main` after the outgoing commit range passes commitlint.
 
 **Acceptance Criteria:**
 - Given the exact authorized snapshot, when repository scope and commit hooks run, then every path is accepted without `Scope-Override` or bypass flags.
