@@ -2968,3 +2968,22 @@ Five 2026-07-31 `[Review][Decision]` items resolved by the Administrator that a 
 - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md`
   summary: PARTIAL PUBLISH incidents for 2.6.0-2.6.7 were already closed before evidence-backed recovery completed.
   evidence: Issues #22-#33 show closedAt before the 2026-08-08 recovery; complete-partial-release only closes open issues.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md`
+  summary: Align Story 24.6 Cross-Tenant Negative Evidence with the three axis-specific search classes required before removing the all-axis test.
+  evidence: Review found the registered 24.6 evidence contract omits GraphScopedSearchIntegrationTests, SyntacticSearchIntegrationTests, and SemanticSearchIntegrationTests that Dev Notes and Planned Verification require citing.
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md`
+  summary: Resolve Story 24.7 AC1 wording so missing FT.INFO dimensions fail closed instead of ambiguous “all available” vs “all three” agreement.
+  evidence: The approved proposal says “all available values agree” while the registered story and epics.md require “all three values agree,” leaving undefined behavior when one index dimension is missing.
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md`
+  summary: Define blank or whitespace-only tenantId handling for Story 24.9 marker diagnostics.
+  evidence: Edge-case review showed proven-active hashes with empty/whitespace tenantId are unclassified and can be mislabeled as foreign contamination.
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md`
+  summary: Add a retrospective addendum or reopen note when epic-24 returns to in-progress after epic-24-retrospective is done for Stories 24.6-24.9.
+  evidence: sprint-status.yaml reopens epic-24 while leaving epic-24-retrospective done with no addendum covering the residual backlog registration.
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md`
+  summary: Align Story 24.6 accepted-blocker schema so “proof boundary” is required consistently across proposal and registered story/epics text.
+  evidence: Registered AC4 requires a proof boundary field while the matching proposal AC omits it.
+- source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md`
+  summary: Name the concrete RedisEmbeddingMigrationStoreTests method required by Story 24.8 Cross-Tenant Negative Evidence.
+  evidence: Planned Verification commands the migration store tests without a named assertion contract in the evidence table.

@@ -68,3 +68,44 @@ Allowed files for this story:
 - `python3 tools/check-tenant-isolation-evidence.py --story-key spec-epic-24-verifier-residual-backlog-2026-08-04 --staged`
 - `python3 tools/check-story-review-readiness.py --story-key spec-epic-24-verifier-residual-backlog-2026-08-04 --staged --derive-cumulative`
 - `npx commitlint --from "$(git merge-base origin/main HEAD)" --to HEAD --verbose`
+
+## Suggested Review Order
+
+**Synchronization envelope**
+
+- Intent and exact File Scope for the authorized mixed snapshot
+  [`spec-epic-24-verifier-residual-backlog-2026-08-04.md:15`](spec-epic-24-verifier-residual-backlog-2026-08-04.md#L15)
+
+- Approved backlog decisions that this envelope only commits
+  [`sprint-change-proposal-2026-08-04-story-24-3-verifier-residual-backlog-decisions.md:1`](../planning-artifacts/sprint-change-proposal-2026-08-04-story-24-3-verifier-residual-backlog-decisions.md#L1)
+
+**Registered backlog stories**
+
+- Graph content-level isolation evidence stays backlog until fixtures run
+  [`24-6-graph-content-level-tenant-isolation-evidence.md:6`](24-6-graph-content-level-tenant-isolation-evidence.md#L6)
+
+- Tenant-configured vector dimensions become authoritative in verification
+  [`24-7-tenant-configured-vector-dimension-verification.md:6`](24-7-tenant-configured-vector-dimension-verification.md#L6)
+
+- Semantic marker scans limited to proven-active key families
+  [`24-8-semantic-isolation-key-family-classification.md:6`](24-8-semantic-isolation-key-family-classification.md#L6)
+
+- Missing vs foreign markers get distinct non-destructive remediation
+  [`24-9-non-destructive-tenant-marker-diagnostics.md:6`](24-9-non-destructive-tenant-marker-diagnostics.md#L6)
+
+**Shared planning surfaces**
+
+- Epic 24 reopened with 24.6-24.9 backlog rows in sprint registry
+  [`sprint-status.yaml:420`](sprint-status.yaml#L420)
+
+- Deferred dispositions point Stories 24.6-24.9 as backlog homes
+  [`deferred-work.md:1891`](deferred-work.md#L1891)
+
+- Epic context lists residual stories and held 24.10-24.13 re-key
+  [`epic-24-context.md:16`](epic-24-context.md#L16)
+
+- Epics register Stories 24.6-24.9 and held identity correction
+  [`epics.md:4597`](../planning-artifacts/epics.md#L4597)
+
+- Architecture D29 documents classified verifier evidence semantics
+  [`architecture.md:607`](../planning-artifacts/architecture.md#L607)
