@@ -125,5 +125,5 @@ Zot serves `/v2/` anonymously, so login success does not prove writes. OCI uploa
 **Tests**
 
 - Prove a mismatched deployment fails before Release creation
-  [`partial_release_completion_test.py:340`](../../tests/tooling/publish_containers/partial_release_completion_test.py#L340)
+  [`partial_release_completion_test.py:342`](../../tests/tooling/publish_containers/partial_release_completion_test.py#L342)
 
