@@ -2,7 +2,7 @@
 title: 'Recover Zot-backed releases and fail before partial publication'
 type: 'bugfix'
 created: '2026-07-14'
-status: 'in-progress'
+status: 'in-review'
 review_loop_iteration: 0
 baseline_commit: '1c7e33fb63116aa4ab87045dced0824df32de3f3'
 context:
@@ -64,6 +64,7 @@ context:
 - 2026-08-08: Confirmed org `HEXALITH_ZOT_*` secrets/vars are present and write-scope probe succeeds on recovery. First recoveries for `2.6.0`/`2.6.7` failed at build because current tooling assumed the four-image access-telemetry unit; historical `2.6.x` tags only publish Server+MCP. Locally fixed `tools/publish-containers.ps1` and `tools/complete-partial-release.ps1` to select members from the tagged source (with tests). Pushed to `main` as `578d005c`.
 - 2026-08-08: Re-ran recovery: `2.6.0` hit immutable digest conflict (remote already present with a different config digest). `2.6.5` built and pushed both images, then failed workflow evidence validation still requiring exactly four images. Updated `.github/workflows/recover-partial-release.yml` to accept the tagged 2- or 4-image unit.
 - 2026-08-08: Recovered `2.6.5`-`2.6.7` images+Releases via workflow (`2.6.5` Release finished from the successful push summary after a non-reproducible rebuild conflict). Completed `2.6.0`-`2.6.4` GitHub Releases from already-present Zot tags (rebuilds conflict on digest; remote images HTTP 200). All eight Releases now present; PARTIAL PUBLISH issues were already closed before this evidence pass.
+- 2026-08-08 (review loop 1): Review found `$expectedImages` left unset after the allowed-image rename (deployment cross-check became a silent no-op), plus 3-image units and null ParamBlock gaps. Patched publish/complete/workflow to enforce 2-or-4 units, restore deployment image checks against `$summaryImages`, guard null ParamBlock, and reject unexpected repositories; added a deployment-mismatch completion test. KEEP: tagged-source member selection, 2-or-4 historical unit acceptance, and completed 2.6.0-2.6.7 recovery evidence.
 
 ## File Scope
 
@@ -79,6 +80,7 @@ Allowed files for this story:
 - `tools/create-partial-publish-issue.ps1`
 - `tests/tooling/publish_containers/**`
 - `tests/Hexalith.Memories.Cli.Tests/Ci/CiTestInventoryTests.cs`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
 
 ## Design Notes
 

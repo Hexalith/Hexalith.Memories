@@ -2958,3 +2958,13 @@ Five 2026-07-31 `[Review][Decision]` items resolved by the Administrator that a 
   summary: Refresh historical governance docs that still cite `_bmad/custom/bmad-generate-project-context.toml` after the skill rename.
   evidence: Cross-tenant carry-forward and related process notes still document the deleted generate custom path and generate-skill verification commands; this fixture fix deleted that path without updating those historical references.
 
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md`
+  summary: Historical container rebuilds are not bit-identical, so re-running Recover Partial Release after a successful image push hits immutable digest conflicts with no release-only workflow path.
+  evidence: 2.6.5 first push succeeded then evidence failed; second run conflicted on config digest. 2.6.0-2.6.4 Releases had to be completed offline from already-present remote tags.
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md`
+  summary: Workflow 2-or-4 Server/MCP evidence gates are only source-text pinned in CiTestInventoryTests, not executed as PowerShell.
+  evidence: Verification-gap review showed deleting the hasServer/hasMcp throw while leaving pinned substrings would keep CiTestInventoryTests green.
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-29354084222-fix-ci-cd-issues.md`
+  summary: PARTIAL PUBLISH incidents for 2.6.0-2.6.7 were already closed before evidence-backed recovery completed.
+  evidence: Issues #22-#33 show closedAt before the 2026-08-08 recovery; complete-partial-release only closes open issues.

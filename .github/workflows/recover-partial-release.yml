@@ -145,6 +145,10 @@ jobs:
           if (-not $hasServer -or -not $hasMcp) {
             throw "Container recovery evidence is missing the required Server/MCP image unit."
           }
+          $allowedPattern = '/memories(-mcp|-access-telemetry|-access-telemetry-clock)?:'
+          if (@($summaryImages | Where-Object { $_ -notmatch $allowedPattern }).Count -gt 0) {
+            throw "Container recovery evidence contains unexpected image repositories."
+          }
           foreach ($image in $images) {
             if ($image.status -ne 'succeeded' -or $image.disposition -notin @('pushed', 'already-present')) {
               throw "Container recovery evidence contains an unverified image outcome."
@@ -180,6 +184,11 @@ jobs:
               @($summary.images).Count -notin @(2, 4) -or
               @($summary.releaseAssets).Count -ne 10) {
             throw "Partial-release completion evidence does not contain the complete release unit for this tagged source."
+          }
+          $completionImages = @($summary.images.image)
+          if (@($completionImages | Where-Object { $_ -match '/memories:' }).Count -ne 1 -or
+              @($completionImages | Where-Object { $_ -match '/memories-mcp:' }).Count -ne 1) {
+            throw "Partial-release completion evidence is missing the required Server/MCP image unit."
           }
 
       - name: Upload container recovery evidence

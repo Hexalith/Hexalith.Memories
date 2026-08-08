@@ -495,6 +495,8 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("@($summary.releaseAssets).Count -ne 10");
         workflow.ShouldContain("tagged immutable image unit (2 or 4 members)");
         workflow.ShouldContain("/memories-mcp:");
+        workflow.ShouldContain("unexpected image repositories");
+        workflow.ShouldContain("Partial-release completion evidence is missing the required Server/MCP image unit.");
         workflow.ShouldContain("@('pushed', 'already-present')");
         workflow.ShouldContain("if: always()");
         workflow.IndexOf("Stage trusted recovery tooling", StringComparison.Ordinal).ShouldBeLessThan(

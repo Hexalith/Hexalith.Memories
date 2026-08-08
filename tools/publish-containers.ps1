@@ -94,6 +94,9 @@ $images = @($imageCandidates | Where-Object {
 if (@($images | Where-Object { $_.name -in @('server', 'mcp') }).Count -ne 2) {
     throw "Container publication requires Server and MCP projects under '$repoRoot'; found: $((@($images.name) -join ', '))."
 }
+if ($images.Count -notin @(2, 4)) {
+    throw "Container publication requires a 2- or 4-member image unit under '$repoRoot'; found $($images.Count): $((@($images.name) -join ', '))."
+}
 
 function Protect-LogText {
     param([AllowEmptyString()][string]$Text)
@@ -419,6 +422,9 @@ try {
         [ref]$parseErrors)
     if ($null -ne $parseErrors -and $parseErrors.Count -gt 0) {
         throw "Production deployment render script '$renderScript' could not be parsed."
+    }
+    if ($null -eq $renderAst.ParamBlock) {
+        throw "Production deployment render script '$renderScript' declares no param block."
     }
 
     $renderParameterNames = @(

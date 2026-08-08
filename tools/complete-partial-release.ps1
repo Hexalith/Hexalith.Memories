@@ -207,10 +207,11 @@ try {
         )
     )
     $summaryImages = @($images.image)
-    if (@($requiredImages | Where-Object { $_ -notin $summaryImages }).Count -gt 0 -or
+    if ($summaryImages.Count -notin @(2, 4) -or
+        @($requiredImages | Where-Object { $_ -notin $summaryImages }).Count -gt 0 -or
         @($summaryImages | Where-Object { $_ -notin $allowedImages }).Count -gt 0 -or
         $summaryImages.Count -ne @($summaryImages | Select-Object -Unique).Count) {
-        throw "Container recovery evidence must include the Server/MCP unit and only allowed image repositories for '$Version'."
+        throw "Container recovery evidence must include the Server/MCP unit as a 2- or 4-image set of allowed repositories for '$Version'."
     }
 
     foreach ($image in $images) {
@@ -273,7 +274,7 @@ try {
     $deploymentAsset = Join-Path $assetPath 'hexalith-memories-production.yaml'
     Copy-Item -LiteralPath $resolvedDeployment -Destination $deploymentAsset
     $deploymentText = Get-Content -LiteralPath $deploymentAsset -Raw
-    foreach ($expectedImage in $expectedImages) {
+    foreach ($expectedImage in $summaryImages) {
         if (-not $deploymentText.Contains($expectedImage, [StringComparison]::Ordinal)) {
             throw "Versioned deployment does not reference expected image '$expectedImage'."
         }

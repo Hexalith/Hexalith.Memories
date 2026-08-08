@@ -339,6 +339,35 @@ class PartialReleaseCompletionTests(unittest.TestCase):
             comment = next(command for command in commands if command[:2] == ["issue", "comment"])
             self.assertTrue(any("2 immutable image(s)" in arg for arg in comment))
 
+    def test_deployment_missing_summary_image_fails_before_release_create(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
+            root = Path(temp)
+            source, container_summary, deployment, env = self.prepare(
+                root,
+                image_repositories=["memories", "memories-mcp"],
+            )
+            deployment.write_text(
+                f"images:\n- registry.test/memories:{VERSION}\n",
+                encoding="utf-8",
+            )
+
+            result = run_completion(source, container_summary, deployment, nuget.origin, env)
+
+            self.assertNotEqual(0, result.returncode)
+            evidence = json.loads(
+                (source / "recovery-output" / "completion-summary.json").read_text(encoding="utf-8-sig")
+            )
+            self.assertEqual("failed", evidence["status"])
+            self.assertIn("does not reference expected image", evidence["error"])
+            self.assertIn(f"registry.test/memories-mcp:{VERSION}", evidence["error"])
+            log_path = Path(env["FAKE_GH_LOG"])
+            commands = (
+                [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+                if log_path.exists()
+                else []
+            )
+            self.assertFalse(any(command[:2] == ["release", "create"] for command in commands))
+
     def test_existing_release_asset_conflict_fails_before_incident_closure(self) -> None:
         with tempfile.TemporaryDirectory() as temp, PackageServer() as nuget:
             root = Path(temp)
