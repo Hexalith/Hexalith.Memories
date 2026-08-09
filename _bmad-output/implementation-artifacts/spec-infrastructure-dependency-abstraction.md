@@ -103,7 +103,7 @@ Allowed files for this story:
 ## Cross-Tenant Negative Evidence
 
 **Surfaces:** Dapr-state aggregate→case map and observed-event-type keys; `DeleteTenantDataKeysActivity` tenant purge path (physical selector change from raw Redis scan to Dapr store `DeleteAllTenantDataAsync`).
-**Tests:** `DeleteTenantDataKeysActivityTests.RunAsync_PurgesDaprStateForRequestedTenantOnly_FailClosedOnOtherTenant`, `DeleteTenantDataKeysActivityTests.RunAsync_PurgesRealDaprStoreKeysForRequestedTenantOnly`, `DaprStateStoreLiveSidecarTests` tenant-isolation purge cases
+**Tests:** `DeleteTenantDataKeysActivityTests.RunAsync_PurgesDaprStateForRequestedTenantOnly_FailClosedOnOtherTenant`, `DeleteTenantDataKeysActivityTests.RunAsync_WithRealDaprStores_PurgesSeededKeysForInputTenantOnly`, `DaprStateStoreLiveSidecarTests` tenant-isolation purge cases
 **Command:** `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class "Hexalith.Memories.Server.Tests.Activities.Tenants.DeleteTenantDataKeysActivityTests"` and `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -class "Hexalith.Memories.IntegrationTests.EventStore.DaprStateStoreLiveSidecarTests"`
 **Result:** DeleteTenant suite **4**/0 failed; live sidecar suite **7**/0 failed (includes cross-tenant purge isolation against real `daprd` + Redis `statestore`).
 
