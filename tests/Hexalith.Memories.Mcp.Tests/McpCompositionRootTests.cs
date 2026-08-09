@@ -27,29 +27,8 @@ public sealed class EnvironmentVariableSerializedCollection
 public sealed class McpCompositionRootTests
 {
     [Fact]
-    public void ResolveMemoriesServerAppId_WhenUnset_ReturnsDefault()
-    {
-        using var scope = new EnvScope((McpCompositionRoot.MemoriesServerAppIdEnvVar, null));
-
-        string appId = McpCompositionRoot.ResolveMemoriesServerAppId();
-
-        appId.ShouldBe(McpCompositionRoot.MemoriesServerAppId);
-    }
-
-    [Fact]
-    public void ResolveMemoriesServerAppId_WhenConfigured_TrimsValue()
-    {
-        using var scope = new EnvScope((McpCompositionRoot.MemoriesServerAppIdEnvVar, "  memories-it-123  "));
-
-        string appId = McpCompositionRoot.ResolveMemoriesServerAppId();
-
-        appId.ShouldBe("memories-it-123");
-    }
-
-    [Fact]
     public void ResolveMemoriesServerAppId_FromConfiguration_WhenUnset_ReturnsDefault()
     {
-        // spec-infrastructure-dependency-abstraction (F8, D30): app-id read through IConfiguration.
         IConfiguration configuration = new ConfigurationBuilder().Build();
 
         McpCompositionRoot.ResolveMemoriesServerAppId(configuration)
@@ -67,6 +46,29 @@ public sealed class McpCompositionRootTests
             .Build();
 
         McpCompositionRoot.ResolveMemoriesServerAppId(configuration).ShouldBe("memories-it-123");
+    }
+
+    [Fact]
+    public void ResolveMemoriesServerAppId_FromEnvironmentVariablesProvider_SurfacesAppHostInjectedValue()
+    {
+        // review P7: hosts must include the environment-variables configuration provider for
+        // AppHost-injected env vars to be visible through IConfiguration.
+        using var scope = new EnvScope((McpCompositionRoot.MemoriesServerAppIdEnvVar, "  memories-env-456  "));
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddEnvironmentVariables()
+            .Build();
+
+        McpCompositionRoot.ResolveMemoriesServerAppId(configuration).ShouldBe("memories-env-456");
+    }
+
+    [Fact]
+    public void ResolveMemoriesServerAppId_WithoutEnvironmentVariablesProvider_MissesProcessEnv()
+    {
+        using var scope = new EnvScope((McpCompositionRoot.MemoriesServerAppIdEnvVar, "memories-env-missed"));
+        IConfiguration configuration = new ConfigurationBuilder().Build();
+
+        McpCompositionRoot.ResolveMemoriesServerAppId(configuration)
+            .ShouldBe(McpCompositionRoot.MemoriesServerAppId);
     }
 
     [Fact]

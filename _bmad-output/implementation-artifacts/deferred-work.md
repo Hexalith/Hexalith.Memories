@@ -2288,6 +2288,10 @@ The following scenarios replace legacy runnable placeholders with literal xUnit 
   summary: Creation-lock release in `DaprAggregateCaseMappingStore.ReleaseCreationLockAsync` deletes unconditionally and can release a rival instance's active lock after the holder's TTL lease expired.
   evidence: `src/Hexalith.Memories.EventStore/DaprAggregateCaseMappingStore.cs:92-99` calls `DeleteStateAsync` without an owner token or ETag condition. Deferred as pre-existing: the prior Redis implementation used the same unconditional `DEL` after `SET NX`+TTL, so the migration preserved (did not introduce) this semantics; revisit if the F6 store design is reworked under the D1 review decision.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md`
+  summary: Remove unreferenced `RedisPlaceholder` port-constant compat surface on the next owned breaking major (F9).
+  evidence: See structured entry `IDA-F9-REDISPLACEHOLDER-REMOVAL` (appended 2026-08-09).
+
 ## Deferred from: code review of 27-3-retention-verification-operations-runbook-and-a41-close-out (2026-07-18)
 
 - source_spec: `_bmad-output/implementation-artifacts/27-3-retention-verification-operations-runbook-and-a41-close-out.md`
@@ -3014,3 +3018,15 @@ Five 2026-07-31 `[Review][Decision]` items resolved by the Administrator that a 
 - source_spec: `_bmad-output/implementation-artifacts/spec-gh-29804293613-fix-production-deployment-verification.md`
   summary: Full stubbed-kubectl execution suite for OpenBao init/unseal/KV/policy/seed/token paths is not unit-tested beyond source pins and kind e2e.
   evidence: Verification-gap review; kind verification exercised the live path, but Confirm/Get-HealthResponse-style stub execution coverage was not added for every OpenBao helper function.
+
+## Infrastructure-Dependency Abstraction (IDA) Deferred (2026-08-09)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-infrastructure-dependency-abstraction.md`
+  summary: Remove unreferenced `RedisPlaceholder` port-constant compat surface on the next owned breaking major once no external consumer depends on it (F9).
+
+  - ID: IDA-F9-REDISPLACEHOLDER-REMOVAL
+  - Status: open
+  - Source story: spec-infrastructure-dependency-abstraction
+  - Target artifact: src/Hexalith.Memories.Redis/RedisPlaceholder.cs
+  - Re-open trigger: an owned breaking major of the Redis package is cut, or an external consumer audit confirms zero remaining references to `DefaultRedisPort` / `DefaultFalkorDbPort`.
+  - Rationale: Constants are compile-time compat only (open no connections); removal is deferred to avoid an unforced package break while F9 already labels them non-leak.

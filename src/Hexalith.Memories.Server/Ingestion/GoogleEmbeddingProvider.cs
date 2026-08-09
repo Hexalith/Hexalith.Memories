@@ -30,7 +30,8 @@ internal sealed class GoogleEmbeddingProvider : IEmbeddingProvider
         ArgumentNullException.ThrowIfNull(secretStore);
         ArgumentException.ThrowIfNullOrWhiteSpace(apiBaseUrl);
         _secretStore = secretStore;
-        _apiBaseUrl = apiBaseUrl;
+        // Trailing slash would produce a double-slash path segment when model names are appended (review P10).
+        _apiBaseUrl = apiBaseUrl.TrimEnd('/');
     }
 
     /// <inheritdoc/>

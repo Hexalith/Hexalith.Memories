@@ -13,6 +13,22 @@ Stack, FalkorDB, workflow compatibility, Kustomize configuration, Secrets, canar
 backup evidence. Application changes can affect all tenants; backend/schema/data migration can affect
 all data on the shared backend.
 
+### ADR-IDA-001 EventStore aggregate→case map cutover (greenfield)
+
+The F6 migration moved aggregate→case mappings and observed-event-type indexes from raw Redis hashes/sets
+onto the Dapr `statestore` (per-aggregate FirstWrite keys + indexes; see architecture ADR-IDA-001). There
+is **no dual-read / backfill** from `{tenant}:eventstore:aggregate-case-map`. Operators upgrading an
+environment that already auto-created cases must either:
+
+1. Accept greenfield cutover (re-auto-create on first post-upgrade event per aggregate type; expect new
+   case ids for previously mapped types), or
+2. Run a one-shot remap before traffic (export old Redis hash fields → write Dapr state keys
+   `{tenant}:eventstore:aggregate-case-map:{aggregateType}` + refresh the index key).
+
+Orphaned pre-cutover Redis keys under `{tenant}:eventstore:*` are removed by tenant deletion SCAN; live
+Dapr-state keys (app-id prefixed) are purged via `DeleteAllTenantDataAsync` on the mapping and observation
+stores. Do not treat a raw Redis SCAN alone as proof that Dapr-state EventStore data is gone.
+
 Repository pins and image digests are the deployment input. Current pins include .NET SDK 10.0.302,
 Dapr .NET packages 1.18.4, Redis Stack 7.4.0-v8, and FalkorDB 4.12.0. A package pin does not prove the
 cluster runtime/control-plane version. No component version is changed by this runbook.

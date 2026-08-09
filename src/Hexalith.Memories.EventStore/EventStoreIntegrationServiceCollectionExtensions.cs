@@ -86,7 +86,9 @@ public static class EventStoreIntegrationServiceCollectionExtensions
         // dedup store stays on direct Redis; the KV/set mapping and observation stores are on Dapr state.
         services.TryAddSingleton(TimeProvider.System);
         services.AddOptions<EventStoreStateStoreOptions>()
-            .Bind(configuration.GetSection(EventStoreStateStoreOptions.SectionName));
+            .Bind(configuration.GetSection(EventStoreStateStoreOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.TryAddSingleton<IPreflightDedupStore, RedisPreflightDedupStore>();
         services.TryAddSingleton<IAggregateCaseMappingStore, DaprAggregateCaseMappingStore>();
         services.TryAddSingleton<ITenantEventRouter, TenantEventRouter>();
@@ -105,7 +107,7 @@ public static class EventStoreIntegrationServiceCollectionExtensions
         return services;
     }
 
-    private static string? ResolveConfiguredTopic(IConfiguration configuration)
+    internal static string? ResolveConfiguredTopic(IConfiguration configuration)
     {
         string? configuredTopic = configuration[$"EventStoreIntegration:Routing:{nameof(TenantEventRoutingOptions.Topic)}"];
         if (!string.IsNullOrWhiteSpace(configuredTopic))
@@ -113,9 +115,10 @@ public static class EventStoreIntegrationServiceCollectionExtensions
             return configuredTopic.Trim();
         }
 
-        // spec-infrastructure-dependency-abstraction (F8, Decision D30): the AppHost-injected topic env var
-        // is read through IConfiguration (which surfaces environment variables) rather than a raw
-        // Environment.GetEnvironmentVariable call, for consistency and testability.
+        // spec-infrastructure-dependency-abstraction (F8, Decision D30; review P7): the AppHost-injected
+        // topic env var is read through IConfiguration. Hosts MUST include the environment-variables
+        // configuration provider (the default host builders do) so AppHost-injected values are visible;
+        // a configuration root built without that provider will miss the env override.
         string? environmentTopic = configuration[EventIngestionController.TopicEnvVar];
         return string.IsNullOrWhiteSpace(environmentTopic) ? null : environmentTopic.Trim();
     }

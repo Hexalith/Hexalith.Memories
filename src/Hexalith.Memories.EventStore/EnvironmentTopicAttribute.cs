@@ -17,9 +17,10 @@ using Dapr;
 /// allowing the topic name to be configured per deployment.</para>
 ///
 /// <para>spec-infrastructure-dependency-abstraction (F8, Decision D30): this attribute reads the topic env
-/// var directly by design — it is evaluated by Dapr's <c>/dapr/subscribe</c> discovery at type-load time,
-/// before DI/<c>IConfiguration</c> exists, so it cannot take an injected configuration. It is a sanctioned
-/// D30 exception (a Dapr subscription-discovery env adapter), not a product-code infrastructure leak.</para></summary>
+/// var directly by design — attributes cannot receive DI / <c>IConfiguration</c>, and Dapr's
+/// <c>/dapr/subscribe</c> discovery reads <see cref="ITopicMetadata"/> from the attribute when the
+/// subscribe endpoint is served. It is a sanctioned D30 exception (a Dapr subscription-discovery env
+/// adapter), not a product-code infrastructure leak.</para></summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false, Inherited = true)]
 internal sealed class EnvironmentTopicAttribute : Attribute, ITopicMetadata
 {

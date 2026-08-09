@@ -55,8 +55,17 @@ No caller in Epics 7-11 needed them, so 7.1 keeps the resolver lean.
 
 - `HEXALITH_MEMORIES_ENDPOINT` — base URL of the Memories Server (for example `https://memories.example.com/`).
 - `HEXALITH_MEMORIES_API_TOKEN` — API token used for authenticated calls. Prefer this over `--token`.
+- `HEXALITH_MEMORIES_DEFAULT_ENDPOINT` — **(spec-infrastructure-dependency-abstraction F3)** overrides the
+  tier-4 built-in default (`http://127.0.0.1:5000/`). Must be an absolute `http(s)` URI; invalid values
+  warn on stderr and fall back to the built-in default (a Unix path that parses as `file://` is rejected).
 - `HEXALITH_MEMORIES_OTEL_ENDPOINT` — **(Story 7.5)** OTLP collector endpoint for opt-in CLI telemetry.
-  Setting this enables CLI trace export even when `--telemetry` is not passed.
+  Setting this enables CLI trace export even when `--telemetry` is not passed. Must be an absolute
+  `http(s)` URI; invalid values warn and disable telemetry (or fall back to the local endpoint when
+  `--telemetry` is set).
+- `HEXALITH_MEMORIES_OTEL_LOCAL_ENDPOINT` — **(spec-infrastructure-dependency-abstraction F4)** overrides
+  the local Aspire-dashboard OTLP fallback (`http://localhost:18889`) used when `--telemetry` is set
+  without `HEXALITH_MEMORIES_OTEL_ENDPOINT`. Must be an absolute `http(s)` URI; invalid values warn and
+  fall back to the built-in literal.
 
 Empty-string values are treated as unset and fall through to the next tier.
 

@@ -242,6 +242,129 @@ public sealed class DaprObservedEventTypeStoreTests
             store.RecordObservationAsync("acme", "Claims", "ClaimSubmittedV2", Now, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task RecordObservationAsync_OnJsonException_ShouldFailOpen()
+    {
+        DaprClient client = Substitute.For<DaprClient>();
+        client.GetStateAndETagAsync<Dictionary<string, DaprObservedEventTypeStore.ObservationCounter>?>(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ConsistencyMode?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns<(Dictionary<string, DaprObservedEventTypeStore.ObservationCounter>?, string)>(
+                _ => throw new System.Text.Json.JsonException("corrupt state"));
+        DaprObservedEventTypeStore store = CreateStore(client);
+
+        await Should.NotThrowAsync(() =>
+            store.RecordObservationAsync("acme", "Claims", "ClaimSubmittedV2", Now, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_OnSidecarShutdownCancellation_ShouldFailOpen()
+    {
+        DaprClient client = Substitute.For<DaprClient>();
+        client.GetStateAndETagAsync<Dictionary<string, DaprObservedEventTypeStore.ObservationCounter>?>(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ConsistencyMode?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns<(Dictionary<string, DaprObservedEventTypeStore.ObservationCounter>?, string)>(
+                _ => throw new OperationCanceledException("sidecar shutting down"));
+        DaprObservedEventTypeStore store = CreateStore(client);
+
+        await Should.NotThrowAsync(() =>
+            store.RecordObservationAsync("acme", "Claims", "ClaimSubmittedV2", Now, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task DeleteAllTenantDataAsync_RemovesCapRejectedObservationKeys()
+    {
+        FakeDaprStateStore fake = new();
+        List<string> fullIndex = [];
+        for (int i = 0; i < 1024; i++)
+        {
+            fullIndex.Add($"Aggregate{i}");
+        }
+
+        fake.Seed("acme:eventstore:observed-aggregates", fullIndex);
+        DaprObservedEventTypeStore store = CreateStore(fake);
+        await store.RecordObservationAsync("acme", "OverflowAggregate", "SomeEventV1", Now, CancellationToken.None);
+
+        await store.DeleteAllTenantDataAsync("acme", CancellationToken.None);
+
+        fake.ContainsKey("acme:eventstore:observed:OverflowAggregate").ShouldBeFalse();
+        fake.ContainsKey("acme:eventstore:observed-aggregates").ShouldBeFalse();
+        fake.ContainsKey("acme:eventstore:observed-written-aggregates").ShouldBeFalse();
+        (await store.GetObservedTypesAsync("acme", "OverflowAggregate", TimeSpan.FromHours(24), CancellationToken.None))
+            .ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_WhenWrittenIndexCasExhausted_CompensatesObservationAndFailsLoud()
+    {
+        // review patch #4: written-index miss would leave purge-invisible observation keys — compensate + throw.
+        FakeDaprStateStore fake = new();
+        fake.FailNextSaves("acme:eventstore:observed-written-aggregates", count: 16);
+        List<(LogLevel Level, int EventId)> captures = [];
+        DaprObservedEventTypeStore store = CreateStore(fake, new CapturingTestLogger(captures));
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(() =>
+            store.RecordObservationAsync("acme", "Claims", "ClaimSubmittedV2", Now, CancellationToken.None));
+
+        ex.Data["WrittenIndexCasExhausted"].ShouldBe(true);
+        fake.ContainsKey("acme:eventstore:observed:Claims").ShouldBeFalse();
+        captures.ShouldContain(c => c.Level == LogLevel.Warning || c.Level == LogLevel.Error || c.Level == LogLevel.Information);
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_WhenDiscoveryIndexCasExhausted_DoesNotClaimSuccess()
+    {
+        // review patch #5: discovery CAS exhaustion must log write-failed and skip the success log.
+        FakeDaprStateStore fake = new();
+        fake.FailNextSaves("acme:eventstore:observed-aggregates", count: 16);
+        List<(LogLevel Level, int EventId)> captures = [];
+        DaprObservedEventTypeStore store = CreateStore(fake, new CapturingTestLogger(captures));
+
+        await Should.NotThrowAsync(() =>
+            store.RecordObservationAsync("acme", "Claims", "ClaimSubmittedV2", Now, CancellationToken.None));
+
+        // Observation + written index remain (purge-safe); discovery not claimed.
+        fake.ContainsKey("acme:eventstore:observed:Claims").ShouldBeTrue();
+        fake.ContainsKey("acme:eventstore:observed-written-aggregates").ShouldBeTrue();
+        captures.ShouldContain(c => c.EventId == 9140); // ObservedEventTypeStoreWriteFailed
+        captures.ShouldNotContain(c => c.EventId == 9130); // ObservedEventTypeRecorded
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_OnArgumentOutOfRangeException_ShouldFailOpen()
+    {
+        // review patch #17: unix-ms conversion / corrupt timestamps must not escape fail-open.
+        DaprClient client = Substitute.For<DaprClient>();
+        client.GetStateAndETagAsync<Dictionary<string, DaprObservedEventTypeStore.ObservationCounter>?>(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ConsistencyMode?>(),
+                Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns<(Dictionary<string, DaprObservedEventTypeStore.ObservationCounter>?, string)>(
+                _ => throw new ArgumentOutOfRangeException("observedAt"));
+        DaprObservedEventTypeStore store = CreateStore(client);
+
+        await Should.NotThrowAsync(() =>
+            store.RecordObservationAsync("acme", "Claims", "ClaimSubmittedV2", Now, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RecordObservationAsync_RepeatObservation_RefreshesIndexTtlMetadataPath()
+    {
+        // review patch #3: membership hit must still attempt TTL refresh saves (indexes + membership).
+        FakeDaprStateStore fake = new();
+        DaprObservedEventTypeStore store = CreateStore(fake);
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmittedV2", Now, CancellationToken.None);
+
+        await store.RecordObservationAsync("acme", "Claims", "ClaimSubmittedV2", Now.AddMinutes(1), CancellationToken.None);
+
+        fake.ContainsKey("acme:eventstore:observed-agg-member:Claims").ShouldBeTrue();
+        fake.ContainsKey("acme:eventstore:observed-aggregates").ShouldBeTrue();
+        fake.ContainsKey("acme:eventstore:observed-written-aggregates").ShouldBeTrue();
+        IReadOnlyList<ObservedEventType> observed =
+            await store.GetObservedTypesAsync("acme", "Claims", TimeSpan.FromHours(24), CancellationToken.None);
+        observed[0].Count.ShouldBe(2);
+    }
+
     private static DaprObservedEventTypeStore CreateStore(FakeDaprStateStore fake, ILogger<DaprObservedEventTypeStore>? logger = null)
         => CreateStore(fake.CreateClient(), logger);
 

@@ -92,7 +92,7 @@ public static class CliTelemetryBootstrap
         ArgumentNullException.ThrowIfNull(warn);
         ArgumentNullException.ThrowIfNull(readEnvironment);
 
-        Uri localEndpoint = ResolveLocalDevelopmentEndpoint(readEnvironment);
+        Uri localEndpoint = ResolveLocalDevelopmentEndpoint(readEnvironment, warn);
 
         if (!string.IsNullOrWhiteSpace(endpoint))
         {
@@ -115,16 +115,28 @@ public static class CliTelemetryBootstrap
         return telemetryFlag ? localEndpoint : null;
     }
 
-    // spec-infrastructure-dependency-abstraction (F4, Decision D30): the local dev OTLP fallback is
-    // config-sourced from an env var; the literal endpoint stays only as the overridable default.
-    private static Uri ResolveLocalDevelopmentEndpoint(Func<string, string?> readEnvironment)
+    // spec-infrastructure-dependency-abstraction (F4, Decision D30; review P9): the local dev OTLP
+    // fallback is config-sourced from an env var; invalid overrides warn (matching the primary OTLP var)
+    // and fall back to the documented literal default.
+    private static Uri ResolveLocalDevelopmentEndpoint(Func<string, string?> readEnvironment, Action<string> warn)
     {
         string? configured = readEnvironment(LocalDevelopmentOtlpEndpointEnvVar);
-        return !string.IsNullOrWhiteSpace(configured)
-            && Uri.TryCreate(configured.Trim(), UriKind.Absolute, out Uri? parsed)
-            && IsAcceptableOtlpScheme(parsed)
-            ? parsed
-            : new Uri(LocalDevelopmentOtlpEndpoint, UriKind.Absolute);
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return new Uri(LocalDevelopmentOtlpEndpoint, UriKind.Absolute);
+        }
+
+        string trimmed = configured.Trim();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out Uri? parsed)
+            && IsAcceptableOtlpScheme(parsed))
+        {
+            return parsed;
+        }
+
+        warn(
+            $"[Hexalith.Memories.Cli] Ignoring {LocalDevelopmentOtlpEndpointEnvVar}='{trimmed}': " +
+            $"value is not an http(s) absolute URI. Falling back to {LocalDevelopmentOtlpEndpoint}.");
+        return new Uri(LocalDevelopmentOtlpEndpoint, UriKind.Absolute);
     }
 
     private static bool IsAcceptableOtlpScheme(Uri uri)

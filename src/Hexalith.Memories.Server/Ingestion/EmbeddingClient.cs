@@ -70,19 +70,18 @@ public class EmbeddingClient
             throw new InvalidOperationException("Fake embeddings are only supported in development and test environments.");
         }
 
-        // Compose the provider strategies manually so the existing DI registration and constructor contract are
-        // preserved (Story 23.9, Task 6). The secret store is shared across providers so priming and generation reuse
-        // one cache keyed by secret key name.
-        // spec-infrastructure-dependency-abstraction (F2, Decision D30): the Google provider endpoint is
-        // config-sourced from EmbeddingProviders:Google:ApiBaseUrl (default preserves the pre-change value).
-        EmbeddingProviderDefaultsOptions embeddingDefaults = new();
-        configuration.GetSection(EmbeddingProviderDefaultsOptions.SectionName).Bind(embeddingDefaults);
+        // spec-infrastructure-dependency-abstraction (F2, Decision D30; review P5): Google base URL
+        // comes from the single Configure()-seeded options seam — no parallel IConfiguration re-bind.
+        string googleApiBaseUrl = NormalizeApiBaseUrl(EmbeddingProviderDefaults.CurrentOptions.Google.ApiBaseUrl);
         EmbeddingSecretStore secretStore = new(daprClient);
         _transport = new EmbeddingProviderTransport(httpClientFactory);
         _providerRegistry = new EmbeddingProviderRegistry(
-            new GoogleEmbeddingProvider(secretStore, embeddingDefaults.Google.ApiBaseUrl),
+            new GoogleEmbeddingProvider(secretStore, googleApiBaseUrl),
             new OllamaEmbeddingProvider(secretStore, oidcTokenProvider));
     }
+
+    private static string NormalizeApiBaseUrl(string apiBaseUrl)
+        => apiBaseUrl.TrimEnd('/');
 
     /// <summary>Loads and caches the embedding API key so configuration failures happen before rate-limit budget is consumed.</summary>
     /// <param name="tenantId">The tenant identifier for error context.</param>

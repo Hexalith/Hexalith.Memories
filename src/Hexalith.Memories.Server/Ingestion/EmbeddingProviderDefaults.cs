@@ -79,7 +79,44 @@ public static partial class EmbeddingProviderDefaults
     public static void Configure(EmbeddingProviderDefaultsOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ValidateOptions(options);
         _options = options;
+    }
+
+    /// <summary>The currently configured embedding-provider defaults (seeded by <see cref="Configure"/>).</summary>
+    internal static EmbeddingProviderDefaultsOptions CurrentOptions => _options;
+
+    private static void ValidateOptions(EmbeddingProviderDefaultsOptions options)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Google.ApiBaseUrl);
+        if (!Uri.TryCreate(options.Google.ApiBaseUrl, UriKind.Absolute, out Uri? googleUri)
+            || (googleUri.Scheme != Uri.UriSchemeHttp && googleUri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new ArgumentException(
+                "EmbeddingProviders:Google:ApiBaseUrl must be an absolute http(s) URI.",
+                nameof(options));
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Ollama.BaseUrl)
+            && (!Uri.TryCreate(options.Ollama.BaseUrl, UriKind.Absolute, out Uri? ollamaUri)
+                || (ollamaUri.Scheme != Uri.UriSchemeHttp && ollamaUri.Scheme != Uri.UriSchemeHttps)))
+        {
+            throw new ArgumentException(
+                "EmbeddingProviders:Ollama:BaseUrl must be an absolute http(s) URI when set.",
+                nameof(options));
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Ollama.OidcTokenEndpoint)
+            && (!Uri.TryCreate(options.Ollama.OidcTokenEndpoint, UriKind.Absolute, out Uri? oidcUri)
+                || (oidcUri.Scheme != Uri.UriSchemeHttp && oidcUri.Scheme != Uri.UriSchemeHttps)))
+        {
+            throw new ArgumentException(
+                "EmbeddingProviders:Ollama:OidcTokenEndpoint must be an absolute http(s) URI when set.",
+                nameof(options));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Ollama.OidcClientId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Ollama.OidcScope);
     }
 
     /// <summary>Builds the Ollama default configuration from the supplied options. Pure and

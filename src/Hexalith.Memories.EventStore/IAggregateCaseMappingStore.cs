@@ -21,4 +21,8 @@ public interface IAggregateCaseMappingStore
     Task<bool> TryStoreCaseIdAsync(string tenantId, string aggregateType, string caseId, CancellationToken cancellationToken);
 
     Task<long> DeleteCaseMappingsAsync(string tenantId, string caseId, CancellationToken cancellationToken);
+
+    /// <summary>Deletes every aggregate→case mapping, index entry, and creation-lock key for a tenant
+    /// (tenant-deletion purge; review D3 / ADR-IDA-001 cutover).</summary>
+    Task DeleteAllTenantDataAsync(string tenantId, CancellationToken cancellationToken);
 }

@@ -41,11 +41,29 @@ public sealed class DefaultConfigurationSourceTests
     [Fact]
     public void TryResolve_WithInvalidOverride_FallsBackToBuiltInDefault()
     {
-        DefaultConfigurationSource source = new(name =>
-            name == DefaultConfigurationSource.DefaultEndpointVariableName ? "not a uri" : null);
+        List<string> warnings = [];
+        DefaultConfigurationSource source = new(
+            name => name == DefaultConfigurationSource.DefaultEndpointVariableName ? "not a uri" : null,
+            warnings.Add);
 
         source.TryResolve(out Uri? endpoint, out _).ShouldBeTrue();
 
         endpoint.ShouldBe(DefaultConfigurationSource.DefaultEndpoint);
+        warnings.ShouldContain(w => w.Contains(DefaultConfigurationSource.DefaultEndpointVariableName, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TryResolve_WithNonHttpScheme_FallsBackAndWarns()
+    {
+        // review P9: a Unix path parses as file:// — must not become the tier-4 endpoint.
+        List<string> warnings = [];
+        DefaultConfigurationSource source = new(
+            name => name == DefaultConfigurationSource.DefaultEndpointVariableName ? "/tmp/memories.sock" : null,
+            warnings.Add);
+
+        source.TryResolve(out Uri? endpoint, out _).ShouldBeTrue();
+
+        endpoint.ShouldBe(DefaultConfigurationSource.DefaultEndpoint);
+        warnings.Count.ShouldBe(1);
     }
 }

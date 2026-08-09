@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.EventStore;
 
+using System.ComponentModel.DataAnnotations;
+
 /// <summary>Options for the Dapr-state-store-backed EventStore stores
 /// (spec-infrastructure-dependency-abstraction — F6, Decision D30 and ADR-IDA-001). Lets the state
 /// store component name be configured per environment; defaults to the Aspire/AppHost-provisioned
@@ -15,5 +17,7 @@ public sealed class EventStoreStateStoreOptions
     public const string SectionName = "EventStoreIntegration:StateStore";
 
     /// <summary>The Dapr state store component name.</summary>
+    [Required(AllowEmptyStrings = false)]
+    [MinLength(1)]
     public string StateStoreName { get; set; } = "statestore";
 }

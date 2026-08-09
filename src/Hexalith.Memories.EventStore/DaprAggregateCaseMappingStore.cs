@@ -9,26 +9,27 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
+using Dapr;
 using Dapr.Client;
 
 using Microsoft.Extensions.Options;
 
 /// <summary>Dapr-state-store implementation of <see cref="IAggregateCaseMappingStore"/>
-/// (spec-infrastructure-dependency-abstraction — F6, Decision D30, ADR-IDA-001). Migrated off direct
-/// Redis: the authoritative aggregate-type → case-id map is a single per-tenant state key holding a
-/// serialized dictionary, mutated with ETag optimistic concurrency (bounded retry) so first-writer-wins
-/// and delete-by-case semantics are preserved; the short-lived creation lock is a per-aggregate state key
-/// written with FirstWrite (set-if-not-exists) concurrency + a TTL.</summary>
-/// <remarks>Substrate note: the previous StackExchange.Redis implementation used a Redis hash
-/// (<c>HSET/HGET/HLEN</c> + <c>HSET NX</c>) and a <c>SET NX</c> lock. Those Redis-native atomics are
-/// re-expressed here via Dapr state ETag CAS; under high contention the CAS retries rather than blocking.
-/// The atomic-reserve <see cref="RedisPreflightDedupStore"/> is deliberately NOT migrated (see ADR-IDA-001).</remarks>
+/// (spec-infrastructure-dependency-abstraction — F6, Decision D30, ADR-IDA-001; review D1 redesign).
+/// Each aggregate type is its own state key written with <see cref="ConcurrencyMode.FirstWrite"/>
+/// (true HSET-NX analog); a per-tenant index enumerates mapped types for count/delete/purge.
+/// The short-lived creation lock remains a per-aggregate FirstWrite + TTL key.</summary>
+/// <remarks>Substrate note: the previous whole-document ETag-CAS map contended across unrelated aggregate
+/// types. Per-key FirstWrite removes that cross-type contention. The atomic-reserve
+/// <see cref="RedisPreflightDedupStore"/> is deliberately NOT migrated (see ADR-IDA-001).</remarks>
 internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
 {
-    /// <summary>Bounded retry budget for ETag optimistic-concurrency conflicts on the map key.</summary>
+    /// <summary>Bounded retry budget for ETag optimistic-concurrency conflicts on the index key.</summary>
     private const int MaxConcurrencyRetries = 8;
 
     private const string LockedValue = "locked";
+
+    private static readonly StateOptions FirstWriteOptions = new() { Concurrency = ConcurrencyMode.FirstWrite };
 
     private readonly DaprClient _daprClient;
     private readonly string _stateStoreName;
@@ -47,8 +48,9 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
         ArgumentException.ThrowIfNullOrWhiteSpace(aggregateType);
         cancellationToken.ThrowIfCancellationRequested();
 
-        Dictionary<string, string> map = await GetMapAsync(tenantId, cancellationToken).ConfigureAwait(false);
-        return map.TryGetValue(aggregateType, out string? caseId) ? caseId : null;
+        return await _daprClient
+            .GetStateAsync<string?>(_stateStoreName, GetMapEntryKey(tenantId, aggregateType), cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task<long> GetAggregateCountAsync(string tenantId, CancellationToken cancellationToken)
@@ -56,14 +58,17 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         cancellationToken.ThrowIfCancellationRequested();
 
-        Dictionary<string, string> map = await GetMapAsync(tenantId, cancellationToken).ConfigureAwait(false);
-        return map.Count;
+        List<string>? index = await _daprClient
+            .GetStateAsync<List<string>?>(_stateStoreName, GetIndexKey(tenantId), cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return index?.Count ?? 0;
     }
 
     public async Task<bool> TryAcquireCreationLockAsync(string tenantId, string aggregateType, TimeSpan leaseTtl, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(aggregateType);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(leaseTtl, TimeSpan.Zero);
         cancellationToken.ThrowIfCancellationRequested();
 
         string lockKey = GetLockKey(tenantId, aggregateType);
@@ -76,17 +81,24 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
             return false;
         }
 
-        // Set-if-not-exists: FirstWrite concurrency + the (empty when absent) ETag reserves the lease
-        // atomically; a concurrent winner makes this save fail and we report the lock as not acquired.
+        // Preserve prior Redis semantics: positive sub-second leases still round up to 1s TTL metadata.
         long ttlSeconds = Math.Max(1, (long)Math.Ceiling(leaseTtl.TotalSeconds));
-        return await _daprClient.TrySaveStateAsync(
-            _stateStoreName,
-            lockKey,
-            LockedValue,
-            etag,
-            new StateOptions { Concurrency = ConcurrencyMode.FirstWrite },
-            BuildTtlMetadata(ttlSeconds),
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // Redis state.redis may throw DaprException on FirstWrite conflict instead of returning false.
+            return await _daprClient.TrySaveStateAsync(
+                _stateStoreName,
+                lockKey,
+                LockedValue,
+                etag,
+                FirstWriteOptions,
+                BuildTtlMetadata(ttlSeconds),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (DaprException)
+        {
+            return false;
+        }
     }
 
     public Task ReleaseCreationLockAsync(string tenantId, string aggregateType, CancellationToken cancellationToken)
@@ -105,34 +117,50 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
         cancellationToken.ThrowIfCancellationRequested();
 
-        string mapKey = GetMapKey(tenantId);
-        for (int attempt = 0; attempt < MaxConcurrencyRetries; attempt++)
+        string mapKey = GetMapEntryKey(tenantId, aggregateType);
+        (string? existing, string etag) = await _daprClient
+            .GetStateAndETagAsync<string?>(_stateStoreName, mapKey, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        // First-writer-wins: an existing mapping is never overwritten (mirrors HSET NX).
+        if (!string.IsNullOrEmpty(existing))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            (Dictionary<string, string>? map, string etag) = await _daprClient
-                .GetStateAndETagAsync<Dictionary<string, string>?>(_stateStoreName, mapKey, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            map ??= new(StringComparer.Ordinal);
-
-            // First-writer-wins: an existing mapping is never overwritten (mirrors HSET NX).
-            if (map.ContainsKey(aggregateType))
-            {
-                return false;
-            }
-
-            map[aggregateType] = caseId;
-            bool saved = await _daprClient
-                .TrySaveStateAsync(_stateStoreName, mapKey, map, etag, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-            if (saved)
-            {
-                return true;
-            }
+            return false;
         }
 
-        // Exhausted the retry budget under sustained contention; a concurrent writer has almost certainly
-        // stored a value for this aggregate type, so report not-stored rather than risk a lost overwrite.
-        return false;
+        bool saved;
+        try
+        {
+            // Redis state.redis may throw DaprException on FirstWrite conflict instead of returning false.
+            saved = await _daprClient
+                .TrySaveStateAsync(_stateStoreName, mapKey, caseId, etag, FirstWriteOptions, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (DaprException)
+        {
+            return false;
+        }
+
+        if (!saved)
+        {
+            // Concurrent FirstWrite winner — report not-stored so the caller re-reads the winner.
+            return false;
+        }
+
+        try
+        {
+            await EnsureIndexedAsync(tenantId, aggregateType, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Compensate: an unindexed map entry is invisible to purge/delete-by-case (review patch #2).
+            await _daprClient
+                .DeleteStateAsync(_stateStoreName, mapKey, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            throw;
+        }
+
+        return true;
     }
 
     public async Task<long> DeleteCaseMappingsAsync(string tenantId, string caseId, CancellationToken cancellationToken)
@@ -141,44 +169,117 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
         cancellationToken.ThrowIfCancellationRequested();
 
-        string mapKey = GetMapKey(tenantId);
+        string indexKey = GetIndexKey(tenantId);
+        List<string>? pendingRemovals = null;
         for (int attempt = 0; attempt < MaxConcurrencyRetries; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            (Dictionary<string, string>? map, string etag) = await _daprClient
-                .GetStateAndETagAsync<Dictionary<string, string>?>(_stateStoreName, mapKey, cancellationToken: cancellationToken)
+            (List<string>? index, string etag) = await _daprClient
+                .GetStateAndETagAsync<List<string>?>(_stateStoreName, indexKey, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
-            if (map is null || map.Count == 0)
+            if (index is null || index.Count == 0)
             {
                 return 0;
             }
 
-            string[] toRemove = map
-                .Where(kvp => string.Equals(kvp.Value, caseId, StringComparison.Ordinal))
-                .Select(kvp => kvp.Key)
-                .ToArray();
+            // Keep the prior toRemove set across retries so map/index cannot drift (review patch #1).
+            if (pendingRemovals is null)
+            {
+                pendingRemovals = [];
+                foreach (string aggregateType in index)
+                {
+                    string? mappedCaseId = await _daprClient
+                        .GetStateAsync<string?>(_stateStoreName, GetMapEntryKey(tenantId, aggregateType), cancellationToken: cancellationToken)
+                        .ConfigureAwait(false);
+                    if (string.Equals(mappedCaseId, caseId, StringComparison.Ordinal))
+                    {
+                        pendingRemovals.Add(aggregateType);
+                    }
+                }
+            }
 
-            if (toRemove.Length == 0)
+            if (pendingRemovals.Count == 0)
             {
                 return 0;
             }
 
-            foreach (string aggregateType in toRemove)
-            {
-                _ = map.Remove(aggregateType);
-            }
+            List<string> nextIndex = index
+                .Where(aggregateType => !pendingRemovals.Contains(aggregateType, StringComparer.Ordinal))
+                .ToList();
 
+            // Defer map-key deletes until the index ETag save succeeds.
             bool saved = await _daprClient
-                .TrySaveStateAsync(_stateStoreName, mapKey, map, etag, cancellationToken: cancellationToken)
+                .TrySaveStateAsync(_stateStoreName, indexKey, nextIndex, etag, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            if (saved)
+            if (!saved)
             {
-                return toRemove.Length;
+                await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);
+                continue;
             }
+
+            foreach (string aggregateType in pendingRemovals)
+            {
+                await _daprClient
+                    .DeleteStateAsync(_stateStoreName, GetMapEntryKey(tenantId, aggregateType), cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return pendingRemovals.Count;
         }
 
-        return 0;
+        throw new InvalidOperationException(
+            $"Failed to delete aggregate→case mappings for tenant '{tenantId}' case '{caseId}' after {MaxConcurrencyRetries} concurrency retries.");
+    }
+
+    public async Task DeleteAllTenantDataAsync(string tenantId, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        string indexKey = GetIndexKey(tenantId);
+
+        // CAS-clear the index first, then delete map/lock keys from each snapshot, and re-read until
+        // empty so concurrent TryStoreCaseIdAsync cannot leave post-purge leftovers (review patch #18).
+        for (int attempt = 0; attempt < MaxConcurrencyRetries; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            (List<string>? index, string etag) = await _daprClient
+                .GetStateAndETagAsync<List<string>?>(_stateStoreName, indexKey, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            if (index is null || index.Count == 0)
+            {
+                await _daprClient.DeleteStateAsync(_stateStoreName, indexKey, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            List<string> snapshot = [.. index];
+            bool cleared = await _daprClient
+                .TryDeleteStateAsync(_stateStoreName, indexKey, etag, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            if (!cleared)
+            {
+                await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            foreach (string aggregateType in snapshot)
+            {
+                await _daprClient
+                    .DeleteStateAsync(_stateStoreName, GetMapEntryKey(tenantId, aggregateType), cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                await _daprClient
+                    .DeleteStateAsync(_stateStoreName, GetLockKey(tenantId, aggregateType), cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            // Loop again: a concurrent TryStore may have recreated the index after our CAS-delete.
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to purge aggregate→case mappings for tenant '{tenantId}' after {MaxConcurrencyRetries} concurrency retries.");
     }
 
     private static IReadOnlyDictionary<string, string> BuildTtlMetadata(long ttlSeconds)
@@ -187,16 +288,48 @@ internal sealed class DaprAggregateCaseMappingStore : IAggregateCaseMappingStore
             ["ttlInSeconds"] = ttlSeconds.ToString(CultureInfo.InvariantCulture),
         };
 
-    private static string GetMapKey(string tenantId) => $"{tenantId}:eventstore:aggregate-case-map";
+    private static string GetMapEntryKey(string tenantId, string aggregateType)
+        => $"{tenantId}:eventstore:aggregate-case-map:{aggregateType}";
+
+    private static string GetIndexKey(string tenantId) => $"{tenantId}:eventstore:aggregate-case-map-index";
 
     private static string GetLockKey(string tenantId, string aggregateType)
         => $"{tenantId}:eventstore:aggregate-case-lock:{aggregateType}";
 
-    private async Task<Dictionary<string, string>> GetMapAsync(string tenantId, CancellationToken cancellationToken)
+    private static async Task DelayBackoffAsync(int attempt, CancellationToken cancellationToken)
     {
-        Dictionary<string, string>? map = await _daprClient
-            .GetStateAsync<Dictionary<string, string>?>(_stateStoreName, GetMapKey(tenantId), cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-        return map ?? new(StringComparer.Ordinal);
+        int delayMs = Random.Shared.Next(1, 1 << Math.Min(attempt + 1, 4));
+        await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task EnsureIndexedAsync(string tenantId, string aggregateType, CancellationToken cancellationToken)
+    {
+        string indexKey = GetIndexKey(tenantId);
+        for (int attempt = 0; attempt < MaxConcurrencyRetries; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            (List<string>? index, string etag) = await _daprClient
+                .GetStateAndETagAsync<List<string>?>(_stateStoreName, indexKey, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            index ??= [];
+
+            if (index.Contains(aggregateType, StringComparer.Ordinal))
+            {
+                return;
+            }
+
+            index.Add(aggregateType);
+            if (await _daprClient
+                .TrySaveStateAsync(_stateStoreName, indexKey, index, etag, cancellationToken: cancellationToken)
+                .ConfigureAwait(false))
+            {
+                return;
+            }
+
+            await DelayBackoffAsync(attempt, cancellationToken).ConfigureAwait(false);
+        }
+
+        throw new InvalidOperationException(
+            $"Failed to index aggregate type '{aggregateType}' for tenant '{tenantId}' after {MaxConcurrencyRetries} concurrency retries.");
     }
 }

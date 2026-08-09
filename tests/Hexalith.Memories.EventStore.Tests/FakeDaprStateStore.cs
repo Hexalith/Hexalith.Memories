@@ -22,7 +22,13 @@ internal sealed class FakeDaprStateStore
     public const string StoreName = "statestore";
 
     private readonly Dictionary<string, (object? Value, string Etag)> _entries = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _remainingSaveFailures = new(StringComparer.Ordinal);
     private long _etagSequence;
+
+    /// <summary>Forces the next <paramref name="count"/> <c>TrySaveStateAsync</c> calls for
+    /// <paramref name="key"/> to return <c>false</c> (ETag mismatch), enabling CAS-exhaustion tests.</summary>
+    public void FailNextSaves(string key, int count)
+        => _remainingSaveFailures[key] = count;
 
     /// <summary>Creates a substitute <see cref="DaprClient"/> wired to this backing store for the given
     /// state value types. Each type used by a store under test must be registered.</summary>
@@ -40,6 +46,22 @@ internal sealed class FakeDaprStateStore
             {
                 _ = _entries.Remove(ci.ArgAt<string>(1));
                 return Task.CompletedTask;
+            });
+
+        _ = client.TryDeleteStateAsync(
+                StoreName, Arg.Any<string>(), Arg.Any<string>(), Arg.Any<StateOptions?>(), Arg.Any<IReadOnlyDictionary<string, string>?>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                string key = ci.ArgAt<string>(1);
+                string etag = ci.ArgAt<string>(2);
+                string current = _entries.TryGetValue(key, out (object? Value, string Etag) entry) ? entry.Etag : string.Empty;
+                if (!string.Equals(etag, current, StringComparison.Ordinal))
+                {
+                    return Task.FromResult(false);
+                }
+
+                _ = _entries.Remove(key);
+                return Task.FromResult(true);
             });
 
         return client;
@@ -91,6 +113,13 @@ internal sealed class FakeDaprStateStore
                 string key = ci.ArgAt<string>(1);
                 T value = ci.ArgAt<T>(2);
                 string etag = ci.ArgAt<string>(3);
+
+                if (_remainingSaveFailures.TryGetValue(key, out int remaining) && remaining > 0)
+                {
+                    _remainingSaveFailures[key] = remaining - 1;
+                    return Task.FromResult(false);
+                }
+
                 string current = _entries.TryGetValue(key, out (object? Value, string Etag) entry) ? entry.Etag : string.Empty;
                 if (!string.Equals(etag, current, StringComparison.Ordinal))
                 {

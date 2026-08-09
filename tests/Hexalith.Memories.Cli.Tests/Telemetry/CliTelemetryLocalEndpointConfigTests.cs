@@ -43,15 +43,18 @@ public sealed class CliTelemetryLocalEndpointConfigTests
     }
 
     [Fact]
-    public void ResolveEndpoint_LocalFallback_WithInvalidOverride_FallsBackToLiteral()
+    public void ResolveEndpoint_LocalFallback_WithInvalidOverride_FallsBackToLiteralAndWarns()
     {
+        List<string> warnings = [];
         Uri? endpoint = CliTelemetryBootstrap.ResolveEndpoint(
             endpoint: null,
             telemetryFlag: true,
-            warn: NoWarn,
+            warn: warnings.Add,
             readEnvironment: name =>
                 name == CliTelemetryBootstrap.LocalDevelopmentOtlpEndpointEnvVar ? "not a uri" : null);
 
         endpoint.ShouldBe(new Uri(CliTelemetryBootstrap.LocalDevelopmentOtlpEndpoint, UriKind.Absolute));
+        warnings.ShouldContain(w =>
+            w.Contains(CliTelemetryBootstrap.LocalDevelopmentOtlpEndpointEnvVar, StringComparison.Ordinal));
     }
 }

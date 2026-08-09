@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -89,10 +90,10 @@ public static class Extensions
         ArgumentNullException.ThrowIfNull(builder);
 
         IConfiguration configuration = builder.Configuration;
-        _ = builder.Services.AddKeyedSingleton<IConnectionMultiplexer>(
+        builder.Services.TryAddKeyedSingleton<IConnectionMultiplexer>(
             RedisConnectionKey,
             (_, _) => ConnectRequiredMultiplexer(configuration, RedisConnectionKey));
-        _ = builder.Services.AddKeyedSingleton<IConnectionMultiplexer>(
+        builder.Services.TryAddKeyedSingleton<IConnectionMultiplexer>(
             FalkorDbConnectionKey,
             (_, _) => ConnectRequiredMultiplexer(configuration, FalkorDbConnectionKey));
 

@@ -19,19 +19,30 @@ public sealed class DefaultConfigurationSource : IConfigurationSource
     public static readonly Uri DefaultEndpoint = new("http://127.0.0.1:5000/");
 
     private readonly Func<string, string?> _readEnvironment;
+    private readonly Action<string> _warn;
 
     /// <summary>Initializes a new instance with the default process-wide environment.</summary>
     public DefaultConfigurationSource()
-        : this(Environment.GetEnvironmentVariable)
+        : this(Environment.GetEnvironmentVariable, WarnToStderr)
     {
     }
 
     /// <summary>Initializes a new instance with a custom environment reader (used by tests).</summary>
     /// <param name="readEnvironment">Delegate that resolves an environment variable name to its value.</param>
     public DefaultConfigurationSource(Func<string, string?> readEnvironment)
+        : this(readEnvironment, WarnToStderr)
+    {
+    }
+
+    /// <summary>Initializes a new instance with custom environment + warning sinks (used by tests).</summary>
+    /// <param name="readEnvironment">Delegate that resolves an environment variable name to its value.</param>
+    /// <param name="warn">Warning sink for invalid overrides.</param>
+    public DefaultConfigurationSource(Func<string, string?> readEnvironment, Action<string> warn)
     {
         ArgumentNullException.ThrowIfNull(readEnvironment);
+        ArgumentNullException.ThrowIfNull(warn);
         _readEnvironment = readEnvironment;
+        _warn = warn;
     }
 
     /// <inheritdoc />
@@ -48,9 +59,27 @@ public sealed class DefaultConfigurationSource : IConfigurationSource
     private Uri ResolveDefaultEndpoint()
     {
         string? configured = _readEnvironment(DefaultEndpointVariableName);
-        return !string.IsNullOrWhiteSpace(configured)
-            && Uri.TryCreate(configured.Trim(), UriKind.Absolute, out Uri? parsed)
-            ? parsed
-            : DefaultEndpoint;
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return DefaultEndpoint;
+        }
+
+        string trimmed = configured.Trim();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out Uri? parsed)
+            && IsHttpOrHttps(parsed))
+        {
+            return parsed;
+        }
+
+        _warn(
+            $"[Hexalith.Memories.Cli] Ignoring {DefaultEndpointVariableName}='{trimmed}': " +
+            "value is not an http(s) absolute URI. Falling back to the built-in default endpoint.");
+        return DefaultEndpoint;
     }
+
+    private static bool IsHttpOrHttps(Uri uri)
+        => uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            || uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+
+    private static void WarnToStderr(string message) => Console.Error.WriteLine(message);
 }

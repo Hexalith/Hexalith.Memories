@@ -203,11 +203,9 @@ internal static class MemoriesServerServiceCollectionExtensions
             // consume 429/5xx responses before that state machine can observe and persist them.
             .RemoveAllResilienceHandlers();
 
-        // spec-infrastructure-dependency-abstraction (F1/F2, Decision D30): seed the config-sourced
-        // embedding provider default endpoints so the built-in Ollama/Google defaults are not embedded
-        // as literals in product-logic code and can be overridden per environment via Aspire/appsettings.
-        builder.Services.Configure<EmbeddingProviderDefaultsOptions>(
-            builder.Configuration.GetSection(EmbeddingProviderDefaultsOptions.SectionName));
+        // spec-infrastructure-dependency-abstraction (F1/F2, Decision D30; review P5): single binding
+        // source — bind once from configuration, seed the static registry seam. EmbeddingClient and the
+        // registry both consume that seam (no parallel Configure<> / re-bind).
         EmbeddingProviderDefaultsOptions embeddingProviderDefaults = new();
         builder.Configuration.GetSection(EmbeddingProviderDefaultsOptions.SectionName).Bind(embeddingProviderDefaults);
         EmbeddingProviderDefaults.Configure(embeddingProviderDefaults);

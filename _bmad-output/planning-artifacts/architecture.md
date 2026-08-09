@@ -635,6 +635,13 @@ live only in the boundary projects.
    directly by design.
 3. **CLI minimal direct-HTTP adapter** — the CLI reaches the Server over HTTP (not Dapr service
    invocation); its endpoint defaults are config-sourced (env-overridable), never fixed pins.
+4. **`EmbeddingProviderDefaultsOptions` property initializers** — the single sanctioned home for
+   overridable embedding-provider default endpoint/OIDC literals (F1/F2; review D4). Product-logic
+   types outside this options record must not embed infrastructure endpoint host/URL literals; the
+   registry guard covers `EmbeddingProviderDefaults` const/`static readonly` surfaces.
+5. **Documented CLI fallbacks** — config-sourced CLI tier-4 default endpoint and local OTLP fallback
+   values (F3/F4; see `docs/dev/cli-config.md`) remain overridable defaults, not hardcoded pins in
+   product-logic types.
 
 **Keyed connection construction** (F5) lives in `ServiceDefaults.AddKeyedRedisConnections`; product code
 only consumes the keyed `IConnectionMultiplexer` services. Embedding provider default endpoints (F1/F2)
@@ -671,26 +678,35 @@ recovery, absence of provider-specific product dependencies, and secret-safe log
 
 #### ADR-IDA-001 — EventStore store substrate: Dapr state vs direct Redis
 
-**Status:** Accepted (2026-07-17). **Context:** Three EventStore KV stores used direct Redis. The invariant
-(D30) prefers the Dapr state building block wherever Redis-native atomicity is not load-bearing.
+**Status:** Accepted (2026-07-17); amended 2026-07-18 (review D1/D2/D3). **Context:** Three EventStore KV
+stores used direct Redis. The invariant (D30) prefers the Dapr state building block wherever Redis-native
+atomicity is not load-bearing.
 
 **Decision.** Split the three stores by whether Redis-native atomicity is load-bearing:
 
-- **Migrated to the Dapr state store (`statestore`):** `DaprAggregateCaseMappingStore` (aggregate→case KV
-  map + set-if-not-exists creation lock) and `DaprObservedEventTypeStore` (observed-event-type
-  index + per-aggregate counters). Redis hash/sorted-set/Lua primitives are re-expressed via Dapr state
-  **ETag optimistic concurrency** (bounded-retry compare-and-set) plus `ttlInSeconds` metadata; the
-  observed-type time-window query that Redis served with `ZRANGEBYSCORE` is now performed **in-memory** on
-  read. Idempotency and at-least-once/late/out-of-order safety are preserved.
+- **Migrated to the Dapr state store (`statestore`):** `DaprAggregateCaseMappingStore` and
+  `DaprObservedEventTypeStore`. **Review D1 redesign:** each aggregate type is its own state key written
+  with `ConcurrencyMode.FirstWrite` (true HSET-NX analog); a per-tenant index enumerates mapped /
+  discovered types for count/delete/purge. Observation writes keep per-aggregate dictionaries with
+  FirstWrite on create; discovery-index rewrites happen only when admitting a new aggregate (membership
+  marker). An uncapped written-aggregates index preserves deletion coverage for cardinality-cap rejects.
 - **Kept on direct Redis:** `RedisPreflightDedupStore` — its `SET NX` atomic reserve + TTL + fail-OPEN is a
   load-bearing check-and-set the Dapr state API cannot express portably.
 
-**Consequences / trade-offs.** The migrated stores lose cross-key atomicity (two non-atomic state writes)
-and the exact cardinality-cap atomicity (a small CAS race window may admit a few entries over the 1024 cap
-— the cap is defence-in-depth, not exact); TTL-refresh-on-write adds CAS contention on the aggregates
-index under high ingestion. These were accepted with full knowledge (architect decision, 2026-07-17) in
-exchange for building-block alignment. Real ETag-CAS/TTL behavior requires Dapr-sidecar integration
-verification (Tier-2); unit coverage uses an in-memory ETag-CAS state fake.
+**Cutover (review D2 — greenfield accepted).** There is **no dual-read / backfill** from the pre-migration
+raw Redis hash `{tenant}:eventstore:aggregate-case-map`. On upgrade, already-mapped aggregate types may
+re-trigger auto-create until operators accept a greenfield cutover or run a one-shot remap. Orphaned
+pre-cutover Redis keys are cleaned by the existing `{tenant}:eventstore:*` SCAN in
+`DeleteTenantDataKeysActivity`; see `docs/operations/upgrade-migration.md` (ADR-IDA-001 note).
+
+**Tenant deletion (review D3).** Dapr state keys carry the app-id prefix and are **not** reached by raw
+Redis SCAN. `DeleteTenantDataKeysActivity` therefore also calls
+`IAggregateCaseMappingStore.DeleteAllTenantDataAsync` and `IObservedEventTypeStore.DeleteAllTenantDataAsync`,
+enumerating map + discovery + written indexes (covering cap-rejected observation keys).
+
+**Consequences / trade-offs.** Cross-key atomicity is still unavailable; the discovery cardinality cap
+remains defence-in-depth. Real FirstWrite/ETag/TTL behavior requires Dapr-sidecar integration verification
+(Tier-2; hard `done` gate per review D6). Unit coverage uses an in-memory ETag-CAS state fake.
 
 ### Cross-Component Dependencies
 

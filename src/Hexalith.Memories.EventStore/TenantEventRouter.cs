@@ -201,10 +201,15 @@ internal sealed class TenantEventRouter : ITenantEventRouter, ITenantEventRouteC
                 string? winnerCaseId = await _caseMapStore
                     .GetCaseIdAsync(tenantId, aggregateType, cancellationToken)
                     .ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(winnerCaseId))
+                if (string.IsNullOrWhiteSpace(winnerCaseId))
                 {
-                    caseId = winnerCaseId;
+                    // TryStore returned false without a persisted winner — CAS exhaustion or lost write.
+                    // Do not cache an unpersisted case id (review D1 / TenantEventRouter stale-cache risk).
+                    throw new InvalidOperationException(
+                        $"Failed to persist aggregate→case mapping for tenant '{tenantId}' aggregate '{aggregateType}'.");
                 }
+
+                caseId = winnerCaseId;
             }
 
             tenantCache[aggregateType] = caseId;

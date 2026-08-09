@@ -49,23 +49,95 @@ public class EmbeddingProviderDefaultsTests
     [Fact]
     public void EmbeddingProviderDefaults_ShouldNotEmbedInfrastructureEndpointLiterals()
     {
-        // spec-infrastructure-dependency-abstraction (F1, Decision D30): no infrastructure endpoint
-        // host/URL literal may remain baked into the registry/validation type. Provider/model/auth-mode
-        // name constants are allowed; endpoint hosts and URL schemes are not.
+        // spec-infrastructure-dependency-abstraction (F1, Decision D30; review D4): no infrastructure
+        // endpoint host/URL literal may remain baked into the registry/validation type. The sanctioned
+        // home for overridable defaults is EmbeddingProviderDefaultsOptions property initializers.
+        // Provider/model/auth-mode name constants are allowed; endpoint hosts and URL schemes are not.
         string[] forbiddenFragments = ["tache.ai", "googleapis.com", "://"];
 
-        IEnumerable<string> stringConstants = typeof(EmbeddingProviderDefaults)
-            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
-            .Where(f => f.FieldType == typeof(string) && f.IsLiteral)
-            .Select(f => (string?)f.GetRawConstantValue() ?? string.Empty);
+        IEnumerable<string> stringLiterals = typeof(EmbeddingProviderDefaults)
+            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance)
+            .Where(f => f.FieldType == typeof(string))
+            .Select(f =>
+            {
+                if (f.IsLiteral)
+                {
+                    return (string?)f.GetRawConstantValue() ?? string.Empty;
+                }
 
-        foreach (string value in stringConstants)
+                if (f.IsStatic && f.GetValue(null) is string staticValue)
+                {
+                    return staticValue;
+                }
+
+                return string.Empty;
+            });
+
+        IEnumerable<string> staticReadonlyStrings = typeof(EmbeddingProviderDefaults)
+            .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+            .Where(f => f.FieldType == typeof(string) && f.IsInitOnly)
+            .Select(f => (string?)f.GetValue(null) ?? string.Empty);
+
+        foreach (string value in stringLiterals.Concat(staticReadonlyStrings))
         {
             foreach (string forbidden in forbiddenFragments)
             {
                 value.ShouldNotContain(forbidden);
             }
         }
+    }
+
+    [Fact]
+    public void Configure_ThenOllama_UsesConfiguredEndpointsThroughLiveSeam()
+    {
+        // review P4: drive Configure(...) → registry → Ollama() so deleting the composition-root
+        // Configure call cannot silently leave every test green.
+        EmbeddingProviderDefaultsOptions previous = EmbeddingProviderDefaults.CurrentOptions;
+        try
+        {
+            EmbeddingProviderDefaults.Configure(new EmbeddingProviderDefaultsOptions
+            {
+                Ollama = new OllamaProviderDefaults
+                {
+                    BaseUrl = "https://ollama.seam-test",
+                    OidcTokenEndpoint = "https://idp.seam-test/token",
+                    OidcClientId = "seam-client",
+                    OidcScope = "seam-scope",
+                },
+            });
+
+            TenantEmbeddingConfig config = EmbeddingProviderDefaults.Ollama();
+
+            config.BaseUrl.ShouldBe("https://ollama.seam-test");
+            config.OidcTokenEndpoint.ShouldBe("https://idp.seam-test/token");
+            config.OidcClientId.ShouldBe("seam-client");
+            config.OidcScope.ShouldBe("seam-scope");
+        }
+        finally
+        {
+            EmbeddingProviderDefaults.Configure(previous);
+        }
+    }
+
+    [Theory]
+    [InlineData(null, "openid")]
+    [InlineData("", "openid")]
+    [InlineData("   ", "openid")]
+    [InlineData("memories-embedding", null)]
+    [InlineData("memories-embedding", "")]
+    [InlineData("memories-embedding", "   ")]
+    public void Configure_WithEmptyOidcClientIdOrScope_Throws(string? clientId, string? scope)
+    {
+        // review patch #15
+        Should.Throw<ArgumentException>(() =>
+            EmbeddingProviderDefaults.Configure(new EmbeddingProviderDefaultsOptions
+            {
+                Ollama = new OllamaProviderDefaults
+                {
+                    OidcClientId = clientId,
+                    OidcScope = scope,
+                },
+            }));
     }
 
     [Fact]

@@ -56,6 +56,10 @@ public interface IObservedEventTypeStore
         string tenantId,
         TimeSpan window,
         CancellationToken cancellationToken);
+
+    /// <summary>Deletes every observation, membership marker, and index entry for a tenant
+    /// (tenant-deletion purge; review D3 — covers cap-rejected aggregates via the written index).</summary>
+    Task DeleteAllTenantDataAsync(string tenantId, CancellationToken cancellationToken);
 }
 
 /// <summary>Story 9.3 — single observation tuple returned by <see cref="IObservedEventTypeStore"/>.</summary>

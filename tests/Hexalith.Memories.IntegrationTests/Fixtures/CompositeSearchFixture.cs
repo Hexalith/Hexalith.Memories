@@ -21,6 +21,12 @@ public sealed class CompositeSearchFixture : IAsyncLifetime
 
     public IConnectionMultiplexer RedisConnection { get; private set; } = null!;
 
+    /// <summary>Host connection string for the Redis Stack container (Aspire-shaped <c>host:port</c>).</summary>
+    public string RedisConnectionString { get; private set; } = string.Empty;
+
+    /// <summary>Host connection string for the FalkorDB container (Aspire-shaped <c>host:port</c>).</summary>
+    public string FalkorDbConnectionString { get; private set; } = string.Empty;
+
     public async ValueTask InitializeAsync()
     {
         try
@@ -45,10 +51,11 @@ public sealed class CompositeSearchFixture : IAsyncLifetime
                 _falkorDbContainer.StartAsync(),
                 _redisStackContainer.StartAsync());
 
-            FalkorDbConnection = await ConnectionMultiplexer.ConnectAsync(
-                $"localhost:{_falkorDbContainer.GetMappedPublicPort(6379)}");
-            RedisConnection = await ConnectionMultiplexer.ConnectAsync(
-                $"localhost:{_redisStackContainer.GetMappedPublicPort(6379)}");
+            RedisConnectionString = $"localhost:{_redisStackContainer.GetMappedPublicPort(6379)}";
+            FalkorDbConnectionString = $"localhost:{_falkorDbContainer.GetMappedPublicPort(6379)}";
+
+            FalkorDbConnection = await ConnectionMultiplexer.ConnectAsync(FalkorDbConnectionString);
+            RedisConnection = await ConnectionMultiplexer.ConnectAsync(RedisConnectionString);
         }
         catch
         {

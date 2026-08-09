@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.EventStore.Tests;
 
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Text.Json;
 
 using Hexalith.Memories.EventStore;
@@ -447,6 +448,42 @@ public sealed class TenantEventRouterTests
         retry.Route!.CaseId.ShouldBe("case-1");
     }
 
+    [Fact]
+    public async Task ResolveAsync_WhenTryStoreFailsWithoutPersistedWinner_ThrowsAndDoesNotCache()
+    {
+        // review patch #8: lost write / CAS exhaustion must not cache an unpersisted case id.
+        TenantEventRoutingOptions options = new() { Topic = "t" };
+        options.SourceToTenantMap["/hr"] = "hr-tenant";
+
+        ITenantStatusAccessor statusAccessor = Substitute.For<ITenantStatusAccessor>();
+        statusAccessor.GetStatusAsync("hr-tenant", Arg.Any<CancellationToken>())
+            .Returns(EventStoreTenantStatus.Active);
+
+        ICaseCreationService cases = Substitute.For<ICaseCreationService>();
+        cases.CreateCaseAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("case-orphan");
+
+        IAggregateCaseMappingStore store = Substitute.For<IAggregateCaseMappingStore>();
+        store.TryAcquireCreationLockAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
+            .Returns(true);
+        store.GetCaseIdAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns((string?)null);
+        store.GetAggregateCountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(0L);
+        store.TryStoreCaseIdAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(false);
+
+        TenantEventRouter router = BuildRouter(options, statusAccessor, cases, store);
+
+        InvalidOperationException ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => router.ResolveAsync(Envelope("/hr", "a.Claims.X"), CancellationToken.None));
+        ex.Message.ShouldContain("Failed to persist");
+
+        // Second resolve must attempt creation again (no stale cache of case-orphan).
+        _ = await Should.ThrowAsync<InvalidOperationException>(
+            () => router.ResolveAsync(Envelope("/hr", "a.Claims.X"), CancellationToken.None));
+        await cases.Received(2).CreateCaseAsync("hr-tenant", Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     private sealed class InMemoryAggregateCaseMappingStore : IAggregateCaseMappingStore
     {
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, string>> _maps = new(StringComparer.Ordinal);
@@ -511,6 +548,18 @@ public sealed class TenantEventRouterTests
             }
 
             return Task.FromResult(deleted);
+        }
+
+        public Task DeleteAllTenantDataAsync(string tenantId, CancellationToken cancellationToken)
+        {
+            _ = cancellationToken;
+            _ = _maps.TryRemove(tenantId, out _);
+            foreach (string key in _locks.Keys.Where(k => k.StartsWith(tenantId + ":", StringComparison.Ordinal)).ToArray())
+            {
+                _ = _locks.TryRemove(key, out _);
+            }
+
+            return Task.CompletedTask;
         }
     }
 }
