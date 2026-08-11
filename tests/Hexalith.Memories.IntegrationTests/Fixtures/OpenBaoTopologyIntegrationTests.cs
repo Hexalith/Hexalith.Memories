@@ -61,6 +61,9 @@ public sealed class OpenBaoTopologyIntegrationTests(
     [Fact]
     public async Task DaprSidecarMatrix_EnforcesExactComponentAndKeyAllowDenyBoundaries()
     {
+        await fixture.WaitForOpenBaoSidecarMatrixReadinessAsync(TestContext.Current.CancellationToken)
+            .ConfigureAwait(true);
+
         const string runtimeStore = "secretstore";
         const string accessStore = "access-telemetry-secrets";
         const string markerKey = "access-telemetry-marker-key";

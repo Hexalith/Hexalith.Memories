@@ -8,6 +8,7 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 using System.Diagnostics;
 using System.Net;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 using Hexalith.Memories.AppHost;
 using Hexalith.Memories.IntegrationTests.Mcp;
@@ -214,6 +215,186 @@ public sealed class AspireIngestionPipelineFixtureTests
         exception.Message.ShouldContain(resourceName);
         exception.Message.ShouldContain("direct daprd HTTP endpoint");
         exception.Message.ShouldNotContain("proxy", Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_UsesOnlyExactAuxiliarySidecarProbes()
+    {
+        List<string> probes = [];
+
+        await AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
+            (sidecarResourceName, _) =>
+            {
+                probes.Add($"sidecar:{sidecarResourceName}");
+                return Task.CompletedTask;
+            },
+            (sidecarResourceName, secretName, _) =>
+            {
+                probes.Add($"secret:{sidecarResourceName}:{secretName}");
+                return Task.CompletedTask;
+            },
+            CancellationToken.None);
+
+        probes.ShouldBe(
+        [
+            "sidecar:memories-access-telemetry-clock-dapr-cli",
+            "secret:memories-access-telemetry-clock-dapr-cli:access-telemetry-clock-key",
+            "sidecar:memories-access-telemetry-dapr-cli",
+            "secret:memories-access-telemetry-dapr-cli:access-telemetry-marker-key",
+        ]);
+    }
+
+    [Fact]
+    public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_ForwardsCallerCancellationTokenToEveryProbe()
+    {
+        using var cts = new CancellationTokenSource();
+        List<CancellationToken> observedTokens = [];
+
+        await AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
+            (_, token) =>
+            {
+                observedTokens.Add(token);
+                return Task.CompletedTask;
+            },
+            (_, _, token) =>
+            {
+                observedTokens.Add(token);
+                return Task.CompletedTask;
+            },
+            cts.Token);
+
+        observedTokens.Count.ShouldBe(4);
+        observedTokens.ShouldAllBe(token => token == cts.Token);
+    }
+
+    [Fact]
+    public async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync_ClockSidecarFailure_StopsRemainingProbes()
+    {
+        List<string> probes = [];
+
+        IOException exception = await Should.ThrowAsync<IOException>(() =>
+            AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
+                (sidecarResourceName, _) =>
+                {
+                    probes.Add($"sidecar:{sidecarResourceName}");
+                    return Task.FromException(new IOException("clock sidecar unavailable"));
+                },
+                (sidecarResourceName, secretName, _) =>
+                {
+                    probes.Add($"secret:{sidecarResourceName}:{secretName}");
+                    return Task.CompletedTask;
+                },
+                CancellationToken.None));
+
+        exception.Message.ShouldBe("clock sidecar unavailable");
+        probes.ShouldBe(["sidecar:memories-access-telemetry-clock-dapr-cli"]);
+    }
+
+    [Fact]
+    public void OpenBaoSidecarMatrixReadiness_SharedTopologyStartupDoesNotCallIt()
+    {
+        MethodInfo sharedTopologyStartup = typeof(AspireIngestionPipelineFixture)
+            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(method => method.Name == "StartTopologyAsync");
+        MethodInfo auxiliaryReadiness = typeof(AspireIngestionPipelineFixture)
+            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(method => method.Name == nameof(AspireIngestionPipelineFixture.WaitForOpenBaoSidecarMatrixReadinessAsync));
+
+        AsyncMethodCalls(sharedTopologyStartup, auxiliaryReadiness).ShouldBeFalse(
+            "clock/lifecycle readiness belongs only to the OpenBao sidecar matrix, not shared fixture startup.");
+    }
+
+    [Fact]
+    public async Task RethrowAfterCleanupAsync_AllActionsSucceed_PreservesOriginalWithoutDiagnostics()
+    {
+        var startupException = new InvalidOperationException("startup failed");
+        List<string> cleanupOrder = [];
+
+        InvalidOperationException thrown = await Should.ThrowAsync<InvalidOperationException>(() =>
+            AspireIngestionPipelineFixture.RethrowAfterCleanupAsync(
+                startupException,
+                [
+                    new("first", () => RecordSuccessfulCleanup("first", cleanupOrder)),
+                    new("second", () => RecordSuccessfulCleanup("second", cleanupOrder)),
+                ]));
+
+        thrown.ShouldBeSameAs(startupException);
+        cleanupOrder.ShouldBe(["first", "second"]);
+        thrown.Data.Contains(AspireIngestionPipelineFixture.FailedInitializationCleanupFailuresDataKey)
+            .ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task RethrowAfterCleanupAsync_NullAndMultipleFailures_PreservesOrderAndExistingDiagnostics()
+    {
+        var startupException = new InvalidOperationException("startup failed");
+        startupException.Data[AspireIngestionPipelineFixture.FailedInitializationCleanupFailuresDataKey] =
+            "existing diagnostic";
+        List<string> cleanupOrder = [];
+
+        InvalidOperationException thrown = await Should.ThrowAsync<InvalidOperationException>(() =>
+            AspireIngestionPipelineFixture.RethrowAfterCleanupAsync(
+                startupException,
+                [
+                    new("first", () => RecordSuccessfulCleanup("first", cleanupOrder)),
+                    new("missing", null),
+                    new("third", () => RecordFailedCleanup("third", cleanupOrder, new IOException("third failed"))),
+                    new("fourth", () => RecordSuccessfulCleanup("fourth", cleanupOrder)),
+                    new("fifth", () => RecordFailedCleanup("fifth", cleanupOrder, new TimeoutException("fifth failed"))),
+                    new("sixth", () => RecordSuccessfulCleanup("sixth", cleanupOrder)),
+                ]));
+
+        thrown.ShouldBeSameAs(startupException);
+        cleanupOrder.ShouldBe(["first", "third", "fourth", "fifth", "sixth"]);
+        thrown.Data[AspireIngestionPipelineFixture.FailedInitializationCleanupFailuresDataKey]
+            .ShouldBe("existing diagnostic");
+        AggregateException cleanupFailures = thrown.Data[
+            AspireIngestionPipelineFixture.FailedInitializationCleanupFailuresDataKey + ".2"]
+            .ShouldBeOfType<AggregateException>();
+        cleanupFailures.InnerExceptions.Count.ShouldBe(3);
+        cleanupFailures.InnerExceptions[0].ShouldBeOfType<InvalidOperationException>()
+            .Message.ShouldContain("'missing'");
+        cleanupFailures.InnerExceptions[1].ShouldBeOfType<IOException>()
+            .Message.ShouldBe("third failed");
+        cleanupFailures.InnerExceptions[2].ShouldBeOfType<TimeoutException>()
+            .Message.ShouldBe("fifth failed");
+    }
+
+    [Fact]
+    public async Task RethrowAfterCleanupCoreAsync_DiagnosticsSinkThrows_PreservesOriginalException()
+    {
+        var startupException = new InvalidOperationException("startup failed");
+
+        InvalidOperationException thrown = await Should.ThrowAsync<InvalidOperationException>(() =>
+            AspireIngestionPipelineFixture.RethrowAfterCleanupCoreAsync(
+                startupException,
+                [
+                    new("failed", () => Task.FromException(new IOException("cleanup failed"))),
+                ],
+                static (_, _) => throw new NotSupportedException("diagnostics unavailable")));
+
+        thrown.ShouldBeSameAs(startupException);
+        thrown.Message.ShouldBe("startup failed");
+    }
+
+    [Fact]
+    public void CreateFailedInitializationCleanupActions_ContainsAllSixOwnedResourceSlotsInOrder()
+    {
+        var fixture = new AspireIngestionPipelineFixture();
+
+        IReadOnlyList<KeyValuePair<string, Func<Task>?>> cleanupActions =
+            fixture.CreateFailedInitializationCleanupActions();
+
+        cleanupActions.Select(static slot => slot.Key).ShouldBe(
+        [
+            "topology",
+            "environment-scopes",
+            "temporary-dapr-config",
+            "fixture-containers",
+            "falkor-volume",
+            "redis-volume",
+        ]);
+        cleanupActions.ShouldAllBe(static slot => slot.Value != null);
     }
 
     [Fact]
@@ -528,6 +709,49 @@ public sealed class AspireIngestionPipelineFixtureTests
             nameof(OpenBaoTopologyIntegrationTests.OpenBaoColdStart_TopologyAcceptsQueriesWithinNfr7)));
         nfrCategories.ShouldContain("IntegrationSlow");
         nfrCategories.ShouldContain("Performance");
+    }
+
+    private static bool AsyncMethodCalls(MethodInfo asyncMethod, MethodInfo targetMethod)
+    {
+        Type stateMachineType = asyncMethod.GetCustomAttribute<AsyncStateMachineAttribute>()
+            ?.StateMachineType
+            ?? throw new InvalidOperationException($"Method '{asyncMethod.Name}' is not an async state machine.");
+        MethodInfo moveNext = stateMachineType.GetMethod(
+            "MoveNext",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"Async state machine for '{asyncMethod.Name}' has no MoveNext method.");
+        byte[] il = moveNext.GetMethodBody()?.GetILAsByteArray()
+            ?? throw new InvalidOperationException($"Async state machine for '{asyncMethod.Name}' has no IL body.");
+
+        for (int index = 0; index <= il.Length - 5; index++)
+        {
+            if (il[index] is not (0x28 or 0x6F))
+            {
+                continue;
+            }
+
+            if (BitConverter.ToInt32(il, index + 1) == targetMethod.MetadataToken)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Task RecordSuccessfulCleanup(string name, ICollection<string> cleanupOrder)
+    {
+        cleanupOrder.Add(name);
+        return Task.CompletedTask;
+    }
+
+    private static Task RecordFailedCleanup(
+        string name,
+        ICollection<string> cleanupOrder,
+        Exception exception)
+    {
+        cleanupOrder.Add(name);
+        return Task.FromException(exception);
     }
 
     private static MethodInfo GetMethod(string methodName)

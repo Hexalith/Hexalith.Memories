@@ -17,6 +17,7 @@ env:
 jobs:
   integration-fast:
     name: Tier 3 integration (fast lane)
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

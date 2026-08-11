@@ -5,6 +5,8 @@ name: CI
     branches:
       - main
   push:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -427,6 +429,7 @@ jobs:
         run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast
 
       - name: Verify fast integration coverage evidence
+        if: ${{ !cancelled() }}
         run: python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast
 
       - name: Upload fast integration test results

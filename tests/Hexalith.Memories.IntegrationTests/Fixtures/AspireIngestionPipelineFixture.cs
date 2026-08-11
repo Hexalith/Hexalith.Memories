@@ -8,6 +8,7 @@ namespace Hexalith.Memories.IntegrationTests.Fixtures;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -42,6 +43,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     private const string AspireContainerCreatorProcessLabel = "com.microsoft.developer.usvc-dev.creatorProcessId";
     private const string AspireContainerCreatorStartTimeLabel = "com.microsoft.developer.usvc-dev.creatorProcessStartTime";
     internal const string OpenBaoRuntimeCanarySecretName = "story29-runtime-canary";
+
+    /// <summary>Exception data key containing best-effort cleanup failures from fixture initialization.</summary>
+    internal const string FailedInitializationCleanupFailuresDataKey =
+        "AspireIngestionPipelineFixture.FailedInitializationCleanupFailures";
 
     private static readonly TimeSpan TopologyStartupTimeout = TimeSpan.FromMinutes(12);
     private static readonly TimeSpan ResourceHealthyTimeout = TimeSpan.FromMinutes(5);
@@ -523,6 +528,68 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             secretName,
             fieldName,
             expectedFingerprint);
+
+    /// <summary>
+    /// Waits for the auxiliary access-telemetry sidecars and their permitted OpenBao reads used by
+    /// the full sidecar access matrix. These resources are intentionally not part of shared fixture
+    /// startup because no other fixture consumer requires them.
+    /// </summary>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <returns>A task that completes when both exact auxiliary probes succeed.</returns>
+    internal Task WaitForOpenBaoSidecarMatrixReadinessAsync(CancellationToken cancellationToken)
+        => WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
+            async (sidecarResourceName, token) =>
+            {
+                _ = await WaitForDaprSidecarHttpEndpointAsync(
+                    sidecarResourceName,
+                    () => _logProvider.GetEntriesSince(_topologyLogStartIndex),
+                    EndpointReadyTimeout,
+                    EndpointPollInterval,
+                    token).ConfigureAwait(false);
+            },
+            async (sidecarResourceName, secretName, token) =>
+            {
+                using HttpClient secretProbe = CreateDaprSidecarClient(sidecarResourceName);
+                await WaitForEndpointAsync(
+                    secretProbe,
+                    $"/v1.0/secrets/access-telemetry-secrets/{secretName}",
+                    [HttpStatusCode.OK],
+                    EndpointReadyTimeout,
+                    EndpointPollInterval,
+                    _topologyLogStartIndex,
+                    token,
+                    DaprSecretProbeTimeout,
+                    DaprSecretFailClosedStatusCodes).ConfigureAwait(false);
+            },
+            cancellationToken);
+
+    /// <summary>Executes the exact auxiliary-sidecar readiness sequence owned by the OpenBao matrix.</summary>
+    /// <param name="waitForSidecarAsync">Waits for one exact Dapr CLI sidecar endpoint.</param>
+    /// <param name="waitForSecretAsync">Waits for one permitted secret read through that sidecar.</param>
+    /// <param name="cancellationToken">Cooperative cancellation.</param>
+    /// <returns>A task that completes after both sidecars and their permitted keys are ready.</returns>
+    internal static async Task WaitForOpenBaoSidecarMatrixReadinessCoreAsync(
+        Func<string, CancellationToken, Task> waitForSidecarAsync,
+        Func<string, string, CancellationToken, Task> waitForSecretAsync,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(waitForSidecarAsync);
+        ArgumentNullException.ThrowIfNull(waitForSecretAsync);
+
+        const string clockSidecarResourceName = "memories-access-telemetry-clock-dapr-cli";
+        await waitForSidecarAsync(clockSidecarResourceName, cancellationToken).ConfigureAwait(false);
+        await waitForSecretAsync(
+            clockSidecarResourceName,
+            "access-telemetry-clock-key",
+            cancellationToken).ConfigureAwait(false);
+
+        const string lifecycleSidecarResourceName = "memories-access-telemetry-dapr-cli";
+        await waitForSidecarAsync(lifecycleSidecarResourceName, cancellationToken).ConfigureAwait(false);
+        await waitForSecretAsync(
+            lifecycleSidecarResourceName,
+            "access-telemetry-marker-key",
+            cancellationToken).ConfigureAwait(false);
+    }
 
     /// <summary>Gets the fingerprint of the configured access-telemetry clock secret.</summary>
     internal byte[] AccessTelemetryClockFingerprint => _accessTelemetryClockFingerprint
@@ -1156,11 +1223,121 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             using var cts = new CancellationTokenSource(TopologyStartupTimeout);
             await StartTopologyAsync(cts.Token).ConfigureAwait(false);
         }
-        catch
+        catch (Exception startupException)
         {
-            DisposeEnvVarScopes();
-            DeleteTempDaprConfig();
+            await RethrowAfterCleanupAsync(
+                startupException,
+                CreateFailedInitializationCleanupActions()).ConfigureAwait(false);
             throw;
+        }
+    }
+
+    /// <summary>Creates the complete ordered cleanup plan for fixture-owned startup resources.</summary>
+    /// <returns>All six cleanup slots required after a partial topology startup.</returns>
+    internal IReadOnlyList<KeyValuePair<string, Func<Task>?>> CreateFailedInitializationCleanupActions()
+        =>
+        [
+            new("topology", () => DisposeTopologyAsync(CancellationToken.None)),
+            new(
+                "environment-scopes",
+                () =>
+                {
+                    DisposeEnvVarScopes();
+                    return Task.CompletedTask;
+                }),
+            new(
+                "temporary-dapr-config",
+                () =>
+                {
+                    DeleteTempDaprConfig();
+                    return Task.CompletedTask;
+                }),
+            new("fixture-containers", () => RemoveFixtureDockerContainersAsync(_falkorVolumeName)),
+            new("falkor-volume", () => RemoveDockerVolumeIfPresentAsync(_falkorVolumeName)),
+            new("redis-volume", () => RemoveDockerVolumeIfPresentAsync(_redisVolumeName)),
+        ];
+
+    /// <summary>
+    /// Runs every failed-startup cleanup action and rethrows the original startup exception without
+    /// allowing a cleanup failure to replace it.
+    /// </summary>
+    /// <param name="startupException">The original fixture startup exception.</param>
+    /// <param name="cleanupActions">Ordered best-effort cleanup actions for fixture-owned resources.</param>
+    /// <returns>A task that always rethrows <paramref name="startupException"/> after cleanup.</returns>
+    internal static Task RethrowAfterCleanupAsync(
+        Exception startupException,
+        IReadOnlyList<KeyValuePair<string, Func<Task>?>> cleanupActions)
+        => RethrowAfterCleanupCoreAsync(startupException, cleanupActions, TryAttachCleanupFailures);
+
+    /// <summary>Runs failed-startup cleanup with an injectable best-effort diagnostics sink.</summary>
+    /// <param name="startupException">The original fixture startup exception.</param>
+    /// <param name="cleanupActions">Ordered named cleanup actions for fixture-owned resources.</param>
+    /// <param name="attachCleanupFailures">Attaches captured cleanup failures to the original exception.</param>
+    /// <returns>A task that always rethrows <paramref name="startupException"/> after cleanup.</returns>
+    internal static async Task RethrowAfterCleanupCoreAsync(
+        Exception startupException,
+        IReadOnlyList<KeyValuePair<string, Func<Task>?>> cleanupActions,
+        Action<Exception, IReadOnlyList<Exception>> attachCleanupFailures)
+    {
+        ArgumentNullException.ThrowIfNull(startupException);
+        ArgumentNullException.ThrowIfNull(cleanupActions);
+        ArgumentNullException.ThrowIfNull(attachCleanupFailures);
+
+        List<Exception> cleanupFailures = [];
+        foreach (KeyValuePair<string, Func<Task>?> cleanupSlot in cleanupActions)
+        {
+            if (cleanupSlot.Value is null)
+            {
+                cleanupFailures.Add(new InvalidOperationException(
+                    $"Fixture cleanup slot '{cleanupSlot.Key}' has no action."));
+                continue;
+            }
+
+            try
+            {
+                await cleanupSlot.Value().ConfigureAwait(false);
+            }
+            catch (Exception cleanupException)
+            {
+                cleanupFailures.Add(cleanupException);
+            }
+        }
+
+        if (cleanupFailures.Count > 0)
+        {
+            try
+            {
+                attachCleanupFailures(startupException, cleanupFailures);
+            }
+            catch (Exception)
+            {
+                // Cleanup diagnostics are best-effort and must never replace the startup failure.
+            }
+        }
+
+        ExceptionDispatchInfo.Capture(startupException).Throw();
+    }
+
+    private static void TryAttachCleanupFailures(
+        Exception startupException,
+        IReadOnlyList<Exception> cleanupFailures)
+    {
+        try
+        {
+            string dataKey = FailedInitializationCleanupFailuresDataKey;
+            int suffix = 2;
+            while (startupException.Data.Contains(dataKey))
+            {
+                dataKey = $"{FailedInitializationCleanupFailuresDataKey}.{suffix++}";
+            }
+
+            startupException.Data.Add(
+                dataKey,
+                new AggregateException("One or more fixture cleanup actions failed.", cleanupFailures));
+        }
+        catch (Exception)
+        {
+            // Exception.Data implementations may reject reads or writes. Preserve startup identity.
         }
     }
 
@@ -1781,48 +1958,6 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         if (!string.IsNullOrWhiteSpace(daprApiToken))
         {
             _daprStateClient.DefaultRequestHeaders.TryAddWithoutValidation("dapr-api-token", daprApiToken);
-        }
-
-        const string clockSidecarResourceName = "memories-access-telemetry-clock-dapr-cli";
-        _ = await WaitForDaprSidecarHttpEndpointAsync(
-            clockSidecarResourceName,
-            () => _logProvider.GetEntriesSince(logStartIndex),
-            EndpointReadyTimeout,
-            EndpointPollInterval,
-            cancellationToken).ConfigureAwait(false);
-        using (HttpClient clockSecretProbe = CreateDaprSidecarClient(clockSidecarResourceName))
-        {
-            await WaitForEndpointAsync(
-                clockSecretProbe,
-                "/v1.0/secrets/access-telemetry-secrets/access-telemetry-clock-key",
-                [HttpStatusCode.OK],
-                EndpointReadyTimeout,
-                EndpointPollInterval,
-                logStartIndex,
-                cancellationToken,
-                DaprSecretProbeTimeout,
-                DaprSecretFailClosedStatusCodes).ConfigureAwait(false);
-        }
-
-        const string lifecycleSidecarResourceName = "memories-access-telemetry-dapr-cli";
-        _ = await WaitForDaprSidecarHttpEndpointAsync(
-            lifecycleSidecarResourceName,
-            () => _logProvider.GetEntriesSince(logStartIndex),
-            EndpointReadyTimeout,
-            EndpointPollInterval,
-            cancellationToken).ConfigureAwait(false);
-        using (HttpClient lifecycleSecretProbe = CreateDaprSidecarClient(lifecycleSidecarResourceName))
-        {
-            await WaitForEndpointAsync(
-                lifecycleSecretProbe,
-                "/v1.0/secrets/access-telemetry-secrets/access-telemetry-marker-key",
-                [HttpStatusCode.OK],
-                EndpointReadyTimeout,
-                EndpointPollInterval,
-                logStartIndex,
-                cancellationToken,
-                DaprSecretProbeTimeout,
-                DaprSecretFailClosedStatusCodes).ConfigureAwait(false);
         }
 
         Uri redisEndpoint = _app.GetEndpoint("memories-vectors", "redis");

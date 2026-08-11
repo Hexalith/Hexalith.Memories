@@ -128,7 +128,111 @@ public sealed partial class CiTestInventoryTests
         bashScript.ShouldContain("test-projects.integration-fast.txt");
         bashScript.ShouldContain("Category!=Integration&Category!=Benchmark");
         workflow.ShouldContain("tools/test.sh --filter \"Category!=Integration\"");
-        workflow.ShouldContain("tools/test.sh --filter \"Category=Integration&Category!=IntegrationSlow&Category!=Performance\"");
+    }
+
+    [Fact]
+    public void Workflows_RequiredFastIntegration_HasOneAutomaticOwnerAndRetainsFailureEvidence()
+    {
+        string repoRoot = GetRepoRoot();
+        string workflowsDirectory = Path.Combine(repoRoot, ".github", "workflows");
+        string[] ciWorkflowLines = File.ReadAllLines(Path.Combine(workflowsDirectory, "ci.yml"));
+        string[] nightlyWorkflowLines = File.ReadAllLines(Path.Combine(workflowsDirectory, "nightly.yml"));
+        const string fastSelector = "Category=Integration&Category!=IntegrationSlow&Category!=Performance";
+        const string ciFastCommand =
+            "bash ./tools/test.sh --filter \"Category=Integration&Category!=IntegrationSlow&Category!=Performance\" --configuration Release --no-build --results-directory TestResults/integration-fast";
+        const string nightlyFastCommand =
+            "bash ./tools/test.sh --filter \"Category=Integration&Category!=IntegrationSlow&Category!=Performance\" --configuration Release";
+        const string verifierCommand =
+            "python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast";
+
+        GetWorkflowEventSequenceValues(
+            GetWorkflowEventLines(ciWorkflowLines, "pull_request"),
+            "branches").ShouldBe(["main"]);
+        GetWorkflowEventSequenceValues(
+            GetWorkflowEventLines(ciWorkflowLines, "push"),
+            "branches").ShouldBe(["main"]);
+
+        string[] ciFastJobLines = GetWorkflowJobLines(ciWorkflowLines, "integration-fast");
+        GetWorkflowJobScalar(ciFastJobLines, "name").ShouldBe("integration-fast");
+        GetWorkflowJobScalar(ciFastJobLines, "if").ShouldBeNull();
+        GetWorkflowJobScalar(ciFastJobLines, "continue-on-error").ShouldBeNull();
+        ReleaseWorkflowStep[] ciFastSteps = ParseReleaseWorkflowSteps(ciFastJobLines);
+        ReleaseWorkflowStep runStep = GetSingleWorkflowStep(
+            ciFastSteps,
+            "Run fast Docker-backed integration tests",
+            "ci.yml",
+            "integration-fast");
+        ReleaseWorkflowStep verifierStep = GetSingleWorkflowStep(
+            ciFastSteps,
+            "Verify fast integration coverage evidence",
+            "ci.yml",
+            "integration-fast");
+        ReleaseWorkflowStep uploadStep = GetSingleWorkflowStep(
+            ciFastSteps,
+            "Upload fast integration test results",
+            "ci.yml",
+            "integration-fast");
+
+        runStep.Run.ShouldBe(ciFastCommand);
+        runStep.If.ShouldBeNull();
+        runStep.ContinueOnError.ShouldBeNull();
+        verifierStep.Run.ShouldBe(verifierCommand);
+        verifierStep.If.ShouldBe("${{ !cancelled() }}");
+        verifierStep.ContinueOnError.ShouldBeNull();
+        uploadStep.Uses.ShouldBe("actions/upload-artifact@v7");
+        uploadStep.If.ShouldBe("always()");
+        uploadStep.ContinueOnError.ShouldBeNull();
+        uploadStep.With.ShouldBe(
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["name"] = "integration-fast-results",
+                ["path"] = "TestResults/integration-fast/**",
+                ["if-no-files-found"] = "error",
+                ["retention-days"] = "14",
+            });
+
+        int runIndex = Array.IndexOf(ciFastSteps, runStep);
+        int verifierIndex = Array.IndexOf(ciFastSteps, verifierStep);
+        int uploadIndex = Array.IndexOf(ciFastSteps, uploadStep);
+        runIndex.ShouldBeLessThan(verifierIndex);
+        verifierIndex.ShouldBeLessThan(uploadIndex);
+
+        string[] nightlyFastJobLines = GetWorkflowJobLines(nightlyWorkflowLines, "integration-fast");
+        GetWorkflowJobScalar(nightlyFastJobLines, "if")
+            .ShouldBe("${{ github.event_name == 'workflow_dispatch' }}");
+        ReleaseWorkflowStep nightlyRunStep = GetSingleWorkflowStep(
+            ParseReleaseWorkflowSteps(nightlyFastJobLines),
+            "Run Tier 3 integration tests (fast lane, excludes IntegrationSlow and Performance)",
+            "nightly.yml",
+            "integration-fast");
+        nightlyRunStep.Run.ShouldBe(nightlyFastCommand);
+
+        GetWorkflowEventLines(nightlyWorkflowLines, "schedule")
+            .Select(static line => line.TrimEnd())
+            .ShouldBe(["  schedule:", "    - cron: '0 3 * * *'"]);
+        foreach (string scheduledJobName in new[] { "integration-slow", "benchmark" })
+        {
+            string[] scheduledJobLines = GetWorkflowJobLines(nightlyWorkflowLines, scheduledJobName);
+            GetWorkflowJobScalar(scheduledJobLines, "if").ShouldBeNull();
+            GetWorkflowJobScalar(scheduledJobLines, "needs").ShouldBeNull();
+        }
+
+        string[] workflowFiles =
+        [
+            .. Directory.GetFiles(workflowsDirectory, "*.yml"),
+            .. Directory.GetFiles(workflowsDirectory, "*.yaml"),
+        ];
+        string[] fastSelectorOwners =
+        [
+            .. workflowFiles
+                .Order(StringComparer.Ordinal)
+                .SelectMany(workflowPath => GetFastSelectorOwners(workflowPath, fastSelector)),
+        ];
+        fastSelectorOwners.ShouldBe(
+        [
+            $"ci.yml:integration-fast:Run fast Docker-backed integration tests:{ciFastCommand}",
+            $"nightly.yml:integration-fast:Run Tier 3 integration tests (fast lane, excludes IntegrationSlow and Performance):{nightlyFastCommand}",
+        ]);
     }
 
     [Fact]
@@ -1361,11 +1465,34 @@ public sealed partial class CiTestInventoryTests
         return matches[0];
     }
 
+    private static ReleaseWorkflowStep GetSingleWorkflowStep(
+        ReleaseWorkflowStep[] steps,
+        string stepName,
+        string workflowName,
+        string jobName)
+    {
+        ReleaseWorkflowStep[] matches =
+        [
+            .. steps.Where(step => string.Equals(step.Name, stepName, StringComparison.Ordinal)),
+        ];
+        matches.Length.ShouldBe(
+            1,
+            $"expected exactly one step named '{stepName}' in {workflowName} job '{jobName}'; found {matches.Length}.");
+        return matches[0];
+    }
+
     private static string[] GetWorkflowEventLines(string[] lines, string eventName)
     {
         string header = $"  {eventName}:";
-        int start = Array.FindIndex(lines, line => string.Equals(line.TrimEnd(), header, StringComparison.Ordinal));
-        start.ShouldBeGreaterThanOrEqualTo(0, $"workflow must declare on.{eventName}.");
+        int[] starts =
+        [
+            .. lines
+                .Select((line, index) => (Line: line.TrimEnd(), Index: index))
+                .Where(entry => string.Equals(entry.Line, header, StringComparison.Ordinal))
+                .Select(static entry => entry.Index),
+        ];
+        starts.Length.ShouldBe(1, $"workflow must declare on.{eventName} exactly once.");
+        int start = starts[0];
 
         int end = start + 1;
         while (end < lines.Length)
@@ -1379,14 +1506,62 @@ public sealed partial class CiTestInventoryTests
             end++;
         }
 
+        while (end > start + 1 && string.IsNullOrWhiteSpace(lines[end - 1]))
+        {
+            end--;
+        }
+
         return lines[start..end];
+    }
+
+    private static string[] GetWorkflowEventSequenceValues(string[] eventLines, string sequenceName)
+    {
+        string header = $"    {sequenceName}:";
+        int[] starts =
+        [
+            .. eventLines
+                .Select((line, index) => (Line: line.TrimEnd(), Index: index))
+                .Where(entry => string.Equals(entry.Line, header, StringComparison.Ordinal))
+                .Select(static entry => entry.Index),
+        ];
+        starts.Length.ShouldBe(1, $"workflow event must declare '{sequenceName}' exactly once.");
+
+        List<string> values = [];
+        for (int index = starts[0] + 1; index < eventLines.Length; index++)
+        {
+            string line = eventLines[index].TrimEnd();
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            if (line.StartsWith("      - ", StringComparison.Ordinal))
+            {
+                values.Add(StripQuotes(line[8..].Trim()));
+                continue;
+            }
+
+            if (!line.StartsWith("      ", StringComparison.Ordinal))
+            {
+                break;
+            }
+        }
+
+        return [.. values];
     }
 
     private static string[] GetWorkflowJobLines(string[] lines, string jobName)
     {
         string header = $"  {jobName}:";
-        int start = Array.FindIndex(lines, line => string.Equals(line.TrimEnd(), header, StringComparison.Ordinal));
-        start.ShouldBeGreaterThanOrEqualTo(0, $"workflow must declare jobs.{jobName}.");
+        int[] starts =
+        [
+            .. lines
+                .Select((line, index) => (Line: line.TrimEnd(), Index: index))
+                .Where(entry => string.Equals(entry.Line, header, StringComparison.Ordinal))
+                .Select(static entry => entry.Index),
+        ];
+        starts.Length.ShouldBe(1, $"workflow must declare jobs.{jobName} exactly once.");
+        int start = starts[0];
 
         int end = start + 1;
         while (end < lines.Length)
@@ -1403,6 +1578,68 @@ public sealed partial class CiTestInventoryTests
         }
 
         return lines[start..end];
+    }
+
+    private static string? GetWorkflowJobScalar(string[] jobLines, string scalarName)
+    {
+        string prefix = $"    {scalarName}:";
+        string[] matches =
+        [
+            .. jobLines
+                .Where(line => line.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(line => StripQuotes(line[prefix.Length..].Trim())),
+        ];
+        matches.Length.ShouldBeLessThanOrEqualTo(
+            1,
+            $"workflow job must not declare '{scalarName}' more than once.");
+        return matches.Length == 0 ? null : matches[0];
+    }
+
+    private static string[] GetWorkflowJobNames(string[] lines)
+    {
+        int[] jobsHeaders =
+        [
+            .. lines
+                .Select((line, index) => (Line: line.TrimEnd(), Index: index))
+                .Where(static entry => string.Equals(entry.Line, "jobs:", StringComparison.Ordinal))
+                .Select(static entry => entry.Index),
+        ];
+        jobsHeaders.Length.ShouldBe(1, "workflow must declare exactly one top-level jobs mapping.");
+
+        List<string> jobNames = [];
+        for (int index = jobsHeaders[0] + 1; index < lines.Length; index++)
+        {
+            string line = lines[index].TrimEnd();
+            if (!string.IsNullOrWhiteSpace(line) && !line.StartsWith("  ", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (line.StartsWith("  ", StringComparison.Ordinal) &&
+                !line.StartsWith("    ", StringComparison.Ordinal) &&
+                line.EndsWith(':'))
+            {
+                jobNames.Add(line[2..^1]);
+            }
+        }
+
+        return [.. jobNames];
+    }
+
+    private static IEnumerable<string> GetFastSelectorOwners(string workflowPath, string fastSelector)
+    {
+        string[] lines = File.ReadAllLines(workflowPath);
+        foreach (string jobName in GetWorkflowJobNames(lines))
+        {
+            foreach (ReleaseWorkflowStep step in ParseReleaseWorkflowSteps(GetWorkflowJobLines(lines, jobName)))
+            {
+                string command = step.Run ?? step.RunBlock.Trim();
+                if (command.Contains(fastSelector, StringComparison.Ordinal))
+                {
+                    yield return $"{Path.GetFileName(workflowPath)}:{jobName}:{step.Name}:{command}";
+                }
+            }
+        }
     }
 
     // Hand-rolled step parser: release.yml has a single 'release' job whose steps are at the
@@ -1434,9 +1671,11 @@ public sealed partial class CiTestInventoryTests
             string? uses = null;
             string? workingDirectory = null;
             Dictionary<string, string> environment = new(StringComparer.Ordinal);
+            Dictionary<string, string> with = new(StringComparer.Ordinal);
             List<string> runBlockLines = [];
             bool inRunBlock = false;
             bool inEnvironment = false;
+            bool inWith = false;
 
             i++;
             while (i < lines.Length)
@@ -1492,6 +1731,32 @@ public sealed partial class CiTestInventoryTests
                     inEnvironment = false;
                 }
 
+                if (inWith)
+                {
+                    if (string.IsNullOrWhiteSpace(body))
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (body.StartsWith(BodyIndent + "  ", StringComparison.Ordinal))
+                    {
+                        string withEntry = body.Trim();
+                        int separator = withEntry.IndexOf(':');
+                        if (separator > 0)
+                        {
+                            string key = withEntry[..separator].Trim();
+                            string value = StripQuotes(withEntry[(separator + 1)..].Trim());
+                            with[key] = value;
+                        }
+
+                        i++;
+                        continue;
+                    }
+
+                    inWith = false;
+                }
+
                 string trimmed = body.TrimStart();
                 if (trimmed.StartsWith("shell:", StringComparison.Ordinal))
                 {
@@ -1516,6 +1781,10 @@ public sealed partial class CiTestInventoryTests
                 else if (string.Equals(trimmed, "env:", StringComparison.Ordinal))
                 {
                     inEnvironment = true;
+                }
+                else if (string.Equals(trimmed, "with:", StringComparison.Ordinal))
+                {
+                    inWith = true;
                 }
                 else if (trimmed.StartsWith("run:", StringComparison.Ordinal))
                 {
@@ -1542,6 +1811,7 @@ public sealed partial class CiTestInventoryTests
                 Uses: uses,
                 WorkingDirectory: workingDirectory,
                 Environment: environment,
+                With: with,
                 RunBlock: string.Join('\n', runBlockLines)));
         }
 
@@ -1687,6 +1957,7 @@ public sealed partial class CiTestInventoryTests
         string? Uses,
         string? WorkingDirectory,
         Dictionary<string, string> Environment,
+        Dictionary<string, string> With,
         string RunBlock);
 
     private static int CountOccurrences(string haystack, string needle)
