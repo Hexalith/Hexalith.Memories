@@ -11,8 +11,8 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-using Hexalith.Memories.TestHelpers.Documentation;
 using Hexalith.Memories.Telemetry;
+using Hexalith.Memories.TestHelpers.Documentation;
 
 using Shouldly;
 
@@ -404,14 +404,19 @@ public sealed class OperationalRunbookSetTests
 
         string verifierSource = ReadRepoFile(
             "src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs");
+        // Guard the boundary two ways so a content query cannot slip past a single spelling. The literal
+        // match is receiver-agnostic (a renamed local still matches), and the GRAPH.QUERY prohibition
+        // catches a command introduced through a const, an interpolation, or any other receiver.
         MatchCollection falkorCommands = Regex.Matches(
             verifierSource,
-            "falkorDb\\.ExecuteAsync\\(\\s*\"(?<command>[^\"]+)\"",
+            "\\bExecuteAsync\\(\\s*\"(?<command>[^\"]+)\"",
             RegexOptions.CultureInvariant);
-        falkorCommands.Count.ShouldBe(3);
+        falkorCommands.Count.ShouldBeGreaterThan(0);
         falkorCommands.Cast<Match>()
             .Select(match => match.Groups["command"].Value)
+            .Where(command => command.StartsWith("GRAPH.", StringComparison.Ordinal))
             .ShouldAllBe(command => string.Equals(command, "GRAPH.LIST", StringComparison.Ordinal));
+        verifierSource.ShouldNotContain("GRAPH.QUERY", Case.Sensitive);
         ContractDocumentGuard.FindLeakedToolCallMarkup(tenantMarkdown).ShouldBeEmpty();
         ContractDocumentGuard.FindLeakedToolCallMarkup(routeMarkdown).ShouldBeEmpty();
     }

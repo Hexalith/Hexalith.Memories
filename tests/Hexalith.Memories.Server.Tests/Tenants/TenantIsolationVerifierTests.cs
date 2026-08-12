@@ -332,7 +332,7 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
-    public async Task VerifyAsync_GraphIsolation_IsStructuralOnlyAndCitesContentProof()
+    public async Task VerifyAsync_SingleTenant_PerformsTargetStructuralChecks()
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
@@ -356,6 +356,21 @@ public class TenantIsolationVerifierTests
         semanticCheck.Passed.ShouldBeTrue();
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain("raw and natural-language vector index metadata");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_GraphIsolation_IsStructuralOnlyAndCitesContentProof()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
         TenantIsolationCheckResult graphCheck = result.Checks.First(c => c.CheckName == "GraphIsolation");
         graphCheck.Passed.ShouldBeTrue();
@@ -366,13 +381,40 @@ public class TenantIsolationVerifierTests
             "TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes");
         graphCheck.Details.ShouldContain("independent execution");
 
-        string[] executedCommands = falkorDb.ReceivedCalls()
+        // Assert the boundary (no command other than GRAPH.LIST), not the current call count. Pinning an
+        // exact triple would make consolidating the three round trips — a legitimate improvement — fail
+        // this test for a reason unrelated to the structural-only guarantee it defends.
+        string[] executedCommands = [.. falkorDb.ReceivedCalls()
             .Where(call => call.GetMethodInfo().Name == nameof(IDatabase.ExecuteAsync))
             .Select(call => call.GetArguments()[0]?.ToString())
             .Where(command => command is not null)
-            .Cast<string>()
-            .ToArray();
-        executedCommands.ShouldBe(["GRAPH.LIST", "GRAPH.LIST", "GRAPH.LIST"]);
+            .Cast<string>()];
+        executedCommands.ShouldNotBeEmpty();
+        executedCommands.ShouldAllBe(command => command == "GRAPH.LIST");
+    }
+
+    [Fact]
+    public async Task VerifyAsync_TargetGraphDatabaseMissing_FailsClosed()
+    {
+        // The spec's I/O matrix requires "Missing database fails closed". Every other GRAPH.LIST setup in
+        // this class includes the tenant under verification, so without this case the
+        // !graphDatabases.Contains(tenantId) branch in CheckGraphIsolationAsync is never exercised.
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult graphCheck = result.Checks.First(c => c.CheckName == "GraphIsolation");
+        graphCheck.Passed.ShouldBeFalse();
+        graphCheck.Details.ShouldNotBeNull();
+        graphCheck.Details.ShouldContain("graph database is missing from GRAPH.LIST");
+        result.AllPassed.ShouldBeFalse();
     }
 
     [Fact]

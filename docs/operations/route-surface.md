@@ -77,6 +77,8 @@ All 49 routes below are minimal-API endpoints mapped in `src/Hexalith.Memories.S
 | Handlers | `GET /api/v1/tenants/{tenantId}/handlers/mismatches` | Detect handler routing mismatches. **Experimental (`HXL002`).** |
 | Graph | `PATCH /api/v1/tenants/{tenantId}/edges/confidence` | Adjust relation-edge confidence. |
 
+**Experimental diagnostics (`HXL002`).** The two `Handlers` rows are an experimental surface: each emits the `X-Memories-API-Experimental: HXL002` response header on every 2xx response, and SDK callers see the compile-time `[Experimental("HXL002")]` attribute. See [`../dev/experimental-apis.md`](../dev/experimental-apis.md). They are real, mapped routes today and are part of the ACL-verifiable surface; treat them as provisional rather than absent.
+
 ### Graph isolation evidence boundary
 
 The `GraphIsolation` result returned by `POST /api/v1/tenants/{tenantId}/verify` is
@@ -108,7 +110,6 @@ The authenticated canary traversal through `GET /api/v1/tenants/{tenantId}/trave
 operator check. Do not treat either that single-tenant canary or `GRAPH.LIST` as a replacement for the
 two-tenant collision proof.
 
-**Experimental diagnostics (`HXL002`).** The two `Handlers` rows are an experimental surface: each emits the `X-Memories-API-Experimental: HXL002` response header on every 2xx response, and SDK callers see the compile-time `[Experimental("HXL002")]` attribute. See [`../dev/experimental-apis.md`](../dev/experimental-apis.md). They are real, mapped routes today and are part of the ACL-verifiable surface; treat them as provisional rather than absent.
 
 ## Pub/sub event-intake operation surface
 

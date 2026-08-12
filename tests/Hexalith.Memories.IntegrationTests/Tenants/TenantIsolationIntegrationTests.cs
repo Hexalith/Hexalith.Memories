@@ -30,7 +30,10 @@ public sealed class TenantIsolationIntegrationTests
     private const string CollisionSourceNodeId = "shared-source";
     private const string CollisionTargetNodeId = "shared-target";
 
-    private static readonly TimeSpan GraphQueryTimeout = TimeSpan.FromMilliseconds(GraphQueryTimeoutMilliseconds);
+    // Strictly larger than the server-side query timeout so the client wait is a backstop rather than a
+    // race: an equal budget lets WaitAsync abandon the call at the same instant FalkorDB reports its own
+    // timeout, hiding the real error and leaving the command in flight.
+    private static readonly TimeSpan GraphQueryTimeout = TimeSpan.FromMilliseconds(GraphQueryTimeoutMilliseconds + 5_000);
     private static readonly TimeSpan HttpOperationTimeout = TimeSpan.FromSeconds(60);
 
     private readonly AspireIngestionPipelineFixture _fixture;
@@ -169,6 +172,7 @@ public sealed class TenantIsolationIntegrationTests
         DateTimeOffset fixtureTimestamp)
     {
         FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
+        NFalkorDB.Graph tenantGraph = falkor.SelectGraph(tenantId);
 
         foreach (string memoryUnitId in new[] { CollisionSourceNodeId, CollisionTargetNodeId })
         {
@@ -184,7 +188,7 @@ public sealed class TenantIsolationIntegrationTests
                 "graph-isolation@integration.test",
                 fixtureTimestamp,
                 "{}");
-            _ = await ExecuteGraphQueryAsync(falkor.SelectGraph(tenantId), query, parameters);
+            _ = await ExecuteGraphQueryAsync(tenantGraph, query, parameters);
         }
 
         (string edgeQuery, IDictionary<string, object> edgeParameters) = _graphQueryBuilder.BuildRestoreEdge(
@@ -196,7 +200,7 @@ public sealed class TenantIsolationIntegrationTests
             fixtureTimestamp,
             edgeMarker,
             previousConfidence: null);
-        _ = await ExecuteGraphQueryAsync(falkor.SelectGraph(tenantId), edgeQuery, edgeParameters);
+        _ = await ExecuteGraphQueryAsync(tenantGraph, edgeQuery, edgeParameters);
     }
 
     private async Task<long> ReadCollisionEdgeIdAsync(string tenantId)
@@ -260,6 +264,12 @@ public sealed class TenantIsolationIntegrationTests
         traversal.Nodes.Select(node => node.MemoryUnitId).OrderBy(id => id, StringComparer.Ordinal)
             .ShouldBe(expectedNodeIds.OrderBy(id => id, StringComparer.Ordinal));
         traversal.Nodes.ShouldAllBe(node => expectedNodeIds.Contains(node.MemoryUnitId, StringComparer.Ordinal));
+
+        // Pin the marker-bearing fields as present before comparing them: a null snippet or source URI is
+        // itself a leakage-relevant outcome, and without this the comparisons below would raise a
+        // NullReferenceException instead of naming the field that lost its tenant marker.
+        traversal.Nodes.ShouldAllBe(node => node.ContentSnippet != null);
+        traversal.Nodes.ShouldAllBe(node => node.SourceUri != null);
         traversal.Nodes.ShouldAllBe(node => node.ContentSnippet.StartsWith(ownNodeMarker, StringComparison.Ordinal));
         traversal.Nodes.ShouldAllBe(node => !node.ContentSnippet.Contains(foreignNodeMarker, StringComparison.Ordinal));
         traversal.Nodes.ShouldAllBe(node => node.SourceUri.Contains(ownNodeMarker, StringComparison.Ordinal));
@@ -268,9 +278,13 @@ public sealed class TenantIsolationIntegrationTests
         TraversalEdgeInfo[] edges = [.. traversal.Nodes.SelectMany(node => node.Edges)];
         edges.Length.ShouldBe(2, "Both endpoint nodes must expose exactly one incident view of the seeded relationship.");
         edges.ShouldAllBe(edge => expectedNodeIds.Contains(edge.ConnectedNodeId, StringComparer.Ordinal));
+        // A missing marker is a distinct failure from a foreign one, so assert presence first. The
+        // strict equality that follows subsumes foreign-marker absence for the distinct constants this
+        // fixture seeds; a separate null-tolerant "does not contain the foreign marker" check would be
+        // unreachable behind it, and vacuously true on null if the equality were ever relaxed.
+        edges.ShouldAllBe(edge => edge.VerifiedBy != null);
         edges.ShouldAllBe(edge => string.Equals(edge.VerifiedBy, ownEdgeMarker, StringComparison.Ordinal));
-        edges.ShouldAllBe(
-            edge => edge.VerifiedBy == null || !edge.VerifiedBy.Contains(foreignEdgeMarker, StringComparison.Ordinal));
+        ownEdgeMarker.ShouldNotBe(foreignEdgeMarker, "the fixture must seed distinct per-tenant edge markers.");
 
         TraversalNode sourceNode = traversal.Nodes.Single(node => node.MemoryUnitId == CollisionSourceNodeId);
         TraversalEdgeInfo outgoing = sourceNode.Edges.ShouldHaveSingleItem();
