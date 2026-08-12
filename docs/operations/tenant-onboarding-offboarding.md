@@ -150,6 +150,38 @@ subsequent deletion-status and tenant requests can return `404 TENANT_NOT_FOUND`
      -H "Authorization: Bearer $TOKEN" | jq -e '.allPassed == true'
    ```
 
+   ### Graph isolation evidence boundary
+
+   `GraphIsolation` is structural database-existence evidence only: the runtime verifier confirms that
+   the tenant-named database appears in `GRAPH.LIST`; it does not query graph content. Independent
+   execution of the real-backend method
+   `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes`, which
+   seeds colliding graph identifiers for two tenants and traverses each through its authenticated tenant
+   context, is required for content-isolation evidence. From the repository root, build the integration
+   assembly first:
+
+   ```bash
+   dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false
+   ```
+
+   If Dapr placement and scheduler are not exposed at the CLI defaults (`localhost:50005` and
+   `localhost:50006`), discover the active local service endpoints from the local Dapr or container
+   runtime configuration and export them before running the proof:
+
+   ```bash
+   export MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=<active-placement-host:port>
+   export MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=<active-scheduler-host:port>
+   ```
+
+   Then run the exact proof invocation:
+
+   ```bash
+   DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes
+   ```
+
+   Record this result separately from the following authenticated canary traversal. Neither a successful
+   `GRAPH.LIST` lookup nor an onboarding canary substitutes for the two-tenant collision proof.
+
 7. Create an approved canary case, ingest a non-sensitive canary through the canonical routes, poll its
    workflow, and verify syntactic/semantic/hybrid search plus graph behavior when applicable. Verify
    tenant-scoped telemetry, rate-limit/quota behavior, queue progress, and absence from a control tenant.

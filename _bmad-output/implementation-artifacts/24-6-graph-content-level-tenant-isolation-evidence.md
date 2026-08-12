@@ -5,9 +5,13 @@ approved_change: _bmad-output/planning-artifacts/sprint-change-proposal-2026-08-
 
 # Story 24.6: Graph Content-Level Tenant Isolation Evidence
 
-Status: backlog
+Status: review
 
 Owner: Murat / Test Architect and Developer
+
+Implementation source: [Story 24.6 implementation spec](spec-24-6-graph-content-level-tenant-isolation-evidence.md).
+The approved requirements and history remain canonical here; implementation tasks, review-loop changes,
+and command-backed execution evidence are maintained in the linked spec and reconciled below.
 
 ## Story
 
@@ -46,7 +50,7 @@ Runtime `GraphIsolation` remains a structural target-database diagnostic. Conten
 - `SyntacticSearchIntegrationTests.SearchAsync_TenantIsolation_ShouldNotReturnCrossTenantResults`
 - `SemanticSearchIntegrationTests.SearchAsync_TenantIsolation_ShouldNotReturnCrossTenantResults`
 
-Affected tenant-sensitive surfaces are the tenant verification endpoint, FalkorDB database routing, graph traversal fixtures, and cross-tenant search integration evidence. Completion must retain Story 20.2 denial-before-dependency evidence and Story 24.3 fail-closed verifier evidence. Planned results are `pending`; this story cannot move to `done` until real-backend evidence executes.
+Affected tenant-sensitive surfaces are the tenant verification endpoint, FalkorDB database routing, graph traversal fixtures, and cross-tenant search integration evidence. Completion retains Story 20.2 denial-before-dependency evidence and Story 24.3 fail-closed verifier evidence. The real-backend collision and canonical search lanes executed successfully on 2026-08-12; the story is ready for review.
 
 ### Epic AC Verification
 
@@ -62,13 +66,37 @@ Verified 2026-08-04 against `e902181dcdce599187e74fd2c3c9b12f995dcc18`.
 
 - **Surfaces:** Tenant verification endpoint, FalkorDB tenant database routing, graph traversal fixtures, and graph/search result attribution.
 - **Tests:** `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes`, `TenantContextEnforcementIntegrationTests.Search_CrossTenantScope_ReturnsZeroResultsFromOtherTenant`, and `ServerEndpointAuthorizationTests.SearchEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeSearchDependencies`.
-- **Command:** `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests -class Hexalith.Memories.IntegrationTests.Tenants.TenantContextEnforcementIntegrationTests` plus the focused Story 20.2 server authorization command below.
-- **Result:** pending — this is a backlog evidence contract; all named real-backend and denial-before-dependency cases must execute and pass before `done`.
+- **Command:** `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes`; the build-first, canonical-search, and server authorization commands are in the verification table below.
+- **Result:** passed on 2026-08-12 against the real Aspire-provisioned FalkorDB topology. After review hardening, the collision lane returned 1/1 passing in 233.919 seconds, the four canonical tenant/search classes returned 63/63 passing in 241.463 seconds, and the clean-build server verifier/runbook/denial gate returned 54/54 passing in 7.693 seconds. The redundant verifier-based test had already been removed after its required pre-removal 63/63 canonical gate. The linked implementation spec retains complete proof-boundary and environment evidence.
 
-## Planned Verification
+## Verification
 
-| Focused evidence | Command | Required result | Status |
+| Focused evidence | Command | Observed result | Status |
 | :--------------- | :------ | :-------------- | :----- |
-| Collision-shaped graph fixture | `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` | Real FalkorDB traversal returns zero foreign node and edge markers for both tenants. | pending |
-| Canonical search isolation negatives | `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Tenants.TenantContextEnforcementIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.GraphScopedSearchIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.SyntacticSearchIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.SemanticSearchIntegrationTests` | All declared cross-tenant search cases pass. | pending |
-| Story 20.2 denial-before-dependency | `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointAuthorizationTests` | Cross-tenant verification/search requests are denied before dependencies where applicable. | pending |
+| Integration Debug build | `dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false` | Clean build, 0 warnings and 0 errors. | passed 2026-08-12 |
+| Collision-shaped graph fixture | `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` | Complete, non-degraded real FalkorDB traversal returned exact local topology and markers for both authenticated tenant contexts; 1 total, 0 failed, 0 skipped, 233.919 seconds. | passed 2026-08-12 |
+| Canonical search isolation negatives | `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Tenants.TenantContextEnforcementIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.GraphScopedSearchIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.SyntacticSearchIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.SemanticSearchIntegrationTests` | All 63 tests passed after review hardening; 0 failed, 0 skipped, 241.463 seconds. | passed 2026-08-12 |
+| Story 20.2 denial-before-dependency and structural/runbook gates | `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false && DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Tenants.TenantIsolationVerifierTests -class Hexalith.Memories.Server.Tests.Deployment.OperationalRunbookSetTests -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointAuthorizationTests` | Clean build; verifier/runbook/authorization gate passed 54 total, 0 failed, 0 skipped, 7.693 seconds, including traversal-path denial-before-dependency. | passed 2026-08-12 |
+| Epic 23 checklist preservation | `for context_doc in _bmad-output/implementation-artifacts/epic-24-context.md _bmad-output/implementation-artifacts/epic-25-context.md; do test "$(rg -c -F '## Review Checklist — Epic 23 Ingestion Invariants' "$context_doc")" = 1 || exit 1; for invariant_name in 'Claim-check workflow payloads' 'Captured workflow configuration' 'Chunked semantic vectors' 'Source-payload retention' 'Tenant index readiness' 'Single-operation admission'; do test "$(rg -c "^\\| $invariant_name \\|" "$context_doc")" = 1 || exit 1; done; done` | Exit 0; both contexts retain exactly one checklist and exactly one row for every invariant. | passed 2026-08-12 |
+
+The local Dapr placement and scheduler services were mapped to `localhost:6050` and `localhost:6060`
+rather than their default ports, so the Aspire-backed passing commands explicitly supplied those active
+addresses. Generic operator instructions in the runbooks explain how to discover and set active local
+service addresses without assuming this machine's mappings.
+
+## File Scope
+
+**Allowed to modify:**
+
+- `_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+- `_bmad-output/implementation-artifacts/epic-24-context.md`
+- `_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `docs/operations/route-surface.md`
+- `docs/operations/tenant-onboarding-offboarding.md`
+- `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs`
+- `tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs`

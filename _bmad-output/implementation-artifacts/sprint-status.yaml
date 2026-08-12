@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-08-04
+last_updated: 2026-08-12
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -423,7 +423,7 @@ development_status:
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
-  24-6-graph-content-level-tenant-isolation-evidence: backlog
+  24-6-graph-content-level-tenant-isolation-evidence: review
   24-7-tenant-configured-vector-dimension-verification: backlog
   24-8-semantic-isolation-key-family-classification: backlog
   24-9-non-destructive-tenant-marker-diagnostics: backlog

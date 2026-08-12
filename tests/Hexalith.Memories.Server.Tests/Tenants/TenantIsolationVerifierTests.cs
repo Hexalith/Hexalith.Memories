@@ -41,7 +41,6 @@ public class TenantIsolationVerifierTests
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -66,7 +65,6 @@ public class TenantIsolationVerifierTests
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSyntacticKeyPrefix("tenant-a"), plantedKey);
         SetupTenantIdField(redisDb, plantedKey, "tenant-b");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -92,7 +90,6 @@ public class TenantIsolationVerifierTests
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
         SetupTenantIdField(redisDb, plantedKey, "tenant-b");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -118,7 +115,6 @@ public class TenantIsolationVerifierTests
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a"), plantedKey);
         SetupTenantIdField(redisDb, plantedKey, "tenant-b");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -143,7 +139,6 @@ public class TenantIsolationVerifierTests
         string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "missing-tenant-marker");
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
         SetupGraphList(falkorDb, "tenant-a");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -171,7 +166,6 @@ public class TenantIsolationVerifierTests
         SetupTenantIdField(redisDb, firstKey, "tenant-a");
         SetupTenantIdField(redisDb, secondKey, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -215,7 +209,6 @@ public class TenantIsolationVerifierTests
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         // GRAPH.LIST returns an extra database not in registry
         SetupGraphList(falkorDb, "tenant-a", "ghost-tenant");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -238,7 +231,6 @@ public class TenantIsolationVerifierTests
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -259,7 +251,6 @@ public class TenantIsolationVerifierTests
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -278,7 +269,6 @@ public class TenantIsolationVerifierTests
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -301,7 +291,6 @@ public class TenantIsolationVerifierTests
         redisDb.ExecuteAsync(Arg.Is("FT.INFO"), Arg.Any<object[]>())
             .Throws(new RedisServerException("Unknown index name"));
         SetupGraphList(falkorDb, "tenant-a");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -343,7 +332,7 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
-    public async Task VerifyAsync_SingleTenant_PerformsTargetStructuralChecks()
+    public async Task VerifyAsync_GraphIsolation_IsStructuralOnlyAndCitesContentProof()
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
@@ -353,7 +342,6 @@ public class TenantIsolationVerifierTests
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -372,7 +360,19 @@ public class TenantIsolationVerifierTests
         TenantIsolationCheckResult graphCheck = result.Checks.First(c => c.CheckName == "GraphIsolation");
         graphCheck.Passed.ShouldBeTrue();
         graphCheck.Details.ShouldNotBeNull();
-        graphCheck.Details.ShouldContain("Target graph database");
+        graphCheck.Details.ShouldContain("Structural database-existence evidence only");
+        graphCheck.Details.ShouldContain("GRAPH.LIST");
+        graphCheck.Details.ShouldContain(
+            "TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes");
+        graphCheck.Details.ShouldContain("independent execution");
+
+        string[] executedCommands = falkorDb.ReceivedCalls()
+            .Where(call => call.GetMethodInfo().Name == nameof(IDatabase.ExecuteAsync))
+            .Select(call => call.GetArguments()[0]?.ToString())
+            .Where(command => command is not null)
+            .Cast<string>()
+            .ToArray();
+        executedCommands.ShouldBe(["GRAPH.LIST", "GRAPH.LIST", "GRAPH.LIST"]);
     }
 
     [Fact]
@@ -388,7 +388,6 @@ public class TenantIsolationVerifierTests
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 
@@ -418,7 +417,6 @@ public class TenantIsolationVerifierTests
 
         SetupSuccessfulIndexInfo(redisDb, "empty-tenant", 0);
         SetupGraphList(falkorDb, "empty-tenant", "tenant-b");
-        SetupGraphQueryEmpty(falkorDb);
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("empty-tenant", CancellationToken.None);
 
@@ -627,13 +625,6 @@ public class TenantIsolationVerifierTests
         RedisResult graphListResult = RedisResult.Create(items);
         falkorDb.ExecuteAsync(Arg.Is("GRAPH.LIST"), Arg.Any<object[]>())
             .Returns(graphListResult);
-    }
-
-    private static void SetupGraphQueryEmpty(IDatabase falkorDb)
-    {
-        // GRAPH.QUERY returns error (isolation working) or empty result
-        falkorDb.ExecuteAsync(Arg.Is("GRAPH.QUERY"), Arg.Any<object[]>())
-            .Throws(new RedisServerException("ERR Graph not found"));
     }
 
 }

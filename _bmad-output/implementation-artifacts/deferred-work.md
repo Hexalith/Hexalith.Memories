@@ -1891,12 +1891,13 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
 - **Story 24.3 graph content and honest test evidence.**
 
   - ID: 24.3-GRAPH-CONTENT-EVIDENCE
-  - Status: carried-forward
+  - Status: resolved 2026-08-12
   - Source story: 24-3-physical-tenant-isolation-and-verifier-scaling
   - Target artifact: _bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md
   - Backlog home: Story 24.6
   - Owner: Murat / Test Architect and Developer
   - Rationale: `CheckGraphIsolationAsync` proves only target FalkorDB database existence through `GRAPH.LIST`; the two named graph/search tests provision and verify but do not build identical graph structures, traverse colliding edges, execute cross-tenant search, or assert zero foreign content. Story 24.6 owns one real collision-shaped graph fixture, honest test naming, and the canonical axis-specific search evidence.
+  - Resolution: Story 24.6 implemented `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` with identical tenant A/B node IDs, topology, insertion order, and graph-scoped relationship-ID collision; tenant-distinct bounded node/source and `verifiedBy` edge markers; authenticated traversal of both tenant contexts; and zero-foreign-marker plus completeness/topology assertions. On 2026-08-12, after a clean Debug build, the review-hardened real Aspire/FalkorDB method passed 1 total, 0 failed, 0 skipped in 233.919 seconds with the active local Dapr service addresses supplied through `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050` and `MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060`. The four canonical tenant/search classes passed 63 total, 0 failed, 0 skipped before the redundant all-axis verifier test was removed and passed again after review hardening in 241.463 seconds. The server verifier/runbook/authorization gate passed 54 total, 0 failed, 0 skipped in 7.693 seconds, including traversal-path denial-before-dependency. Exact commands are recorded in the target artifact and its linked implementation spec.
   - Re-open trigger: Story 24.6 is selected, or any claim treats `GRAPH.LIST`, current test names, comments, or unit mocks as graph content-isolation proof.
 
 - **Story 24.3 configured vector-dimension authority.**
