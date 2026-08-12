@@ -149,7 +149,13 @@ public sealed class OpenBaoTopologyIntegrationTests(
     {
         (await fixture.RestartOpenBaoGenerationInPlaceAsync().ConfigureAwait(true)).ShouldBeTrue();
         (await fixture.IsOpenBaoInitializedAndUnsealedAsync().ConfigureAwait(true)).ShouldBeTrue();
-        output.WriteLine("In-place OpenBao restart installed a rotated generation and recovered all dependent sidecars.");
+        var actorConfig = await fixture
+            .CreateTenantConfigurationActorProxy(AspireIngestionPipelineFixture.OpenBaoRecoveryTenantId)
+            .GetEmbeddingConfigAsync()
+            .ConfigureAwait(true);
+        actorConfig.Dimensions.ShouldBeGreaterThan(0);
+        output.WriteLine(
+            "In-place OpenBao restart installed a rotated generation and recovered all dependent sidecars and actor clients.");
     }
 
     [Fact]

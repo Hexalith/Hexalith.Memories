@@ -77,6 +77,11 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     [InlineData("/api/v1/tenants/tenant-b/telemetry/summary")]
     [InlineData("/api/v1/tenants/tenant-b/cases/case-1/memory-units/memory-1")]
     [InlineData("/api/v1/tenants/tenant-b/traverse?startNodeId=memory-1")]
+
+    // Denial must precede request validation as well as tenant state: a 400 for a missing or blank
+    // startNodeId would leak that the request reached the handler for a tenant the caller cannot access.
+    [InlineData("/api/v1/tenants/tenant-b/traverse")]
+    [InlineData("/api/v1/tenants/tenant-b/traverse?startNodeId=")]
     public async Task TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState(string path)
     {
         using HttpClient client = CreateClient();
