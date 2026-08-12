@@ -15,8 +15,8 @@ using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
 
-/// <summary>Diagnostic tool that verifies tenant data isolation across all storage backends.
-/// Confirms that architectural isolation guarantees hold — does not enforce isolation at runtime.</summary>
+/// <summary>Diagnostic tool that runs check-specific structural and tenant-marker diagnostics across storage backends.
+/// Its results do not by themselves prove every architectural or content-isolation guarantee, and it does not enforce isolation at runtime.</summary>
 public sealed partial class TenantIsolationVerifier
 {
     private readonly TenantRegistryService _registry;
@@ -334,7 +334,7 @@ public sealed partial class TenantIsolationVerifier
 
             return new TenantIsolationCheckResult("GraphIsolation", true, sw.Elapsed.TotalMilliseconds)
             {
-                Details = $"Target graph database '{tenantId}' exists; GRAPH.LIST returned {graphDatabases.Count} graph database(s)",
+                Details = $"Structural database-existence evidence only: target graph database '{tenantId}' appears in GRAPH.LIST ({graphDatabases.Count} graph database(s)); independent execution of the real-backend proof TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes is required for content-isolation evidence",
             };
         }
         catch (RedisConnectionException ex)

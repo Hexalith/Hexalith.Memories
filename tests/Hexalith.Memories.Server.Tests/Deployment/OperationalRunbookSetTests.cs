@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 
+using Hexalith.Memories.TestHelpers.Documentation;
 using Hexalith.Memories.Telemetry;
 
 using Shouldly;
@@ -365,6 +366,54 @@ public sealed class OperationalRunbookSetTests
         healthDoc.ShouldContain("Degraded` → 200", Case.Sensitive);
         ReadRepoFile("docs/operations/incident-response.md").ShouldContain("Degraded` returns HTTP 200", Case.Sensitive);
         monitoringDoc.ShouldContain("`Degraded` can be HTTP 200", Case.Sensitive);
+    }
+
+    [Fact]
+    public void GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof()
+    {
+        const string proofMethod =
+            "TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes";
+        const string buildCommand =
+            "dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false";
+        const string proofCommand =
+            "DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes";
+
+        string tenantMarkdown = ReadRepoFile("docs/operations/tenant-onboarding-offboarding.md");
+        string routeMarkdown = ReadRepoFile("docs/operations/route-surface.md");
+        string tenantSection = new MarkdownContractDocument(tenantMarkdown)
+            .GetSection("Graph isolation evidence boundary");
+        string routeSection = new MarkdownContractDocument(routeMarkdown)
+            .GetSection("Graph isolation evidence boundary");
+
+        foreach (string section in new[] { tenantSection, routeSection })
+        {
+            section.ShouldContain("structural database-existence evidence only", Case.Sensitive);
+            section.ShouldContain("GRAPH.LIST", Case.Sensitive);
+            section.ShouldContain(proofMethod, Case.Sensitive);
+            section.ShouldContain(buildCommand, Case.Sensitive);
+            section.ShouldContain(proofCommand, Case.Sensitive);
+            section.IndexOf(buildCommand, StringComparison.Ordinal)
+                .ShouldBeLessThan(section.IndexOf(proofCommand, StringComparison.Ordinal));
+            section.ShouldContain("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS", Case.Sensitive);
+            section.ShouldContain("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS", Case.Sensitive);
+            section.ShouldContain("active local service", Case.Sensitive);
+            section.ShouldContain("authenticated canary traversal", Case.Sensitive);
+            section.ShouldNotContain("localhost:6050", Case.Sensitive);
+            section.ShouldNotContain("localhost:6060", Case.Sensitive);
+        }
+
+        string verifierSource = ReadRepoFile(
+            "src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs");
+        MatchCollection falkorCommands = Regex.Matches(
+            verifierSource,
+            "falkorDb\\.ExecuteAsync\\(\\s*\"(?<command>[^\"]+)\"",
+            RegexOptions.CultureInvariant);
+        falkorCommands.Count.ShouldBe(3);
+        falkorCommands.Cast<Match>()
+            .Select(match => match.Groups["command"].Value)
+            .ShouldAllBe(command => string.Equals(command, "GRAPH.LIST", StringComparison.Ordinal));
+        ContractDocumentGuard.FindLeakedToolCallMarkup(tenantMarkdown).ShouldBeEmpty();
+        ContractDocumentGuard.FindLeakedToolCallMarkup(routeMarkdown).ShouldBeEmpty();
     }
 
     [Fact]

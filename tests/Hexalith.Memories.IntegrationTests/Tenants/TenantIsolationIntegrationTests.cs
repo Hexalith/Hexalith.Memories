@@ -11,6 +11,9 @@ using System.Text;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
+using Hexalith.Memories.Server.Graph;
+
+using NFalkorDB;
 
 using Shouldly;
 
@@ -23,7 +26,15 @@ using StackExchange.Redis;
 [Trait("Category", "Integration")]
 public sealed class TenantIsolationIntegrationTests
 {
+    private const long GraphQueryTimeoutMilliseconds = 30_000;
+    private const string CollisionSourceNodeId = "shared-source";
+    private const string CollisionTargetNodeId = "shared-target";
+
+    private static readonly TimeSpan GraphQueryTimeout = TimeSpan.FromMilliseconds(GraphQueryTimeoutMilliseconds);
+    private static readonly TimeSpan HttpOperationTimeout = TimeSpan.FromSeconds(60);
+
     private readonly AspireIngestionPipelineFixture _fixture;
+    private readonly GraphQueryBuilder _graphQueryBuilder = new();
 
     /// <summary>Initializes a new instance of the <see cref="TenantIsolationIntegrationTests"/> class.</summary>
     /// <param name="fixture">The Aspire pipeline fixture.</param>
@@ -53,41 +64,29 @@ public sealed class TenantIsolationIntegrationTests
     [Fact]
     public async Task VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes()
     {
-        // AC #2: Create identical graph structures in tenant A and B with colliding edge IDs
-        // Run verify on A, confirm zero nodes from B (NFR8 edge ID collision test)
+        const string nodeMarkerA = "GRAPH-NODE-MARKER-TENANT-A";
+        const string nodeMarkerB = "GRAPH-NODE-MARKER-TENANT-B";
+        const string edgeMarkerA = "GRAPH-EDGE-MARKER-TENANT-A";
+        const string edgeMarkerB = "GRAPH-EDGE-MARKER-TENANT-B";
+
         string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
-        _ = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
+        string tenantB = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
+        DateTimeOffset fixtureTimestamp = DateTimeOffset.UtcNow;
 
-        using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            $"/api/v1/tenants/{tenantA}/verify", null);
+        await SeedCollisionGraphAsync(tenantA, nodeMarkerA, edgeMarkerA, fixtureTimestamp);
+        await SeedCollisionGraphAsync(tenantB, nodeMarkerB, edgeMarkerB, fixtureTimestamp);
 
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        TenantIsolationVerificationResult? result = await response.Content
-            .ReadFromJsonAsync<TenantIsolationVerificationResult>(MemoriesJsonContext.Options);
+        long tenantAEdgeId = await ReadCollisionEdgeIdAsync(tenantA);
+        long tenantBEdgeId = await ReadCollisionEdgeIdAsync(tenantB);
+        tenantAEdgeId.ShouldBe(
+            tenantBEdgeId,
+            "FalkorDB relationship ids are graph-scoped, so identical insertion order must produce the collision this proof defends against.");
 
-        result.ShouldNotBeNull();
-        TenantIsolationCheckResult graphCheck = result.Checks
-            .First(c => c.CheckName == "GraphIsolation");
-        graphCheck.Passed.ShouldBeTrue();
-    }
+        TraversalResult tenantATraversal = await TraverseAuthenticatedAsync(tenantA);
+        TraversalResult tenantBTraversal = await TraverseAuthenticatedAsync(tenantB);
 
-    [Fact]
-    public async Task VerifyTenant_SearchFromOtherContext_ZeroResultsAcrossAllAxes()
-    {
-        // Ingest into A, search from B context, confirm zero results across all axes
-        string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
-        _ = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
-
-        using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
-            $"/api/v1/tenants/{tenantA}/verify", null);
-
-        response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        TenantIsolationVerificationResult? result = await response.Content
-            .ReadFromJsonAsync<TenantIsolationVerificationResult>(MemoriesJsonContext.Options);
-
-        result.ShouldNotBeNull();
-        result.Checks.First(c => c.CheckName == "SyntacticIsolation").Passed.ShouldBeTrue();
-        result.Checks.First(c => c.CheckName == "SemanticIsolation").Passed.ShouldBeTrue();
+        AssertTraversalIsFixtureLocal(tenantATraversal, nodeMarkerA, edgeMarkerA, nodeMarkerB, edgeMarkerB);
+        AssertTraversalIsFixtureLocal(tenantBTraversal, nodeMarkerB, edgeMarkerB, nodeMarkerA, edgeMarkerA);
     }
 
     [Fact]
@@ -161,6 +160,138 @@ public sealed class TenantIsolationIntegrationTests
         syntacticCheck.Passed.ShouldBeFalse();
         syntacticCheck.Details.ShouldNotBeNull();
         syntacticCheck.Details.ShouldContain(tenantB);
+    }
+
+    private async Task SeedCollisionGraphAsync(
+        string tenantId,
+        string nodeMarker,
+        string edgeMarker,
+        DateTimeOffset fixtureTimestamp)
+    {
+        FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
+
+        foreach (string memoryUnitId in new[] { CollisionSourceNodeId, CollisionTargetNodeId })
+        {
+            (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeMemoryUnitNode(
+                memoryUnitId,
+                "shared-case",
+                $"{nodeMarker} content for {memoryUnitId}",
+                $"hash-{nodeMarker}-{memoryUnitId}",
+                $"file:///{nodeMarker}/{memoryUnitId}.txt",
+                SourceType.File,
+                "integration-provider",
+                3,
+                "graph-isolation@integration.test",
+                fixtureTimestamp,
+                "{}");
+            _ = await ExecuteGraphQueryAsync(falkor.SelectGraph(tenantId), query, parameters);
+        }
+
+        (string edgeQuery, IDictionary<string, object> edgeParameters) = _graphQueryBuilder.BuildRestoreEdge(
+            CollisionSourceNodeId,
+            CollisionTargetNodeId,
+            EdgeType.CausedBy,
+            EdgeTypeDefaults.CausedBy,
+            EdgeOrigin.Explicit,
+            fixtureTimestamp,
+            edgeMarker,
+            previousConfidence: null);
+        _ = await ExecuteGraphQueryAsync(falkor.SelectGraph(tenantId), edgeQuery, edgeParameters);
+    }
+
+    private async Task<long> ReadCollisionEdgeIdAsync(string tenantId)
+    {
+        FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
+        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildListEdgesForMemoryUnits(
+            [CollisionSourceNodeId, CollisionTargetNodeId]);
+        ResultSet result = await ExecuteGraphQueryAsync(falkor.SelectGraph(tenantId), query, parameters);
+        long[] edgeIds = result
+            .Select(record => record.GetValue<long>("edgeId"))
+            .Distinct()
+            .ToArray();
+
+        edgeIds.Length.ShouldBe(1, $"Tenant graph '{tenantId}' must contain exactly one collision-fixture relationship.");
+        return edgeIds[0];
+    }
+
+    private async Task<TraversalResult> TraverseAuthenticatedAsync(string tenantId)
+    {
+        using CancellationTokenSource requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        requestTimeout.CancelAfter(HttpOperationTimeout);
+        using HttpResponseMessage response = await _fixture.MemoriesClient.GetAsync(
+            $"/api/v1/tenants/{tenantId}/traverse?startNodeId={CollisionSourceNodeId}&depth=1",
+            requestTimeout.Token);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        using CancellationTokenSource readTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        readTimeout.CancelAfter(HttpOperationTimeout);
+        TraversalResult? result = await response.Content
+            .ReadFromJsonAsync<TraversalResult>(MemoriesJsonContext.Options, readTimeout.Token);
+        result.ShouldNotBeNull();
+        return result;
+    }
+
+    private static async Task<ResultSet> ExecuteGraphQueryAsync(
+        NFalkorDB.Graph graph,
+        string query,
+        IDictionary<string, object> parameters)
+        => await graph
+            .QueryAsync(query, parameters, CommandFlags.None, GraphQueryTimeoutMilliseconds)
+            .WaitAsync(GraphQueryTimeout, TestContext.Current.CancellationToken);
+
+    private static void AssertTraversalIsFixtureLocal(
+        TraversalResult traversal,
+        string ownNodeMarker,
+        string ownEdgeMarker,
+        string foreignNodeMarker,
+        string foreignEdgeMarker)
+    {
+        string[] expectedNodeIds = [CollisionSourceNodeId, CollisionTargetNodeId];
+        traversal.StartNodeId.ShouldBe(CollisionSourceNodeId);
+        traversal.Depth.ShouldBe(1);
+        traversal.TotalNodeCount.ShouldBe(2);
+        traversal.OmittedCount.ShouldBe(0);
+        traversal.Degraded.ShouldBeFalse();
+        (traversal.UnavailableAxes ?? []).ShouldBeEmpty();
+        traversal.PrimaryPathIntact.ShouldBeTrue();
+        traversal.GapMarkers.ShouldBeEmpty();
+        traversal.Nodes.Select(node => node.MemoryUnitId).OrderBy(id => id, StringComparer.Ordinal)
+            .ShouldBe(expectedNodeIds.OrderBy(id => id, StringComparer.Ordinal));
+        traversal.Nodes.ShouldAllBe(node => expectedNodeIds.Contains(node.MemoryUnitId, StringComparer.Ordinal));
+        traversal.Nodes.ShouldAllBe(node => node.ContentSnippet.StartsWith(ownNodeMarker, StringComparison.Ordinal));
+        traversal.Nodes.ShouldAllBe(node => !node.ContentSnippet.Contains(foreignNodeMarker, StringComparison.Ordinal));
+        traversal.Nodes.ShouldAllBe(node => node.SourceUri.Contains(ownNodeMarker, StringComparison.Ordinal));
+        traversal.Nodes.ShouldAllBe(node => !node.SourceUri.Contains(foreignNodeMarker, StringComparison.Ordinal));
+
+        TraversalEdgeInfo[] edges = [.. traversal.Nodes.SelectMany(node => node.Edges)];
+        edges.Length.ShouldBe(2, "Both endpoint nodes must expose exactly one incident view of the seeded relationship.");
+        edges.ShouldAllBe(edge => expectedNodeIds.Contains(edge.ConnectedNodeId, StringComparer.Ordinal));
+        edges.ShouldAllBe(edge => string.Equals(edge.VerifiedBy, ownEdgeMarker, StringComparison.Ordinal));
+        edges.ShouldAllBe(
+            edge => edge.VerifiedBy == null || !edge.VerifiedBy.Contains(foreignEdgeMarker, StringComparison.Ordinal));
+
+        TraversalNode sourceNode = traversal.Nodes.Single(node => node.MemoryUnitId == CollisionSourceNodeId);
+        TraversalEdgeInfo outgoing = sourceNode.Edges.ShouldHaveSingleItem();
+        AssertCollisionEdge(outgoing, CollisionTargetNodeId, "outgoing", ownEdgeMarker);
+
+        TraversalNode targetNode = traversal.Nodes.Single(node => node.MemoryUnitId == CollisionTargetNodeId);
+        TraversalEdgeInfo incoming = targetNode.Edges.ShouldHaveSingleItem();
+        AssertCollisionEdge(incoming, CollisionSourceNodeId, "incoming", ownEdgeMarker);
+    }
+
+    private static void AssertCollisionEdge(
+        TraversalEdgeInfo edge,
+        string connectedNodeId,
+        string direction,
+        string ownEdgeMarker)
+    {
+        edge.ConnectedNodeId.ShouldBe(connectedNodeId);
+        edge.EdgeType.ShouldBe(EdgeType.CausedBy);
+        edge.Direction.ShouldBe(direction);
+        edge.Origin.ShouldBe(EdgeOrigin.Explicit);
+        edge.VerifiedBy.ShouldBe(ownEdgeMarker);
     }
 
     private async Task SeedMemoryUnitHashAsync(
