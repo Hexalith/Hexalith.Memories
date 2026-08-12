@@ -39,7 +39,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 {
     private const string StateStoreName = "statestore";
     private const string TenantRegistryIndexKey = "tenant-registry-index";
-    private const string OpenBaoRecoveryTenantId = "tenant-openbao-recovery";
+    internal const string OpenBaoRecoveryTenantId = "tenant-openbao-recovery";
     private const string AspireContainerCreatorProcessLabel = "com.microsoft.developer.usvc-dev.creatorProcessId";
     private const string AspireContainerCreatorStartTimeLabel = "com.microsoft.developer.usvc-dev.creatorProcessStartTime";
     internal const string OpenBaoRuntimeCanarySecretName = "story29-runtime-canary";
@@ -641,9 +641,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                         _logProvider.GetEntriesSince(_topologyLogStartIndex));
                     if (currentDaprEndpoint != DaprSidecarHttpEndpoint)
                     {
-                        DaprSidecarHttpEndpoint = currentDaprEndpoint;
-                        _daprStateClient?.Dispose();
-                        _daprStateClient = CreateDaprSidecarClient("memories-dapr-cli");
+                        ReconnectPrimaryDaprClients(currentDaprEndpoint);
                     }
 
                     if (await CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(false) &&
@@ -1155,6 +1153,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         Uri endpoint = ResolveDaprSidecarHttpEndpoint(
             sidecarResourceName,
             _logProvider.GetEntriesSince(_topologyLogStartIndex));
+        return CreateDaprSidecarClient(endpoint);
+    }
+
+    private static HttpClient CreateDaprSidecarClient(Uri endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
         var client = new HttpClient
         {
             BaseAddress = endpoint,
@@ -1167,6 +1171,34 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         }
 
         return client;
+    }
+
+    private void ReconnectPrimaryDaprClients(Uri endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        HttpClient nextStateClient = CreateDaprSidecarClient(endpoint);
+        var nextActorOptions = new ActorProxyOptions
+        {
+            HttpEndpoint = endpoint.ToString(),
+            RequestTimeout = TimeSpan.FromSeconds(30),
+            JsonSerializerOptions = MemoriesJsonContext.Options,
+        };
+        var nextActorHttpMessageHandler = new HttpClientHandler();
+        var nextActorProxyFactory = new ActorProxyFactory(
+            nextActorOptions,
+            (HttpMessageHandler)nextActorHttpMessageHandler);
+
+        _daprStateClient?.Dispose();
+        _actorProxyFactory = null;
+        _actorProxyOptions = null;
+        _actorHttpMessageHandler?.Dispose();
+
+        DaprSidecarHttpEndpoint = endpoint;
+        _daprStateClient = nextStateClient;
+        _actorProxyOptions = nextActorOptions;
+        _actorHttpMessageHandler = nextActorHttpMessageHandler;
+        _actorProxyFactory = nextActorProxyFactory;
     }
 
     private async Task<string> ReadScopedTokenFingerprintAsync()
@@ -1943,37 +1975,19 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             logStartIndex,
             cancellationToken).ConfigureAwait(false);
 
-        DaprSidecarHttpEndpoint = await WaitForDaprSidecarHttpEndpointAsync(
+        Uri daprSidecarHttpEndpoint = await WaitForDaprSidecarHttpEndpointAsync(
             "memories-dapr-cli",
             () => _logProvider.GetEntriesSince(logStartIndex),
             EndpointReadyTimeout,
             EndpointPollInterval,
             cancellationToken).ConfigureAwait(false);
-        _daprStateClient = new HttpClient
-        {
-            BaseAddress = DaprSidecarHttpEndpoint,
-            Timeout = TimeSpan.FromSeconds(30),
-        };
-        string? daprApiToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
-        if (!string.IsNullOrWhiteSpace(daprApiToken))
-        {
-            _daprStateClient.DefaultRequestHeaders.TryAddWithoutValidation("dapr-api-token", daprApiToken);
-        }
+        ReconnectPrimaryDaprClients(daprSidecarHttpEndpoint);
 
         Uri redisEndpoint = _app.GetEndpoint("memories-vectors", "redis");
         Uri falkorEndpoint = _app.GetEndpoint("memories-graphs", "falkordb");
 
         RedisConnection = await ConnectionMultiplexer.ConnectAsync(redisEndpoint.Authority).ConfigureAwait(false);
         FalkorDbConnection = await ConnectionMultiplexer.ConnectAsync(falkorEndpoint.Authority).ConfigureAwait(false);
-
-        _actorProxyOptions = new ActorProxyOptions
-        {
-            HttpEndpoint = DaprSidecarHttpEndpoint.ToString(),
-            RequestTimeout = TimeSpan.FromSeconds(30),
-            JsonSerializerOptions = MemoriesJsonContext.Options,
-        };
-        _actorHttpMessageHandler = new HttpClientHandler();
-        _actorProxyFactory = new ActorProxyFactory(_actorProxyOptions, (HttpMessageHandler)_actorHttpMessageHandler);
 
         await WaitForEndpointAsync(
             MemoriesClient,

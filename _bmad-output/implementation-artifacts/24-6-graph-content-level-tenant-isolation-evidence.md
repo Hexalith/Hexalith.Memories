@@ -105,6 +105,14 @@ rather than their default ports, so the Aspire-backed passing commands explicitl
 addresses. Generic operator instructions in the runbooks explain how to discover and set active local
 service addresses without assuming this machine's mappings.
 
+The PR follow-up exposed a deterministic `integration-fast` baseline defect outside the graph-isolation
+implementation: the in-place OpenBao restart refreshed the fixture's raw Dapr client after the sidecar
+port rotated but left its actor-proxy factory bound to the retired port. The authorized CI repair now
+reconnects both clients and extends the restart test with a post-rotation actor call. A Release build
+passed with 0 warnings and 0 errors; the exact restart regression passed 1/1 in 2.5443 minutes; and a
+combined run covering that regression plus the two formerly failing actor-dependent classes passed
+11 tests with 1 intentional skip in 2.8299 minutes.
+
 ## Change Log
 
 | Date | Phase | Change | Test count | File List reconciliation |
@@ -112,6 +120,7 @@ service addresses without assuming this machine's mappings.
 | 2026-08-12 | create-story | Adoption baseline appended by `code-review` on 2026-08-12. Story 24.6 was authored 2026-08-04 (commit `7b55c62f`) — after the 2026-07-16 phase-ledger policy — but no canonical table was created, so no `create-story` row existed to read. Earlier deltas are not reconstructed. Owner: Murat / Test Architect and Developer. Declared comparison baseline re-set this review to `0ecdffed` (the spec baseline and the true implementation slice); the previous story frontmatter value `e902181d` spanned 24 unrelated commits including the BMAD 6.11.0 migration. | Baseline at `0ecdffed`, **derived arithmetically from the reviewed diff, not from live discovery**: Server.Tests three named classes = **52 test cases**; `TenantIsolationIntegrationTests` = **7 test methods**; the four canonical tenant/search classes = **63 test methods**. Blocker: live discovery at `0ecdffed` would require building a historical worktree, which would need uninitialised `references/` submodules. Owner: code review. Consequence: the create baseline is derived, not runner-observed. Reopen trigger: any dispute over the create-to-dev delta. All later rows are runner-derived. | Not reconstructed for this row; the cumulative set is reconciled at `dev-story` and `code-review` below. |
 | 2026-08-12 | dev-story | Implemented the collision-shaped FalkorDB fixture and authenticated dual-tenant traversal, removed the redundant all-axis verifier test after the canonical negatives passed, made the runtime `GraphIsolation` boundary explicit as structural-only with a proof citation, and documented the evidence boundary in both operator runbooks. | Server.Tests three named classes: phase delta **+2 test cases** (52 -> 54; +1 `ServerEndpointAuthorizationTests` InlineData, +1 `OperationalRunbookSetTests` Fact). `TenantIsolationIntegrationTests`: phase delta **-1 test method** (7 -> 6; `VerifyTenant_SearchFromOtherContext_ZeroResultsAcrossAllAxes` removed). Canonical four classes: phase delta **+0 test methods** (63 -> 63). Cumulative story delta at this phase: +2 cases / -1 method / +0 methods. Units are not interchangeable: `54` is theory-expanded xUnit **test cases**, `63` and `6` are **test methods** in a different assembly. Command: `DiffEngine_Disabled=true dotnet exec <assembly> -class <named classes>`. | Not recorded at the time; reconciled by the `code-review` row below. |
 | 2026-08-12 | code-review | Adversarial review over `0ecdffed..63387538` with six layers plus independent parent-side re-execution. 4 decisions resolved and 33 patches applied: repaired the `deferred-work.md` schema break that failed 2 CI tests, reverted the lossy `epic-24-context.md` regeneration (restoring the `NFR8` and `D29` anchors and the approved-change text), re-based the story to `0ecdffed`, created this ledger and the File List, pinned the cited proof at method scope in `tools/integration-fast-required-surfaces.txt`, covered the previously untested missing-target-graph fail-closed branch, restored the split verifier test, added `/traverse` denial rows for missing and blank `startNodeId`, relocated both runbook headings out of the positions that hijacked following content, and re-derived the Epic AC table against the post-patch worktree. | Review-patch phase delta: Server.Tests three named classes **+4 test cases** (54 -> 58; +2 `TenantIsolationVerifierTests` methods — the restored `VerifyAsync_SingleTenant_PerformsTargetStructuralChecks` split and the new `VerifyAsync_TargetGraphDatabaseMissing_FailsClosed` — and +2 `ServerEndpointAuthorizationTests` InlineData rows). `TenantIsolationIntegrationTests` **+0 test methods** (6 -> 6). Canonical four classes **+0 test methods** (63 -> 63). Cumulative story delta from the create baseline: **+6 test cases** (52 -> 58), **-1 test method** (7 -> 6), **+0 test methods** (63 -> 63). No external same-lane delta: no other owner changed these discovery lanes between phases, so create baseline + cumulative story delta = observed total in every lane. Commands and observed totals are in the Verification table above; the full `Hexalith.Memories.Server.Tests` assembly is 2799 passing / 1 skipped / 0 failed. | matched 13/13 against baseline `0ecdffed` using `git diff --name-status 0ecdffed`. No exclusions. |
+| 2026-08-12 | ci-repair | PR #53 reproduced the same post-OpenBao-restart actor connection failures in two independent GitHub runners. Reconnected the fixture's state client and actor-proxy factory together whenever the primary Dapr endpoint rotates, then required the restart regression to complete a real actor call. | Existing test strengthened, so discovery delta **+0**. Release build: 0 warnings/errors. Exact restart regression: **1 passed**. Combined repair lane: **11 passed, 1 intentionally skipped, 0 failed**. | Added 2 exact forbidden-default test paths to File Scope and File List under the human-authorized CI repair; the story artifact already owned this reconciliation record. |
 
 ## File List
 
@@ -126,6 +135,8 @@ Cumulative story-scoped changed-file set, reconciled against `git diff --name-st
 - `docs/operations/tenant-onboarding-offboarding.md`
 - `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs`
 - `tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs`
@@ -144,6 +155,8 @@ Cumulative story-scoped changed-file set, reconciled against `git diff --name-st
 - `docs/operations/tenant-onboarding-offboarding.md`
 - `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs`
 - `tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs`
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs`
 - `tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs`
