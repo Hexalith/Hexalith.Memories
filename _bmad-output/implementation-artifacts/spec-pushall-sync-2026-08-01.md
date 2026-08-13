@@ -2,9 +2,10 @@
 title: 'Authorize the 2026-08-01 pushall synchronization'
 type: 'bugfix'
 created: '2026-08-01'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '1d9e9c89ef53d877b4ec09face575c36e5889854'
+disposition: 'superseded-without-execution'
 context:
   - '{project-root}/references/Hexalith.AI.Tools/hexalith-git-instructions.md'
   - '{project-root}/_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md'
@@ -93,19 +94,20 @@ Allowed files for this story:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `_bmad-output/implementation-artifacts/spec-pushall-sync-2026-08-01.md` -- establish the exact owner-valid synchronization envelope without changing underlying story ownership.
-- [ ] Git index and commit metadata -- stage exactly the declared File Scope and commit with `build: sync local changes via /pushall` plus `Story-Key: spec-pushall-sync-2026-08-01`.
-- [ ] Superproject refs -- finish the `/pushall` merge, push, safe local deletion, exact-lease remote pruning, final fetch, and final-branch verification.
+- [x] Disposition -- close/supersede without executing the Aug 1 `/pushall` envelope (Administrator decision 2026-08-13).
+- [x] `_bmad-output/implementation-artifacts/spec-pushall-sync-2026-08-01.md` -- record supersession; leave frozen Aug 1 File Scope as historical intent only.
+- [x] Git index and commit metadata -- no restage/commit under this Story-Key (snapshot obsolete).
+- [x] Superproject refs -- no `/pushall` continuation under this Story-Key.
 
 **Acceptance Criteria:**
-- Given the exact approved staged snapshot, when repository scope and commit hooks run, then every path is accepted without `Scope-Override` or bypass flags.
-- Given a successful validated commit, when the full branch range is checked, then commitlint passes before the superproject push.
-- Given a successful default-branch push, when branch pruning runs, then only merged local branches and fetched remote tips proven ancestral are deleted using safe deletion and exact expected-OID leases.
-- Given any divergence, moved ref, validation failure, or push rejection, when the workflow reaches that operation, then it preserves the affected work or branch and reports the exact failure.
+- Given the Administrator Close/supersede decision, when this artifact is closed, then no commit, push, File Scope rewrite, or Scope-Override is performed for the obsolete Aug 1 34-path snapshot.
+- Given later completed envelopes such as `spec-pushall-sync-2026-08-09`, when operators look for the Aug 1 owner, then this artifact reads `done` with `disposition: superseded-without-execution`.
+- Given the current dirty Story 24.6 / tenant-isolation tree, when this closeout finishes, then that work remains untouched and unowned by this Story-Key.
 
 ## Spec Change Log
 
 - 2026-08-01 -- Parent reachability verification found the approved Builds and Commons OIDs unavailable from their origins. The Administrator authorized rebuilding both intended changes on current `origin/main`, preserving the old local histories on backup branches, pushing only fast-forward updates, and updating only those two parent gitlink OIDs.
+- 2026-08-13 -- Administrator chose Close/supersede after `bmad-build` found the working tree no longer matches the approved 34-path File Scope (staged set was Story 24.6 / tenant-isolation work on `main` @ `e6f57e87`). Closed without restaging, committing, pushing, or rewriting frozen File Scope. Later envelopes (including `spec-pushall-sync-2026-08-09`) supersede this snapshot for `/pushall` ownership.
 
 ## Design Notes
 
@@ -122,10 +124,17 @@ Story-Key: spec-pushall-sync-2026-08-01
 
 ## Verification
 
-**Commands:**
+**Commands (historical — not re-run on closeout):**
 - `git diff --cached --check` -- expected: no whitespace or conflict-marker errors.
 - `python3 tools/check-story-file-scope.py --story-key spec-pushall-sync-2026-08-01 --staged` -- expected: all 34 paths accepted.
 - `python3 tools/check-tenant-isolation-evidence.py --story-key spec-pushall-sync-2026-08-01 --staged` -- expected: no triggered tenant-isolation surface, or fail closed with exact evidence requirement.
 - `python3 tools/check-story-review-readiness.py --story-key spec-pushall-sync-2026-08-01 --staged --derive-cumulative` -- expected: standalone-spec readiness passes.
 - `npx commitlint --edit <message-file> --verbose` and `.githooks/commit-msg <message-file>` -- expected: proposed message and composed local gates pass.
 - `npx commitlint --from "$(git merge-base origin/main HEAD)" --to HEAD --verbose` -- expected: complete push range passes.
+
+## Verification Results
+
+- 2026-08-13 closeout: no commit under `Story-Key: spec-pushall-sync-2026-08-01`.
+- Snapshot-drift check at halt: approved File Scope 34 paths; staged set 15 paths (Story 24.6 / tenant-isolation); exact match false.
+- Frozen Aug 1 File Scope preserved as historical intent; not rewritten for today's tree.
+- Current dirty work left untouched for its real owners (Story 24.6 and related artifacts).
