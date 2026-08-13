@@ -93,6 +93,51 @@ public sealed class TenantIsolationIntegrationTests
     }
 
     [Fact]
+    public async Task VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage()
+    {
+        const string nodeMarkerA = "GRAPH-NODE-MARKER-TENANT-A-NEGATIVE-CONTROL";
+        const string nodeMarkerB = "GRAPH-NODE-MARKER-TENANT-B-NEGATIVE-CONTROL";
+        const string edgeMarkerA = "GRAPH-EDGE-MARKER-TENANT-A-NEGATIVE-CONTROL";
+        const string edgeMarkerB = "GRAPH-EDGE-MARKER-TENANT-B-NEGATIVE-CONTROL";
+
+        string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
+        string tenantB = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
+        DateTimeOffset fixtureTimestamp = DateTimeOffset.UtcNow;
+
+        await SeedCollisionGraphAsync(tenantA, nodeMarkerA, edgeMarkerA, fixtureTimestamp);
+        await SeedCollisionGraphAsync(tenantB, nodeMarkerB, edgeMarkerB, fixtureTimestamp);
+
+        long tenantAEdgeId = await ReadCollisionEdgeIdAsync(tenantA);
+        long tenantBEdgeId = await ReadCollisionEdgeIdAsync(tenantB);
+        tenantAEdgeId.ShouldBe(tenantBEdgeId, "the negative control must retain the collision-shaped fixture.");
+
+        FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
+        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildUpdateEdgeConfidence(
+            CollisionSourceNodeId,
+            CollisionTargetNodeId,
+            EdgeType.CausedBy,
+            EdgeTypeDefaults.CausedBy,
+            edgeMarkerB);
+        ResultSet plantedMarker = await ExecuteGraphQueryAsync(falkor.SelectGraph(tenantA), query, parameters);
+        plantedMarker.ShouldNotBeEmpty("the foreign marker mutation must reach tenant A's collision edge.");
+
+        TraversalResult traversal = await TraverseAuthenticatedAsync(tenantA);
+        TraversalEdgeInfo[] traversedEdges = [.. traversal.Nodes.SelectMany(node => node.Edges)];
+        traversedEdges.ShouldNotBeEmpty();
+        traversedEdges.ShouldAllBe(
+            edge => string.Equals(edge.VerifiedBy, edgeMarkerB, StringComparison.Ordinal),
+            "the authenticated traversal must expose the deliberately planted foreign edge marker.");
+
+        ShouldAssertException assertion = Should.Throw<ShouldAssertException>(() => AssertTraversalIsFixtureLocal(
+            traversal,
+            nodeMarkerA,
+            edgeMarkerA,
+            nodeMarkerB,
+            edgeMarkerB));
+        assertion.Message.ShouldContain("tenant-local edge marker");
+    }
+
+    [Fact]
     public async Task VerifyTenant_MalformedTenantId_Returns400()
     {
         // Run verify with malformed tenant ID, confirm rejection
@@ -283,7 +328,9 @@ public sealed class TenantIsolationIntegrationTests
         // fixture seeds; a separate null-tolerant "does not contain the foreign marker" check would be
         // unreachable behind it, and vacuously true on null if the equality were ever relaxed.
         edges.ShouldAllBe(edge => edge.VerifiedBy != null);
-        edges.ShouldAllBe(edge => string.Equals(edge.VerifiedBy, ownEdgeMarker, StringComparison.Ordinal));
+        edges.ShouldAllBe(
+            edge => string.Equals(edge.VerifiedBy, ownEdgeMarker, StringComparison.Ordinal),
+            $"Every traversed edge must expose the tenant-local edge marker '{ownEdgeMarker}'.");
         ownEdgeMarker.ShouldNotBe(foreignEdgeMarker, "the fixture must seed distinct per-tenant edge markers.");
 
         TraversalNode sourceNode = traversal.Nodes.Single(node => node.MemoryUnitId == CollisionSourceNodeId);

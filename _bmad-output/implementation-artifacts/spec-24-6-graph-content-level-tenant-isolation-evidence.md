@@ -2,7 +2,7 @@
 title: 'Story 24.6: Graph Content-Level Tenant Isolation Evidence'
 type: 'feature'
 created: '2026-08-12'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 1
 baseline_commit: '0ecdffed0b131d05816306da1c7061eb88bda5bf'
 context:
@@ -64,6 +64,12 @@ context:
 
 - 2026-08-12: Implemented the graph-collision proof, structural-only runtime wording and guards,
   canonical-negative cleanup, operator documentation, and attached verification evidence.
+- 2026-08-13: Closed review finding P1 with a real FalkorDB negative control that plants tenant B's
+  edge marker into tenant A's colliding graph and proves the authenticated traversal locality assertion
+  fails on that foreign marker.
+- 2026-08-13: Resolved N4 by the Administrator's recommended option: removed the externally owned
+  customization-fixture repair from Story 24.6's checkpoint table and retained it only as the named
+  File List exclusion owned by `spec-update-bmad-6-10-1n49-2026-08-04`.
 
 ## Verification
 
@@ -101,6 +107,7 @@ context:
 - Affected surfaces: tenant-scoped FalkorDB databases and authenticated
   `GET /api/v1/tenants/{tenantId}/traverse` responses.
 - Collision test: `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes`.
+- Negative-control test: `TenantIsolationIntegrationTests.VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage`.
 - Seeded boundary: identical node IDs, edge type, topology, timestamp, and insertion order in both
   tenant databases; distinct bounded node-content/source markers and `verifiedBy` edge markers.
 - Assertions: graph-scoped relationship IDs collide; each traversal is complete and non-degraded,
@@ -108,8 +115,12 @@ context:
   `CausedBy` relationship views, exposes its own node/edge markers and no gap markers, and contains
   zero foreign markers.
 - Backend: real Aspire-provisioned FalkorDB; no mocked graph-content result.
+- Negative-control command:
+  `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage`.
+- Negative-control result: 1 total, 0 failed, 0 skipped, 190.569 seconds on 2026-08-13;
+  the full owning class then passed 7/7 in 214.351 seconds.
 - Proof boundary — write path is **not** covered: `SeedCollisionGraphAsync` obtains the tenant graph
-  directly via `falkor.SelectGraph(tenantId)` (`TenantIsolationIntegrationTests.cs:168`) rather than
+  directly via `falkor.SelectGraph(tenantId)` (`TenantIsolationIntegrationTests.cs:213`) rather than
   ingesting through the production write path. This evidence therefore proves read-path tenant routing
   and graph-content locality under identifier collision; it does not prove that a production ingestion
   into tenant A selects tenant A's graph. That write-path claim remains an open deferred item ("no test
@@ -130,6 +141,18 @@ context:
   targeted unused default ports 50005/50006. The test body did not run on that attempt. Supplying the
   addresses of the already-running local placement/scheduler services made the required backend proof
   runnable and produced the passing result above; no production or fixture workaround was added.
+- P1 negative control: `TenantIsolationIntegrationTests.VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage`
+  passed against the real Aspire-provisioned FalkorDB topology on 2026-08-13: 1 total, 0 failed,
+  0 skipped, 190.569 seconds. It seeds both colliding tenant graphs, rewrites tenant A's edge with
+  tenant B's marker through `GraphQueryBuilder.BuildUpdateEdgeConfidence`, confirms the foreign marker
+  is returned through tenant A's authenticated traversal, and requires `AssertTraversalIsFixtureLocal`
+  to throw for the tenant-local edge-marker assertion.
+- P1 regression evidence: the unchanged positive collision method passed 1 total, 0 failed, 0 skipped
+  in 209.076 seconds; the full `TenantIsolationIntegrationTests` class passed 7 total, 0 failed,
+  0 skipped in 214.351 seconds; the IntegrationTests Debug build passed with 0 warnings/errors; and the
+  combined verifier/runbook/denial gate passed 58 total, 0 failed, 0 skipped in 6.868 seconds after a
+  clean Server.Tests Debug build. All commands used the documented `localhost:6050` placement and
+  `localhost:6060` scheduler mappings where applicable.
 
 ## Suggested Review Order
 
@@ -139,7 +162,10 @@ context:
   [`TenantIsolationIntegrationTests.cs:68`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L68)
 
 - Review bounded graph seeding and inspection used only by the real-backend fixture.
-  [`TenantIsolationIntegrationTests.cs:168`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L168)
+  [`TenantIsolationIntegrationTests.cs:213`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L213)
+
+- Verify the planted-foreign-edge-marker negative control makes the same locality assertion fail.
+  [`TenantIsolationIntegrationTests.cs:96`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L96)
 
 **Runtime evidence boundary**
 
@@ -260,7 +286,7 @@ restored.
 
 ### Patches — second pass
 
-- [ ] [Review][Patch] (P1, **restated 2026-08-13 by third-pass code review — OPEN**) No negative control for the graph collision proof. The sibling `VerifyTenant_PlantedCrossTenantData_DetectsLeakage` exists explicitly for "false-pass prevention" on the Redis/syntactic axis, but nothing plants a foreign node or edge into a tenant graph and asserts that the collision assertions fail. The graph axis therefore has no proof that its own assertions can go red. **The original rationale for this finding was wrong and is withdrawn:** it claimed `ShouldAllBe` is vacuous on an empty collection so an empty or degraded traversal would pass. It would not. `AssertTraversalIsFixtureLocal` pins cardinality before every `ShouldAllBe` — `traversal.Nodes.Select(...).ShouldBe(expectedNodeIds)` (`:264-265`) is sequence equality against a two-element set and `edges.Length.ShouldBe(2)` (`:279`) pins the edge count — and `TotalNodeCount == 2`, `OmittedCount == 0`, `Degraded == false`, `PrimaryPathIntact == true`, and `GapMarkers` empty all guard the degraded case. `TraversalResult.Nodes` is a non-nullable `IReadOnlyList<TraversalNode>`. An empty or degraded traversal fails today. This is a missing control, not an open leak, and it must not be cited as evidence of a false pass. Not covered by any existing deferred item. [tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs:248-296]
+- [x] [Review][Patch] (P1) **APPLIED 2026-08-13** — Added `VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage`. The real-backend test preserves the graph-scoped relationship-ID collision, plants tenant B's edge marker into tenant A through a parameterized `GraphQueryBuilder` update, confirms the foreign marker returns through tenant A's authenticated traversal, and proves `AssertTraversalIsFixtureLocal` throws on the tenant-local edge-marker assertion. The negative control passed 1/1 in 190.569 seconds, the unchanged positive collision method passed 1/1 in 209.076 seconds, and the full owning class passed 7/7 in 214.351 seconds. The original vacuous-empty-collection rationale remains withdrawn: cardinality and completeness assertions already fail closed on empty or degraded traversal. [tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs:96]
 - [x] [Review][Patch] (P2) **APPLIED 2026-08-13** (applied — the disclosure is now written into the proof-boundary bullets above) — A first-pass patch is recorded as applied but was not applied — spec:185 is checked off for disclosing that `SeedCollisionGraphAsync` bypasses the production write path, but no such disclosure exists in the spec proof-boundary bullets, the story Slice Proof demonstration boundary, or the `deferred-work.md` entry, which is flipped to `resolved` on the unqualified claim. [spec-24-6-...md:185,95-117]
 - [x] [Review][Patch] (P3) **APPLIED 2026-08-13** (resolved — status reverted to `in-progress`, so readiness C1 executes again; the residual defect is tracked as N1 below) — Status advanced to `done` ahead of the ledger, disabling the check that would have caught D1 — the readiness gate prints `C1: status 'done' is outside {in-progress, review}; cumulative-diff comparison skipped`, so no automated surface ever compared the File List to the cumulative set. [24-6-...md:8]
 - [x] [Review][Patch] (P4) **APPLIED 2026-08-13** (applied — Results corrected to 58 and the structural-matrix wording restated as a boundary assertion) — Spec Verification Results are one review pass stale — records `54 total` for the server gate where the story records `58 total`, and asserts the structural matrix test proves "exactly three `GRAPH.LIST` calls" although patch 21 deliberately replaced that count assertion with a boundary assertion. [spec-24-6-...md:88-90,107-109]
@@ -317,10 +343,84 @@ above), and **P3** is discharged by the status revert. **P6** was confirmed but 
 - [x] [Review][Patch] (N2) **APPLIED** — the `24.3-GRAPH-CONTENT-EVIDENCE` deferred entry read `Status: resolved` while its owning story had reverted to `in-progress` with findings open. This is the same shape a first-pass patch already repaired once; the second-pass status revert regressed it. Now `carried-forward`, with the promotion condition recorded in its re-open trigger. [deferred-work.md]
 - [x] [Review][Patch] (N3) **APPLIED** — checkpoint C1 read `complete 2026-08-12` while its own `Review state` cell named three open findings, and C2 likewise. C1 is now an explicit blocked state with owner, consequence, and reopen trigger per `story-phase-ledger.md`; C2 is genuinely complete now that P7/P8 are applied. [24-6-...md Checkpoints]
 - [x] [Review][Patch] (N6) **APPLIED** — the deferred-work schema gate row recorded `65 total` for `CiTestInventoryTests`. The real discovery total is **66**, and `tests/Hexalith.Memories.Cli.Tests` is unchanged across this story's entire range, so 66 was the total throughout; `65` was never measured. Confirmed by re-running the class at HEAD with the artifact edits stashed. [24-6-...md Verification table]
-- [ ] [Review][Decision] (N4) **OPEN — needs a human decision.** Checkpoint C3 is simultaneously excluded from and tracked by the story. Decision D1 recorded `tests/tooling/bmad_customization/bmad_customization_test.py` as a named File List **exclusion** — explicitly not owned by Story 24.6 — and decision D2 then added the same work as checkpoint **C3 inside** the story's Checkpoints table. A path cannot both leave the cumulative story-scoped set and be a tracked story checkpoint. C3 also fails the four-field requirement in `story-scope-guard.md`: its `Review state` cell holds "out of Story 24.6 review scope" (not a review state) and its `Completion state` cell holds provenance prose (not a completion state). Decide: drop C3 (recommended — the `### File List Exclusions` block already records it in full, and D2's ratification only needs to cover outcomes 24.6 owns), or keep C3 and give it a real review state and completion state, accepting that the story then tracks work it declared unowned. [24-6-...md Checkpoints, File List Exclusions]
+- [x] [Review][Decision] (N4) **RESOLVED 2026-08-13** (Administrator selected the recommended option) — Removed checkpoint C3 from Story 24.6. The BMAD customization-fixture repair remains recorded only under `### File List Exclusions`, with owner `spec-update-bmad-6-10-1n49-2026-08-04` and its `Scope-Override:` provenance. Story 24.6's checkpoint table now tracks only its two owned outcomes. [24-6-...md Checkpoints, File List Exclusions]
 
 ### Fail-closed status
 
-`done` remains blocked: **P1** (missing graph-axis negative control) and **N4** (unresolved C3 ownership)
-are open. Nothing found in three passes threatens AC1 — the collision fixture proves content-level
-tenant isolation against a real FalkorDB backend, independently re-executed in this pass.
+P1 and N4 are closed. Nothing found in three passes, the P1 closure, or the N4 ownership resolution
+threatens AC1 — the collision fixture proves content-level tenant isolation against a real FalkorDB
+backend. The story is ready for final review reconciliation.
+
+## Review Findings — Fourth Pass (build workflow review 2026-08-13)
+
+Three context-free layers reviewed the complete `0ecdffed..HEAD` plus worktree diff: blind hunter,
+edge-case hunter, and verification-gap reviewer. The verification-gap reviewer found no gap. The
+other layers repeated the already recorded proof boundaries (production write routing, fixture cleanup,
+broader edge/depth coverage, wire-presence proof, verifier wording, and shared mock strictness) and the
+externally owned submodule/customization changes; those were rejected as known, explicitly bounded, or
+outside Story 24.6 rather than duplicated in the deferred ledger.
+
+Applied findings:
+
+- [x] [Review][Decision] N4 — Administrator selected the recommended option: drop externally owned
+  checkpoint C3 and retain its path only as the named File List exclusion.
+- [x] [Review][Patch] Pin
+  `VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage` as its own
+  `integration-fast` required method surface so the P1 control cannot silently disappear.
+- [x] [Review][Patch] Replace abbreviated verification-table commands with the exact commands that
+  produced the recorded graph, canonical-search, verifier, runbook, combined-server, and full-server
+  evidence.
+
+Post-patch checks: `integration_fast_coverage` 6/6, `line_endings` 4/4,
+`story_review_readiness` 45/45, `tenant_isolation_evidence` 41/41, and `story_slice_scope` 20/20.
+The substantive story gates passed for the 16-path story-scoped set (`C1: all 16 changed paths are
+declared`, C6 clean, slice scope clean, tenant-isolation evidence clean); `git diff --check` passed.
+The implementation subagent independently rechecked the N4/exclusion reconciliation and exact method
+pin and found no defect. The real-backend negative-control result remains 1/1 from the implementation
+phase; no C# source changed during review.
+
+## Suggested Review Order
+
+**Graph collision evidence**
+
+- Start here: the planted foreign marker proves locality assertions can fail.
+  [`TenantIsolationIntegrationTests.cs:96`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L96)
+
+- Confirm the unchanged dual-tenant collision proof remains the positive contract.
+  [`TenantIsolationIntegrationTests.cs:68`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L68)
+
+- Check the marker-specific assertion that distinguishes the negative control's failure.
+  [`TenantIsolationIntegrationTests.cs:333`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L333)
+
+**Runtime evidence boundary**
+
+- Runtime verification deliberately stays structural and read-only through `GRAPH.LIST`.
+  [`TenantIsolationVerifier.cs:304`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L304)
+
+- Unit coverage pins structural-only wording, commands, and missing-database failure.
+  [`TenantIsolationVerifierTests.cs:362`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L362)
+
+- Cross-tenant traversal is denied before tenant-state dependencies execute.
+  [`ServerEndpointAuthorizationTests.cs:85`](../../tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs#L85)
+
+**Dapr reconnection checkpoint**
+
+- State and actor clients reconnect together after the sidecar endpoint rotates.
+  [`AspireIngestionPipelineFixture.cs:1176`](../../tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs#L1176)
+
+- The restart regression requires a real post-rotation actor call.
+  [`OpenBaoTopologyIntegrationTests.cs:148`](../../tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.cs#L148)
+
+**Operator and governance safeguards**
+
+- Operators get the structural/content boundary and portable proof procedure.
+  [`tenant-onboarding-offboarding.md:159`](../../docs/operations/tenant-onboarding-offboarding.md#L159)
+
+- Contract tests keep both runbooks and verifier commands aligned.
+  [`OperationalRunbookSetTests.cs:372`](../../tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs#L372)
+
+- CI now requires both positive and planted-leak graph methods to pass.
+  [`integration-fast-required-surfaces.txt:15`](../../tools/integration-fast-required-surfaces.txt#L15)
+
+- Final checkpoints retain only Story 24.6's two owned outcomes.
+  [`24-6-graph-content-level-tenant-isolation-evidence.md:53`](24-6-graph-content-level-tenant-isolation-evidence.md#L53)
