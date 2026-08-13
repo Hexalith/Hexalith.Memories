@@ -110,7 +110,6 @@ The authenticated canary traversal through `GET /api/v1/tenants/{tenantId}/trave
 operator check. Do not treat either that single-tenant canary or `GRAPH.LIST` as a replacement for the
 two-tenant collision proof.
 
-
 ## Pub/sub event-intake operation surface
 
 Hexalith domain modules **publish CloudEvents to DAPR** (to the configured pub/sub component and shared topic); they do **not** invoke the Memories REST ingestion routes for event streams. The Memories Server is the sidecar-managed subscriber. The pub/sub operation surface is:

@@ -14,6 +14,7 @@ using Dapr.Client;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Tests.Deployment;
 using Hexalith.Memories.Server.Tenants;
 
 using Microsoft.Extensions.Logging;
@@ -377,20 +378,38 @@ public class TenantIsolationVerifierTests
         graphCheck.Details.ShouldNotBeNull();
         graphCheck.Details.ShouldContain("Structural database-existence evidence only");
         graphCheck.Details.ShouldContain("GRAPH.LIST");
-        graphCheck.Details.ShouldContain(
-            "TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes");
+        graphCheck.Details.ShouldContain(OperationalRunbookSetTests.GraphContentProofCitation);
         graphCheck.Details.ShouldContain("independent execution");
 
-        // Assert the boundary (no command other than GRAPH.LIST), not the current call count. Pinning an
-        // exact triple would make consolidating the three round trips — a legitimate improvement — fail
-        // this test for a reason unrelated to the structural-only guarantee it defends.
-        string[] executedCommands = [.. falkorDb.ReceivedCalls()
-            .Where(call => call.GetMethodInfo().Name == nameof(IDatabase.ExecuteAsync))
-            .Select(call => call.GetArguments()[0]?.ToString())
-            .Where(command => command is not null)
-            .Cast<string>()];
+        // Assert every command-like first argument, without filtering by prefix, so a content command
+        // such as KEYS or SCAN cannot evade the structural-only boundary. Inspect nested params-array
+        // strings separately so a GRAPH.* token cannot hide outside the command position.
+        var receivedCalls = falkorDb.ReceivedCalls().ToArray();
+        string[] executedCommands = [.. receivedCalls
+            .Select(call => call.GetArguments().FirstOrDefault())
+            .OfType<string>()
+            .Select(command => command.Trim())];
         executedCommands.ShouldNotBeEmpty();
-        executedCommands.ShouldAllBe(command => command == "GRAPH.LIST");
+        executedCommands.ShouldAllBe(command => string.Equals(
+            command,
+            "GRAPH.LIST",
+            StringComparison.OrdinalIgnoreCase));
+
+        string[] receivedGraphTokens = [.. receivedCalls
+            .SelectMany(call => call.GetArguments())
+            .SelectMany(argument => argument switch
+            {
+                string value => [value],
+                object[] values => values.OfType<string>(),
+                _ => [],
+            })
+            .Select(value => value.Trim())
+            .Where(value => value.StartsWith("GRAPH.", StringComparison.OrdinalIgnoreCase))];
+        receivedGraphTokens.ShouldNotBeEmpty();
+        receivedGraphTokens.ShouldAllBe(command => string.Equals(
+            command,
+            "GRAPH.LIST",
+            StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

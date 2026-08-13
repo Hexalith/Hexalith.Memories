@@ -66,7 +66,7 @@ These verdicts confirm the residuals against current code and planning. They do 
 
 | Story | Independent outcome | Owner | Dependency | Size |
 | :---- | :------------------ | :---- | :--------- | :--- |
-| 24.6 | Executable graph content-isolation evidence with honest test names and real identical/colliding fixtures. | Murat / Test Architect, Developer | Story 24.3 historical evidence | M |
+| 24.6 | Approved two-checkpoint umbrella: executable graph content-isolation evidence plus post-OpenBao-restart Dapr actor-proxy reconnection evidence. | Murat / Test Architect, Developer | Story 24.3 historical evidence; second-pass Decision D2 | M |
 | 24.7 | Both semantic index families are verified independently against the requested tenant's configured dimensions. | Winston / Architect, Developer | Story 24.3; existing `ITenantEmbeddingConfigProvider` | S |
 | 24.8 | Active semantic key families are classified exactly so staging and legacy hashes cannot create marker false positives. | Developer, Murat / Test Architect | Stories 21.3, 21.9, and 24.3 as history | S |
 | 24.9 | Missing and foreign active semantic markers fail closed with distinct, non-destructive operator semantics. | Winston / Architect, Murat / Test Architect, Developer | Story 24.8 | S |
@@ -156,6 +156,12 @@ The deeper heading levels below reflect this proposal's nesting only.
 #### Story 24.6: Graph Content-Level Tenant Isolation Evidence
 
 **Status:** backlog. **Owner:** Murat / Test Architect + Developer.
+
+> **Approved clarification (2026-08-13):** Second-pass Decision D2 (2026-08-12), propagated here
+> under fifth-pass Decision F5-D1, supersedes this proposal's one-independent-outcome success criterion
+> for Story 24.6 only. Story 24.6 may close two ratified checkpoints: C1 graph content-level
+> tenant-isolation evidence and C2 the post-OpenBao-restart Dapr actor-proxy reconnection CI repair.
+> Stories 24.7-24.9 retain the original criterion unchanged.
 
 As an operator,
 I want executable proof that graph content remains tenant-local when identifiers collide,
@@ -499,8 +505,9 @@ Test Architect review.
 The correction is complete when:
 
 - all five raw residual bullets map to exactly four structured `carried-forward` entries;
-- Stories 24.6-24.9 are registered with one independent outcome, an owner, prerequisites, exact
-  acceptance evidence, historical classification, Slice Proof, and Epic AC Verification;
+- Stories 24.7-24.9 are registered with one independent outcome, an owner, prerequisites, exact
+  acceptance evidence, historical classification, Slice Proof, and Epic AC Verification; Story 24.6
+  uses the approved two-checkpoint umbrella from second-pass Decision D2, propagated under F5-D1;
 - the held physical-isolation candidate map is 24.10-24.13 everywhere new planning cites it;
 - Story 24.3 remains `done` and unchanged as a historical implementation record;
 - Epic 24 and sprint status agree, and Action Item 3 is `done` only for the backlog-decision outcome;

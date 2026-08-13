@@ -1896,9 +1896,9 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Target artifact: _bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md
   - Backlog home: Story 24.6
   - Owner: Murat / Test Architect and Developer
-  - Rationale: `CheckGraphIsolationAsync` proves only target FalkorDB database existence through `GRAPH.LIST`; the two named graph/search tests provision and verify but do not build identical graph structures, traverse colliding edges, execute cross-tenant search, or assert zero foreign content. Story 24.6 owns one real collision-shaped graph fixture, honest test naming, and the canonical axis-specific search evidence.
-  - Evidence: Story 24.6 implemented `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` with identical tenant A/B node IDs, topology, insertion order, and graph-scoped relationship-ID collision; tenant-distinct bounded node/source and `verifiedBy` edge markers; authenticated traversal of both tenant contexts; and zero-foreign-marker plus completeness/topology assertions. On 2026-08-12, after a clean Debug build, the real Aspire/FalkorDB collision method passed 1 total, 0 failed, 0 skipped in 175.204 seconds with the active local Dapr service addresses supplied through `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050` and `MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060`; the review then widened the recorded lane to the full owning class, which passed 6 total, 0 failed, 0 skipped in 17.572 seconds. The four canonical tenant/search classes passed 63 total, 0 failed, 0 skipped in 191.626 seconds after the redundant all-axis verifier test was removed. The server verifier/runbook/authorization gate passed 58 total, 0 failed, 0 skipped, re-verified independently by third-pass code review in 6.650 seconds, including traversal-path denial-before-dependency. Proof boundary: `SeedCollisionGraphAsync` writes through `falkor.SelectGraph(tenantId)` directly rather than through the production ingestion path, so this evidence proves read-path tenant routing and graph-content locality, not production write-path tenant selection; write-path isolation remains open as a separate deferred item. Exact commands are recorded in the target artifact and its linked implementation spec.
-  - Re-open trigger: Any claim treats `GRAPH.LIST`, test names, comments, or unit mocks as graph content-isolation proof; or `VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` is removed, renamed, skipped, or stops asserting the identifier collision and zero foreign markers. Status is `carried-forward` rather than `resolved` because the owning Story 24.6 returned to `in-progress` on 2026-08-12; it moves to `resolved` when Story 24.6 reaches `done`.
+  - Rationale: The graph-content evidence is implemented and verified, but its owning Story 24.6 remains in review. Keeping the entry carried forward preserves the deferred-work lifecycle contract until the story reaches `done`.
+  - Evidence: Story 24.6 implemented `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` with identical tenant A/B node IDs, topology, insertion order, graph-scoped relationship-ID collision, authenticated dual-tenant traversal, tenant-local node/edge markers, and zero foreign markers. The assertion-sensitivity control `VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage` plants a tenant B edge-marker literal in tenant A and proves the edge-locality assertion rejects it; it is not cross-tenant access evidence and does not mutation-test the node-marker assertions. The final authoritative real Aspire/FalkorDB owning-class run on 2026-08-13 passed 7 total, 0 failed, 0 skipped in 243.340 seconds with `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050` and `MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060`; it supersedes every earlier method/class duration. The current verifier/runbook/authorization result is recorded once in the target story's seventh-pass verification row rather than duplicated with a competing duration here. Proof boundary: `SeedCollisionGraphAsync` writes through `falkor.SelectGraph(tenantId)` directly rather than through production ingestion, so this evidence proves authenticated read-path tenant routing and graph-content locality under collisions, not production write-path tenant selection; write-path isolation remains separately deferred. Exact commands are recorded in the target artifact and its linked implementation spec. This entry remains carried forward while Story 24.6 is in review and moves to resolved only when Story 24.6 reaches `done`.
+  - Re-open trigger: Story 24.6 reaches `done` (promote this entry to `resolved`), or any change to the graph fixture, `AssertTraversalIsFixtureLocal`, `GraphQueryBuilder`, traversal route/authorization, FalkorDB tenant selection, removal/skip/rename of either the positive or assertion-sensitivity method, any claim that `GRAPH.LIST` or unit mocks prove content isolation, or a future required lane that cannot execute the real backend.
 
 - **Story 24.3 configured vector-dimension authority.**
 
@@ -3034,27 +3034,115 @@ Five 2026-07-31 `[Review][Decision]` items resolved by the Administrator that a 
 
 ## Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-12)
 
-Eleven low-severity items deferred during the Story 24.6 adversarial code review. None blocks the
-story's content-isolation proof, which was independently re-executed and passed.
+Nine low-severity items remain carried forward from the Story 24.6 adversarial code review; two more
+items from that review are resolved below. None blocks the story's content-isolation proof, which was
+independently re-executed and passed.
 
-- Roughly 30 lines of runbook text (build command, port-discovery block, proof invocation) are duplicated verbatim across `docs/operations/route-surface.md` and `docs/operations/tenant-onboarding-offboarding.md` and pinned identical by `OperationalRunbookSetTests.GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof`; any future edit must be made twice or the guard fails.
-- `TenantIsolationIntegrationTests` seeds collision nodes, edges, and two provisioned tenants into the shared Aspire/FalkorDB fixture with no teardown; leftovers persist for the rest of the run.
-- The collision proof assumes each freshly provisioned tenant graph contains zero relationships; if either graph already held one, the relationship-ID collision precondition would fail and be reported as a broken isolation proof rather than a fixture precondition failure.
-- Graph coverage is limited to `EdgeType.CausedBy`, `EdgeOrigin.Explicit`, `SourceType.File`, and `depth=1`; leakage through other edge types, origins, or deeper hops remains unproven.
-- The `TenantIsolationVerifier` class-level XML doc was re-characterized from "confirms architectural isolation guarantees hold" to a hedged form that also re-scopes the Redis marker checks owned by Stories 24.7-24.9. It now contradicts `_bmad-output/implementation-artifacts/5-3-tenant-isolation-verification.md:180`, which was not updated, and no test pins either wording.
-- Only the passing branch of `CheckGraphIsolationAsync` received evidence-boundary wording; the failed and backend-unavailable branches carry no structural-only framing and no test pins their text.
-- The `GraphIsolation` `Details` value is now a roughly 330-character prose string returned from `POST /api/v1/tenants/{tenantId}/verify` with no length or format contract and no test pinning a maximum.
-- No test asserts that ingesting into tenant A leaves another tenant's graph empty. The new proof and the canonical graph negative both seed FalkorDB directly from the test process, so production write-path tenant scoping (`IndexGraphActivity`) is pinned only indirectly by a post-ingestion node count.
-- The Epic 23 checklist-preservation row in the story's Verification table inlines a roughly 500-character nested shell loop with escaped pipes instead of citing `spec-keep-epic-23-ingestion-invariants-on-epic-24-and-epic-25-review-checklists.md`, which owns it.
-- `AssertTraversalIsFixtureLocal` asserts `Degraded`, `OmittedCount`, `UnavailableAxes`, and `PrimaryPathIntact` against deserialized values; if the server omits these as default-valued members they would pass vacuously. Assert wire presence instead.
-- Deleting `SetupGraphQueryEmpty` removed the `GRAPH.QUERY`-throws stub from twelve tests. Only `VerifyAsync_GraphIsolation_IsStructuralOnlyAndCitesContentProof` now pins the executed command set, so a reintroduced content query would return an unconfigured default in the other eleven.
+- **Runbook proof text is duplicated across two operator documents.**
+
+  - ID: 24.6-CR-W1
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: docs/operations/route-surface.md
+  - Rationale: Roughly 30 lines of build, port-discovery, and proof-invocation text remain duplicated here and in companion `docs/operations/tenant-onboarding-offboarding.md`, and are intentionally pinned identical by `OperationalRunbookSetTests.GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof`; extracting shared documentation is outside the bounded proof closure.
+  - Re-open trigger: Either operator document changes independently, the identity guard fails, or the documentation build gains a supported shared-snippet mechanism.
+
+- **Collision fixtures remain in the shared real-backend topology.**
+
+  - ID: 24.6-CR-W2
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: The proof seeds collision nodes, edges, and two provisioned tenants without teardown; unique tenant identifiers prevent cross-test identity conflicts, while shared-topology cleanup is a wider fixture-lifecycle concern.
+  - Re-open trigger: A later test observes these records, integration storage growth becomes material, or the shared fixture adds a safe tenant teardown API.
+
+- **The collision proof assumes newly provisioned graphs contain no relationships.**
+
+  - ID: 24.6-CR-W3
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: A pre-existing relationship would report a failed collision precondition rather than a dedicated fixture-precondition assertion; unique tenant provisioning makes that condition unlikely and diagnostic refinement is outside the closure.
+  - Re-open trigger: The collision precondition fails on a non-empty newly provisioned graph or fixture provisioning begins seeding relationships.
+
+- **Graph proof coverage is one bounded edge/origin/source/depth shape.**
+
+  - ID: 24.6-CR-W4
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: Story 24.6 proves the required `EdgeType.CausedBy`, `EdgeOrigin.Explicit`, `SourceType.File`, depth-one collision fixture; additional relationship variants and traversal depths are useful expansion coverage but not part of the accepted NFR8 slice.
+  - Re-open trigger: A new edge type, origin, source type, or deeper traversal path changes tenant-routing behavior or a leakage defect appears outside the proven fixture.
+
+- **The verifier class-level contract had been narrowed beyond Story 24.6.**
+
+  - ID: 24.6-CR-W5
+  - Status: resolved
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Evidence: Fifth-pass Decision D2 restored the broad class-level architectural-isolation XML summary and kept the structural-only hedge local to `CheckGraphIsolationAsync`; focused verifier tests passed after the repair.
+  - Re-open trigger: A future change again applies the graph-specific structural-only limitation to the verifier's class-wide Redis and semantic responsibilities.
+
+- **Non-passing graph-isolation branches do not repeat the structural-only label.**
+
+  - ID: 24.6-CR-W6
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Rationale: The method-level contract and successful HTTP-visible detail establish the proof boundary; duplicating the wording across failure and unavailable branches is a diagnostic-consistency improvement outside this bounded repair.
+  - Re-open trigger: An operator or automated consumer interprets a failed or unavailable `GraphIsolation` result as graph-content proof, or those branch messages are otherwise revised.
+
+- **The HTTP-visible graph detail has no explicit length or format contract.**
+
+  - ID: 24.6-CR-W7
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Rationale: The roughly 330-character prose detail is intentionally operator-facing and is now pinned for its required structural-only, `GRAPH.LIST`, and proof-method tokens; introducing a new structured or maximum-length contract would expand the public API surface.
+  - Re-open trigger: The V1 response receives a formal details-length/format requirement or an operator surface truncates the required proof citation.
+
+- **Production graph write-path tenant selection lacks a direct negative control.**
+
+  - ID: 24.6-CR-W8
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestionPipelineTests.cs
+  - Rationale: The collision proof writes directly through `falkor.SelectGraph(tenantId)` and proves authenticated read-path routing and content locality; production `IndexGraphActivity` tenant scoping is only pinned indirectly by post-ingestion node counts and requires a distinct ingestion-owned negative scenario.
+  - Re-open trigger: An ingestion story changes graph selection or claims direct write-path cross-tenant proof, or a tenant A ingestion is observed in tenant B's graph.
+
+- **The story embeds the Epic 23 checklist-preservation shell loop.**
+
+  - ID: 24.6-CR-W9
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: _bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md
+  - Rationale: The inline loop is executable and preserves the exact evidence used at review time; replacing it with only a document citation would reduce local reproducibility, while deduplicating governance commands is outside the proof closure.
+  - Re-open trigger: The embedded command diverges from `spec-keep-epic-23-ingestion-invariants-on-epic-24-and-epic-25-review-checklists.md` or becomes non-rerunnable.
+
+- **Some traversal response assertions do not prove JSON wire presence.**
+
+  - ID: 24.6-CR-W10
+  - Status: carried-forward
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: `Degraded`, `OmittedCount`, `UnavailableAxes`, and `PrimaryPathIntact` are asserted after deserialization, so omitted default-valued members could pass; the required node, edge, marker, completeness, and topology assertions still fail closed for the accepted content-isolation fixture.
+  - Re-open trigger: The API serializer or response contract changes default-member emission, or these fields become part of the content-isolation acceptance claim.
+
+- **Verifier unit mocks no longer rely on unconfigured graph-query defaults.**
+
+  - ID: 24.6-CR-W11
+  - Status: resolved
+  - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs
+  - Evidence: Fifth-pass repair inspects all `ReceivedCalls()` arguments for every `GRAPH.*` command and requires the non-empty executed set to contain only `GRAPH.LIST`; the companion source guard scans every `TenantIsolationVerifier*.cs` file and rejects any other graph command token.
+  - Re-open trigger: A verifier collaborator can execute a graph command without being captured by `ReceivedCalls()`, or graph-command construction moves outside the guarded source family.
 
 ## Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-13)
 
 Seven items deferred during the Story 24.6 fifth-pass adversarial code review. None threatens AC1,
 which was independently confirmed to hold against a real FalkorDB backend. Each carries the structured
-field block required by the schema above; the eleven first-pass entries recorded on 2026-08-12 do not,
-and repairing them is open as review finding F5-P4.
+field block required by the schema above; the eleven first-pass entries recorded on 2026-08-12 now do
+as well.
 
 - **Verifier source guard still lives in a runbook test class.**
 
@@ -3118,3 +3206,73 @@ and repairing them is open as review finding F5-P4.
   - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.cs
   - Rationale: The post-rotation actor call dereferences its result without a null guard and silently depends on the `OpenBaoRecoveryTenantId` tenant carrying a seeded embedding configuration, so a fixture-data gap surfaces as a `NullReferenceException` rather than a named assertion.
   - Re-open trigger: The regression fails with a `NullReferenceException`, or `OpenBaoRecoveryTenantId` seeding changes.
+
+## Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — sixth pass (2026-08-13)
+
+Four low-severity items are carried from the Story 24.6 sixth-pass closure review. None threatens AC1,
+which was independently re-confirmed to hold against a real FalkorDB backend this pass. Each carries the
+structured field block required by the schema above.
+
+- **The HTTP-visible AC3 citation is hard-coded where the unit guards are manifest-bound.**
+
+  - ID: 24.6-F6-W1
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: F5-P8 bound the operator proof citation to `tools/integration-fast-required-surfaces.txt` through `OperationalRunbookSetTests.GraphContentProofCitation`, and both Server.Tests guards now derive it. The real-backend assertion cannot reach that `internal` member from a different assembly, so it keeps the literal `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes`. The binding is fail-closed — a manifest-driven rename reds the unit lane — so this is maintenance duplication in three places, not an escape hatch, and the fix would mean duplicating the manifest reader into the integration assembly.
+  - Re-open trigger: The graph-content proof method is renamed or re-keyed in the manifest, or a shared test-support assembly becomes available to both test projects.
+
+- **The restored verifier class-level summary has no test pinning either wording.**
+
+  - ID: 24.6-F6-W2
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Rationale: `24.6-CR-W5` was closed on the strength of fifth-pass Decision F5-D2 restoring the broad architectural-isolation XML summary and keeping the structural-only hedge local to `CheckGraphIsolationAsync`. The original finding's second half — "no test pins either wording" — was not addressed, so the entry's own re-open trigger ("a future change again applies the graph-specific structural-only limitation to the verifier's class-wide responsibilities") has no detector and would have to be caught by review. The reverted wording is net-zero against baseline `0ecdffed`, so nothing regressed; only the guard is missing.
+  - Re-open trigger: The class-level summary is edited again in either direction, or a Story 24.7-24.9 slice re-scopes the verifier's Redis marker responsibilities.
+
+- **The graph-check lookup throws an undiagnosable exception when the check is absent.**
+
+  - ID: 24.6-F6-W3
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: The new HTTP-observable AC3 block resolves the check with `result.Checks.Single(check => check.CheckName == "GraphIsolation")`. If the verifier stops emitting `GraphIsolation`, or emits it twice, the test fails with a bare `InvalidOperationException` naming neither the check nor the contract, instead of a Shouldly assertion. The surrounding `AssertCoreIsolationChecksPassed(result)` already fails closed on a missing check, so the diagnosis cost is the only impact.
+  - Re-open trigger: The test fails with `InvalidOperationException`, or the verifier begins emitting per-backend `GraphIsolation` results.
+
+- **Node-marker assertions lack a mutation-sensitivity control.**
+
+  - ID: 24.6-F6-W4
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: The positive real-backend fixture proves tenant-local node and edge markers, while the planted-marker mutation control exercises only the edge-marker assertion. The Administrator ratified C1's completed boundary as edge-only for mutation sensitivity; a node-marker control remains useful hardening but is outside that boundary.
+  - Re-open trigger: A node-marker assertion is weakened or removed, a foreign-node regression appears, or Story 24.6's ratified C1 mutation-sensitivity boundary is reopened.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md`
+  summary: Graph-isolation verification does not convert a FalkorDB `RedisTimeoutException` into a failed backend check.
+  evidence: `CheckGraphIsolationAsync` catches `RedisConnectionException` and `RedisServerException` but not `RedisTimeoutException`, so a timeout can escape the verifier instead of preserving the existing graceful backend-unavailable result shape.
+
+## Deferred from: bmad-build review of spec-pushall-sync-2026-08-09 (2026-08-13)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pushall-sync-2026-08-09.md`
+  summary: Hexalith.Builds still has an uncommitted Props/Directory.Packages.props change after the 2026-08-09 envelope closed.
+  evidence: The working tree shows `references/Hexalith.Builds` dirty at `5d268c6b` with `Props/Directory.Packages.props` modified. That leftover is owned by `spec-submodule-bumps-2026-08-11.md`, not this envelope, which was required to preserve unrelated root work.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pushall-sync-2026-08-09.md`
+  summary: spec-pushall-sync-2026-08-05 remains ready-for-dev with overlapping Builds, EventStore, and FrontComposer File Scope.
+  evidence: The 2026-08-05 envelope still has an unchecked superproject-push task and was not superseded or partitioned by the 2026-08-09 closeout, so a later operator can restage the same gitlinks under a second Story-Key.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pushall-sync-2026-08-09.md`
+  summary: Direct origin/main push for authorized /pushall envelopes still trips GitHub branch-protection (PR required, expected status checks).
+  evidence: Push `3e92ca36..8d47a46a` succeeded while GitHub reported a branch-protection bypass. This envelope's remaining task is to push the superproject, matching prior /pushall specs; the protection warning is a standing process tension, not a defect unique to this snapshot.
+
+## Deferred from: bmad-build review of spec-submodule-bumps-2026-08-11 (2026-08-13)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-submodule-bumps-2026-08-11.md`
+  summary: Builds catalog still pins HexalithMemoriesVersion at 2.20.7 while NuGet Hexalith.Memories.Contracts is 2.20.11.
+  evidence: Memories consumes its own contracts via ProjectReference, so this pin is not a direct PackageReference AC failure; bumping it locally would move Builds off origin/main unless a Builds PR lands first.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-submodule-bumps-2026-08-11.md`
+  summary: Restore/build still surfaces NU1903 for SSH.NET 2025.1.0.
+  evidence: Pre-existing advisory warning observed during the Release package-mode verification of this dependency refresh; unrelated to the submodule gitlink bumps.

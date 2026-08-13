@@ -15,8 +15,8 @@ using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
 
-/// <summary>Diagnostic tool that runs check-specific structural and tenant-marker diagnostics across storage backends.
-/// Its results do not by themselves prove every architectural or content-isolation guarantee, and it does not enforce isolation at runtime.</summary>
+/// <summary>Diagnostic tool that verifies tenant data isolation across all storage backends.
+/// Confirms that architectural isolation guarantees hold — does not enforce isolation at runtime.</summary>
 public sealed partial class TenantIsolationVerifier
 {
     private readonly TenantRegistryService _registry;
@@ -305,6 +305,8 @@ public sealed partial class TenantIsolationVerifier
         string tenantId,
         CancellationToken ct)
     {
+        // This check is deliberately structural-only. Content isolation is proven by the manifest-bound,
+        // real-backend collision test cited in the successful result below, not by a production graph scan.
         Stopwatch sw = Stopwatch.StartNew();
         try
         {

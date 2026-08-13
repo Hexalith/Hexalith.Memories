@@ -62,6 +62,13 @@ public sealed class TenantIsolationIntegrationTests
         result.ShouldNotBeNull();
         result.Checks.ShouldNotBeEmpty();
         AssertCoreIsolationChecksPassed(result);
+        TenantIsolationCheckResult graphCheck = result.Checks.Single(check => check.CheckName == "GraphIsolation");
+        graphCheck.Details.ShouldNotBeNull();
+        graphCheck.Details.ShouldContain("Structural database-existence evidence only");
+        graphCheck.Details.ShouldContain("GRAPH.LIST");
+        graphCheck.Details.ShouldContain(
+            "TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes");
+        graphCheck.Details.ShouldContain("independent execution");
     }
 
     [Fact]

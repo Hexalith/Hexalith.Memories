@@ -4596,8 +4596,10 @@ So that latency and memory stay bounded under load.
 
 ### Story 24.6: Graph Content-Level Tenant Isolation Evidence
 
-**Status:** in-progress · **Owner:** Murat / Test Architect and Developer  
+**Status:** review · **Owner:** Murat / Test Architect and Developer  
 **Dedicated artifact:** [24-6-graph-content-level-tenant-isolation-evidence.md](../implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md)
+
+**Approved 2026-08-13 umbrella exception:** Second-pass Decision D2 (2026-08-12), propagated to the planning record under fifth-pass Decision F5-D1, supersedes the proposal's one-independent-outcome success criterion for Story 24.6 only. Story 24.6 may close two ratified checkpoints: C1 graph content-level tenant-isolation evidence and C2 the post-OpenBao-restart Dapr actor-proxy reconnection CI repair. Stories 24.7-24.9 retain the original one-independent-outcome criterion unchanged.
 
 As an operator,
 I want executable proof that graph content remains tenant-local when identifiers collide,

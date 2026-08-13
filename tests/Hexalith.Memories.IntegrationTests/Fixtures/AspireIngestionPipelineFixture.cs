@@ -1178,16 +1178,28 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         ArgumentNullException.ThrowIfNull(endpoint);
 
         HttpClient nextStateClient = CreateDaprSidecarClient(endpoint);
-        var nextActorOptions = new ActorProxyOptions
+        ActorProxyOptions nextActorOptions;
+        HttpClientHandler? nextActorHttpMessageHandler = null;
+        ActorProxyFactory nextActorProxyFactory;
+        try
         {
-            HttpEndpoint = endpoint.ToString(),
-            RequestTimeout = TimeSpan.FromSeconds(30),
-            JsonSerializerOptions = MemoriesJsonContext.Options,
-        };
-        var nextActorHttpMessageHandler = new HttpClientHandler();
-        var nextActorProxyFactory = new ActorProxyFactory(
-            nextActorOptions,
-            (HttpMessageHandler)nextActorHttpMessageHandler);
+            nextActorOptions = new ActorProxyOptions
+            {
+                HttpEndpoint = endpoint.ToString(),
+                RequestTimeout = TimeSpan.FromSeconds(30),
+                JsonSerializerOptions = MemoriesJsonContext.Options,
+            };
+            nextActorHttpMessageHandler = new HttpClientHandler();
+            nextActorProxyFactory = new ActorProxyFactory(
+                nextActorOptions,
+                (HttpMessageHandler)nextActorHttpMessageHandler);
+        }
+        catch
+        {
+            nextActorHttpMessageHandler?.Dispose();
+            nextStateClient.Dispose();
+            throw;
+        }
 
         _daprStateClient?.Dispose();
         _actorProxyFactory = null;

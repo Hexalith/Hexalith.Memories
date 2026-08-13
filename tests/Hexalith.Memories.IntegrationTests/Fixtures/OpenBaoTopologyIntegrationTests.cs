@@ -147,8 +147,13 @@ public sealed class OpenBaoTopologyIntegrationTests(
     [Fact]
     public async Task InPlaceOpenBaoRestart_RotatesGenerationAndRecoversDependentSidecars()
     {
+        Uri daprEndpointBeforeRestart = fixture.DaprSidecarHttpEndpoint;
+
         (await fixture.RestartOpenBaoGenerationInPlaceAsync().ConfigureAwait(true)).ShouldBeTrue();
         (await fixture.IsOpenBaoInitializedAndUnsealedAsync().ConfigureAwait(true)).ShouldBeTrue();
+        fixture.DaprSidecarHttpEndpoint.ShouldNotBe(
+            daprEndpointBeforeRestart,
+            "the restart regression must rotate the primary Dapr endpoint before proving actor recovery.");
         var actorConfig = await fixture
             .CreateTenantConfigurationActorProxy(AspireIngestionPipelineFixture.OpenBaoRecoveryTenantId)
             .GetEmbeddingConfigAsync()
