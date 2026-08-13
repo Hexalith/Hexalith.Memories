@@ -124,3 +124,32 @@ Story-Key: spec-pushall-sync-2026-08-03-readiness-remediation
 - No local non-default branch existed for `git branch -d`. No fetched
   non-default `origin` tip existed for an exact-OID lease deletion. Final
   `git fetch --all --prune` left the repository on `main`.
+
+## Suggested Review Order
+
+**Envelope closeout**
+
+- Authorized mixed snapshot and the envelope-only ownership boundary
+  [`spec-pushall-sync-2026-08-03-readiness-remediation.md:15`](spec-pushall-sync-2026-08-03-readiness-remediation.md#L15)
+
+- Exact 7-path File Scope this spec may stage or commit
+  [`spec-pushall-sync-2026-08-03-readiness-remediation.md:35`](spec-pushall-sync-2026-08-03-readiness-remediation.md#L35)
+
+- Execution tasks closed after the snapshot and spec closeout landed
+  [`spec-pushall-sync-2026-08-03-readiness-remediation.md:65`](spec-pushall-sync-2026-08-03-readiness-remediation.md#L65)
+
+**Verification evidence**
+
+- Recorded gates, published OIDs, empty merge list, and empty prune
+  [`spec-pushall-sync-2026-08-03-readiness-remediation.md:101`](spec-pushall-sync-2026-08-03-readiness-remediation.md#L101)
+
+**Synchronized payload**
+
+- Original 2026-08-03 readiness assessment retained without rewrite
+  [`implementation-readiness-report-2026-08-03.md:22`](../planning-artifacts/implementation-readiness-report-2026-08-03.md#L22)
+
+- Same-day rerun retained beside the original report
+  [`implementation-readiness-report-2026-08-03-rerun.md:20`](../planning-artifacts/implementation-readiness-report-2026-08-03-rerun.md#L20)
+
+- Approved remediation-batch proposal retained as planning payload
+  [`sprint-change-proposal-2026-08-03-implementation-readiness-remediation-batch.md:1`](../planning-artifacts/sprint-change-proposal-2026-08-03-implementation-readiness-remediation-batch.md#L1)
