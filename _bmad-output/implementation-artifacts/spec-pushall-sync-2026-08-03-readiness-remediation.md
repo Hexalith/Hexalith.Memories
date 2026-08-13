@@ -2,7 +2,7 @@
 title: 'Authorize the 2026-08-03 readiness-remediation pushall synchronization'
 type: 'maintenance'
 created: '2026-08-03'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '6698144d6129731e712354b334d8257cd96ee14e'
 context:
@@ -66,8 +66,8 @@ Allowed files for this story:
 
 **Execution:**
 - [x] Establish the exact owner-valid synchronization envelope without changing underlying story ownership.
-- [ ] Stage exactly the declared File Scope and commit with `build: sync local changes via /pushall` plus `Story-Key: spec-pushall-sync-2026-08-03-readiness-remediation`.
-- [ ] Finish the `/pushall` merge, push, safe local deletion, exact-lease remote pruning, final fetch, and final-branch verification.
+- [x] Stage exactly the declared File Scope and commit with `build: sync local changes via /pushall` plus `Story-Key: spec-pushall-sync-2026-08-03-readiness-remediation`.
+- [x] Finish the `/pushall` merge, push, safe local deletion, exact-lease remote pruning, final fetch, and final-branch verification.
 
 **Acceptance Criteria:**
 - Given the exact authorized snapshot, when repository scope and commit hooks run, then every path is accepted without `Scope-Override` or bypass flags.
@@ -97,3 +97,30 @@ Story-Key: spec-pushall-sync-2026-08-03-readiness-remediation
 - `python3 tools/check-story-review-readiness.py --story-key spec-pushall-sync-2026-08-03-readiness-remediation --staged --derive-cumulative` -- expected: standalone-spec readiness passes.
 - `npx commitlint --edit <message-file> --verbose` and `.githooks/commit-msg <message-file>` -- expected: proposed message and composed local gates pass.
 - `npx commitlint --from "$(git merge-base origin/main HEAD)" --to HEAD --verbose` -- expected: complete push range passes.
+
+## Verification Results
+
+- The exact 7-path snapshot already landed on `origin/main` as `2fb0167a` with
+  `Story-Key: spec-pushall-sync-2026-08-03-readiness-remediation`. Follow-up
+  `a4697d96` reused the same Story-Key for the readiness-report rerun only.
+- At closeout, the six non-spec File Scope paths had no uncommitted delta versus
+  `HEAD`. Submodule pointers equaled `HEAD`:
+  - `references/Hexalith.Commons` `6fbac0c5dff2b8a58e90732c51b31911421a8a65`
+  - `references/Hexalith.FrontComposer` `1fa8b0b161289a1afda09e1d8074242fbe7e3ba3`
+  - `references/Hexalith.Tenants` `acab0b515e822eed509bd6f946c62b2e2f644572`
+- `git fetch --all --prune` left `main` equal to `origin/main` at `e6f57e87`.
+  `git merge --ff-only origin/main` reported already up to date. The merge list
+  was empty: only `main` and `origin/main` existed.
+- Closeout staged the declared File Scope; `git diff --cached --name-only`
+  showed only this spec because the other six paths matched `HEAD`.
+- `git diff --cached --check`,
+  `python3 tools/check-story-file-scope.py --story-key spec-pushall-sync-2026-08-03-readiness-remediation --staged`,
+  `python3 tools/check-tenant-isolation-evidence.py --story-key spec-pushall-sync-2026-08-03-readiness-remediation --staged`,
+  and `python3 tools/check-story-review-readiness.py --story-key spec-pushall-sync-2026-08-03-readiness-remediation --staged --derive-cumulative`
+  passed before the closeout commit.
+- `npx commitlint --edit` and `.githooks/commit-msg` passed for the mandated
+  `/pushall` message. After the closeout commit, the outgoing range is that
+  commit only.
+- No local non-default branch existed for `git branch -d`. No fetched
+  non-default `origin` tip existed for an exact-OID lease deletion. Final
+  `git fetch --all --prune` left the repository on `main`.
