@@ -423,7 +423,7 @@ development_status:
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
-  24-6-graph-content-level-tenant-isolation-evidence: review  # 2026-08-13: P1 closed by the real-backend planted-foreign-edge-marker control (owning class 7/7); N4 closed by removing externally owned checkpoint C3 while retaining its named File List exclusion; fourth-pass review and governance gates passed.
+  24-6-graph-content-level-tenant-isolation-evidence: in-progress  # 2026-08-13: fifth-pass code review over the full raw 19-path range returned 25 open patch items (4 Administrator decisions resolved into patches) left as action items. AC1 holds; recorded counts 58/66/7 and all five tooling suites independently re-verified. Fail-closed for done: three references/* submodule paths are excluded in prose only, so readiness exits 1 against the raw cumulative set (F5-P1).
   24-7-tenant-configured-vector-dimension-verification: backlog
   24-8-semantic-isolation-key-family-classification: backlog
   24-9-non-destructive-tenant-marker-diagnostics: backlog

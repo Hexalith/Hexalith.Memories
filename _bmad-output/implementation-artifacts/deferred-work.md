@@ -3048,3 +3048,73 @@ story's content-isolation proof, which was independently re-executed and passed.
 - The Epic 23 checklist-preservation row in the story's Verification table inlines a roughly 500-character nested shell loop with escaped pipes instead of citing `spec-keep-epic-23-ingestion-invariants-on-epic-24-and-epic-25-review-checklists.md`, which owns it.
 - `AssertTraversalIsFixtureLocal` asserts `Degraded`, `OmittedCount`, `UnavailableAxes`, and `PrimaryPathIntact` against deserialized values; if the server omits these as default-valued members they would pass vacuously. Assert wire presence instead.
 - Deleting `SetupGraphQueryEmpty` removed the `GRAPH.QUERY`-throws stub from twelve tests. Only `VerifyAsync_GraphIsolation_IsStructuralOnlyAndCitesContentProof` now pins the executed command set, so a reintroduced content query would return an unconfigured default in the other eleven.
+
+## Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-13)
+
+Seven items deferred during the Story 24.6 fifth-pass adversarial code review. None threatens AC1,
+which was independently confirmed to hold against a real FalkorDB backend. Each carries the structured
+field block required by the schema above; the eleven first-pass entries recorded on 2026-08-12 do not,
+and repairing them is open as review finding F5-P4.
+
+- **Verifier source guard still lives in a runbook test class.**
+
+  - ID: 24.6-F5-W1
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs
+  - Rationale: The first-pass patch read "strengthen **and relocate** the source-text guard". N5 strengthened it on 2026-08-13, but the assertion about `TenantIsolationVerifier.cs` source still sits in the runbook/deployment doc-contract class, so a verifier regression is reported by a test named for runbooks. Relocation is cosmetic to behaviour and was not attempted while the guard is green.
+  - Re-open trigger: The guard fails and the failure is misattributed to runbook content, or another verifier source assertion is added to the same class.
+
+- **`ReconnectPrimaryDaprClients` disposes before installing replacements.**
+
+  - ID: 24.6-F5-W2
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
+  - Rationale: The method disposes `_actorHttpMessageHandler` and nulls `_actorProxyFactory`/`_actorProxyOptions` before assigning their replacements, so an actor proxy handed out before the rotation faults with `ObjectDisposedException`, and a call landing in the null window hits the misleading "Actor proxies are unavailable before the topology has started." Not currently reachable: `[Collection("AspireIngestionPipeline")]` serialises the tests and the restart regression creates its proxy after the rotation.
+  - Re-open trigger: Any test caches an actor proxy across the OpenBao restart, or the collection gains parallel execution.
+
+- **Reconnect fires only when the sidecar endpoint changes.**
+
+  - ID: 24.6-F5-W3
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
+  - Rationale: The guard is `if (currentDaprEndpoint != DaprSidecarHttpEndpoint)`, so a sidecar that restarts on the same port skips the reconnect entirely and the fixture keeps pooled connections to the killed process. The correct trigger condition (endpoint change **or** process restart) needs a restart signal the fixture does not currently expose.
+  - Re-open trigger: The restart regression flakes with a connection error on an unchanged port, or a process-restart signal becomes available.
+
+- **Traversal assertions dereference without null guards.**
+
+  - ID: 24.6-F5-W4
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: `AssertTraversalIsFixtureLocal` dereferences `Nodes`, per-node `Edges`, and `GapMarkers` without null checks, so a response that omits or nulls one of them raises a `NullReferenceException` instead of an assertion naming the field that lost its marker. Diagnostic quality only; the assertions still fail closed.
+  - Re-open trigger: A traversal failure is reported as a `NullReferenceException`, or the traversal contract makes any of those members nullable.
+
+- **No cancellation coverage on `VerifyAsync`.**
+
+  - ID: 24.6-F5-W5
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs
+  - Rationale: No test invokes `VerifyAsync` with an already-cancelled token, so the graph check's cancellation behaviour is unpinned and a regression would pass unnoticed. Outside AC3's structural-only scope.
+  - Re-open trigger: Cancellation handling in `TenantIsolationVerifier` is changed, or a cancellation defect is observed in the verify endpoint.
+
+- **No `/traverse` denial rows for invalid or out-of-range `depth`.**
+
+  - ID: 24.6-F5-W6
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs
+  - Rationale: The Story 20.2 denial-before-dependency rows cover missing and blank `startNodeId` but not a malformed or out-of-range `depth`, where a 400 could pre-empt the 403 and reveal that the handler was reached. Beyond AC1's stated boundary.
+  - Re-open trigger: `depth` validation moves relative to the tenant authorization filter, or a new query parameter is added to the traverse route.
+
+- **Restart regression dereferences an actor config without a null guard.**
+
+  - ID: 24.6-F5-W7
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.cs
+  - Rationale: The post-rotation actor call dereferences its result without a null guard and silently depends on the `OpenBaoRecoveryTenantId` tenant carrying a seeded embedding configuration, so a fixture-data gap surfaces as a `NullReferenceException` rather than a named assertion.
+  - Re-open trigger: The regression fails with a `NullReferenceException`, or `OpenBaoRecoveryTenantId` seeding changes.

@@ -1,10 +1,10 @@
 # Epic 24 Context: Observability & Performance Hardening
 
-<!-- Generated from planning artifacts. Regenerate with compile-epic-context if planning docs change. -->
+<!-- Compiled from planning artifacts. Edit freely. Regenerate with compile-epic-context if planning docs change. -->
 
 ## Goal
 
-This epic hardens Hexalith.Memories for realistic shared-tenant operation: ingestion becomes traceable across asynchronous workflow boundaries, read paths stop paying avoidable auxiliary round trips, tenant-list refreshes are bounded, tenant isolation follows a structural enforcement target with scalable verification and explicit evidence semantics, emitted metrics become consumable through committed dashboards, and hot paths stop amplifying writes or unbounded state growth. The work matters because operational trust depends on proving tenant safety, diagnosing asynchronous work, and keeping latency and memory predictable under load.
+Harden Hexalith.Memories for realistic multi-tenant operation by making asynchronous ingestion traceable end to end, eliminating avoidable read round trips and hot-path writes, bounding tenant-wide work, turning emitted metrics into usable dashboards, and advancing tenant isolation from naming conventions toward structural enforcement backed by scalable, accurately classified evidence. This matters because operators must be able to diagnose failures, prove zero cross-tenant leakage, and keep latency and resource use predictable as tenant count and data volume grow.
 
 ## Stories
 
@@ -20,63 +20,34 @@ This epic hardens Hexalith.Memories for realistic shared-tenant operation: inges
 
 ## Requirements & Constraints
 
-- Epic 24 is part of the architecture-audit remediation wave. Before creating or implementing any story in this epic, re-verify the audit anchors and implementation-state assumptions cited by that story against the current repository, record the verification date and any moved or renamed anchors in the story, and update stale story scope before development begins.
-- Ingestion tracing must connect the request entry point, Dapr workflow orchestration, workflow activities, service calls, and backend work. Trace context must be carried explicitly across workflow boundaries where automatic propagation is insufficient.
-- Distributed trace completeness must be testable end to end. Workflow and activity spans should be linkable to the original ingest request, and Durable Task tracing must be included in the configured trace sources.
-- Structured logs and diagnostics must preserve OpenTelemetry correlation context so operators can connect logs, spans, workflow activity, and user-facing failures during incident analysis.
-- Custom metrics must cover ingestion throughput, search latency by retrieval axis, per-tenant index size, and pipeline queue depth. Metrics must be visible in local development through a committed dashboard rather than existing only as emitted instruments.
-- Metric names and tag keys must converge on one canonical naming family aligned with the existing metric tag-key policy, so dashboards and alerts do not need instrument-specific exceptions.
-- Tenant status, embedding configuration, and corpus statistics must avoid repeated read-path backend calls. Caches must be short-lived, tenant-scoped, and invalidated by writes that change the cached values, while preserving the cached and cold search latency goals under concurrent tenant load.
-- Tenant listing must support paging and bounded fan-out. Any actor or backend fan-out used for tenant-list refresh must have bounded concurrency to avoid dashboard or operator refresh stampedes.
-- Tenant isolation must remain a zero-leak requirement for ingestion, search, and graph traversal, including malformed, missing, swapped, or colliding tenant identifiers.
-- Physical tenant isolation is the target posture. The Redis target is per-tenant ACL users resolved through tenant-scoped backend routing; query filters, prefixes, hash tags, or logical Redis databases may help placement/routing, but they are not the primary security boundary.
-- Isolation verification must scale beyond pairwise deep scans. Verifier evidence should use cursor-based or aggregate checks so routine verification remains practical as tenant count grows, and should not overstate what process-level shared infrastructure can guarantee.
-- Runtime `GraphIsolation` database existence is structural evidence only. NFR8 graph content proof requires a real tenant A/B fixture with identical graph structures, colliding edge identifiers, tenant-distinct markers, and zero foreign traversal results.
-- Raw and natural-language semantic index dimensions must each match the requested tenant's configured embedding dimension. Equality between the index families is secondary evidence and cannot substitute for the configuration source of truth.
-- Active semantic marker evidence must use collision-safe family classification. Migration staging and legacy nested-NL records are not active evidence, opaque identifiers cannot be classified by reserved-looking prefixes alone, and unresolved provenance is an evidence-classification gap.
-- Missing and foreign markers on proven-active records both fail closed but have distinct meaning and recovery: missing is incomplete evidence, foreign is possible contamination, and remediation is named-key inspection/quarantine plus tenant-scoped repair or reindex after provenance verification—never blanket prefix deletion.
-- Hot paths must not write durable state merely to answer reads. Activity streams, replay detection, and retry queues must be bounded or keyed so latency and memory stay predictable under load.
+- Preserve zero cross-tenant leakage across ingestion, every search axis, and graph traversal. Evidence must cover malformed, swapped, and colliding tenant identifiers; graph proof requires identical tenant A/B structures and edge identifiers with distinct payload markers, then authenticated traversal returning no foreign nodes or edges.
+- Adding tenants must not degrade an existing tenant by more than 5% at ten tenants with 100K memory units each. Tenant listing and verification must avoid unbounded fan-out and pairwise deep scans.
+- Propagate W3C trace context from CLI or MCP through ingress, server, Dapr workflows, activities, and backends. Retain OpenTelemetry correlation in logs and verify trace completeness end to end.
+- Export ingestion throughput, per-axis search latency, per-tenant index size, and pipeline queue depth through one naming family and a committed Aspire or Grafana dashboard.
+- Front tenant status, embedding configuration, and corpus statistics reads with short-lived, tenant-scoped caches invalidated by relevant writes. Bound tenant-list paging and concurrency so operator refreshes cannot stampede actors or backends.
+- Read paths and background loops must not cause avoidable durable writes or unbounded growth. Activity streams need bounded retention and counters, replay tracking needs an application-owned in-flight set, and retry queues need stable identifiers rather than serialized-value identity.
+- Isolation verification must fail closed without mutating tenant data. Structural existence, content leakage, configured-vector compatibility, key-family membership, missing markers, and foreign markers are distinct claims and must not be conflated.
+- Reviews touching ingestion must retain claim-checked large payloads, scheduling-time workflow configuration, chunk-addressed vectors with stable product identity, recoverable non-URL re-ingestion, provisioning-owned index creation with memoized readiness, and one rate-limit admission per provider operation or bounded batch. Each verdict needs rerunnable evidence, reviewer, date, and result; blockers need owner, consequence, proof boundary, and reopen trigger.
 
 ## Technical Decisions
 
-- Dapr remains the required orchestration substrate for workflows, activities, actors, state, service invocation, pub/sub, and secrets. Workflow orchestrators must stay replay-safe, and side effects belong in activities.
-- Dapr actors own per-tenant stateful singletons such as rate limits and corpus statistics. Actor identity and telemetry must remain tenant-aware so multiple actor responsibilities for the same tenant stay distinguishable, but read-only paths should not create actor-state writes.
-- .NET Aspire provides the local orchestration and observability loop. Dashboard work should fit the existing Aspire/OpenTelemetry path; Grafana or Aspire dashboards are acceptable when committed and reproducible from the repo.
-- Redis Stack remains the concrete starting backend for RediSearch, Redis Vector, Dapr state, actors, workflows, and pub/sub. Backend-specific query construction should stay behind the existing Redis/FalkorDB boundaries instead of leaking into domain logic.
-- The planned Redis physical-isolation target is per-tenant ACL users combined with tenant-scoped backend resolution. Per-tenant RediSearch, raw vector, and natural-language vector indexes remain tenant lifecycle resources created and deleted by tenant workflows.
-- D29 separates physical enforcement from verifier evidence: `GRAPH.LIST` is structural only; configured dimensions are authoritative; active semantic families require collision-safe provenance; and missing versus foreign marker outcomes remain fail-closed with distinct non-destructive guidance.
-- FalkorDB tenant isolation must be database-level rather than label-level. Its process-level memory sharing means database separation does not imply memory isolation, so verifier and dashboard evidence must distinguish data isolation from resource isolation.
-- Tenant provisioning and deletion are multi-backend workflow operations with rollback/progress expectations. Isolation hardening must remain compatible with tenant lifecycle workflows rather than creating indexes or databases opportunistically from read/search paths.
-- Tenant and case identifiers must stay explicit across workflows, storage, search, CLI, MCP, REST, telemetry, and future UI contracts. External-facing failures should use structured, actionable error semantics.
-- Hot-path cleanup should preserve EventStore-as-domain-source and rebuildable Redis/FalkorDB projection assumptions; direct Redis/FalkorDB state should not become a new authority for domain truth.
+- Dapr Workflow remains the durable orchestration boundary. Serialize trace context where propagation cannot cross workflow history, link workflow/activity spans to the initiating request, and register `Microsoft.DurableTask` telemetry. Orchestrators remain replay-safe; activities own side effects.
+- Redis physical isolation targets per-tenant ACL users and tenant-scoped backend routing. Tenant workflows own per-tenant search indexes and graph databases. Prefixes, hash tags, logical databases, and query filters are not the primary security boundary.
+- FalkorDB isolation is database-level. `GRAPH.LIST` proves database existence, not content isolation; focused real-backend integration evidence is authoritative, not a new runtime content scan.
+- Raw and natural-language indexes must independently match the requested tenant's configured embedding dimension. Index-to-index agreement is secondary; unavailable or invalid configuration fails closed without creating or migrating indexes.
+- Semantic marker evidence uses collision-safe classification from canonical namespace provenance and record shape. Active raw base/chunk and current natural-language records count; staging and legacy nested-NL records do not. Ambiguity is a classification gap, not an invented mismatch.
+- A foreign marker on an active record means possible contamination; a missing marker means incomplete evidence. Both fail closed without payload disclosure and direct exact-key inspection or quarantine before tenant-scoped repair or reindex. Never recommend blanket prefix deletion.
+- Aspire and OpenTelemetry are the common observability path. Trace, log, metric, dashboard, and tenant tags must share stable correlation and naming conventions so operators can move between signals without ad hoc translation.
+- EventStore remains the domain source of truth; Redis and FalkorDB remain rebuildable projections. Performance cleanup must not make cached or backend read models authoritative domain state.
 
 ## UX & Interaction Patterns
 
-- Operator surfaces should organize trace, health, ingestion, tenant isolation, search quality, and backend degradation around decisions and recovery actions, not as an unrelated wall of metrics.
-- Tenant verification should produce an operator evidence packet: verified state with timestamp and audit context when healthy; issue classification, affected scope, severity, and next action when unhealthy.
-- Degraded backend, queue backlog, stale data, pending repair, or critical isolation risk feedback must answer what happened, what is affected, how serious it is, and what to do next.
-- Trust-critical status must stay attached to the affected tenant, workflow, evidence packet, or dashboard object. CLI, MCP, and future web UI surfaces should use the same evidence semantics even when presentation density differs.
-- Tenant-marker evidence must distinguish incomplete evidence from possible contamination and must name a safe next action without implying that a prefix can be deleted wholesale.
-- Status patterns must be accessible and explicit: do not rely on color alone, and keep detailed diagnostics available through inspection/expansion while preserving the primary recovery command.
-
-## Review Checklist — Epic 23 Ingestion Invariants
-
-| Invariant | Required review evidence | Status |
-|---|---|---|
-| Claim-check workflow payloads | Inspect scheduler/claim-check/workflow inputs and tests; prove raw source bytes and large intermediate values are replaced by scoped references. | Correctively passed 2026-08-02; see the [Epic 24 retrospective addendum](epic-24-retro-2026-07-06.md). |
-| Captured workflow configuration | Inspect scheduler capture and orchestrator reads; prove retry/NL settings come from durable workflow input. | Correctively passed 2026-08-02; see the [Epic 24 retrospective addendum](epic-24-retro-2026-07-06.md). |
-| Chunked semantic vectors | Inspect chunk key construction/index writes, base-ID parsing, and semantic-result deduplication tests; prove `{tenant}:vec:{memoryUnitId}:{sequence}` while hashes and parsed/results-facing identity retain the base `MemoryUnitId`. | Correctively passed 2026-08-02; see the [Epic 24 retrospective addendum](epic-24-retro-2026-07-06.md). |
-| Source-payload retention | Inspect failed-unit persistence/cleanup/re-ingestion and negative tests; prove a retained pointer or actionable rejection. | Correctively passed 2026-08-02; see the [Epic 24 retrospective addendum](epic-24-retro-2026-07-06.md). |
-| Tenant index readiness | Inspect all four indexing activities, readiness verification, maintenance adapter, provisioning activities/workflow, and ownership guards; prove no on-demand index creation, fail-closed missing-index behavior, sole provisioning ownership, and only Story 23.7-approved in-place upgrades for known additive TAG fields before readiness is cached. | Correctively passed 2026-08-02; see the [Epic 24 retrospective addendum](epic-24-retro-2026-07-06.md). |
-| Single-operation admission | Inspect Story 23.5 ingestion embedding activities, captured configuration, and actor/logic assertions; prove one admission for `GenerateEmbeddingActivity`'s single provider operation and one per bounded batch in `GenerateChunkEmbeddingsActivity`. | Correctively passed 2026-08-02; see the [Epic 24 retrospective addendum](epic-24-retro-2026-07-06.md). |
-
-Every applicable verdict must record a rerunnable evidence command or artifact, reviewer, date, and pass/fail/blocked result. `N/A` requires diff evidence that the reviewed change cannot affect the invariant. The statuses above are dated corrective verification of the current tree, not evidence that this checklist ran during every original Epic 24 story review.
+Tenant verification should return an operator evidence packet: healthy results show verified state, timestamp, and audit context; unhealthy results classify the issue, affected scope, severity, and safest next action. Isolation failures are critical safety states; backend degradation and evidence gaps remain distinct. Feedback must explain what happened, impact, severity, and recovery without relying on color or hiding status in global notifications. Diagnostics should be bounded, payload-free, expandable, and semantically consistent across CLI, MCP, dashboards, and future web views.
 
 ## Cross-Story Dependencies
 
-- Story 24.3 is the decision anchor for physical isolation and scalable verifier evidence. Enforcement work should follow the ratified per-tenant Redis ACL and tenant-scoped backend-resolution target, and should not proceed on assumptions that contradict the architecture.
-- Stories 24.6, 24.7, and 24.8 are independent verifier-correctness slices. Story 24.9 follows Story 24.8 because remediation meaning depends on proven-active family membership.
-- The held physical-isolation candidates approved on 2026-08-03 are re-keyed to Stories 24.10-24.13 (qualification, enforcement, migration, runtime evidence). They remain unregistered until their existing gates pass; 24.6-24.9 are the canonical verifier-residual backlog homes.
-- Trace propagation, metric naming, and dashboard work should share correlation and tag conventions so traces, logs, metrics, and dashboards can be joined during incident analysis.
-- Read-path caching and hot-path write-amplification cleanup both affect tenant status, corpus statistics, activity visibility, and dashboard freshness. Cache invalidation, counters, stream bounds, and retry-queue keys need coordinated semantics.
-- Physical isolation hardening depends on existing tenant provisioning, deletion, authorization, and context-enforcement foundations, and must remain compatible with the EventStore/projection consistency model.
+- Story 24.3 anchors physical isolation and scalable verification. Enforcement and migration must follow its ACL and backend-routing target.
+- Stories 24.6-24.8 are separate verifier slices. Story 24.9 follows Story 24.8 because marker diagnostics depend on active-family classification.
+- The proposed physical-isolation qualification, enforcement, migration, and runtime-evidence follow-ups were re-keyed to Stories 24.10-24.13. They remain held and unregistered until their existing activation gates pass; their former 24.6-24.9 identities are historical aliases only.
+- Trace propagation, metric naming, and dashboard work share correlation and tag conventions. Read caching and write-amplification cleanup share invalidation, counter, stream-bound, and freshness semantics.
+- Isolation work depends on tenant lifecycle ownership, ingress authorization, tenant-context enforcement, and the EventStore/projection model. It must not introduce create-if-missing behavior in feature or verifier paths.

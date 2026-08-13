@@ -424,3 +424,201 @@ phase; no C# source changed during review.
 
 - Final checkpoints retain only Story 24.6's two owned outcomes.
   [`24-6-graph-content-level-tenant-isolation-evidence.md:53`](24-6-graph-content-level-tenant-isolation-evidence.md#L53)
+
+## Review Findings — Fifth Pass (code review 2026-08-13)
+
+Six context-free adversarial layers (blind hunter, edge-case hunter, verification-gap, acceptance
+auditor, historical-slice guard, story-phase-ledger auditor) over the complete `0ecdffed..HEAD`
+range at 19 paths, plus independent parent-side re-execution. The user selected the full raw range
+rather than the story-scoped 16 paths, so the submodule-exclusion claim was audited rather than
+accepted.
+
+### Independently re-executed (not accepted on the record)
+
+- Combined server gate: **58 total, 0 failed, 0 skipped, 8.905 s**. Confirmed the recorded `58`.
+- `CiTestInventoryTests`: **66 total, 0 failed**. Confirmed the N6 correction.
+- `TenantIsolationIntegrationTests`: **7** `[Fact]` methods at HEAD.
+- Tooling suites: `line_endings` 4, `integration_fast_coverage` 6, `story_review_readiness` 45,
+  `tenant_isolation_evidence` 41, `story_slice_scope` 20 — all OK.
+- `check-story-review-readiness.py --changed-files-file <16-path story set>`: exit 0.
+  **`--changed-files-file <raw 19-path set>`: exit 1** (see P1). Bare `--story-key`: exit 1, as recorded.
+- `check-story-slice-scope.py`: exit 0. `check-tenant-isolation-evidence.py`: passed.
+- All three Epic AC Verification rows re-run and hold: `prd.md:971` carries the claim verbatim;
+  three `GRAPH.LIST` at `TenantIsolationVerifier.cs:116,315,358` with zero `GRAPH.QUERY`; all four
+  canonical search tests exist at `TenantContextEnforcement:155`, `Semantic:119`, `GraphScoped:118`,
+  `Syntactic:108`.
+- Test assemblies confirmed newer than every source file, so the 58 is a live measurement rather
+  than a stale binary reproducing the recorded number for the wrong reason.
+- The remediation-runtime "not applicable" note is independently re-derived and holds: the entire
+  production delta is one XML doc comment and one `Details` string.
+- N5's repaired source guard is genuinely non-vacuous (`graphCommands.ShouldNotBeEmpty()` runs on the
+  filtered GRAPH-prefixed set). The P1 negative control is a real mutation-style control.
+- **AC1 holds in substance.** The collision fixture proves content-level tenant isolation against a
+  real FalkorDB backend through authenticated per-tenant routes.
+
+### Decisions needed — fifth pass
+
+- [x] [Review][Decision] (F5-D1) **RESOLVED 2026-08-13** (Administrator: record D2 as superseding for Story 24.6 only, and propagate the umbrella note to `epics.md`; 24.7-24.9 stay governed by the original criterion). The resulting work is patch F5-P6 plus a dated note at the proposal's completion criterion, both open below. The approved change proposal named in this story's own
+  `approved_change` frontmatter still states "Stories 24.6-24.9 are registered with **one independent
+  outcome**" (`sprint-change-proposal-2026-08-04-...md:502`, template at `:194-199`), while D2 ratified
+  Story 24.6 as a two-checkpoint umbrella. Decide: formally amend the proposal's completion criterion,
+  or record on the proposal that D2 supersedes it for Story 24.6 only.
+- [x] [Review][Decision] (F5-D2) **RESOLVED 2026-08-13** (Administrator: option (a), narrow the class summary so the hedge lives only on `CheckGraphIsolationAsync`, leaving the Story 5.3/24.3/24.7-24.9 contract untouched). The `"pre-existing"` label on the deferred bullet is corrected in the same change. Open as a patch below. The verifier class-level XML doc re-characterization
+  (`TenantIsolationVerifier.cs:18-19`) is introduced **by this diff** yet is deferred as
+  "pre-existing"; its new wording ("check-specific structural and **tenant-marker** diagnostics")
+  pre-characterizes the marker checks owned by Stories 24.7-24.9, which this story's Slice Proof
+  explicitly excludes, and contradicts `5-3-tenant-isolation-verification.md:180` which still reads
+  "confirms architectural guarantees hold". Decide: (a) narrow the class summary so the hedge lives
+  only on `CheckGraphIsolationAsync`, or (b) ratify the whole-verifier re-characterization as owned by
+  24.6, which then requires updating `5-3-...:180` and pinning one wording with a test. Either way the
+  "pre-existing" label is factually wrong and is corrected.
+- [x] [Review][Decision] (F5-D3) **RESOLVED 2026-08-13** (Administrator: re-run the owning class at HEAD and restate, superseding every earlier figure; if the Aspire/FalkorDB topology is unavailable the item converts to a recorded blocker with owner, consequence, and reopen trigger). Open as a patch below. Recorded durations for the same class are mutually inconsistent:
+  the third-pass ledger row and `deferred-work.md:1900` record `TenantIsolationIntegrationTests` at
+  **16.008 s / 17.572 s** for six methods, while post-P1 rows record **190.569 s** and **209.076 s**
+  for *single* methods of that class and **214.351 s** for all seven. Each `dotnet exec` brings up its
+  own Aspire topology, so a 16 s full-class run is hard to reconcile with a 209 s single-method run —
+  and the third pass used the 16.008 s figure specifically to "close the question of whether the
+  widened lane really exercised the backend". Decide which runs are authoritative, or re-run and
+  restate.
+- [x] [Review][Decision] (F5-D4) **RESOLVED 2026-08-13** (Administrator: split the obligation explicitly - the runbooks discharge AC3's command obligation, the verifier discharges the structural-only label and method citation; no API string growth). Record the reading rather than leaving it implied. Open as a patch below. AC3 requires that "verifier **and** operator documentation ... cite
+  the focused integration **command**". The runbooks cite the command; the verifier's `Details` cites
+  only a method name, and lengthening that operator-facing API string conflicts with the existing
+  deferred item recording it as an uncontracted ~330-char prose blob. Decide: extend the `Details`
+  citation, or record that the runbooks discharge AC3's command obligation and the verifier discharges
+  the label obligation.
+
+### Patches — fifth pass
+
+- [ ] [Review][Patch] (F5-P1) **[high]** Three in-scope changed paths are exempted by prose only.
+  `references/Hexalith.Builds`, `references/Hexalith.EventStore`, `references/Hexalith.FrontComposer`
+  are excluded in File List prose and two ledger cells, but `### File List Exclusions` holds exactly
+  one bullet. `story-phase-ledger.md:118-131` is explicit that prose "does not exempt a path from the
+  executable gate". Re-run independently: the raw 19-path set exits **1** with three `C1: ... changed
+  but is not in the File List` violations, while the same run accepts `bmad_customization_test.py` —
+  proving the machine-readable mechanism works and simply was not used. Every recorded "readiness
+  passed" in this story was produced against a hand-curated 16-path input. Add three exclusion bullets
+  with path, named owner, and reason, then re-record readiness against the raw set.
+  [24-6-...md:163,181-183]
+- [ ] [Review][Patch] (F5-P2) Four artifacts carry three different statuses: story `review`,
+  `sprint-status.yaml` `review`, `epics.md:4598` `in-progress`, spec frontmatter `status: 'done'`.
+  First-pass patch "Reconcile status across artifacts" is checked off as applied. `review_loop_iteration: 1`
+  is also stale after four completed passes. [epics.md:4598; spec:5-6]
+- [ ] [Review][Patch] (F5-P3) `deferred-work.md:1900` `Evidence:` is a phase stale — records the owning
+  class at **6 total / 17.572 s** and the collision method at 175.204 s, superseded by 7/7 in 214.351 s
+  and 1/1 in 209.076 s. It never names the P1 negative control, its `Re-open trigger:` protects only the
+  positive method (so deleting the control trips nothing), and its status rationale still reads "Story
+  24.6 returned to `in-progress`", a status the story no longer holds. Same shape as second-pass P5,
+  regressed by the P1 closure. [deferred-work.md:1900-1901]
+- [ ] [Review][Patch] (F5-P4) The eleven new deferred entries appended by the first pass carry **none**
+  of the required schema fields the same file documents at `:11-29` (`ID:`, `Status:`, `Source story:`,
+  `Target artifact:`, `Re-open trigger:`, and one of `Evidence:`/`Rationale:`). They are bare prose
+  bullets — unreferenceable by ID and invisible to the schema gate. The "legacy prose entries remain
+  valid" clause covers pre-existing entries, not new ones. [deferred-work.md:3034+]
+- [ ] [Review][Patch] (F5-P5) Checkpoint C2's `Evidence command / artifact` cell contains only results
+  ("Restart regression 1/1 passing in 2.5443 min; ..."), no command and no artifact — while
+  `story-scope-guard.md` permits the umbrella exemption *only when* every checkpoint has one. C2 also has
+  no row in the `## Verification` table. The reproducible invocation already exists at ledger row `:155`;
+  lift it into the cell, add the PR #53 CI run as the artifact, and add a C2 verification row.
+  [24-6-...md:58,117-133]
+- [ ] [Review][Patch] (F5-P6) The D2 umbrella ratification lives only in the story file. `epics.md:4597`
+  changed by exactly one line (`backlog` -> `in-progress`) and carries no umbrella note; the repo's own
+  precedent is `epics.md:5381,5395` (Story 31.1). At both surfaces the policy names as binding, Story
+  24.6 still reads as a one-outcome story. [epics.md:4597]
+- [ ] [Review][Patch] (F5-P7) The final `code-review` ledger row omits four of the five required
+  `Test count` elements — no cumulative story delta, no per-lane before/after totals, no named unit
+  bound to each lane, and **no evidence command at all**. Every earlier row carries all five. This is
+  the identical defect second-pass P8 recorded against the then-`ci-repair` row. [24-6-...md:159]
+- [ ] [Review][Patch] (F5-P8) The proof-method citation is unbound. The method name appears at seven
+  sites; the two that guard it (`OperationalRunbookSetTests.cs:375`, `TenantIsolationVerifierTests.cs:381`)
+  compare the verifier/runbook text to **string literals declared inside the tests**. Renaming the test
+  method and updating `integration-fast-required-surfaces.txt` — the only edit CI forces — leaves both
+  guards green while the operator-facing verify response and both runbooks instruct operators to run a
+  `-method` invocation that resolves to no test. Derive the literal by parsing the manifest in
+  `OperationalRunbookSetTests` and reuse it in the verifier assertion.
+- [ ] [Review][Patch] (F5-P9) Two new **required** `integration-fast` method surfaces were pinned with
+  no lane evidence. The owning class carries only `[Trait("Category", "Integration")]` — not
+  `IntegrationSlow` — so both methods, measured locally at 190.569 s and 209.076 s against real
+  FalkorDB, now execute in CI's required fast lane (`ci.yml:429`). The only recorded post-patch evidence
+  is `integration_fast_coverage` 6/6, which exercises the verifier script against synthetic TRX
+  fixtures, not this manifest against a real lane result. Cite a green integration-fast run at HEAD or
+  record an accepted blocker with owner, consequence, and reopen trigger.
+- [ ] [Review][Patch] (F5-P10) AC3's operator-observable output is pinned only by mocks. The `Details`
+  string returned over `POST /api/v1/tenants/{tenantId}/verify` is asserted solely in the NSubstitute-mocked
+  `TenantIsolationVerifierTests`, while the real-backend `VerifyTenant_WithTwoProvisionedTenants_CoreIsolationChecksShouldPass`
+  already POSTs that endpoint and asserts nothing about `Details`. For a story whose thesis is that
+  internal signals must not be mistaken for observable proof, AC3 closes on the shape it exists to
+  forbid. Add the assertion to the existing real-backend test — no new method, no new lane.
+- [ ] [Review][Patch] (F5-P11) The P1 closure is partial and undisclosed. The negative control plants
+  only `edgeMarkerB` and pins the thrown message to "tenant-local edge marker", exercising one of the
+  ~15 assertions in `AssertTraversalIsFixtureLocal`. The four node-marker assertions — which carry
+  NFR8's actual "zero tenant-B **nodes**" claim — have no failure-sensitivity control. Checkpoint C1
+  reads an unqualified `complete` and the spec reads "P1 and N4 are closed". Disclose the boundary;
+  a second control planting `nodeMarkerB` is the stronger optional fix. Related: the control is listed
+  under **Cross-Tenant Negative Evidence -> Tests** although it never crosses tenants — it writes a
+  literal into tenant A's own edge, making it assertion-sensitivity evidence, not cross-tenant evidence.
+  [TenantIsolationIntegrationTests.cs:96-146]
+- [ ] [Review][Patch] (F5-P12) The repaired AC3 source guard still has escape hatches: the regex matches
+  only `ExecuteAsync("<literal>")` in one file, and the only prohibition is the literal `GRAPH.QUERY`.
+  A content read added as `GRAPH.RO_QUERY`, `GRAPH.EXPLAIN`, or `GRAPH.PROFILE`, issued through a
+  `const`/interpolation, via sync `Execute`, or from another partial file, passes both assertions.
+  Reject any `GRAPH.` command other than `GRAPH.LIST`, scan every `TenantIsolationVerifier*.cs`, and
+  assert the full `ReceivedCalls()` surface rather than only calls named `ExecuteAsync`.
+  [OperationalRunbookSetTests.cs:410-423; TenantIsolationVerifierTests.cs:387-394]
+- [ ] [Review][Patch] (F5-P13) `InPlaceOpenBaoRestart_RotatesGenerationAndRecoversDependentSidecars`
+  never asserts the sidecar endpoint actually rotated. `ReconnectPrimaryDaprClients` is called only when
+  `currentDaprEndpoint != DaprSidecarHttpEndpoint`, so if the sidecar returns on the same port the
+  reconnect never runs and the new actor call succeeds against the original factory — green, with the
+  repair unexercised. Capture the endpoint before and after and assert it changed.
+  [OpenBaoTopologyIntegrationTests.cs:148-156; AspireIngestionPipelineFixture.cs:642]
+- [ ] [Review][Patch] (F5-P14) D2's second half was never applied. The Slice Proof's **Demonstration
+  boundary** still describes only the graph outcome and the **Excluded** list is unchanged from the
+  pre-D2 single-outcome text — it never mentions CI or fixture work. C2 has neither a demonstration
+  boundary nor exclusions. [24-6-...md:49-51]
+- [ ] [Review][Patch] (F5-P15) No `Historical Context Classification` row for Story 29.1, which owns
+  both fixture files C2 modifies (`29-1-...md:333,340`) and whose own review created the restart
+  regression this story expands (`29-1-...md:104`). `historical-reference-only` is the correct label —
+  `29-1-...md` carries none of the policy's anti-template marker phrases. [24-6-...md:31-36]
+- [ ] [Review][Patch] (F5-P16) `VerifyTenant_WithTwoProvisionedTenants_CoreIsolationChecksShouldPass`
+  is the test the AC2 redundancy justification actually rests on — the third pass established that the
+  deleted test's *name* was never the real coverage — yet it is the one method not pinned in
+  `integration-fast-required-surfaces.txt`. Renaming or skipping it silently removes AC2's stated
+  coverage while the lane stays green. [tools/integration-fast-required-surfaces.txt]
+- [ ] [Review][Patch] (F5-P17) The spec now carries **two** `## Suggested Review Order` H2 sections
+  (`:157` and `:382`) with divergent anchors; the fourth pass appended a new one instead of updating
+  the third pass's corrected one. A top-down reader — and any heading lookup, the pattern this repo's
+  own `MarkdownContractDocument.GetSection` uses — takes the stale first. [spec:157]
+- [ ] [Review][Patch] (F5-P18) Fourth-pass anchor drift: "CI now requires **both** positive and
+  planted-leak graph methods" cites `integration-fast-required-surfaces.txt:15`, which is only the
+  positive entry; the negative control is line **16**. [spec:422-423]
+- [ ] [Review][Patch] (F5-P19) The "Runbook evidence-boundary guard (AC3 docs)" verification row is
+  dated `passed 2026-08-12`, but `OperationalRunbookSetTests.cs` was last changed **2026-08-13** by the
+  N5 repair, which rewrote the assertions inside exactly that row's subject test. The standalone
+  measurement predates the change it is cited to cover. [24-6-...md:127]
+- [ ] [Review][Patch] (F5-P20) Checkpoint C1's `Review state` reads "implementation closure ready for
+  review" while its `Completion state` reads "complete 2026-08-13". Dated, so C6 passes at `review`;
+  under `done` the cell asserts the checkpoint's own review was never performed — the false-record shape
+  N3 repaired one pass earlier. [24-6-...md:57]
+- [ ] [Review][Patch] (F5-P21) `docs/operations/route-surface.md` closes the new section with two
+  consecutive blank lines before `## Pub/sub event-intake operation surface`; the paired insertion in
+  `tenant-onboarding-offboarding.md` closes with one. The two sections are maintained as near-duplicates
+  and pinned together by `OperationalRunbookSetTests`. [docs/operations/route-surface.md:108-109]
+
+### Deferred — fifth pass
+
+- [x] [Review][Defer] The first-pass patch "strengthen **and relocate** the source-text guard" was only
+  half-applied — N5 strengthened it, but the verifier source assertion still lives in the runbook/deployment
+  doc-contract class, so a verifier regression is reported by a runbook test — deferred, pre-existing shape
+- [x] [Review][Defer] `ReconnectPrimaryDaprClients` disposes `_actorHttpMessageHandler` and nulls the
+  factory *before* installing replacements, so a proxy handed out before the rotation faults with
+  `ObjectDisposedException`; not currently reachable because the collection runs sequentially — deferred
+- [x] [Review][Defer] The reconnect fires only when the endpoint changes, so a sidecar restarting on the
+  same port keeps pooled connections to the killed process — deferred
+- [x] [Review][Defer] `AssertTraversalIsFixtureLocal` dereferences `Nodes`/`Edges`/`GapMarkers` without
+  null guards, yielding a `NullReferenceException` instead of an assertion naming the lost field — deferred
+- [x] [Review][Defer] No cancellation-token coverage on `VerifyAsync`; the graph check's cancellation
+  behaviour is unpinned — deferred
+- [x] [Review][Defer] No `/traverse` denial rows for invalid or out-of-range `depth`, where a 400 could
+  pre-empt the 403 — deferred, beyond AC1
+- [x] [Review][Defer] `var actorConfig` is dereferenced in the restart regression with no null guard, and
+  the assertion silently depends on the `OpenBaoRecoveryTenantId` tenant having a seeded embedding
+  config — deferred
