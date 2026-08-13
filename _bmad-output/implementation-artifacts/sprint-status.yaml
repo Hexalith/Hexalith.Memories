@@ -424,7 +424,7 @@ development_status:
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
   24-6-graph-content-level-tenant-isolation-evidence: review  # 2026-08-13: seventh-pass bmad-build review applied all 26 sixth-pass patches. Current gates pass: index-aware 30-path reconciliation, non-vacuous source guard, unfiltered received-command guard, 58/58 server, 63/63 canonical integration, 1/1 collision, and 1/1 restart recovery. Held at review for independent acceptance.
-  24-7-tenant-configured-vector-dimension-verification: backlog
+  24-7-tenant-configured-vector-dimension-verification: review
   24-8-semantic-isolation-key-family-classification: backlog
   24-9-non-destructive-tenant-marker-diagnostics: backlog
   epic-24-retrospective: done

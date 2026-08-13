@@ -365,6 +365,7 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.AddSingleton<TenantIsolationVerifier>(sp =>
             new TenantIsolationVerifier(
                 sp.GetRequiredService<TenantRegistryService>(),
+                sp.GetRequiredService<ITenantEmbeddingConfigProvider>(),
                 sp.GetRequiredKeyedService<IConnectionMultiplexer>("redis"),
                 sp.GetRequiredKeyedService<IConnectionMultiplexer>("falkordb"),
                 sp.GetRequiredService<ILogger<TenantIsolationVerifier>>()));

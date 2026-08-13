@@ -8,7 +8,10 @@ namespace Hexalith.Memories.Server.Tenants;
 using System.Diagnostics;
 using System.Net;
 
+using Dapr.Actors;
+
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Infrastructure;
 
 using Microsoft.Extensions.Logging;
@@ -20,22 +23,27 @@ using StackExchange.Redis;
 public sealed partial class TenantIsolationVerifier
 {
     private readonly TenantRegistryService _registry;
+    private readonly ITenantEmbeddingConfigProvider _embeddingConfigProvider;
     private readonly IConnectionMultiplexer _redis;
     private readonly IConnectionMultiplexer _falkorDb;
     private readonly ILogger<TenantIsolationVerifier> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="TenantIsolationVerifier"/> class.</summary>
     /// <param name="registry">The tenant registry service.</param>
+    /// <param name="embeddingConfigProvider">The requested-tenant embedding configuration provider.</param>
     /// <param name="redis">The Redis connection multiplexer for RediSearch and Redis Vector.</param>
     /// <param name="falkorDb">The FalkorDB connection multiplexer for graph database.</param>
     /// <param name="logger">The logger instance.</param>
     public TenantIsolationVerifier(
         TenantRegistryService registry,
+        ITenantEmbeddingConfigProvider embeddingConfigProvider,
         IConnectionMultiplexer redis,
         IConnectionMultiplexer falkorDb,
         ILogger<TenantIsolationVerifier> logger)
     {
         _registry = registry;
+        _embeddingConfigProvider = embeddingConfigProvider
+            ?? throw new ArgumentNullException(nameof(embeddingConfigProvider));
         _redis = redis;
         _falkorDb = falkorDb;
         _logger = logger;
@@ -216,6 +224,57 @@ public sealed partial class TenantIsolationVerifier
         CancellationToken ct)
     {
         Stopwatch sw = Stopwatch.StartNew();
+        ct.ThrowIfCancellationRequested();
+
+        TenantEmbeddingConfig? embeddingConfig;
+        try
+        {
+            Task<TenantEmbeddingConfig>? lookup = _embeddingConfigProvider.GetAsync(tenantId, ct);
+            if (lookup is null)
+            {
+                sw.Stop();
+                return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
+            }
+
+            embeddingConfig = await lookup
+                .WaitAsync(ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            sw.Stop();
+            return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
+        }
+        catch (Exception ex) when (IsEmbeddingConfigurationUnavailable(ex))
+        {
+            sw.Stop();
+            return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
+        }
+
+        if (embeddingConfig is null)
+        {
+            sw.Stop();
+            return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
+        }
+
+        try
+        {
+            EmbeddingProviderDefaults.Validate(embeddingConfig);
+        }
+        catch (ArgumentException ex)
+        {
+            sw.Stop();
+            return new TenantIsolationCheckResult("SemanticIsolation", false, sw.Elapsed.TotalMilliseconds)
+            {
+                Details = $"Embedding configuration for requested tenant '{tenantId}' is invalid in field '{GetEmbeddingConfigurationValidationField(ex)}' with actual configured dimensions {embeddingConfig.Dimensions}",
+                Remediation = $"Correct the embedding configuration for tenant '{tenantId}' and retry verification; no indexes were changed",
+            };
+        }
+
         try
         {
             IDatabase db = _redis.GetDatabase();
@@ -248,6 +307,18 @@ public sealed partial class TenantIsolationVerifier
                 naturalLanguageIndex,
                 naturalLanguagePrefix,
                 IndexSchemaDefinitions.GetNaturalLanguageSemanticFieldIdentifiers());
+            AppendConfiguredDimensionProblem(
+                problems,
+                rawIndex,
+                tenantId,
+                embeddingConfig.Dimensions,
+                rawDimensions);
+            AppendConfiguredDimensionProblem(
+                problems,
+                naturalLanguageIndex,
+                tenantId,
+                embeddingConfig.Dimensions,
+                naturalLanguageDimensions);
             if (rawDimensions is not null
                 && naturalLanguageDimensions is not null
                 && rawDimensions.Value != naturalLanguageDimensions.Value)
@@ -277,7 +348,7 @@ public sealed partial class TenantIsolationVerifier
                 return new TenantIsolationCheckResult("SemanticIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
                     Details = string.Join("; ", problems),
-                    Remediation = "Repair or re-provision the tenant Redis Vector indexes and remove mismatched target-prefix hashes",
+                    Remediation = $"Repair or re-provision tenant '{tenantId}' Redis Vector indexes, reindex its semantic data using the validated {embeddingConfig.Dimensions}-dimension embedding configuration, and remove mismatched target-prefix hashes",
                 };
             }
 
@@ -285,8 +356,8 @@ public sealed partial class TenantIsolationVerifier
             return new TenantIsolationCheckResult("SemanticIsolation", true, sw.Elapsed.TotalMilliseconds)
             {
                 Details = rawDocumentCount == 0 && naturalLanguageDocumentCount == 0 && totalScanned == 0
-                    ? "Tenant has zero vector hashes/indexed memory units across raw and natural-language semantic indexes — isolation checks are vacuously true"
-                    : $"Target raw and natural-language vector index metadata verified; scanned {rawScannedCount} raw and {naturalLanguageScannedCount} natural-language target-prefix hash(es); indexed docs: raw={FormatDocumentCount(rawDocumentCount)}, nl={FormatDocumentCount(naturalLanguageDocumentCount)}",
+                    ? $"Tenant has zero vector hashes/indexed memory units across raw and natural-language semantic indexes; both indexes match the requested tenant's validated {embeddingConfig.Dimensions}-dimension configuration — isolation checks are vacuously true"
+                    : $"Target raw and natural-language vector index metadata verified against the requested tenant's validated {embeddingConfig.Dimensions}-dimension configuration; scanned {rawScannedCount} raw and {naturalLanguageScannedCount} natural-language target-prefix hash(es); indexed docs: raw={FormatDocumentCount(rawDocumentCount)}, nl={FormatDocumentCount(naturalLanguageDocumentCount)}",
             };
         }
         catch (RedisConnectionException ex)
@@ -518,6 +589,50 @@ public sealed partial class TenantIsolationVerifier
         => IndexSchemaDefinitions.TryGetDocumentCount(info, out int documentCount)
             ? documentCount
             : null;
+
+    private static void AppendConfiguredDimensionProblem(
+        List<string> problems,
+        string indexName,
+        string tenantId,
+        int expectedDimensions,
+        int? actualDimensions)
+    {
+        if (actualDimensions is not null && actualDimensions.Value != expectedDimensions)
+        {
+            problems.Add(
+                $"Index '{indexName}' for tenant '{tenantId}' expected {expectedDimensions} dimensions from embedding configuration but found {actualDimensions.Value}");
+        }
+    }
+
+    private static bool IsEmbeddingConfigurationUnavailable(Exception ex)
+        => ex is ActorMethodInvocationException
+            or Dapr.DaprException
+            or TimeoutException
+            or HttpRequestException;
+
+    private static TenantIsolationCheckResult CreateEmbeddingConfigurationUnavailableResult(
+        string tenantId,
+        double durationMs)
+        => new("SemanticIsolation", false, durationMs)
+        {
+            Details = $"Embedding configuration is unavailable for requested tenant '{tenantId}'",
+            Remediation = $"Check the DAPR tenant-configuration backend for tenant '{tenantId}' and retry verification",
+        };
+
+    private static string GetEmbeddingConfigurationValidationField(ArgumentException exception)
+        => exception.ParamName switch
+        {
+            nameof(TenantEmbeddingConfig.Provider) => "provider",
+            nameof(TenantEmbeddingConfig.Model) => "model",
+            nameof(TenantEmbeddingConfig.Dimensions) => "dimensions",
+            nameof(TenantEmbeddingConfig.RateLimitPerMinute) => "rateLimitPerMinute",
+            nameof(TenantEmbeddingConfig.ApiSecretKeyName) => "apiSecretKeyName",
+            nameof(TenantEmbeddingConfig.BaseUrl) => "baseUrl",
+            nameof(TenantEmbeddingConfig.AuthMode) => "authMode",
+            nameof(TenantEmbeddingConfig.OidcTokenEndpoint) => "oidcTokenEndpoint",
+            nameof(TenantEmbeddingConfig.OidcClientId) => "oidcClientId",
+            _ => "configuration",
+        };
 
     private static string FormatDocumentCount(int? documentCount)
         => documentCount?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown";

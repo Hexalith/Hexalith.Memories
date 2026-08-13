@@ -101,6 +101,29 @@ public sealed class ServerEndpointAuthorizationTests : IDisposable
     }
 
     [Fact]
+    public async Task TenantVerifyPost_WithMismatchedTenant_ReturnsTenantForbiddenBeforeDependencies()
+    {
+        using HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            ServerTestBearerToken.Create(tenants: ["tenant-a"]));
+        using var content = new ByteArrayContent([]);
+
+        using HttpResponseMessage response = await client.PostAsync(
+            "/api/v1/tenants/tenant-b/verify",
+            content,
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        ErrorResponse error = await ReadErrorResponseAsync(response);
+        error.Code.ShouldBe("TENANT_FORBIDDEN");
+        _factory.DaprClient.ReceivedCalls().ShouldBeEmpty();
+        _factory.ActorProxyFactory.ReceivedCalls().ShouldBeEmpty();
+        _factory.RedisDatabase.ReceivedCalls().ShouldBeEmpty();
+        _factory.FalkorDbDatabase.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task TenantPathEndpoint_WithMalformedTenant_ReturnsTenantForbiddenBeforeTenantState()
     {
         using HttpClient client = CreateClient();
