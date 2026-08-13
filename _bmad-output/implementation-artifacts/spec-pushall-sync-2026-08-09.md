@@ -53,3 +53,37 @@ Allowed files for this story:
 - `git diff --cached --check`
 - `python3 tools/check-story-file-scope.py --story-key spec-pushall-sync-2026-08-09 --staged`
 - `npx commitlint --from "$(git merge-base origin/main HEAD)" --to HEAD --verbose`
+
+## Verification Results
+
+- `git diff --cached --check` was clean at commit time for `8d47a46a`.
+- `python3 tools/check-story-file-scope.py --story-key spec-pushall-sync-2026-08-09 --staged` passed with the spec file as the only staged path.
+- `npx commitlint --edit` / commit-msg hook / `npx commitlint --last --verbose` passed for `8d47a46a` (`build: sync local changes via /pushall`). The post-push `--from "$(git merge-base origin/main HEAD)" --to HEAD` range was empty because HEAD already equaled `origin/main`.
+- Superproject push: `origin/main` `3e92ca36..8d47a46a`.
+- The four File Scope gitlink pointers were already equal to their `origin/main` tips before this envelope commit, so they were not restaged:
+  - `references/Hexalith.Builds` `5d268c6b00938070c4f8bb6e9d0156c9a4539eb6`
+  - `references/Hexalith.EventStore` `24e5caeaae44d69058720a789dad27fbe85fa1d8`
+  - `references/Hexalith.FrontComposer` `677b5e287bc0e60afc3fc6f27737ed8cb9697db8`
+  - `references/Hexalith.Tenants` `acab0b515e822eed509bd6f946c62b2e2f644572`
+- After fetch, only `main` / `origin/main` existed. No fetched remote tips were proven ancestral and deleted (zero OID-lease deletions).
+
+## Suggested Review Order
+
+**Envelope closeout**
+
+- Authorized File Scope and pointer-only aggregate for this snapshot
+  [`spec-pushall-sync-2026-08-09.md:15`](spec-pushall-sync-2026-08-09.md#L15)
+
+- Execution tasks closed after the superproject snapshot landed
+  [`spec-pushall-sync-2026-08-09.md:41`](spec-pushall-sync-2026-08-09.md#L41)
+
+**Verification evidence**
+
+- Recorded command results, already-published OIDs, and empty prune
+  [`spec-pushall-sync-2026-08-09.md:57`](spec-pushall-sync-2026-08-09.md#L57)
+
+**Peripherals**
+
+- Deferred leftovers owned by other envelopes or standing /pushall process
+  [`deferred-work.md:3242`](deferred-work.md#L3242)
+
