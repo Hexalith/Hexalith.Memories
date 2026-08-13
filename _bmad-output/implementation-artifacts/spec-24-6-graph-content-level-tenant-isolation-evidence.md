@@ -2,7 +2,7 @@
 title: 'Story 24.6: Graph Content-Level Tenant Isolation Evidence'
 type: 'feature'
 created: '2026-08-12'
-status: 'done'
+status: 'in-progress'
 review_loop_iteration: 1
 baseline_commit: '0ecdffed0b131d05816306da1c7061eb88bda5bf'
 context:
@@ -39,7 +39,7 @@ context:
 ## Code Map
 
 - `tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs` -- replace the placeholder collision test; remove the misleading all-axis test after canonical negatives pass.
-- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs` -- reuse tenant provisioning, FalkorDB, HTTP client, and route-derived authentication; read-only.
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs` -- reuse tenant provisioning, FalkorDB, HTTP client, and route-derived authentication. Read-only **for the graph-isolation slice**; the `qa-gap-closure` phase changed it by +38/-24 (`git diff --numstat 0ecdffed..HEAD`) to reconnect the Dapr actor-proxy factory alongside the state client on sidecar-port rotation. Corrected 2026-08-13 by third-pass code review.
 - `src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs`, `Contracts/V1/TraversalEdgeInfo.cs` -- reuse parameterized seeding and traversal-visible `VerifiedBy`; read-only.
 - `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs` and its tests -- retain `GRAPH.LIST` only; pin structural wording, proof citation, and no `GRAPH.QUERY`.
 - `docs/operations/{tenant-onboarding-offboarding,route-surface}.md` and `OperationalRunbookSetTests.cs` -- document and guard the evidence boundary.
@@ -86,8 +86,12 @@ context:
   241.463 seconds, using the same local Dapr service-address prerequisites. This reverified the four
   canonical classes after the previously gated removal of the redundant all-axis test.
 - Server verifier, runbook, and denial-before-dependency gate passed after a clean Debug build:
-  54 total, 0 failed, 0 skipped, 7.693 seconds. The increased count includes the authenticated
-  traversal-path denial-before-dependency case added during review.
+  **58 total**, 0 failed, 0 skipped. The `54` recorded here previously was the mid-review total and was
+  superseded by the first-pass review patches (+2 `TenantIsolationVerifierTests` methods, +2
+  `ServerEndpointAuthorizationTests` InlineData rows). Independently re-measured by third-pass code
+  review on 2026-08-13 at 58 total, 0 failed, 0 skipped, 6.650 s, and again at 7.896 s after the
+  source-guard repair. The count includes the authenticated traversal-path denial-before-dependency
+  cases added during review.
 - The exact Epic 24/Epic 25 checklist structural preservation command from
   `spec-keep-epic-23-ingestion-invariants-on-epic-24-and-epic-25-review-checklists.md` exited 0,
   proving one checklist heading and exactly one row for each of the six named invariants in both contexts.
@@ -104,9 +108,20 @@ context:
   `CausedBy` relationship views, exposes its own node/edge markers and no gap markers, and contains
   zero foreign markers.
 - Backend: real Aspire-provisioned FalkorDB; no mocked graph-content result.
+- Proof boundary — write path is **not** covered: `SeedCollisionGraphAsync` obtains the tenant graph
+  directly via `falkor.SelectGraph(tenantId)` (`TenantIsolationIntegrationTests.cs:168`) rather than
+  ingesting through the production write path. This evidence therefore proves read-path tenant routing
+  and graph-content locality under identifier collision; it does not prove that a production ingestion
+  into tenant A selects tenant A's graph. That write-path claim remains an open deferred item ("no test
+  asserts that ingesting into tenant A leaves another tenant's graph empty"). Written 2026-08-13 by
+  third-pass code review; the first-pass patch that claimed this disclosure was checked off without the
+  text ever being added.
 - Structural matrix row: `TenantIsolationVerifierTests.VerifyAsync_GraphIsolation_IsStructuralOnlyAndCitesContentProof`
-  ran in the passing server class gate and asserts that the complete FalkorDB `ExecuteAsync` command
-  set is exactly three `GRAPH.LIST` calls, plus the independent proof citation.
+  ran in the passing server class gate and asserts the **boundary** — the recorded FalkorDB
+  `ExecuteAsync` command set is non-empty and contains no command other than `GRAPH.LIST` — plus the
+  independent proof citation. The earlier wording here ("exactly three `GRAPH.LIST` calls") described
+  the assertion that first-pass patch 21 deliberately removed, because pinning the count froze three
+  redundant round trips as a contract. Corrected 2026-08-13.
 - Backend-unavailable matrix row: `TenantIsolationVerifierTests.VerifyAsync_BackendUnavailable_ReturnsFailedCheckNotException`
   ran in the passing server class gate. The first live collision attempt also exercised the procedural
   proof boundary: the spec remained `in-progress` while the real-backend test body could not run.
@@ -121,40 +136,51 @@ context:
 **Content-isolation proof**
 
 - Start with the collision fixture, authenticated traversals, and exact local topology assertions.
-  [`TenantIsolationIntegrationTests.cs:65`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L65)
+  [`TenantIsolationIntegrationTests.cs:68`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L68)
 
 - Review bounded graph seeding and inspection used only by the real-backend fixture.
-  [`TenantIsolationIntegrationTests.cs:165`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L165)
+  [`TenantIsolationIntegrationTests.cs:168`](../../tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs#L168)
 
 **Runtime evidence boundary**
 
 - Confirm runtime verification remains structural-only and requires independent content proof.
-  [`TenantIsolationVerifier.cs:305`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L305)
+  [`TenantIsolationVerifier.cs:304`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L304)
 
 - Verify fixed-token cross-tenant traversal is denied before backend dependencies.
-  [`ServerEndpointAuthorizationTests.cs:75`](../../tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs#L75)
+  [`ServerEndpointAuthorizationTests.cs:79`](../../tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs#L79)
 
 **Operator and contract safeguards**
 
 - Check build-first proof instructions and portable Dapr endpoint discovery guidance.
-  [`tenant-onboarding-offboarding.md:153`](../../docs/operations/tenant-onboarding-offboarding.md#L153)
+  [`tenant-onboarding-offboarding.md:159`](../../docs/operations/tenant-onboarding-offboarding.md#L159)
 
 - Inspect structural wording, exact command, and source-level query guards.
   [`OperationalRunbookSetTests.cs:372`](../../tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs#L372)
 
 - Finish with exact `GRAPH.LIST` call-set and proof-citation assertions.
-  [`TenantIsolationVerifierTests.cs:335`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L335)
+  [`TenantIsolationVerifierTests.cs:362`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L362)
 
 ## Review Findings
 
-Code review 2026-08-12 against `0ecdffed..63387538` (12 files, +505/-108). Six adversarial layers
-plus parent-side independent re-execution. 46 findings: 4 decision-needed, 29 patch, 11 deferred,
-2 dismissed as noise.
+Code review 2026-08-12 against `0ecdffed..63387538` (12 files, +505/-108) — that SHA is the unsquashed PR #52 branch tip and is **not reachable from merged history**; the merged equivalent is `0ecdffed..fdc76064`, identical at 12 files, +505/-108 (re-derived 2026-08-13). Six adversarial layers
+plus parent-side independent re-execution. 44 findings: 4 decision-needed, 29 patch, 11 deferred.
+(An earlier revision said `46 findings ... 2 dismissed as noise`; no dismissed item was ever recorded,
+so the total is corrected to the 44 items actually enumerated below. Note the 4 decisions are each
+tagged `[Review][Patch]`, which is what produced the double-counted `33 patches` figure in the story
+ledger. Corrected 2026-08-13.)
 
 Independently reproduced by the reviewer, not accepted on the record alone: the server gate
 (`54 total, 0 failed`), the real-backend collision proof (`1 total, 0 failed`, 175.204s),
-`check-tenant-isolation-evidence.py` (pass), `check-story-file-scope.py` (pass), all three Epic AC
-rows, and all seven Suggested Review Order anchors (no drift). The collision fixture genuinely
+`check-tenant-isolation-evidence.py` (pass), `check-story-file-scope.py` (**vacuous pass** — corrected
+2026-08-13: the bare `--story-key` form exits 0 as a no-op on an unstaged worktree, and the non-vacuous
+`--changed-files-file` form exits **1**, reporting `tests/tooling/bmad_customization/bmad_customization_test.py`
+as out of scope. That is the expected D1 situation — the path was carried under its own `Scope-Override:`
+trailer in `c64e5514`, which the commit-time gate honours and a cumulative-set run cannot see — but it
+must not be cited as a clean pass), and all three Epic AC
+rows. The claim that all seven Suggested Review Order anchors held with no drift was **wrong**: third-pass
+code review re-derived every anchor on 2026-08-13 and found four materially drifted (`:65`->`:68`,
+`:165`->`:168`, `:153`->`:159`, `:335`->`:362`) and one off-by-one inside a method signature
+(`:305`->`:304`). The anchors below are the corrected values. The collision fixture genuinely
 proves content-level isolation against a real FalkorDB backend; AC1 holds.
 
 ### Decisions resolved 2026-08-12 (Administrator) — all applied
@@ -209,3 +235,92 @@ proves content-level isolation against a real FalkorDB backend; AC1 holds.
 - [x] [Review][Defer] A ~500-char shell loop is embedded in a Verification table cell instead of citing its owning spec — deferred
 - [x] [Review][Defer] Traversal completeness fields may be omit-when-default on the wire; assert wire presence rather than deserialized defaults — deferred
 - [x] [Review][Defer] Deleting `SetupGraphQueryEmpty` removed the throw-stub from 12 tests; a reintroduced `GRAPH.QUERY` would return an unconfigured default in all of them — deferred, one test now pins the command set
+
+## Review Findings — Second Pass (code review 2026-08-12, against `c64e5514`)
+
+Independent second-pass adversarial review run after PR #52 and PR #53 merged. Six layers
+(blind-hunter, edge-case-hunter, verification-gap, acceptance-auditor, historical-slice-guard,
+story-phase-ledger) plus parent-side independent re-execution. Findings were triaged against the
+post-patch worktree `c64e5514`, not the pre-patch slice `0ecdffed..fdc76064`.
+
+Approximately 94 raw findings reduced to 18 live: 3 decision-needed, 15 patch, 0 newly deferred.
+The remainder were dismissed as already fixed by the first-pass patches or already recorded on the
+deferred list above. Verified green and unchanged: all three Epic AC Verification commands re-run
+and confirmed; 145/145 tooling tests pass across `story_review_readiness`, `tenant_isolation_evidence`,
+`integration_fast_coverage`, `bmad_customization`, and `story_slice_scope`; `TenantIsolationVerifier.cs`
+issues only `GRAPH.LIST` with zero `GRAPH.QUERY`; the remediation-runtime checklist is correctly
+recorded as not applicable; `epic-24-context.md` anchors (NFR8, D29, EventStore, banner) are fully
+restored.
+
+### Decisions needed — second pass
+
+- [x] [Review][Decision] (D1) RESOLVED 2026-08-12 (Administrator, option 1 — record as a named exclusion; `### File List Exclusions` added to the story and the final ledger row restated to `matched 15/15` + 1 named exclusion). Unaccounted in-scope changed path breaks File List reconciliation — the cumulative set `git diff --name-status 0ecdffed..HEAD` returns 16 paths while `## File List` declares 15. Missing: `tests/tooling/bmad_customization/bmad_customization_test.py`, introduced by `c64e5514` under a different owner (`Story-Key: spec-update-bmad-6-10-1n49-2026-08-04`) with a carried `Scope-Override:` trailer. No `### File List Exclusions` block exists in either artifact, and the `code-review` ledger row still asserts `matched 13/13 ... No exclusions`. Per `story-phase-ledger.md` this is a fail-closed blocker for `done`. Decide: add the path to the File List, or record it as a machine-readable exclusion naming its owning story key and authorizing trailer. [24-6-...md:122,125-143]
+- [x] [Review][Decision] (D2) RESOLVED 2026-08-12 (Administrator, option 2 — ratified as an approved multi-checkpoint story; `### Checkpoints` table added with owner, evidence command, review state, and completion state per outcome, and the Slice Proof no longer claims a single outcome). Hidden multi-slice scope — commit `c64e5514` bundles three independently demonstrable outcomes: graph-isolation review hardening, the OpenBao/Dapr actor-proxy CI repair, and the BMAD 6.11 customization-fixture repair owned by another story key. `## Slice Proof` still asserts "One independently demonstrable outcome" and its Excluded list never mentions CI or fixture work. Decide: re-key the two non-graph outcomes to their own numbered stories, or ratify 24.6 as a multi-checkpoint story giving each outcome its own checkpoint row with owner, evidence command, review state, and completion state. [24-6-...md:38-42,123]
+- [x] [Review][Decision] (D3) RESOLVED 2026-08-12 (Administrator, option 1 — derived baseline ratified as a human-accepted blocker; the ledger row now names the accepting human and date). The only accepted blocker in the story is self-accepted — the `create-story` adoption row records `Owner: code review` for the derived (not runner-observed) baseline discovery. AC4 and `story-phase-ledger.md` both contemplate human acceptance of a blocker. Decide: ratify the derived baseline as a human-accepted blocker, or re-derive the baseline from a built historical worktree. [24-6-...md:120]
+
+### Patches — second pass
+
+- [ ] [Review][Patch] (P1, **restated 2026-08-13 by third-pass code review — OPEN**) No negative control for the graph collision proof. The sibling `VerifyTenant_PlantedCrossTenantData_DetectsLeakage` exists explicitly for "false-pass prevention" on the Redis/syntactic axis, but nothing plants a foreign node or edge into a tenant graph and asserts that the collision assertions fail. The graph axis therefore has no proof that its own assertions can go red. **The original rationale for this finding was wrong and is withdrawn:** it claimed `ShouldAllBe` is vacuous on an empty collection so an empty or degraded traversal would pass. It would not. `AssertTraversalIsFixtureLocal` pins cardinality before every `ShouldAllBe` — `traversal.Nodes.Select(...).ShouldBe(expectedNodeIds)` (`:264-265`) is sequence equality against a two-element set and `edges.Length.ShouldBe(2)` (`:279`) pins the edge count — and `TotalNodeCount == 2`, `OmittedCount == 0`, `Degraded == false`, `PrimaryPathIntact == true`, and `GapMarkers` empty all guard the degraded case. `TraversalResult.Nodes` is a non-nullable `IReadOnlyList<TraversalNode>`. An empty or degraded traversal fails today. This is a missing control, not an open leak, and it must not be cited as evidence of a false pass. Not covered by any existing deferred item. [tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs:248-296]
+- [x] [Review][Patch] (P2) **APPLIED 2026-08-13** (applied — the disclosure is now written into the proof-boundary bullets above) — A first-pass patch is recorded as applied but was not applied — spec:185 is checked off for disclosing that `SeedCollisionGraphAsync` bypasses the production write path, but no such disclosure exists in the spec proof-boundary bullets, the story Slice Proof demonstration boundary, or the `deferred-work.md` entry, which is flipped to `resolved` on the unqualified claim. [spec-24-6-...md:185,95-117]
+- [x] [Review][Patch] (P3) **APPLIED 2026-08-13** (resolved — status reverted to `in-progress`, so readiness C1 executes again; the residual defect is tracked as N1 below) — Status advanced to `done` ahead of the ledger, disabling the check that would have caught D1 — the readiness gate prints `C1: status 'done' is outside {in-progress, review}; cumulative-diff comparison skipped`, so no automated surface ever compared the File List to the cumulative set. [24-6-...md:8]
+- [x] [Review][Patch] (P4) **APPLIED 2026-08-13** (applied — Results corrected to 58 and the structural-matrix wording restated as a boundary assertion) — Spec Verification Results are one review pass stale — records `54 total` for the server gate where the story records `58 total`, and asserts the structural matrix test proves "exactly three `GRAPH.LIST` calls" although patch 21 deliberately replaced that count assertion with a boundary assertion. [spec-24-6-...md:88-90,107-109]
+- [x] [Review][Patch] (P5) **APPLIED 2026-08-13** (applied — `deferred-work.md` Evidence now carries the post-patch measurements) — `deferred-work.md` Evidence field carries superseded totals (233.919s / 241.463s / 54 total) that contradict the story's post-patch measurements. [deferred-work.md:1900]
+- [x] [Review][Patch] (P6) **APPLIED 2026-08-13** (applied, with a correction: `12 files, +505/-108` was never stale — it is exact for `0ecdffed..fdc76064`. Only the unreachable SHA and the worktree-form command were defects) — The recorded comparison range is unreachable from merged history — `git merge-base --is-ancestor 63387538 HEAD` fails; the merged equivalent is `fdc76064`. The stated `12 files, +505/-108` is stale (cumulative is `16 files, +750/-111`), and `git diff --name-status 0ecdffed` is worktree-form rather than `0ecdffed..HEAD`. [24-6-...md:122; spec-24-6-...md:150]
+- [x] [Review][Patch] (P7) **APPLIED 2026-08-13** (applied — the row is now the canonical `qa-gap-closure`) — `ci-repair` is not a canonical phase name — `story-phase-ledger.md` enumerates exactly `create-story`, `correct-course`, `dev-story`, `qa-gap-closure`, `code-review`. [24-6-...md:123]
+- [x] [Review][Patch] (P8) **APPLIED 2026-08-13** (applied — named unit, cumulative delta, and reproducible command added; the `matched N/N` half had already been satisfied by the D1 patch) — The `ci-repair` row omits the named discovery unit, the cumulative story delta, the exact evidence command, and any `matched N/N` File List reconciliation. [24-6-...md:123]
+- [x] [Review][Patch] (P9) **APPLIED 2026-08-13** (applied — the blocked command is spelled out and the adoption row reconciles `matched 0/0` at the baseline) — The `create-story` adoption row omits the exact command that could not be run, and neither it nor the `dev-story` row carries `matched N/N` as the policy requires at every phase. [24-6-...md:120-121]
+- [x] [Review][Patch] (P10) **APPLIED 2026-08-13** (applied — both real Server.Tests and integration commands recorded) — The `dev-story` row's evidence command is a placeholder (`dotnet exec <assembly> -class <named classes>`) and no command at all is given for the two integration lanes the row moves. [24-6-...md:121]
+- [x] [Review][Patch] (P11) **APPLIED 2026-08-13** (applied — anchors corrected (four had materially drifted) and the governance-gate row restated) — The governance-gate evidence row claims readiness "is now substantive", but C1 did not execute; and spec:157 claims "all seven Suggested Review Order anchors (no drift)" while at least three have drifted — `TenantIsolationVerifierTests.cs:335` now lands on `VerifyAsync_SingleTenant_PerformsTargetStructuralChecks` while the bullet describes the `GRAPH.LIST` call-set assertions now at :362. [24-6-...md:99; spec-24-6-...md:157]
+- [x] [Review][Patch] (P12) **APPLIED 2026-08-13** (applied — the AC2 redundancy justification now cites `VerifyTenant_WithTwoProvisionedTenants_CoreIsolationChecksShouldPass` and records the ordering claim as attested, not demonstrated. AC2 itself is human-owned and was not edited) — AC2's "removed only after" ordering claim has no falsifiable evidence — only one canonical-gate execution is recorded anywhere and it is labelled post-removal, while removal and evidence landed in a single commit. Separately, the coverage that actually makes the deleted test redundant is `VerifyTenant_WithTwoProvisionedTenants_CoreIsolationChecksShouldPass`, which the AC2 justification never cites. [24-6-...md:25,92]
+- [x] [Review][Patch] (P13) **APPLIED 2026-08-13** (applied — `33 patches` corrected to `4 decisions + 29 patches` and the phantom `2 dismissed` removed) — Patch accounting disagrees across artifacts — the story ledger and `sprint-status.yaml` say "33 patches applied" while spec:151 says "4 decision-needed, 29 patch"; the 4 decisions are themselves tagged `[Review][Patch]`, so 33 double-counts them. The same sentence claims "2 dismissed as noise" while zero dismissed items are recorded anywhere. [24-6-...md:122; spec-24-6-...md:151]
+- [x] [Review][Patch] (P14) **APPLIED 2026-08-13** (applied — Code Map now records the +38/-24 qa-gap-closure change) — The spec Code Map still labels `AspireIngestionPipelineFixture.cs` "read-only" although the story's cumulative range changes it by +38/-24. [spec-24-6-...md:42]
+- [x] [Review][Patch] (P15) **APPLIED 2026-08-13** (applied — the label is retained with its justification recorded; both `do not reopen` phrases in `20-2-...md` guard Story 20.1 scope, not Story 20.2 shape) — The Story 20.2 classification row is labelled `current-narrow-pattern` although `20-2-...md` contains the `do not reopen` trigger phrase that `story-scope-guard.md` treats as an anti-template marker; the row is also an addition beyond the approved proposal's three-row table. Either relabel, or record why 20.2's guards bind Story 20.1's scope rather than 20.2's shape. [24-6-...md:36]
+
+## Review Findings — Third Pass (verification-focused, code review 2026-08-13)
+
+Scope chosen by Administrator: verify the fifteen open second-pass patch findings against the current
+worktree rather than re-derive them, re-run every governance gate and Epic AC command independently,
+and hunt only for what P1-P15 did not cover. No review layers were launched; all verification was
+performed directly by the reviewing agent.
+
+### Independently re-executed (not accepted on the record)
+
+- Combined server gate: **58 total, 0 failed, 0 skipped** (6.650 s pre-patch, 7.896 s post-patch after a
+  clean Debug build with 0 warnings / 0 errors). This confirms the story's `58` and refutes the `54`
+  this spec previously recorded.
+- Owning integration class against the real Aspire/FalkorDB topology:
+  **6 total, 0 failed, 0 skipped, 16.008 s**, with live Redis, Dapr sidecar, and actor traffic in the
+  run log. This independently corroborates the recorded 17.572 s and closes the question of whether the
+  widened lane really exercised the backend.
+- `check-story-review-readiness.py --changed-files-file <cumulative>`: exit 0,
+  `C1: all 16 changed paths are declared.` / `C6: 2 evidence table(s) carry no unresolved pending row.`
+- `check-story-review-readiness.py --story-key <key>` (bare): **exit 1**, see N1.
+- `check-story-slice-scope.py`: exit 0. `check-tenant-isolation-evidence.py --changed-files-file`: exit 0.
+- Tooling suites: `line_endings` 4, `integration_fast_coverage` 6, `story_review_readiness` 45,
+  `tenant_isolation_evidence` 41, `story_slice_scope` 20, `bmad_customization` 33 — 149 total, all OK.
+- `CiTestInventoryTests`: **66 total**, 0 failed (see N6).
+- All three Epic AC Verification commands re-run; all three verdicts hold (`prd.md:971` carries the
+  claim verbatim; three `GRAPH.LIST` and zero `GRAPH.QUERY` in the verifier; all four named canonical
+  search tests exist). Epic 23 checklist preservation loop: exit 0.
+
+### Verdicts on the second-pass findings
+
+Thirteen of fifteen confirmed and applied. Two did not survive verification intact: **P1**'s failure
+scenario is refuted (the finding survives only as a missing negative control — see its restated entry
+above), and **P3** is discharged by the status revert. **P6** was confirmed but overstated: the
+`12 files, +505/-108` figure it called stale is exact for the merged range `0ecdffed..fdc76064`.
+
+### New findings — third pass
+
+- [x] [Review][Patch] (N5) **APPLIED** — the AC3 source-level guard was vacuous. `OperationalRunbookSetTests.GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof` asserted `falkorCommands.Count.ShouldBeGreaterThan(0)` on **every** `ExecuteAsync("…")` literal in the verifier, then filtered to `GRAPH.`-prefixed commands before `ShouldAllBe`. `TenantIsolationVerifier.cs:452` issues `FT.INFO`, so deleting every `GRAPH.LIST` call left the count above zero and the filtered sequence empty — `ShouldAllBe` then passed vacuously and the guard greenlit the removal of the very thing it guards. Fixed to require the **filtered** GRAPH-prefixed set to be non-empty. Verified by mutation: replacing the three `GRAPH.LIST` literals with a `const` reference makes the repaired guard fail (1 failed); the previous form would have passed. [tests/Hexalith.Memories.Server.Tests/Deployment/OperationalRunbookSetTests.cs:415-422]
+- [x] [Review][Patch] (N1) **APPLIED** — the Verification table recorded the bare `check-story-review-readiness.py --story-key <key>` invocation as exiting 0. It exits **1** (`C1: the changed set is empty for a governed story`). It exited 0 only while the story read `done`, which skipped C1 entirely. The row now records both forms and their true exits. [24-6-...md Verification table]
+- [x] [Review][Patch] (N2) **APPLIED** — the `24.3-GRAPH-CONTENT-EVIDENCE` deferred entry read `Status: resolved` while its owning story had reverted to `in-progress` with findings open. This is the same shape a first-pass patch already repaired once; the second-pass status revert regressed it. Now `carried-forward`, with the promotion condition recorded in its re-open trigger. [deferred-work.md]
+- [x] [Review][Patch] (N3) **APPLIED** — checkpoint C1 read `complete 2026-08-12` while its own `Review state` cell named three open findings, and C2 likewise. C1 is now an explicit blocked state with owner, consequence, and reopen trigger per `story-phase-ledger.md`; C2 is genuinely complete now that P7/P8 are applied. [24-6-...md Checkpoints]
+- [x] [Review][Patch] (N6) **APPLIED** — the deferred-work schema gate row recorded `65 total` for `CiTestInventoryTests`. The real discovery total is **66**, and `tests/Hexalith.Memories.Cli.Tests` is unchanged across this story's entire range, so 66 was the total throughout; `65` was never measured. Confirmed by re-running the class at HEAD with the artifact edits stashed. [24-6-...md Verification table]
+- [ ] [Review][Decision] (N4) **OPEN — needs a human decision.** Checkpoint C3 is simultaneously excluded from and tracked by the story. Decision D1 recorded `tests/tooling/bmad_customization/bmad_customization_test.py` as a named File List **exclusion** — explicitly not owned by Story 24.6 — and decision D2 then added the same work as checkpoint **C3 inside** the story's Checkpoints table. A path cannot both leave the cumulative story-scoped set and be a tracked story checkpoint. C3 also fails the four-field requirement in `story-scope-guard.md`: its `Review state` cell holds "out of Story 24.6 review scope" (not a review state) and its `Completion state` cell holds provenance prose (not a completion state). Decide: drop C3 (recommended — the `### File List Exclusions` block already records it in full, and D2's ratification only needs to cover outcomes 24.6 owns), or keep C3 and give it a real review state and completion state, accepting that the story then tracks work it declared unowned. [24-6-...md Checkpoints, File List Exclusions]
+
+### Fail-closed status
+
+`done` remains blocked: **P1** (missing graph-axis negative control) and **N4** (unresolved C3 ownership)
+are open. Nothing found in three passes threatens AC1 — the collision fixture proves content-level
+tenant isolation against a real FalkorDB backend, independently re-executed in this pass.

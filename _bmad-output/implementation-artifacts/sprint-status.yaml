@@ -423,7 +423,7 @@ development_status:
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
-  24-6-graph-content-level-tenant-isolation-evidence: done  # 2026-08-12 code-review close-out; 33 patches applied, see story Change Log and spec Review Findings.
+  24-6-graph-content-level-tenant-isolation-evidence: in-progress  # 2026-08-13 third-pass verification review: 13 of 15 second-pass patches applied plus 5 new findings (N1/N2/N3/N5/N6); P1 restated with its refuted rationale withdrawn and P3 discharged. Remaining blockers for done: P1 (no graph-axis negative control) and N4 (checkpoint C3 is both a File List exclusion and a tracked checkpoint - human decision). See spec Review Findings - Third Pass.
   24-7-tenant-configured-vector-dimension-verification: backlog
   24-8-semantic-isolation-key-family-classification: backlog
   24-9-non-destructive-tenant-marker-diagnostics: backlog

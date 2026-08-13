@@ -411,11 +411,15 @@ public sealed class OperationalRunbookSetTests
             verifierSource,
             "\\bExecuteAsync\\(\\s*\"(?<command>[^\"]+)\"",
             RegexOptions.CultureInvariant);
-        falkorCommands.Count.ShouldBeGreaterThan(0);
-        falkorCommands.Cast<Match>()
+        string[] graphCommands = [.. falkorCommands.Cast<Match>()
             .Select(match => match.Groups["command"].Value)
-            .Where(command => command.StartsWith("GRAPH.", StringComparison.Ordinal))
-            .ShouldAllBe(command => string.Equals(command, "GRAPH.LIST", StringComparison.Ordinal));
+            .Where(command => command.StartsWith("GRAPH.", StringComparison.Ordinal))];
+
+        // Require the GRAPH-prefixed set to be non-empty, not the unfiltered match count: the verifier
+        // also issues FT.INFO, so counting every ExecuteAsync literal stays above zero after the last
+        // GRAPH.LIST call is deleted, and ShouldAllBe would then pass vacuously on an empty sequence.
+        graphCommands.ShouldNotBeEmpty();
+        graphCommands.ShouldAllBe(command => string.Equals(command, "GRAPH.LIST", StringComparison.Ordinal));
         verifierSource.ShouldNotContain("GRAPH.QUERY", Case.Sensitive);
         ContractDocumentGuard.FindLeakedToolCallMarkup(tenantMarkdown).ShouldBeEmpty();
         ContractDocumentGuard.FindLeakedToolCallMarkup(routeMarkdown).ShouldBeEmpty();

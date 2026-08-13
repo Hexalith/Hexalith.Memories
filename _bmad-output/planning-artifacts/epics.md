@@ -4596,7 +4596,7 @@ So that latency and memory stay bounded under load.
 
 ### Story 24.6: Graph Content-Level Tenant Isolation Evidence
 
-**Status:** done · **Owner:** Murat / Test Architect and Developer  
+**Status:** in-progress · **Owner:** Murat / Test Architect and Developer  
 **Dedicated artifact:** [24-6-graph-content-level-tenant-isolation-evidence.md](../implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md)
 
 As an operator,
