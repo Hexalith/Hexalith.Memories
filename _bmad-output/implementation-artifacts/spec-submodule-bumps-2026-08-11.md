@@ -10,7 +10,7 @@ context:
 
 ## Intent
 
-Authorize a pointer-only root commit for five root-declared Hexalith submodules
+Authorize a pointer-only root commit for root-declared Hexalith submodules
 whose checked-out `main` commits match their fetched `origin/main` tips.
 
 ## File Scope
@@ -20,6 +20,7 @@ Allowed files for this story:
 - `_bmad-output/implementation-artifacts/spec-submodule-bumps-2026-08-11.md`
 - `references/Hexalith.AI.Tools`
 - `references/Hexalith.Builds`
+- `references/Hexalith.Commons`
 - `references/Hexalith.EventStore`
 - `references/Hexalith.FrontComposer`
 - `references/Hexalith.Tenants`
@@ -27,5 +28,5 @@ Allowed files for this story:
 ## Acceptance Criteria
 
 - Every bumped submodule commit is available from its upstream `main` branch.
-- The staged diff contains only this authorization record and the five gitlinks.
+- The staged diff contains only this authorization record and the authorized gitlinks.
 - Commitlint and the repository hooks accept the root commit without bypasses.
