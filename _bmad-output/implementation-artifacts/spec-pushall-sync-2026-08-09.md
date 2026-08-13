@@ -2,7 +2,7 @@
 title: 'Authorize the 2026-08-09 pushall synchronization'
 type: 'maintenance'
 created: '2026-08-09'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '11ad477c7c52ca733e20d32e9b40c79635b0c533'
 context:
@@ -41,7 +41,7 @@ Allowed files for this story:
 **Execution:**
 - [x] Process every root-declared submodule in its own dedicated agent.
 - [x] Establish the exact owner-valid synchronization envelope.
-- [ ] Commit and push the superproject snapshot, then safely prune merged branches.
+- [x] Commit and push the superproject snapshot, then safely prune merged branches.
 
 **Acceptance Criteria:**
 - Every staged path is accepted by repository scope validation without a bypass.
