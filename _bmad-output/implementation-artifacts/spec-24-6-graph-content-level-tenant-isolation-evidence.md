@@ -2,8 +2,8 @@
 title: 'Story 24.6: Graph Content-Level Tenant Isolation Evidence'
 type: 'feature'
 created: '2026-08-12'
-status: 'done'
-review_loop_iteration: 5
+status: 'review'
+review_loop_iteration: 8
 baseline_commit: '0ecdffed0b131d05816306da1c7061eb88bda5bf'
 context:
   - '{project-root}/_bmad-output/project-context.md'
@@ -58,7 +58,7 @@ context:
 **Acceptance Criteria:**
 - Given tenant A and B contain identical graph identifiers and shapes with distinct payload markers, when each is traversed through its authenticated tenant context, then every returned node and edge is fixture-local and zero foreign markers appear.
 - Given the collision fixture passes and the four named axis-specific negatives are verified, when evidence is recorded, then the redundant all-axis verifier test is absent.
-- Given runtime `GraphIsolation` uses `GRAPH.LIST`, when verifier output and operator docs describe it, then they call it structural database-existence evidence and cite the focused content-level proof without adding a runtime content scan.
+- Given runtime `GraphIsolation` uses `GRAPH.LIST`, when verifier output and operator docs describe it, then verifier Details carry the structural-only label plus the manifest-bound method citation, the paired runbooks carry the exact focused integration command, and runtime verification does not add a content scan.
 - Given the integration lane cannot run, when completion is evaluated, then status remains non-done unless a human accepts a blocker recording owner, consequence, proof boundary, and reopen trigger.
 
 ## Spec Change Log
@@ -76,7 +76,10 @@ context:
   governance continuity, structured the eleven deferred entries, and reconciled the raw worktree set.
 - 2026-08-13: Seventh-pass `bmad-build` review applied all 26 sixth-pass patches, repaired the
   allocation-failure disposal and carried-forward ledger schema exposed by verification, reconciled
-  the concurrent 30-path raw union, and reran every command in this spec against current binaries.
+  the then-current raw union, and reran every command in this spec against current binaries.
+- 2026-08-14: Eighth-pass closure applied AC5, the AC3 D4 split, story-own File List
+  derivation, structural-prefix failure/unavailable Details, source and received-call
+  guard repairs, planted-edge tenant-B re-traversal, and runbook topology preconditions.
 
 ## Verification
 
@@ -695,3 +698,119 @@ their existing deferred homes rather than being duplicated.
 
 - The Epic 23 checklist remains intact across the regenerated Epic 24 context.
   [`epic-24-context.md:47`](epic-24-context.md#L47)
+
+## Review Findings — Eighth Pass (code review 2026-08-14)
+
+Scope chosen by the Administrator: `0ecdffed..7963579c` (29 files, +2113/-170, 2898 diff lines) — Story
+24.6's own cumulative slice, isolated from Story 24.7's later commits so the reviewed range carries no
+external-story contamination. **The review was not chunked:** the complete diff was reviewed in this
+single invocation, so no chunk remains outstanding. Six context-free layers (blind hunter, edge-case
+hunter, verification-gap, acceptance auditor, historical-slice guard, story-phase-ledger auditor) plus
+independent parent-side re-execution.
+
+AC1, AC2, and AC3 were re-confirmed to hold **in substance**. The defects below are evidence-currency and
+governance-record defects, not defects in the graph-isolation proof itself.
+
+### Independently re-executed (not accepted on the record)
+
+- `python3 tools/check-story-slice-scope.py --story-key 24-6-graph-content-level-tenant-isolation-evidence` — exit 0.
+- `python3 tools/check-tenant-isolation-evidence.py --story-key 24-6-graph-content-level-tenant-isolation-evidence --changed-files-file <raw 34>` — exit 0.
+- `python3 tools/check-story-review-readiness.py --story-key 24-6-graph-content-level-tenant-isolation-evidence --changed-files-file <raw 34>` — **exit 1**, four unaccounted paths (E-P3).
+- `python3 -m unittest discover -s tests/tooling/<suite> -p '*_test.py'` for `line_endings`, `integration_fast_coverage`, `story_review_readiness`, `tenant_isolation_evidence`, `story_slice_scope` — 4 / 6 / 45 / 41 / 20, all OK.
+- `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Cli.Tests/bin/Debug/net10.0/Hexalith.Memories.Cli.Tests.dll -class Hexalith.Memories.Cli.Tests.Ci.CiTestInventoryTests` — 66 total, 0 failed.
+- `dotnet build tests/Hexalith.Memories.Server.Tests/... --configuration Debug --disable-build-servers -m:1 /nr:false` — 0 warnings, 0 errors; then the three-class gate — **86 total**, 0 failed (E-P4).
+- `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast` — exit 0, 19/19 surfaces, **against a TRX that predates the assertions it certifies** (E-P2).
+- Epic AC rows 1–3 re-run: `prd.md:971` carries the NFR8 claim verbatim; three `GRAPH.LIST` and zero `GRAPH.QUERY` in the verifier; all four canonical search negatives present at the recorded lines. All three verdicts hold; row 2's line anchors drifted (E-P16).
+- Epic 23 checklist preservation loop — exit 0 for both epic contexts, while `grep -c NFR8` and `grep -c D29` on the same file both return 0 (E-P1).
+
+### Decisions needed — eighth pass
+
+- **E-D1. Checkpoint C2 has no acceptance criterion at any surface.** Story ACs 1–4 and `epics.md:4596-4620` are entirely about graph content isolation; none mentions OpenBao, Dapr sidecar endpoints, or actor proxies. C2 nevertheless records `complete 2026-08-13`. The ratified umbrella supplies owner, evidence, review state, and completion state, but no AC defines what C2's completion *means*, so it rests on the implementer's restatement. Options: (a) re-key C2 to its own numbered story with its own AC; (b) keep the umbrella and add an explicit AC5 to both the story and `epics.md`. Both change approved scope.
+- **E-D2. Two exclusion bullets name one owner where the history shows two.** `references/Hexalith.FrontComposer` moved under `spec-submodule-bumps-2026-08-11` (`09b3eb61`, `cb863b46`), `spec-pushall-sync-2026-08-13` (`c58d6431`), and `spec-pushall-sync-2026-08-14` (`30104162`); `references/Hexalith.Builds` under the first and last. The named owner's own record pins FrontComposer at `1fa8b0b1` while the reviewed diff shows `d3554825`, and `spec-pushall-sync-2026-08-13.md` claims FrontComposer in its own File Scope. A single-valued owner field cannot carry two envelopes: name the latest owner, enumerate both, or split the bullet.
+- **E-D3. No `correct-course` row although `epics.md` and the frontmatter-declared `approved_change` proposal were both amended in range.** The amendments rewrite Story 24.6's own success criterion from "one independent outcome" to the two-checkpoint umbrella. `story-phase-ledger.md:8-16` makes `correct-course` canonical when that phase actually ran, with Story 31.1 as the worked example. Counter-argument on record: the proposal was approved before the baseline, and the amendments were performed by the 2026-08-13 `qa-gap-closure` row, which did perform the work. Genuinely two-way.
+- **E-D4. C2's declared exclusion contradicts a required CI gate.** The Slice Proof lists "same-port sidecar restart recovery" as out of scope for C2, while `OpenBaoTopologyIntegrationTests.cs` now asserts `fixture.DaprSidecarHttpEndpoint.ShouldNotBe(daprEndpointBeforeRestart, ...)` and that method is pinned as a **required** `integration-fast` surface. A same-port restart — declared out of scope — now hard-fails a required gate. Either the exclusion text or the assertion must move.
+- **E-D5. AC3's text and its implementation diverge under a ratified reading.** AC3 requires that "verifier **and** operator documentation ... cite the focused integration command". The verifier's `Details` string cites a method *name* with no command; only the two runbooks carry the invocation. Decision D4 ratified this split, but the AC text was never amended. Amending frozen acceptance text is human-owned; so is deciding to put a command in the verifier instead.
+
+### Patches — eighth pass
+
+- **E-P1. [high] The `epic-24-context.md` anchor loss recurred and two review records assert the opposite.** Traced per commit on the file: `0ecdffed` NFR8=1/D29=1 (82 lines) → `fdc76064` 0/0 (69) → `dbab1daa` 1/1 (82, the Decision D1 restore) → holds through `36e1c551` → **`cb8e960f` 0/0 (53 lines), a `build: sync local changes via /pushall` commit that silently reverted a decision-mandated repair** → `7963579c` 0/0 (66; the seventh pass restored the *Epic 23 checklist* sibling at the same location without re-checking these) → HEAD 0/0. Also lost: the epic-wide audit-anchor preflight bullet ("re-verify the audit anchors ... record the verification date"), which binds Stories 24.7–24.13; the FalkorDB data-vs-resource isolation constraint, which is what made C1's "graph resource isolation" exclusion meaningful; and the approved-change sentence "24.6-24.9 are the canonical verifier-residual backlog homes". The banner also flipped to `Compiled from planning artifacts. Edit freely.`, disabling the byte-for-byte detector that caught the first regression — `epic-25-context.md` and `epic-26-context.md` still carry the original. The story Change Log claims the regeneration was "reverted ... restoring the `NFR8` and `D29` anchors", and this spec's second-pass preamble claims they "are fully restored". Both are false at HEAD. No gate reads this file: a search of `tools/`, `tests/`, `.github/`, `.githooks/` for `epic-*-context.md` returns zero matches. Restore the four bullets and the banner, correct both claims, and extend the Epic 23 preservation loop to require one `NFR8` and one `D29` occurrence per guarded epic context.
+- **E-P2. [high] The required-lane evidence was produced from binaries that could not contain the assertions it certifies.** The only TRX on disk records `start=2026-08-13T14:20:08 finish=2026-08-13T14:41:21`, while `TenantIsolationIntegrationTests.cs` and `OpenBaoTopologyIntegrationTests.cs` were written at **15:08:42** — 27 minutes after the lane finished. `verify-integration-fast-coverage.py` exits 0 anyway because it matches `(className, methodName)` pairs, and the method names predate the assertions. Delete the endpoint-rotation assertion and the four `graphCheck.Details.ShouldContain(...)` assertions and the recorded row, the TRX, and the verifier all still pass byte-identically. Compounding: the Debug assembly is 17:45:10 while `AspireIngestionPipelineFixture.cs` is 17:52:20, so the "1/1 in 262.862 s after the seventh-pass allocation-failure cleanup" result cannot contain that cleanup either; and the Release assembly is 17:09:28, so re-running the documented `--no-build` command would still exercise pre-seventh-pass code. Rebuild Release, re-run the recorded lane command and coverage verifier, and re-record the rows with the new TRX's `<Times>` window.
+- **E-P3. [high] The cumulative File List is not reconciled at HEAD: 30 of 34 raw paths.** The uncurated index-aware union is **34**, not the recorded 30. Four paths carry neither a File List entry nor an exclusion bullet: `24-7-tenant-configured-vector-dimension-verification.md`, `spec-24-7-tenant-configured-vector-dimension-verification.md`, and `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs` (owner `24-7-tenant-configured-vector-dimension-verification`, commits `0f577c48`/`dc5fde62`), plus `spec-pushall-sync-2026-08-14.md` (owner `spec-pushall-sync-2026-08-14`, commit `30104162`). Readiness exits **1** naming exactly those four. This is the fourth recurrence of the same defect (D1, F5-P1, F6-P1); the durable fix is a rule that scopes the union to the story's own commits rather than a hand-counted total any concurrent commit invalidates.
+- **E-P4. [high] "No external same-lane delta" is false, and the recorded lane total is stale by 28 cases.** Runner-derived at HEAD, independently executed: the three-class server gate returns **86 total, 0 failed**, against the recorded 58. `52 + 6 + 0 = 58 ≠ 86`. The unrecorded external delta is **+28 test cases** owned by Story 24.7 (`0f577c48`, `dc5fde62`). Two of the three lane classes are story-owned File List paths that now silently absorb that work (`TenantIsolationVerifierTests.cs` +639/-9, `ServerEndpointAuthorizationTests.cs` +23/-0 beyond the reviewed tip), and `TenantIsolationVerifier.cs` gained +128/-3, so the story's declared production delta of "one XML doc comment and one `Details` string" is now 3 of 131 added lines on that path. `story-phase-ledger.md:55-60` requires the external delta be named separately so `create baseline + cumulative story delta + external delta = observed total` closes.
+- **E-P5. [medium] This spec's frontmatter declares `status: 'done'` while every other surface reads `review`.** Story `Status: review`, `sprint-status.yaml:426`, `epics.md:4599`, and the closure spec all read `review`. Second-pass P3 repaired exactly this ("status advanced to `done` ahead of the ledger, disabling the check that would have caught D1") and F6-P15 directed the value to `review`; the seventh pass set `done`. `review_loop_iteration: 5` also understates the seven recorded passes.
+- **E-P6. [medium] The seventh-pass ledger row omits four of five required `Test count` elements.** It records only a phase delta and bare results (`58/58`, `63/63`, `66/66`, `1/1`), with no cumulative story delta, no per-lane before→after totals, no named unit bound to each lane, and no evidence command. It also omits the owning `TenantIsolationIntegrationTests` lane entirely, although that phase changed three files under `tests/Hexalith.Memories.IntegrationTests/` — the exact reopen trigger the sixth-pass row set. Verbatim the defect F5-P7 raised one pass earlier.
+- **E-P7. [medium] Stale `30-path` totals across seven permitted locations.** Story File List preamble, the Verification "Story governance gates" row, the seventh-pass ledger row, `sprint-status.yaml:426`, and three statements in the closure spec all assert 30 and a passing raw gate. The union is 34 and the gate exits 1.
+- **E-P8. [medium] The closure spec carries no `Historical Context Classification` or `Slice Proof`, and the gate cannot see it.** `spec-24-6-fifth-pass-action-item-closure.md` contains zero occurrences of either heading, and its `context:` list omits the canonical story that holds the record. `tools/check-story-slice-scope.py:40-43` anchors `STORY_FILE_PATTERN` to `^_bmad-output/implementation-artifacts/(\d+-\d+-[a-z][a-z0-9-]*)\.md$`, so no `spec-*.md` is ever evaluated — the story's recorded slice-scope exit 0 says nothing about either spec file. Its own Boundaries name four prior stories, and its tasks span server source, two test assemblies, two runbooks, the CI manifest, and eight governance artifacts across four bundled groups covering 25 patch IDs. First-pass patch notes already flagged this gate blindness; the closure spec created two passes later reproduced it.
+- **E-P9. [medium] The sixth-pass deferred section miscounts itself and its fifth entry escapes the schema.** The header declares "Four low-severity items ... Each carries the structured field block required by the schema above", and five bullets follow. The fifth (FalkorDB `RedisTimeoutException`) uses the legacy `source_spec:/summary:/evidence:` form with no `ID:`, `Status:`, `Source story:`, `Target artifact:`, or `Re-open trigger:` — precisely the defect F5-P4 was raised to cure — and its `source_spec` is a machine-absolute path where every other entry in the file uses repo-relative paths. `CiTestInventoryTests` passes because it matches vocabulary and `Evidence:` presence, so the entry has no id and no reopen trigger.
+- **E-P10. [medium] The verifier source guard scans build output and matches only one declaration form.** `OperationalRunbookSetTests.cs:425-428` runs `Directory.GetFiles(<server project>, "*.cs", SearchOption.AllDirectories)` with no `bin`/`obj` exclusion — 430 files versus 422 excluding them — so a unit test reads generated `obj/**/*.g.cs` on every run, its result depends on whether the project has been built, and a stale verifier copy under `obj/` would satisfy it. The filter also requires `\bpartial\s+class\s+TenantIsolationVerifier\b`, so a `partial sealed class` declaration escapes the guard entirely, with `ShouldNotBeEmpty()` as the only completeness check.
+- **E-P11. [medium] The negative control never proves the planted marker stayed in tenant A.** `VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage` writes `edgeMarkerB` into tenant A through `falkor.SelectGraph(tenantA)` and then traverses tenant A only. Re-traversing tenant B and asserting it is still clean costs one call and distinguishes "the assertion is sensitive" from "the write corrupted both graphs" — and would be the first direct evidence that a `SelectGraph(tenant)` write lands in exactly one tenant, the write-path claim currently open as `24.6-CR-W8`.
+- **E-P12. [medium] Only the success path of `GraphIsolation` carries the structural-only label.** The failed and backend-unavailable results return `Details` without the "Structural database-existence evidence only" prefix, so an operator reading a failed or degraded graph result has nothing telling them it is not content-isolation evidence. Apply the same prefix in the failure and `CreateBackendUnavailableResult` paths.
+- **E-P13. [medium] The runbooks omit the preconditions that make the cited command runnable.** Both `route-surface.md` and `tenant-onboarding-offboarding.md` instruct operators to run the `-method` proof invocation but never state that it provisions a full real Aspire/FalkorDB topology, takes minutes, requires a container runtime, or that it seeds and leaves fixture data in tenant graphs.
+- **E-P14. [medium] AC1's headline duration is internally inconsistent again.** The same evidence batch records the single collision method at **15.572 s** and the 7-method owning class at **243.340 s**. F5-D3 rejected an earlier 16.008 s class figure on exactly this reasoning — each `dotnet exec` brings up its own Aspire topology, so a sub-16 s run is hard to reconcile with a 209–243 s one — and resolved it by re-running to one authoritative result set. The 15.572 s figure is the AC1 row's `Observed result` and is not reconciled with the figure the same document calls authoritative.
+- **E-P15. [medium] Story 29.1 is labelled `historical-reference-only` while C2 modifies its test and its fixture.** `story-scope-guard.md:15` defines that label as "dependency, decision, or evidence context" — not a modification licence. C2 adds assertions inside Story 29.1's `InPlaceOpenBaoRestart_RotatesGenerationAndRecoversDependentSidecars` and restructures `AspireIngestionPipelineFixture`'s startup path. The work itself is ratified; the classification row is not.
+- **E-P16. [low] Epic AC row 2's line anchors are stale at HEAD.** Recorded as "three `GRAPH.LIST` calls (lines 116, 317, 360)"; at HEAD the call sites are **124, 392, 435**, shifted by Story 24.7's +128 lines. The verdict holds — three `GRAPH.LIST`, zero `GRAPH.QUERY`. This is the L14 pattern: re-derive and record the observed location, keep acting on the substance.
+- **E-P17. [low] The closure spec contradicts itself on the raw-union total.** Its Suggested Review Order cites a "28-path raw union" while the same file states 30 in three other places and no artifact anywhere records 28.
+- **E-P18. [low] The Story 20.2 classification cites an authority the policy does not name.** `20-2-...md:67` and `:173` contain the `do not reopen` phrase that `story-scope-guard.md` treats as an anti-template marker. The escape hatch is worded as "unless **current epics** explicitly approve a narrower use", but the cited standing instruction lives in the sprint change proposal, not `epics.md`, and `epics.md:4596-4620` makes no Story 20.2 approval. The substance is clean narrow reuse — three `[InlineData]` rows added to an existing theory in current source — so this is a label/authority-citation defect, not anti-template reuse. Either relabel the row `anti-template` (its permitted-use text already satisfies the gate) or add the approval to `epics.md` and cite that line.
+- **E-P19. [low] An assertion in the shared helper can never fail.** `AssertTraversalIsFixtureLocal` ends with `ownEdgeMarker.ShouldNotBe(foreignEdgeMarker, "the fixture must seed distinct per-tenant edge markers.")`, comparing two compile-time constants supplied by the caller rather than seeded data. It reads as a fixture invariant but proves nothing about the graph, and it sits inside the helper that both the positive proof and the mutation control depend on.
+- **E-P20. [low] The received-call guard drops non-string first arguments.** `TenantIsolationVerifierTests` collects `call.GetArguments().FirstOrDefault()` and filters `.OfType<string>()`, so any typed `IDatabase` read whose first parameter is a `RedisKey`/`RedisValue` is invisible to both the executed-command and `GRAPH.` token assertions, while the adjacent comment claims "every command-like first argument, without filtering by prefix" is asserted. Realistic graph content reads do go through `ExecuteAsync(string, …)` and are caught, so this is a boundary of the guard rather than a live hole — but the comment overstates it.
+- **E-P21. [low] Deferred entry `24.6-F5-W2`'s rationale no longer matches its code.** It states the method "disposes `_actorHttpMessageHandler` and nulls `_actorProxyFactory`/`_actorProxyOptions` before assigning their replacements"; the rewritten method constructs both replacements first and only then disposes and swaps. The entry remains `carried-forward` against code that no longer matches it.
+- **E-P22. [low] Deferred entry `24.6-CR-W1`'s rationale misstates its own guard.** It claims the duplicated runbook lines "are intentionally pinned identical by `OperationalRunbookSetTests.GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof`". That test asserts only that each section *contains* the required tokens; it never compares the sections, and they are in fact not identical in this diff. The reopen trigger "the identity guard fails" therefore cannot fire.
+- **E-P23. [low] The approved-change proposal still reads `**Status:** backlog.` for Story 24.6**, immediately above the umbrella blockquote this range inserts. The closure spec's AC4 requires epic/spec/story/sprint status to agree without stale claims.
+- **E-P24. [low] Evidence rows are dated before the changes they are offered to cover.** The "Story 20.2 denial-before-dependency" row is `passed 2026-08-12` while its subject `ServerEndpointAuthorizationTests.cs` gains rows in this range and the combined gate cited in the same cell is dated `2026-08-13`. Third recurrence of the shape F5-P19 and F6-P16 each repaired on a different row; the durable fix ties an evidence row's date to its subject file's last change.
+
+### Deferred — eighth pass
+
+- **E-W1.** `GraphIsolation`'s `Details` returns a cluster-wide graph-database count over a per-tenant endpoint. Pre-existing, but rewritten in this range for a story whose thesis is not overstating isolation evidence.
+- **E-W2.** The seventh-pass allocation-failure cleanup in `ReconnectPrimaryDaprClients` has no test in any lane and no deferred entry; the failure path is unreachable from tests.
+- **E-W3.** The negative control plants a foreign edge marker into a provisioned tenant's real graph with no teardown, and is now pinned as a required `integration-fast` surface — widening the fixture-cleanup risk `24.6-CR-W2` already describes.
+- **E-W4.** Test-hardening batch on the new assertions: null guards on `traversal.Nodes`/`GapMarkers`/per-node `Edges`, an already-cancelled `CancellationToken` case for `VerifyAsync`, empty and null `GRAPH.LIST` cases for `ParseGraphList`, `ShouldHaveSingleItem` instead of `Single()` for the graph-check lookup, a linked cancellation token for the seed query so an abandoned command is actually cancelled, and a null guard on the OpenBao recovery tenant's embedding config.
+
+### Dismissed — eighth pass (recorded so they are not re-raised)
+
+- Node-marker mutation-sensitivity control — the Administrator ratified C1's boundary as edge-only and `24.6-F6-W4` carries it.
+- `/traverse` denial row for malformed `depth` — open as `24.6-F5-W6`.
+- FalkorDB `RedisTimeoutException` not converted to a failed check — substance already deferred; E-P9 repairs the record.
+- `ReconnectPrimaryDaprClients` null/dispose window — already cured; the method now constructs replacements before disposing.
+- `spec-pushall-sync-2026-08-01.md` as an exclusion for an unchanged path — scope artifact: it changed at `8feb2a2d`, after the reviewed tip. The reviewed range reconciles at 29 + 1 = 30 with zero unaccounted.
+
+### Fail-closed status — eighth pass
+
+`done` is blocked. Fail-closed blockers: **E-P1** (a ledger and spec claim a repair the tree does not
+contain, contradicting a resolved Administrator decision), **E-P2** (required-lane evidence produced from
+binaries predating the assertions it certifies), **E-P3** (four unaccounted in-scope paths; readiness
+exits 1), and **E-P4** (live counts disagree — 86 observed against 58 recorded). E-D1 through E-D5 need
+Administrator rulings before the ledger can be finalized.
+
+### Decisions resolved 2026-08-14 (Administrator) — eighth pass
+
+All five eighth-pass decisions were resolved by the Administrator in the review session. Each converts to
+a patch item; the resolutions are recorded here so a later reader does not re-open a settled question.
+
+- **E-D1 → add AC5.** Keep the ratified two-checkpoint umbrella and write an explicit **AC5** stating the
+  post-OpenBao-restart endpoint-rotation and recovered-actor-call obligation, in **both** the story file
+  (after AC4) and `epics.md` at the Story 24.6 block. C2's `complete` state becomes provable against a
+  named criterion rather than resting on the implementer's restatement. Scope is unchanged: this records
+  the outcome C2 already demonstrates, and does not widen it.
+- **E-D2 → enumerate all owners per path.** Rewrite the `references/Hexalith.FrontComposer` and
+  `references/Hexalith.Builds` exclusion bullets to list every envelope that moved the gitlink, with the
+  commit each contributed: FrontComposer under `spec-submodule-bumps-2026-08-11` (`09b3eb61`,
+  `cb863b46`), `spec-pushall-sync-2026-08-13` (`c58d6431`), and `spec-pushall-sync-2026-08-14`
+  (`30104162`); Builds under the first and the last. The bullet becomes multi-valued by design.
+- **E-D3 → append a `correct-course` row.** `story-phase-ledger.md:8-16` makes `correct-course` canonical
+  when that phase actually ran, and Story 31.1 is the worked example of `epics.md` and ratification-proposal
+  paths joining the cumulative set with no row accounting for them. Append the row retrospectively, dated
+  to the amendments it covers, naming the success-criterion rewrite it performed.
+- **E-D4 → keep both, record the tension.** The endpoint-rotation assertion stays as written and stays
+  pinned as a required `integration-fast` surface; the "same-port sidecar restart recovery" exclusion stays
+  in the Slice Proof. The contradiction is recorded as an accepted, documented boundary rather than
+  resolved in either direction. Owner: Murat / Test Architect and Developer. Consequence: a future
+  same-port sidecar restart will hard-fail a required CI gate on a case the story declares out of scope.
+  Reopen trigger: the restart method fails in CI on an endpoint that did not rotate, or C2's boundary is
+  re-scoped.
+- **E-D5 → amend AC3 to the ratified split.** Rewrite AC3 to state what Decision D4 ratified: the verifier
+  carries the structural-only label plus the manifest-bound method citation, and the paired runbooks carry
+  the exact focused integration command. Recorded tension: `epic-ac-verification.md:105-107` forbids
+  weakening an acceptance criterion to match code that has not reached the stated end state. This
+  amendment is judged to fall outside that prohibition because D4 is a ratified **design** decision — a
+  command must not be lengthened into the V1 `Details` contract string — and not an accommodation of
+  unfinished work. The amendment must preserve AC3's substantive obligation on both surfaces.

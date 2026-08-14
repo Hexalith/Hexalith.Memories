@@ -417,6 +417,11 @@ public sealed class OperationalRunbookSetTests
             section.ShouldContain("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS", Case.Sensitive);
             section.ShouldContain("active local service", Case.Sensitive);
             section.ShouldContain("authenticated canary traversal", Case.Sensitive);
+            section.ShouldContain("Aspire", Case.Sensitive);
+            section.ShouldContain("FalkorDB", Case.Sensitive);
+            section.ShouldContain("minutes", Case.Sensitive);
+            section.ShouldContain("container runtime", Case.Sensitive);
+            section.ShouldContain("leftover fixture data", Case.Sensitive);
             section.ShouldNotContain("localhost:6050", Case.Sensitive);
             section.ShouldNotContain("localhost:6060", Case.Sensitive);
         }
@@ -426,9 +431,19 @@ public sealed class OperationalRunbookSetTests
                 serverProjectDirectory,
                 "*.cs",
                 SearchOption.AllDirectories)
+            .Where(file =>
+            {
+                string relativePath = Path.GetRelativePath(serverProjectDirectory, file);
+                string[] segments = relativePath.Split(
+                    Path.DirectorySeparatorChar,
+                    Path.AltDirectorySeparatorChar);
+                return !segments.Any(segment =>
+                    string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase));
+            })
             .Where(file => Regex.IsMatch(
                 File.ReadAllText(file),
-                @"\bpartial\s+class\s+TenantIsolationVerifier\b",
+                @"\b(?:sealed\s+partial|partial\s+sealed)\s+class\s+TenantIsolationVerifier\b",
                 RegexOptions.CultureInvariant))];
         verifierFiles.ShouldNotBeEmpty();
         string verifierSource = string.Join(Environment.NewLine, verifierFiles.Select(File.ReadAllText));

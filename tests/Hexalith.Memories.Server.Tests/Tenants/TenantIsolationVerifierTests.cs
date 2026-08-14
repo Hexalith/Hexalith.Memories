@@ -22,6 +22,7 @@ using Hexalith.Memories.Server.Tenants;
 using Microsoft.Extensions.Logging;
 
 using NSubstitute;
+using NSubstitute.Core;
 using NSubstitute.ExceptionExtensions;
 
 using Shouldly;
@@ -855,6 +856,11 @@ public class TenantIsolationVerifierTests
             check.Passed.ShouldBeFalse();
             check.Details.ShouldNotBeNull();
             check.Details.ShouldContain("Backend unavailable");
+            if (string.Equals(checkName, "GraphIsolation", StringComparison.Ordinal))
+            {
+                check.Details.ShouldStartWith("Structural database-existence evidence only");
+            }
+
             check.Remediation.ShouldNotBeNull();
         }
     }
@@ -908,14 +914,12 @@ public class TenantIsolationVerifierTests
         graphCheck.Details.ShouldContain(OperationalRunbookSetTests.GraphContentProofCitation);
         graphCheck.Details.ShouldContain("independent execution");
 
-        // Assert every command-like first argument, without filtering by prefix, so a content command
-        // such as KEYS or SCAN cannot evade the structural-only boundary. Inspect nested params-array
+        // Assert every command-like first argument after stringifying it, without filtering by
+        // prefix, so a content command such as KEYS or SCAN — including a typed RedisKey first
+        // argument — cannot evade the structural-only boundary. Inspect nested params-array
         // strings separately so a GRAPH.* token cannot hide outside the command position.
         var receivedCalls = falkorDb.ReceivedCalls().ToArray();
-        string[] executedCommands = [.. receivedCalls
-            .Select(call => call.GetArguments().FirstOrDefault())
-            .OfType<string>()
-            .Select(command => command.Trim())];
+        string[] executedCommands = [.. FirstArgumentStrings(receivedCalls)];
         executedCommands.ShouldNotBeEmpty();
         executedCommands.ShouldAllBe(command => string.Equals(
             command,
@@ -937,6 +941,19 @@ public class TenantIsolationVerifierTests
             command,
             "GRAPH.LIST",
             StringComparison.OrdinalIgnoreCase));
+
+        RedisKey typedFirstArgument = "graph-isolation-typed-first-arg";
+        _ = await falkorDb.KeyExistsAsync(typedFirstArgument);
+
+        ICall[] callsAfterTypedArgument = falkorDb.ReceivedCalls().ToArray();
+        object?[] firstArguments = [.. callsAfterTypedArgument.Select(call => call.GetArguments().FirstOrDefault())];
+        firstArguments.ShouldContain(argument => argument is RedisKey);
+
+        string[] stringifiedFirstArguments = [.. FirstArgumentStrings(callsAfterTypedArgument)];
+        stringifiedFirstArguments.ShouldContain(typedFirstArgument.ToString());
+
+        string[] ofTypeOnly = [.. firstArguments.OfType<string>()];
+        ofTypeOnly.ShouldNotContain(typedFirstArgument.ToString());
     }
 
     [Fact]
@@ -959,6 +976,7 @@ public class TenantIsolationVerifierTests
         TenantIsolationCheckResult graphCheck = result.Checks.First(c => c.CheckName == "GraphIsolation");
         graphCheck.Passed.ShouldBeFalse();
         graphCheck.Details.ShouldNotBeNull();
+        graphCheck.Details.ShouldStartWith("Structural database-existence evidence only");
         graphCheck.Details.ShouldContain("graph database is missing from GRAPH.LIST");
         result.AllPassed.ShouldBeFalse();
     }
@@ -1177,21 +1195,29 @@ public class TenantIsolationVerifierTests
         redisDb.ReceivedCalls()
             .Select(call => call.GetMethodInfo().Name)
             .ShouldAllBe(methodName => string.Equals(methodName, nameof(IDatabase.ExecuteAsync), StringComparison.Ordinal));
-        string[] redisCommands = [.. redisDb.ReceivedCalls()
-            .Select(call => call.GetArguments().FirstOrDefault())
-            .OfType<string>()];
+        string[] redisCommands = [.. FirstArgumentStrings(redisDb.ReceivedCalls().ToArray())];
         redisCommands.ShouldNotBeEmpty();
         redisCommands.ShouldAllBe(command => string.Equals(command, "FT.INFO", StringComparison.OrdinalIgnoreCase));
 
         falkorDb.ReceivedCalls()
             .Select(call => call.GetMethodInfo().Name)
             .ShouldAllBe(methodName => string.Equals(methodName, nameof(IDatabase.ExecuteAsync), StringComparison.Ordinal));
-        string[] graphCommands = [.. falkorDb.ReceivedCalls()
-            .Select(call => call.GetArguments().FirstOrDefault())
-            .OfType<string>()];
+        string[] graphCommands = [.. FirstArgumentStrings(falkorDb.ReceivedCalls().ToArray())];
         graphCommands.ShouldNotBeEmpty();
         graphCommands.ShouldAllBe(command => string.Equals(command, "GRAPH.LIST", StringComparison.OrdinalIgnoreCase));
     }
+
+    private static IEnumerable<string> FirstArgumentStrings(ICall[] calls)
+        => calls
+            .Select(call => call.GetArguments().FirstOrDefault())
+            .Select(argument => argument switch
+            {
+                null => null,
+                string value => value,
+                _ => argument.ToString(),
+            })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim());
 
     private static void SetupSuccessfulIndexInfo(
         IDatabase db,

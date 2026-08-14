@@ -8,6 +8,7 @@ baseline_commit: '1d2862f42c08e2a04984379f0b603d5366ffe804'
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-24-context.md'
+  - '{project-root}/_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md'
   - '{project-root}/_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md'
   - '{project-root}/references/Hexalith.AI.Tools/hexalith-state-instructions.md'
 ---
@@ -38,6 +39,29 @@ context:
 | Required integration lane | Final code and required-surface manifest | Owning methods execute on real backends and the full required fast lane is green | Record an accepted blocker or remain non-done |
 
 </frozen-after-approval>
+
+## Historical Context Classification
+
+This closure spec inherits the canonical Story 24.6 classification table in
+[24-6-graph-content-level-tenant-isolation-evidence.md](24-6-graph-content-level-tenant-isolation-evidence.md).
+It does not reopen Stories 24.3 or 29.1, does not absorb Stories 24.7-24.9, and
+reuses only the Story 20.2 denial-before-dependency assertion pattern.
+
+| Source | Classification | Permitted use |
+| :----- | :------------- | :------------ |
+| Story 24.3 | `historical-reference-only` | Preserve its structural verifier and fail-closed evidence; do not reopen or expand its completed slice. |
+| Story 29.1 | `current-narrow-pattern` | Reuse its OpenBao restart regression and fixture ownership as the ratified C2 pattern; do not reopen its completed secret-topology slice. |
+| Story 20.2 | `anti-template` | Re-run only its denial-before-dependency assertion pattern, re-verified against current source. |
+| Story 24.6 | `current-narrow-pattern` | Apply the fifth-pass patches inside the ratified C1/C2 umbrella; do not widen checkpoint scope. |
+
+## Slice Proof
+
+This closure spec is not a second tracking story. It applies Administrator-resolved
+fifth-pass decisions and patches to the existing Story 24.6 C1/C2 umbrella recorded
+in [24-6-graph-content-level-tenant-isolation-evidence.md](24-6-graph-content-level-tenant-isolation-evidence.md).
+C1 remains the collision-shaped FalkorDB fixture and authenticated graph traversal.
+C2 remains the post-OpenBao-restart endpoint-rotation and recovered actor-proxy call.
+No additional checkpoint is created here.
 
 ## Code Map
 
@@ -84,10 +108,10 @@ context:
 - `dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Release --disable-build-servers -m:1 /nr:false` -- expected: clean Release build before the `--no-build` lane.
 - `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast` -- expected: the required real-backend lane passes.
 - `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast` -- expected: every exact required class/method surface is present and passed in the lane TRX.
-- `{ git diff --name-only 0ecdffed..HEAD; git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u > /tmp/story-24-6-raw-paths.txt` -- expected: the uncurated, index-aware baseline-to-worktree union contains 30 unique paths.
-- `python3 tools/check-story-review-readiness.py --story-key 24-6-graph-content-level-tenant-isolation-evidence --changed-files-file /tmp/story-24-6-raw-paths.txt` -- expected: raw C1 and C6 readiness evidence passes while the story is in review.
+- Story-own derivation into `/tmp/story-24-6-own-paths.txt` using the 2026-08-14 SCP Group-3 command, excluding the untracked 2026-08-14 SCP worktree limit -- expected: the derived set matches File List plus the one `Scope-Override:` exclusion.
+- `python3 tools/check-story-review-readiness.py --story-key 24-6-graph-content-level-tenant-isolation-evidence --changed-files-file /tmp/story-24-6-own-paths.txt` -- expected: raw C1 and C6 readiness evidence passes while the story is in review.
 - `python3 tools/check-story-slice-scope.py --story-key 24-6-graph-content-level-tenant-isolation-evidence` -- expected: the substantive story-slice gate passes.
-- `python3 tools/check-tenant-isolation-evidence.py --story-key 24-6-graph-content-level-tenant-isolation-evidence --changed-files-file /tmp/story-24-6-raw-paths.txt` -- expected: the substantive tenant-isolation evidence gate passes.
+- `python3 tools/check-tenant-isolation-evidence.py --story-key 24-6-graph-content-level-tenant-isolation-evidence --changed-files-file /tmp/story-24-6-own-paths.txt` -- expected: the substantive tenant-isolation evidence gate passes.
 - `python3 -m unittest discover -s tests/tooling/line_endings -p '*_test.py'` -- expected: 4 line-ending tests pass.
 - `python3 -m unittest discover -s tests/tooling/integration_fast_coverage -p '*_test.py'` -- expected: 6 integration-fast coverage tests pass.
 - `python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py'` -- expected: 45 review-readiness tests pass.
@@ -110,7 +134,8 @@ context:
 - The Release integration-fast lane passed 321 with 8 intentional skips and 0 failures in 21m09s;
   TRX verification satisfied all 19 required surfaces, including the core verifier, positive collision,
   planted-edge-marker assertion-sensitivity, and post-OpenBao-restart actor-recovery methods.
-- Raw readiness passed all 30 uncurated paths (18 story-owned plus 12 named exclusions). The five tooling unit suites passed exactly:
+- Historical fifth-pass raw-union readiness passed the then-current uncurated set. The current
+  story-own derivation and File List are recorded on the canonical story. The five tooling unit suites passed exactly:
   line endings 4, integration-fast coverage 6, readiness 45, tenant evidence 41, and slice scope 20.
   Separately, the substantive raw-readiness, story-slice, and tenant-isolation-evidence gates passed;
   sprint-status YAML parsing and `git diff --check` also passed.
@@ -141,7 +166,7 @@ context:
 - Check the exact restart, core, collision, and assertion-sensitivity CI pins.
   [`integration-fast-required-surfaces.txt:9`](../../tools/integration-fast-required-surfaces.txt#L9)
 
-- Reconcile the 28-path raw union, final evidence, and review-state ledger.
+- Reconcile the story-own File List derivation, final evidence, and review-state ledger.
   [`24-6-graph-content-level-tenant-isolation-evidence.md:149`](24-6-graph-content-level-tenant-isolation-evidence.md#L149)
 
 - Inspect the structured residual-risk register and its first-pass review section.

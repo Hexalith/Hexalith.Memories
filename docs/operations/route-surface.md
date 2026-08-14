@@ -91,6 +91,8 @@ for content-isolation evidence. From the repository root, build the integration 
 dotnet build tests/Hexalith.Memories.IntegrationTests/Hexalith.Memories.IntegrationTests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false
 ```
 
+The cited proof provisions a full real Aspire/FalkorDB topology, typically takes several
+minutes, requires a container runtime, and seeds leftover fixture data in the tenant graphs.
 If Dapr placement and scheduler are not exposed at the CLI defaults (`localhost:50005` and
 `localhost:50006`), discover the active local service endpoints (for example from the local Dapr or
 container runtime configuration) and export them before running the proof:

@@ -404,7 +404,7 @@ public sealed partial class TenantIsolationVerifier
             {
                 return new TenantIsolationCheckResult("GraphIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
-                    Details = string.Join("; ", structuralProblems),
+                    Details = $"Structural database-existence evidence only: {string.Join("; ", structuralProblems)}",
                     Remediation = "Re-provision the missing FalkorDB databases for the affected tenants",
                 };
             }
@@ -683,11 +683,19 @@ public sealed partial class TenantIsolationVerifier
     }
 
     private static TenantIsolationCheckResult CreateBackendUnavailableResult(string checkName, Exception ex, double durationMs)
-        => new(checkName, false, durationMs)
+    {
+        string details = $"Backend unavailable: {ex.Message}";
+        if (string.Equals(checkName, "GraphIsolation", StringComparison.Ordinal))
         {
-            Details = $"Backend unavailable: {ex.Message}",
+            details = $"Structural database-existence evidence only: {details}";
+        }
+
+        return new(checkName, false, durationMs)
+        {
+            Details = details,
             Remediation = "Check Redis/FalkorDB connectivity and retry",
         };
+    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting tenant isolation verification for tenant '{TenantId}'")]
     private static partial void LogVerificationStarted(ILogger logger, string tenantId);

@@ -95,8 +95,8 @@ public sealed class TenantIsolationIntegrationTests
         TraversalResult tenantATraversal = await TraverseAuthenticatedAsync(tenantA);
         TraversalResult tenantBTraversal = await TraverseAuthenticatedAsync(tenantB);
 
-        AssertTraversalIsFixtureLocal(tenantATraversal, nodeMarkerA, edgeMarkerA, nodeMarkerB, edgeMarkerB);
-        AssertTraversalIsFixtureLocal(tenantBTraversal, nodeMarkerB, edgeMarkerB, nodeMarkerA, edgeMarkerA);
+        AssertTraversalIsFixtureLocal(tenantATraversal, nodeMarkerA, edgeMarkerA, nodeMarkerB);
+        AssertTraversalIsFixtureLocal(tenantBTraversal, nodeMarkerB, edgeMarkerB, nodeMarkerA);
     }
 
     [Fact]
@@ -139,9 +139,21 @@ public sealed class TenantIsolationIntegrationTests
             traversal,
             nodeMarkerA,
             edgeMarkerA,
-            nodeMarkerB,
-            edgeMarkerB));
+            nodeMarkerB));
         assertion.Message.ShouldContain("tenant-local edge marker");
+
+        TraversalResult tenantBTraversal = await TraverseAuthenticatedAsync(tenantB);
+        AssertTraversalIsFixtureLocal(tenantBTraversal, nodeMarkerB, edgeMarkerB, nodeMarkerA);
+
+        // The plant must not rewrite tenant B. Seed writes previousConfidence: null;
+        // BuildUpdateEdgeConfidence would set it. HTTP traversal omits null
+        // PreviousConfidence, so read the graph property the same way collision edge IDs are read.
+        TraversalEdgeInfo[] tenantBEdges = [.. tenantBTraversal.Nodes.SelectMany(node => node.Edges)];
+        tenantBEdges.ShouldAllBe(edge => edge.PreviousConfidence == null);
+        object?[] tenantBPreviousConfidence = await ReadCollisionEdgePreviousConfidenceAsync(tenantB);
+        tenantBPreviousConfidence.ShouldAllBe(
+            value => value == null,
+            "planting tenant B's edge marker into tenant A must leave tenant B's previousConfidence unset.");
     }
 
     [Fact]
@@ -270,6 +282,20 @@ public sealed class TenantIsolationIntegrationTests
         return edgeIds[0];
     }
 
+    private async Task<object?[]> ReadCollisionEdgePreviousConfidenceAsync(string tenantId)
+    {
+        FalkorDB falkor = new(_fixture.FalkorDbConnection.GetDatabase());
+        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildListEdgesForMemoryUnits(
+            [CollisionSourceNodeId, CollisionTargetNodeId]);
+        ResultSet result = await ExecuteGraphQueryAsync(falkor.SelectGraph(tenantId), query, parameters);
+        object?[] values = result
+            .Select(record => record.GetValue<object>("previousConfidence"))
+            .ToArray();
+
+        values.ShouldNotBeEmpty($"Tenant graph '{tenantId}' must expose previousConfidence on the collision-fixture relationship.");
+        return values;
+    }
+
     private async Task<TraversalResult> TraverseAuthenticatedAsync(string tenantId)
     {
         using CancellationTokenSource requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(
@@ -301,8 +327,7 @@ public sealed class TenantIsolationIntegrationTests
         TraversalResult traversal,
         string ownNodeMarker,
         string ownEdgeMarker,
-        string foreignNodeMarker,
-        string foreignEdgeMarker)
+        string foreignNodeMarker)
     {
         string[] expectedNodeIds = [CollisionSourceNodeId, CollisionTargetNodeId];
         traversal.StartNodeId.ShouldBe(CollisionSourceNodeId);
@@ -338,7 +363,6 @@ public sealed class TenantIsolationIntegrationTests
         edges.ShouldAllBe(
             edge => string.Equals(edge.VerifiedBy, ownEdgeMarker, StringComparison.Ordinal),
             $"Every traversed edge must expose the tenant-local edge marker '{ownEdgeMarker}'.");
-        ownEdgeMarker.ShouldNotBe(foreignEdgeMarker, "the fixture must seed distinct per-tenant edge markers.");
 
         TraversalNode sourceNode = traversal.Nodes.Single(node => node.MemoryUnitId == CollisionSourceNodeId);
         TraversalEdgeInfo outgoing = sourceNode.Edges.ShouldHaveSingleItem();

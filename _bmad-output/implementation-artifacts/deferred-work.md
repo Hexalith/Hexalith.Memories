@@ -3044,8 +3044,8 @@ independently re-executed and passed.
   - Status: carried-forward
   - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
   - Target artifact: docs/operations/route-surface.md
-  - Rationale: Roughly 30 lines of build, port-discovery, and proof-invocation text remain duplicated here and in companion `docs/operations/tenant-onboarding-offboarding.md`, and are intentionally pinned identical by `OperationalRunbookSetTests.GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof`; extracting shared documentation is outside the bounded proof closure.
-  - Re-open trigger: Either operator document changes independently, the identity guard fails, or the documentation build gains a supported shared-snippet mechanism.
+  - Rationale: Roughly 30 lines of build, port-discovery, and proof-invocation text remain duplicated here and in companion `docs/operations/tenant-onboarding-offboarding.md`. `OperationalRunbookSetTests.GraphIsolationEvidenceBoundary_SeparatesStructuralAndContentProof` asserts that each section contains the required tokens; it does not compare the sections to each other, and the sections are not identical. Extracting shared documentation is outside the bounded proof closure.
+  - Re-open trigger: Either operator document drops a required token, a later change treats the two sections as byte-identical, or the documentation build gains a supported shared-snippet mechanism.
 
 - **Collision fixtures remain in the shared real-backend topology.**
 
@@ -3159,7 +3159,7 @@ as well.
   - Status: carried-forward
   - Source story: 24-6-graph-content-level-tenant-isolation-evidence
   - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
-  - Rationale: The method disposes `_actorHttpMessageHandler` and nulls `_actorProxyFactory`/`_actorProxyOptions` before assigning their replacements, so an actor proxy handed out before the rotation faults with `ObjectDisposedException`, and a call landing in the null window hits the misleading "Actor proxies are unavailable before the topology has started." Not currently reachable: `[Collection("AspireIngestionPipeline")]` serialises the tests and the restart regression creates its proxy after the rotation.
+  - Rationale: The rewritten method constructs both actor-proxy replacements first and only then disposes `_actorHttpMessageHandler` and swaps `_actorProxyFactory`/`_actorProxyOptions`. The original dispose-before-assign window is closed; a brief null window remains during the swap. Not currently reachable: `[Collection("AspireIngestionPipeline")]` serialises the tests and the restart regression creates its proxy after the rotation. The untested allocation-failure cleanup path is recorded separately as `24.6-F8-W2`.
   - Re-open trigger: Any test caches an actor proxy across the OpenBao restart, or the collection gains parallel execution.
 
 - **Reconnect fires only when the sidecar endpoint changes.**
@@ -3209,7 +3209,7 @@ as well.
 
 ## Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — sixth pass (2026-08-13)
 
-Four low-severity items are carried from the Story 24.6 sixth-pass closure review. None threatens AC1,
+Five low-severity items are carried from the Story 24.6 sixth-pass closure review. None threatens AC1,
 which was independently re-confirmed to hold against a real FalkorDB backend this pass. Each carries the
 structured field block required by the schema above.
 
@@ -3249,9 +3249,14 @@ structured field block required by the schema above.
   - Rationale: The positive real-backend fixture proves tenant-local node and edge markers, while the planted-marker mutation control exercises only the edge-marker assertion. The Administrator ratified C1's completed boundary as edge-only for mutation sensitivity; a node-marker control remains useful hardening but is outside that boundary.
   - Re-open trigger: A node-marker assertion is weakened or removed, a foreign-node regression appears, or Story 24.6's ratified C1 mutation-sensitivity boundary is reopened.
 
-- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md`
-  summary: Graph-isolation verification does not convert a FalkorDB `RedisTimeoutException` into a failed backend check.
-  evidence: `CheckGraphIsolationAsync` catches `RedisConnectionException` and `RedisServerException` but not `RedisTimeoutException`, so a timeout can escape the verifier instead of preserving the existing graceful backend-unavailable result shape.
+- **Graph-isolation verification does not convert a FalkorDB `RedisTimeoutException` into a failed backend check.**
+
+  - ID: 24.6-F6-W5
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Rationale: `CheckGraphIsolationAsync` catches `RedisConnectionException` and `RedisServerException` but not `RedisTimeoutException`, so a timeout can escape the verifier instead of preserving the existing graceful backend-unavailable result shape.
+  - Re-open trigger: A FalkorDB timeout escapes `VerifyAsync` as an unhandled exception, or a later story converts `RedisTimeoutException` into a failed `GraphIsolation` check.
 
 ## Deferred from: bmad-build review of spec-pushall-sync-2026-08-09 (2026-08-13)
 
@@ -3290,3 +3295,45 @@ structured field block required by the schema above.
 - source_spec: `_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md`
   summary: Bound semantic-isolation mismatch evidence returned for large tenant key sets.
   evidence: `ScanHashPrefixForTenantFieldMismatchesAsync` records every missing or foreign tenant marker and `CheckSemanticIsolationAsync` joins the full list into `Details`; this behavior predates Story 24.7 and can produce an unbounded diagnostic response when many hashes are contaminated.
+
+## Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)
+
+Four items are carried from the Story 24.6 eighth-pass review. None threatens AC1, AC2, or AC3, each of
+which was re-confirmed to hold in substance this pass. Each entry below carries the full structured field
+block required by the schema above.
+
+- **`GraphIsolation` discloses a cluster-wide graph-database count over a per-tenant endpoint.**
+
+  - ID: 24.6-F8-W1
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Rationale: The success `Details` string reports `({graphDatabases.Count} graph database(s))` over `POST /api/v1/tenants/{tenantId}/verify`, which is a count of other tenants returned to a single tenant's caller. The count predates Story 24.6 and the endpoint is operator-facing rather than tenant-facing, so this is not a live cross-tenant data leak. It is recorded because this range rewrote that exact string for a story whose thesis is not overstating isolation evidence, and no existing entry covers it.
+  - Re-open trigger: The verify endpoint becomes reachable by a tenant-scoped caller, or any story re-scopes `GraphIsolation` evidence semantics.
+
+- **The allocation-failure cleanup path in `ReconnectPrimaryDaprClients` has no test in any lane.**
+
+  - ID: 24.6-F8-W2
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Fixtures/AspireIngestionPipelineFixture.cs
+  - Rationale: The seventh pass added a `try`/`catch` that disposes the partially constructed `HttpClientHandler` and state client on construction failure and rethrows. The ledger records that phase as `+0 test cases / +0 test methods`, and the path is not reachable from any existing test because it requires a client construction failure mid-rotation. Forcing it would mean injecting a fault into fixture startup, which the current fixture design does not expose.
+  - Re-open trigger: The fixture gains a fault-injection seam, or a rotation failure is observed in CI leaving a leaked handler.
+
+- **The planted-marker negative control leaves its mutation in a provisioned tenant graph and is now a required CI surface.**
+
+  - ID: 24.6-F8-W3
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: `VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage` writes a foreign edge marker into tenant A's real graph with no teardown, and this range pinned it as a required `integration-fast` method surface. Each run provisions fresh GUID-suffixed tenants, so the corruption does not cross runs; the residual concern is that pinning a deliberately data-corrupting method into the required lane widens exactly the fixture-cleanup risk `24.6-CR-W2` already describes, without either entry recording the change.
+  - Re-open trigger: A test outside this method observes a foreign marker on a shared fixture tenant, or the fixture moves to reused rather than per-run tenant identifiers.
+
+- **The new assertions lack defensive guards that would name the failing field instead of throwing.**
+
+  - ID: 24.6-F8-W4
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
+  - Rationale: Six hardening gaps were identified across the new assertions: no null guards on `traversal.Nodes`, `traversal.GapMarkers`, or per-node `Edges`; no already-cancelled `CancellationToken` case for `VerifyAsync`; no empty or null `GRAPH.LIST` case pinning `ParseGraphList`; `Single()` rather than `ShouldHaveSingleItem` for the graph-check lookup; no linked cancellation token on the seed query, so a command abandoned by `WaitAsync` is not actually cancelled; and no null guard on the OpenBao recovery tenant's embedding configuration. Each degrades diagnosis quality on failure rather than weakening the proof — the assertions themselves fail closed — so they are hardening, not correctness defects. `24.6-F6-W3` already covers the `Single()` case alone.
+  - Re-open trigger: Any of these sites fails with a bare `NullReferenceException` or `InvalidOperationException` in CI, or the seed query is observed duplicating relationships.

@@ -155,7 +155,7 @@ The deeper heading levels below reflect this proposal's nesting only.
 
 #### Story 24.6: Graph Content-Level Tenant Isolation Evidence
 
-**Status:** backlog. **Owner:** Murat / Test Architect + Developer.
+**Status:** review. **Owner:** Murat / Test Architect + Developer.
 
 > **Approved clarification (2026-08-13):** Second-pass Decision D2 (2026-08-12), propagated here
 > under fifth-pass Decision F5-D1, supersedes this proposal's one-independent-outcome success criterion

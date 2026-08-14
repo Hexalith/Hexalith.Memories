@@ -4609,8 +4609,9 @@ So that structural database existence is not mistaken for NFR8 leakage evidence.
 
 1. A real tenant A/B fixture uses identical node identifiers, identical graph shapes, colliding edge identifiers, and tenant-distinct payload markers; authenticated traversal of each tenant returns zero foreign node or edge markers.
 2. `VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` implements and asserts its name. The redundant `VerifyTenant_SearchFromOtherContext_ZeroResultsAcrossAllAxes` is removed only after the current axis-specific tenant search negatives are cited and pass.
-3. Runtime `GraphIsolation` remains explicitly labeled structural `GRAPH.LIST` database-existence evidence; content-leakage claims cite the focused real-backend integration command and do not add a runtime graph-content scan.
+3. Runtime `GraphIsolation` verifier Details carry the structural-only `GRAPH.LIST` label plus the manifest-bound method citation; the paired runbooks carry the exact focused real-backend integration command; content-leakage claims do not add a runtime graph-content scan.
 4. If the real integration lane cannot run, the story remains blocked or records an accepted blocker with owner, consequence, proof boundary, and reopen trigger; unit mocks, test names, and comments are not NFR8 graph evidence.
+5. An in-place OpenBao restart changes the primary Dapr sidecar HTTP endpoint, and a replacement actor-proxy factory completes a real post-rotation actor call in the required integration-fast surface.
 
 ### Story 24.7: Tenant-Configured Vector Dimension Verification
 
