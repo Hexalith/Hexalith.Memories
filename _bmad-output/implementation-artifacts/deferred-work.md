@@ -3276,3 +3276,17 @@ structured field block required by the schema above.
 - source_spec: `_bmad-output/implementation-artifacts/spec-submodule-bumps-2026-08-11.md`
   summary: Restore/build still surfaces NU1903 for SSH.NET 2025.1.0.
   evidence: Pre-existing advisory warning observed during the Release package-mode verification of this dependency refresh; unrelated to the submodule gitlink bumps.
+
+## Deferred from: code review of spec-24-7-tenant-configured-vector-dimension-verification (2026-08-13)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md`
+  summary: TenantIsolationVerifier constructor leaves the four pre-existing parameters unguarded.
+  evidence: Only the new `embeddingConfigProvider` parameter gained an ArgumentNullException guard; `registry`, `redis`, `falkorDb`, and `logger` predate Story 24.7 and still surface null as NullReferenceException at first use, deviating from the documented `ArgumentNullException.ThrowIfNull` boundary rule.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md`
+  summary: Make the concrete tenant embedding configuration provider stop its actor read when caller cancellation wins.
+  evidence: `TenantEmbeddingConfigProvider.GetAsync` accepts a cancellation token but awaits `GetEmbeddingConfigAsync()` without applying it, so `TenantIsolationVerifier` can stop waiting through `WaitAsync` while the actor call continues and may populate the cache after the verification request is cancelled.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md`
+  summary: Bound semantic-isolation mismatch evidence returned for large tenant key sets.
+  evidence: `ScanHashPrefixForTenantFieldMismatchesAsync` records every missing or foreign tenant marker and `CheckSemanticIsolationAsync` joins the full list into `Details`; this behavior predates Story 24.7 and can produce an unbounded diagnostic response when many hashes are contaminated.

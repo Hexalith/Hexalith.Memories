@@ -71,7 +71,7 @@ public class TenantIsolationVerifierTests
         result.Summary.ShouldContain("checks passed");
         TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
         semanticCheck.Details.ShouldNotBeNull();
-        semanticCheck.Details.ShouldContain("validated 768-dimension configuration");
+        semanticCheck.Details.ShouldContain($"validated {VectorDimensions}-dimension configuration");
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
     }
 
@@ -106,6 +106,9 @@ public class TenantIsolationVerifierTests
             rawDimensions == 1536
                 ? IndexSchemaDefinitions.GetSemanticIndexName("tenant-a")
                 : IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a"));
+        semanticCheck.Details.ShouldContain(
+            $"Raw semantic index '{IndexSchemaDefinitions.GetSemanticIndexName("tenant-a")}' has {rawDimensions} dimensions "
+            + $"but natural-language semantic index '{IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a")}' has {naturalLanguageDimensions}");
         semanticCheck.Remediation.ShouldNotBeNull();
         semanticCheck.Remediation.ShouldContain("tenant-a");
         semanticCheck.Remediation.ShouldContain("reindex");
@@ -148,6 +151,47 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
+    public async Task VerifyAsync_ConfigRawAndNaturalLanguageDimensionsAllDiffer_ReturnsEveryDiagnostic()
+    {
+        const int RawDimensions = 1536;
+        const int NaturalLanguageDimensions = 3072;
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = CreateEmbeddingConfigProvider(
+            EmbeddingProviderDefaults.Google());
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ],
+            embeddingConfigProvider);
+
+        SetupSuccessfulIndexInfo(
+            redisDb,
+            "tenant-a",
+            rawDimensions: RawDimensions,
+            naturalLanguageDimensions: NaturalLanguageDimensions);
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain(
+            $"Index '{IndexSchemaDefinitions.GetSemanticIndexName("tenant-a")}' for tenant 'tenant-a' "
+            + $"expected {VectorDimensions} dimensions from embedding configuration but found {RawDimensions}");
+        semanticCheck.Details.ShouldContain(
+            $"Index '{IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a")}' for tenant 'tenant-a' "
+            + $"expected {VectorDimensions} dimensions from embedding configuration but found {NaturalLanguageDimensions}");
+        semanticCheck.Details.ShouldContain(
+            $"Raw semantic index '{IndexSchemaDefinitions.GetSemanticIndexName("tenant-a")}' has {RawDimensions} dimensions "
+            + $"but natural-language semantic index '{IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a")}' has {NaturalLanguageDimensions}");
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain($"validated {VectorDimensions}-dimension embedding configuration");
+        embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        AssertReadOnlyDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
     public async Task VerifyAsync_UsesRequestedTenantConfigurationOnly()
     {
         ITenantEmbeddingConfigProvider embeddingConfigProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
@@ -179,11 +223,13 @@ public class TenantIsolationVerifierTests
     }
 
     [Theory]
-    [InlineData("dapr")]
-    [InlineData("actor")]
-    [InlineData("timeout")]
-    [InlineData("http")]
-    public async Task VerifyAsync_EmbeddingConfigUnavailable_FailsClosed(string failureKind)
+    [InlineData("dapr", nameof(Dapr.DaprException))]
+    [InlineData("actor", nameof(ActorMethodInvocationException))]
+    [InlineData("timeout", nameof(TimeoutException))]
+    [InlineData("http", nameof(HttpRequestException))]
+    public async Task VerifyAsync_EmbeddingConfigUnavailable_FailsClosed(
+        string failureKind,
+        string expectedFailureType)
     {
         Exception exception = failureKind switch
         {
@@ -197,12 +243,14 @@ public class TenantIsolationVerifierTests
         embeddingConfigProvider
             .GetAsync("tenant-a", Arg.Any<CancellationToken>())
             .Returns(Task.FromException<TenantEmbeddingConfig>(exception));
+        CapturingLogger<TenantIsolationVerifier> logger = new();
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
             ],
-            embeddingConfigProvider);
+            embeddingConfigProvider,
+            logger);
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
@@ -221,6 +269,102 @@ public class TenantIsolationVerifierTests
         result.AllPassed.ShouldBeFalse();
         _ = await embeddingConfigProvider.Received(1).GetAsync("tenant-a", Arg.Any<CancellationToken>());
         embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        AssertEmbeddingConfigurationFailureLogged(logger, expectedFailureType, exception.Message);
+        AssertReadOnlyDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ValidNonDefaultConfiguredDimensions_AllChecksPass()
+    {
+        const int ConfiguredDimensions = 1536;
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = CreateEmbeddingConfigProvider(
+            EmbeddingProviderDefaults.Google() with { Dimensions = ConfiguredDimensions });
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ],
+            embeddingConfigProvider);
+
+        SetupSuccessfulIndexInfo(
+            redisDb,
+            "tenant-a",
+            rawDimensions: ConfiguredDimensions,
+            naturalLanguageDimensions: ConfiguredDimensions);
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeTrue();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeTrue();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"validated {ConfiguredDimensions}-dimension configuration");
+        _ = await embeddingConfigProvider.Received(1).GetAsync("tenant-a", Arg.Any<CancellationToken>());
+        embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        AssertReadOnlyDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_UnrecognizedEmbeddingConfigFailure_Propagates()
+    {
+        InvalidOperationException exception = new("unexpected provider failure");
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
+        embeddingConfigProvider
+            .GetAsync("tenant-a", Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<TenantEmbeddingConfig>(exception));
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ],
+            embeddingConfigProvider);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        InvalidOperationException actual = await Should.ThrowAsync<InvalidOperationException>(
+            () => verifier.VerifyAsync("tenant-a", CancellationToken.None));
+
+        actual.ShouldBeSameAs(exception);
+        _ = await embeddingConfigProvider.Received(1).GetAsync("tenant-a", Arg.Any<CancellationToken>());
+        embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        AssertReadOnlyDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_NullEmbeddingConfigLookupTask_FailsClosed()
+    {
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = Substitute.For<ITenantEmbeddingConfigProvider>();
+        embeddingConfigProvider
+            .GetAsync("tenant-a", Arg.Any<CancellationToken>())
+            .Returns(_ => (Task<TenantEmbeddingConfig>)null!);
+        CapturingLogger<TenantIsolationVerifier> logger = new();
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ],
+            embeddingConfigProvider,
+            logger);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain("unavailable");
+        semanticCheck.Details.ShouldContain("tenant-a");
+        semanticCheck.Details.Length.ShouldBeLessThan(256);
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain("retry verification");
+        result.AllPassed.ShouldBeFalse();
+        _ = await embeddingConfigProvider.Received(1).GetAsync("tenant-a", Arg.Any<CancellationToken>());
+        embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        AssertEmbeddingConfigurationFailureLogged(logger, "NullLookupTask");
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
     }
 
@@ -231,12 +375,14 @@ public class TenantIsolationVerifierTests
         embeddingConfigProvider
             .GetAsync("tenant-a", Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<TenantEmbeddingConfig>(null!));
+        CapturingLogger<TenantIsolationVerifier> logger = new();
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
             ],
-            embeddingConfigProvider);
+            embeddingConfigProvider,
+            logger);
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
@@ -254,6 +400,7 @@ public class TenantIsolationVerifierTests
         semanticCheck.Remediation.ShouldContain("retry verification");
         result.AllPassed.ShouldBeFalse();
         embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        AssertEmbeddingConfigurationFailureLogged(logger, "NullConfigurationResult");
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
     }
 
@@ -281,6 +428,7 @@ public class TenantIsolationVerifierTests
         semanticCheck.Passed.ShouldBeFalse();
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain("invalid");
+        semanticCheck.Details.ShouldContain("invalid in field 'dimensions'");
         semanticCheck.Details.ShouldContain("tenant-a");
         semanticCheck.Details.ShouldContain($"actual configured dimensions {configuredDimensions}");
         semanticCheck.Remediation.ShouldNotBeNull();
@@ -290,8 +438,40 @@ public class TenantIsolationVerifierTests
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
     }
 
+    [Theory]
+    [MemberData(nameof(InvalidNonProviderEmbeddingConfigurations))]
+    public async Task VerifyAsync_InvalidNonProviderEmbeddingConfig_SanitizesEvidence(
+        string expectedField,
+        TenantEmbeddingConfig invalidConfig)
+    {
+        ITenantEmbeddingConfigProvider embeddingConfigProvider = CreateEmbeddingConfigProvider(invalidConfig);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ],
+            embeddingConfigProvider);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"invalid in field '{expectedField}'");
+        semanticCheck.Details.ShouldContain($"actual configured dimensions {invalidConfig.Dimensions}");
+        semanticCheck.Details.Length.ShouldBeLessThan(256);
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain("Correct the embedding configuration");
+        result.AllPassed.ShouldBeFalse();
+        embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        AssertReadOnlyDependencyCalls(redisDb, falkorDb);
+    }
+
     [Fact]
-    public async Task VerifyAsync_InvalidNonDimensionEmbeddingConfig_SanitizesEvidence()
+    public async Task VerifyAsync_InvalidProviderEmbeddingConfig_SanitizesEvidence()
     {
         const string SensitiveProviderValue = "sensitive-provider-payload";
         ITenantEmbeddingConfigProvider embeddingConfigProvider = CreateEmbeddingConfigProvider(
@@ -355,6 +535,8 @@ public class TenantIsolationVerifierTests
 
         exception.CancellationToken.ShouldBe(cts.Token);
         pendingConfiguration.Task.IsCompleted.ShouldBeFalse();
+        pendingConfiguration.TrySetCanceled(cts.Token).ShouldBeTrue();
+        pendingConfiguration.Task.IsCanceled.ShouldBeTrue();
         _ = await embeddingConfigProvider.Received(1).GetAsync("tenant-a", cts.Token);
         embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
@@ -369,12 +551,14 @@ public class TenantIsolationVerifierTests
         embeddingConfigProvider
             .GetAsync("tenant-a", CancellationToken.None)
             .Returns(Task.FromCanceled<TenantEmbeddingConfig>(providerCts.Token));
+        CapturingLogger<TenantIsolationVerifier> logger = new();
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, _) = CreateVerifier(
             tenants:
             [
                 new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
             ],
-            embeddingConfigProvider);
+            embeddingConfigProvider,
+            logger);
 
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         SetupGraphList(falkorDb, "tenant-a");
@@ -390,6 +574,7 @@ public class TenantIsolationVerifierTests
         semanticCheck.Remediation.ShouldContain("retry verification");
         result.AllPassed.ShouldBeFalse();
         embeddingConfigProvider.DidNotReceive().Invalidate(Arg.Any<string>());
+        AssertEmbeddingConfigurationFailureLogged(logger, nameof(TaskCanceledException), "A task was canceled.");
         AssertReadOnlyDependencyCalls(redisDb, falkorDb);
     }
 
@@ -838,10 +1023,11 @@ public class TenantIsolationVerifierTests
 
     private static (TenantIsolationVerifier Verifier, IDatabase RedisDb, IDatabase FalkorDb, IServer RedisServer) CreateVerifier(
         IReadOnlyList<TenantInfo> tenants,
-        ITenantEmbeddingConfigProvider? embeddingConfigProvider = null)
+        ITenantEmbeddingConfigProvider? embeddingConfigProvider = null,
+        ILogger<TenantIsolationVerifier>? logger = null)
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IReadOnlyList<IServer> redisServers) =
-            CreateVerifierCore(tenants, redisServerCount: 1, embeddingConfigProvider);
+            CreateVerifierCore(tenants, redisServerCount: 1, embeddingConfigProvider, logger);
         return (verifier, redisDb, falkorDb, redisServers[0]);
     }
 
@@ -856,7 +1042,8 @@ public class TenantIsolationVerifierTests
     private static (TenantIsolationVerifier Verifier, IDatabase RedisDb, IDatabase FalkorDb, IReadOnlyList<IServer> RedisServers) CreateVerifierCore(
         IReadOnlyList<TenantInfo> tenants,
         int redisServerCount,
-        ITenantEmbeddingConfigProvider? embeddingConfigProvider = null)
+        ITenantEmbeddingConfigProvider? embeddingConfigProvider = null,
+        ILogger<TenantIsolationVerifier>? logger = null)
     {
         // Set up TenantRegistryService with mocked DaprClient
         DaprClient daprClient = Substitute.For<DaprClient>();
@@ -906,11 +1093,12 @@ public class TenantIsolationVerifierTests
         IDatabase falkorDatabase = Substitute.For<IDatabase>();
         falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(falkorDatabase);
 
-        ILogger<TenantIsolationVerifier> logger = Substitute.For<ILogger<TenantIsolationVerifier>>();
+        ILogger<TenantIsolationVerifier> effectiveLogger = logger
+            ?? Substitute.For<ILogger<TenantIsolationVerifier>>();
 
         ITenantEmbeddingConfigProvider effectiveEmbeddingConfigProvider = embeddingConfigProvider
             ?? CreateEmbeddingConfigProvider(EmbeddingProviderDefaults.Google());
-        TenantIsolationVerifier verifier = new(registry, effectiveEmbeddingConfigProvider, redis, falkorDb, logger);
+        TenantIsolationVerifier verifier = new(registry, effectiveEmbeddingConfigProvider, redis, falkorDb, effectiveLogger);
         return (verifier, redisDb, falkorDatabase, redisServers);
     }
 
@@ -921,6 +1109,67 @@ public class TenantIsolationVerifierTests
             .GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(config);
         return embeddingConfigProvider;
+    }
+
+    public static TheoryData<string, TenantEmbeddingConfig> InvalidNonProviderEmbeddingConfigurations()
+        => new()
+        {
+            { "model", EmbeddingProviderDefaults.Google() with { Model = "invalid model" } },
+            { "rateLimitPerMinute", EmbeddingProviderDefaults.Google() with { RateLimitPerMinute = 0 } },
+            { "apiSecretKeyName", EmbeddingProviderDefaults.Google() with { ApiSecretKeyName = "INVALID_SECRET" } },
+            { "baseUrl", EmbeddingProviderDefaults.Google() with { BaseUrl = "not-a-url" } },
+            { "authMode", EmbeddingProviderDefaults.Google() with { AuthMode = "invalid-auth-mode" } },
+            { "oidcTokenEndpoint", EmbeddingProviderDefaults.Google() with { OidcTokenEndpoint = "not-a-url" } },
+            {
+                "oidcClientId",
+                EmbeddingProviderDefaults.Ollama() with
+                {
+                    OidcClientId = string.Empty,
+                    OidcTokenEndpoint = "https://identity.example.test/token",
+                }
+            },
+        };
+
+    private static void AssertEmbeddingConfigurationFailureLogged(
+        CapturingLogger<TenantIsolationVerifier> logger,
+        string expectedFailureType,
+        params string[] sensitiveValues)
+    {
+        LogEntry warning = logger.Entries
+            .Where(entry => entry.Level == LogLevel.Warning)
+            .ShouldHaveSingleItem();
+
+        warning.Message.ShouldBe(
+            $"Embedding configuration lookup failed for requested tenant 'tenant-a' with {expectedFailureType}; "
+            + "semantic isolation verification will fail closed");
+        warning.Exception.ShouldBeNull();
+        foreach (string sensitiveValue in sensitiveValues)
+        {
+            warning.Message.ShouldNotContain(sensitiveValue);
+        }
+    }
+
+    private sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            ArgumentNullException.ThrowIfNull(formatter);
+            Entries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+        }
     }
 
     private static void AssertReadOnlyDependencyCalls(IDatabase redisDb, IDatabase falkorDb)

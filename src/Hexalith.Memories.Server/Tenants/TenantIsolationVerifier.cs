@@ -41,9 +41,9 @@ public sealed partial class TenantIsolationVerifier
         IConnectionMultiplexer falkorDb,
         ILogger<TenantIsolationVerifier> logger)
     {
+        ArgumentNullException.ThrowIfNull(embeddingConfigProvider);
         _registry = registry;
-        _embeddingConfigProvider = embeddingConfigProvider
-            ?? throw new ArgumentNullException(nameof(embeddingConfigProvider));
+        _embeddingConfigProvider = embeddingConfigProvider;
         _redis = redis;
         _falkorDb = falkorDb;
         _logger = logger;
@@ -233,6 +233,7 @@ public sealed partial class TenantIsolationVerifier
             if (lookup is null)
             {
                 sw.Stop();
+                LogEmbeddingConfigurationLookupFailed(_logger, tenantId, "NullLookupTask");
                 return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
             }
 
@@ -244,20 +245,23 @@ public sealed partial class TenantIsolationVerifier
         {
             throw;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
             sw.Stop();
+            LogEmbeddingConfigurationLookupFailed(_logger, tenantId, ex.GetType().Name);
             return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
         }
         catch (Exception ex) when (IsEmbeddingConfigurationUnavailable(ex))
         {
             sw.Stop();
+            LogEmbeddingConfigurationLookupFailed(_logger, tenantId, ex.GetType().Name);
             return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
         }
 
         if (embeddingConfig is null)
         {
             sw.Stop();
+            LogEmbeddingConfigurationLookupFailed(_logger, tenantId, "NullConfigurationResult");
             return CreateEmbeddingConfigurationUnavailableResult(tenantId, sw.Elapsed.TotalMilliseconds);
         }
 
@@ -690,4 +694,10 @@ public sealed partial class TenantIsolationVerifier
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Tenant isolation verification completed for '{TenantId}': AllPassed={AllPassed}, Checks={CheckCount}")]
     private static partial void LogVerificationCompleted(ILogger logger, string tenantId, bool allPassed, int checkCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Embedding configuration lookup failed for requested tenant '{TenantId}' with {FailureType}; semantic isolation verification will fail closed")]
+    private static partial void LogEmbeddingConfigurationLookupFailed(
+        ILogger logger,
+        string tenantId,
+        string failureType);
 }
