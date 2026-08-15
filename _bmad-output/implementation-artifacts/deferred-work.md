@@ -3337,3 +3337,7 @@ block required by the schema above.
   - Target artifact: tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs
   - Rationale: Six hardening gaps were identified across the new assertions: no null guards on `traversal.Nodes`, `traversal.GapMarkers`, or per-node `Edges`; no already-cancelled `CancellationToken` case for `VerifyAsync`; no empty or null `GRAPH.LIST` case pinning `ParseGraphList`; `Single()` rather than `ShouldHaveSingleItem` for the graph-check lookup; no linked cancellation token on the seed query, so a command abandoned by `WaitAsync` is not actually cancelled; and no null guard on the OpenBao recovery tenant's embedding configuration. Each degrades diagnosis quality on failure rather than weakening the proof — the assertions themselves fail closed — so they are hardening, not correctness defects. `24.6-F6-W3` already covers the `Single()` case alone.
   - Re-open trigger: Any of these sites fails with a bare `NullReferenceException` or `InvalidOperationException` in CI, or the seed query is observed duplicating relationships.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-31871199175-fix-ci-cd.md`
+  summary: Older Story 27.2 and `spec-gh-30838751196` still describe a standalone Access Telemetry AppHost for the routed Dapr proof.
+  evidence: This change joined that proof to `AspireIngestionPipeline`; those artifacts were outside file scope and still document a second AppHost.

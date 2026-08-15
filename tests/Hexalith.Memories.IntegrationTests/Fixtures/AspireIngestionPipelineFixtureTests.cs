@@ -12,6 +12,7 @@ using System.Runtime.CompilerServices;
 
 using Hexalith.Memories.AppHost;
 using Hexalith.Memories.IntegrationTests.Mcp;
+using Hexalith.Memories.IntegrationTests.Telemetry;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -302,6 +303,69 @@ public sealed class AspireIngestionPipelineFixtureTests
 
         AsyncMethodCalls(sharedTopologyStartup, auxiliaryReadiness).ShouldBeFalse(
             "clock/lifecycle readiness belongs only to the OpenBao sidecar matrix, not shared fixture startup.");
+    }
+
+    [Fact]
+    public void CreateDaprSidecarClient_DirectEndpoint_UsesResolvedLoopbackAddressAndThirtySecondTimeout()
+    {
+        Uri endpoint = new("http://127.0.0.1:41002");
+        using HttpClient client = AspireIngestionPipelineFixture.CreateDaprSidecarClient(endpoint);
+
+        client.BaseAddress.ShouldNotBeNull();
+        client.BaseAddress!.Scheme.ShouldBe(Uri.UriSchemeHttp);
+        client.BaseAddress.Host.ShouldBe("127.0.0.1");
+        client.BaseAddress.Port.ShouldBe(41002);
+        client.Timeout.ShouldBe(TimeSpan.FromSeconds(30));
+        client.DefaultRequestHeaders.Contains("dapr-api-token")
+            .ShouldBe(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DAPR_API_TOKEN")));
+    }
+
+    [Fact]
+    public void CreateDaprSidecarClient_NamedSidecarFactory_IsInternalAndRequiresRunningTopology()
+    {
+        MethodInfo namedFactory = typeof(AspireIngestionPipelineFixture)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Single(method =>
+                method.Name == nameof(AspireIngestionPipelineFixture.CreateDaprSidecarClient) &&
+                method.GetParameters() is [{ ParameterType: { } parameterType }] &&
+                parameterType == typeof(string));
+
+        namedFactory.IsPublic.ShouldBeFalse();
+        namedFactory.IsAssembly.ShouldBeTrue();
+
+        var fixture = new AspireIngestionPipelineFixture();
+        InvalidOperationException exception = Should.Throw<InvalidOperationException>(() =>
+            fixture.CreateDaprSidecarClient("memories-access-telemetry-clock-dapr-cli"));
+        exception.Message.ShouldContain("topology is not running");
+    }
+
+    [Fact]
+    public void AccessTelemetryAspireRoutedTests_JoinSharedCollectionWithoutSecondAppHostOrAspireDaprCliHealth()
+    {
+        CollectionAttribute collection = typeof(AccessTelemetryAspireRoutedIntegrationTests)
+            .GetCustomAttribute<CollectionAttribute>()
+            .ShouldNotBeNull();
+        collection.Name.ShouldBe("AspireIngestionPipeline");
+
+        string source = File.ReadAllText(Path.Combine(
+            RepositoryRootLocator.Resolve(),
+            "tests",
+            "Hexalith.Memories.IntegrationTests",
+            "Telemetry",
+            "AccessTelemetryAspireRoutedIntegrationTests.cs"));
+        string compacted = string.Concat(source.Where(static character => !char.IsWhiteSpace(character)));
+
+        compacted.ShouldContain("WaitForOpenBaoSidecarMatrixReadinessAsync");
+        compacted.ShouldContain("CreateDaprSidecarClient");
+        compacted.ShouldNotContain("DistributedApplicationTestingBuilder.CreateAsync");
+        compacted.ShouldNotContain("DistributedApplicationTestingBuilder");
+        compacted.ShouldNotContain("WaitForResourceHealthyAsync");
+        compacted.ShouldNotContain("WaitForHealthyAsync");
+
+        typeof(AccessTelemetryAspireRoutedIntegrationTests).Assembly
+            .GetTypes()
+            .Select(static type => type.Name)
+            .ShouldNotContain("AccessTelemetryAspireRoutedCollection");
     }
 
     [Fact]

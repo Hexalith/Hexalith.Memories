@@ -8,31 +8,15 @@ namespace Hexalith.Memories.IntegrationTests.Telemetry;
 using System.Net.Http.Json;
 using System.Text.Json;
 
-using Aspire.Hosting;
-using Aspire.Hosting.ApplicationModel;
-using Aspire.Hosting.Testing;
-
 using Hexalith.Memories.AccessTelemetry.Contracts;
-using Hexalith.Memories.AppHost;
 using Hexalith.Memories.IntegrationTests.Fixtures;
-
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 using Shouldly;
 
-/// <summary>Serializes the fixed-port Access Telemetry AppHost topology against other integration collections.</summary>
-[CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class AccessTelemetryAspireRoutedCollection
-{
-    /// <summary>Gets the xUnit collection name.</summary>
-    public const string Name = "AccessTelemetryAspireRouted";
-}
-
 /// <summary>Hosted Dapr routing, clock, actor, state, and health evidence for Story 27.2.</summary>
-[Collection(AccessTelemetryAspireRoutedCollection.Name)]
+[Collection("AspireIngestionPipeline")]
 [Trait("Category", "Integration")]
-public sealed class AccessTelemetryAspireRoutedIntegrationTests
+public sealed class AccessTelemetryAspireRoutedIntegrationTests(AspireIngestionPipelineFixture fixture)
 {
     private const string ConfigurationEpoch = "01J00000000000000000000000";
     private const string ComponentProfileHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -43,128 +27,81 @@ public sealed class AccessTelemetryAspireRoutedIntegrationTests
     [Fact]
     public async Task AppHost_DaprRoutesClockHeartbeatActorStateInspectionAndHealth()
     {
-        IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
-            .CreateAsync<Projects.Hexalith_Memories_AppHost>()
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(StartupTimeout);
+        CancellationToken cancellationToken = timeout.Token;
+        await fixture.WaitForOpenBaoSidecarMatrixReadinessAsync(cancellationToken)
             .ConfigureAwait(true);
-        var logProvider = new AspireIngestionPipelineFixture.TestLogProvider();
-        _ = builder.Services.AddLogging(logging =>
+
+        using HttpClient lifecycleSidecar = fixture.CreateDaprSidecarClient(LifecycleSidecarResourceName);
+        using HttpClient clockSidecar = fixture.CreateDaprSidecarClient(ClockSidecarResourceName);
+
+        SignedClockAttestation lifecycleAttestation = await RequestAttestationAsync(
+            lifecycleSidecar,
+            "memories-access-telemetry",
+            "01J00000000000000000000001",
+            "01J00000000000000000000002",
+            "01J00000000000000000000003",
+            cancellationToken).ConfigureAwait(true);
+        lifecycleAttestation.Signature.ShouldNotBeNullOrWhiteSpace();
+        lifecycleAttestation.NotBeforeUnixMilliseconds.ShouldBeLessThanOrEqualTo(lifecycleAttestation.IssuedAtUnixMilliseconds);
+        lifecycleAttestation.ExpiresAtUnixMilliseconds.ShouldBeGreaterThan(lifecycleAttestation.IssuedAtUnixMilliseconds);
+
+        AccessTelemetryRuntimeValidationResponse validation = await WaitForValidationAsync(
+            clockSidecar,
+            cancellationToken).ConfigureAwait(true);
+        validation.AllowsWrites.ShouldBeTrue(validation.Reason.ToString());
+
+        const string writerProcessEpoch = "01J00000000000000000000012";
+        const string writerServiceInstanceId = "01J00000000000000000000013";
+        SignedClockAttestation writerAttestation = await RequestAttestationAsync(
+            lifecycleSidecar,
+            "memories",
+            "01J00000000000000000000011",
+            writerProcessEpoch,
+            writerServiceInstanceId,
+            cancellationToken).ConfigureAwait(true);
+        var heartbeat = new WriterHeartbeatRequest
         {
-            _ = logging.SetMinimumLevel(LogLevel.Warning);
-            _ = logging.AddFilter((category, level) =>
+            Heartbeat = new WriterHeartbeat
             {
-                if (AspireIngestionPipelineFixture.IsExactDaprSidecarLogCategory(
-                        category,
-                        ClockSidecarResourceName) ||
-                    AspireIngestionPipelineFixture.IsExactDaprSidecarLogCategory(
-                        category,
-                        LifecycleSidecarResourceName))
-                {
-                    return level >= LogLevel.Information;
-                }
+                DeploymentId = "development",
+                ServiceInstanceId = writerServiceInstanceId,
+                ProcessEpoch = writerProcessEpoch,
+                MarkerKeyGeneration = "development-marker",
+                OldKeyQueueCount = 0,
+                LeaseExpiresAtUnixMilliseconds = writerAttestation.IssuedAtUnixMilliseconds + 29_000,
+            },
+            ClockAttestation = writerAttestation,
+        };
+        using HttpResponseMessage heartbeatHttp = await clockSidecar.PostAsJsonAsync(
+            "/v1.0/invoke/memories-access-telemetry/method/v1/access-telemetry/heartbeat",
+            heartbeat,
+            cancellationToken).ConfigureAwait(true);
+        heartbeatHttp.EnsureSuccessStatusCode();
+        WriterHeartbeatResponse heartbeatResponse = (await heartbeatHttp.Content
+            .ReadFromJsonAsync<WriterHeartbeatResponse>(cancellationToken)
+            .ConfigureAwait(true))!;
+        heartbeatResponse.Accepted.ShouldBeTrue(heartbeatResponse.Reason.ToString());
 
-                return level >= LogLevel.Warning;
-            });
-            _ = logging.AddProvider(logProvider);
-        });
-        await using DistributedApplication app = await builder.BuildAsync().ConfigureAwait(true);
-        using var timeout = new CancellationTokenSource(StartupTimeout);
-        await app.StartAsync(timeout.Token).ConfigureAwait(true);
+        using HttpResponseMessage inspectionHttp = await clockSidecar.GetAsync(
+            "/v1.0/invoke/memories-access-telemetry/method/v1/access-telemetry/inspect",
+            cancellationToken).ConfigureAwait(true);
+        inspectionHttp.EnsureSuccessStatusCode();
+        AccessTelemetryInspectionResponse inspection = (await inspectionHttp.Content
+            .ReadFromJsonAsync<AccessTelemetryInspectionResponse>(cancellationToken)
+            .ConfigureAwait(true))!;
+        inspection.Health.ShouldBe(AccessTelemetryHealthState.Healthy);
+        inspection.Reason.ShouldBe(AccessTelemetryReason.None);
+        inspection.ConfigurationEpoch.ShouldBe(ConfigurationEpoch);
 
-        try
-        {
-            await WaitForHealthyAsync(app, ClockSidecarResourceName, timeout.Token).ConfigureAwait(true);
-            await WaitForHealthyAsync(app, LifecycleSidecarResourceName, timeout.Token).ConfigureAwait(true);
-            await WaitForHealthyAsync(app, "memories-access-telemetry-clock", timeout.Token).ConfigureAwait(true);
-            await WaitForHealthyAsync(app, "memories-access-telemetry", timeout.Token).ConfigureAwait(true);
-
-            Uri lifecycleSidecarEndpoint = await AspireIngestionPipelineFixture.WaitForDaprSidecarHttpEndpointAsync(
-                LifecycleSidecarResourceName,
-                () => logProvider.GetEntriesSince(0),
-                StartupTimeout,
-                TimeSpan.FromMilliseconds(100),
-                timeout.Token).ConfigureAwait(true);
-            Uri clockSidecarEndpoint = await AspireIngestionPipelineFixture.WaitForDaprSidecarHttpEndpointAsync(
-                ClockSidecarResourceName,
-                () => logProvider.GetEntriesSince(0),
-                StartupTimeout,
-                TimeSpan.FromMilliseconds(100),
-                timeout.Token).ConfigureAwait(true);
-            using HttpClient lifecycleSidecar = CreateDirectDaprSidecarClient(
-                lifecycleSidecarEndpoint);
-            using HttpClient clockSidecar = CreateDirectDaprSidecarClient(
-                clockSidecarEndpoint);
-
-            SignedClockAttestation lifecycleAttestation = await RequestAttestationAsync(
-                lifecycleSidecar,
-                "memories-access-telemetry",
-                "01J00000000000000000000001",
-                "01J00000000000000000000002",
-                "01J00000000000000000000003",
-                timeout.Token).ConfigureAwait(true);
-            lifecycleAttestation.Signature.ShouldNotBeNullOrWhiteSpace();
-            lifecycleAttestation.NotBeforeUnixMilliseconds.ShouldBeLessThanOrEqualTo(lifecycleAttestation.IssuedAtUnixMilliseconds);
-            lifecycleAttestation.ExpiresAtUnixMilliseconds.ShouldBeGreaterThan(lifecycleAttestation.IssuedAtUnixMilliseconds);
-
-            AccessTelemetryRuntimeValidationResponse validation = await WaitForValidationAsync(
-                clockSidecar,
-                timeout.Token).ConfigureAwait(true);
-            validation.AllowsWrites.ShouldBeTrue(validation.Reason.ToString());
-
-            const string writerProcessEpoch = "01J00000000000000000000012";
-            const string writerServiceInstanceId = "01J00000000000000000000013";
-            SignedClockAttestation writerAttestation = await RequestAttestationAsync(
-                lifecycleSidecar,
-                "memories",
-                "01J00000000000000000000011",
-                writerProcessEpoch,
-                writerServiceInstanceId,
-                timeout.Token).ConfigureAwait(true);
-            var heartbeat = new WriterHeartbeatRequest
-            {
-                Heartbeat = new WriterHeartbeat
-                {
-                    DeploymentId = "development",
-                    ServiceInstanceId = writerServiceInstanceId,
-                    ProcessEpoch = writerProcessEpoch,
-                    MarkerKeyGeneration = "development-marker",
-                    OldKeyQueueCount = 0,
-                    LeaseExpiresAtUnixMilliseconds = writerAttestation.IssuedAtUnixMilliseconds + 29_000,
-                },
-                ClockAttestation = writerAttestation,
-            };
-            using HttpResponseMessage heartbeatHttp = await clockSidecar.PostAsJsonAsync(
-                "/v1.0/invoke/memories-access-telemetry/method/v1/access-telemetry/heartbeat",
-                heartbeat,
-                timeout.Token).ConfigureAwait(true);
-            heartbeatHttp.EnsureSuccessStatusCode();
-            WriterHeartbeatResponse heartbeatResponse = (await heartbeatHttp.Content
-                .ReadFromJsonAsync<WriterHeartbeatResponse>(timeout.Token)
-                .ConfigureAwait(true))!;
-            heartbeatResponse.Accepted.ShouldBeTrue(heartbeatResponse.Reason.ToString());
-
-            using HttpResponseMessage inspectionHttp = await clockSidecar.GetAsync(
-                "/v1.0/invoke/memories-access-telemetry/method/v1/access-telemetry/inspect",
-                timeout.Token).ConfigureAwait(true);
-            inspectionHttp.EnsureSuccessStatusCode();
-            AccessTelemetryInspectionResponse inspection = (await inspectionHttp.Content
-                .ReadFromJsonAsync<AccessTelemetryInspectionResponse>(timeout.Token)
-                .ConfigureAwait(true))!;
-            inspection.Health.ShouldBe(AccessTelemetryHealthState.Healthy);
-            inspection.Reason.ShouldBe(AccessTelemetryReason.None);
-            inspection.ConfigurationEpoch.ShouldBe(ConfigurationEpoch);
-
-            using JsonDocument actorState = await lifecycleSidecar.GetFromJsonAsync<JsonDocument>(
-                "/v1.0/actors/AccessTelemetryLifecycleActor/global/state/lifecycle-control",
-                timeout.Token).ConfigureAwait(true) ?? throw new InvalidOperationException("The routed actor state response was empty.");
-            JsonElement root = actorState.RootElement;
-            root.GetProperty("writers").EnumerateObject().ShouldNotBeEmpty();
-            root.GetProperty("configuration").GetProperty("epoch").GetString().ShouldBe(ConfigurationEpoch);
-            root.GetProperty("configuration").GetProperty("componentProfileHash").GetString().ShouldBe(ComponentProfileHash);
-        }
-        finally
-        {
-            await app.StopAsync(CancellationToken.None).ConfigureAwait(true);
-        }
+        using JsonDocument actorState = await lifecycleSidecar.GetFromJsonAsync<JsonDocument>(
+            "/v1.0/actors/AccessTelemetryLifecycleActor/global/state/lifecycle-control",
+            cancellationToken).ConfigureAwait(true) ?? throw new InvalidOperationException("The routed actor state response was empty.");
+        JsonElement root = actorState.RootElement;
+        root.GetProperty("writers").EnumerateObject().ShouldNotBeEmpty();
+        root.GetProperty("configuration").GetProperty("epoch").GetString().ShouldBe(ConfigurationEpoch);
+        root.GetProperty("configuration").GetProperty("componentProfileHash").GetString().ShouldBe(ComponentProfileHash);
     }
 
     private static async Task<SignedClockAttestation> RequestAttestationAsync(
@@ -193,22 +130,6 @@ public sealed class AccessTelemetryAspireRoutedIntegrationTests
             ?? throw new InvalidOperationException("The routed clock response was empty.");
     }
 
-    private static HttpClient CreateDirectDaprSidecarClient(Uri endpoint)
-    {
-        var client = new HttpClient
-        {
-            BaseAddress = endpoint,
-            Timeout = TimeSpan.FromSeconds(30),
-        };
-        string? daprApiToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
-        if (!string.IsNullOrWhiteSpace(daprApiToken))
-        {
-            client.DefaultRequestHeaders.TryAddWithoutValidation("dapr-api-token", daprApiToken);
-        }
-
-        return client;
-    }
-
     private static async Task<AccessTelemetryRuntimeValidationResponse> WaitForValidationAsync(
         HttpClient callerSidecar,
         CancellationToken cancellationToken)
@@ -233,13 +154,4 @@ public sealed class AccessTelemetryAspireRoutedIntegrationTests
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(true);
         }
     }
-
-    private static async Task WaitForHealthyAsync(
-        DistributedApplication app,
-        string resourceName,
-        CancellationToken cancellationToken)
-        => _ = await app.ResourceNotifications
-            .WaitForResourceHealthyAsync(resourceName, cancellationToken)
-            .WaitAsync(StartupTimeout, cancellationToken)
-            .ConfigureAwait(true);
 }

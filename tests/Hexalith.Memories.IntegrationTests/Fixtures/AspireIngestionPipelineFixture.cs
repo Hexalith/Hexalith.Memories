@@ -1147,8 +1147,16 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return false;
     }
 
-    private HttpClient CreateDaprSidecarClient(string sidecarResourceName)
+    /// <summary>
+    /// Creates a direct daprd HTTP client for one exact named sidecar by resolving that
+    /// sidecar's log-based daprd loopback endpoint. Clock and lifecycle callers must call
+    /// <see cref="WaitForOpenBaoSidecarMatrixReadinessAsync"/> first.
+    /// </summary>
+    /// <param name="sidecarResourceName">The exact Aspire Dapr CLI resource name.</param>
+    /// <returns>A loopback client targeting the sidecar's real daprd HTTP port.</returns>
+    internal HttpClient CreateDaprSidecarClient(string sidecarResourceName)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sidecarResourceName);
         _ = _app ?? throw new InvalidOperationException("The topology is not running.");
         Uri endpoint = ResolveDaprSidecarHttpEndpoint(
             sidecarResourceName,
@@ -1156,7 +1164,10 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         return CreateDaprSidecarClient(endpoint);
     }
 
-    private static HttpClient CreateDaprSidecarClient(Uri endpoint)
+    /// <summary>Creates a direct daprd HTTP client for an already resolved loopback endpoint.</summary>
+    /// <param name="endpoint">The IPv4-loopback daprd HTTP endpoint.</param>
+    /// <returns>A client with a 30-second timeout and optional Dapr API token header.</returns>
+    internal static HttpClient CreateDaprSidecarClient(Uri endpoint)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         var client = new HttpClient
