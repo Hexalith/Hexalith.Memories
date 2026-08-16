@@ -276,6 +276,9 @@ jobs:
       - name: Run story file-scope gate fixtures
         run: python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"
 
+      - name: Run approved publication preflight fixtures
+        run: python3 -m unittest discover -s tests/tooling/approved_publication -p "*_test.py"
+
       - name: Run story slice-scope gate fixtures
         run: python3 -m unittest discover -s tests/tooling/story_slice_scope -p "*_test.py"
 

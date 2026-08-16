@@ -3345,3 +3345,43 @@ block required by the schema above.
 - source_spec: `_bmad-output/implementation-artifacts/spec-mark-completed-pushall-specs-done.md`
   summary: Backfill unavailable historical command-level validation and pruning logs for the five completed pushall synchronization specs.
   evidence: The specs list intended validation commands but do not retain their contemporaneous output; the current repository proves the landed commits and absence of remaining branches but cannot reconstruct exact historical command results.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Make first creation of the aggregate-to-case mapping index concurrency-safe.
+  evidence: `DaprAggregateCaseMappingStore.EnsureIndexedAsync` creates an absent index without `FirstWrite`, so concurrent first mappings can both save from an empty ETag and lose one aggregate type.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Make case-mapping deletion recoverable when map-key deletion fails after index removal.
+  evidence: `DeleteByCaseAsync` commits aggregate-type removal from the index before deleting map keys, so a later delete failure leaves unindexed state that retries cannot enumerate.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Coordinate aggregate-to-case writers with tenant purge completion.
+  evidence: `DeleteAllTenantDataAsync` can observe an empty index and return while a concurrent writer has persisted a map but has not yet recreated the index, leaving tenant data after purge reports success.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Rebuild missing observed-event discovery indexes when membership markers survive index expiry.
+  evidence: `UpdateDiscoveryIndexAsync` treats an existing membership marker as sufficient and `RefreshIndexTtlAsync` returns on a missing index, allowing stored observations to disappear from discovery indefinitely.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Handle failed TTL refresh writes for observed-event indexes.
+  evidence: Written and discovery index refresh paths discard false `TrySaveStateAsync` results while returning success, so indexes can expire before the observation keys they enumerate.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Coordinate observed-event writers with tenant deletion.
+  evidence: `DaprObservedEventTypeStore.DeleteAllTenantDataAsync` enumerates one snapshot and then deletes both indexes without a writer barrier, allowing concurrent observations to survive while becoming unindexed.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Bound tenant-isolation embedding-configuration lookup time independently of caller cancellation.
+  evidence: `TenantIsolationVerifier.CheckSemanticIsolationAsync` waits only on the caller token, so a provider that ignores cancellation can hang verification indefinitely.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Ensure scheduled nightly runs execute the fast integration lane.
+  evidence: `.github/workflows/nightly.yml` declares a schedule but gates `integration-fast` exclusively on `workflow_dispatch`, causing scheduled runs to skip that verification job.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Restrict filesystem permissions on temporary OpenBao bootstrap credentials.
+  evidence: `Publish-OpenBaoBootstrapSecrets` writes live runtime and access tokens to a normal temporary directory without explicitly enforcing owner-only directory and file permissions on Unix hosts.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
+  summary: Make the fake Dapr state store copy mutable values and enforce state options.
+  evidence: `FakeDaprStateStore` returns backing lists and dictionaries directly and ignores `StateOptions`, so failed-save and FirstWrite/TTL tests can mutate fake persistence in place or prove weaker semantics than production.
