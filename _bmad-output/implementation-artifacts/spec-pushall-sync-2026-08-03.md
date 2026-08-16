@@ -2,7 +2,7 @@
 title: 'Authorize the 2026-08-03 pushall synchronization'
 type: 'maintenance'
 created: '2026-08-03'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: 'a91de0a62ad6b51cc608c58726384876680a30c2'
 context:
@@ -90,8 +90,8 @@ Allowed files for this story:
 
 **Execution:**
 - [x] Establish the exact owner-valid synchronization envelope without changing underlying story ownership.
-- [ ] Stage exactly the declared File Scope and commit with `build: sync local changes via /pushall` plus `Story-Key: spec-pushall-sync-2026-08-03`.
-- [ ] Finish the `/pushall` merge, push, safe local deletion, exact-lease remote pruning, final fetch, and final-branch verification.
+- [x] Stage exactly the declared File Scope and commit with `build: sync local changes via /pushall` plus `Story-Key: spec-pushall-sync-2026-08-03`.
+- [x] Finish the `/pushall` merge, push, safe local deletion, exact-lease remote pruning, final fetch, and final-branch verification.
 
 **Acceptance Criteria:**
 - Given the exact authorized snapshot, when repository scope and commit hooks run, then every path is accepted without `Scope-Override` or bypass flags.
@@ -121,3 +121,9 @@ Story-Key: spec-pushall-sync-2026-08-03
 - `python3 tools/check-story-review-readiness.py --story-key spec-pushall-sync-2026-08-03 --staged --derive-cumulative` -- expected: standalone-spec readiness passes.
 - `npx commitlint --edit <message-file> --verbose` and `.githooks/commit-msg <message-file>` -- expected: proposed message and composed local gates pass.
 - `npx commitlint --from "$(git merge-base origin/main HEAD)" --to HEAD --verbose` -- expected: complete push range passes.
+
+## Completion Record
+
+- Marked `done` on 2026-08-16 after the user confirmed the synchronization commit and push were already complete.
+- Landed commit `d631fa131c8e713941074fa2423b5275cbf8c4ab` is reachable from both `main` and `origin/main`.
+- The current branch inventory contains only `main`, `origin/main`, and `origin/HEAD`; no synchronization branch remains to prune.

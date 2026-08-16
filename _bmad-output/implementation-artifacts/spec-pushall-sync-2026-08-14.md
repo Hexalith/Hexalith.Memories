@@ -2,7 +2,7 @@
 title: 'Authorize the 2026-08-14 pushall synchronization'
 type: 'maintenance'
 created: '2026-08-14'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: 'dc5fde62d5bb3f855606b7e181909fbfd8b56cf6'
 context:
@@ -39,7 +39,7 @@ Allowed files for this story:
 **Execution:**
 - [x] Process every root-declared submodule in its own dedicated agent.
 - [x] Establish the exact owner-valid synchronization envelope.
-- [ ] Commit and push the superproject snapshot, then safely prune merged branches.
+- [x] Commit and push the superproject snapshot, then safely prune merged branches.
 
 **Acceptance Criteria:**
 - Every staged path is accepted by repository scope validation without a bypass.
@@ -53,3 +53,9 @@ Allowed files for this story:
 - `python3 tools/check-tenant-isolation-evidence.py --story-key spec-pushall-sync-2026-08-14 --staged`
 - `python3 tools/check-story-review-readiness.py --story-key spec-pushall-sync-2026-08-14 --staged --derive-cumulative`
 - `npx commitlint --from "$(git merge-base origin/main HEAD)" --to HEAD --verbose`
+
+## Completion Record
+
+- Marked `done` on 2026-08-16 after the user confirmed the synchronization commit and push were already complete.
+- Landed commit `301041626f32d4fb9b6a1154e5e09d65a70a2fcc` is reachable from both `main` and `origin/main`.
+- The current branch inventory contains only `main`, `origin/main`, and `origin/HEAD`; no synchronization branch remains to prune.

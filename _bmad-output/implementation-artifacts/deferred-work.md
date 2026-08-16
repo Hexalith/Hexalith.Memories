@@ -3341,3 +3341,7 @@ block required by the schema above.
 - source_spec: `_bmad-output/implementation-artifacts/spec-gh-31871199175-fix-ci-cd.md`
   summary: Older Story 27.2 and `spec-gh-30838751196` still describe a standalone Access Telemetry AppHost for the routed Dapr proof.
   evidence: This change joined that proof to `AspireIngestionPipeline`; those artifacts were outside file scope and still document a second AppHost.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-mark-completed-pushall-specs-done.md`
+  summary: Backfill unavailable historical command-level validation and pruning logs for the five completed pushall synchronization specs.
+  evidence: The specs list intended validation commands but do not retain their contemporaneous output; the current repository proves the landed commits and absence of remaining branches but cannot reconstruct exact historical command results.
