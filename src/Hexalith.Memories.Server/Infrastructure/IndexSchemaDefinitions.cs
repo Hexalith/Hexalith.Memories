@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Infrastructure;
 
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
 
@@ -19,6 +20,33 @@ using StackExchange.Redis;
 /// Both provisioning activities and ingestion activities reference this class to prevent schema drift.</summary>
 internal static class IndexSchemaDefinitions
 {
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<SemanticKeyFamily>> SemanticKeyNamespaceRegistrationValues
+        = new ReadOnlyDictionary<string, IReadOnlyList<SemanticKeyFamily>>(
+            new Dictionary<string, IReadOnlyList<SemanticKeyFamily>>(StringComparer.Ordinal)
+            {
+                [nameof(SemanticKeyPrefixSuffix)] =
+                [
+                    SemanticKeyFamily.ActiveRawBase,
+                    SemanticKeyFamily.ActiveRawChunk,
+                ],
+                [nameof(LegacyNaturalLanguageSemanticKeyPrefixSuffix)] =
+                [
+                    SemanticKeyFamily.LegacyNaturalLanguage,
+                ],
+                [nameof(NaturalLanguageSemanticKeyPrefixSuffix)] =
+                [
+                    SemanticKeyFamily.ActiveNaturalLanguage,
+                ],
+                [nameof(StagingSemanticKeyPrefixSuffixPrefix)] =
+                [
+                    SemanticKeyFamily.RawStaging,
+                ],
+                [nameof(StagingNaturalLanguageSemanticKeyPrefixSuffixPrefix)] =
+                [
+                    SemanticKeyFamily.NaturalLanguageStaging,
+                ],
+            });
+
     private static readonly string[] SemanticFieldIdentifiers = ["embedding", "memoryUnitId", "caseId", "cloudeventSubject"];
     private static readonly string[] NaturalLanguageSemanticFieldIdentifiers = ["embedding", "memoryUnitId", "caseId", "naturalLanguageDescription"];
     private static readonly string[] SyntacticFieldIdentifiers =
@@ -74,6 +102,15 @@ internal static class IndexSchemaDefinitions
 
     /// <summary>Gets the staging natural-language semantic key prefix suffix prefix.</summary>
     public const string StagingNaturalLanguageSemanticKeyPrefixSuffixPrefix = ":vecnl:staging:";
+
+    /// <summary>Gets the classifier families registered for every declared semantic key namespace constant.</summary>
+    /// <remarks>
+    /// Tests compare this registry with every public constant whose name contains
+    /// <c>SemanticKeyPrefixSuffix</c>, so a new discoverable semantic namespace fails closed until its
+    /// classifier family and active-marker disposition are registered explicitly.
+    /// </remarks>
+    internal static IReadOnlyDictionary<string, IReadOnlyList<SemanticKeyFamily>> SemanticKeyNamespaceRegistrations
+        => SemanticKeyNamespaceRegistrationValues;
 
     /// <summary>Gets the RediSearch syntactic index name for a tenant.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
@@ -304,6 +341,32 @@ internal static class IndexSchemaDefinitions
     /// <returns><see langword="true"/> when the legacy migration key belongs to the expected tenant and contains an identifier.</returns>
     public static bool TryParseLegacyNaturalLanguageSemanticMemoryUnitId(string tenantId, RedisKey key, out string memoryUnitId)
         => TryParseMemoryUnitId(GetLegacyNaturalLanguageSemanticKeyPrefix(ValidateTenantId(tenantId)), key, out memoryUnitId);
+
+    /// <summary>Attempts to reconstruct a raw semantic migration-staging key and extract its version.</summary>
+    /// <param name="tenantId">The expected tenant identifier.</param>
+    /// <param name="key">The Redis key to classify.</param>
+    /// <param name="memoryUnitId">The authoritative memory-unit identifier stored in the hash.</param>
+    /// <param name="version">The exact migration version, or an empty string when reconstruction fails.</param>
+    /// <returns><see langword="true"/> only when the canonical staging builder reproduces the complete key.</returns>
+    public static bool TryParseSemanticStagingVersion(
+        string tenantId,
+        RedisKey key,
+        string memoryUnitId,
+        out string version)
+        => TryParseStagingVersion(tenantId, key, memoryUnitId, naturalLanguage: false, out version);
+
+    /// <summary>Attempts to reconstruct a natural-language semantic migration-staging key and extract its version.</summary>
+    /// <param name="tenantId">The expected tenant identifier.</param>
+    /// <param name="key">The Redis key to classify.</param>
+    /// <param name="memoryUnitId">The authoritative memory-unit identifier stored in the hash.</param>
+    /// <param name="version">The exact migration version, or an empty string when reconstruction fails.</param>
+    /// <returns><see langword="true"/> only when the canonical staging builder reproduces the complete key.</returns>
+    public static bool TryParseNaturalLanguageSemanticStagingVersion(
+        string tenantId,
+        RedisKey key,
+        string memoryUnitId,
+        out string version)
+        => TryParseStagingVersion(tenantId, key, memoryUnitId, naturalLanguage: true, out version);
 
     /// <summary>Creates the FTCreateParams for a RediSearch syntactic index.</summary>
     /// <param name="tenantId">The tenant identifier.</param>
@@ -733,6 +796,52 @@ internal static class IndexSchemaDefinitions
 
         memoryUnitId = suffix[..separator];
         return !string.IsNullOrWhiteSpace(memoryUnitId);
+    }
+
+    private static bool TryParseStagingVersion(
+        string tenantId,
+        RedisKey key,
+        string memoryUnitId,
+        bool naturalLanguage,
+        out string version)
+    {
+        tenantId = ValidateTenantId(tenantId);
+        memoryUnitId = ValidateMemoryUnitId(memoryUnitId);
+        string? keyText = key.ToString();
+        string stagingPrefix = tenantId + (naturalLanguage
+            ? StagingNaturalLanguageSemanticKeyPrefixSuffixPrefix
+            : StagingSemanticKeyPrefixSuffixPrefix);
+        int memoryUnitStart = keyText?.Length - memoryUnitId.Length ?? -1;
+        if (string.IsNullOrEmpty(keyText)
+            || !keyText.StartsWith(stagingPrefix, StringComparison.Ordinal)
+            || memoryUnitStart <= stagingPrefix.Length
+            || keyText[memoryUnitStart - 1] != ':'
+            || !keyText.AsSpan(memoryUnitStart).SequenceEqual(memoryUnitId))
+        {
+            version = string.Empty;
+            return false;
+        }
+
+        string candidateVersion = keyText[stagingPrefix.Length..(memoryUnitStart - 1)];
+        try
+        {
+            string reconstructed = naturalLanguage
+                ? BuildNaturalLanguageSemanticStagingKey(tenantId, candidateVersion, memoryUnitId)
+                : BuildSemanticStagingKey(tenantId, candidateVersion, memoryUnitId);
+            if (!string.Equals(keyText, reconstructed, StringComparison.Ordinal))
+            {
+                version = string.Empty;
+                return false;
+            }
+        }
+        catch (ArgumentException)
+        {
+            version = string.Empty;
+            return false;
+        }
+
+        version = candidateVersion;
+        return true;
     }
 
     private static Dictionary<string, string> ParseKeyValuePairs(RedisResult raw)

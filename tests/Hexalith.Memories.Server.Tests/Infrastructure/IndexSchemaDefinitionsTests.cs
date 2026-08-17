@@ -114,6 +114,168 @@ public class IndexSchemaDefinitionsTests
     }
 
     [Fact]
+    public void TryParseStagingVersion_ExactCanonicalKeys_ReturnVersions()
+    {
+        bool rawParsed = IndexSchemaDefinitions.TryParseSemanticStagingVersion(
+            "tenant-a",
+            IndexSchemaDefinitions.BuildSemanticStagingKey("tenant-a", "run-1", "mu-1"),
+            "mu-1",
+            out string rawVersion);
+        bool naturalLanguageParsed = IndexSchemaDefinitions.TryParseNaturalLanguageSemanticStagingVersion(
+            "tenant-a",
+            IndexSchemaDefinitions.BuildNaturalLanguageSemanticStagingKey("tenant-a", "run-2", "mu-2"),
+            "mu-2",
+            out string naturalLanguageVersion);
+
+        rawParsed.ShouldBeTrue();
+        rawVersion.ShouldBe("run-1");
+        naturalLanguageParsed.ShouldBeTrue();
+        naturalLanguageVersion.ShouldBe("run-2");
+    }
+
+    [Fact]
+    public void TryParseStagingVersion_ActiveReservedLookingOpaqueId_DoesNotGuessStaging()
+    {
+        const string MemoryUnitId = "staging:run-1:mu-1";
+
+        bool parsed = IndexSchemaDefinitions.TryParseSemanticStagingVersion(
+            "tenant-a",
+            IndexSchemaDefinitions.BuildSemanticKey("tenant-a", MemoryUnitId),
+            MemoryUnitId,
+            out string version);
+
+        parsed.ShouldBeFalse();
+        version.ShouldBe(string.Empty);
+    }
+
+    [Theory]
+    [InlineData("tenant-a:vec:mu-1", "mu-1", false, null, null, null, nameof(SemanticKeyFamily.ActiveRawBase))]
+    [InlineData("tenant-a:vec:mu-1:7", "mu-1", false, "7", "0", "12", nameof(SemanticKeyFamily.ActiveRawChunk))]
+    [InlineData("tenant-a:vecnl:mu-1", "mu-1", true, null, null, null, nameof(SemanticKeyFamily.ActiveNaturalLanguage))]
+    [InlineData("tenant-a:vec:staging:run-1:mu-1", "mu-1", false, null, null, null, nameof(SemanticKeyFamily.RawStaging))]
+    [InlineData("tenant-a:vecnl:staging:run-1:mu-1", "mu-1", true, null, null, null, nameof(SemanticKeyFamily.NaturalLanguageStaging))]
+    [InlineData("tenant-a:vec:nl:mu-1", "mu-1", true, null, null, null, nameof(SemanticKeyFamily.LegacyNaturalLanguage))]
+    public void SemanticFamilyClassifier_CurrentFamilyShape_ReturnsExactlyOneRegisteredFamily(
+        string key,
+        string memoryUnitId,
+        bool hasNaturalLanguageDescription,
+        string? chunkSequence,
+        string? chunkStartOffset,
+        string? chunkEndOffset,
+        string expectedName)
+    {
+        SemanticKeyFamily expected = Enum.Parse<SemanticKeyFamily>(expectedName);
+        SemanticKeyFamily actual = ClassifySemanticKey(
+            key,
+            memoryUnitId,
+            hasNaturalLanguageDescription,
+            chunkSequence,
+            chunkStartOffset,
+            chunkEndOffset);
+
+        actual.ShouldBe(expected);
+        SemanticKeyFamilyClassifier.RegisteredFamilies.ShouldContain(actual);
+    }
+
+    [Theory]
+    [InlineData("tenant-a:vec:staging:run-1:mu-1", "staging:run-1:mu-1", false, null, null, null, nameof(SemanticKeyFamily.ActiveRawBase))]
+    [InlineData("tenant-a:vec:nl:mu-1", "nl:mu-1", false, null, null, null, nameof(SemanticKeyFamily.ActiveRawBase))]
+    [InlineData("tenant-a:vec:mu-1:7", "mu-1:7", false, null, null, null, nameof(SemanticKeyFamily.ActiveRawBase))]
+    [InlineData("tenant-a:vec:staging:run-1:mu-1:3", "staging:run-1:mu-1", false, "3", "0", "12", nameof(SemanticKeyFamily.ActiveRawChunk))]
+    [InlineData("tenant-a:vecnl:staging:run-1:mu-1", "staging:run-1:mu-1", true, null, null, null, nameof(SemanticKeyFamily.ActiveNaturalLanguage))]
+    [InlineData("tenant-a:vec:staging:run-1:nl:mu-1:7", "nl:mu-1:7", false, null, null, null, nameof(SemanticKeyFamily.RawStaging))]
+    public void SemanticFamilyClassifier_ReservedLookingOpaqueId_UsesStoredIdentityAndCanonicalReconstruction(
+        string key,
+        string memoryUnitId,
+        bool hasNaturalLanguageDescription,
+        string? chunkSequence,
+        string? chunkStartOffset,
+        string? chunkEndOffset,
+        string expectedName)
+        => ClassifySemanticKey(
+                key,
+                memoryUnitId,
+                hasNaturalLanguageDescription,
+                chunkSequence,
+                chunkStartOffset,
+                chunkEndOffset)
+            .ShouldBe(Enum.Parse<SemanticKeyFamily>(expectedName));
+
+    [Theory]
+    [InlineData("tenant-a:vec:future:run-1:mu-1", "mu-1", false, null, null, null)]
+    [InlineData("tenant-a:vec:mu-1", "mu-1", true, null, null, null)]
+    [InlineData("tenant-a:vec:mu-1:7", "mu-1", false, "7", null, "12")]
+    [InlineData("tenant-a:vec:mu-1:7", "mu-1", false, "7", "12", "12")]
+    [InlineData("tenant-a:vec:mu-1:7", "mu-1", false, "007", "0", "12")]
+    [InlineData("tenant-a:vec:mu-1", "different-id", false, null, null, null)]
+    public void SemanticFamilyClassifier_UnregisteredOrContradictoryShape_ReturnsUnknown(
+        string key,
+        string memoryUnitId,
+        bool hasNaturalLanguageDescription,
+        string? chunkSequence,
+        string? chunkStartOffset,
+        string? chunkEndOffset)
+        => ClassifySemanticKey(
+                key,
+                memoryUnitId,
+                hasNaturalLanguageDescription,
+                chunkSequence,
+                chunkStartOffset,
+                chunkEndOffset)
+            .ShouldBe(SemanticKeyFamily.Unknown);
+
+    [Fact]
+    public void SemanticFamilyClassifier_RegistryCoversEveryExplicitFamilyAndOnlyActiveFamiliesPermitMarkerEvidence()
+    {
+        SemanticKeyFamily[] explicitFamilies = Enum.GetValues<SemanticKeyFamily>()
+            .Except([SemanticKeyFamily.Unknown, SemanticKeyFamily.Ambiguous])
+            .ToArray();
+
+        SemanticKeyFamilyClassifier.RegisteredFamilies.ShouldBe(explicitFamilies, ignoreOrder: true);
+        explicitFamilies
+            .Where(SemanticKeyFamilyClassifier.IsActiveMarkerEvidenceFamily)
+            .ShouldBe(
+                [
+                    SemanticKeyFamily.ActiveRawBase,
+                    SemanticKeyFamily.ActiveRawChunk,
+                    SemanticKeyFamily.ActiveNaturalLanguage,
+                ],
+                ignoreOrder: true);
+    }
+
+    [Fact]
+    public void SemanticFamilyClassifier_SchemaNamespaceRegistryCoversEveryDeclaredSemanticKeyPrefixConstant()
+    {
+        string[] declaredNamespaceConstants = typeof(IndexSchemaDefinitions)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(field => field.IsLiteral
+                && field.FieldType == typeof(string)
+                && field.Name.Contains("SemanticKeyPrefixSuffix", StringComparison.Ordinal))
+            .Select(field => field.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        string[] registeredNamespaceConstants = IndexSchemaDefinitions.SemanticKeyNamespaceRegistrations
+            .Keys
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        SemanticKeyFamily[] namespaceFamilies = IndexSchemaDefinitions.SemanticKeyNamespaceRegistrations
+            .Values
+            .SelectMany(families => families)
+            .Distinct()
+            .ToArray();
+
+        registeredNamespaceConstants.ShouldBe(declaredNamespaceConstants);
+        namespaceFamilies.ShouldBe(
+            SemanticKeyFamilyClassifier.RegisteredFamilies.ToArray(),
+            ignoreOrder: true);
+    }
+
+    [Fact]
+    public void SemanticFamilyClassifier_UnregisteredFutureEnumValue_FailsClosed()
+        => Should.Throw<ArgumentOutOfRangeException>(() =>
+            SemanticKeyFamilyClassifier.IsActiveMarkerEvidenceFamily((SemanticKeyFamily)int.MaxValue));
+
+    [Fact]
     public void GetNaturalLanguageSemanticKeyPrefix_AppendsSuffix()
         => IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a")
             .ShouldBe("tenant-a:vecnl:");
@@ -388,4 +550,20 @@ public class IndexSchemaDefinitionsTests
 
     private static Schema.VectorField? FindVectorField(Schema schema, string name)
         => schema.Fields.OfType<Schema.VectorField>().FirstOrDefault(v => v.FieldName.Name == name);
+
+    private static SemanticKeyFamily ClassifySemanticKey(
+        string key,
+        string memoryUnitId,
+        bool hasNaturalLanguageDescription,
+        string? chunkSequence,
+        string? chunkStartOffset,
+        string? chunkEndOffset)
+        => SemanticKeyFamilyClassifier.Classify(
+            "tenant-a",
+            key,
+            memoryUnitId,
+            chunkSequence is null ? RedisValue.Null : chunkSequence,
+            chunkStartOffset is null ? RedisValue.Null : chunkStartOffset,
+            chunkEndOffset is null ? RedisValue.Null : chunkEndOffset,
+            hasNaturalLanguageDescription);
 }

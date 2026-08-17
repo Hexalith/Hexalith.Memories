@@ -3385,3 +3385,7 @@ block required by the schema above.
 - source_spec: `_bmad-output/implementation-artifacts/spec-publish-approved-module-baselines-2026-08-01.md`
   summary: Make the fake Dapr state store copy mutable values and enforce state options.
   evidence: `FakeDaprStateStore` returns backing lists and dictionaries directly and ignores `StateOptions`, so failed-save and FirstWrite/TTL tests can mutate fake persistence in place or prove weaker semantics than production.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md`
+  summary: Convert Redis command timeouts across tenant-isolation checks into structured backend-unavailable evidence.
+  evidence: `TenantIsolationVerifier` catches connection and server exceptions but not `RedisTimeoutException`, so an index-info, cursor-adjacent, or hash-field timeout can escape `VerifyAsync` instead of returning the verifier's backend-unavailable result contract.

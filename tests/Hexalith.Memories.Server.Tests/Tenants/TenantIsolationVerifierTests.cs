@@ -9,6 +9,7 @@ namespace Hexalith.Memories.Server.Tests.Tenants;
 
 using System.Globalization;
 using System.Net;
+using System.Runtime.CompilerServices;
 
 using Dapr.Actors;
 using Dapr.Client;
@@ -617,7 +618,7 @@ public class TenantIsolationVerifierTests
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "leaked-vec");
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
-        SetupTenantIdField(redisDb, plantedKey, "tenant-b");
+        SetupSemanticRecord(redisDb, plantedKey, "leaked-vec", "tenant-b");
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
@@ -627,6 +628,8 @@ public class TenantIsolationVerifierTests
         semanticCheck.Passed.ShouldBeFalse();
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain("tenant-b");
+        semanticCheck.Remediation.ShouldBe(
+            $"Repair or re-provision tenant 'tenant-a' Redis Vector indexes, reindex its semantic data using the validated {VectorDimensions}-dimension embedding configuration, and remove mismatched target-prefix hashes");
     }
 
     [Fact]
@@ -642,7 +645,12 @@ public class TenantIsolationVerifierTests
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         string plantedKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "leaked-nl");
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a"), plantedKey);
-        SetupTenantIdField(redisDb, plantedKey, "tenant-b");
+        SetupSemanticRecord(
+            redisDb,
+            plantedKey,
+            "leaked-nl",
+            "tenant-b",
+            hasNaturalLanguageDescription: true);
         SetupGraphList(falkorDb, "tenant-a", "tenant-b");
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
@@ -667,6 +675,7 @@ public class TenantIsolationVerifierTests
         SetupSuccessfulIndexInfo(redisDb, "tenant-a");
         string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "missing-tenant-marker");
         SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupSemanticRecord(redisDb, plantedKey, "missing-tenant-marker", tenantId: null);
         SetupGraphList(falkorDb, "tenant-a");
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
@@ -676,6 +685,459 @@ public class TenantIsolationVerifierTests
         semanticCheck.Passed.ShouldBeFalse();
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain("missing tenantId field");
+    }
+
+    [Theory]
+    [InlineData(nameof(SemanticKeyFamily.ActiveRawBase), null)]
+    [InlineData(nameof(SemanticKeyFamily.ActiveRawBase), "tenant-b")]
+    [InlineData(nameof(SemanticKeyFamily.ActiveRawChunk), null)]
+    [InlineData(nameof(SemanticKeyFamily.ActiveRawChunk), "tenant-b")]
+    [InlineData(nameof(SemanticKeyFamily.ActiveNaturalLanguage), null)]
+    [InlineData(nameof(SemanticKeyFamily.ActiveNaturalLanguage), "tenant-b")]
+    public async Task VerifyAsync_ActiveFamilyMarkerEvidence_MissingAndForeignFailClosed(
+        string familyName,
+        string? storedTenantId)
+    {
+        SemanticKeyFamily family = Enum.Parse<SemanticKeyFamily>(familyName);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        const string MemoryUnitId = "marker-matrix";
+        string key = family switch
+        {
+            SemanticKeyFamily.ActiveRawBase => IndexSchemaDefinitions.BuildSemanticKey("tenant-a", MemoryUnitId),
+            SemanticKeyFamily.ActiveRawChunk => IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", MemoryUnitId, 3),
+            SemanticKeyFamily.ActiveNaturalLanguage => IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", MemoryUnitId),
+            _ => throw new InvalidOperationException($"Unexpected active family '{family}'."),
+        };
+        string keyPrefix = family == SemanticKeyFamily.ActiveNaturalLanguage
+            ? IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a")
+            : IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a");
+        SetupRedisKeyScan(redisServer, keyPrefix, key);
+        SetupSemanticRecord(
+            redisDb,
+            key,
+            MemoryUnitId,
+            storedTenantId,
+            hasNaturalLanguageDescription: family == SemanticKeyFamily.ActiveNaturalLanguage,
+            chunkSequence: family == SemanticKeyFamily.ActiveRawChunk ? 3 : null,
+            chunkStartOffset: family == SemanticKeyFamily.ActiveRawChunk ? 0 : null,
+            chunkEndOffset: family == SemanticKeyFamily.ActiveRawChunk ? 12 : null);
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain(family switch
+        {
+            SemanticKeyFamily.ActiveRawBase => "raw semantic base",
+            SemanticKeyFamily.ActiveRawChunk => "raw semantic chunk",
+            SemanticKeyFamily.ActiveNaturalLanguage => "natural-language semantic",
+            _ => throw new InvalidOperationException($"Unexpected active family '{family}'."),
+        });
+        semanticCheck.Details.ShouldContain(storedTenantId is null ? "missing tenantId field" : "tenantId field 'tenant-b'");
+        semanticCheck.Details.ShouldNotContain("evidence-classification gap");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_MarkerlessStagingAndLegacyKeys_DoNotReportActiveMismatch()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string opaqueActiveRawId = "staging:run-1:active-raw";
+        string activeRaw = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", opaqueActiveRawId);
+        string activeChunk = IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "nl:active-chunk:9", 3);
+        string rawStaging = IndexSchemaDefinitions.BuildSemanticStagingKey("tenant-a", "run-1", "staged-raw");
+        string legacyNaturalLanguage = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "legacy-nl");
+        string activeNaturalLanguage = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(
+            "tenant-a",
+            "staging:run-1:active-nl");
+        string naturalLanguageStaging = IndexSchemaDefinitions.BuildNaturalLanguageSemanticStagingKey(
+            "tenant-a",
+            "run-1",
+            "staged-nl");
+        SetupRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
+            activeRaw,
+            activeChunk,
+            rawStaging,
+            legacyNaturalLanguage);
+        SetupRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a"),
+            activeNaturalLanguage,
+            naturalLanguageStaging);
+        SetupSemanticRecord(redisDb, activeRaw, opaqueActiveRawId, "tenant-a");
+        SetupSemanticRecord(
+            redisDb,
+            activeChunk,
+            "nl:active-chunk:9",
+            "tenant-a",
+            chunkSequence: 3,
+            chunkStartOffset: 0,
+            chunkEndOffset: 12);
+        SetupSemanticRecord(redisDb, rawStaging, "staged-raw", tenantId: null);
+        SetupSemanticRecord(
+            redisDb,
+            legacyNaturalLanguage,
+            "legacy-nl",
+            tenantId: null,
+            hasNaturalLanguageDescription: true);
+        SetupSemanticRecord(
+            redisDb,
+            activeNaturalLanguage,
+            "staging:run-1:active-nl",
+            "tenant-a",
+            hasNaturalLanguageDescription: true);
+        SetupSemanticRecord(
+            redisDb,
+            naturalLanguageStaging,
+            "staged-nl",
+            tenantId: null,
+            hasNaturalLanguageDescription: true);
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeTrue();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeTrue();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain("2 raw base/chunk");
+        semanticCheck.Details.ShouldContain("1 current natural-language");
+        semanticCheck.Details.ShouldContain("excluding 3 proven non-active");
+        semanticCheck.Details.ShouldNotContain("missing tenantId field");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_UnregisteredSemanticShape_ReportsClassificationGapNotMarkerMismatch()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        const string FutureKey = "tenant-a:vec:future:run-1:mu-1";
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), FutureKey);
+        SetupSemanticRecord(redisDb, FutureKey, "mu-1", tenantId: null);
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain("evidence-classification gap (unknown)");
+        semanticCheck.Details.ShouldNotContain("missing tenantId field");
+        semanticCheck.Remediation.ShouldBe(
+            "Register or migrate the reported semantic key family for tenant 'tenant-a', then retry verification; no data or indexes were changed");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ClassificationGapAndActiveMarkerDefect_PreservesBothDiagnostics()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        const string FutureKey = "tenant-a:vec:future:run-1:mu-1";
+        string activeChunk = IndexSchemaDefinitions.BuildSemanticChunkKey("tenant-a", "active-chunk", 2);
+        SetupRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
+            FutureKey,
+            activeChunk);
+        SetupSemanticRecord(redisDb, FutureKey, "mu-1", tenantId: null);
+        SetupSemanticRecord(
+            redisDb,
+            activeChunk,
+            "active-chunk",
+            "tenant-b",
+            chunkSequence: 2,
+            chunkStartOffset: 0,
+            chunkEndOffset: 12);
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"Semantic key '{FutureKey}' under tenant 'tenant-a' has an evidence-classification gap (unknown)");
+        semanticCheck.Details.ShouldContain($"raw semantic chunk key '{activeChunk}' under tenant 'tenant-a' has tenantId field 'tenant-b'");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerifyAsync_WrongTypeSemanticDiscriminatorRead_ReportsClassificationGapAndContinues(
+        bool wrongTypeOnHashExists)
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string wrongTypeKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "wrong-type");
+        string healthyKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "healthy");
+        SetupRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
+            wrongTypeKey,
+            healthyKey);
+        if (wrongTypeOnHashExists)
+        {
+            SetupSemanticRecord(redisDb, wrongTypeKey, "wrong-type", "tenant-a");
+            redisDb.HashExistsAsync(
+                    Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
+                    Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
+                    Arg.Any<CommandFlags>())
+                .Throws(new RedisServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
+        }
+        else
+        {
+            redisDb.HashGetAsync(
+                    Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
+                    Arg.Is<RedisValue[]>(fields => SemanticDiscriminatorFieldsMatch(fields)),
+                    Arg.Any<CommandFlags>())
+                .Throws(new RedisServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
+        }
+
+        SetupSemanticRecord(redisDb, healthyKey, "healthy", "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"Semantic key '{wrongTypeKey}' under tenant 'tenant-a' has an evidence-classification gap (wrong Redis value type)");
+        semanticCheck.Details.ShouldNotContain("Backend unavailable");
+        semanticCheck.Details.ShouldNotContain("missing tenantId field");
+        await redisDb.Received(1).HashExistsAsync(
+            Arg.Is<RedisKey>(key => string.Equals(key.ToString(), healthyKey, StringComparison.Ordinal)),
+            Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
+            Arg.Any<CommandFlags>());
+        if (wrongTypeOnHashExists)
+        {
+            await redisDb.Received(1).HashExistsAsync(
+                Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
+                Arg.Any<CommandFlags>());
+        }
+        else
+        {
+            await redisDb.DidNotReceive().HashExistsAsync(
+                Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
+                Arg.Any<RedisValue>(),
+                Arg.Any<CommandFlags>());
+        }
+
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_SemanticCursorMoveNextCancelled_PropagatesAndStopsLaterReads()
+    {
+        using CancellationTokenSource cts = new();
+        TaskCompletionSource cursorMoveNextEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseCursor = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        SetupPendingRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
+            cursorMoveNextEntered,
+            releaseCursor);
+
+        Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", cts.Token);
+        await cursorMoveNextEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        cts.Cancel();
+
+        OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(() => verification);
+
+        exception.CancellationToken.ShouldBe(cts.Token);
+        await redisDb.DidNotReceive().HashGetAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<RedisValue[]>(),
+            Arg.Any<CommandFlags>());
+        await redisDb.DidNotReceive().HashExistsAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<RedisValue>(),
+            Arg.Any<CommandFlags>());
+        _ = redisServer.DidNotReceive().KeysAsync(
+            Arg.Any<int>(),
+            Arg.Is<RedisValue>(pattern => string.Equals(
+                pattern.ToString(),
+                IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a") + "*",
+                StringComparison.Ordinal)),
+            Arg.Any<int>(),
+            Arg.Any<long>(),
+            Arg.Any<int>(),
+            Arg.Any<CommandFlags>());
+        await falkorDb.Received(1).ExecuteAsync(
+            Arg.Is("GRAPH.LIST"),
+            Arg.Is<object[]>(arguments => arguments.Length == 0));
+        releaseCursor.TrySetResult().ShouldBeTrue();
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_SemanticHashExistsCancelled_PropagatesAndStopsLaterReads()
+    {
+        using CancellationTokenSource cts = new();
+        TaskCompletionSource hashExistsEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> pendingHashExists = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string activeRaw = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "hash-exists-pending");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), activeRaw);
+        SetupSemanticRecord(redisDb, activeRaw, "hash-exists-pending", "tenant-a");
+        redisDb.HashExistsAsync(
+                Arg.Is<RedisKey>(key => string.Equals(key.ToString(), activeRaw, StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
+                Arg.Any<CommandFlags>())
+            .Returns(_ =>
+            {
+                hashExistsEntered.TrySetResult();
+                return pendingHashExists.Task;
+            });
+
+        Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", cts.Token);
+        await hashExistsEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        cts.Cancel();
+
+        OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(() => verification);
+
+        exception.CancellationToken.ShouldBe(cts.Token);
+        pendingHashExists.Task.IsCompleted.ShouldBeFalse();
+        await redisDb.Received(1).HashGetAsync(
+            Arg.Is<RedisKey>(key => string.Equals(key.ToString(), activeRaw, StringComparison.Ordinal)),
+            Arg.Is<RedisValue[]>(fields => SemanticDiscriminatorFieldsMatch(fields)),
+            Arg.Any<CommandFlags>());
+        _ = redisServer.DidNotReceive().KeysAsync(
+            Arg.Any<int>(),
+            Arg.Is<RedisValue>(pattern => string.Equals(
+                pattern.ToString(),
+                IndexSchemaDefinitions.GetNaturalLanguageSemanticKeyPrefix("tenant-a") + "*",
+                StringComparison.Ordinal)),
+            Arg.Any<int>(),
+            Arg.Any<long>(),
+            Arg.Any<int>(),
+            Arg.Any<CommandFlags>());
+        await falkorDb.Received(1).ExecuteAsync(
+            Arg.Is("GRAPH.LIST"),
+            Arg.Is<object[]>(arguments => arguments.Length == 0));
+        pendingHashExists.TrySetCanceled(cts.Token).ShouldBeTrue();
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_SemanticDiscriminatorReadCancelled_PropagatesAndStopsLaterReads()
+    {
+        using CancellationTokenSource cts = new();
+        TaskCompletionSource discriminatorReadEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<RedisValue[]> pendingDiscriminatorRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string activeRaw = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-1");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), activeRaw);
+        redisDb.HashGetAsync(
+                (RedisKey)activeRaw,
+                Arg.Any<RedisValue[]>(),
+                Arg.Any<CommandFlags>())
+            .Returns(_ =>
+            {
+                discriminatorReadEntered.TrySetResult();
+                return pendingDiscriminatorRead.Task;
+            });
+        SetupGraphList(falkorDb, "tenant-a");
+
+        Task<TenantIsolationVerificationResult> verification = verifier.VerifyAsync("tenant-a", cts.Token);
+        await discriminatorReadEntered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        cts.Cancel();
+
+        OperationCanceledException exception = await Should.ThrowAsync<OperationCanceledException>(() => verification);
+
+        exception.CancellationToken.ShouldBe(cts.Token);
+        pendingDiscriminatorRead.Task.IsCompleted.ShouldBeFalse();
+        await redisDb.DidNotReceive().HashExistsAsync(
+            Arg.Any<RedisKey>(),
+            Arg.Any<RedisValue>(),
+            Arg.Any<CommandFlags>());
+        pendingDiscriminatorRead.TrySetCanceled(cts.Token).ShouldBeTrue();
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_DuplicateSemanticDiscoveryAcrossEndpoints_EvaluatesMarkerOnce()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer firstServer, IServer secondServer) = CreateVerifierWithTwoRedisServers(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string activeRaw = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mu-1");
+        SetupRedisKeyScan(firstServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), activeRaw);
+        SetupRedisKeyScan(secondServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), activeRaw);
+        SetupSemanticRecord(redisDb, activeRaw, "mu-1", "tenant-a");
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeTrue();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain("1 raw base/chunk");
+        await redisDb.Received(1).HashGetAsync(
+            (RedisKey)activeRaw,
+            Arg.Any<RedisValue[]>(),
+            Arg.Any<CommandFlags>());
+        await redisDb.Received(1).HashExistsAsync(
+            (RedisKey)activeRaw,
+            (RedisValue)"naturalLanguageDescription",
+            Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -1207,6 +1669,71 @@ public class TenantIsolationVerifierTests
         graphCommands.ShouldAllBe(command => string.Equals(command, "GRAPH.LIST", StringComparison.OrdinalIgnoreCase));
     }
 
+    private static void AssertNoMutationDependencyCalls(IDatabase redisDb, IDatabase falkorDb)
+    {
+        string[] expectedRedisIndexNames =
+        [
+            IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetSyntacticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"),
+            IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a"),
+        ];
+        List<string> actualRedisIndexNames = [];
+        foreach (ICall call in redisDb.ReceivedCalls())
+        {
+            object?[] arguments = call.GetArguments();
+            switch (call.GetMethodInfo().Name)
+            {
+                case nameof(IDatabase.ExecuteAsync):
+                    arguments.Length.ShouldBe(2);
+                    arguments[0].ShouldBe("FT.INFO");
+                    object[]? commandArguments = arguments[1] as object[];
+                    commandArguments.ShouldNotBeNull();
+                    commandArguments.Length.ShouldBe(1);
+                    string? indexName = commandArguments[0]?.ToString();
+                    indexName.ShouldNotBeNullOrWhiteSpace();
+                    expectedRedisIndexNames.ShouldContain(indexName);
+                    actualRedisIndexNames.Add(indexName);
+                    break;
+                case nameof(IDatabase.HashGetAsync):
+                    arguments.Length.ShouldBe(3);
+                    string? hashGetKey = arguments[0]?.ToString();
+                    hashGetKey.ShouldNotBeNullOrWhiteSpace();
+                    RedisValue[]? fields = arguments[1] as RedisValue[];
+                    fields.ShouldNotBeNull();
+                    SemanticDiscriminatorFieldsMatch(fields).ShouldBeTrue();
+                    ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.None);
+                    break;
+                case nameof(IDatabase.HashExistsAsync):
+                    arguments.Length.ShouldBe(3);
+                    string? hashExistsKey = arguments[0]?.ToString();
+                    hashExistsKey.ShouldNotBeNullOrWhiteSpace();
+                    arguments[1]?.ToString().ShouldBe("naturalLanguageDescription");
+                    ((CommandFlags)arguments[2]!).ShouldBe(CommandFlags.None);
+                    break;
+                default:
+                    throw new ShouldAssertException(
+                        $"Unexpected Redis dependency call '{call.GetMethodInfo().Name}' was observed.");
+            }
+        }
+
+        actualRedisIndexNames.OrderBy(static name => name, StringComparer.Ordinal).ShouldBe(
+            expectedRedisIndexNames.OrderBy(static name => name, StringComparer.Ordinal));
+
+        foreach (ICall call in falkorDb.ReceivedCalls())
+        {
+            call.GetMethodInfo().Name.ShouldBe(nameof(IDatabase.ExecuteAsync));
+            object?[] arguments = call.GetArguments();
+            arguments.Length.ShouldBe(2);
+            arguments[0].ShouldBe("GRAPH.LIST");
+            object[]? commandArguments = arguments[1] as object[];
+            commandArguments.ShouldNotBeNull();
+            commandArguments.ShouldBeEmpty();
+        }
+    }
+
     private static IEnumerable<string> FirstArgumentStrings(ICall[] calls)
         => calls
             .Select(call => call.GetArguments().FirstOrDefault())
@@ -1318,6 +1845,23 @@ public class TenantIsolationVerifierTests
             .Returns(_ => ToAsyncKeys(keys));
     }
 
+    private static void SetupPendingRedisKeyScan(
+        IServer server,
+        string keyPrefix,
+        TaskCompletionSource moveNextEntered,
+        TaskCompletionSource releaseMoveNext)
+    {
+        string pattern = keyPrefix + "*";
+        server.KeysAsync(
+                Arg.Any<int>(),
+                Arg.Is<RedisValue>(value => string.Equals(value.ToString(), pattern, StringComparison.Ordinal)),
+                Arg.Any<int>(),
+                Arg.Any<long>(),
+                Arg.Any<int>(),
+                Arg.Any<CommandFlags>())
+            .Returns(_ => ToPendingAsyncKeys(moveNextEntered, releaseMoveNext));
+    }
+
     private static void SetupTenantIdField(IDatabase db, string key, string tenantId)
     {
         db.HashGetAsync(
@@ -1327,6 +1871,49 @@ public class TenantIsolationVerifierTests
             .Returns(new RedisValue(tenantId));
     }
 
+    private static void SetupSemanticRecord(
+        IDatabase db,
+        string key,
+        string memoryUnitId,
+        string? tenantId,
+        bool hasNaturalLanguageDescription = false,
+        int? chunkSequence = null,
+        int? chunkStartOffset = null,
+        int? chunkEndOffset = null)
+    {
+        db.HashGetAsync(
+                Arg.Is<RedisKey>(redisKey => string.Equals(redisKey.ToString(), key, StringComparison.Ordinal)),
+                Arg.Is<RedisValue[]>(fields => SemanticDiscriminatorFieldsMatch(fields)),
+                Arg.Any<CommandFlags>())
+            .Returns(
+            [
+                new RedisValue(memoryUnitId),
+                tenantId is null ? RedisValue.Null : new RedisValue(tenantId),
+                chunkSequence is null
+                    ? RedisValue.Null
+                    : new RedisValue(chunkSequence.Value.ToString(CultureInfo.InvariantCulture)),
+                chunkStartOffset is null
+                    ? RedisValue.Null
+                    : new RedisValue(chunkStartOffset.Value.ToString(CultureInfo.InvariantCulture)),
+                chunkEndOffset is null
+                    ? RedisValue.Null
+                    : new RedisValue(chunkEndOffset.Value.ToString(CultureInfo.InvariantCulture)),
+            ]);
+        db.HashExistsAsync(
+                Arg.Is<RedisKey>(redisKey => string.Equals(redisKey.ToString(), key, StringComparison.Ordinal)),
+                Arg.Is<RedisValue>(field => string.Equals(
+                    field.ToString(),
+                    "naturalLanguageDescription",
+                    StringComparison.Ordinal)),
+                Arg.Any<CommandFlags>())
+            .Returns(hasNaturalLanguageDescription);
+    }
+
+    private static bool SemanticDiscriminatorFieldsMatch(RedisValue[]? fields)
+        => fields is not null
+            && fields.Select(static field => field.ToString()).SequenceEqual(
+                ["memoryUnitId", "tenantId", "chunkSequence", "chunkStartOffset", "chunkEndOffset"]);
+
     private static async IAsyncEnumerable<RedisKey> ToAsyncKeys(params string[] keys)
     {
         foreach (string key in keys)
@@ -1334,6 +1921,16 @@ public class TenantIsolationVerifierTests
             await Task.Yield();
             yield return key;
         }
+    }
+
+    private static async IAsyncEnumerable<RedisKey> ToPendingAsyncKeys(
+        TaskCompletionSource moveNextEntered,
+        TaskCompletionSource releaseMoveNext,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        moveNextEntered.TrySetResult();
+        await releaseMoveNext.Task.WaitAsync(cancellationToken);
+        yield break;
     }
 
     private static void SetupGraphList(IDatabase falkorDb, params string[] databases)

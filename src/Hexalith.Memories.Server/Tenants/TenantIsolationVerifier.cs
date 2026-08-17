@@ -22,6 +22,15 @@ using StackExchange.Redis;
 /// Confirms that architectural isolation guarantees hold — does not enforce isolation at runtime.</summary>
 public sealed partial class TenantIsolationVerifier
 {
+    private static readonly RedisValue[] _semanticDiscriminatorFields =
+    [
+        "memoryUnitId",
+        "tenantId",
+        "chunkSequence",
+        "chunkStartOffset",
+        "chunkEndOffset",
+    ];
+
     private readonly TenantRegistryService _registry;
     private readonly ITenantEmbeddingConfigProvider _embeddingConfigProvider;
     private readonly IConnectionMultiplexer _redis;
@@ -331,20 +340,30 @@ public sealed partial class TenantIsolationVerifier
                     $"Raw semantic index '{rawIndex}' has {rawDimensions.Value} dimensions but natural-language semantic index '{naturalLanguageIndex}' has {naturalLanguageDimensions.Value}");
             }
 
-            (IReadOnlyList<string> rawMismatches, int rawScannedCount) = await ScanHashPrefixForTenantFieldMismatchesAsync(
-                    "raw semantic",
+            (
+                IReadOnlyList<string> rawMarkerMismatches,
+                IReadOnlyList<string> rawClassificationGaps,
+                int rawActiveCount,
+                int rawExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
                     rawPrefix,
                     tenantId,
                     ct)
                 .ConfigureAwait(false);
-            (IReadOnlyList<string> naturalLanguageMismatches, int naturalLanguageScannedCount) = await ScanHashPrefixForTenantFieldMismatchesAsync(
-                    "natural-language semantic",
+            (
+                IReadOnlyList<string> naturalLanguageMarkerMismatches,
+                IReadOnlyList<string> naturalLanguageClassificationGaps,
+                int naturalLanguageActiveCount,
+                int naturalLanguageExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
                     naturalLanguagePrefix,
                     tenantId,
                     ct)
                 .ConfigureAwait(false);
-            problems.AddRange(rawMismatches);
-            problems.AddRange(naturalLanguageMismatches);
+            problems.AddRange(rawClassificationGaps);
+            problems.AddRange(naturalLanguageClassificationGaps);
+            problems.AddRange(rawMarkerMismatches);
+            problems.AddRange(naturalLanguageMarkerMismatches);
+            bool hasClassificationGap = rawClassificationGaps.Count > 0
+                || naturalLanguageClassificationGaps.Count > 0;
 
             sw.Stop();
             if (problems.Count > 0)
@@ -352,16 +371,19 @@ public sealed partial class TenantIsolationVerifier
                 return new TenantIsolationCheckResult("SemanticIsolation", false, sw.Elapsed.TotalMilliseconds)
                 {
                     Details = string.Join("; ", problems),
-                    Remediation = $"Repair or re-provision tenant '{tenantId}' Redis Vector indexes, reindex its semantic data using the validated {embeddingConfig.Dimensions}-dimension embedding configuration, and remove mismatched target-prefix hashes",
+                    Remediation = hasClassificationGap
+                        ? $"Register or migrate the reported semantic key family for tenant '{tenantId}', then retry verification; no data or indexes were changed"
+                        : $"Repair or re-provision tenant '{tenantId}' Redis Vector indexes, reindex its semantic data using the validated {embeddingConfig.Dimensions}-dimension embedding configuration, and remove mismatched target-prefix hashes",
                 };
             }
 
-            int totalScanned = rawScannedCount + naturalLanguageScannedCount;
+            int totalActive = rawActiveCount + naturalLanguageActiveCount;
+            int totalExcluded = rawExcludedCount + naturalLanguageExcludedCount;
             return new TenantIsolationCheckResult("SemanticIsolation", true, sw.Elapsed.TotalMilliseconds)
             {
-                Details = rawDocumentCount == 0 && naturalLanguageDocumentCount == 0 && totalScanned == 0
-                    ? $"Tenant has zero vector hashes/indexed memory units across raw and natural-language semantic indexes; both indexes match the requested tenant's validated {embeddingConfig.Dimensions}-dimension configuration — isolation checks are vacuously true"
-                    : $"Target raw and natural-language vector index metadata verified against the requested tenant's validated {embeddingConfig.Dimensions}-dimension configuration; scanned {rawScannedCount} raw and {naturalLanguageScannedCount} natural-language target-prefix hash(es); indexed docs: raw={FormatDocumentCount(rawDocumentCount)}, nl={FormatDocumentCount(naturalLanguageDocumentCount)}",
+                Details = rawDocumentCount == 0 && naturalLanguageDocumentCount == 0 && totalActive == 0
+                    ? $"Tenant has zero active vector hashes/indexed memory units across raw and natural-language semantic indexes; excluded {totalExcluded} proven non-active hash(es); both indexes match the requested tenant's validated {embeddingConfig.Dimensions}-dimension configuration — isolation checks are vacuously true"
+                    : $"Target raw and natural-language vector index metadata verified against the requested tenant's validated {embeddingConfig.Dimensions}-dimension configuration; active marker evidence covered {rawActiveCount} raw base/chunk and {naturalLanguageActiveCount} current natural-language hash(es), excluding {totalExcluded} proven non-active hash(es); indexed docs: raw={FormatDocumentCount(rawDocumentCount)}, nl={FormatDocumentCount(naturalLanguageDocumentCount)}",
             };
         }
         catch (RedisConnectionException ex)
@@ -479,9 +501,7 @@ public sealed partial class TenantIsolationVerifier
         IReadOnlyList<IServer> servers = GetConnectedServers(_redis);
         if (servers.Count == 0)
         {
-            throw new RedisConnectionException(
-                ConnectionFailureType.UnableToConnect,
-                "No connected Redis server endpoint is available for tenant key cursor scan.");
+            throw CreateNoConnectedRedisServerException("tenant key cursor scan");
         }
 
         IDatabase db = _redis.GetDatabase();
@@ -519,6 +539,108 @@ public sealed partial class TenantIsolationVerifier
         return (mismatches, scannedCount);
     }
 
+    /// <summary>Classifies semantic hashes before evaluating tenant-marker evidence.</summary>
+    private async Task<(
+        IReadOnlyList<string> MarkerMismatches,
+        IReadOnlyList<string> ClassificationGaps,
+        int ActiveCount,
+        int ExcludedCount)> ScanSemanticHashPrefixForTenantEvidenceAsync(
+        string keyPrefix,
+        string tenantId,
+        CancellationToken ct)
+    {
+        IReadOnlyList<IServer> servers = GetConnectedServers(_redis);
+        if (servers.Count == 0)
+        {
+            throw CreateNoConnectedRedisServerException("semantic tenant key cursor scan");
+        }
+
+        IDatabase db = _redis.GetDatabase();
+        List<string> markerMismatches = [];
+        List<string> classificationGaps = [];
+        HashSet<string> scannedKeys = new(StringComparer.Ordinal);
+        int activeCount = 0;
+        int excludedCount = 0;
+        foreach (IServer server in servers)
+        {
+            await foreach (RedisKey key in server.KeysAsync(pattern: keyPrefix + "*", pageSize: 250).WithCancellation(ct))
+            {
+                string? keyText = key.ToString();
+                if (string.IsNullOrWhiteSpace(keyText) || !scannedKeys.Add(keyText))
+                {
+                    continue;
+                }
+
+                RedisValue[] discriminatorValues;
+                bool hasNaturalLanguageDescription;
+                try
+                {
+                    discriminatorValues = await db
+                        .HashGetAsync(key, _semanticDiscriminatorFields)
+                        .WaitAsync(ct)
+                        .ConfigureAwait(false);
+                    hasNaturalLanguageDescription = await db
+                        .HashExistsAsync(key, "naturalLanguageDescription")
+                        .WaitAsync(ct)
+                        .ConfigureAwait(false);
+                }
+                catch (RedisServerException ex) when (IsWrongType(ex))
+                {
+                    classificationGaps.Add(
+                        $"Semantic key '{key}' under tenant '{tenantId}' has an evidence-classification gap (wrong Redis value type)");
+                    continue;
+                }
+
+                SemanticKeyFamily family = SemanticKeyFamilyClassifier.Classify(
+                    tenantId,
+                    key,
+                    discriminatorValues[0],
+                    discriminatorValues[2],
+                    discriminatorValues[3],
+                    discriminatorValues[4],
+                    hasNaturalLanguageDescription);
+
+                if (family is SemanticKeyFamily.Unknown or SemanticKeyFamily.Ambiguous)
+                {
+                    classificationGaps.Add(
+                        $"Semantic key '{key}' under tenant '{tenantId}' has an evidence-classification gap ({family.ToString().ToLowerInvariant()})");
+                    continue;
+                }
+
+                if (!SemanticKeyFamilyClassifier.IsActiveMarkerEvidenceFamily(family))
+                {
+                    excludedCount++;
+                    continue;
+                }
+
+                activeCount++;
+                RedisValue storedTenantId = discriminatorValues[1];
+                string storageName = family switch
+                {
+                    SemanticKeyFamily.ActiveRawBase => "raw semantic base",
+                    SemanticKeyFamily.ActiveRawChunk => "raw semantic chunk",
+                    SemanticKeyFamily.ActiveNaturalLanguage => "natural-language semantic",
+                    _ => throw new InvalidOperationException($"Active marker family '{family}' has no storage label."),
+                };
+                if (storedTenantId.IsNullOrEmpty)
+                {
+                    markerMismatches.Add(
+                        $"{storageName} key '{key}' under tenant '{tenantId}' is missing tenantId field");
+                    continue;
+                }
+
+                string actualTenantId = storedTenantId.ToString();
+                if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
+                {
+                    markerMismatches.Add(
+                        $"{storageName} key '{key}' under tenant '{tenantId}' has tenantId field '{actualTenantId}'");
+                }
+            }
+        }
+
+        return (markerMismatches, classificationGaps, activeCount, excludedCount);
+    }
+
     private static async Task<(bool Found, RedisResult Info)> TryGetIndexInfoAsync(
         IDatabase db,
         string indexName,
@@ -538,6 +660,9 @@ public sealed partial class TenantIsolationVerifier
     private static bool IsUnknownIndex(RedisServerException ex)
         => ex.Message.Contains("Unknown index name", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("no such index", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsWrongType(RedisServerException ex)
+        => ex.Message.Contains("WRONGTYPE", StringComparison.OrdinalIgnoreCase);
 
     private static TenantIsolationCheckResult CreateMissingResourcesResult(
         string checkName,
@@ -655,6 +780,11 @@ public sealed partial class TenantIsolationVerifier
 
         return servers;
     }
+
+    private static RedisConnectionException CreateNoConnectedRedisServerException(string scanName)
+        => new(
+            ConnectionFailureType.UnableToConnect,
+            $"No connected Redis server endpoint is available for {scanName}.");
 
     private static HashSet<string> ParseGraphList(RedisResult result)
     {

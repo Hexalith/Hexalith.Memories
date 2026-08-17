@@ -119,6 +119,60 @@ public class RedisEmbeddingMigrationStoreTests
     }
 
     [Fact]
+    public async Task StagingSemanticWrites_UseCanonicalMarkerlessShapesWithoutLifecycleMutation()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        ITransaction transaction = Substitute.For<ITransaction>();
+        IConnectionMultiplexer redis = CreateRedis(db, CreateServer([]));
+        List<(RedisKey Key, HashEntry[] Entries)> stagingWrites = [];
+        db.HashGetAllAsync(
+                (RedisKey)"tenant-a:embedding-migration:active",
+                CommandFlags.DemandMaster)
+            .Returns([new HashEntry("migrationVersion", "run-1")]);
+        db.CreateTransaction(Arg.Any<object>()).Returns(transaction);
+        transaction.HashSetAsync(
+                Arg.Do<RedisKey>(key => stagingWrites.Add((key, []))),
+                Arg.Do<HashEntry[]>(entries => stagingWrites[^1] = (stagingWrites[^1].Key, entries)),
+                Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(true));
+        transaction.ExecuteAsync(Arg.Any<CommandFlags>()).Returns(true);
+        RedisEmbeddingMigrationStore store = new(redis, null!, Substitute.For<IActorProxyFactory>());
+        TenantEmbeddingConfig targetConfig = EmbeddingProviderDefaults.Google();
+
+        await store.WriteRawSemanticAsync(
+            "tenant-a",
+            targetConfig,
+            new RawSemanticMigrationWrite("raw-1", "case-1", "subject-1", [0.1f, 0.2f]),
+            CancellationToken.None);
+        await store.WriteNaturalLanguageSemanticAsync(
+            "tenant-a",
+            targetConfig,
+            new NaturalLanguageSemanticMigrationWrite(
+                "nl-1",
+                "case-1",
+                "Description",
+                "ai",
+                "0.9",
+                "model",
+                [0.3f, 0.4f]),
+            CancellationToken.None);
+
+        stagingWrites.Count.ShouldBe(2);
+        stagingWrites[0].Key.ShouldBe((RedisKey)IndexSchemaDefinitions.BuildSemanticStagingKey("tenant-a", "run-1", "raw-1"));
+        stagingWrites[1].Key.ShouldBe((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticStagingKey("tenant-a", "run-1", "nl-1"));
+        stagingWrites.ShouldAllBe(write => !HasField(write.Entries, "tenantId"));
+        HasField(stagingWrites[0].Entries, "naturalLanguageDescription").ShouldBeFalse();
+        HasField(stagingWrites[1].Entries, "naturalLanguageDescription").ShouldBeTrue();
+        await transaction.DidNotReceive().HashSetAsync(
+            (RedisKey)"tenant-a:embedding-migration:active",
+            Arg.Any<HashEntry[]>(),
+            Arg.Any<CommandFlags>());
+        await db.DidNotReceive().KeyDeleteAsync(
+            (RedisKey)"tenant-a:embedding-migration:active",
+            Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
     public async Task StartMigrationMarkerAsync_UsesSetNxOwnerLockWithTtl()
     {
         IDatabase db = Substitute.For<IDatabase>();
