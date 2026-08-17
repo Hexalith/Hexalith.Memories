@@ -2,13 +2,14 @@
 title: 'Story 24.7: Tenant-Configured Vector Dimension Verification'
 type: 'feature'
 created: '2026-08-13'
-status: 'done'
+status: 'review'
 review_loop_iteration: 0
 baseline_commit: '8feb2a2dff986c037de2a0875d00eb9aa32705bb'
 context:
   - '{project-root}/_bmad-output/project-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/epic-24-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/24-7-tenant-configured-vector-dimension-verification.md'
+  - '{project-root}/_bmad-output/planning-artifacts/sprint-change-proposal-2026-08-04-story-24-3-verifier-residual-backlog-decisions.md'
   - '{project-root}/_bmad/custom/story-phase-ledger.md'
 ---
 
@@ -41,15 +42,31 @@ context:
 
 </frozen-after-approval>
 
+## Historical Context Classification
+
+| Source | Classification | Permitted use |
+| :----- | :------------- | :------------ |
+| Story 24.3 | `historical-reference-only` | Preserve FT.INFO parsing and the fail-closed result contract; do not treat pair equality as sufficient. |
+| `ITenantEmbeddingConfigProvider` | `current-narrow-pattern` | Reuse the requested-tenant cached configuration source already consumed by search and tenant endpoints. |
+| Raw-versus-NL equality alone | `anti-template` | Retain only as a secondary consistency assertion; never use it as dimension authority. |
+| Story 20.2 | `anti-template` | Re-run only the current POST `/verify` denial-before-dependency assertion; do not reuse its wider story shape. |
+| 2026-08-04 Sprint Change Proposal | `historical-reference-only` | Preserve bounded Story 24.7 approval and registration provenance; never use the proposal as completion evidence. |
+
+## Slice Proof
+
+- One independently demonstrable outcome: both semantic index families match the requested tenant's configured dimension.
+- Demonstration boundary: focused verifier tests cover correct, equally wrong, one wrong, cross-tenant configuration, unavailable source, and invalid source cases.
+- Excluded: provider migration, index recreation, marker scanning, graph evidence, and ACL routing.
+
 ## Code Map
 
-- `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:26` -- `ITenantEmbeddingConfigProvider` field; the constructor at line 37 guards the dependency, `CheckSemanticIsolationAsync` at line 222 owns the single tenant lookup and three-way dimension evidence, and the safe classification-only warning is declared at line 699. Anchors re-derived 2026-08-14 after third-pass patches.
-- `src/Hexalith.Memories.Server/Ingestion/ITenantEmbeddingConfigProvider.cs:10` -- reuse `GetAsync(tenantId, cancellationToken)` unchanged; `TenantEmbeddingConfigProvider.cs:47` confirms ordinal tenant-keyed caching and actor IDs.
-- `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:196` -- reuse established configuration validation; do not invent a weaker validity policy.
-- `src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs:424` -- reuse expected-versus-actual dimension wording and existing `FT.INFO` parsing; read-only.
+- `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:23` -- verifier type; the `ITenantEmbeddingConfigProvider` field is at line 35, the constructor guard at line 46, and `CheckSemanticIsolationAsync` at line 231 owns the single requested-tenant lookup at line 241 and validation at line 279. The configured-dimension comparisons start at lines 323 and 329, the secondary raw-versus-NL comparison starts at line 335, and the safe classification-only warning is declared at line 836. Anchors re-derived 2026-08-17 from live symbols after Story 24.8 shifted the file.
+- `src/Hexalith.Memories.Server/Ingestion/ITenantEmbeddingConfigProvider.cs:17` and `TenantEmbeddingConfigProvider.cs:47` -- reuse `GetAsync(tenantId, cancellationToken)` unchanged; the concrete provider confirms ordinal tenant-keyed caching and actor IDs.
+- `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:213` -- reuse established configuration validation; do not invent a weaker validity policy.
+- `src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs:430` -- keep the configured semantic schema/index path read-only and reuse the existing `FT.INFO` parsing helpers.
 - `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs:365` -- pass the existing singleton configuration provider into the verifier factory.
-- `tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs:81` -- cover one/equally/three-way dimension mismatches, the valid non-default dimension path at line 277, requested-tenant-only lookup, safe classified provider failures from line 225, cancellation, and no mutation.
-- `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs:75` -- add method-correct POST `/verify` denial-before-dependency evidence; a GET theory row is insufficient.
+- `tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs:83` -- cover one/equally/three-way dimension mismatches at lines 83, 121, and 156; requested-tenant-only lookup at line 197; safe classified provider failures at line 232; and the valid non-default dimension path at line 279, plus cancellation and no-mutation assertions.
+- `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs:104` -- method-correct POST `/verify` denial-before-dependency evidence; a GET theory row is insufficient.
 - `_bmad-output/implementation-artifacts/24-7-tenant-configured-vector-dimension-verification.md`, `deferred-work.md`, and `sprint-status.yaml` -- synchronize lifecycle, the workflow-generated review deferrals, exact evidence, complete File List, and named external exclusion; retain the story's human-owned intent.
 
 ## Tasks & Acceptance
@@ -96,12 +113,23 @@ Third-pass patch triage, 2026-08-14 (four parent-triaged patch groups).
 - [x] [Review][Defer] The concrete `TenantEmbeddingConfigProvider` actor read ignores its caller cancellation token, so a cancelled verifier can stop waiting while the read continues and later populates the cache; recorded in `deferred-work.md` for a provider-focused change.
 - [x] [Review][Defer] Semantic tenant-marker mismatches are accumulated without a count or length bound before being joined into `SemanticIsolation.Details`; recorded in `deferred-work.md` for the owning diagnostic-bounding slice.
 
+Fourth-pass adversarial review, 2026-08-16 (six layers: blind-hunter, edge-case-hunter, verification-gap, acceptance-auditor, historical-slice-guard, story-phase-ledger).
+
+- [x] [Review][Patch] Re-derive stale Code Map anchors in implementation spec [_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md:46]
+- [x] [Review][Patch] Mirror Historical Context Classification and Slice Proof sections in implementation spec [_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md]
+- [x] [Review][Patch] Classify Story 20.2 as anti-template with narrow permitted use [_bmad-output/implementation-artifacts/24-7-tenant-configured-vector-dimension-verification.md:36]
+- [x] [Review][Patch] Classify approving Sprint Change Proposal 2026-08-04 in story and spec context [_bmad-output/implementation-artifacts/24-7-tenant-configured-vector-dimension-verification.md:3]
+- [x] [Review][Patch] Align spec frontmatter status to 'review' during active review [_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md:5]
+- [x] [Review][Defer] Pre-existing constructor parameters remain unguarded [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:37] — deferred, pre-existing
+
 ## Spec Change Log
 
 - 2026-08-13: Implemented all tasks at baseline `8feb2a2dff986c037de2a0875d00eb9aa32705bb`; the required Debug build succeeded with zero warnings/errors and the focused three-class lane passed 64/64 with zero skips.
 - 2026-08-13: Applied code-review hardening for null safety, verifier-boundary cancellation, provider-side cancellation, Dapr actor invocation failures, and sanitized validation evidence; added five test cases and restored the Epic 24 context exactly to baseline. The Debug build remained clean and the focused three-class lane passed 69/69 with zero skips.
 - 2026-08-14: Closed all fourteen second-pass patch findings: provider failures now retain server-side exception classification, unrecognized exceptions and null lookup tasks have explicit boundary tests, all nine validation-label outcomes plus cancellation cleanup are pinned, lifecycle evidence is reconciled, and the focused three-class lane passes 78/78 with zero skips.
 - 2026-08-14: Applied all four third-pass patch groups: warning logs now carry only safe requested-tenant/type classifications, null contract violations are distinguishable, observable logging behavior and complete dimension diagnostics are pinned, and lifecycle scope is reconciled 9/9 as eight owned paths plus one named exclusion. Recorded the provider-cancellation and unbounded semantic-detail risks as pre-existing deferrals. The clean Debug build passed and the focused three-class lane passed 80/80 with zero skips.
+- 2026-08-17: Applied four of the five fourth-pass record patches: mirrored historical/slice context, classified Story 20.2 as an anti-template, recorded the approving proposal as historical-only provenance, and re-derived live anchors after Story 24.8. The status patch remains open and this spec stays in-progress because the required Debug build is blocked by an unaccepted concurrent-tree analyzer failure.
+- 2026-08-17: Administrator accepted the exact unrelated Debug-build blocker with its recorded owner, consequence, and reopen trigger; closed the fifth patch and synchronized the implementation spec to review.
 
 ## Design Notes
 
@@ -114,26 +142,28 @@ Remediation runtime checklist: not applicable — no workflow/runtime dispatch, 
 **Commands:**
 - `DOTNET_CLI_USE_MSBUILD_SERVER=0 dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false` -- expected: zero warnings and errors after any audit-only fallback is recorded separately.
 - `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Tenants.TenantIsolationVerifierTests -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointAuthorizationTests -class Hexalith.Memories.Server.Tests.Ingestion.TenantEmbeddingConfigProviderTests` -- expected: all focused verifier, cross-tenant denial, and provider-isolation tests pass with zero skips.
-- `{ git diff --name-only 8feb2a2d; git ls-files --others --exclude-standard; } | sort -u > /tmp/hexalith-story-24-7-scope-paths.txt` -- expected: the complete baseline-to-worktree set contains eight owned paths and the named FrontComposer exclusion, with no untracked paths omitted.
-- `python3 tools/check-story-review-readiness.py --story-key 24-7-tenant-configured-vector-dimension-verification --changed-files-file /tmp/hexalith-story-24-7-scope-paths.txt` -- expected: C1 executes on `main` and all nine paths are declared; do not use `--derive-cumulative`.
-- `python3 tools/check-story-slice-scope.py --story-key 24-7-tenant-configured-vector-dimension-verification --changed-files-file /tmp/hexalith-story-24-7-scope-paths.txt --require-record` -- expected: historical-slice guard passes.
-- `python3 tools/check-tenant-isolation-evidence.py --story-key 24-7-tenant-configured-vector-dimension-verification --changed-files-file /tmp/hexalith-story-24-7-scope-paths.txt` -- expected: cross-tenant negative evidence passes.
+- `{ git diff --name-only 8feb2a2dff986c037de2a0875d00eb9aa32705bb..dc5fde62; printf '%s\n' _bmad-output/implementation-artifacts/spec-24-7-fourth-pass-action-item-closure.md references/Hexalith.FrontComposer; } | sort -u > /tmp/hexalith-story-24-7-closure-paths.txt` -- expected: the canonical readiness scope contains ten paths: nine owned plus the named FrontComposer exclusion.
+- `python3 tools/check-story-review-readiness.py --story-key 24-7-tenant-configured-vector-dimension-verification --changed-files-file /tmp/hexalith-story-24-7-closure-paths.txt` -- expected: C1 executes on `main`, all ten paths are declared, and the gate passes; do not use `--derive-cumulative`.
+- `python3 tools/check-story-slice-scope.py --story-key 24-7-tenant-configured-vector-dimension-verification --changed-files-file /tmp/hexalith-story-24-7-closure-paths.txt --require-record` -- expected: historical-slice guard passes.
+- `python3 tools/check-tenant-isolation-evidence.py --story-key 24-7-tenant-configured-vector-dimension-verification --changed-files-file /tmp/hexalith-story-24-7-closure-paths.txt` -- expected: cross-tenant negative evidence passes.
 - `git diff --check` -- expected: no whitespace errors.
 
 **Executed results (2026-08-14):** Clean Debug build passed in 11.58 seconds with 0 warnings and 0 errors; the focused verifier, authorization, and provider lane passed 80 tests in 7.188 seconds with 0 failures and 0 skips. The full baseline-to-worktree set contained nine paths and no untracked paths. Review readiness executed C1 on `main`, reported `C1: all 9 changed paths are declared.`, and passed; the historical-slice and tenant-isolation-evidence guards passed, and `git diff --check` reported no whitespace errors.
+
+**Fourth-pass closure results (2026-08-17):** The exact Debug build is blocked by four concurrent-tree errors: CS0618 at `TenantExportService.cs:134`, `TenantExportService.cs:417`, and `TenantIsolationVerifier.cs:785`, plus SER301 at `ReleaseDedupKeyIfOwnedActivity.cs:35`. The Administrator accepted this exact unrelated blocker for the record-only closure; owner: concurrent tree; consequence: no fresh Debug-build certification; reopen trigger: an error enters Story 24.7-owned work or the built-assembly tenant lane regresses. The prescribed built-assembly lane passed 95/95 with zero failures/skips in 10.640 seconds; Story 24.7 accounting remains +28 and 52 -> 80, while the 15 additional observed cases are external same-lane work committed by Story 24.8 at `003fd21488d60307cd932a3139f69319a25cea66`. The fixed inventory contains ten paths (nine owned plus the FrontComposer exclusion); status-sensitive readiness, historical-slice, tenant-isolation-evidence, and whitespace gates were rerun after review synchronization. Post-review rerun: the same focused lane passed 95/95 with zero failures/skips in 11.561 seconds, the accepted four-error Debug-build blocker repeated exactly, and readiness, historical-slice, tenant-evidence, and whitespace checks remained green.
 
 ## Suggested Review Order
 
 **Tenant-authoritative verification**
 
 - Start with the requested-tenant lookup, validation, and independent dimension comparisons.
-  [`TenantIsolationVerifier.cs:222`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L222)
+  [`TenantIsolationVerifier.cs:231`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L231)
 
 - Independent configuration comparisons preserve raw-versus-NL consistency as a secondary assertion.
-  [`TenantIsolationVerifier.cs:314`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L314)
+  [`TenantIsolationVerifier.cs:323`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L323)
 
 - Classification-only warnings distinguish failures without logging exception payloads.
-  [`TenantIsolationVerifier.cs:699`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L699)
+  [`TenantIsolationVerifier.cs:836`](../../src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs#L836)
 
 - Confirm composition reuses the existing tenant-scoped configuration provider.
   [`MemoriesServerServiceCollectionExtensions.cs:365`](../../src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs#L365)
@@ -141,13 +171,13 @@ Remediation runtime checklist: not applicable — no workflow/runtime dispatch, 
 **Tenant isolation evidence**
 
 - Three-way mismatch coverage pins both authoritative and secondary diagnostics.
-  [`TenantIsolationVerifierTests.cs:154`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L154)
+  [`TenantIsolationVerifierTests.cs:156`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L156)
 
 - Valid 1536-dimensional configuration proves the implementation is not default-bound.
-  [`TenantIsolationVerifierTests.cs:277`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L277)
+  [`TenantIsolationVerifierTests.cs:279`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L279)
 
 - Observable logging tests pin safe classifications and exclude sensitive exception messages.
-  [`TenantIsolationVerifierTests.cs:230`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L230)
+  [`TenantIsolationVerifierTests.cs:232`](../../tests/Hexalith.Memories.Server.Tests/Tenants/TenantIsolationVerifierTests.cs#L232)
 
 - Confirm mismatched-tenant POST verification is denied before every dependency.
   [`ServerEndpointAuthorizationTests.cs:104`](../../tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs#L104)
