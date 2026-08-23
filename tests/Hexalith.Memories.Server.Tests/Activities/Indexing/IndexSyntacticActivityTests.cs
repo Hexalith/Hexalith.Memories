@@ -124,7 +124,7 @@ public class IndexSyntacticActivityTests
         // Arrange
         IDatabase db = Substitute.For<IDatabase>();
         db.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
 
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<IndexSyntacticActivity> logger = Substitute.For<ILogger<IndexSyntacticActivity>>();
@@ -270,7 +270,7 @@ public class IndexSyntacticActivityTests
                 string command = call.ArgAt<string>(0);
                 return command switch
                 {
-                    "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                    "FT.CREATE" => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Index already exists"),
                     "FT.INFO" => CreateExistingIndexInfoResult(includeSubjectField),
                     "FT.ALTER" => RedisResult.Create(new RedisValue("OK")),
                     _ => RedisResult.Create(new RedisValue("OK")),
@@ -282,7 +282,7 @@ public class IndexSyntacticActivityTests
                 string command = call.ArgAt<string>(0);
                 return command switch
                 {
-                    "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                    "FT.CREATE" => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Index already exists"),
                     "FT.INFO" => CreateExistingIndexInfoResult(includeSubjectField),
                     "FT.ALTER" => RedisResult.Create(new RedisValue("OK")),
                     _ => RedisResult.Create(new RedisValue("OK")),
@@ -295,7 +295,7 @@ public class IndexSyntacticActivityTests
         RedisResult Execute(string command)
             => command switch
             {
-                "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                "FT.CREATE" => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Index already exists"),
                 "FT.INFO" => nextInfoCall() == 1
                     ? CreateIncompleteIndexInfoResult()
                     : CreateExistingIndexInfoResult(includeSubjectField: true),

@@ -113,7 +113,7 @@ public sealed class HandlerRegistryServiceTests
         IObservedEventTypeStore store = Substitute.For<IObservedEventTypeStore>();
         store.GetAllObservedTypesAsync("acme", Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>())
             .Throws(new StackExchange.Redis.RedisConnectionException(
-                StackExchange.Redis.ConnectionFailureType.UnableToConnect, "boom"));
+                StackExchange.Redis.ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "boom"));
 
         DaprClient daprClient = BuildDaprClientReturningTenant(
             "acme",

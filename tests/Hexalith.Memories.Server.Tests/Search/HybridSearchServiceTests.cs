@@ -453,7 +453,7 @@ public class HybridSearchServiceTests
         syntactic(Arg.Any<SearchQuery>()).Returns(MakeSearchResult(MakeResult("mu-1", 5.0, "syntactic")));
         semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
-                StackExchange.Redis.ConnectionFailureType.SocketFailure, "Semantic down"));
+                StackExchange.Redis.ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "Semantic down"));
         graph(Arg.Any<SearchQuery>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(MakeSearchResult(MakeResult("mu-1", 0.5, "graph")));
 
@@ -477,7 +477,7 @@ public class HybridSearchServiceTests
             .Returns(MakeSearchResult(MakeResult("mu-1", 0.85, "semantic")));
         graph(Arg.Any<SearchQuery>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
-                StackExchange.Redis.ConnectionFailureType.SocketFailure, "Graph down"));
+                StackExchange.Redis.ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "Graph down"));
 
         HybridSearchResult result = await service.SearchAsync(
             MakeQuery(), MakeEmbeddingConfig(), "start-node", 2, DefaultWeights, axes, CancellationToken.None);
@@ -495,13 +495,13 @@ public class HybridSearchServiceTests
         HashSet<string> axes = ["syntactic", "semantic", "graph"];
 
         syntactic(Arg.Any<SearchQuery>()).ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
-            StackExchange.Redis.ConnectionFailureType.SocketFailure, "Syntactic down"));
+            StackExchange.Redis.ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "Syntactic down"));
         semantic(Arg.Any<SearchQuery>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
-                StackExchange.Redis.ConnectionFailureType.SocketFailure, "Semantic down"));
+                StackExchange.Redis.ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "Semantic down"));
         graph(Arg.Any<SearchQuery>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new StackExchange.Redis.RedisConnectionException(
-                StackExchange.Redis.ConnectionFailureType.SocketFailure, "Graph down"));
+                StackExchange.Redis.ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "Graph down"));
 
         HybridSearchResult result = await service.SearchAsync(
             MakeQuery(), MakeEmbeddingConfig(), "start-node", 2, DefaultWeights, axes, CancellationToken.None);
@@ -573,7 +573,7 @@ public class HybridSearchServiceTests
                 callCount++;
                 return callCount == 1
                     ? throw new StackExchange.Redis.RedisConnectionException(
-                        StackExchange.Redis.ConnectionFailureType.SocketFailure, "transient")
+                        StackExchange.Redis.ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "transient")
                     : Task.FromResult(MakeSearchResult(MakeResult("mu-1", 0.85, "semantic")));
             });
 
@@ -602,7 +602,7 @@ public class HybridSearchServiceTests
         var (service, syntactic, _, _) = CreateService();
         HashSet<string> axes = ["syntactic"];
 
-        syntactic(Arg.Any<SearchQuery>()).ThrowsAsync(new StackExchange.Redis.RedisServerException(redisMessage));
+        syntactic(Arg.Any<SearchQuery>()).ThrowsAsync(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException(redisMessage));
 
         HybridSearchResult result = await service.SearchAsync(
             MakeQuery(), null, null, 2, DefaultWeights, axes, CancellationToken.None);

@@ -71,9 +71,9 @@ public class ProvisionRediSearchActivityTests
     private static void ConfigureIndexAlreadyExists(IDatabase db, RedisResult infoResult)
     {
         db.Execute(Arg.Is<string>(cmd => cmd == "FT.CREATE"), Arg.Any<object[]>())
-            .Returns(_ => throw new RedisServerException("Index already exists"));
+            .Returns(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Index already exists"));
         db.Execute(Arg.Is<string>(cmd => cmd == "FT.CREATE"), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns(_ => throw new RedisServerException("Index already exists"));
+            .Returns(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Index already exists"));
         db.Execute(Arg.Is<string>(cmd => cmd == "FT.INFO"), Arg.Any<object[]>())
             .Returns(infoResult);
         db.Execute(Arg.Is<string>(cmd => cmd == "FT.INFO"), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())

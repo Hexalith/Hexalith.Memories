@@ -169,7 +169,7 @@ public class SemanticSearchServiceTests
     [InlineData("Could not parse query")]
     public void IsQuerySyntaxError_WithParserMessages_ShouldReturnTrue(string message)
     {
-        RediSearchErrorClassifier.IsQuerySyntaxError(new RedisServerException(message)).ShouldBeTrue();
+        RediSearchErrorClassifier.IsQuerySyntaxError(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException(message)).ShouldBeTrue();
     }
 
     [Theory]
@@ -177,14 +177,14 @@ public class SemanticSearchServiceTests
     [InlineData("Vector dimension mismatch")]
     public void IsVectorDimensionMismatchError_WithDimensionMessages_ShouldReturnTrue(string message)
     {
-        RediSearchErrorClassifier.IsVectorDimensionMismatchError(new RedisServerException(message)).ShouldBeTrue();
+        RediSearchErrorClassifier.IsVectorDimensionMismatchError(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException(message)).ShouldBeTrue();
     }
 
     [Fact]
     public void IsVectorDimensionMismatchError_WithParserMessage_ShouldReturnFalse()
     {
         RediSearchErrorClassifier.IsVectorDimensionMismatchError(
-            new RedisServerException("ERR Syntax error at offset 12")).ShouldBeFalse();
+            Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("ERR Syntax error at offset 12")).ShouldBeFalse();
     }
 
     [Theory]

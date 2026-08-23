@@ -916,7 +916,7 @@ public class TenantIsolationVerifierTests
                     Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
                     Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
                     Arg.Any<CommandFlags>())
-                .Throws(new RedisServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
+                .Throws(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
         }
         else
         {
@@ -924,7 +924,7 @@ public class TenantIsolationVerifierTests
                     Arg.Is<RedisKey>(key => string.Equals(key.ToString(), wrongTypeKey, StringComparison.Ordinal)),
                     Arg.Is<RedisValue[]>(fields => SemanticDiscriminatorFieldsMatch(fields)),
                     Arg.Any<CommandFlags>())
-                .Throws(new RedisServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
+                .Throws(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("WRONGTYPE Operation against a key holding the wrong kind of value"));
         }
 
         SetupSemanticRecord(redisDb, healthyKey, "healthy", "tenant-a");
@@ -1280,7 +1280,7 @@ public class TenantIsolationVerifierTests
 
         // Make index existence fail
         redisDb.ExecuteAsync(Arg.Is("FT.INFO"), Arg.Any<object[]>())
-            .Throws(new RedisServerException("Unknown index name"));
+            .Throws(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Unknown index name"));
         SetupGraphList(falkorDb, "tenant-a");
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
@@ -1301,9 +1301,9 @@ public class TenantIsolationVerifierTests
 
         // Simulate Redis connection failure
         redisDb.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
-            .Throws(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .Throws(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
         falkorDb.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
-            .Throws(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .Throws(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
 
         TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
 

@@ -85,7 +85,7 @@ public class IndexSemanticActivityTests
     {
         IDatabase db = Substitute.For<IDatabase>();
         db.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<HashEntry[]>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
 
         IConnectionMultiplexer redis = CreateMockMultiplexer(db);
         ILogger<IndexSemanticActivity> logger = Substitute.For<ILogger<IndexSemanticActivity>>();
@@ -246,7 +246,7 @@ public class IndexSemanticActivityTests
                 string command = call.ArgAt<string>(0);
                 return command switch
                 {
-                    "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                    "FT.CREATE" => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Index already exists"),
                     "FT.INFO" => CreateExistingIndexInfoResult(existingIndexDimensions, includeSubjectField),
                     "FT.ALTER" => RedisResult.Create(new RedisValue("OK")),
                     _ => RedisResult.Create(new RedisValue("OK")),
@@ -258,7 +258,7 @@ public class IndexSemanticActivityTests
                 string command = call.ArgAt<string>(0);
                 return command switch
                 {
-                    "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                    "FT.CREATE" => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Index already exists"),
                     "FT.INFO" => CreateExistingIndexInfoResult(existingIndexDimensions, includeSubjectField),
                     "FT.ALTER" => RedisResult.Create(new RedisValue("OK")),
                     _ => RedisResult.Create(new RedisValue("OK")),

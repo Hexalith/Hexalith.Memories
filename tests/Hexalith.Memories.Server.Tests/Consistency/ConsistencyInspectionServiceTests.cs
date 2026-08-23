@@ -238,7 +238,7 @@ public class ConsistencyInspectionServiceTests
     public async Task InspectAsync_AdversarialOpaqueIdentifier_BackendFailurePropagatesUnchanged()
     {
         const string adversarialId = "wf-file-instance-7'}) MATCH (n) RETURN n";
-        var expected = new RedisConnectionException(ConnectionFailureType.UnableToConnect, "backend unavailable");
+        var expected = new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "backend unavailable");
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.HashGetAllAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns([]);
         redisDb.HashGetAllAsync(

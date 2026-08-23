@@ -60,7 +60,7 @@ public class RediSearchHealthCheckTests
         IDatabase db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
 
-        var expectedException = new RedisConnectionException(ConnectionFailureType.UnableToConnect, "refused");
+        var expectedException = new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "refused");
         db.ExecuteAsync(Arg.Is("FT._LIST")).ThrowsAsync(expectedException);
 
         RediSearchHealthCheck check = new(redis);
@@ -84,7 +84,7 @@ public class RediSearchHealthCheckTests
         IDatabase db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
 
-        var expectedException = new RedisServerException("LOADING Redis is loading the dataset in memory");
+        var expectedException = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("LOADING Redis is loading the dataset in memory");
         db.ExecuteAsync(Arg.Is("FT._LIST")).ThrowsAsync(expectedException);
 
         RediSearchHealthCheck check = new(redis);
@@ -108,7 +108,7 @@ public class RediSearchHealthCheckTests
         IDatabase db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
 
-        var expectedException = new RedisServerException("ERR unknown command 'FT._LIST'");
+        var expectedException = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("ERR unknown command 'FT._LIST'");
         db.ExecuteAsync(Arg.Is("FT._LIST")).ThrowsAsync(expectedException);
 
         RediSearchHealthCheck check = new(redis);

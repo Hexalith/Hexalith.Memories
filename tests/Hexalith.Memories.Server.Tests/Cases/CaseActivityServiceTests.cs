@@ -114,9 +114,9 @@ public class CaseActivityServiceTests
 
         // Throw on any StreamAddAsync call regardless of overload
         db.StreamAddAsync(Arg.Any<RedisKey>(), Arg.Any<NameValueEntry[]>(), Arg.Any<RedisValue?>(), Arg.Any<int?>(), Arg.Any<bool>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
         db.StreamAddAsync(Arg.Any<RedisKey>(), Arg.Any<NameValueEntry[]>(), Arg.Any<RedisValue?>(), Arg.Any<long?>(), Arg.Any<bool>(), Arg.Any<long?>(), Arg.Any<StreamTrimMode>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 
@@ -200,7 +200,7 @@ public class CaseActivityServiceTests
             Arg.Any<int?>(),
             Arg.Any<Order>(),
             Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 
@@ -334,7 +334,7 @@ public class CaseActivityServiceTests
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
         db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisTimeoutException("Timed out", CommandStatus.Unknown));
+            .ThrowsAsync(new RedisTimeoutException(StackExchange.Redis.CommandFlags.None, "Timed out", CommandStatus.Unknown));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 
@@ -445,7 +445,7 @@ public class CaseActivityServiceTests
         // Arrange
         (IConnectionMultiplexer redis, IDatabase db) = CreateMockRedis();
         db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
 
         CaseActivityService service = new(redis, NullLogger<CaseActivityService>.Instance);
 

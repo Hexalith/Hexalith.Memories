@@ -124,7 +124,7 @@ public sealed class MemoryUnitLookupEndpointTests
         // duplicate re-ingest downstream.
         (IDatabase db, SourceUriMemoryUnitLookup lookup) = CreateLookup();
         db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "down"));
 
         IResult result = await MemoryUnitLookupEndpoint.HandleAsync(
             lookup, NullLogger<AccessTelemetryCategory>.Instance, new DefaultHttpContext(), Tenant, Case, SourceUri, CancellationToken.None);
@@ -141,7 +141,7 @@ public sealed class MemoryUnitLookupEndpointTests
         // connection drop) maps to the structured 503 too, never a false 404.
         (IDatabase db, SourceUriMemoryUnitLookup lookup) = CreateLookup();
         db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisServerException("LOADING Redis is loading the dataset in memory"));
+            .ThrowsAsync(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("LOADING Redis is loading the dataset in memory"));
 
         IResult result = await MemoryUnitLookupEndpoint.HandleAsync(
             lookup, NullLogger<AccessTelemetryCategory>.Instance, new DefaultHttpContext(), Tenant, Case, SourceUri, CancellationToken.None);

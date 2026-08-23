@@ -459,7 +459,7 @@ public sealed class SearchEndpointContractTests : IDisposable
     public async Task Traverse_WhenGraphBackendIsUnavailable_ReturnsStructuredServiceUnavailable()
     {
         StubTenantActive("acme-search");
-        var unavailable = new RedisConnectionException(ConnectionFailureType.UnableToConnect, "FalkorDB unavailable");
+        var unavailable = new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "FalkorDB unavailable");
         _factory.FalkorDbDatabase.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
             .Returns<RedisResult>(_ => throw unavailable);
         _factory.FalkorDbDatabase.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())

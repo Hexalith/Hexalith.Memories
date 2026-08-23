@@ -317,7 +317,7 @@ public class IndexGraphActivityTests
         IGraphQueryBuilder builder = CreateMockBuilder();
         IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
         falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>())
-            .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused"));
+            .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused"));
 
         ILogger<IndexGraphActivity> logger = Substitute.For<ILogger<IndexGraphActivity>>();
         IndexInput input = CreateTestInput();

@@ -18,9 +18,9 @@ using StackExchange.Redis;
 public sealed class ReleaseDedupKeyIfOwnedActivityTests
 {
     [Fact]
-    public async Task RunAsync_KeyStillOwnedByLoser_DeletesThroughConditionalTransaction()
+    public async Task RunAsync_KeyStillOwnedByLoser_DeletesAtomicallyWithOwnershipCondition()
     {
-        (IDatabase db, ITransaction transaction, IConnectionMultiplexer redis) = CreateRedis(committed: true, deleted: true);
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis(deleted: true);
         ReleaseDedupKeyIfOwnedActivity activity = new(redis);
 
         bool result = await activity.RunAsync(
@@ -28,16 +28,16 @@ public sealed class ReleaseDedupKeyIfOwnedActivityTests
             new DedupKeyInput("dedup:tenant-1:case-1:source", "mu-loser"));
 
         result.ShouldBeTrue();
-        db.Received(1).CreateTransaction(null);
-        transaction.Received(1).AddCondition(Arg.Any<Condition>());
-        await transaction.Received(1).KeyDeleteAsync((RedisKey)"dedup:tenant-1:case-1:source", CommandFlags.None);
-        await transaction.Received(1).ExecuteAsync(CommandFlags.None);
+        await db.Received(1).StringDeleteAsync(
+            (RedisKey)"dedup:tenant-1:case-1:source",
+            Arg.Is<ValueCondition>(condition => condition.Equals(ValueCondition.Equal("mu-loser"))),
+            CommandFlags.None);
     }
 
     [Fact]
     public async Task RunAsync_KeyNoLongerOwnedByLoser_DoesNotReportDelete()
     {
-        (_, ITransaction transaction, IConnectionMultiplexer redis) = CreateRedis(committed: false, deleted: true);
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis(deleted: false);
         ReleaseDedupKeyIfOwnedActivity activity = new(redis);
 
         bool result = await activity.RunAsync(
@@ -45,28 +45,22 @@ public sealed class ReleaseDedupKeyIfOwnedActivityTests
             new DedupKeyInput("dedup:tenant-1:case-1:source", "mu-loser"));
 
         result.ShouldBeFalse();
-        transaction.Received(1).AddCondition(Arg.Any<Condition>());
-        await transaction.Received(1).ExecuteAsync(CommandFlags.None);
+        await db.Received(1).StringDeleteAsync(
+            (RedisKey)"dedup:tenant-1:case-1:source",
+            Arg.Is<ValueCondition>(condition => condition.Equals(ValueCondition.Equal("mu-loser"))),
+            CommandFlags.None);
     }
 
-    private static (IDatabase Db, ITransaction Transaction, IConnectionMultiplexer Redis) CreateRedis(
-        bool committed,
-        bool deleted)
+    private static (IDatabase Db, IConnectionMultiplexer Redis) CreateRedis(bool deleted)
     {
-        ITransaction transaction = Substitute.For<ITransaction>();
-        transaction.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .Returns(Task.FromResult(deleted));
-        transaction.ExecuteAsync(Arg.Any<CommandFlags>())
-            .Returns(Task.FromResult(committed));
-
         IDatabase db = Substitute.For<IDatabase>();
-        db.CreateTransaction(null).Returns(transaction);
-        db.CreateTransaction(Arg.Is<object?>(value => value == null)).Returns(transaction);
+        db.StringDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<ValueCondition>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromResult(deleted));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Is<object?>(value => value == null)).Returns(db);
 
-        return (db, transaction, redis);
+        return (db, redis);
     }
 }

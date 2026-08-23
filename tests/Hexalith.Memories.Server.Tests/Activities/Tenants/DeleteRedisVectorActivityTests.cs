@@ -94,7 +94,7 @@ public class DeleteRedisVectorActivityTests
         db.ExecuteAsync("FT._LIST")
             .Returns(RedisResult.Create(Array.Empty<RedisResult>()));
         db.ExecuteAsync(Arg.Is<string>(command => command == "FT.DROPINDEX"), Arg.Any<object[]>())
-            .Returns<RedisResult>(_ => throw new RedisServerException("Unknown index name"));
+            .Returns<RedisResult>(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Unknown index name"));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);

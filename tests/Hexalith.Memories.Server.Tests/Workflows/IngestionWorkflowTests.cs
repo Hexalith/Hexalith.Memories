@@ -638,7 +638,7 @@ public class IngestionWorkflowTests
         // Override: activity recording throws
         context.CallActivityAsync<bool>(
                 nameof(RecordCaseActivityActivity), Arg.Any<CaseActivityInput>())
-            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection refused")));
+            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection refused")));
 
         IngestionWorkflow workflow = new();
 
@@ -675,7 +675,7 @@ public class IngestionWorkflowTests
         // Activity recording also fails
         context.CallActivityAsync<bool>(
                 nameof(RecordCaseActivityActivity), Arg.Any<CaseActivityInput>())
-            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Redis down")));
+            .Returns(Task.FromException<bool>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Redis down")));
 
         IngestionWorkflow workflow = new();
 

@@ -67,12 +67,12 @@ public class TenantMetricsServiceTests
             // this Theory validates the *tolerance* contract: regardless of whether FalkorDB is up or down,
             // GetIndexSizesAsync must return a fully-formed tuple without throwing.
             falkorDb.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-                .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "FalkorDB simulated-up path (fall through)"));
+                .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "FalkorDB simulated-up path (fall through)"));
         }
         else
         {
             falkorDb.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-                .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "FalkorDB down"));
+                .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "FalkorDB down"));
         }
 
         TenantMetricsService service = new(redis, falkor, NullLogger());
@@ -118,7 +118,7 @@ public class TenantMetricsServiceTests
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.ExecuteAsync("FT.INFO", Arg.Any<object[]>())
-            .ThrowsAsync(new RedisServerException("no such index"));
+            .ThrowsAsync(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("no such index"));
 
         IConnectionMultiplexer redis = CreateRedis(redisDb);
         IConnectionMultiplexer falkor = CreateFalkorDown();
@@ -138,7 +138,7 @@ public class TenantMetricsServiceTests
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.ExecuteAsync("FT.INFO", Arg.Any<object[]>())
-            .ThrowsAsync(new RedisServerException("LOADING Redis is loading the dataset in memory"));
+            .ThrowsAsync(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("LOADING Redis is loading the dataset in memory"));
 
         IConnectionMultiplexer redis = CreateRedis(redisDb);
         IConnectionMultiplexer falkor = CreateFalkorDown();
@@ -224,7 +224,7 @@ public class TenantMetricsServiceTests
     {
         IDatabase redisDb = Substitute.For<IDatabase>();
         redisDb.HashGetAsync($"{TenantId}:metadata", "lastActivityAt", Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "down"));
 
         IConnectionMultiplexer redis = CreateRedis(redisDb);
         IConnectionMultiplexer falkor = CreateFalkorDown();
@@ -288,7 +288,7 @@ public class TenantMetricsServiceTests
         else
         {
             db.ExecuteAsync("FT.INFO", Arg.Is<object[]>(a => a!.Length > 0 && (string)a[0] == indexName))
-                .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Redis down"));
+                .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Redis down"));
         }
     }
 
@@ -318,7 +318,7 @@ public class TenantMetricsServiceTests
         IDatabase falkorDb = Substitute.For<IDatabase>();
         falkor.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(falkorDb);
         falkorDb.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "FalkorDB down"));
+            .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "FalkorDB down"));
         return falkor;
     }
 

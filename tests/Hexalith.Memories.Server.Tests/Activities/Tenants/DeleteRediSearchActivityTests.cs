@@ -41,7 +41,7 @@ public class DeleteRediSearchActivityTests
     {
         IDatabase db = Substitute.For<IDatabase>();
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns<RedisResult>(_ => throw new RedisServerException("Unknown index name"));
+            .Returns<RedisResult>(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Unknown index name"));
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);

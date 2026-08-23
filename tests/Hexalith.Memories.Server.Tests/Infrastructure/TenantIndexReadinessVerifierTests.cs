@@ -76,7 +76,7 @@ public sealed class TenantIndexReadinessVerifierTests
     [Fact]
     public async Task EnsureReadyAsync_MissingIndex_ThrowsNotProvisioned()
     {
-        IDatabase db = MockDb(_ => throw new RedisServerException("Unknown index name"));
+        IDatabase db = MockDb(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Unknown index name"));
 
         TenantIndexNotProvisionedException ex = await Should.ThrowAsync<TenantIndexNotProvisionedException>(
             () => CreateVerifier().EnsureReadyAsync(db, "tenant-a", TenantIndexFamily.Syntactic, null, CancellationToken.None));
@@ -150,7 +150,7 @@ public sealed class TenantIndexReadinessVerifierTests
         {
             calls++;
             return calls == 1
-                ? throw new RedisServerException("Unknown index name")
+                ? throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Unknown index name")
                 : SyntacticInfo(SyntacticTenant(indexName));
         });
         TenantIndexReadinessVerifier verifier = CreateVerifier();

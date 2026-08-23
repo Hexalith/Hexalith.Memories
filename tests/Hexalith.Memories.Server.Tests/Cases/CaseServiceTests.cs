@@ -750,7 +750,7 @@ public class CaseServiceTests
         redisDb.HashLengthAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
             .Returns(0L);
         redisDb.HashSetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<RedisValue>(), Arg.Is<When>(w => w == When.NotExists), Arg.Any<CommandFlags>())
-            .Returns<bool>(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection lost"));
+            .Returns<bool>(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection lost"));
 
         var input = new AddCaseMemberInput("user-alice", CaseMemberType.User);
 

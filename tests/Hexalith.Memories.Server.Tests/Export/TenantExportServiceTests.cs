@@ -126,7 +126,7 @@ public class TenantExportServiceTests
         IDatabase db = Substitute.For<IDatabase>();
         db.HashGetAsync("acme:metadata", "lastActivityAt", Arg.Any<CommandFlags>()).Returns(RedisValue.Null);
         db.ExecuteAsync("FT.INFO", Arg.Any<object[]>())
-            .Returns(Task.FromException<RedisResult>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Redis down")));
+            .Returns(Task.FromException<RedisResult>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Redis down")));
 
         IServer server = Substitute.For<IServer>();
         server.IsConnected.Returns(true);
@@ -145,7 +145,7 @@ public class TenantExportServiceTests
         IDatabase falkorDb = Substitute.For<IDatabase>();
         falkor.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(falkorDb);
         falkorDb.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "FalkorDB down"));
+            .Returns(_ => throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "FalkorDB down"));
         return falkor;
     }
 

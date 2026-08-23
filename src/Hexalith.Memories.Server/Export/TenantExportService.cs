@@ -133,6 +133,7 @@ internal partial class TenantExportService
         {
             throw new RedisConnectionException(
                 ConnectionFailureType.UnableToConnect,
+                CommandFlags.None,
                 $"Redis server unavailable while capturing tenant export snapshot for tenant '{tenantId}'.");
         }
 
@@ -416,6 +417,7 @@ internal partial class TenantExportService
         {
             throw new RedisConnectionException(
                 ConnectionFailureType.UnableToConnect,
+                CommandFlags.None,
                 $"Redis server unavailable while enumerating memory units for tenant '{tenantId}'.");
         }
 

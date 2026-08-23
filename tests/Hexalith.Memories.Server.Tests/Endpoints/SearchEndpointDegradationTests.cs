@@ -39,7 +39,7 @@ public class SearchEndpointDegradationTests
     [InlineData("OOM command not allowed when used memory > 'maxmemory'")]
     public void IsTransientRedisError_LoadingBusyOom_ShouldReturnTrue(string message)
     {
-        RedisServerException ex = new(message);
+        RedisServerException ex = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException(message);
 
         SearchEndpointDegradationLog.IsTransientRedisError(ex).ShouldBeTrue();
     }
@@ -53,7 +53,7 @@ public class SearchEndpointDegradationTests
     {
         // Regression guard: "no such index" / "Unknown Index name" are internal missing-data
         // conditions handled by SyntacticSearchService as empty results — NOT unavailability.
-        RedisServerException ex = new(message);
+        RedisServerException ex = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException(message);
 
         SearchEndpointDegradationLog.IsTransientRedisError(ex).ShouldBeFalse();
     }
@@ -64,7 +64,7 @@ public class SearchEndpointDegradationTests
     [InlineData("ERR unknown command 'FOOBAR'")]
     public void IsTransientRedisError_OtherRedisErrors_ShouldReturnFalse(string message)
     {
-        RedisServerException ex = new(message);
+        RedisServerException ex = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException(message);
 
         SearchEndpointDegradationLog.IsTransientRedisError(ex).ShouldBeFalse();
     }
@@ -74,7 +74,7 @@ public class SearchEndpointDegradationTests
     [InlineData("Could not parse query")]
     public void IsTransientRedisError_QueryParserErrors_ShouldReturnFalse(string message)
     {
-        RedisServerException ex = new(message);
+        RedisServerException ex = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException(message);
 
         SearchEndpointDegradationLog.IsTransientRedisError(ex).ShouldBeFalse();
     }
@@ -146,7 +146,7 @@ public class SearchEndpointDegradationTests
     public void DescribeFailureReason_WithTransientRedisServerException_ShouldPreferTransientKeyword()
     {
         SearchEndpointDegradationLog.DescribeFailureReason(
-            new RedisServerException("LOADING Redis is loading the dataset in memory"))
+            Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("LOADING Redis is loading the dataset in memory"))
             .ShouldBe("LOADING");
     }
 
@@ -165,7 +165,7 @@ public class SearchEndpointDegradationTests
             logger,
             "syntactic",
             "tenant-a",
-            new RedisConnectionException(ConnectionFailureType.SocketFailure, "down"));
+            new RedisConnectionException(ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "down"));
 
         (int statusCode, ErrorResponse? error, IHeaderDictionary headers) = await ExecuteErrorResultAsync(result, context);
 
@@ -187,7 +187,7 @@ public class SearchEndpointDegradationTests
             logger,
             "tenant-a",
             "mu-1",
-            new RedisTimeoutException("timed out", CommandStatus.Unknown));
+            new RedisTimeoutException(StackExchange.Redis.CommandFlags.None, "timed out", CommandStatus.Unknown));
 
         (int statusCode, ErrorResponse? error, IHeaderDictionary headers) = await ExecuteErrorResultAsync(result, context);
 
@@ -216,7 +216,7 @@ public class SearchEndpointDegradationTests
             "tenant-a",
             "mu-1",
             innerSearchStarted,
-            new RedisConnectionException(ConnectionFailureType.SocketFailure, "down"));
+            new RedisConnectionException(ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "down"));
 
         (int statusCode, ErrorResponse? error, IHeaderDictionary headers) = await ExecuteErrorResultAsync(result, context);
 

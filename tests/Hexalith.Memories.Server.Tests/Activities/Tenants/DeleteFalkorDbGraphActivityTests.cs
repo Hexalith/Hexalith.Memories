@@ -40,9 +40,9 @@ public class DeleteFalkorDbGraphActivityTests
     {
         IDatabase db = Substitute.For<IDatabase>();
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns<RedisResult>(_ => throw new RedisServerException("Graph not found"));
+            .Returns<RedisResult>(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns<RedisResult>(_ => throw new RedisServerException("Graph not found"));
+            .Returns<RedisResult>(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
 
         IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
         falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);

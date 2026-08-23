@@ -31,11 +31,9 @@ public sealed class ReleaseDedupKeyIfOwnedActivity : WorkflowTraceLinkedActivity
         ArgumentException.ThrowIfNullOrWhiteSpace(input.MemoryUnitId);
 
         IDatabase db = _redis.GetDatabase();
-        ITransaction transaction = db.CreateTransaction();
-        transaction.AddCondition(Condition.StringEqual(input.DedupKey, input.MemoryUnitId));
-        Task<bool> deleteTask = transaction.KeyDeleteAsync(input.DedupKey, CommandFlags.None);
-
-        bool committed = await transaction.ExecuteAsync(CommandFlags.None).ConfigureAwait(false);
-        return committed && await deleteTask.ConfigureAwait(false);
+        return await db.StringDeleteAsync(
+            input.DedupKey,
+            ValueCondition.Equal(input.MemoryUnitId),
+            CommandFlags.None).ConfigureAwait(false);
     }
 }

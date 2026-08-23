@@ -28,9 +28,9 @@ public class GraphTraversalServiceTests
 
         // Simulate graph-not-found error
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+            .Returns<RedisResult>(x => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+            .Returns<RedisResult>(x => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
 
         // Act
         TraversalResult result = await service.TraverseAsync("tenant-1", "mu-001", 3, null, null, CancellationToken.None);
@@ -358,9 +358,9 @@ public class GraphTraversalServiceTests
 
         // Simulate graph-not-found to short-circuit execution
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+            .Returns<RedisResult>(x => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+            .Returns<RedisResult>(x => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
 
         // Act
         _ = await service.TraverseAsync("tenant-1", "mu-001", 3, null, edgeTypes, CancellationToken.None);
@@ -383,9 +383,9 @@ public class GraphTraversalServiceTests
             .Returns(("MATCH p = (start:MemoryUnit {id: $startId}) RETURN start", new Dictionary<string, object> { ["startId"] = "mu-001" }));
 
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+            .Returns<RedisResult>(x => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
         db.ExecuteAsync(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns<RedisResult>(x => throw new RedisServerException("Graph not found"));
+            .Returns<RedisResult>(x => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
 
         // Act
         _ = await service.TraverseAsync("tenant-1", "mu-001", 3, null, null, CancellationToken.None);

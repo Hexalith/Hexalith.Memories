@@ -81,7 +81,7 @@ public class FalkorDbHealthCheckTests
         IDatabase db = Substitute.For<IDatabase>();
         falkorDb.GetDatabase().Returns(db);
 
-        var expectedException = new RedisConnectionException(ConnectionFailureType.UnableToConnect, "refused");
+        var expectedException = new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "refused");
         db.ExecuteAsync(Arg.Is("GRAPH.LIST")).ThrowsAsync(expectedException);
 
         FalkorDbHealthCheck check = new(falkorDb);
@@ -104,7 +104,7 @@ public class FalkorDbHealthCheckTests
         IDatabase db = Substitute.For<IDatabase>();
         falkorDb.GetDatabase().Returns(db);
 
-        var expectedException = new RedisServerException("ERR internal graph failure");
+        var expectedException = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("ERR internal graph failure");
         db.ExecuteAsync(Arg.Is("GRAPH.LIST")).ThrowsAsync(expectedException);
 
         FalkorDbHealthCheck check = new(falkorDb);

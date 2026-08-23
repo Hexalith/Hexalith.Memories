@@ -152,7 +152,7 @@ public class IngestDedupReservationTests
         db.StringSetAsync(
                 Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(),
                 Arg.Any<When>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "down"));
         IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
 
         IngestReservationResult result = await reservation.TryReserveAsync(
@@ -169,7 +169,7 @@ public class IngestDedupReservationTests
         db.StringSetAsync(
                 Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(),
                 Arg.Any<When>())
-            .ThrowsAsync(new RedisTimeoutException("timeout", CommandStatus.Unknown));
+            .ThrowsAsync(new RedisTimeoutException(StackExchange.Redis.CommandFlags.None, "timeout", CommandStatus.Unknown));
         IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
 
         IngestReservationResult result = await reservation.TryReserveAsync(
@@ -197,7 +197,7 @@ public class IngestDedupReservationTests
         // TTL is the backstop. ReleaseAsync swallows the Redis exception and logs a warning instead.
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
         db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "down"));
         IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
 
         await Should.NotThrowAsync(() => reservation.ReleaseAsync(

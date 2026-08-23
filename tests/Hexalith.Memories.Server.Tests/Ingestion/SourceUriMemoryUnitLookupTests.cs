@@ -124,7 +124,7 @@ public class SourceUriMemoryUnitLookupTests
         // error) must surface so the endpoint maps it to a backend error rather than a false not-found.
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
         db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisServerException("LOADING Redis is loading the dataset in memory"));
+            .ThrowsAsync(Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("LOADING Redis is loading the dataset in memory"));
         SourceUriMemoryUnitLookup lookup = new(redis);
 
         await Should.ThrowAsync<RedisException>(() =>
@@ -138,7 +138,7 @@ public class SourceUriMemoryUnitLookupTests
         // it to a structured backend error rather than a false 404.
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
         db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "down"));
         SourceUriMemoryUnitLookup lookup = new(redis);
 
         await Should.ThrowAsync<RedisException>(() =>

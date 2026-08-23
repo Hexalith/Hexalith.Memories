@@ -117,7 +117,7 @@ public class DeleteFalkorDbBatchActivityTests
     {
         // Arrange
         (IDatabase db, IConnectionMultiplexer falkorDb) = CreateMockedFalkorDb();
-        SetupExecuteAsyncThrows(db, new RedisServerException("Graph not found"));
+        SetupExecuteAsyncThrows(db, Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Graph not found"));
 
         IGraphQueryBuilder queryBuilder = new GraphQueryBuilder();
         ILogger<DeleteFalkorDbBatchActivity> logger = Substitute.For<ILogger<DeleteFalkorDbBatchActivity>>();
@@ -140,7 +140,7 @@ public class DeleteFalkorDbBatchActivityTests
     {
         // Arrange
         (IDatabase db, IConnectionMultiplexer falkorDb) = CreateMockedFalkorDb();
-        SetupExecuteAsyncThrows(db, new RedisServerException("ERR Invalid graph operation"));
+        SetupExecuteAsyncThrows(db, Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("ERR Invalid graph operation"));
 
         IGraphQueryBuilder queryBuilder = new GraphQueryBuilder();
         ILogger<DeleteFalkorDbBatchActivity> logger = Substitute.For<ILogger<DeleteFalkorDbBatchActivity>>();

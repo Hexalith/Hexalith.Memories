@@ -299,7 +299,7 @@ public sealed class ConsistencyEndpointTests : IDisposable
         _factory.StubTenantActive("acme-consistency");
         _factory.InspectionService
             .InspectAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "down"));
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "down"));
 
         using HttpClient client = _factory.CreateClient();
 

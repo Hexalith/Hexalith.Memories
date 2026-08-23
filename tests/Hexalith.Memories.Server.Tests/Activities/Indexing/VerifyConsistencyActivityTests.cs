@@ -128,7 +128,7 @@ public class VerifyConsistencyActivityTests
     {
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>())
-            .Throws(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Connection failed"));
+            .Throws(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Connection failed"));
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb(true);
         IGraphQueryBuilder builder = CreateMockBuilder();
         VerifyConsistencyActivity activity = new(redis, falkorDb, builder, Substitute.For<ILogger<VerifyConsistencyActivity>>());

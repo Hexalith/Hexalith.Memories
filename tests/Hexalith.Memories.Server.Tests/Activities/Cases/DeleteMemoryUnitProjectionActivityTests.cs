@@ -64,7 +64,7 @@ public class DeleteMemoryUnitProjectionActivityTests
         MemoryUnitDeletionProjectionInput input = new("tenant-1", "case-001", "mu-001", []);
 
         redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<CommandFlags>())
-            .Returns(Task.FromException<long>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, "Vector delete failed")));
+            .Returns(Task.FromException<long>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Vector delete failed")));
 
         // Act / Assert — the failure surfaces for workflow retry and the syntactic hash survives,
         // so a replayed cleanup still finds the record and converges instead of diverging silently.

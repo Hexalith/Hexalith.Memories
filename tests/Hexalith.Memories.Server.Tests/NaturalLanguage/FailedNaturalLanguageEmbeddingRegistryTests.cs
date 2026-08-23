@@ -480,7 +480,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         IDatabase db = CreateDatabase();
         db.ExecuteAsync("MEMORY", Arg.Any<object[]>())
             .Returns(Task.FromException<RedisResult>(
-                new RedisConnectionException(ConnectionFailureType.SocketFailure, "redis unavailable")));
+                new RedisConnectionException(ConnectionFailureType.SocketFailure, StackExchange.Redis.CommandFlags.None, "redis unavailable")));
 
         FailedNaturalLanguageEmbeddingRegistry registry = CreateRegistry(db);
 

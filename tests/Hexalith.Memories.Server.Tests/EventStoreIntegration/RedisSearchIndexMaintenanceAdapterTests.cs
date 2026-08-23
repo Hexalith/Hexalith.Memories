@@ -88,9 +88,9 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
     {
         IDatabase db = Substitute.For<IDatabase>();
         db.Execute(Arg.Any<string>(), Arg.Any<object[]>())
-            .Returns(_ => throw new RedisServerException("Unknown index name"));
+            .Returns(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Unknown index name"));
         db.Execute(Arg.Any<string>(), Arg.Any<ICollection<object>>(), Arg.Any<CommandFlags>())
-            .Returns(_ => throw new RedisServerException("Unknown index name"));
+            .Returns(_ => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Unknown index name"));
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         RedisSearchIndexMaintenanceAdapter adapter = new(redis, NullLogger<RedisSearchIndexMaintenanceAdapter>.Instance);
@@ -150,7 +150,7 @@ public sealed class RedisSearchIndexMaintenanceAdapterTests
         RedisResult Execute(string command)
             => command switch
             {
-                "FT.CREATE" => throw new RedisServerException("Index already exists"),
+                "FT.CREATE" => throw Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("Index already exists"),
                 "FT.INFO" => CreateExistingIndexInfoResult(),
                 _ => RedisResult.Create(new RedisValue("OK")),
             };

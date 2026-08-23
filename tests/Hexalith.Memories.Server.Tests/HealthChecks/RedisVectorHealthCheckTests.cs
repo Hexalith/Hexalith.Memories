@@ -76,7 +76,7 @@ public class RedisVectorHealthCheckTests
         IDatabase db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
 
-        var expectedException = new RedisConnectionException(ConnectionFailureType.UnableToConnect, "refused");
+        var expectedException = new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "refused");
         db.ExecuteAsync(Arg.Is("MODULE"), Arg.Any<object[]>()).ThrowsAsync(expectedException);
 
         RedisVectorHealthCheck check = new(redis);
@@ -99,7 +99,7 @@ public class RedisVectorHealthCheckTests
         IDatabase db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
 
-        var expectedException = new RedisServerException("LOADING Redis is loading the dataset in memory");
+        var expectedException = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("LOADING Redis is loading the dataset in memory");
         db.ExecuteAsync(Arg.Is("MODULE"), Arg.Any<object[]>()).ThrowsAsync(expectedException);
 
         RedisVectorHealthCheck check = new(redis);
@@ -121,7 +121,7 @@ public class RedisVectorHealthCheckTests
         IDatabase db = Substitute.For<IDatabase>();
         redis.GetDatabase().Returns(db);
 
-        var expectedException = new RedisServerException("ERR unknown command 'MODULE'");
+        var expectedException = Hexalith.Memories.Server.Tests.RedisExceptionFactory.CreateServerException("ERR unknown command 'MODULE'");
         db.ExecuteAsync(Arg.Is("MODULE"), Arg.Any<object[]>()).ThrowsAsync(expectedException);
 
         RedisVectorHealthCheck check = new(redis);
