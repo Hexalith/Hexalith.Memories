@@ -26,6 +26,7 @@ using Hexalith.Memories.Server.Authentication;
 using Hexalith.Memories.Server.Cases;
 using Hexalith.Memories.Server.Consistency;
 using Hexalith.Memories.Server.Diagnostics;
+using Hexalith.Memories.Server.DerivedStores;
 using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Graph;
@@ -252,6 +253,7 @@ internal static class MemoriesServerServiceCollectionExtensions
         // survives across activity instances (but never a process restart).
         builder.Services.AddSingleton<ITenantIndexReadinessVerifier, TenantIndexReadinessVerifier>();
         builder.Services.AddSingleton<DirectoryIngestionService>();
+        builder.Services.AddSingleton<RedisDerivedStoreService>();
 
         // Story 6.2: per-tenant rate limiting and concurrency gate.
         builder.Services.AddSingleton<PerTenantConcurrencyGate>();
@@ -396,6 +398,9 @@ internal static class MemoriesServerServiceCollectionExtensions
             options.RegisterWorkflow<NaturalLanguageEmbeddingRetryWorkflow>();
 
             options.RegisterWorkflow<IngestionWorkflow>();
+            options.RegisterWorkflow<DerivedStoreCorrectionWorkflow>();
+            options.RegisterActivity<PromoteDerivedStoreSourceArtifactActivity>();
+            options.RegisterActivity<ApplyDerivedStoreCorrectionActivity>();
             options.RegisterWorkflow<CaseCreationProjectionWorkflow>();
             options.RegisterWorkflow<AnnotationProjectionWorkflow>();
             options.RegisterWorkflow<MemoryUnitDeletionProjectionWorkflow>();

@@ -23,6 +23,7 @@
     <Project Path="tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Contracts.Tests/Hexalith.Memories.Contracts.Tests.csproj" />
+    <Project Path="tests/Hexalith.Memories.DerivedStores.Tests/Hexalith.Memories.DerivedStores.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.EventStore.Tests/Hexalith.Memories.EventStore.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj" />
     <Project Path="tests/Hexalith.Memories.TestHelpers/Hexalith.Memories.TestHelpers.csproj" />

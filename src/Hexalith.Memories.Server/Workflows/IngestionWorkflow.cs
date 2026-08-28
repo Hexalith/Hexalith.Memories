@@ -10,6 +10,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.DerivedStores;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
 
@@ -517,6 +518,31 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                             UpdateCounter);
                     }
                 }
+
+                // Story 12.16: retain the exact source and resolved generation configuration for the
+                // governed MemoryUnit lifetime before any 24-hour claim-check payload is cleaned up.
+                currentStage = "promoting-source-artifact";
+                await context.CallActivityAsync<bool>(
+                    nameof(PromoteDerivedStoreSourceArtifactActivity),
+                    new PromoteDerivedStoreSourceArtifactInput(
+                        input.TenantId,
+                        memoryUnitId,
+                        input.CaseId,
+                        input.SourceUri,
+                        input.SourceType,
+                        contentType,
+                        contentBytes,
+                        sourcePayloadReference,
+                        embedding.Provider,
+                        GetEmbeddingModelIdentifier(embedding),
+                        embedding.Dimensions,
+                        input.Metadata,
+                        input.IngestedBy,
+                        input.CausationId,
+                        input.CorrelationId,
+                        System.Text.Json.JsonSerializer.Serialize(input.WorkflowConfiguration, MemoriesJsonContext.Options),
+                        ingestedAt),
+                    For(nameof(PromoteDerivedStoreSourceArtifactActivity)));
             }
             catch (Exception ex)
             {

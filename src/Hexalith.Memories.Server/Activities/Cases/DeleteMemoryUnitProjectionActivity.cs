@@ -11,6 +11,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.DerivedStores;
 
 using StackExchange.Redis;
 
@@ -41,11 +42,13 @@ internal sealed class DeleteMemoryUnitProjectionActivity(
         string muKey = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, memoryUnitId);
         RedisKey[] semanticKeys = await FindSemanticKeysAsync(tenantId, memoryUnitId).ConfigureAwait(false);
         string nlVecKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, memoryUnitId);
+        string sourceArtifactKey = RedisDerivedStoreService.BuildSourceArtifactKey(tenantId, memoryUnitId);
         (string graphQuery, IDictionary<string, object> graphParams) = graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
 
         await Task.WhenAll(
             db.KeyDeleteAsync(semanticKeys),
             db.KeyDeleteAsync(nlVecKey),
+            db.KeyDeleteAsync(sourceArtifactKey),
             falkor.SelectGraph(tenantId).QueryAsync(graphQuery, graphParams)).ConfigureAwait(false);
         await db.KeyDeleteAsync(muKey).ConfigureAwait(false);
     }

@@ -168,6 +168,21 @@ public static class MemoriesRoutes
     /// <summary>Restore workflow status route (<c>GET /api/v1/tenants/{tenantId}/restore/{instanceId}</c>).</summary>
     public const string RestoreStatus = "/api/v1/tenants/{tenantId}/restore/{instanceId}";
 
+    /// <summary>Tenant-scoped metadata-only diagnostic derived-store collection.</summary>
+    public const string DerivedStoreDiagnostics = "/api/v1/tenants/{tenantId}/diagnostics/derived-stores/{storeClass}";
+
+    /// <summary>One tenant-scoped metadata-only diagnostic derived-store entry.</summary>
+    public const string DerivedStoreDiagnostic = "/api/v1/tenants/{tenantId}/diagnostics/derived-stores/{storeClass}/{resourceId}";
+
+    /// <summary>Atomic finalized ingestion-binding operation.</summary>
+    public const string DerivedStoreBindings = "/api/v1/tenants/{tenantId}/derived-stores/bindings";
+
+    /// <summary>Start-or-rejoin derived-store correction operation.</summary>
+    public const string DerivedStoreCorrections = "/api/v1/tenants/{tenantId}/derived-stores/corrections";
+
+    /// <summary>Queryable derived-store correction status.</summary>
+    public const string DerivedStoreCorrection = "/api/v1/tenants/{tenantId}/derived-stores/corrections/{operationId}";
+
     // ---- Client-facing relative path builders (segment values escaped) ----
 
     /// <summary>Builds the relative DAPR service-invocation health path.</summary>
@@ -181,6 +196,11 @@ public static class MemoriesRoutes
     /// <summary>Builds the relative client request path for <c>POST /api/v1/ingest</c>.</summary>
     /// <returns>The relative request path.</returns>
     public static string IngestPath() => Relative(Ingest);
+
+    /// <summary>Builds the relative request path for one ingestion workflow status.</summary>
+    /// <param name="instanceId">The workflow instance identifier.</param>
+    /// <returns>The relative status path with the instance segment escaped.</returns>
+    public static string IngestStatusPath(string instanceId) => Fill(IngestStatus, ("instanceId", instanceId));
 
     /// <summary>Builds the absolute status location returned after scheduling an ingestion workflow.</summary>
     /// <param name="instanceId">The workflow instance identifier.</param>
@@ -360,6 +380,30 @@ public static class MemoriesRoutes
     /// <returns>The relative restore-status path with both segments escaped.</returns>
     public static string RestoreStatusPath(string tenantId, string instanceId)
         => Fill(RestoreStatus, ("tenantId", tenantId), ("instanceId", instanceId));
+
+    /// <summary>Builds the relative path for a tenant-local diagnostic category.</summary>
+    public static string DerivedStoreDiagnosticsPath(string tenantId, string storeClass)
+        => Fill(DerivedStoreDiagnostics, ("tenantId", tenantId), ("storeClass", storeClass));
+
+    /// <summary>Builds the relative path for one tenant-local diagnostic entry.</summary>
+    public static string DerivedStoreDiagnosticPath(string tenantId, string storeClass, string resourceId)
+        => Fill(
+            DerivedStoreDiagnostic,
+            ("tenantId", tenantId),
+            ("storeClass", storeClass),
+            ("resourceId", resourceId));
+
+    /// <summary>Builds the relative path for atomic finalized binding publication.</summary>
+    public static string DerivedStoreBindingsPath(string tenantId)
+        => Fill(DerivedStoreBindings, ("tenantId", tenantId));
+
+    /// <summary>Builds the relative path for start-or-rejoin correction.</summary>
+    public static string DerivedStoreCorrectionsPath(string tenantId)
+        => Fill(DerivedStoreCorrections, ("tenantId", tenantId));
+
+    /// <summary>Builds the relative path for queryable correction status.</summary>
+    public static string DerivedStoreCorrectionPath(string tenantId, string operationId)
+        => Fill(DerivedStoreCorrection, ("tenantId", tenantId), ("operationId", operationId));
 
     /// <summary>Returns the relative (leading-slash-trimmed) form of a template that has no placeholders.</summary>
     /// <param name="template">The absolute route template.</param>

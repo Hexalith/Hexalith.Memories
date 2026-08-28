@@ -31,9 +31,12 @@ public sealed class ReleaseDedupKeyIfOwnedActivity : WorkflowTraceLinkedActivity
         ArgumentException.ThrowIfNullOrWhiteSpace(input.MemoryUnitId);
 
         IDatabase db = _redis.GetDatabase();
-        return await db.StringDeleteAsync(
-            input.DedupKey,
-            ValueCondition.Equal(input.MemoryUnitId),
-            CommandFlags.None).ConfigureAwait(false);
+        ITransaction transaction = db.CreateTransaction();
+#pragma warning disable SER301 // The deployed Redis compatibility floor does not guarantee the Redis 8.4 conditional-delete command.
+        transaction.AddCondition(Condition.StringEqual(input.DedupKey, input.MemoryUnitId));
+        Task<bool> delete = transaction.KeyDeleteAsync(input.DedupKey, CommandFlags.None);
+#pragma warning restore SER301
+        return await transaction.ExecuteAsync(CommandFlags.None).ConfigureAwait(false)
+            && await delete.ConfigureAwait(false);
     }
 }

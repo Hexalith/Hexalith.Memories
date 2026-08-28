@@ -92,6 +92,7 @@ app.MapConsistencyEndpoints();
 app.MapCasesEndpoints();
 app.MapSearchEndpoints();
 app.MapGraphEndpoints();
+app.MapDerivedStoreEndpoints();
 
 app.Run();
 

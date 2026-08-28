@@ -134,7 +134,8 @@ internal partial class TenantExportService
             throw new RedisConnectionException(
                 ConnectionFailureType.UnableToConnect,
                 CommandFlags.None,
-                $"Redis server unavailable while capturing tenant export snapshot for tenant '{tenantId}'.");
+                $"Redis server unavailable while capturing tenant export snapshot for tenant '{tenantId}'.",
+                null);
         }
 
         ExportedTenantConfig tenantConfig = await BuildTenantConfigAsync(entry, ct).ConfigureAwait(false);
@@ -418,7 +419,8 @@ internal partial class TenantExportService
             throw new RedisConnectionException(
                 ConnectionFailureType.UnableToConnect,
                 CommandFlags.None,
-                $"Redis server unavailable while enumerating memory units for tenant '{tenantId}'.");
+                $"Redis server unavailable while enumerating memory units for tenant '{tenantId}'.",
+                null);
         }
 
         string pattern = IndexSchemaDefinitions.GetSyntacticKeyPrefix(tenantId) + "*";

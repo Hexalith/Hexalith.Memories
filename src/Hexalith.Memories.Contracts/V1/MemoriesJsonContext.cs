@@ -9,6 +9,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
+using Hexalith.Memories.Contracts.V1.DerivedStores;
+
 /// <summary>Source-generated JSON metadata for commonly exchanged Memories contracts.</summary>
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(AddCaseMemberInput))]
@@ -191,6 +193,18 @@ using System.Text.Json.Serialization.Metadata;
 [JsonSerializable(typeof(HandlerMismatchSeverity))]
 [JsonSerializable(typeof(SearchIndexEntryChanged))]
 [JsonSerializable(typeof(SearchIndexEntryRemoved))]
+[JsonSerializable(typeof(DiagnosticStoreClass))]
+[JsonSerializable(typeof(DiagnosticStoreEntry))]
+[JsonSerializable(typeof(IReadOnlyList<DiagnosticStoreEntry>))]
+[JsonSerializable(typeof(DiagnosticStoreDeleteResult))]
+[JsonSerializable(typeof(DerivedStoreRecordKind))]
+[JsonSerializable(typeof(DerivedStoreBindingEntry))]
+[JsonSerializable(typeof(IReadOnlyList<DerivedStoreBindingEntry>))]
+[JsonSerializable(typeof(FinalizeDerivedStoreBindingRequest))]
+[JsonSerializable(typeof(DerivedStoreBinding))]
+[JsonSerializable(typeof(StartDerivedStoreCorrectionRequest))]
+[JsonSerializable(typeof(DerivedStoreCorrectionState))]
+[JsonSerializable(typeof(DerivedStoreCorrectionStatus))]
 internal sealed partial class MemoriesJsonSourceGenerationContext : JsonSerializerContext;
 
 /// <summary>Shared JSON serialization options for Memories V1 wire contracts.</summary>

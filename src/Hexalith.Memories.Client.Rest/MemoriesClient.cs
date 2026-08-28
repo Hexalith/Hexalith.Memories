@@ -12,6 +12,7 @@ using System.Net.Http.Json;
 using System.Text;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Contracts.V1.DerivedStores;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -392,6 +393,24 @@ public class MemoriesClient
         string? idempotencyToken,
         CancellationToken ct)
         => IngestCoreAsync(tenantId, caseId, sourceUri, content, contentType, ingestedBy, metadata, idempotencyToken, ct);
+
+    /// <summary>Gets the safe tenant-scoped status of an ingestion workflow.</summary>
+    /// <param name="instanceId">The workflow instance identifier returned by <see cref="IngestAsync(string, string, string, byte[], string, string, IReadOnlyDictionary{string, MetadataField}, CancellationToken)"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The workflow status, including the canonical memory-unit identity only after terminal success.</returns>
+    public virtual async Task<IngestionWorkflowStatus> GetIngestionWorkflowStatusAsync(
+        string instanceId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
+
+        using HttpResponseMessage response = await _httpClient
+            .GetAsync(MemoriesRoutes.IngestStatusPath(instanceId), ct)
+            .ConfigureAwait(false);
+
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+        return await ReadRequiredAsync<IngestionWorkflowStatus>(response, ct).ConfigureAwait(false);
+    }
 
     private async Task<string> IngestCoreAsync(
         string tenantId,
@@ -1198,6 +1217,115 @@ public class MemoriesClient
         return await SendOptionalAsync<RestoreStatusResponse>(
             MemoriesRoutes.RestoreStatusPath(tenantId, instanceId),
             ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Writes or replaces one metadata-only tenant diagnostic entry.</summary>
+    public virtual async Task PutDiagnosticEntryAsync(
+        string tenantId,
+        DiagnosticStoreClass storeClass,
+        string resourceId,
+        DiagnosticStoreEntry entry,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
+        ArgumentNullException.ThrowIfNull(entry);
+        if (!string.Equals(resourceId, entry.ResourceId, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The route resource identifier must match the entry resource identifier.", nameof(entry));
+        }
+
+        string path = MemoriesRoutes.DerivedStoreDiagnosticPath(tenantId, storeClass.ToString(), resourceId);
+        using HttpResponseMessage response = await _httpClient
+            .PutAsJsonAsync(path, entry, MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Gets one tenant-local metadata-only diagnostic entry.</summary>
+    public virtual Task<DiagnosticStoreEntry?> GetDiagnosticEntryAsync(
+        string tenantId,
+        DiagnosticStoreClass storeClass,
+        string resourceId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
+        return SendOptionalAsync<DiagnosticStoreEntry>(
+            MemoriesRoutes.DerivedStoreDiagnosticPath(tenantId, storeClass.ToString(), resourceId),
+            ct);
+    }
+
+    /// <summary>Lists entries in one tenant-local metadata-only diagnostic category.</summary>
+    public virtual Task<IReadOnlyList<DiagnosticStoreEntry>> ListDiagnosticEntriesAsync(
+        string tenantId,
+        DiagnosticStoreClass storeClass,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        return SendAsync<IReadOnlyList<DiagnosticStoreEntry>>(
+            MemoriesRoutes.DerivedStoreDiagnosticsPath(tenantId, storeClass.ToString()),
+            ct);
+    }
+
+    /// <summary>Structurally deletes one tenant-local diagnostic entry.</summary>
+    public virtual async Task<bool> DeleteDiagnosticEntryAsync(
+        string tenantId,
+        DiagnosticStoreClass storeClass,
+        string resourceId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceId);
+        using HttpResponseMessage response = await _httpClient
+            .DeleteAsync(MemoriesRoutes.DerivedStoreDiagnosticPath(tenantId, storeClass.ToString(), resourceId), ct)
+            .ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+        DiagnosticStoreDeleteResult result = await ReadRequiredAsync<DiagnosticStoreDeleteResult>(response, ct).ConfigureAwait(false);
+        return result.Deleted;
+    }
+
+    /// <summary>Atomically finalizes a complete message-plus-attachment ingestion binding.</summary>
+    public virtual async Task<DerivedStoreBinding> FinalizeDerivedStoreBindingAsync(
+        string tenantId,
+        FinalizeDerivedStoreBindingRequest request,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentNullException.ThrowIfNull(request);
+        using HttpResponseMessage response = await _httpClient
+            .PostAsJsonAsync(MemoriesRoutes.DerivedStoreBindingsPath(tenantId), request, MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+        return await ReadRequiredAsync<DerivedStoreBinding>(response, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Starts or rejoins the deterministic durable correction for an intake version.</summary>
+    public virtual async Task<DerivedStoreCorrectionStatus> StartOrRejoinDerivedStoreCorrectionAsync(
+        string tenantId,
+        StartDerivedStoreCorrectionRequest request,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentNullException.ThrowIfNull(request);
+        using HttpResponseMessage response = await _httpClient
+            .PostAsJsonAsync(MemoriesRoutes.DerivedStoreCorrectionsPath(tenantId), request, MemoriesJsonContext.Options, ct)
+            .ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+        return await ReadRequiredAsync<DerivedStoreCorrectionStatus>(response, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Gets queryable durable correction status.</summary>
+    public virtual Task<DerivedStoreCorrectionStatus> GetDerivedStoreCorrectionStatusAsync(
+        string tenantId,
+        string operationId,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(operationId);
+        return SendAsync<DerivedStoreCorrectionStatus>(
+            MemoriesRoutes.DerivedStoreCorrectionPath(tenantId, operationId),
+            ct);
     }
 
     private static async Task<RestoreAcceptedResponse> ReadRestoreAcceptedResponseAsync(

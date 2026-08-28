@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Hexalith.Memories.Server.Tests" />
+    <InternalsVisibleTo Include="Hexalith.Memories.DerivedStores.Tests" />
     <InternalsVisibleTo Include="Hexalith.Memories.IntegrationTests" />
     <InternalsVisibleTo Include="Hexalith.Memories.Benchmarks" />
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />

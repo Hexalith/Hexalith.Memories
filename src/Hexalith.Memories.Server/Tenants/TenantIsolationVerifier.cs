@@ -785,7 +785,8 @@ public sealed partial class TenantIsolationVerifier
         => new(
             ConnectionFailureType.UnableToConnect,
             CommandFlags.None,
-            $"No connected Redis server endpoint is available for {scanName}.");
+            $"No connected Redis server endpoint is available for {scanName}.",
+            null);
 
     private static HashSet<string> ParseGraphList(RedisResult result)
     {

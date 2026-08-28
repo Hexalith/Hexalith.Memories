@@ -107,6 +107,14 @@ public static class ErrorMessageCatalog
                 CliMessage: null,
                 CliSuggestion: "Review the command arguments. Run 'memories --help' for valid inputs.",
                 ExitCode: 1),
+            ["DERIVED_STORE_REQUEST_INVALID"] = new(
+                CliMessage: null,
+                CliSuggestion: "Review the diagnostic or derived-store request identifiers, ordering, and source-version values, then retry.",
+                ExitCode: 1),
+            ["DIAGNOSTIC_CLASS_INVALID"] = new(
+                CliMessage: null,
+                CliSuggestion: "Use one of the supported diagnostic store classes and retry.",
+                ExitCode: 1),
             ["INVALID_AXIS"] = new(
                 CliMessage: null,
                 CliSuggestion: "Use one of: syntactic, semantic, nl, graph, hybrid.",
@@ -486,6 +494,11 @@ public static class ErrorMessageCatalog
             ["BACKEND_UNAVAILABLE"] = new(
                 CliMessage: null,
                 CliSuggestion: "Backend recovers automatically; retry shortly. Check Redis Stack connectivity.",
+                ExitCode: 2),
+
+            ["DERIVED_STORE_BACKEND_UNAVAILABLE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Derived-store infrastructure is unavailable. Check Redis Stack and FalkorDB health, then retry.",
                 ExitCode: 2),
 
             // Used in BOTH fatal (HTTP 503) and per-axis-degraded contexts. Wording must work in both.
