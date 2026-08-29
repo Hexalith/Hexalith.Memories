@@ -3,7 +3,7 @@ title: 'Story 24.6: Graph Content-Level Tenant Isolation Evidence'
 type: 'feature'
 created: '2026-08-12'
 status: 'review'
-review_loop_iteration: 8
+review_loop_iteration: 11
 baseline_commit: '0ecdffed0b131d05816306da1c7061eb88bda5bf'
 context:
   - '{project-root}/_bmad-output/project-context.md'
@@ -37,6 +37,25 @@ context:
 
 </frozen-after-approval>
 
+## Historical Context Classification
+
+| Source | Classification | Permitted use |
+| :----- | :------------- | :------------ |
+| Story 24.3 | `historical-reference-only` | Preserve its structural verifier and fail-closed evidence; do not reopen or expand its completed slice. |
+| Story 29.1 | `current-narrow-pattern` | Reuse its OpenBao restart regression and fixture ownership as the ratified C2 pattern; do not reopen its completed secret-topology slice. |
+| Current graph/search integration-test bodies | `anti-template` | Treat their actual bodies as the current problem baseline, not as proof of their names. |
+| PRD NFR8 graph fixture | `current-narrow-pattern` | Reuse the identical-structure and colliding-edge outcome. |
+| Story 20.2 | `anti-template` | Re-run only its denial-before-dependency assertion pattern; do not reopen its completed authorization slice. |
+
+## Slice Proof
+
+Story 24.6 is the Administrator-ratified C1/C2 umbrella and remains one tracking
+story. C1 is the collision-shaped FalkorDB fixture and authenticated tenant-local
+graph traversal. C2 is the in-place OpenBao restart, primary Dapr endpoint rotation,
+and recovered actor-proxy call. Each checkpoint retains its own owner, evidence,
+review state, and completion state in the canonical story artifact. This spec does
+not create another checkpoint or absorb Stories 24.7-24.9.
+
 ## Code Map
 
 - `tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs` -- replace the placeholder collision test; remove the misleading all-axis test after canonical negatives pass.
@@ -44,6 +63,7 @@ context:
 - `src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs`, `Contracts/V1/TraversalEdgeInfo.cs` -- reuse parameterized seeding and traversal-visible `VerifiedBy`; read-only.
 - `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs` and its tests -- retain `GRAPH.LIST` only; pin structural wording, proof citation, and no `GRAPH.QUERY`.
 - `docs/operations/{tenant-onboarding-offboarding,route-surface}.md` and `OperationalRunbookSetTests.cs` -- document and guard the evidence boundary.
+- `tests/Hexalith.Memories.IntegrationTests/Fixtures/OpenBaoTopologyIntegrationTests.cs` -- C2 required surface; asserts sidecar endpoint rotation and post-rotation actor call recovery across in-place OpenBao restart.
 - Canonical tenant/search integration tests and `ServerEndpointAuthorizationTests.cs` -- required read-only evidence unless execution exposes a defect.
 
 ## Tasks & Acceptance
@@ -60,6 +80,7 @@ context:
 - Given the collision fixture passes and the four named axis-specific negatives are verified, when evidence is recorded, then the redundant all-axis verifier test is absent.
 - Given runtime `GraphIsolation` uses `GRAPH.LIST`, when verifier output and operator docs describe it, then verifier Details carry the structural-only label plus the manifest-bound method citation, the paired runbooks carry the exact focused integration command, and runtime verification does not add a content scan.
 - Given the integration lane cannot run, when completion is evaluated, then status remains non-done unless a human accepts a blocker recording owner, consequence, proof boundary, and reopen trigger.
+- Given an in-place OpenBao restart, when the required integration-fast surface runs, then the primary Dapr sidecar HTTP endpoint changes and a replacement actor-proxy factory completes a real post-rotation actor call.
 
 ## Spec Change Log
 
@@ -80,6 +101,11 @@ context:
 - 2026-08-14: Eighth-pass closure applied AC5, the AC3 D4 split, story-own File List
   derivation, structural-prefix failure/unavailable Details, source and received-call
   guard repairs, planted-edge tenant-B re-traversal, and runbook topology preconditions.
+- 2026-08-16: Ninth-pass review evaluated 19 findings; applied 5 governance patches (closure status,
+  sprint evidence, W6 resolution, canonical historical/slice context, and chronological phase ordering).
+- 2026-08-17: Tenth-pass review evaluated 15 findings; clean review with all layers passed.
+- 2026-08-18: Eleventh-pass review chunk 1 (code/tests/docs) and chunk 2 (governance/planning artifacts)
+  resolved Decision 1 Option 2 and applied all closure patches.
 
 ## Verification
 
@@ -88,6 +114,8 @@ context:
 - `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Tenants.TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` -- expected: real FalkorDB collision proof passes with this machine's active local Dapr placement/scheduler mappings.
 - `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -class Hexalith.Memories.IntegrationTests.Tenants.TenantContextEnforcementIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.GraphScopedSearchIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.SyntacticSearchIntegrationTests -class Hexalith.Memories.IntegrationTests.Search.SemanticSearchIntegrationTests` -- expected: canonical negatives pass with this machine's active local Dapr placement/scheduler mappings.
 - `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug --disable-build-servers -m:1 /nr:false && DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Tenants.TenantIsolationVerifierTests -class Hexalith.Memories.Server.Tests.Deployment.OperationalRunbookSetTests -class Hexalith.Memories.Server.Tests.Authentication.ServerEndpointAuthorizationTests` -- expected: verifier, doc, and denial-before-dependency gates pass.
+- `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.IntegrationTests/bin/Debug/net10.0/Hexalith.Memories.IntegrationTests.dll -method Hexalith.Memories.IntegrationTests.Fixtures.OpenBaoTopologyIntegrationTests.InPlaceOpenBaoRestart_RotatesGenerationAndRecoversDependentSidecars` -- expected: primary Dapr endpoint changes and replacement actor proxy succeeds.
+- `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050 MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060 bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release --no-build --results-directory TestResults/integration-fast` and `python3 tools/verify-integration-fast-coverage.py --results-directory TestResults/integration-fast` -- expected: Release lane passes and covers all 19 required surfaces.
 
 **Results (seventh-pass rerun, 2026-08-13):**
 
@@ -640,7 +668,7 @@ their existing deferred homes rather than being duplicated.
 - The new `ShouldNotBe(daprEndpointBeforeRestart, …)` makes a same-port sidecar restart red a required CI surface while C1/C2 exclusions list "same-port sidecar restart recovery" as out of scope. Dismissed: the behaviour is declared intentional in the closure spec's I/O matrix ("Unchanged endpoint fails the regression"), and `AspireIngestionPipelineFixture.cs:639-645` reconnects **only** when the endpoint differs — so on a same-port restart the clients are stale and the regression should fail. The assertion converts a confusing downstream failure into a named one.
 - The closure spec's `baseline_commit: '1d2862f4'` differs from the `0ecdffed` baseline all reconciliation uses. Dismissed: each is correct for its own scope — the closure spec governs the `1d2862f4`→worktree delta, the story governs `0ecdffed`→worktree, and the closure spec's Verification explicitly uses the `0ecdffed` raw union for story reconciliation.
 - No current full-`Hexalith.Memories.Server.Tests` assembly run covers the 2026-08-13 edits. Dismissed: the entire cumulative production delta is one XML doc comment and one `Details` string (`git diff 0ecdffed -- src/` = 3 insertions, 1 deletion), so the clean Debug build plus the focused 58-case gate is the proportionate proof the story already declares.
-- Non-passing `GraphIsolation` branches carry no structural-only framing. Dismissed: already tracked as `24.6-CR-W6`, `Status: carried-forward`, with an owner and re-open trigger.
+- Non-passing `GraphIsolation` branches carry no structural-only framing. Dismissed at the sixth pass because it was tracked as `24.6-CR-W6`; E-P12 later added the framing and the deferred entry is now `Status: resolved`.
 
 ## Suggested Review Order
 
@@ -814,3 +842,26 @@ a patch item; the resolutions are recorded here so a later reader does not re-op
   amendment is judged to fall outside that prohibition because D4 is a ratified **design** decision — a
   command must not be lengthened into the V1 `Details` contract string — and not an accommodation of
   unfinished work. The amendment must preserve AC3's substantive obligation on both surfaces.
+
+## Review Findings — Eleventh Pass (chunk 1, code review 2026-08-18)
+
+Eleventh-pass adversarial review of chunk 1 (code, tests, operator docs; 10 File List paths vs `0ecdffed`). Six layers. Chunk 2 is outstanding.
+
+- [x] [Review][Patch] (Decision 1 -> option 2: keep path-level 24.6 File List ownership; name 24.7 and 24.8 as external same-lane owners; do not absorb their ACs; do not revert their hunks) Stop asserting Server.Tests **86** as the current observed total; record 24.8 beside 24.7 as an additional external same-lane owner; keep the blocked-evidence quintet until live discovery runs [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:164]
+- [x] [Review][Patch] Add the exact evidence command or the full blocked-evidence quintet to the 2026-08-16 ninth-pass `code-review` Test count cell [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:206]
+- [x] [Review][Patch] Replace the invented `58 -> 58` on the retrospective `correct-course` row with a complete blocked-evidence record or `phase delta +0` citing the surrounding runner command; do not reorder the append-only table [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:203]
+
+## Review Findings — Eleventh Pass (chunk 2, code review 2026-08-18)
+
+Eleventh-pass adversarial review of chunk 2 (9 governance and planning artifacts; 9 files vs `0ecdffed`). Six layers.
+
+- [x] [Review][Patch] Set canonical spec frontmatter status to 'review' and update review_loop_iteration to 11 [_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md:5]
+- [x] [Review][Patch] Add AC5 (post-OpenBao-restart endpoint rotation and recovered actor access) to Acceptance Criteria in canonical spec [_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md:82]
+- [x] [Review][Patch] Add C2 OpenBao restart and integration-fast verification commands to canonical spec Verification section [_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md:110]
+- [x] [Review][Patch] Update authoritative test duration in 24.3-GRAPH-CONTENT-EVIDENCE deferred entry to 254.358s on 2026-08-14 [_bmad-output/implementation-artifacts/deferred-work.md:1900]
+- [x] [Review][Patch] Format eighth-pass deferred work entries (24.6-F8-W5 through W10) into canonical structured schema with ID, Status, Target artifact, Rationale, and Re-open trigger [_bmad-output/implementation-artifacts/deferred-work.md:3393-3416]
+- [x] [Review][Patch] Add passes 9 and 10 to Spec Change Log in canonical spec [_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md:102]
+- [x] [Review][Patch] Add OpenBaoTopologyIntegrationTests.cs to Code Map in canonical spec [_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md:67]
+- [x] [Review][Patch] Update inline comment for Story 24.6 in sprint-status.yaml to reflect eleventh pass review and Decision 1 Option 2 [_bmad-output/implementation-artifacts/sprint-status.yaml:426]
+
+

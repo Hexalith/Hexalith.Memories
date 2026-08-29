@@ -1897,7 +1897,7 @@ Cross-repository asks raised by the `Hexalith.Parties` consumer correct-course i
   - Backlog home: Story 24.6
   - Owner: Murat / Test Architect and Developer
   - Rationale: The graph-content evidence is implemented and verified, but its owning Story 24.6 remains in review. Keeping the entry carried forward preserves the deferred-work lifecycle contract until the story reaches `done`.
-  - Evidence: Story 24.6 implemented `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` with identical tenant A/B node IDs, topology, insertion order, graph-scoped relationship-ID collision, authenticated dual-tenant traversal, tenant-local node/edge markers, and zero foreign markers. The assertion-sensitivity control `VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage` plants a tenant B edge-marker literal in tenant A and proves the edge-locality assertion rejects it; it is not cross-tenant access evidence and does not mutation-test the node-marker assertions. The final authoritative real Aspire/FalkorDB owning-class run on 2026-08-13 passed 7 total, 0 failed, 0 skipped in 243.340 seconds with `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050` and `MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060`; it supersedes every earlier method/class duration. The current verifier/runbook/authorization result is recorded once in the target story's seventh-pass verification row rather than duplicated with a competing duration here. Proof boundary: `SeedCollisionGraphAsync` writes through `falkor.SelectGraph(tenantId)` directly rather than through production ingestion, so this evidence proves authenticated read-path tenant routing and graph-content locality under collisions, not production write-path tenant selection; write-path isolation remains separately deferred. Exact commands are recorded in the target artifact and its linked implementation spec. This entry remains carried forward while Story 24.6 is in review and moves to resolved only when Story 24.6 reaches `done`.
+  - Evidence: Story 24.6 implemented `TenantIsolationIntegrationTests.VerifyTenant_IdenticalGraphStructures_ZeroCrossTenantNodes` with identical tenant A/B node IDs, topology, insertion order, graph-scoped relationship-ID collision, authenticated dual-tenant traversal, tenant-local node/edge markers, and zero foreign markers. The assertion-sensitivity control `VerifyTenant_PlantedForeignGraphEdgeMarker_CollisionAssertionsDetectLeakage` plants a tenant B edge-marker literal in tenant A and proves the edge-locality assertion rejects it; it is not cross-tenant access evidence and does not mutation-test the node-marker assertions. The final authoritative real Aspire/FalkorDB owning-class run on 2026-08-14 passed 7 total, 0 failed, 0 skipped in 254.358 seconds with `MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS=localhost:6050` and `MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS=localhost:6060` (following the tenant-B PreviousConfidence obligation); it supersedes every earlier method/class duration. The current verifier/runbook/authorization result is recorded once in the target story's verification table rather than duplicated with a competing duration here. Proof boundary: `SeedCollisionGraphAsync` writes through `falkor.SelectGraph(tenantId)` directly rather than through production ingestion, so this evidence proves authenticated read-path tenant routing and graph-content locality under collisions, not production write-path tenant selection; write-path isolation remains separately deferred. Exact commands are recorded in the target artifact and its linked implementation spec. This entry remains carried forward while Story 24.6 is in review and moves to resolved only when Story 24.6 reaches `done`.
   - Re-open trigger: Story 24.6 reaches `done` (promote this entry to `resolved`), or any change to the graph fixture, `AssertTraversalIsFixtureLocal`, `GraphQueryBuilder`, traversal route/authorization, FalkorDB tenant selection, removal/skip/rename of either the positive or assertion-sensitivity method, any claim that `GRAPH.LIST` or unit mocks prove content isolation, or a future required lane that cannot execute the real backend.
 
 - **Story 24.3 configured vector-dimension authority.**
@@ -3086,10 +3086,10 @@ independently re-executed and passed.
 - **Non-passing graph-isolation branches do not repeat the structural-only label.**
 
   - ID: 24.6-CR-W6
-  - Status: carried-forward
+  - Status: resolved
   - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
   - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
-  - Rationale: The method-level contract and successful HTTP-visible detail establish the proof boundary; duplicating the wording across failure and unavailable branches is a diagnostic-consistency improvement outside this bounded repair.
+  - Evidence: E-P12 prefixed the missing-graph and backend-unavailable `GraphIsolation.Details` branches with the structural-only label. The focused verifier, runbook, and authorization gate passed 86/86 after the repair.
   - Re-open trigger: An operator or automated consumer interprets a failed or unavailable `GraphIsolation` result as graph-content proof, or those branch messages are otherwise revised.
 
 - **The HTTP-visible graph detail has no explicit length or format contract.**
@@ -3389,3 +3389,59 @@ block required by the schema above.
 - source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md`
   summary: Convert Redis command timeouts across tenant-isolation checks into structured backend-unavailable evidence.
   evidence: `TenantIsolationVerifier` catches connection and server exceptions but not `RedisTimeoutException`, so an index-info, cursor-adjacent, or hash-field timeout can escape `VerifyAsync` instead of returning the verifier's backend-unavailable result contract.
+
+- **Missing CancellationToken and unhandled WRONGTYPE in syntactic hash prefix scan.**
+
+  - ID: 24.6-F8-W5
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Re-open trigger: Syntactic isolation verification fails on non-hash Redis keys under tenant prefix or is unable to cancel in-flight hash inspections.
+  - Rationale: `TenantIsolationVerifier.ScanHashPrefixForTenantFieldMismatchesAsync` calls `await db.HashGetAsync(key, "tenantId")` without passing `CancellationToken ct` and does not handle `RedisServerException` on WRONGTYPE non-hash keys. Pre-existing behavior outside story scope.
+
+- **Inconsistent entry CancellationToken checks in TenantIsolationVerifier methods.**
+
+  - ID: 24.6-F8-W6
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Re-open trigger: Cancellation token propagation standards are audited across all server verification services.
+  - Rationale: `CheckIndexExistenceAsync`, `CheckSyntacticIsolationAsync`, and `CheckOrphanedDatabasesAsync` lack entry `ct.ThrowIfCancellationRequested()` and do not bind Redis operations to `ct`. Pre-existing behavior outside story scope.
+
+- **Optimize ScanSemanticHashPrefixForTenantEvidenceAsync to single Redis command round-trip per key.**
+
+  - ID: 24.6-F8-W7
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Re-open trigger: Story 24.8 optimizes semantic hash prefix scanning performance.
+  - Rationale: For every scanned key, `ScanSemanticHashPrefixForTenantEvidenceAsync` executes separate `HashGetAsync` and `HashExistsAsync` calls; retrieving `naturalLanguageDescription` in the discriminator batch avoids redundant round-trips. Pre-existing behavior owned by Story 24.8.
+
+- **Broaden IsEmbeddingConfigurationUnavailable exception filters in TenantIsolationVerifier.**
+
+  - ID: 24.6-F8-W8
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Re-open trigger: Story 24.7 audits provider lookup error handling.
+  - Rationale: `IsEmbeddingConfigurationUnavailable` filters for four specific exception types; unexpected I/O or RPC exceptions during provider lookups could surface as unhandled 500 errors instead of structured check results. Pre-existing behavior owned by Story 24.7.
+
+- **Support dual remediation when classification gap and dimension mismatch co-occur.**
+
+  - ID: 24.6-F8-W9
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Re-open trigger: Story 24.8 addresses dual remediation formatting.
+  - Rationale: `TenantIsolationVerifier.CheckSemanticIsolationAsync` suppresses vector dimension remediation guidance when a key classification gap is also present. Pre-existing behavior owned by Story 24.8.
+
+- **Add replica endpoint filtering in GetConnectedServers for clustered Redis deployments.**
+
+  - ID: 24.6-F8-W10
+  - Status: carried-forward
+  - Source story: 24-6-graph-content-level-tenant-isolation-evidence
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Re-open trigger: Redis cluster deployment topology validation is performed.
+  - Rationale: `TenantIsolationVerifier.GetConnectedServers` does not filter out `server.IsReplica`, which can cause duplicate scans across replicas in clustered or primary-replica topologies. Pre-existing behavior outside story scope.
+
+

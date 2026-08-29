@@ -2,7 +2,7 @@
 title: 'Story 24.6 Eighth-Pass Action-Item Closure'
 type: 'bugfix'
 created: '2026-08-14'
-status: 'done'
+status: 'review'
 review_loop_iteration: 1
 baseline_commit: '301041626f32d4fb9b6a1154e5e09d65a70a2fcc'
 context:
@@ -86,6 +86,24 @@ No additional checkpoint is created here.
 - [x] `TenantIsolationIntegrationTests.cs` -- E-P11 re-traverse tenant B after the plant; E-P19 drop the constant-vs-constant helper assert. Then E-P2: Release rebuild, rerun the recorded lane, prove TRX `<Times>` post-date the certifying sources.
 - [x] Story/spec/epic/sprint/deferred/proposal records -- E-D1 AC5 after AC4 in the story and `epics.md`; E-D3 `correct-course` row; E-D5 amend AC3 to the D4 split; E-D2/G File List `matched` against story-own derivation; E-P1 banner + preservation-loop `NFR8`/`D29`; E-P4 record 52+6+28=86; E-P5 status/`review_loop_iteration`; E-P6–P9, P14–P18, P21–P24 ledger, dates, HCC/Slice Proof, deferred schema, and stale 30-path/28-path claims.
 
+### Review Findings
+
+- [x] [Review][Patch] Set closure spec frontmatter status to 'review' [_bmad-output/implementation-artifacts/spec-24-6-eighth-pass-action-item-closure.md:5]
+- [x] [Review][Patch] Update stale execution duration and lane status comment [_bmad-output/implementation-artifacts/sprint-status.yaml:426]
+- [x] [Review][Patch] Mark 24.6-CR-W6 as resolved in deferred-work.md following E-P12 implementation [_bmad-output/implementation-artifacts/deferred-work.md:3086-3094]
+- [x] [Review][Patch] Add Historical Context Classification and Slice Proof sections to canonical implementation spec [_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md]
+- [x] [Review][Patch] Restore chronological row ordering for retrospective correct-course row [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:204]
+- [x] [Review][Patch] Complete blocked discovery record and cumulative delta in row 17 of story Change Log [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:208]
+- [x] [Review][Patch] Restore continuous table formatting in Change Log across row 17 [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:207-209]
+- [x] [Review][Patch] Reconcile row 17 File List cell with canonical matched N/N declaration against baseline 0ecdffed [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:208]
+- [x] [Review][Patch] Maintain review status during intermediate chunk review (Group A of 19 story files) [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:8]
+- [x] [Review][Defer] Missing CancellationToken and unhandled WRONGTYPE in syntactic hash prefix scan [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:405] — deferred, pre-existing
+- [x] [Review][Defer] Inconsistent entry CancellationToken checks in TenantIsolationVerifier methods [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs] — deferred, pre-existing
+- [x] [Review][Defer] Optimize ScanSemanticHashPrefixForTenantEvidenceAsync to single Redis command round-trip per key [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:453] — deferred, pre-existing (Story 24.8)
+- [x] [Review][Defer] Broaden IsEmbeddingConfigurationUnavailable exception filters [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:735] — deferred, pre-existing (Story 24.7)
+- [x] [Review][Defer] Support dual remediation when classification gap and dimension mismatch co-occur [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:358] — deferred, pre-existing (Story 24.8)
+- [x] [Review][Defer] Add replica endpoint filtering in GetConnectedServers for clustered Redis [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:769] — deferred, pre-existing
+
 **Acceptance Criteria:**
 - Given the final verifier, tests, and runbooks, when source, received-call, and HTTP guards run, then only `GRAPH.LIST` is used, every GraphIsolation Details path is labeled structural-only, the source guard ignores build output, and operator docs state the real-topology preconditions.
 - Given a rebuilt real-backend topology, when the owning tenant class and required integration-fast lane run, then local markers, planted-edge sensitivity with tenant B still clean, endpoint rotation, and recovered actor access pass, and the TRX window is after the certifying sources.
@@ -104,6 +122,11 @@ No additional checkpoint is created here.
   source mtime, File List N = 19 owned + one Scope-Override exclusion, and the AC4
   accepted blocker for the prior Ollama `/alive` timeout. This pass the full
   integration-fast lane is green; story/closure remain in review.
+- 2026-08-16: Applied all five ninth-pass review patches: review-status alignment,
+  current lane duration/status, deferred W6 resolution, canonical historical/slice
+  context, and chronological phase-ledger ordering. Focused governance checks pass;
+  the final broad build and uncurated readiness gates remain blocked by concurrently
+  modified Story 24.7/24.8 artifacts and dirty Builds/FrontComposer pointers.
 
 ## Design Notes
 
@@ -143,6 +166,22 @@ AC4 accepted blocker (2026-08-14): the prior eighth-pass Release lane failed on 
 - Owning class **7/7** in 254.358s against one real Aspire/FalkorDB topology after the tenant-B PreviousConfidence obligation (AC1-authoritative).
 - IntegrationTests Release build: 0 errors, two `NU1903` advisories. Rebuilt `--no-build` lane: 321 passed, 8 skipped, 0 failed in 19m29s. Required-surface verification **19/19**. TRX `start=2026-08-15T00:07:50+02:00` is after `TenantIsolationIntegrationTests.cs` (00:02:38+02:00), `OpenBaoTopologyIntegrationTests.cs` (2026-08-13 15:08:42 +0200), and the Release assembly (00:07:46+02:00). The prior `/alive` timeout remains the AC4 accepted blocker and is not Story 24.6 proof.
 - Story-own readiness, slice-scope, and tenant-isolation-evidence: exit 0 against the derived 19 owned paths plus one `Scope-Override:` exclusion. Tooling suites 4/6/45/41/20 all OK. Epic-24 NFR8=2 and D29=3. sprint-status YAML parses. `git diff --check` clean. Gitlinks `references/Hexalith.Builds`, `references/Hexalith.EventStore`, and `references/Hexalith.FrontComposer` match HEAD. The 2026-08-14 SCP remains untracked and uncredited.
+
+**Ninth-pass patch verification (2026-08-16):**
+
+- Tooling suites passed 4/4, 6/6, 45/45, 41/41, and 20/20; sprint-status YAML
+  parsed; `git diff --check` reported no whitespace errors; CLI inventory passed 66/66.
+- The uncurated story-own derivation produced 25 paths and readiness exited 1 on five
+  concurrent worktree paths: the Story 24.7 story/spec, the untracked Story 24.8 spec,
+  and dirty `references/Hexalith.Builds` / `references/Hexalith.FrontComposer` pointers.
+  Removing only those externally owned worktree paths yielded the expected 20 entries
+  (19 owned File List paths plus one exclusion), and focused readiness plus tenant-
+  isolation evidence passed; that focused result is diagnostic evidence, not a green
+  uncurated completion gate.
+- The required Server.Tests build failed before test execution under the dirty Builds
+  dependency state: three obsolete `RedisConnectionException` constructor errors and
+  `SER301` on `ReleaseDedupKeyIfOwnedActivity`. No warning or analyzer gate was
+  suppressed, and no externally owned source or gitlink was modified.
 
 ## Suggested Review Order
 
