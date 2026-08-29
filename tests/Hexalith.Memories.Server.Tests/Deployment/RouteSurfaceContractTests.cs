@@ -104,10 +104,12 @@ public sealed class RouteSurfaceContractTests
             "MapIngestionEndpoints(",
             "MapTenantLifecycleEndpoints(",
             "MapExportEndpoints(",
+            "MapImportEndpoints(",
             "MapConsistencyEndpoints(",
             "MapCasesEndpoints(",
             "MapSearchEndpoints(",
             "MapGraphEndpoints(",
+            "MapDerivedStoreEndpoints(",
         ];
 
         foreach (string registration in expectedRegistrations)

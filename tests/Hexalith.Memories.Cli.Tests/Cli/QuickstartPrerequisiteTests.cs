@@ -70,26 +70,26 @@ public sealed class QuickstartPrerequisiteTests
     public async Task CheckDotnetSdk_Passes_WhenDotnet10FeatureBandPresent()
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n10.0.302\n", string.Empty, TimeSpan.FromMilliseconds(30)));
+        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n10.0.400\n", string.Empty, TimeSpan.FromMilliseconds(30)));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeTrue();
-        result.Diagnostic.ShouldContain("10.0.302");
+        result.Diagnostic.ShouldContain("10.0.400");
     }
 
     [Fact]
     public async Task CheckDotnetSdk_Fails_WhenOnlyOlderFeatureBands()
     {
         var runner = new FakeProcessRunner();
-        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n", string.Empty, TimeSpan.Zero));
+        runner.Register("dotnet", new ProcessResult(0, "9.0.100\n10.0.203\n10.0.302\n", string.Empty, TimeSpan.Zero));
         var checks = new PrerequisiteChecks(runner);
 
         PrerequisiteCheckResult result = await checks.CheckDotnetSdkAsync(CancellationToken.None);
 
         result.Passed.ShouldBeFalse();
-        result.Diagnostic.ShouldContain("No .NET SDK 10.0.302 or newer");
+        result.Diagnostic.ShouldContain("No .NET SDK 10.0.400 or newer");
     }
 
     [Fact]

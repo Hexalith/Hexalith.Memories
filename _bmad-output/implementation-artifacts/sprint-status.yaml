@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-08-17
+last_updated: 2026-08-29
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -423,7 +423,7 @@ development_status:
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
-  24-6-graph-content-level-tenant-isolation-evidence: review  # 2026-08-18: eleventh-pass review completed chunk 1 (code/tests/docs) and chunk 2 (governance/planning). Decision 1 Option 2 ratified path-level 24.6 File List ownership and named Stories 24.7 and 24.8 as concurrent same-lane owners. 86 (52+6+28) recognized as historical snapshot; live Server.Tests discovery remains unproven pending Builds submodule update. Owning class 7/7 in 254.358s. All 8 Chunk 2 patches applied.
+  24-6-graph-content-level-tenant-isolation-evidence: done  # 2026-08-29: twelfth-pass review over the first real commit (7b3f29ce) of the closure work. Resolved the outstanding submodule-pointer Ask-First decision (deliberate, option a); rebuilt Server.Tests clean (0 warnings/errors) and got live discovery for the first time since the eighth-pass snapshot: 101/101 (52 baseline + 6 story + 28 Story 24.7 + 15 Story 24.8 = 101). File List reconciled matched 26/26 including the six references/* gitlinks; readiness, slice-scope, and tenant-isolation-evidence gates all pass. 4 further ledger-hygiene patches applied. Owning class 7/7 in 254.358s (unchanged, no integration source touched this pass).
   24-7-tenant-configured-vector-dimension-verification: review # 2026-08-17: Administrator accepted the exact unrelated Debug-build blocker for this record-only closure. All five record patches are closed; Story 24.7 remains 52 -> 80 with external Story 24.8 +15 and the current built-assembly lane passed 95/95. Ten paths reconcile as nine owned plus the named FrontComposer exclusion; status-sensitive governance gates were rerun after synchronization.
   24-8-semantic-isolation-key-family-classification: review
   24-9-non-destructive-tenant-marker-diagnostics: backlog

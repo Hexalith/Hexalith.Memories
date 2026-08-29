@@ -24,7 +24,7 @@ internal sealed partial class PrerequisiteChecks
     private static readonly TimeSpan DockerTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DotnetTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DaprTimeout = TimeSpan.FromSeconds(3);
-    private static readonly Version MinimumDotnetSdkVersion = new(10, 0, 302);
+    private static readonly Version MinimumDotnetSdkVersion = new(10, 0, 400);
 
     private readonly IProcessRunner _processRunner;
 
@@ -85,7 +85,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: ".NET SDK (dotnet) not found on PATH.",
-                RecoverySuggestion: "Install .NET SDK 10.0.302 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
+                RecoverySuggestion: "Install .NET SDK 10.0.400 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
         }
 
         if (result.TimedOut)
@@ -101,7 +101,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: $"'dotnet --list-sdks' failed (exit {result.ExitCode}).",
-                RecoverySuggestion: "Verify .NET SDK 10.0.302 or newer is installed: run 'dotnet --version'. Install from https://dotnet.microsoft.com/download/dotnet/10.0 if missing.");
+                RecoverySuggestion: "Verify .NET SDK 10.0.400 or newer is installed: run 'dotnet --version'. Install from https://dotnet.microsoft.com/download/dotnet/10.0 if missing.");
         }
 
         string sdkListing = result.StdOut.Trim();
@@ -113,7 +113,7 @@ internal sealed partial class PrerequisiteChecks
                 return new PrerequisiteCheckResult(
                     Passed: false,
                     Diagnostic: "No .NET SDKs were reported by 'dotnet --list-sdks'.",
-                    RecoverySuggestion: "Install .NET SDK 10.0.302 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
+                    RecoverySuggestion: "Install .NET SDK 10.0.400 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
             }
 
             // Parse-fail advisory per Risk #4 — unusual locales or formats. Pass with advisory rather
@@ -172,7 +172,7 @@ internal sealed partial class PrerequisiteChecks
             return new PrerequisiteCheckResult(
                 Passed: false,
                 Diagnostic: $"No .NET SDK {MinimumDotnetSdkVersion} or newer found. Highest installed SDK: {highestParsedVersion}.",
-                RecoverySuggestion: "Install .NET SDK 10.0.302 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
+                RecoverySuggestion: "Install .NET SDK 10.0.400 or newer from https://dotnet.microsoft.com/download/dotnet/10.0, then retry.");
         }
 
         string suffix = olderCount == 0

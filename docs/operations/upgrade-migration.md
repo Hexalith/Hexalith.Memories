@@ -29,8 +29,8 @@ Orphaned pre-cutover Redis keys under `{tenant}:eventstore:*` are removed by ten
 Dapr-state keys (app-id prefixed) are purged via `DeleteAllTenantDataAsync` on the mapping and observation
 stores. Do not treat a raw Redis SCAN alone as proof that Dapr-state EventStore data is gone.
 
-Repository pins and image digests are the deployment input. Current pins include .NET SDK 10.0.302,
-Dapr .NET packages 1.18.4, Redis Stack 7.4.0-v8, and FalkorDB 4.12.0. A package pin does not prove the
+Repository pins and image digests are the deployment input. Current pins include .NET SDK 10.0.400,
+Dapr .NET packages 1.18.5, Redis Stack 7.4.0-v8, and FalkorDB 4.12.0. A package pin does not prove the
 cluster runtime/control-plane version. No component version is changed by this runbook.
 
 ## Prerequisites and authorization

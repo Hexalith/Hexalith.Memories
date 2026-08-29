@@ -3089,7 +3089,7 @@ independently re-executed and passed.
   - Status: resolved
   - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence
   - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
-  - Evidence: E-P12 prefixed the missing-graph and backend-unavailable `GraphIsolation.Details` branches with the structural-only label. The focused verifier, runbook, and authorization gate passed 86/86 after the repair.
+  - Evidence: E-P12 prefixed the missing-graph and backend-unavailable `GraphIsolation.Details` branches with the structural-only label, confirmed by inspection of `TenantIsolationVerifier.cs`. The focused verifier, runbook, and authorization gate (the same three classes as the 86-case snapshot, since revised) passed 101/101 on 2026-08-29 after the `references/Hexalith.Builds` submodule bump unblocked the build; see the twelfth-pass Change Log row on `24-6-graph-content-level-tenant-isolation-evidence.md`.
   - Re-open trigger: An operator or automated consumer interprets a failed or unavailable `GraphIsolation` result as graph-content proof, or those branch messages are otherwise revised.
 
 - **The HTTP-visible graph detail has no explicit length or format contract.**

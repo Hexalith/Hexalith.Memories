@@ -2,8 +2,8 @@
 title: 'Story 24.6 Eighth-Pass Action-Item Closure'
 type: 'bugfix'
 created: '2026-08-14'
-status: 'review'
-review_loop_iteration: 1
+status: 'done'
+review_loop_iteration: 4
 baseline_commit: '301041626f32d4fb9b6a1154e5e09d65a70a2fcc'
 context:
   - '{project-root}/_bmad-output/project-context.md'
@@ -88,21 +88,39 @@ No additional checkpoint is created here.
 
 ### Review Findings
 
+_Pass attribution below added 2026-08-29 (twelfth-pass patch): the items were originally recorded as one flat, undated list, which made per-pass counts unverifiable by inspection alone. Boundaries for the ninth pass and the eleventh-pass chunk-2 defer items are confirmed against the story's own dated Change Log rows and Review Findings headers; the tenth/eleventh-pass chunk-1 boundary within the backfill group is not independently re-derivable from this file alone and is left as one group rather than a false precise split._
+
+**Ninth Pass (2026-08-16)** — 5 patches, 0 deferred (matches the ninth-pass Change Log row on `24-6-graph-content-level-tenant-isolation-evidence.md`).
+
 - [x] [Review][Patch] Set closure spec frontmatter status to 'review' [_bmad-output/implementation-artifacts/spec-24-6-eighth-pass-action-item-closure.md:5]
 - [x] [Review][Patch] Update stale execution duration and lane status comment [_bmad-output/implementation-artifacts/sprint-status.yaml:426]
 - [x] [Review][Patch] Mark 24.6-CR-W6 as resolved in deferred-work.md following E-P12 implementation [_bmad-output/implementation-artifacts/deferred-work.md:3086-3094]
 - [x] [Review][Patch] Add Historical Context Classification and Slice Proof sections to canonical implementation spec [_bmad-output/implementation-artifacts/spec-24-6-graph-content-level-tenant-isolation-evidence.md]
 - [x] [Review][Patch] Restore chronological row ordering for retrospective correct-course row [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:204]
+
+**Tenth/Eleventh Pass backfill (2026-08-17/18)** — later chunk-1 ledger-repair patches.
+
 - [x] [Review][Patch] Complete blocked discovery record and cumulative delta in row 17 of story Change Log [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:208]
 - [x] [Review][Patch] Restore continuous table formatting in Change Log across row 17 [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:207-209]
 - [x] [Review][Patch] Reconcile row 17 File List cell with canonical matched N/N declaration against baseline 0ecdffed [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:208]
 - [x] [Review][Patch] Maintain review status during intermediate chunk review (Group A of 19 story files) [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:8]
+
+**Eleventh Pass, chunk 2 (2026-08-18)** — deferred-work formatting patches (24.6-F8-W5 through W10).
+
 - [x] [Review][Defer] Missing CancellationToken and unhandled WRONGTYPE in syntactic hash prefix scan [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:405] — deferred, pre-existing
 - [x] [Review][Defer] Inconsistent entry CancellationToken checks in TenantIsolationVerifier methods [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs] — deferred, pre-existing
 - [x] [Review][Defer] Optimize ScanSemanticHashPrefixForTenantEvidenceAsync to single Redis command round-trip per key [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:453] — deferred, pre-existing (Story 24.8)
 - [x] [Review][Defer] Broaden IsEmbeddingConfigurationUnavailable exception filters [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:735] — deferred, pre-existing (Story 24.7)
 - [x] [Review][Defer] Support dual remediation when classification gap and dimension mismatch co-occur [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:358] — deferred, pre-existing (Story 24.8)
 - [x] [Review][Defer] Add replica endpoint filtering in GetConnectedServers for clustered Redis [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:769] — deferred, pre-existing
+
+**Twelfth Pass (code review, 2026-08-29)** — adversarial review of commit `7b3f29ce` (the first time any of the eighth-through-eleventh-pass closure work actually landed as a real commit; diff vs parent `cacb1398`, 11 files, +201/-21). Six context-free layers plus independent parent-side re-execution and direct file verification. 5 live findings after triage: 1 decision, 4 patches, 0 deferred, 6 dismissed (stale-snapshot misreads, an already-ratified Decision-1/Option-2 concern, and a File-Scope-vs-File-List misread that inflated the File List's apparent bullet count).
+
+- [x] [Review][Decision] RESOLVED 2026-08-29 (Administrator, option a — confirmed deliberate; Ask-First recorded here; reopen-trigger tested and satisfied; File List reconciled to 26/26, see the twelfth-pass Change Log row). Six submodule gitlink pointers (`references/Hexalith.{Builds,Commons,EventStore,FrontComposer,PolymorphicSerializations,Tenants}`) landed inside this story-keyed commit without Ask-First approval, File List reconciliation, or a rebuild attempt — Commit `7b3f29ce` (`Story-Key: 24-6-graph-content-level-tenant-isolation-evidence`) bumps six submodule pointers. This crosses the closure spec's own frozen `**Ask First:**` boundary at `spec-24-6-eighth-pass-action-item-closure.md:28` ("modifying submodule contents/pointers") — no Administrator approval for this specific action is recorded anywhere in the diff or ledger. The six paths are declared only in the forward-looking `## File Scope` allow-list (`24-6-graph-content-level-tenant-isolation-evidence.md:263-268`), never reconciled into the backward-looking `## File List` or excluded with owner+reason in `### File List Exclusions` per `story-phase-ledger.md`'s Cumulative File List Reconciliation rule — so every "matched 19/19" / "all 20 changed paths declared" readiness citation already in this document is stale relative to what this commit actually ships. Every ninth/tenth/eleventh-pass row asserts the Server.Tests build is blocked by "the dirty `references/Hexalith.Builds` pointer" and that live discovery is "unproven pending Builds submodule update" — language written in the very commit that performs that update, with no rebuild attempted to test whether its own named reopen trigger is now satisfied. Four of the six bumped submodules (`Commons`, `EventStore`, `PolymorphicSerializations`, and security-relevant `Tenants`) have no stated connection to Story 24.6's graph-content-isolation scope. Options: (a) confirm the bump was deliberate, record Ask-First approval, rerun the Server.Tests build against the new pointers to test the reopen trigger, then reconcile the File List; (b) treat it as inherited/unrelated drift and revert the six pointers (`git submodule update -- references/<name>`) before this commit's content is treated as story-closure evidence; (c) split it into a separate non-story-keyed commit and exclude it from the File List with owner+reason, matching this story's own precedent (`bmad_customization_test.py` exclusion). [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:263-268]
+- [x] [Review][Patch] 24.6-CR-W6 resolution in deferred-work.md cites the disputed "86/86" figure as supporting evidence, which this same document elsewhere disclaims as a dated snapshot — reword the resolution evidence to cite the qualitative code fact (structural-only prefix present on failure/unavailable `GraphIsolation.Details` branches per E-P12) without leaning on the disputed 86/86 total [_bmad-output/implementation-artifacts/deferred-work.md:3086-3094] — applied
+- [x] [Review][Patch] This closure spec's flat Review Findings checklist and narrative changelog conflate/omit passes — the checklist has no per-pass attribution (a reader cannot verify the ninth-pass ledger row's "5 patches, 0 deferred" count against it without cross-referencing), and the narrative changelog stops at "2026-08-16... ninth-pass" despite this same commit bundling tenth/eleventh-pass work recorded elsewhere. Add a pass-number tag/subheading per item (as this Twelfth Pass entry now does) and extend the narrative changelog with the tenth/eleventh-pass entries [_bmad-output/implementation-artifacts/spec-24-6-eighth-pass-action-item-closure.md:89-105] — applied
+- [x] [Review][Patch] `review_loop_iteration` frontmatter stays at 1 despite nine-plus patch items applied across the ninth/tenth/eleventh passes recorded in this same file, while the sibling canonical spec correctly bumps its own counter (8 -> 11) for equivalent activity in this diff — bump it to reflect the passes actually recorded, or state why it is intentionally pinned [_bmad-output/implementation-artifacts/spec-24-6-eighth-pass-action-item-closure.md:6] — applied
+- [x] [Review][Patch] Eleventh-pass chunk-1 ledger row's "(row not reordered; append-only)" parenthetical is false — the diff hunk demonstrably deletes the `2026-08-13 | correct-course` row from its old position (after the eighth-pass row) and re-inserts an edited copy earlier in the table (before it), which is the sanctioned chronological fix the closure spec's own action item calls for, but the parenthetical's factual claim is wrong; correct it to describe a sanctioned reposition rather than "not reordered" [_bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:209] — applied
 
 **Acceptance Criteria:**
 - Given the final verifier, tests, and runbooks, when source, received-call, and HTTP guards run, then only `GRAPH.LIST` is used, every GraphIsolation Details path is labeled structural-only, the source guard ignores build output, and operator docs state the real-topology preconditions.
@@ -127,6 +145,24 @@ No additional checkpoint is created here.
   context, and chronological phase-ledger ordering. Focused governance checks pass;
   the final broad build and uncurated readiness gates remain blocked by concurrently
   modified Story 24.7/24.8 artifacts and dirty Builds/FrontComposer pointers.
+- 2026-08-17: Tenth-pass review found 0 patches, 0 deferred, 15 dismissed findings; no
+  source, test, or governance defect identified. Story remains in review pending live
+  clean build of Server.Tests.
+- 2026-08-18: Eleventh-pass review chunk 1 (code/tests/docs) backfilled the ninth-pass
+  Test count command/blocker quintet and repaired stale Change Log row prose (row 17
+  formatting and File List cell reconciliation). Chunk 2 (governance/planning) applied
+  8 patches: canonical spec status/iteration, AC5, C2/integration-fast verification
+  commands, deferred-work duration and W5-W10 schema formatting, and the sprint-status
+  inline comment. Decision 1 resolved as option 2 (path-level 24.6 File List ownership;
+  name 24.7/24.8 as external same-lane owners).
+- 2026-08-29: Twelfth-pass review (the first pass over a real commit, `7b3f29ce`)
+  resolved the outstanding submodule-pointer Ask-First decision (option a, confirmed
+  deliberate), reran the Server.Tests build and discovery (0 warnings/errors, 101/101,
+  closing the long-standing Builds-pointer blocker), reconciled the File List to
+  `matched 26/26` including the six `references/*` gitlinks, and applied 4 further
+  patches: a stale-evidence citation in the 24.6-CR-W6 deferred-work resolution, this
+  pass-attribution repair, the `review_loop_iteration` counter, and a false
+  "not reordered" ledger parenthetical.
 
 ## Design Notes
 
