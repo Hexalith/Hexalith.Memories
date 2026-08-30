@@ -2,7 +2,7 @@
 title: 'Authorize the 2026-08-29 pushall synchronization'
 type: 'maintenance'
 created: '2026-08-29'
-status: 'in-progress'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '6e06e70529bc261304b6f0068e3a23ad19d1f3a9'
 context:
@@ -42,7 +42,7 @@ Allowed files for this story:
 
 - [x] Verify every target submodule commit is the clean fetched `origin/main` tip.
 - [x] Establish the exact owner-valid synchronization envelope.
-- [ ] Commit and push the superproject snapshot as a fast-forward update.
+- [x] Commit and push the superproject snapshot as a fast-forward update.
 
 **Acceptance Criteria:**
 
@@ -58,3 +58,13 @@ Allowed files for this story:
 - `python3 tools/check-tenant-isolation-evidence.py --story-key spec-pushall-sync-2026-08-29 --staged`
 - `python3 tools/check-story-review-readiness.py --story-key spec-pushall-sync-2026-08-29 --staged --derive-cumulative`
 - `npx commitlint --from "$(git merge-base origin/main HEAD)" --to HEAD --verbose`
+
+## Completion Record
+
+- Restaged `references/Hexalith.Tenants` from `c5fa0082f610e15046fb2df9a1e0104ef0160762` to fetched `origin/main` `5236d7c81f6e7ccf355c9ef9f0451f05ea70242a` so every gitlink equals its published tip.
+- Published submodule targets:
+  - `references/Hexalith.Builds` at `e1026cb61162546571ee0102c525bcf42b9ce7fa`
+  - `references/Hexalith.EventStore` at `10051a68eb1db322a4f7fa91934d880ce1409687`
+  - `references/Hexalith.FrontComposer` at `f84b68b4e147238f28ca70219f19233d4b4b64d1`
+  - `references/Hexalith.Tenants` at `5236d7c81f6e7ccf355c9ef9f0451f05ea70242a`
+
