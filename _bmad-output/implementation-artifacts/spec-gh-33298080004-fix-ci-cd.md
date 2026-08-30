@@ -15,17 +15,23 @@ and XPlat coverage arguments never discover tests.
 
 **Approach:** Keep the wrapper `--filter` CLI and project inventories. Translate
 Category expressions into MTP `--filter-trait` / `--filter-not-trait`, emit TRX
-with `--report-xunit-trx`, and collect Cobertura with `--coverage`.
+with `--report-xunit-trx`, and collect Cobertura with coverlet.MTP `--coverlet`
+using the same first-party include/exclude contract as `tests/tests.runsettings`.
+Microsoft.Testing.Extensions.CodeCoverage listed Server lines but missed most
+hits on GitHub-hosted runners (23% vs Coverlet ~75%), which failed the 76.5%
+gate after tests themselves started running.
 
 ## File Scope
 
 Allowed files for this story:
 
-- `tools/test.sh` -- bash wrapper MTP translation.
-- `tools/test.ps1` -- PowerShell wrapper MTP translation.
+- `tools/test.sh` -- bash wrapper MTP translation and coverlet.MTP coverage.
+- `tools/test.ps1` -- PowerShell wrapper MTP translation and coverlet.MTP coverage.
 - `tools/test-release.ps1` -- release-lane MTP trait exclusion.
-- `tests/Directory.Build.props` -- Microsoft.Testing.Extensions.CodeCoverage package.
+- `tests/Directory.Build.props` -- coverlet.MTP package for MTP coverage.
+- `tests/Directory.Packages.props` -- test-tree pin for coverlet.MTP 10.0.1.
 - `tests/tests.runsettings` -- stop documenting VSTest filter usage.
 - `tests/README.md` -- wrapper-first MTP guidance.
 - `tests/tooling/coverage_gate/test_runner_contract_test.py` -- fake runner and MTP assertions.
+- `tests/tooling/coverage_gate/coverage_contract_test.py` -- coverlet.MTP package contract.
 - `_bmad-output/implementation-artifacts/spec-gh-33298080004-fix-ci-cd.md` -- this contract.

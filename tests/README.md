@@ -156,7 +156,8 @@ tests/
 
 - Use `tools/test.ps1` on PowerShell/Windows runners.
 - Use `tools/test.sh` on bash/Linux runners.
-- Coverage collection uses Microsoft.Testing.Platform `--coverage` (Cobertura) via the wrappers.
+- Coverage collection uses coverlet.MTP (`--coverlet`, Cobertura) via the wrappers. The include/exclude
+  filters match `tests/tests.runsettings`.
 - Integration targets require Docker availability for Testcontainers.
 - Root PR/push automation lives in `.github/workflows/ci.yml`; scheduled/manual integration and
   benchmark automation lives in `.github/workflows/nightly.yml`.

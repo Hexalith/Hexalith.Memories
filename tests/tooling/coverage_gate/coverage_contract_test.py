@@ -182,6 +182,16 @@ class CoverageContractTests(unittest.TestCase):
         self.assertEqual("**/obj/**", configuration.findtext("ExcludeByFile"))
         self.assertNotIn("Program.cs", RUNSETTINGS_PATH.read_text(encoding="utf-8"))
 
+        directory_build_props = (REPO_ROOT / "tests" / "Directory.Build.props").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("coverlet.MTP", directory_build_props)
+        self.assertNotIn("Microsoft.Testing.Extensions.CodeCoverage", directory_build_props)
+        test_packages = (REPO_ROOT / "tests" / "Directory.Packages.props").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('<PackageVersion Include="coverlet.MTP" Version="10.0.1" />', test_packages)
+
     def test_unit_contract_job_collects_validates_and_retains_coverage(self):
         job = self._read_workflow_job(CI_WORKFLOW_PATH, "test-unit-contract")
         steps = self._read_workflow_steps(job)

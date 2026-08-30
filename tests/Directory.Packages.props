@@ -1,0 +1,10 @@
+<Project>
+  <!-- Import the repository CPM catalog, then add the MTP Coverlet extension used by
+       tools/test.sh and tools/test.ps1. Hexalith.Builds pins coverlet.collector but not
+       coverlet.MTP; CentralPackageVersionOverrideEnabled is false, so this sibling catalog
+       is the test-tree pin. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)../'))" />
+  <ItemGroup>
+    <PackageVersion Include="coverlet.MTP" Version="10.0.1" />
+  </ItemGroup>
+</Project>

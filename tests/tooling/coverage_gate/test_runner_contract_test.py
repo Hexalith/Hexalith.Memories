@@ -254,6 +254,72 @@ class TestRunnerContractTests(unittest.TestCase):
 
                 self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
+    def test_coverage_flag_uses_coverlet_mtp_filters(self):
+        wrappers = [
+            ["bash", "./tools/test.sh"],
+            [shutil.which("pwsh") or "pwsh", "-NoLogo", "-NoProfile", "-File", "./tools/test.ps1"],
+        ]
+        for wrapper in wrappers:
+            with self.subTest(wrapper=wrapper[0]), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                env, log_path = self._fake_dotnet_environment(root)
+                if wrapper[0].endswith("pwsh"):
+                    command = wrapper + [
+                        "-Filter",
+                        "Category!=Integration",
+                        "-Configuration",
+                        "Release",
+                        "-NoBuild",
+                        "-Coverage",
+                    ]
+                else:
+                    command = wrapper + [
+                        "--filter",
+                        "Category!=Integration",
+                        "--configuration",
+                        "Release",
+                        "--no-build",
+                        "--coverage",
+                    ]
+
+                result = subprocess.run(
+                    command,
+                    cwd=REPO_ROOT,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+                self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+                arguments = json.loads(log_path.read_text(encoding="utf-8"))
+                self.assertNotIn("--coverage", arguments)
+                self.assertNotIn("--collect", arguments)
+                self.assertIn("--coverlet", arguments)
+                self.assertIn("cobertura", arguments)
+                include_values = [
+                    arguments[index + 1]
+                    for index, argument in enumerate(arguments)
+                    if argument == "--coverlet-include"
+                ]
+                exclude_values = [
+                    arguments[index + 1]
+                    for index, argument in enumerate(arguments)
+                    if argument == "--coverlet-exclude"
+                ]
+                self.assertEqual(["[Hexalith.Memories.*]*"], include_values)
+                self.assertEqual(
+                    [
+                        "[*.Tests]*",
+                        "[Hexalith.Memories.TestHelpers]*",
+                        "[Hexalith.Memories.Web.Specimens]*",
+                        "[Hexalith.Memories.MigrateEmbeddingVectors]*",
+                    ],
+                    exclude_values,
+                )
+                self.assertIn("**/obj/**", arguments)
+                self.assertIn("--coverlet-skip-auto-props", arguments)
+
     def test_unit_contract_filter_uses_mtp_trait_exclusions(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

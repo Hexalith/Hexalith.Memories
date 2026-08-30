@@ -171,6 +171,7 @@ for project in "${PROJECTS[@]}"; do
 
   TRX_PATH=""
   EXPECTED_EXECUTED_TESTS=""
+  project_results_directory=""
   if [[ -n "$RESULTS_DIRECTORY" ]]; then
     if [[ -n "$project" ]]; then
       project_name="$(basename "$project" .csproj)"
@@ -188,12 +189,49 @@ for project in "${PROJECTS[@]}"; do
   fi
 
   if [[ "$COVERAGE" == true ]]; then
-    CMD+=(--coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml)
+    # coverlet.MTP matches the Coverlet include/exclude contract in tests/tests.runsettings.
+    # Microsoft.Testing.Extensions.CodeCoverage under-counted Hexalith.Memories.Server hits
+    # on GitHub-hosted runners (23% vs ~75% Coverlet), which failed the 76.5% line gate.
+    CMD+=(
+      --coverlet
+      --coverlet-output-format cobertura
+      --coverlet-include '[Hexalith.Memories.*]*'
+      --coverlet-exclude '[*.Tests]*'
+      --coverlet-exclude '[Hexalith.Memories.TestHelpers]*'
+      --coverlet-exclude '[Hexalith.Memories.Web.Specimens]*'
+      --coverlet-exclude '[Hexalith.Memories.MigrateEmbeddingVectors]*'
+      --coverlet-exclude-by-file '**/obj/**'
+      --coverlet-exclude-by-attribute GeneratedCodeAttribute
+      --coverlet-exclude-by-attribute ObsoleteAttribute
+      --coverlet-skip-auto-props
+    )
   fi
 
   echo "${CMD[*]}"
   test_exit_code=0
   "${CMD[@]}" || test_exit_code=$?
+
+  if [[ "$COVERAGE" == true && -n "${project_results_directory:-}" ]]; then
+    python3 - "$project_results_directory" <<'PY'
+from pathlib import Path
+import sys
+
+results = Path(sys.argv[1])
+canonical = results / "coverage.cobertura.xml"
+if canonical.is_file():
+    raise SystemExit(0)
+
+candidates = sorted(
+    {
+        *results.glob("coverage.cobertura*.xml"),
+        *results.glob("*.coverage.cobertura.xml"),
+    }
+)
+if not candidates:
+    raise SystemExit(f"Test project produced no Cobertura report under {results}.")
+canonical.write_bytes(candidates[-1].read_bytes())
+PY
+  fi
 
   if [[ -n "$TRX_PATH" ]]; then
     python3 - "$TRX_PATH" "$project" "$EFFECTIVE_FILTER" "$EXPECTED_EXECUTED_TESTS" <<'PY'

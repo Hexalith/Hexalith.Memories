@@ -129,6 +129,7 @@ try {
 
         $trxPath = $null
         $expectedExecutedTests = $null
+        $projectResultsDirectory = $null
         if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
             $safeName = if ([string]::IsNullOrWhiteSpace($projectPath)) {
                 'solution'
@@ -151,17 +152,51 @@ try {
         }
 
         if ($Coverage) {
-            $argumentList.Add('--coverage')
-            $argumentList.Add('--coverage-output-format')
+            # coverlet.MTP matches the Coverlet include/exclude contract in tests/tests.runsettings.
+            # Microsoft.Testing.Extensions.CodeCoverage under-counted Hexalith.Memories.Server hits
+            # on GitHub-hosted runners (23% vs ~75% Coverlet), which failed the 76.5% line gate.
+            $argumentList.Add('--coverlet')
+            $argumentList.Add('--coverlet-output-format')
             $argumentList.Add('cobertura')
-            $argumentList.Add('--coverage-output')
-            $argumentList.Add('coverage.cobertura.xml')
+            $argumentList.Add('--coverlet-include')
+            $argumentList.Add('[Hexalith.Memories.*]*')
+            $argumentList.Add('--coverlet-exclude')
+            $argumentList.Add('[*.Tests]*')
+            $argumentList.Add('--coverlet-exclude')
+            $argumentList.Add('[Hexalith.Memories.TestHelpers]*')
+            $argumentList.Add('--coverlet-exclude')
+            $argumentList.Add('[Hexalith.Memories.Web.Specimens]*')
+            $argumentList.Add('--coverlet-exclude')
+            $argumentList.Add('[Hexalith.Memories.MigrateEmbeddingVectors]*')
+            $argumentList.Add('--coverlet-exclude-by-file')
+            $argumentList.Add('**/obj/**')
+            $argumentList.Add('--coverlet-exclude-by-attribute')
+            $argumentList.Add('GeneratedCodeAttribute')
+            $argumentList.Add('--coverlet-exclude-by-attribute')
+            $argumentList.Add('ObsoleteAttribute')
+            $argumentList.Add('--coverlet-skip-auto-props')
         }
 
         $arguments = $argumentList.ToArray()
         Write-Host ("dotnet {0}" -f ($arguments -join ' '))
         & dotnet @arguments
         $testExitCode = $LASTEXITCODE
+
+        if ($Coverage -and -not [string]::IsNullOrWhiteSpace($projectResultsDirectory)) {
+            $canonical = Join-Path $projectResultsDirectory 'coverage.cobertura.xml'
+            if (-not (Test-Path -LiteralPath $canonical)) {
+                $found = @(Get-ChildItem -LiteralPath $projectResultsDirectory -File |
+                    Where-Object {
+                        $_.Name -like 'coverage.cobertura*.xml' -or
+                        $_.Name -like '*.coverage.cobertura.xml'
+                    } |
+                    Sort-Object Name)
+                if ($found.Count -eq 0) {
+                    throw "Test project produced no Cobertura report under '$projectResultsDirectory'."
+                }
+                Copy-Item -LiteralPath $found[-1].FullName -Destination $canonical
+            }
+        }
 
         if ($trxPath) {
             if (-not (Test-Path -LiteralPath $trxPath)) {
