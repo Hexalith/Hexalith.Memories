@@ -96,33 +96,90 @@ public sealed class InstrumentationInventoryTests
             $"Unresolved: {string.Join(", ", unresolved)}");
     }
 
+    [Fact]
+    public void LocateTelemetryDoc_UsesSolutionRootInsteadOfNearerDecoy()
+    {
+        DirectoryInfo root = Directory.CreateTempSubdirectory("memories-telemetry-root-");
+        try
+        {
+            File.WriteAllText(Path.Combine(root.FullName, "Hexalith.Memories.slnx"), string.Empty);
+            string expected = Path.Combine(root.FullName, TelemetryDocRelativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(expected)!);
+            File.WriteAllText(expected, "authoritative");
+
+            string startDirectory = Path.Combine(root.FullName, "tests", "bin");
+            Directory.CreateDirectory(startDirectory);
+            string decoy = Path.Combine(root.FullName, "tests", TelemetryDocRelativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(decoy)!);
+            File.WriteAllText(decoy, "decoy");
+
+            LocateTelemetryDoc(startDirectory).ShouldBe(expected);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LocateTelemetryDoc_ReportsWhetherSolutionOrDocumentIsMissing()
+    {
+        DirectoryInfo root = Directory.CreateTempSubdirectory("memories-telemetry-missing-");
+        try
+        {
+            string startDirectory = Path.Combine(root.FullName, "tests", "bin");
+            Directory.CreateDirectory(startDirectory);
+
+            FileNotFoundException missingSolution = Should.Throw<FileNotFoundException>(
+                () => LocateTelemetryDoc(startDirectory));
+            missingSolution.Message.ShouldContain("Could not locate solution marker");
+            missingSolution.Message.ShouldContain(startDirectory);
+
+            string solutionPath = Path.Combine(root.FullName, "Hexalith.Memories.slnx");
+            File.WriteAllText(solutionPath, string.Empty);
+
+            FileNotFoundException missingDocument = Should.Throw<FileNotFoundException>(
+                () => LocateTelemetryDoc(startDirectory));
+            missingDocument.Message.ShouldContain($"Located solution marker '{solutionPath}'");
+            missingDocument.Message.ShouldContain(startDirectory);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     private static string LocateTelemetryDoc()
+        => LocateTelemetryDoc(AppContext.BaseDirectory);
+
+    private static string LocateTelemetryDoc(string startDirectory)
     {
         // Walk up from the test assembly location until we find the repo root (marked by
-        // Directory.Packages.props), then resolve docs/dev/telemetry.md.
-        string? current = AppContext.BaseDirectory;
+        // Hexalith.Memories.slnx), then resolve docs/dev/telemetry.md.
+        string? current = Path.GetFullPath(startDirectory);
         while (current is not null)
         {
-            string candidate = Path.Combine(current, TelemetryDocRelativePath);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            string marker = Path.Combine(current, "Directory.Packages.props");
+            string marker = Path.Combine(current, "Hexalith.Memories.slnx");
             if (File.Exists(marker))
             {
-                // Reached the repo root but telemetry.md is missing — hard failure.
-                break;
+                string candidate = Path.Combine(current, TelemetryDocRelativePath);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+
+                throw new FileNotFoundException(
+                    $"Located solution marker '{marker}' but could not locate {TelemetryDocRelativePath} " +
+                    $"starting from {startDirectory}.",
+                    candidate);
             }
 
             current = Directory.GetParent(current)?.FullName;
         }
 
         throw new FileNotFoundException(
-            $"Could not locate {TelemetryDocRelativePath} starting from {AppContext.BaseDirectory}. " +
-            "The InstrumentationInventoryTests rely on the repo's docs/dev/telemetry.md file being " +
-            "reachable from the test assembly's AppContext.BaseDirectory.");
+            $"Could not locate solution marker 'Hexalith.Memories.slnx' starting from {startDirectory}. " +
+            $"The InstrumentationInventoryTests require that marker before reading {TelemetryDocRelativePath}.");
     }
 
     /// <summary>

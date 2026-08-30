@@ -3448,4 +3448,8 @@ block required by the schema above.
   summary: Tenants worktree HEAD `4a3eec38` is ahead of the staged gitlink `c5fa0082`.
   evidence: Pre-existing `MM` submodule state; this story must not unstage or edit Tenants, so a later parent commit of the staged SHA can miss checkout `4a3eec38`.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-ci-cd-and-release-2026-08-30.md`
+  summary: Isolate the server embedding-provider options test from parallel static options state.
+  evidence: `AddMemoriesServerServices_WithHostEmbeddingProvidersConfig_SeedsCurrentOptionsAndOllama` observed the repository default endpoint during one full release-suite run, passed alone, and passed on an immediate complete rerun; the CI runner and telemetry-root changes do not touch that options surface.
+
 

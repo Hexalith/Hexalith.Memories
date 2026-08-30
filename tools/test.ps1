@@ -1,3 +1,5 @@
+#Requires -Version 7.0
+
 # Root test runner for local development and CI.
 # Examples:
 #   ./tools/test.ps1
@@ -179,8 +181,28 @@ try {
 
         $arguments = $argumentList.ToArray()
         Write-Host ("dotnet {0}" -f ($arguments -join ' '))
-        & dotnet @arguments
-        $testExitCode = $LASTEXITCODE
+        $dotnetCommand = Get-Command dotnet -CommandType Application -ErrorAction Stop |
+            Select-Object -First 1
+        $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $dotnetCommand.Source
+        $startInfo.UseShellExecute = $false
+        $startInfo.WorkingDirectory = $repoRoot
+        foreach ($argument in $arguments) {
+            [void]$startInfo.ArgumentList.Add($argument)
+        }
+
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+        if ($null -eq $process) {
+            throw 'Failed to start dotnet test.'
+        }
+
+        try {
+            $process.WaitForExit()
+            $testExitCode = $process.ExitCode
+        }
+        finally {
+            $process.Dispose()
+        }
 
         if ($Coverage -and -not [string]::IsNullOrWhiteSpace($projectResultsDirectory)) {
             $canonical = Join-Path $projectResultsDirectory 'coverage.cobertura.xml'

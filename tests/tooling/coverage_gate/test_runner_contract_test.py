@@ -320,6 +320,42 @@ class TestRunnerContractTests(unittest.TestCase):
                 self.assertIn("**/obj/**", arguments)
                 self.assertIn("--coverlet-skip-auto-props", arguments)
 
+    def test_powershell_runner_forwards_output_and_child_exit_code(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            env, _ = self._fake_dotnet_environment(
+                root,
+                exit_code=23,
+                stdout="fake-dotnet-stdout\n",
+                stderr="fake-dotnet-stderr\n",
+            )
+
+            result = subprocess.run(
+                [
+                    shutil.which("pwsh") or "pwsh",
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-File",
+                    "./tools/test.ps1",
+                    "-Filter",
+                    "Category!=Integration",
+                    "-Configuration",
+                    "Release",
+                    "-NoBuild",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            combined_output = result.stdout + result.stderr
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("fake-dotnet-stdout", combined_output)
+            self.assertIn("fake-dotnet-stderr", combined_output)
+            self.assertIn("dotnet test failed (23)", combined_output)
+
     def test_unit_contract_filter_uses_mtp_trait_exclusions(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -364,6 +400,8 @@ class TestRunnerContractTests(unittest.TestCase):
         executed: int = 1,
         not_executed: int = 0,
         exit_code: int = 0,
+        stdout: str = "",
+        stderr: str = "",
     ) -> tuple[dict[str, str], Path]:
         log_path = root / "dotnet-arguments.json"
         script = root / "fake_dotnet.py"
@@ -383,6 +421,10 @@ class TestRunnerContractTests(unittest.TestCase):
                     json.dumps(sys.argv[1:]),
                     encoding="utf-8",
                 )
+                sys.stdout.write({stdout_literal})
+                sys.stdout.flush()
+                sys.stderr.write({stderr_literal})
+                sys.stderr.flush()
                 if "--results-directory" in sys.argv:
                     results = Path(sys.argv[sys.argv.index("--results-directory") + 1])
                     if "--report-xunit-trx-filename" in sys.argv:
@@ -402,6 +444,8 @@ class TestRunnerContractTests(unittest.TestCase):
                 executed=executed,
                 not_executed=not_executed,
                 exit_code=exit_code,
+                stdout_literal=repr(stdout),
+                stderr_literal=repr(stderr),
             ).strip()
             + "\n",
             encoding="utf-8",
