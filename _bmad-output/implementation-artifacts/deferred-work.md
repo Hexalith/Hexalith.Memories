@@ -3444,4 +3444,8 @@ block required by the schema above.
   - Re-open trigger: Redis cluster deployment topology validation is performed.
   - Rationale: `TenantIsolationVerifier.GetConnectedServers` does not filter out `server.IsReplica`, which can cause duplicate scans across replicas in clustered or primary-replica topologies. Pre-existing behavior outside story scope.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-bump-eventstore-3-100-0.md`
+  summary: Tenants worktree HEAD `4a3eec38` is ahead of the staged gitlink `c5fa0082`.
+  evidence: Pre-existing `MM` submodule state; this story must not unstage or edit Tenants, so a later parent commit of the staged SHA can miss checkout `4a3eec38`.
+
 
