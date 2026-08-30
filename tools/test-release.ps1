@@ -26,6 +26,7 @@ if ($projects.Count -eq 0) {
 }
 
 # Benchmarks are opt-in (Category=Benchmark); release lane must skip them per 11.1 Task 0.4.
+# Category!=Benchmark is the wrapper expression; MTP receives --filter-not-trait Category=Benchmark.
 $benchmarkExcludeFilter = "Category!=Benchmark"
 
 Push-Location $repoRoot
@@ -37,15 +38,9 @@ try {
             "--configuration",
             $Configuration,
             "--no-build",
-            "--logger",
-            "console;verbosity=minimal",
-            "--blame-hang-timeout",
-            "120s",
-            "--blame-hang-dump-type",
-            "none"
+            "--filter-not-trait",
+            "Category=Benchmark"
         )
-
-        $arguments += @("--filter", $benchmarkExcludeFilter)
 
         Write-Host ("dotnet {0}" -f ($arguments -join " "))
         & dotnet @arguments

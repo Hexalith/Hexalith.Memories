@@ -22,10 +22,7 @@
     </DataCollectors>
   </DataCollectionRunSettings>
 
-  <!-- Filter integration tests out of default runs -->
-  <!-- Usage:
-    Fast (unit only):       dotnet test - -filter "Category!=Integration"
-    Integration only:       dotnet test - -filter "Category=Integration"
-    All:                    dotnet test
-  -->
+  <!-- Category filtering is owned by tools/test.sh and tools/test.ps1. Those wrappers
+       translate VSTest Category expressions into Microsoft.Testing.Platform trait filters.
+       Do not pass VSTest filter options to dotnet test. -->
 </RunSettings>

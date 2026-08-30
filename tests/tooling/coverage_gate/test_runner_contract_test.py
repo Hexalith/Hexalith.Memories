@@ -148,8 +148,19 @@ class TestRunnerContractTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             arguments = json.loads(log_path.read_text(encoding="utf-8"))
             self.assertNotIn(BENCHMARK_PROJECT, arguments)
-            filter_index = arguments.index("--filter")
-            self.assertEqual(expression, arguments[filter_index + 1])
+            self.assertNotIn("--filter", arguments)
+            trait_values = [
+                arguments[index + 1]
+                for index, argument in enumerate(arguments)
+                if argument == "--filter-trait"
+            ]
+            not_trait_values = [
+                arguments[index + 1]
+                for index, argument in enumerate(arguments)
+                if argument == "--filter-not-trait"
+            ]
+            self.assertEqual(["Category=Benchmark"], trait_values)
+            self.assertEqual(["Category=Integration"], not_trait_values)
 
     def test_benchmark_wrappers_require_exactly_seventeen_executed_tests(self):
         wrappers = [
@@ -243,6 +254,43 @@ class TestRunnerContractTests(unittest.TestCase):
 
                 self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
+    def test_unit_contract_filter_uses_mtp_trait_exclusions(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            env, log_path = self._fake_dotnet_environment(root)
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    "./tools/test.sh",
+                    "--filter",
+                    "Category!=Integration",
+                    "--configuration",
+                    "Release",
+                    "--no-build",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            arguments = json.loads(log_path.read_text(encoding="utf-8"))
+            self.assertNotIn("--filter", arguments)
+            self.assertNotIn("--logger", arguments)
+            self.assertNotIn("--collect", arguments)
+            not_trait_values = [
+                arguments[index + 1]
+                for index, argument in enumerate(arguments)
+                if argument == "--filter-not-trait"
+            ]
+            self.assertEqual(
+                ["Category=Integration", "Category=Benchmark"],
+                not_trait_values,
+            )
+
     @staticmethod
     def _fake_dotnet_environment(
         root: Path,
@@ -271,8 +319,11 @@ class TestRunnerContractTests(unittest.TestCase):
                 )
                 if "--results-directory" in sys.argv:
                     results = Path(sys.argv[sys.argv.index("--results-directory") + 1])
-                    logger = sys.argv[sys.argv.index("--logger") + 1]
-                    log_name = logger.split("LogFileName=", 1)[1]
+                    if "--report-xunit-trx-filename" in sys.argv:
+                        log_name = sys.argv[sys.argv.index("--report-xunit-trx-filename") + 1]
+                    else:
+                        logger = sys.argv[sys.argv.index("--logger") + 1]
+                        log_name = logger.split("LogFileName=", 1)[1]
                     results.mkdir(parents=True, exist_ok=True)
                     (results / log_name).write_text(
                         '<TestRun><ResultSummary><Counters executed="{executed}" '

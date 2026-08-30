@@ -32,6 +32,28 @@ try {
             Where-Object { $_.Length -gt 0 -and -not $_.StartsWith('#') })
     }
 
+    # Translate the wrapper's VSTest-shaped Category expressions into Microsoft.Testing.Platform
+    # trait filters. SDK 10.0.400 selects MTP in global.json; VSTest --filter executes zero tests.
+    function Add-MtpFilterArguments([string]$Filter, [System.Collections.Generic.List[string]]$Arguments) {
+        if ([string]::IsNullOrWhiteSpace($Filter)) {
+            return
+        }
+
+        foreach ($part in $Filter.Split('&')) {
+            if ($part.StartsWith('Category!=', [System.StringComparison]::Ordinal)) {
+                $Arguments.Add('--filter-not-trait')
+                $Arguments.Add('Category=' + $part.Substring('Category!='.Length))
+            }
+            elseif ($part.StartsWith('Category=', [System.StringComparison]::Ordinal)) {
+                $Arguments.Add('--filter-trait')
+                $Arguments.Add($part)
+            }
+            else {
+                throw "Unsupported test filter '$part' in '$Filter'; Microsoft.Testing.Platform requires Category trait expressions."
+            }
+        }
+    }
+
     $projectPaths = switch -Wildcard ($Filter) {
         'Category!=Integration' {
             Read-ProjectInventory 'tools/test-projects.unit-contract.txt'
@@ -98,9 +120,12 @@ try {
             $arguments += '--no-build'
         }
 
-        if (-not [string]::IsNullOrWhiteSpace($effectiveFilter)) {
-            $arguments += @('--filter', $effectiveFilter)
+        $argumentList = [System.Collections.Generic.List[string]]::new()
+        foreach ($argument in $arguments) {
+            $argumentList.Add($argument)
         }
+
+        Add-MtpFilterArguments $effectiveFilter $argumentList
 
         $trxPath = $null
         $expectedExecutedTests = $null
@@ -115,21 +140,25 @@ try {
             $projectResultsDirectory = Join-Path $resultsRoot $safeName
             New-Item -ItemType Directory -Force -Path $projectResultsDirectory | Out-Null
             $trxPath = Join-Path $projectResultsDirectory "$safeName.trx"
-            $arguments += @(
-                '--logger',
-                "trx;LogFileName=$safeName.trx",
-                '--results-directory',
-                $projectResultsDirectory
-            )
+            $argumentList.Add('--results-directory')
+            $argumentList.Add($projectResultsDirectory)
+            $argumentList.Add('--report-xunit-trx')
+            $argumentList.Add('--report-xunit-trx-filename')
+            $argumentList.Add("$safeName.trx")
             if ($Filter -eq 'Category=Benchmark') {
                 $expectedExecutedTests = 17
             }
         }
 
         if ($Coverage) {
-            $arguments += @('--collect', 'XPlat Code Coverage', '--settings', 'tests/tests.runsettings')
+            $argumentList.Add('--coverage')
+            $argumentList.Add('--coverage-output-format')
+            $argumentList.Add('cobertura')
+            $argumentList.Add('--coverage-output')
+            $argumentList.Add('coverage.cobertura.xml')
         }
 
+        $arguments = $argumentList.ToArray()
         Write-Host ("dotnet {0}" -f ($arguments -join ' '))
         & dotnet @arguments
         $testExitCode = $LASTEXITCODE

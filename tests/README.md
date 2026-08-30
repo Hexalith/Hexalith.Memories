@@ -35,10 +35,10 @@ Integration tests split into two lanes by wall-clock cost. Performance-tagged in
 - `Category=Performance` — opt-in latency and throughput smoke tests
 
 ```bash
-dotnet test --filter "Category=Integration"                               # all integration tests (~17 min)
-dotnet test --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance"    # PR-fast lane
-dotnet test --filter "Category=IntegrationSlow"                           # slow lane only
-dotnet test --filter "Category=Performance"                               # performance smoke tests
+./tools/test.sh --filter "Category=Integration"                            # all integration tests (~17 min)
+./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance"    # PR-fast lane
+./tools/test.sh --filter "Category=IntegrationSlow"                        # slow lane only
+./tools/test.sh --filter "Category=Performance"                            # performance smoke tests
 ```
 
 ```powershell
@@ -113,9 +113,8 @@ per-query scores, reproducibility proof, and synthetic-vector caveat live in
 ### Debug / investigation
 
 ```bash
-dotnet test tests/Hexalith.Memories.Server.Tests --logger "console;verbosity=detailed"
-dotnet test --filter "Category=Integration" --logger "console;verbosity=detailed"
-dotnet test --blame-hang --blame-hang-timeout 5m
+./tools/test.sh --filter "Category=Integration"
+dotnet test tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug
 ```
 
 ### Headed / browser mode
@@ -157,7 +156,7 @@ tests/
 
 - Use `tools/test.ps1` on PowerShell/Windows runners.
 - Use `tools/test.sh` on bash/Linux runners.
-- Coverage collection relies on `XPlat Code Coverage` plus `tests/tests.runsettings`.
+- Coverage collection uses Microsoft.Testing.Platform `--coverage` (Cobertura) via the wrappers.
 - Integration targets require Docker availability for Testcontainers.
 - Root PR/push automation lives in `.github/workflows/ci.yml`; scheduled/manual integration and
   benchmark automation lives in `.github/workflows/nightly.yml`.
@@ -165,8 +164,8 @@ tests/
 ## Troubleshooting
 
 - **Docker-backed tests fail immediately**: confirm Docker Desktop or your container runtime is running before executing `Category=Integration` targets.
-- **Coverage output is missing**: use the coverage command or `tools/test.ps1 -Coverage` / `tools/test.sh --coverage`, which add `tests/tests.runsettings` automatically.
-- **Raw filtered `dotnet test` runs show a warning**: if you run `dotnet test --filter ...` against the whole solution, dedicated integration-only projects can emit a “no test matches the given testcase filter” warning. The wrapper scripts avoid that by targeting the relevant projects directly.
+- **Coverage output is missing**: use the coverage command or `tools/test.ps1 -Coverage` / `tools/test.sh --coverage`, which emit `coverage.cobertura.xml` under the results directory.
+- **Raw filtered `dotnet test` runs execute zero tests**: `global.json` selects Microsoft.Testing.Platform, which ignores VSTest `--filter`. Use the wrappers (`tools/test.sh` / `tools/test.ps1`) or MTP `--filter-trait` / `--filter-not-trait`.
 - **Endpoint-dependent tests fail locally**: review `../.env` and confirm `BASE_URL` / `API_URL` still point at the expected local server endpoint.
 
 ## Knowledge base references

@@ -73,6 +73,34 @@ read_inventory() {
   sed 's/\r$//' "$inventory_path" | grep -vE '^[[:space:]]*(#|$)'
 }
 
+# Translate the wrapper's VSTest-shaped Category expressions into Microsoft.Testing.Platform
+# trait filters. SDK 10.0.400 selects MTP in global.json; VSTest --filter executes zero tests.
+append_mtp_filter_args() {
+  local filter="$1"
+  MTP_FILTER_ARGS=()
+  if [[ -z "$filter" ]]; then
+    return 0
+  fi
+
+  local part
+  local -a parts
+  IFS='&' read -ra parts <<< "$filter"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      Category!=*)
+        MTP_FILTER_ARGS+=(--filter-not-trait "Category=${part#Category!=}")
+        ;;
+      Category=*)
+        MTP_FILTER_ARGS+=(--filter-trait "$part")
+        ;;
+      *)
+        echo "Unsupported test filter '$part' in '$filter'; Microsoft.Testing.Platform requires Category trait expressions." >&2
+        return 1
+        ;;
+    esac
+  done
+}
+
 # Resolve the inventory file for the current filter. Filters that don't match any case fall
 # back to running against the entire solution (PROJECTS=("")).
 inventory_file=""
@@ -136,8 +164,9 @@ for project in "${PROJECTS[@]}"; do
     CMD+=(--no-build)
   fi
 
-  if [[ -n "$EFFECTIVE_FILTER" ]]; then
-    CMD+=(--filter "$EFFECTIVE_FILTER")
+  append_mtp_filter_args "$EFFECTIVE_FILTER"
+  if [[ ${#MTP_FILTER_ARGS[@]} -gt 0 ]]; then
+    CMD+=("${MTP_FILTER_ARGS[@]}")
   fi
 
   TRX_PATH=""
@@ -152,14 +181,14 @@ for project in "${PROJECTS[@]}"; do
     project_results_directory="$RESULTS_ROOT/$project_name"
     mkdir -p "$project_results_directory"
     TRX_PATH="$project_results_directory/$project_name.trx"
-    CMD+=(--logger "trx;LogFileName=$project_name.trx" --results-directory "$project_results_directory")
+    CMD+=(--results-directory "$project_results_directory" --report-xunit-trx --report-xunit-trx-filename "$project_name.trx")
     if [[ "$FILTER" == "Category=Benchmark" ]]; then
       EXPECTED_EXECUTED_TESTS="17"
     fi
   fi
 
   if [[ "$COVERAGE" == true ]]; then
-    CMD+=(--collect "XPlat Code Coverage" --settings tests/tests.runsettings)
+    CMD+=(--coverage --coverage-output-format cobertura --coverage-output coverage.cobertura.xml)
   fi
 
   echo "${CMD[*]}"
