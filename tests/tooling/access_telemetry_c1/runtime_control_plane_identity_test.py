@@ -37,7 +37,11 @@ def write_fake_kubectl(directory: Path) -> None:
 
             args = sys.argv[1:]
             scenario = json.loads(Path(os.environ["C1_SCENARIO"]).read_text(encoding="utf-8"))
-            with Path(os.environ["C1_KUBECTL_LOG"]).open("a", encoding="utf-8") as log:
+            log_path = Path(os.environ["C1_KUBECTL_LOG"])
+            prior_calls = []
+            if log_path.exists():
+                prior_calls = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+            with log_path.open("a", encoding="utf-8") as log:
                 log.write(json.dumps(args) + "\\n")
 
             if args == ["config", "current-context"]:
@@ -46,12 +50,18 @@ def write_fake_kubectl(directory: Path) -> None:
                 print(scenario["context"])
                 raise SystemExit(0)
 
+            if args[:4] != ["--context", "jpiquot@local", "-n", "hexalith-memories"]:
+                print("unexpected target identity", file=sys.stderr)
+                raise SystemExit(99)
+
             if "get" in args and "pods" in args:
                 selector_index = args.index("-l") if "-l" in args else -1
                 if selector_index < 0 or args[selector_index + 1] != "app.kubernetes.io/name=memories-access-telemetry":
                     print("unexpected selector", file=sys.stderr)
                     raise SystemExit(98)
-                print(json.dumps(scenario["pods"]))
+                prior_pod_gets = [call for call in prior_calls if "get" in call and "pods" in call]
+                pods = scenario.get("podsAfter", scenario["pods"]) if prior_pod_gets else scenario["pods"]
+                print(json.dumps(pods))
                 raise SystemExit(0)
 
             if "exec" not in args:
@@ -68,16 +78,24 @@ def write_fake_kubectl(directory: Path) -> None:
                 print("forbidden non-lifecycle container", file=sys.stderr)
                 raise SystemExit(96)
             if "/v1.0/metadata" in shell_text:
-                if "DAPR_API_TOKEN" not in shell_text or "dapr-api-token:" not in shell_text:
+                expected_probe = 'if [ -z "${DAPR_API_TOKEN:-}" ]; then echo "required runtime credential unavailable" >&2; exit 72; fi; metadata="$(wget -qO- --timeout=5 --header="dapr-api-token: ${DAPR_API_TOKEN}" http://127.0.0.1:3500/v1.0/metadata)" || exit $?; case "$metadata" in *"$DAPR_API_TOKEN"*) echo "secret-shaped-output" >&2; exit 73;; esac; printf "%s" "$metadata"'
+                if shell_text != expected_probe:
                     print("metadata authentication missing", file=sys.stderr)
                     raise SystemExit(94)
+                if not scenario.get("metadataTokenAvailable", True):
+                    print("required runtime credential unavailable", file=sys.stderr)
+                    raise SystemExit(72)
                 raw = scenario.get("metadataRaw", {}).get(pod)
                 if raw is not None:
                     print(raw)
                 else:
                     print(json.dumps(scenario["metadata"][pod]))
                 raise SystemExit(0)
-            if "AccessTelemetryLifecycle__ComponentIsAlpha" in shell_text:
+            if (
+                shell_text.startswith('printf ') and
+                shell_text.count("AccessTelemetryLifecycle__ComponentIsAlpha") == 1 and
+                shell_text.count("AccessTelemetryLifecycle__AllowAlphaComponent") == 1
+            ):
                 values = scenario["alphaOptIn"][pod]
                 print(values[0])
                 print(values[1])
@@ -119,6 +137,7 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         scenario: dict,
         *,
         gate: str = "C1.15",
+        profile_id: str = "PG-ONPREM-1",
         evidence_directory: bool = True,
         repeat: int = 1,
         command_timeout_seconds: int = 30,
@@ -145,7 +164,7 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
             "-Gate",
             gate,
             "-ProfileId",
-            "PG-ONPREM-1",
+            profile_id,
             "-EvidenceDirectory",
             str(evidence),
             "-CommandTimeoutSeconds",
@@ -181,10 +200,12 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         packet = packets[-1]
         self.assertEqual("C1.15", packet["gate"])
         self.assertEqual("PG-ONPREM-1", packet["profileId"])
+        self.assertEqual("jpiquot@local", packet["context"])
+        self.assertEqual("hexalith-memories", packet["namespace"])
         self.assertEqual("observed", packet["producerStatus"])
         self.assertEqual("not-evaluated", packet["gateStatus"])
         self.assertFalse(packet["productionGatePassed"])
-        self.assertEqual("disabled", packet["productionLifecycleWrites"])
+        self.assertEqual("not-evaluated", packet["productionLifecycleWrites"])
         observation = packet["observations"]
         self.assertEqual(["1.18.1"], observation["runtimeVersions"])
         self.assertEqual(
@@ -207,6 +228,13 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         for entry in packet["sources"] + packet["commands"]:
             self.assertRegex(entry["sha256"], r"^[0-9a-f]{64}$")
         self.assertTrue(all(TARGET_SELECTOR in call for call in calls if "get" in call))
+        self.assertTrue(
+            all(
+                call[:4] == ["--context", "jpiquot@local", "-n", "hexalith-memories"]
+                for call in calls
+                if call != ["config", "current-context"]
+            )
+        )
         self.assertNotIn(TOKEN_CANARY, json.dumps(calls))
 
         sources = {entry["source"]: entry["sha256"] for entry in packet["sources"]}
@@ -284,6 +312,12 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         invalid_version["daprdVersions"][pod] = "usage text"
         invalid_version["metadata"][pod]["runtimeVersion"] = "usage text"
         cases["invalid-version"] = invalid_version
+        invalid_scheduler_port = copy.deepcopy(self.base_scenario)
+        invalid_scheduler_port["metadata"][pod]["scheduler"]["connectedAddresses"] = ["scheduler.local:99999"]
+        cases["invalid-scheduler-port"] = invalid_scheduler_port
+        ambiguous_scheduler = copy.deepcopy(self.base_scenario)
+        ambiguous_scheduler["metadata"][pod]["scheduler"]["connected_addresses"] = ["other.local:50006"]
+        cases["ambiguous-scheduler-alias"] = ambiguous_scheduler
 
         for name, scenario in cases.items():
             with self.subTest(name=name):
@@ -333,6 +367,16 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         _, pod = self.add_second_pod(feature)
         feature["metadata"][pod]["enabledFeatures"].append("SchedulerReminders")
         cases["feature"] = feature
+        case_sensitive_feature = copy.deepcopy(self.base_scenario)
+        first, pod = self.add_second_pod(case_sensitive_feature)
+        case_sensitive_feature["metadata"][first]["enabledFeatures"] = ["SchedulerReminders"]
+        case_sensitive_feature["metadata"][pod]["enabledFeatures"] = ["schedulerReminders"]
+        cases["case-sensitive-feature"] = case_sensitive_feature
+        case_sensitive_actor = copy.deepcopy(self.base_scenario)
+        first, pod = self.add_second_pod(case_sensitive_actor)
+        case_sensitive_actor["metadata"][first]["actors"].append({"type": "ExtraActor", "count": 1})
+        case_sensitive_actor["metadata"][pod]["actors"].append({"type": "extraActor", "count": 1})
+        cases["case-sensitive-actor"] = case_sensitive_actor
         alpha = copy.deepcopy(self.base_scenario)
         _, pod = self.add_second_pod(alpha)
         alpha["alphaOptIn"][pod] = ["true", "true"]
@@ -381,6 +425,40 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertEqual(["profile-context-mismatch"], packets[0]["blockers"])
         self.assertEqual([["config", "current-context"]], calls)
 
+    def test_malformed_or_duplicate_pod_identity_blocks(self) -> None:
+        malformed = copy.deepcopy(self.base_scenario)
+        malformed["pods"]["items"] = malformed["pods"]["items"][0]
+
+        result, packets, _, _ = self.run_gate(malformed)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["malformed-pod-list-json"], packets[0]["blockers"])
+
+        duplicate = copy.deepcopy(self.base_scenario)
+        duplicate["pods"]["items"].append(copy.deepcopy(duplicate["pods"]["items"][0]))
+        result, packets, _, _ = self.run_gate(duplicate)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["duplicate-running-pod"], packets[0]["blockers"])
+
+    def test_pod_identity_change_during_capture_blocks(self) -> None:
+        scenario = copy.deepcopy(self.base_scenario)
+        scenario["podsAfter"] = copy.deepcopy(scenario["pods"])
+        scenario["podsAfter"]["items"][0]["metadata"]["uid"] = "b5720433-c832-4b36-a698-862dbde85641"
+
+        result, packets, _, _ = self.run_gate(scenario)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["running-pod-changed"], packets[0]["blockers"])
+
+    def test_missing_runtime_metadata_token_blocks(self) -> None:
+        scenario = copy.deepcopy(self.base_scenario)
+        scenario["metadataTokenAvailable"] = False
+
+        result, packets, _, _ = self.run_gate(scenario)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertRegex(packets[0]["blockers"][0], r"^kubectl-metadata:.*-exit-72$")
+
     def test_running_unready_or_terminating_pod_blocks_before_exec(self) -> None:
         cases = {}
         container_false = copy.deepcopy(self.base_scenario)
@@ -426,6 +504,17 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertEqual(["malformed-metadata-json"], packets[0]["blockers"])
         self.assertEqual("not-evaluated", packets[0]["gateStatus"])
 
+    def test_oversized_probe_output_is_bounded_and_blocks(self) -> None:
+        scenario = copy.deepcopy(self.base_scenario)
+        pod = next(iter(scenario["metadata"]))
+        scenario["metadataRaw"] = {pod: "x" * (1024 * 1024 + 1)}
+
+        result, packets, _, _ = self.run_gate(scenario)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertRegex(packets[0]["blockers"][0], r"^kubectl-metadata:.*-output-too-large$")
+        self.assertNotIn("x" * 1024, json.dumps(packets[0]))
+
     def test_secret_shaped_metadata_blocks_without_copying_secret_to_packet(self) -> None:
         scenario = copy.deepcopy(self.base_scenario)
         pod = next(iter(scenario["metadata"]))
@@ -452,10 +541,30 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertEqual(["secret-shaped-output"], packets[0]["blockers"])
         self.assertNotIn(TOKEN_CANARY, json.dumps(packets[0]) + result.stdout + result.stderr)
 
+        secret_property = copy.deepcopy(self.base_scenario)
+        secret_property["metadata"][pod]["authorization"] = "Bearer-sensitive-value"
+        result, packets, _, _ = self.run_gate(secret_property)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["secret-shaped-output"], packets[0]["blockers"])
+        self.assertNotIn("Bearer-sensitive-value", json.dumps(packets[0]) + result.stdout + result.stderr)
+
     def test_unsupported_gate_fails_parameter_validation_before_producer_runs(self) -> None:
         result, packets, calls, evidence = self.run_gate(
             self.base_scenario,
             gate="C1.14",
+            evidence_directory=False,
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual([], packets)
+        self.assertEqual([], calls)
+        self.assertFalse(evidence.exists())
+        self.assertRegex(result.stderr, re.compile(r"ValidateSet|validation set", re.IGNORECASE))
+
+    def test_unsupported_profile_fails_parameter_validation_before_producer_runs(self) -> None:
+        result, packets, calls, evidence = self.run_gate(
+            self.base_scenario,
+            profile_id="PG-CLOUD-1",
             evidence_directory=False,
         )
 

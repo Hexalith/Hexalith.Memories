@@ -7,6 +7,7 @@
       {
         "metadata": {
           "name": "memories-access-telemetry-7cc55d9fd8-proof",
+          "uid": "7e36eb30-17d5-48de-9c67-f9c6b95430ce",
           "labels": {
             "app.kubernetes.io/name": "memories-access-telemetry"
           }

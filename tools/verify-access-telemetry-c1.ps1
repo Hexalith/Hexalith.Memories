@@ -52,6 +52,9 @@ function Assert-SecretSafeOutput {
     if ($Text -match '(?i)(C1[_-]?SECRET[_-]?CANARY|SECRET[_-]?CANARY|(?:authorization|dapr[-_]?api[-_]?token)\s*[:=]\s*[^\s"'']+|\b(?:hvs|hvb|hvr)\.[A-Za-z0-9_-]{8,})') {
         throw 'secret-shaped-output'
     }
+    if ($Text -match '(?i)"(?:authorization|dapr[-_]?api[-_]?token)"\s*:\s*"(?:[^"\\]|\\.)+"') {
+        throw 'secret-shaped-output'
+    }
 }
 
 function Invoke-KubectlObservation {
@@ -78,6 +81,8 @@ function Invoke-KubectlObservation {
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
+    $stdoutCapture = [System.IO.MemoryStream]::new()
+    $stderrCapture = [System.IO.MemoryStream]::new()
     try {
         try {
             if (-not $process.Start()) {
@@ -88,30 +93,109 @@ function Invoke-KubectlObservation {
             throw "kubectl-$Purpose-execution-failed"
         }
 
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit($CommandTimeoutSeconds * 1000)) {
+        $maximumCaptureBytes = 1MB
+        $stdoutExceeded = $false
+        $stderrExceeded = $false
+        $stdoutBuffer = [byte[]]::new(8192)
+        $stderrBuffer = [byte[]]::new(8192)
+        $stdoutTask = $process.StandardOutput.BaseStream.ReadAsync($stdoutBuffer, 0, $stdoutBuffer.Length)
+        $stderrTask = $process.StandardError.BaseStream.ReadAsync($stderrBuffer, 0, $stderrBuffer.Length)
+        $deadline = [DateTimeOffset]::UtcNow.AddSeconds($CommandTimeoutSeconds)
+        while ($null -ne $stdoutTask -or $null -ne $stderrTask) {
+            $remaining = $deadline - [DateTimeOffset]::UtcNow
+            if ($remaining -le [TimeSpan]::Zero) {
+                try {
+                    $process.Kill($true)
+                }
+                catch {
+                    # The stable timeout blocker below is authoritative even if cleanup races.
+                }
+                throw "kubectl-$Purpose-timeout"
+            }
+
+            $pendingTasks = [System.Collections.Generic.List[System.Threading.Tasks.Task]]::new()
+            if ($null -ne $stdoutTask) {
+                $pendingTasks.Add($stdoutTask)
+            }
+            if ($null -ne $stderrTask) {
+                $pendingTasks.Add($stderrTask)
+            }
+            try {
+                $completedTask = [System.Threading.Tasks.Task]::WhenAny(
+                    [System.Threading.Tasks.Task[]]$pendingTasks).WaitAsync($remaining).GetAwaiter().GetResult()
+            }
+            catch [System.TimeoutException] {
+                try {
+                    $process.Kill($true)
+                }
+                catch {
+                    # The stable timeout blocker below is authoritative even if cleanup races.
+                }
+                throw "kubectl-$Purpose-timeout"
+            }
+
+            if ($null -ne $stdoutTask -and [object]::ReferenceEquals($completedTask, $stdoutTask)) {
+                $count = $stdoutTask.GetAwaiter().GetResult()
+                if ($count -eq 0) {
+                    $stdoutTask = $null
+                }
+                else {
+                    $remainingCapture = [int][Math]::Max(0, $maximumCaptureBytes - $stdoutCapture.Length)
+                    $captured = [Math]::Min($remainingCapture, $count)
+                    if ($captured -gt 0) {
+                        $stdoutCapture.Write($stdoutBuffer, 0, $captured)
+                    }
+                    if ($captured -ne $count) {
+                        $stdoutExceeded = $true
+                    }
+                    $stdoutTask = $process.StandardOutput.BaseStream.ReadAsync($stdoutBuffer, 0, $stdoutBuffer.Length)
+                }
+            }
+            if ($null -ne $stderrTask -and [object]::ReferenceEquals($completedTask, $stderrTask)) {
+                $count = $stderrTask.GetAwaiter().GetResult()
+                if ($count -eq 0) {
+                    $stderrTask = $null
+                }
+                else {
+                    $remainingCapture = [int][Math]::Max(0, $maximumCaptureBytes - $stderrCapture.Length)
+                    $captured = [Math]::Min($remainingCapture, $count)
+                    if ($captured -gt 0) {
+                        $stderrCapture.Write($stderrBuffer, 0, $captured)
+                    }
+                    if ($captured -ne $count) {
+                        $stderrExceeded = $true
+                    }
+                    $stderrTask = $process.StandardError.BaseStream.ReadAsync($stderrBuffer, 0, $stderrBuffer.Length)
+                }
+            }
+        }
+
+        $remainingMilliseconds = [int][Math]::Max(
+            0,
+            [Math]::Ceiling(($deadline - [DateTimeOffset]::UtcNow).TotalMilliseconds))
+        if (-not $process.WaitForExit($remainingMilliseconds)) {
             try {
                 $process.Kill($true)
-                $process.WaitForExit()
             }
             catch {
-                # The stable timeout blocker below is authoritative even if process cleanup races.
+                # The stable timeout blocker below is authoritative even if cleanup races.
             }
             throw "kubectl-$Purpose-timeout"
         }
 
-        $stdout = $stdoutTask.GetAwaiter().GetResult()
-        $stderr = $stderrTask.GetAwaiter().GetResult()
+        $stdout = [System.Text.Encoding]::UTF8.GetString($stdoutCapture.ToArray())
+        $stderr = [System.Text.Encoding]::UTF8.GetString($stderrCapture.ToArray())
         $exitCode = $process.ExitCode
+        if ($stdoutExceeded -or $stderrExceeded) {
+            throw "kubectl-$Purpose-output-too-large"
+        }
     }
     finally {
         $process.Dispose()
+        $stdoutCapture.Dispose()
+        $stderrCapture.Dispose()
     }
 
-    if ($stdout.Length -gt 1MB -or $stderr.Length -gt 1MB) {
-        throw "kubectl-$Purpose-output-too-large"
-    }
     Assert-SecretSafeOutput $stdout
     Assert-SecretSafeOutput $stderr
     if (-not $SkipSourceHash) {
@@ -184,7 +268,7 @@ function ConvertTo-ValidatedStringArray {
         $validated.Add($rawValue)
     }
 
-    $normalized = @($validated | Sort-Object -Unique)
+    $normalized = @($validated | Sort-Object -CaseSensitive -Unique)
     if ($normalized.Count -ne $rawValues.Count) {
         throw $FailureCode
     }
@@ -226,9 +310,20 @@ function Write-ImmutablePacket {
         }
     }
 
-    [System.IO.File]::SetAttributes(
-        $path,
-        [System.IO.File]::GetAttributes($path) -bor [System.IO.FileAttributes]::ReadOnly)
+    try {
+        [System.IO.File]::SetAttributes(
+            $path,
+            [System.IO.File]::GetAttributes($path) -bor [System.IO.FileAttributes]::ReadOnly)
+    }
+    catch {
+        try {
+            [System.IO.File]::Delete($path)
+        }
+        catch {
+            # The stable packet-finalization blocker below remains authoritative.
+        }
+        throw 'packet-immutability-failed'
+    }
 
     return $path
 }
@@ -276,6 +371,9 @@ try {
     catch {
         throw 'malformed-pod-list-json'
     }
+    if ($null -eq $podsPayload.items -or $podsPayload.items -isnot [System.Array]) {
+        throw 'malformed-pod-list-json'
+    }
 
     $runningPods = @($podsPayload.items | Where-Object {
         [string]::Equals([string]$_.status.phase, 'Running', [StringComparison]::Ordinal)
@@ -285,10 +383,18 @@ try {
     }
 
     $perPod = [System.Collections.Generic.List[object]]::new()
+    $seenPodNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     foreach ($pod in $runningPods) {
         $podName = [string]$pod.metadata.name
         if ([string]::IsNullOrWhiteSpace($podName)) {
             throw 'running-pod-name-missing'
+        }
+        if (-not $seenPodNames.Add($podName)) {
+            throw 'duplicate-running-pod'
+        }
+        $podUid = [string]$pod.metadata.uid
+        if ([string]::IsNullOrWhiteSpace($podUid)) {
+            throw 'running-pod-uid-missing'
         }
 
         $podLabel = [string]$pod.metadata.labels.'app.kubernetes.io/name'
@@ -332,7 +438,7 @@ try {
             throw 'daprd-version-invalid'
         }
 
-        $metadataProbe = 'if [ -z "${DAPR_API_TOKEN:-}" ]; then echo "required runtime credential unavailable" >&2; exit 72; fi; wget -qO- --timeout=5 --header="dapr-api-token: ${DAPR_API_TOKEN}" http://127.0.0.1:3500/v1.0/metadata'
+        $metadataProbe = 'if [ -z "${DAPR_API_TOKEN:-}" ]; then echo "required runtime credential unavailable" >&2; exit 72; fi; metadata="$(wget -qO- --timeout=5 --header="dapr-api-token: ${DAPR_API_TOKEN}" http://127.0.0.1:3500/v1.0/metadata)" || exit $?; case "$metadata" in *"$DAPR_API_TOKEN"*) echo "secret-shaped-output" >&2; exit 73;; esac; printf "%s" "$metadata"'
         $metadataJson = Invoke-KubectlObservation -Purpose "metadata:$podName" -Arguments @(
             '--context', $context,
             '-n', $namespace,
@@ -362,6 +468,10 @@ try {
         }
 
         $scheduler = Get-RequiredProperty -Object $metadata -Names @('scheduler') -FailureCode 'metadata-scheduler-missing'
+        if ($null -ne $scheduler.PSObject.Properties['connectedAddresses'] -and
+            $null -ne $scheduler.PSObject.Properties['connected_addresses']) {
+            throw 'metadata-scheduler-addresses-ambiguous'
+        }
         $schedulerAddresses = @(ConvertTo-ValidatedStringArray `
             -Value (Get-RequiredProperty -Object $scheduler -Names @('connectedAddresses', 'connected_addresses') -FailureCode 'metadata-scheduler-addresses-missing') `
             -Pattern '^[A-Za-z0-9][A-Za-z0-9._-]{0,252}:[0-9]{1,5}$' `
@@ -369,6 +479,13 @@ try {
             -AllowEmpty $false `
             -FailureCode 'metadata-scheduler-addresses-invalid'
         )
+        foreach ($schedulerAddress in $schedulerAddresses) {
+            $port = 0
+            $portText = $schedulerAddress.Substring($schedulerAddress.LastIndexOf(':') + 1)
+            if (-not [int]::TryParse($portText, [ref]$port) -or $port -lt 1 -or $port -gt 65535) {
+                throw 'metadata-scheduler-addresses-invalid'
+            }
+        }
 
         $actorsValue = Get-RequiredProperty -Object $metadata -Names @('actors') -FailureCode 'metadata-actors-missing'
         if ($null -eq $actorsValue -or $actorsValue -isnot [System.Array]) {
@@ -387,7 +504,8 @@ try {
             -AllowEmpty $false `
             -FailureCode 'metadata-actor-type-invalid'
         )
-        if ($actorTypes.Count -eq 0 -or $expectedActorType -notin $actorTypes) {
+        if ($actorTypes.Count -eq 0 -or
+            @($actorTypes | Where-Object { [string]::Equals($_, $expectedActorType, [StringComparison]::Ordinal) }).Count -eq 0) {
             throw 'metadata-actor-type-missing'
         }
 
@@ -431,6 +549,7 @@ try {
 
         $perPod.Add([ordered]@{
             pod = $podName
+            podUid = $podUid
             runtimeVersion = $runtimeVersion.Trim()
             sidecarImageId = $imageId
             sidecarImageDigest = $digestMatch.Value
@@ -445,24 +564,80 @@ try {
         })
     }
 
-    $runtimeVersions = @($perPod | ForEach-Object { $_.runtimeVersion } | Sort-Object -Unique)
-    $sidecarImageIds = @($perPod | ForEach-Object { $_.sidecarImageId } | Sort-Object -Unique)
-    $sidecarImageDigests = @($perPod | ForEach-Object { $_.sidecarImageDigest } | Sort-Object -Unique)
-    $appIds = @($perPod | ForEach-Object { $_.appId } | Sort-Object -Unique)
-    $schedulerAddresses = @($perPod | ForEach-Object { $_.schedulerConnectedAddresses } | Sort-Object -Unique)
-    $actorTypes = @($perPod | ForEach-Object { $_.actorTypes } | Sort-Object -Unique)
-    $enabledFeatures = @($perPod | ForEach-Object { $_.enabledFeatures } | Sort-Object -Unique)
+    $podsAfterJson = Invoke-KubectlObservation -Purpose 'lifecycle-pods-recheck' -Arguments @(
+        '--context', $context,
+        '-n', $namespace,
+        'get', 'pods',
+        '-l', $targetSelector,
+        '-o', 'json'
+    )
+    try {
+        $podsAfterPayload = $podsAfterJson | ConvertFrom-Json -Depth 30
+    }
+    catch {
+        throw 'malformed-pod-list-json'
+    }
+    if ($null -eq $podsAfterPayload.items -or $podsAfterPayload.items -isnot [System.Array]) {
+        throw 'malformed-pod-list-json'
+    }
+
+    $runningPodsAfter = @($podsAfterPayload.items | Where-Object {
+        [string]::Equals([string]$_.status.phase, 'Running', [StringComparison]::Ordinal)
+    })
+    if ($runningPodsAfter.Count -ne $perPod.Count) {
+        throw 'running-pod-changed'
+    }
+    $initialPods = [System.Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+    foreach ($observedPod in $perPod) {
+        $initialPods.Add([string]$observedPod.pod, $observedPod)
+    }
+    $seenAfterPodNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($podAfter in $runningPodsAfter) {
+        $podAfterName = [string]$podAfter.metadata.name
+        if ([string]::IsNullOrWhiteSpace($podAfterName) -or
+            -not $seenAfterPodNames.Add($podAfterName) -or
+            -not $initialPods.ContainsKey($podAfterName)) {
+            throw 'running-pod-changed'
+        }
+        $initialPod = $initialPods[$podAfterName]
+        $podAfterUid = [string]$podAfter.metadata.uid
+        $podAfterLabel = [string]$podAfter.metadata.labels.'app.kubernetes.io/name'
+        $readyConditionsAfter = @($podAfter.status.conditions | Where-Object { $_.type -eq 'Ready' })
+        $containerStatusesAfter = @($podAfter.status.containerStatuses)
+        $lifecycleStatusAfter = @($containerStatusesAfter | Where-Object { $_.name -eq 'lifecycle' })
+        $sidecarStatusAfter = @($containerStatusesAfter | Where-Object { $_.name -eq 'daprd' })
+        if (-not [string]::Equals($podAfterUid, [string]$initialPod.podUid, [StringComparison]::Ordinal) -or
+            -not [string]::Equals($podAfterLabel, $expectedAppId, [StringComparison]::Ordinal) -or
+            ($null -ne $podAfter.metadata.PSObject.Properties['deletionTimestamp'] -and
+                $null -ne $podAfter.metadata.deletionTimestamp) -or
+            $readyConditionsAfter.Count -ne 1 -or
+            -not [string]::Equals([string]$readyConditionsAfter[0].status, 'True', [StringComparison]::Ordinal) -or
+            $lifecycleStatusAfter.Count -ne 1 -or $sidecarStatusAfter.Count -ne 1 -or
+            $lifecycleStatusAfter[0].ready -isnot [bool] -or $sidecarStatusAfter[0].ready -isnot [bool] -or
+            -not $lifecycleStatusAfter[0].ready -or -not $sidecarStatusAfter[0].ready -or
+            -not [string]::Equals([string]$sidecarStatusAfter[0].imageID, [string]$initialPod.sidecarImageId, [StringComparison]::Ordinal)) {
+            throw 'running-pod-changed'
+        }
+    }
+
+    $runtimeVersions = @($perPod | ForEach-Object { $_.runtimeVersion } | Sort-Object -CaseSensitive -Unique)
+    $sidecarImageIds = @($perPod | ForEach-Object { $_.sidecarImageId } | Sort-Object -CaseSensitive -Unique)
+    $sidecarImageDigests = @($perPod | ForEach-Object { $_.sidecarImageDigest } | Sort-Object -CaseSensitive -Unique)
+    $appIds = @($perPod | ForEach-Object { $_.appId } | Sort-Object -CaseSensitive -Unique)
+    $schedulerAddresses = @($perPod | ForEach-Object { $_.schedulerConnectedAddresses } | Sort-Object -CaseSensitive -Unique)
+    $actorTypes = @($perPod | ForEach-Object { $_.actorTypes } | Sort-Object -CaseSensitive -Unique)
+    $enabledFeatures = @($perPod | ForEach-Object { $_.enabledFeatures } | Sort-Object -CaseSensitive -Unique)
     $componentAlphaValues = @($perPod | ForEach-Object { $_.alphaOptIn.componentIsAlpha } | Sort-Object -Unique)
     $allowAlphaValues = @($perPod | ForEach-Object { $_.alphaOptIn.allowAlphaComponent } | Sort-Object -Unique)
     $schedulerIdentities = @($perPod | ForEach-Object {
         Get-CollectionIdentity -Values @($_.schedulerConnectedAddresses)
-    } | Sort-Object -Unique)
+    } | Sort-Object -CaseSensitive -Unique)
     $actorIdentities = @($perPod | ForEach-Object {
         Get-CollectionIdentity -Values @($_.actorTypes)
-    } | Sort-Object -Unique)
+    } | Sort-Object -CaseSensitive -Unique)
     $featureIdentities = @($perPod | ForEach-Object {
         Get-CollectionIdentity -Values @($_.enabledFeatures)
-    } | Sort-Object -Unique)
+    } | Sort-Object -CaseSensitive -Unique)
 
     if ($runtimeVersions.Count -ne 1 -or $sidecarImageDigests.Count -ne 1 -or $appIds.Count -ne 1 -or
         $componentAlphaValues.Count -ne 1 -or $allowAlphaValues.Count -ne 1 -or
@@ -505,7 +680,7 @@ $packet = [ordered]@{
     producerStatus = $producerStatus
     gateStatus = 'not-evaluated'
     productionGatePassed = $false
-    productionLifecycleWrites = 'disabled'
+    productionLifecycleWrites = 'not-evaluated'
     observations = $observations
     blockers = @($blockers)
     sources = @($script:sourceLedger)

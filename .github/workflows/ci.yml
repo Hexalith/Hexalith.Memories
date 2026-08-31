@@ -190,7 +190,18 @@ jobs:
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
         # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
         # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+        #
+        # Story 28.1 KNOWN GAP: HexalithEventStoreVersion is pinned to a proof-identity version
+        # (999.1.20-proof.fa2d1c9910f8) that is not published on nuget.org. Restoring it requires
+        # tools/nuget-local-feeds/NuGet.local.config, which is gitignored and local-only by design
+        # (see NuGet.config header and spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md
+        # -- a trustedSigners author-trust exception must not land in the tracked, shared
+        # NuGet.config). A fresh CI checkout does NOT have that file, so this step -- and every
+        # other `dotnet restore`/`dotnet build` in this workflow that touches Hexalith.EventStore.*
+        # -- fails with NU1102 until the local feed + config are provisioned in CI by some other
+        # mechanism (secret, cache step, artifact, etc.). Not solved here; --configfile below only
+        # makes the step correct for a run where that provisioning already happened.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile tools/nuget-local-feeds/NuGet.local.config
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
@@ -200,8 +211,9 @@ jobs:
         # instead of PackageReference (Directory.Build.props UseHexalithProjectReferences),
         # which is a distinct restore graph from the Release/package build above. Both
         # modes must independently pass so the pinned source identity stays provably
-        # buildable, not just the packaged one.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Debug -p:UseHexalithProjectReferences=true -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+        # buildable, not just the packaged one. Same NuGet.local.config gap as the Release
+        # restore step above applies here too.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Debug -p:UseHexalithProjectReferences=true -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile tools/nuget-local-feeds/NuGet.local.config
 
       - name: Build solution (Debug/source)
         run: dotnet build Hexalith.Memories.slnx --configuration Debug -p:UseHexalithProjectReferences=true --no-restore
@@ -282,7 +294,7 @@ jobs:
         run: PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p "test_*.py"
 
       - name: Run access-telemetry C1 producer fixtures
-        run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p "runtime_control_plane_identity_test.py"
+        run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p "*_test.py"
 
       - name: Run story file-scope gate fixtures
         run: python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"
