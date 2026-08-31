@@ -195,6 +195,17 @@ jobs:
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
 
+      - name: Restore solution (Debug/source)
+        # Story 28.1: Debug/source mode consumes Hexalith.EventStore via ProjectReference
+        # instead of PackageReference (Directory.Build.props UseHexalithProjectReferences),
+        # which is a distinct restore graph from the Release/package build above. Both
+        # modes must independently pass so the pinned source identity stays provably
+        # buildable, not just the packaged one.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Debug -p:UseHexalithProjectReferences=true -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+
+      - name: Build solution (Debug/source)
+        run: dotnet build Hexalith.Memories.slnx --configuration Debug -p:UseHexalithProjectReferences=true --no-restore
+
   test-unit-contract:
     name: test-unit-contract
     runs-on: ubuntu-latest

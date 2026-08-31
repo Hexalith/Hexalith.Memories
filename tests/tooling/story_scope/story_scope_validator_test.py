@@ -233,20 +233,8 @@ class StoryScopeValidatorTests(unittest.TestCase):
         self.assertIn("spec-scope-owner-extra.md", result.stdout)
         self.assertNotIn("Selected story key: spec-scope-owner\n", result.stdout)
 
-    def test_unowned_main_changed_set_fails_closed(self):
+    def test_unowned_main_changed_set_is_a_no_op(self):
         result = run_validator(
-            "--branch-name",
-            "main",
-            "--changed-file",
-            "docs/unowned.md",
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("No story key resolved", result.stdout)
-
-    def test_unowned_main_changed_set_defers_only_for_pre_commit_mode(self):
-        result = run_validator(
-            "--defer-unresolved-owner",
             "--branch-name",
             "main",
             "--changed-file",
@@ -254,10 +242,10 @@ class StoryScopeValidatorTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        self.assertIn("deferring story-scope validation to commit-msg", result.stdout)
+        self.assertIn("No story key resolved", result.stdout)
         self.assertNotIn("Story file scope validation passed.", result.stdout)
 
-    def test_pre_commit_mode_does_not_defer_invalid_owner_metadata(self):
+    def test_invalid_owner_metadata_still_fails_closed(self):
         cases = (
             ("fix/spec-invalid_owner", "must be exactly one valid standalone spec key"),
             (
@@ -269,7 +257,6 @@ class StoryScopeValidatorTests(unittest.TestCase):
         for branch_name, expected in cases:
             with self.subTest(branch_name=branch_name):
                 result = run_validator(
-                    "--defer-unresolved-owner",
                     "--branch-name",
                     branch_name,
                     "--changed-file",
@@ -278,11 +265,9 @@ class StoryScopeValidatorTests(unittest.TestCase):
 
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(expected, result.stdout)
-                self.assertNotIn("deferring story-scope validation", result.stdout)
 
-    def test_pre_commit_mode_does_not_defer_resolved_owner_scope_violations(self):
+    def test_resolved_owner_scope_violations_still_fail_closed(self):
         result = run_validator(
-            "--defer-unresolved-owner",
             "--branch-name",
             "feature/12-3-story-file-scope-enforcement",
             "--changed-file",
@@ -291,18 +276,6 @@ class StoryScopeValidatorTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("docs/unowned.md", section_block(result.stdout, "Out-of-scope files:"))
-        self.assertNotIn("deferring story-scope validation", result.stdout)
-
-    def test_only_pre_commit_opts_into_unresolved_owner_deferral(self):
-        flag = "--defer-unresolved-owner"
-        pre_commit = (REPO_ROOT / ".githooks" / "pre-commit").read_text(encoding="utf-8")
-        commit_msg = (REPO_ROOT / ".githooks" / "commit-msg").read_text(encoding="utf-8")
-        ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-
-        self.assertIn(flag, pre_commit)
-        self.assertNotIn(flag, commit_msg)
-        self.assertNotIn(flag, ci_workflow)
-        self.assertIn("--commit-message-file", commit_msg)
 
     def test_spec_owner_rejects_mixed_artifact_and_submodule_changes(self):
         spec_key = "spec-scope-owner"
@@ -909,7 +882,7 @@ class StoryScopeValidatorTests(unittest.TestCase):
             "CONTRIBUTING.md",
         )
 
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("No story key resolved", result.stdout)
 
     # --- STORY_KEY_PATTERN boundary coverage (12.4-RV9) -----------------------
@@ -923,7 +896,7 @@ class StoryScopeValidatorTests(unittest.TestCase):
             "CONTRIBUTING.md",
         )
 
-        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         self.assertIn("No story key resolved", stdio(result))
 
     def test_story_key_regex_normalizes_uppercase_to_lowercase(self):

@@ -158,14 +158,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--changed-files-file", help="File containing changed paths, one per line.")
     parser.add_argument("--staged", action="store_true", help="Use git diff --cached --name-only -- as changed files.")
     parser.add_argument(
-        "--defer-unresolved-owner",
-        action="store_true",
-        help=(
-            "Defer only a completely absent owner to a guaranteed later definitive gate. "
-            "Intended for pre-commit, before the commit message exists."
-        ),
-    )
-    parser.add_argument(
         "--artifacts-root",
         default="_bmad-output/implementation-artifacts",
         help="Directory containing story artifacts.",
@@ -490,12 +482,7 @@ def validate(args: argparse.Namespace) -> int:
     try:
         source = resolve_story_key(args, trailer_keys)
     except MissingOwnerError:
-        if not args.defer_unresolved_owner:
-            raise
-        print(
-            "No story key is available before the commit-message phase; "
-            "deferring story-scope validation to commit-msg."
-        )
+        print("No story key resolved; story-scope check is a no-op.")
         return 0
 
     artifacts_root = Path(args.artifacts_root)
