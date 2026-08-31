@@ -628,8 +628,12 @@ public class TenantIsolationVerifierTests
         semanticCheck.Passed.ShouldBeFalse();
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain("tenant-b");
+        semanticCheck.Details.ShouldContain("confirmed marker mismatch (possible contamination)");
+        semanticCheck.Details.ShouldContain("expected tenant 'tenant-a', observed tenant 'tenant-b'");
+        semanticCheck.Remediation.ShouldNotBeNull();
         semanticCheck.Remediation.ShouldBe(
-            $"Repair or re-provision tenant 'tenant-a' Redis Vector indexes, reindex its semantic data using the validated {VectorDimensions}-dimension embedding configuration, and remove mismatched target-prefix hashes");
+            $"For the confirmed marker mismatch (possible contamination) on '{plantedKey}', inspect and quarantine the named key(s), then run tenant-scoped marker repair or reindex for tenant 'tenant-a' only after provenance is verified — never delete the prefix.");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
     }
 
     [Fact]
@@ -684,7 +688,12 @@ public class TenantIsolationVerifierTests
         TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
         semanticCheck.Passed.ShouldBeFalse();
         semanticCheck.Details.ShouldNotBeNull();
-        semanticCheck.Details.ShouldContain("missing tenantId field");
+        semanticCheck.Details.ShouldContain("is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage");
+        semanticCheck.Details.ShouldNotContain("confirmed marker mismatch");
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldBe(
+            $"For the incomplete evidence (missing marker, not confirmed leakage) on '{plantedKey}', inspect and quarantine the named key(s) before any tenant-scoped marker repair or reindex for tenant 'tenant-a', applied only after provenance is verified — never delete the prefix.");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
     }
 
     [Theory]
@@ -741,8 +750,261 @@ public class TenantIsolationVerifierTests
             SemanticKeyFamily.ActiveNaturalLanguage => "natural-language semantic",
             _ => throw new InvalidOperationException($"Unexpected active family '{family}'."),
         });
-        semanticCheck.Details.ShouldContain(storedTenantId is null ? "missing tenantId field" : "tenantId field 'tenant-b'");
+        semanticCheck.Details.ShouldContain(storedTenantId is null
+            ? "is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage"
+            : "has a foreign tenantId marker 'tenant-b': confirmed marker mismatch (possible contamination)");
         semanticCheck.Details.ShouldNotContain("evidence-classification gap");
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain(storedTenantId is null
+            ? "incomplete evidence (missing marker, not confirmed leakage)"
+            : "confirmed marker mismatch (possible contamination)");
+        semanticCheck.Remediation.ShouldContain($"'{key}'");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_MissingActiveMarker_ReturnsIncompleteEvidenceWithoutDeleteGuidance()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "incomplete-evidence");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupSemanticRecord(redisDb, plantedKey, "incomplete-evidence", tenantId: null);
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"key '{plantedKey}' under tenant 'tenant-a' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage");
+        semanticCheck.Details.ShouldNotContain("confirmed marker mismatch");
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain($"'{plantedKey}'");
+        semanticCheck.Remediation.ShouldContain("incomplete evidence (missing marker, not confirmed leakage)");
+        semanticCheck.Remediation.ShouldNotContain("confirmed marker mismatch");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ForeignActiveMarker_ReturnsPossibleContaminationWithNamedKey()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "possible-contamination");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupSemanticRecord(redisDb, plantedKey, "possible-contamination", "tenant-b");
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"key '{plantedKey}' under tenant 'tenant-a' has a foreign tenantId marker 'tenant-b': confirmed marker mismatch (possible contamination)");
+        semanticCheck.Details.ShouldContain("expected tenant 'tenant-a', observed tenant 'tenant-b'");
+        semanticCheck.Details.ShouldNotContain("incomplete evidence");
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain($"'{plantedKey}'");
+        semanticCheck.Remediation.ShouldContain("confirmed marker mismatch (possible contamination)");
+        semanticCheck.Remediation.ShouldNotContain("incomplete evidence");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_MixedMissingAndForeignActiveMarkers_PreservesBothDistinctDiagnoses()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string missingKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mixed-missing");
+        string foreignKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "mixed-foreign");
+        SetupRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
+            missingKey,
+            foreignKey);
+        SetupSemanticRecord(redisDb, missingKey, "mixed-missing", tenantId: null);
+        SetupSemanticRecord(redisDb, foreignKey, "mixed-foreign", "tenant-b");
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"key '{missingKey}' under tenant 'tenant-a' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage");
+        semanticCheck.Details.ShouldContain($"key '{foreignKey}' under tenant 'tenant-a' has a foreign tenantId marker 'tenant-b': confirmed marker mismatch (possible contamination)");
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain($"'{missingKey}'");
+        semanticCheck.Remediation.ShouldContain($"'{foreignKey}'");
+        semanticCheck.Remediation.ShouldContain("confirmed marker mismatch (possible contamination)");
+        semanticCheck.Remediation.ShouldContain("incomplete evidence (missing marker, not confirmed leakage)");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_TwoForeignActiveMarkersSameCheck_JoinsBothKeysInOneSentence()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string firstForeignKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "foreign-one");
+        string secondForeignKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "foreign-two");
+        SetupRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
+            firstForeignKey,
+            secondForeignKey);
+        SetupSemanticRecord(redisDb, firstForeignKey, "foreign-one", "tenant-b");
+        SetupSemanticRecord(redisDb, secondForeignKey, "foreign-two", "tenant-b");
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldBe(
+            $"For the confirmed marker mismatch (possible contamination) on '{firstForeignKey}', '{secondForeignKey}', inspect and quarantine the named key(s), then run tenant-scoped marker repair or reindex for tenant 'tenant-a' only after provenance is verified — never delete the prefix.");
+        semanticCheck.Remediation.ShouldNotContain("incomplete evidence");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_TwoMissingActiveMarkersSameCheck_JoinsBothKeysInOneSentence()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string firstMissingKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "missing-one");
+        string secondMissingKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "missing-two");
+        SetupRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
+            firstMissingKey,
+            secondMissingKey);
+        SetupSemanticRecord(redisDb, firstMissingKey, "missing-one", tenantId: null);
+        SetupSemanticRecord(redisDb, secondMissingKey, "missing-two", tenantId: null);
+        SetupGraphList(falkorDb, "tenant-a");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldBe(
+            $"For the incomplete evidence (missing marker, not confirmed leakage) on '{firstMissingKey}', '{secondMissingKey}', inspect and quarantine the named key(s) before any tenant-scoped marker repair or reindex for tenant 'tenant-a', applied only after provenance is verified — never delete the prefix.");
+        semanticCheck.Remediation.ShouldNotContain("confirmed marker mismatch");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_DimensionMismatchAndForeignActiveMarkerSameCheck_ComposesBothRemediationSentences()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a", rawDimensions: 1536);
+        string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "dimension-and-marker");
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupSemanticRecord(redisDb, plantedKey, "dimension-and-marker", "tenant-b");
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"expected {VectorDimensions} dimensions");
+        semanticCheck.Details.ShouldContain($"key '{plantedKey}'");
+        semanticCheck.Remediation.ShouldNotBeNull();
+
+        // Both the non-marker (dimension) sentence and the marker-specific sentence must be composed together,
+        // since a single check can surface both problem kinds at once.
+        semanticCheck.Remediation.ShouldContain(
+            $"Repair or re-provision tenant 'tenant-a' Redis Vector indexes and reindex its semantic data using the validated {VectorDimensions}-dimension embedding configuration.");
+        semanticCheck.Remediation.ShouldContain(
+            $"For the confirmed marker mismatch (possible contamination) on '{plantedKey}', inspect and quarantine the named key(s), then run tenant-scoped marker repair or reindex for tenant 'tenant-a' only after provenance is verified — never delete the prefix.");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
+    public async Task VerifyAsync_ForeignActiveMarkerWithExtraPayloadFields_DoesNotExposePayloadContent()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a");
+        string plantedKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "payload-safety");
+        const string SensitivePayloadContent = "SENSITIVE-DOCUMENT-BODY-must-not-leak-into-diagnostics";
+        SetupRedisKeyScan(redisServer, IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"), plantedKey);
+        SetupSemanticRecord(
+            redisDb,
+            plantedKey,
+            "payload-safety",
+            "tenant-b",
+            sensitivePayloadContent: SensitivePayloadContent);
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain($"'{plantedKey}'");
+        semanticCheck.Details.ShouldContain("tenant-b");
+        semanticCheck.Details.ShouldNotContain(SensitivePayloadContent);
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain($"'{plantedKey}'");
+        semanticCheck.Remediation.ShouldNotContain(SensitivePayloadContent);
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
@@ -819,7 +1081,7 @@ public class TenantIsolationVerifierTests
         semanticCheck.Details.ShouldContain("2 raw base/chunk");
         semanticCheck.Details.ShouldContain("1 current natural-language");
         semanticCheck.Details.ShouldContain("excluding 3 proven non-active");
-        semanticCheck.Details.ShouldNotContain("missing tenantId field");
+        semanticCheck.Details.ShouldNotContain("is missing its tenantId marker");
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
@@ -845,7 +1107,7 @@ public class TenantIsolationVerifierTests
         semanticCheck.Passed.ShouldBeFalse();
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain("evidence-classification gap (unknown)");
-        semanticCheck.Details.ShouldNotContain("missing tenantId field");
+        semanticCheck.Details.ShouldNotContain("is missing its tenantId marker");
         semanticCheck.Remediation.ShouldBe(
             "Register or migrate the reported semantic key family for tenant 'tenant-a', then retry verification; no data or indexes were changed");
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
@@ -885,7 +1147,14 @@ public class TenantIsolationVerifierTests
         semanticCheck.Passed.ShouldBeFalse();
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain($"Semantic key '{FutureKey}' under tenant 'tenant-a' has an evidence-classification gap (unknown)");
-        semanticCheck.Details.ShouldContain($"raw semantic chunk key '{activeChunk}' under tenant 'tenant-a' has tenantId field 'tenant-b'");
+        semanticCheck.Details.ShouldContain($"raw semantic chunk key '{activeChunk}' under tenant 'tenant-a' has a foreign tenantId marker 'tenant-b': confirmed marker mismatch (possible contamination)");
+
+        // Pinning current accepted behavior: when a classification gap co-occurs with an active marker defect,
+        // Remediation is exactly the classification-gap-only sentence. The marker-specific guidance is
+        // intentionally NOT composed in alongside it — this ternary-exclusivity is the pre-existing, separately
+        // tracked `24.6-F8-W9` deferred item and is out of Story 24.9's scope to change.
+        semanticCheck.Remediation.ShouldBe(
+            "Register or migrate the reported semantic key family for tenant 'tenant-a', then retry verification; no data or indexes were changed");
         AssertNoMutationDependencyCalls(redisDb, falkorDb);
     }
 
@@ -937,7 +1206,7 @@ public class TenantIsolationVerifierTests
         semanticCheck.Details.ShouldNotBeNull();
         semanticCheck.Details.ShouldContain($"Semantic key '{wrongTypeKey}' under tenant 'tenant-a' has an evidence-classification gap (wrong Redis value type)");
         semanticCheck.Details.ShouldNotContain("Backend unavailable");
-        semanticCheck.Details.ShouldNotContain("missing tenantId field");
+        semanticCheck.Details.ShouldNotContain("is missing its tenantId marker");
         await redisDb.Received(1).HashExistsAsync(
             Arg.Is<RedisKey>(key => string.Equals(key.ToString(), healthyKey, StringComparison.Ordinal)),
             Arg.Is<RedisValue>(field => string.Equals(field.ToString(), "naturalLanguageDescription", StringComparison.Ordinal)),
@@ -1879,7 +2148,8 @@ public class TenantIsolationVerifierTests
         bool hasNaturalLanguageDescription = false,
         int? chunkSequence = null,
         int? chunkStartOffset = null,
-        int? chunkEndOffset = null)
+        int? chunkEndOffset = null,
+        string? sensitivePayloadContent = null)
     {
         db.HashGetAsync(
                 Arg.Is<RedisKey>(redisKey => string.Equals(redisKey.ToString(), key, StringComparison.Ordinal)),
@@ -1907,6 +2177,25 @@ public class TenantIsolationVerifierTests
                     StringComparison.Ordinal)),
                 Arg.Any<CommandFlags>())
             .Returns(hasNaturalLanguageDescription);
+
+        if (sensitivePayloadContent is not null)
+        {
+            // The verifier only ever reads the named discriminator fields and the naturalLanguageDescription
+            // existence flag above; it never reads the full hash. This simulates a realistic stored record that
+            // also carries payload/content-like fields beyond those discriminators, so a payload-safety test can
+            // prove such content never surfaces in Details/Remediation even if a broader read were attempted.
+            HashEntry[] fullRecord =
+            [
+                new HashEntry("memoryUnitId", memoryUnitId),
+                new HashEntry("tenantId", tenantId ?? string.Empty),
+                new HashEntry("content", sensitivePayloadContent),
+                new HashEntry("embedding", sensitivePayloadContent),
+            ];
+            db.HashGetAllAsync(
+                    Arg.Is<RedisKey>(redisKey => string.Equals(redisKey.ToString(), key, StringComparison.Ordinal)),
+                    Arg.Any<CommandFlags>())
+                .Returns(fullRecord);
+        }
     }
 
     private static bool SemanticDiscriminatorFieldsMatch(RedisValue[]? fields)

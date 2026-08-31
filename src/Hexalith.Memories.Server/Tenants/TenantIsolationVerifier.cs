@@ -349,7 +349,7 @@ public sealed partial class TenantIsolationVerifier
             }
 
             (
-                IReadOnlyList<string> rawMarkerMismatches,
+                IReadOnlyList<MarkerMismatchEvidence> rawMarkerMismatches,
                 IReadOnlyList<string> rawClassificationGaps,
                 int rawActiveCount,
                 int rawExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
@@ -358,7 +358,7 @@ public sealed partial class TenantIsolationVerifier
                     ct)
                 .ConfigureAwait(false);
             (
-                IReadOnlyList<string> naturalLanguageMarkerMismatches,
+                IReadOnlyList<MarkerMismatchEvidence> naturalLanguageMarkerMismatches,
                 IReadOnlyList<string> naturalLanguageClassificationGaps,
                 int naturalLanguageActiveCount,
                 int naturalLanguageExcludedCount) = await ScanSemanticHashPrefixForTenantEvidenceAsync(
@@ -366,10 +366,17 @@ public sealed partial class TenantIsolationVerifier
                     tenantId,
                     ct)
                 .ConfigureAwait(false);
+            // Snapshot before classification gaps and marker mismatches are appended below: this is the exact
+            // set of non-marker problems (index prefix/field metadata and configured-dimension mismatches)
+            // BuildSemanticIsolationRemediation needs, computed directly from its source rather than inferred
+            // by subtracting the marker count from the final combined total.
+            bool hasNonMarkerProblem = problems.Count > 0;
+
+            List<MarkerMismatchEvidence> allMarkerMismatches =
+                [.. rawMarkerMismatches, .. naturalLanguageMarkerMismatches];
             problems.AddRange(rawClassificationGaps);
             problems.AddRange(naturalLanguageClassificationGaps);
-            problems.AddRange(rawMarkerMismatches);
-            problems.AddRange(naturalLanguageMarkerMismatches);
+            problems.AddRange(allMarkerMismatches.Select(m => m.Detail));
             bool hasClassificationGap = rawClassificationGaps.Count > 0
                 || naturalLanguageClassificationGaps.Count > 0;
 
@@ -381,7 +388,11 @@ public sealed partial class TenantIsolationVerifier
                     Details = string.Join("; ", problems),
                     Remediation = hasClassificationGap
                         ? $"Register or migrate the reported semantic key family for tenant '{tenantId}', then retry verification; no data or indexes were changed"
-                        : $"Repair or re-provision tenant '{tenantId}' Redis Vector indexes, reindex its semantic data using the validated {embeddingConfig.Dimensions}-dimension embedding configuration, and remove mismatched target-prefix hashes",
+                        : BuildSemanticIsolationRemediation(
+                            tenantId,
+                            embeddingConfig.Dimensions,
+                            hasNonMarkerProblem,
+                            allMarkerMismatches),
                 };
             }
 
@@ -549,7 +560,7 @@ public sealed partial class TenantIsolationVerifier
 
     /// <summary>Classifies semantic hashes before evaluating tenant-marker evidence.</summary>
     private async Task<(
-        IReadOnlyList<string> MarkerMismatches,
+        IReadOnlyList<MarkerMismatchEvidence> MarkerMismatches,
         IReadOnlyList<string> ClassificationGaps,
         int ActiveCount,
         int ExcludedCount)> ScanSemanticHashPrefixForTenantEvidenceAsync(
@@ -564,7 +575,7 @@ public sealed partial class TenantIsolationVerifier
         }
 
         IDatabase db = _redis.GetDatabase();
-        List<string> markerMismatches = [];
+        List<MarkerMismatchEvidence> markerMismatches = [];
         List<string> classificationGaps = [];
         HashSet<string> scannedKeys = new(StringComparer.Ordinal);
         int activeCount = 0;
@@ -632,21 +643,94 @@ public sealed partial class TenantIsolationVerifier
                 };
                 if (storedTenantId.IsNullOrEmpty)
                 {
-                    markerMismatches.Add(
-                        $"{storageName} key '{key}' under tenant '{tenantId}' is missing tenantId field");
+                    markerMismatches.Add(new MarkerMismatchEvidence(
+                        MarkerDefectKind.Missing,
+                        keyText,
+                        $"{storageName} key '{key}' under tenant '{tenantId}' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage — expected tenant '{tenantId}'"));
                     continue;
                 }
 
                 string actualTenantId = storedTenantId.ToString();
                 if (!string.Equals(actualTenantId, tenantId, StringComparison.Ordinal))
                 {
-                    markerMismatches.Add(
-                        $"{storageName} key '{key}' under tenant '{tenantId}' has tenantId field '{actualTenantId}'");
+                    markerMismatches.Add(new MarkerMismatchEvidence(
+                        MarkerDefectKind.Foreign,
+                        keyText,
+                        $"{storageName} key '{key}' under tenant '{tenantId}' has a foreign tenantId marker '{actualTenantId}': confirmed marker mismatch (possible contamination) — expected tenant '{tenantId}', observed tenant '{actualTenantId}'"));
                 }
             }
         }
 
         return (markerMismatches, classificationGaps, activeCount, excludedCount);
+    }
+
+    /// <summary>Distinguishes a missing tenant marker (incomplete evidence) from a foreign tenant marker
+    /// (confirmed mismatch/possible contamination) on a proven-active semantic hash. This classification is
+    /// internal diagnostic detail only — it never appears in the public V1 contract.</summary>
+    private enum MarkerDefectKind
+    {
+        /// <summary>The proven-active hash has no <c>tenantId</c> field: incomplete evidence, not confirmed leakage.</summary>
+        Missing,
+
+        /// <summary>The proven-active hash has a non-empty <c>tenantId</c> field that differs from the requested
+        /// tenant: a confirmed marker mismatch and possible contamination.</summary>
+        Foreign,
+    }
+
+    /// <summary>One classified tenant-marker defect captured while scanning a proven-active semantic hash
+    /// prefix. Internal to <see cref="TenantIsolationVerifier"/> only.</summary>
+    /// <param name="Kind">Whether the marker was missing or foreign.</param>
+    /// <param name="Key">The exact Redis key the defect was observed on.</param>
+    /// <param name="Detail">The payload-safe, human-readable diagnostic text for this entry.</param>
+    private readonly record struct MarkerMismatchEvidence(MarkerDefectKind Kind, string Key, string Detail);
+
+    /// <summary>Builds non-destructive, per-defect-kind remediation guidance for a failed <c>SemanticIsolation</c>
+    /// check, naming the exact affected key(s) and never recommending blanket prefix/hash deletion.</summary>
+    /// <param name="tenantId">The requested tenant identifier.</param>
+    /// <param name="expectedDimensions">The tenant's validated configured embedding dimension count.</param>
+    /// <param name="hasNonMarkerProblem">Whether the check also reported a non-marker problem (index prefix/field
+    /// metadata or configured-dimension mismatch), computed by the caller directly from that problem source.</param>
+    /// <param name="markerMismatches">The classified missing/foreign marker defects for this check.</param>
+    private static string BuildSemanticIsolationRemediation(
+        string tenantId,
+        int expectedDimensions,
+        bool hasNonMarkerProblem,
+        IReadOnlyList<MarkerMismatchEvidence> markerMismatches)
+    {
+        bool hasForeignMarker = false;
+        bool hasMissingMarker = false;
+        foreach (MarkerMismatchEvidence mismatch in markerMismatches)
+        {
+            hasForeignMarker |= mismatch.Kind == MarkerDefectKind.Foreign;
+            hasMissingMarker |= mismatch.Kind == MarkerDefectKind.Missing;
+        }
+
+        List<string> sentences = [];
+        if (hasNonMarkerProblem)
+        {
+            sentences.Add(
+                $"Repair or re-provision tenant '{tenantId}' Redis Vector indexes and reindex its semantic data using the validated {expectedDimensions}-dimension embedding configuration.");
+        }
+
+        if (hasForeignMarker)
+        {
+            string foreignKeys = string.Join(
+                ", ",
+                markerMismatches.Where(m => m.Kind == MarkerDefectKind.Foreign).Select(m => $"'{m.Key}'"));
+            sentences.Add(
+                $"For the confirmed marker mismatch (possible contamination) on {foreignKeys}, inspect and quarantine the named key(s), then run tenant-scoped marker repair or reindex for tenant '{tenantId}' only after provenance is verified — never delete the prefix.");
+        }
+
+        if (hasMissingMarker)
+        {
+            string missingKeys = string.Join(
+                ", ",
+                markerMismatches.Where(m => m.Kind == MarkerDefectKind.Missing).Select(m => $"'{m.Key}'"));
+            sentences.Add(
+                $"For the incomplete evidence (missing marker, not confirmed leakage) on {missingKeys}, inspect and quarantine the named key(s) before any tenant-scoped marker repair or reindex for tenant '{tenantId}', applied only after provenance is verified — never delete the prefix.");
+        }
+
+        return string.Join(" ", sentences);
     }
 
     private static async Task<(bool Found, RedisResult Info)> TryGetIndexInfoAsync(
