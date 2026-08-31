@@ -104,6 +104,7 @@ public sealed class DaprComponentTemplateTests
         content.ShouldNotContain("secretstores.local.file", Case.Sensitive);
         content.ShouldNotContain("secretstores.kubernetes", Case.Sensitive);
         content.ShouldNotContain("secretsFile", Case.Sensitive);
+        content.ShouldNotContain("nestedSeparator", Case.Sensitive);
     }
 
     [Fact]

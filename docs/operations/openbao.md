@@ -368,8 +368,13 @@ Story 29.2 retired the standalone `deploy/dapr/components/secretstore.yaml` and
 `secretstores.local.file` types. They now mirror the table above exactly — same
 `type: secretstores.hashicorp.vault`, same bootstrap Secret names, same OpenBao prefixes and scopes —
 but are deployment-oriented templates, not bound to a live cluster; they carry no bootstrap Secret of
-their own, and whichever platform applies them (Kubernetes, or a standalone Dapr self-hosted host) must
-supply `openbao-runtime-bootstrap` / `openbao-access-telemetry-bootstrap` before the sidecar can start.
+their own, and the platform that applies them must supply `openbao-runtime-bootstrap` /
+`openbao-access-telemetry-bootstrap` before the sidecar can start. On Kubernetes this `secretKeyRef`
+resolves through the cluster's built-in Kubernetes secret store, matching `deploy/kubernetes/base/dapr/*`.
+A standalone (non-Kubernetes) Dapr self-hosted host has no such resolver by default -- it would need its
+own separately configured secret-store component to resolve these `secretKeyRef` references, which these
+templates do not define; treat that deployment shape as unverified until it is exercised, not as a
+supported target of this document.
 `Hexalith.Memories.Aspire`'s two hosting extensions (`AddHexalithMemoriesSearchIndexServer`,
 `AddHexalithMemoriesAccessTelemetry`) apply the same rule at the AppHost-composition layer: each takes
 an externally-provisioned secret-store `IResourceBuilder<IDaprComponentResource>` instead of

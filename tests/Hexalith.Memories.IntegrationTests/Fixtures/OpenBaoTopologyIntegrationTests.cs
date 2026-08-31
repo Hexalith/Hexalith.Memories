@@ -5,10 +5,7 @@
 
 namespace Hexalith.Memories.IntegrationTests.Fixtures;
 
-using System.IO;
 using System.Net;
-
-using Hexalith.Memories.AppHost;
 
 using Shouldly;
 
@@ -187,40 +184,15 @@ public sealed class OpenBaoTopologyIntegrationTests(
             $"OS={Environment.OSVersion}; framework={Environment.Version}; lane=Aspire root integration.");
     }
 
-    /// <summary>
-    /// Story 29.2 -- <c>Hexalith.Memories.Aspire</c>'s two hosting extensions
-    /// (<c>AddHexalithMemoriesSearchIndexServer</c>, <c>AddHexalithMemoriesAccessTelemetry</c>) take an
-    /// externally-provisioned secret-store <c>IResourceBuilder&lt;IDaprComponentResource&gt;</c> instead of
-    /// building their own; they never construct a <c>secretstores.local.file</c> component. The root
-    /// AppHost this fixture exercises does not call either extension (Story 29.2's Design Notes place that
-    /// rewiring out of scope), so the live evidence above --
-    /// <see cref="DaprSecretReads_RuntimeAndAccessTelemetryCanariesMatchExpectedFingerprints"/>,
-    /// <see cref="ProviderBoundary_DaprScopesKeyScopesPoliciesPrefixesAndBulkOperationsFailClosed"/>, and
-    /// <see cref="DaprSidecarMatrix_EnforcesExactComponentAndKeyAllowDenyBoundaries"/> -- is what proves the
-    /// component shape a consumer must supply (<c>secretstores.hashicorp.vault</c> named
-    /// <c>secretstore</c> / <c>access-telemetry-secrets</c>) resolves OpenBao values through Dapr without
-    /// disclosure and fails closed on cross-prefix reads. Supplying that exact resource into either
-    /// generalized extension inherits the same proof. This guard pins the extension source so a regression
-    /// back to a hard-coded local-file component fails here too, not only in
-    /// <c>Hexalith.Memories.Server.Tests</c>.
-    /// </summary>
-    [Fact]
-    public void GeneralizedAspireExtensions_RequireTheExternallyProvisionedComponentShapeThisFixtureProvesResolvesOpenBaoWithoutDisclosure()
-    {
-        string root = RepositoryRootLocator.Resolve();
-        string[] extensionSources =
-        [
-            File.ReadAllText(Path.Combine(root, "src", "Hexalith.Memories.Aspire", "HexalithMemoriesServerExtensions.cs")),
-            File.ReadAllText(Path.Combine(root, "src", "Hexalith.Memories.Aspire", "HexalithMemoriesAccessTelemetryExtensions.cs")),
-        ];
-
-        foreach (string source in extensionSources)
-        {
-            source.ShouldNotContain("\"secretstores.local.file\"", Case.Sensitive);
-            source.ShouldContain("IResourceBuilder<IDaprComponentResource> secretStore,", Case.Sensitive);
-            source.ShouldContain("ArgumentNullException.ThrowIfNull(secretStore);", Case.Sensitive);
-        }
-    }
+    // [Review][Patch]: the source-grep guard formerly here (`GeneralizedAspireExtensions_...`) duplicated
+    // assertions already covered by `HexalithMemoriesServerExtensions_...`/`AccessTelemetryExtension_...` in
+    // `Hexalith.Memories.Server.Tests/Deployment/HexalithMemoriesAspireSecretStoreTests.cs`. This fixture's
+    // live evidence above -- <see cref="DaprSecretReads_RuntimeAndAccessTelemetryCanariesMatchExpectedFingerprints"/>,
+    // <see cref="ProviderBoundary_DaprScopesKeyScopesPoliciesPrefixesAndBulkOperationsFailClosed"/>, and
+    // <see cref="DaprSidecarMatrix_EnforcesExactComponentAndKeyAllowDenyBoundaries"/> -- already proves the
+    // component shape a consumer must supply resolves OpenBao values through Dapr without disclosure; the
+    // structural regression guard for the generalized extensions' source belongs solely in the unit-test
+    // project, not duplicated here where it could be mistaken for broader live/integration proof.
 
     private static bool IsSuccess(HttpStatusCode statusCode)
         => (int)statusCode is >= 200 and <= 299;

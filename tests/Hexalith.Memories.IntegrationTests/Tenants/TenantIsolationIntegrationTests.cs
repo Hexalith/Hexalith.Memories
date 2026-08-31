@@ -12,6 +12,7 @@ using System.Text;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.IntegrationTests.Fixtures;
 using Hexalith.Memories.Server.Graph;
+using Hexalith.Memories.Server.Infrastructure;
 
 using NFalkorDB;
 
@@ -227,6 +228,60 @@ public sealed class TenantIsolationIntegrationTests
         syntacticCheck.Passed.ShouldBeFalse();
         syntacticCheck.Details.ShouldNotBeNull();
         syntacticCheck.Details.ShouldContain(tenantB);
+    }
+
+    [Fact]
+    public async Task VerifyTenant_PlantedActiveSemanticMarkerDefects_ReturnsDistinctNonDestructiveDiagnostics()
+    {
+        // Negative test (false-pass prevention) for Story 24.9: plant a proven-active raw semantic hash with a
+        // foreign tenantId and a second one with no tenantId at all, both under tenant A's own "vec:" prefix,
+        // then run verify on A and confirm SemanticIsolation reports the two new distinct, non-destructive
+        // diagnoses end-to-end (not the old shared "remove mismatched target-prefix hashes" wording).
+        string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
+        string tenantB = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
+        string foreignKey = await SeedActiveSemanticHashAsync(tenantA, "semantic-foreign-marker", storedTenantId: tenantB);
+        string missingKey = await SeedActiveSemanticHashAsync(tenantA, "semantic-missing-marker", storedTenantId: null);
+
+        using HttpResponseMessage response = await _fixture.MemoriesClient.PostAsync(
+            $"/api/v1/tenants/{tenantA}/verify", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        TenantIsolationVerificationResult? result = await response.Content
+            .ReadFromJsonAsync<TenantIsolationVerificationResult>(MemoriesJsonContext.Options);
+
+        result.ShouldNotBeNull();
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Details.ShouldNotBeNull();
+        semanticCheck.Details.ShouldContain(
+            $"key '{foreignKey}' under tenant '{tenantA}' has a foreign tenantId marker '{tenantB}': confirmed marker mismatch (possible contamination)");
+        semanticCheck.Details.ShouldContain(
+            $"key '{missingKey}' under tenant '{tenantA}' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage");
+        semanticCheck.Remediation.ShouldNotBeNull();
+        semanticCheck.Remediation.ShouldContain($"'{foreignKey}'");
+        semanticCheck.Remediation.ShouldContain($"'{missingKey}'");
+        semanticCheck.Remediation.ShouldContain("confirmed marker mismatch (possible contamination)");
+        semanticCheck.Remediation.ShouldContain("incomplete evidence (missing marker, not confirmed leakage)");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+    }
+
+    /// <summary>Plants a bare, proven-active raw semantic hash directly under tenant's "vec:" prefix, with
+    /// only the discriminator fields <see cref="Hexalith.Memories.Server.Tenants.TenantIsolationVerifier"/>
+    /// reads: no chunk fields and no <c>naturalLanguageDescription</c>, so the key classifies as
+    /// <c>ActiveRawBase</c>. Omitting <paramref name="storedTenantId"/> plants a missing marker; supplying
+    /// one plants a foreign marker.</summary>
+    private async Task<string> SeedActiveSemanticHashAsync(string tenantId, string memoryUnitId, string? storedTenantId)
+    {
+        string key = IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId);
+        List<HashEntry> entries = [new HashEntry("memoryUnitId", memoryUnitId)];
+        if (storedTenantId is not null)
+        {
+            entries.Add(new HashEntry("tenantId", storedTenantId));
+        }
+
+        await _fixture.RedisConnection.GetDatabase().HashSetAsync(key, [.. entries]);
+        return key;
     }
 
     private async Task SeedCollisionGraphAsync(

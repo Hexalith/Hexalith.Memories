@@ -185,23 +185,23 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Provision ephemeral EventStore local NuGet feed
+        # Story 28.1 (sprint-change-approved "Option B"): HexalithEventStoreVersion is pinned to
+        # a proof-identity version (999.1.20-proof.fa2d1c9910f8) not published on nuget.org.
+        # Restoring it requires a local feed rebuilt from the approved source SHA and signed with
+        # a certificate, but that certificate/key/prebuilt .nupkg must NEVER be persisted in the
+        # repo, in CI caches, or in CI secrets -- this step generates everything fresh in this
+        # job's own $RUNNER_TEMP and the job discards it on exit. See
+        # tools/ci/provision-eventstore-local-feed.sh and
+        # spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md.
+        run: tools/ci/provision-eventstore-local-feed.sh fa2d1c9910f8976553adb33dcdb1c9ff2ea75594 999.1.20-proof.fa2d1c9910f8
+
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
         # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
         # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        #
-        # Story 28.1 KNOWN GAP: HexalithEventStoreVersion is pinned to a proof-identity version
-        # (999.1.20-proof.fa2d1c9910f8) that is not published on nuget.org. Restoring it requires
-        # tools/nuget-local-feeds/NuGet.local.config, which is gitignored and local-only by design
-        # (see NuGet.config header and spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md
-        # -- a trustedSigners author-trust exception must not land in the tracked, shared
-        # NuGet.config). A fresh CI checkout does NOT have that file, so this step -- and every
-        # other `dotnet restore`/`dotnet build` in this workflow that touches Hexalith.EventStore.*
-        # -- fails with NU1102 until the local feed + config are provisioned in CI by some other
-        # mechanism (secret, cache step, artifact, etc.). Not solved here; --configfile below only
-        # makes the step correct for a run where that provisioning already happened.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile tools/nuget-local-feeds/NuGet.local.config
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
@@ -211,9 +211,8 @@ jobs:
         # instead of PackageReference (Directory.Build.props UseHexalithProjectReferences),
         # which is a distinct restore graph from the Release/package build above. Both
         # modes must independently pass so the pinned source identity stays provably
-        # buildable, not just the packaged one. Same NuGet.local.config gap as the Release
-        # restore step above applies here too.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Debug -p:UseHexalithProjectReferences=true -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile tools/nuget-local-feeds/NuGet.local.config
+        # buildable, not just the packaged one.
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Debug -p:UseHexalithProjectReferences=true -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
 
       - name: Build solution (Debug/source)
         run: dotnet build Hexalith.Memories.slnx --configuration Debug -p:UseHexalithProjectReferences=true --no-restore
@@ -252,12 +251,16 @@ jobs:
       - name: Verify semantic-release configuration offline
         run: npm run verify:semantic-release-config
 
+      - name: Provision ephemeral EventStore local NuGet feed
+        # Story 28.1: see the identical step in the `build` job above for the full rationale.
+        run: tools/ci/provision-eventstore-local-feed.sh fa2d1c9910f8976553adb33dcdb1c9ff2ea75594 999.1.20-proof.fa2d1c9910f8
+
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
         # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
         # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
@@ -364,9 +367,13 @@ jobs:
           cache: npm
           cache-dependency-path: tests/Hexalith.Memories.Web.E2E/package-lock.json
 
+      - name: Provision ephemeral EventStore local NuGet feed
+        # Story 28.1: see the identical step in the `build` job above for the full rationale.
+        run: tools/ci/provision-eventstore-local-feed.sh fa2d1c9910f8976553adb33dcdb1c9ff2ea75594 999.1.20-proof.fa2d1c9910f8
+
       - name: Restore solution
         # See the "Restore solution" step in the build job above for the NU1901-1904 rationale.
-        run: dotnet restore Hexalith.Memories.slnx -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+        run: dotnet restore Hexalith.Memories.slnx -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
 
       # Build the Debug configuration the Playwright webServer runs (see playwright.config.ts),
       # so the browser lane exercises the same build this job produced instead of a discarded
@@ -441,12 +448,16 @@ jobs:
           docker version
           docker info
 
+      - name: Provision ephemeral EventStore local NuGet feed
+        # Story 28.1: see the identical step in the `build` job above for the full rationale.
+        run: tools/ci/provision-eventstore-local-feed.sh fa2d1c9910f8976553adb33dcdb1c9ff2ea75594 999.1.20-proof.fa2d1c9910f8
+
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
         # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
         # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore

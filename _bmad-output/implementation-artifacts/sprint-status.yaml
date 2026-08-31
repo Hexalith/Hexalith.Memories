@@ -426,7 +426,7 @@ development_status:
   24-6-graph-content-level-tenant-isolation-evidence: done  # 2026-08-29: twelfth-pass review over the first real commit (7b3f29ce) of the closure work. Resolved the outstanding submodule-pointer Ask-First decision (deliberate, option a); rebuilt Server.Tests clean (0 warnings/errors) and got live discovery for the first time since the eighth-pass snapshot: 101/101 (52 baseline + 6 story + 28 Story 24.7 + 15 Story 24.8 = 101). File List reconciled matched 26/26 including the six references/* gitlinks; readiness, slice-scope, and tenant-isolation-evidence gates all pass. 4 further ledger-hygiene patches applied. Owning class 7/7 in 254.358s (unchanged, no integration source touched this pass).
   24-7-tenant-configured-vector-dimension-verification: done # 2026-08-31: fifth-pass adversarial review (six layers) found no functional defect; resolved its one decision (unit-level AC1-AC3 coverage confirmed sufficient) and applied two record-only patches (deferred-work.md schema reformat; stale Dev Notes correction). Fresh rebuild/test rerun at HEAD b42e0f64 passed clean: 0 warnings/errors, 95/95 tests. Readiness and slice-scope gates rerun and passed against the fixed 10-path inventory.
   24-8-semantic-isolation-key-family-classification: done
-  24-9-non-destructive-tenant-marker-diagnostics: review # 2026-08-31: dev-story implemented the missing/foreign marker-defect kind and non-destructive per-kind Remediation in TenantIsolationVerifier; 94/94 (TenantIsolationVerifierTests + ServerEndpointAuthorizationTests) and 7/7 (TenantIsolationCheckResultSerializationTests) passed, 0 warnings/errors build. Closed deferred-work.md 24.3-MARKER-REMEDIATION. Awaiting code review before done.
+  24-9-non-destructive-tenant-marker-diagnostics: done # 2026-08-31: second code-review pass applied 6 patches (triple-marker-composition unit test, live-backend integration test code, spec status/ledger-arithmetic/XML-doc/duplication fixes); 99/99 (TenantIsolationVerifierTests + ServerEndpointAuthorizationTests) and 7/7 (TenantIsolationCheckResultSerializationTests) passed, 0 warnings/errors build. New integration test's live execution is an accepted blocker (Aspire/Dapr sandbox startup timeout, not a code defect) with a recorded reopen trigger. Two pre-existing issues deferred to deferred-work.md. Closed deferred-work.md 24.3-MARKER-REMEDIATION.
   epic-24-retrospective: done
 
   # Epic 25: Architecture Factorization & Code Health
@@ -460,7 +460,7 @@ development_status:
   27-1-access-telemetry-retention-ownership-decision: done
   27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-production-adapter-and-deployment-profile: review
-  27-21-runtime-and-control-plane-identity: backlog
+  27-21-runtime-and-control-plane-identity: awaiting-operator
   27-4-retention-verification-operations-runbook-and-a41-close-out: backlog
   # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
   # C1.15 as backlog; producer existence does not pass that gate. The remaining twenty-four C1
@@ -481,7 +481,7 @@ development_status:
   # Registered on 2026-07-19 by the approved OpenBao-First Aspire Secret Management course correction.
   epic-29: in-progress
   29-1-openbao-backed-apphost-secret-topology: done
-  29-2-provider-neutral-aspire-composition-and-secret-verification: review
+  29-2-provider-neutral-aspire-composition-and-secret-verification: done
   epic-29-retrospective: optional
 
   # Epic 30: CI/CD Pipeline Ownership and Alignment

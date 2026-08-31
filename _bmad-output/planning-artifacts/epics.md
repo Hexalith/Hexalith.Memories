@@ -5077,9 +5077,19 @@ Epic 28 and Story 28.1 remain backlog and Story 28.1 has no implementation file 
 selection. A current tag, repository HEAD, or unapproved package version remains insufficient for
 implementation.
 
+**Correction (2026-08-31, approved sprint change proposal
+[sprint-change-proposal-2026-08-31-story-28-1-eventstore-identity-toolchain-mismatch.md](sprint-change-proposal-2026-08-31-story-28-1-eventstore-identity-toolchain-mismatch.md)):**
+Story 1.20's proof packet seals package hashes under .NET SDK `10.0.302`; Memories mandates SDK
+`10.0.400` (`global.json`). Rebuilding the approved source SHA under Memories' mandated SDK is not
+byte-identical to the sealed hash — a toolchain-generation artifact, not an authorization gap.
+Package-identity adoption is satisfied by packaging the approved source SHA under Memories' current
+mandated SDK via an isolated local feed, pinned to the rebuild's own hash, rather than the original
+SDK-10.0.302 hash. The source-SHA anchor (`fa2d1c9910f8976553adb33dcdb1c9ff2ea75594`) remains the
+binding authorization; "latest tag/HEAD/unapproved version" remains insufficient exactly as before.
+
 ### Story 28.1: Adopt Owner-Approved EventStore Runtime Identity
 
-**Status:** backlog. **Owner:** Memories Maintainer + EventStore Maintainer.
+**Status:** in-progress. **Owner:** Memories Maintainer + EventStore Maintainer.
 
 As a Memories maintainer,
 I want source and package modes aligned to the owner-approved EventStore runtime identity,
@@ -5096,12 +5106,18 @@ ingestion, projection, or deployment topology is redesigned.
 **Then** `references/Hexalith.EventStore` gitlink and checkout both equal that SHA, the EventStore
 submodule is not edited, and only Memories-root-declared submodules are initialized.
 
-**Given** Story 1.20 names the approved 14-package version and hashes,
+**Given** Story 1.20 names the approved source SHA and Memories' mandated SDK (`10.0.400`) differs from
+the SDK that sealed Story 1.20's package hashes (`10.0.302`),
 **When** Release/package mode restores from an isolated cache,
 **Then** `Hexalith.EventStore.Client`, `Hexalith.EventStore.Aspire`, and every resolved
-`Hexalith.EventStore*` asset use that exact version, fetched package bytes match the approved hashes,
-no EventStore project reference enters the Release asset graph, and the selected `Hexalith.Builds`
-gitlink already exposes that version.
+`Hexalith.EventStore*` asset are packaged from that exact approved source SHA rebuilt under Memories'
+mandated SDK, published only to an isolated local feed pinned by the rebuild's own SHA-256 manifest, no
+EventStore project reference enters the Release asset graph, and the selected `Hexalith.Builds` gitlink
+exposes that rebuilt version pin.
+_(Amended 2026-08-31 — see the Activation state correction above and
+[sprint-change-proposal-2026-08-31-story-28-1-eventstore-identity-toolchain-mismatch.md](sprint-change-proposal-2026-08-31-story-28-1-eventstore-identity-toolchain-mismatch.md).
+Original text required fetched bytes to match the proof packet's SDK-10.0.302 hash directly; that is not
+achievable under this project's mandated SDK.)_
 
 **Given** Memories' existing EventStore integration,
 **When** dependency adoption is implemented,

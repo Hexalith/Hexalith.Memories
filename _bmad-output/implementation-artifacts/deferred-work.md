@@ -3488,8 +3488,32 @@ block required by the schema above.
   summary: `references/Hexalith.Tenants/src/Hexalith.Tenants.AppHost/Program.cs` still calls `AddHexalithMemoriesSearchIndexServer` with the retired `string secretStoreComponentPath` positional argument and will fail to build once it references an updated `Hexalith.Memories.Aspire` package.
   evidence: Story 29.2 changed that parameter to `IResourceBuilder<IDaprComponentResource> secretStore` (an intentional, spec-required breaking change so the reusable extension accepts an externally-provisioned secret-store resource instead of hard-coding `secretstores.local.file`). Fixing the Tenants call site requires a coordinated change in the `Hexalith.Tenants` submodule/repo, which this story's boundaries explicitly exclude from casual editing.
 
+  - ID: 29.2-TENANTS-SECRETSTORE-CALLSITE
+  - Status: resolved
+  - Source story: spec-29-2-provider-neutral-aspire-composition-and-secret-verification
+  - Target artifact: references/Hexalith.Tenants/src/Hexalith.Tenants.AppHost/Program.cs
+  - Re-open trigger: a future `Hexalith.Memories.Aspire` signature change breaks the Tenants AppHost call site again, or the Tenants submodule pin is bumped without picking up commit `7453ba5b`.
+  - Evidence: Hexalith.Tenants commit `7453ba5b` ("fix: update Memories secret-store call site for the Aspire 29.2 signature change") builds an externally-provisioned `secretstores.local.file` component via `AddDaprComponent` and passes it to `AddHexalithMemoriesSearchIndexServer`, matching the new signature; committed and pushed to `origin/main` during code review.
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-29-2-provider-neutral-aspire-composition-and-secret-verification.md`
   summary: `docs/operations/openbao.md`'s new Story 29.2 passage claims a standalone Dapr self-hosted host (not just Kubernetes) can supply the `openbao-runtime-bootstrap`/`openbao-access-telemetry-bootstrap` bootstrap Secrets that `deploy/dapr/components/secretstore.yaml` and `access-telemetry-secrets.yaml` reference via `secretKeyRef`, but this has not been verified against Dapr's actual self-hosted secret-store resolution behavior outside Kubernetes.
   evidence: `secretKeyRef` in a Dapr component's metadata typically resolves through a Kubernetes secret store in k8s-hosted Dapr; a bare self-hosted Dapr install would need its own separately configured secret-store component to resolve those references, which these standalone templates do not define or document. If that mechanism does not work outside Kubernetes as claimed, the "standalone Dapr self-hosted host" deployability statement in `docs/operations/openbao.md` is inaccurate and should be corrected or scoped to Kubernetes only.
+
+  - ID: 29.2-OPENBAO-SELFHOSTED-SECRETKEYREF-CLAIM
+  - Status: resolved
+  - Source story: spec-29-2-provider-neutral-aspire-composition-and-secret-verification
+  - Target artifact: docs/operations/openbao.md
+  - Re-open trigger: a standalone (non-Kubernetes) Dapr self-hosted deployment is actually exercised and its `secretKeyRef` resolution behavior is verified, positively or negatively, which should replace this caveat with a confirmed statement.
+  - Evidence: `docs/operations/openbao.md`'s Dapr secret boundaries section now scopes the `secretKeyRef` bootstrap resolution explicitly to Kubernetes and marks the standalone self-hosted case as unverified rather than asserting it works, resolved during code review.
+
+## Deferred from: code review of spec-24-9-non-destructive-tenant-marker-diagnostics (2026-08-31)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-9-non-destructive-tenant-marker-diagnostics.md`
+  summary: Classification-gap co-occurring with an active marker defect still suppresses marker-specific `Remediation` entirely.
+  evidence: `TenantIsolationVerifier.CheckSemanticIsolationAsync`'s `Remediation` ternary (`src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:389-395`) still selects only the classification-gap sentence whenever a classification gap co-occurs with a marker mismatch in the same `SemanticIsolation` check, giving the operator no inspect/quarantine/named-key guidance for the marker defect at all in that case. Pre-existing behavior, not introduced by Story 24.9; already tracked as ledger item `24.6-F8-W9` below, and Story 24.9's own spec Boundaries ("Ask First") explicitly declined to resolve it here since it is a different axis than this story's AC. Reopen trigger: Story 24.8/24.9 follow-up work touching the same ternary, or an operator report that this suppression hid actionable marker guidance during a real co-occurring incident.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-9-non-destructive-tenant-marker-diagnostics.md`
+  summary: `CheckSyntacticIsolationAsync` still returns the anti-template blanket-deletion wording Story 24.9 removed from `SemanticIsolation`.
+  evidence: `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:216` still reads `"Repair or re-provision the tenant RediSearch index and remove mismatched target-prefix hashes"`. Story 24.9's Boundaries explicitly forbid touching the syntactic-only `ScanHashPrefixForTenantFieldMismatchesAsync`/`CheckSyntacticIsolationAsync` path ("a separate, non-semantic check outside this AC's `SemanticIsolation` scope"), so this is pre-existing and correctly out of this story's scope — but it now leaves an inconsistent operator experience: `SemanticIsolation` failures get non-destructive, named-key guidance while `SyntacticIsolation` failures still get blanket-deletion language. Reopen trigger: a follow-up story extending the non-destructive marker-diagnostic pattern to `SyntacticIsolation`.
 
 

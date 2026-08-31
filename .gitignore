@@ -222,6 +222,11 @@ PublishScripts/
 *.nuget.props
 *.nuget.targets
 
+# Story 28.1: local-only NuGet override config. Carries a trustedSigners <author> exception
+# for the isolated EventStore rebuild feed that must never land in the tracked, shared
+# NuGet.config (see spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md). Never commit.
+tools/nuget-local-feeds/NuGet.local.config
+
 # Microsoft Azure Build Output
 csx/
 *.build.csdef

@@ -646,7 +646,7 @@ public sealed partial class TenantIsolationVerifier
                     markerMismatches.Add(new MarkerMismatchEvidence(
                         MarkerDefectKind.Missing,
                         keyText,
-                        $"{storageName} key '{key}' under tenant '{tenantId}' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage — expected tenant '{tenantId}'"));
+                        $"{storageName} key '{keyText}' under tenant '{tenantId}' is missing its tenantId marker: incomplete evidence, not confirmed cross-tenant leakage — expected tenant '{tenantId}'"));
                     continue;
                 }
 
@@ -656,7 +656,7 @@ public sealed partial class TenantIsolationVerifier
                     markerMismatches.Add(new MarkerMismatchEvidence(
                         MarkerDefectKind.Foreign,
                         keyText,
-                        $"{storageName} key '{key}' under tenant '{tenantId}' has a foreign tenantId marker '{actualTenantId}': confirmed marker mismatch (possible contamination) — expected tenant '{tenantId}', observed tenant '{actualTenantId}'"));
+                        $"{storageName} key '{keyText}' under tenant '{tenantId}' has a foreign tenantId marker '{actualTenantId}': confirmed marker mismatch (possible contamination) — expected tenant '{tenantId}', observed tenant '{actualTenantId}'"));
                 }
             }
         }
@@ -665,8 +665,11 @@ public sealed partial class TenantIsolationVerifier
     }
 
     /// <summary>Distinguishes a missing tenant marker (incomplete evidence) from a foreign tenant marker
-    /// (confirmed mismatch/possible contamination) on a proven-active semantic hash. This classification is
-    /// internal diagnostic detail only — it never appears in the public V1 contract.</summary>
+    /// (confirmed mismatch/possible contamination) on a proven-active semantic hash. This enum and
+    /// <see cref="MarkerMismatchEvidence"/> are internal types only — they never appear in the public V1
+    /// contract — but the diagnostic wording they select for is embedded directly into the public
+    /// <see cref="TenantIsolationCheckResult.Details"/> and <see cref="TenantIsolationCheckResult.Remediation"/>
+    /// string fields, so that wording is contract-visible and must stay backward-compatible in shape.</summary>
     private enum MarkerDefectKind
     {
         /// <summary>The proven-active hash has no <c>tenantId</c> field: incomplete evidence, not confirmed leakage.</summary>

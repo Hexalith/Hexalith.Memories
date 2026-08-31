@@ -1,0 +1,79 @@
+{
+  "schema": "hexalith.memories.eventstore-local-feed-manifest/v1",
+  "story": "28.1",
+  "created": "2026-08-31",
+  "purpose": "Story 28.1 sprint-change-approved package-identity rebuild: the EventStore Story 1.20 owner-approved SOURCE SHA repackaged under Memories' mandated SDK, because the proof packet's original SDK-10.0.302 hash manifest is not reproducible under SDK 10.0.400. This manifest pins THIS rebuild's own SHA-256 hashes -- it intentionally does NOT match approved_package_hash_manifest_sha256 in references/Hexalith.EventStore/_bmad-output/implementation-artifacts/1-20-owner-approved-parity-closure-proof-packet.md. See _bmad-output/planning-artifacts/sprint-change-proposal-2026-08-31-story-28-1-eventstore-identity-toolchain-mismatch.md.",
+  "sourceSha": "fa2d1c9910f8976553adb33dcdb1c9ff2ea75594",
+  "packageVersion": "999.1.20-proof.fa2d1c9910f8",
+  "rebuildSdkVersion": "10.0.400",
+  "rebuildAspNetCoreRuntimeVersion": "10.0.11",
+  "packOptions": "dotnet pack <project> --configuration Release -p:Version=999.1.20-proof.fa2d1c9910f8 -p:GeneratePackageOnBuild=false -p:UseHexalithProjectReferences=false",
+  "packCommand": "python3 references/Hexalith.EventStore/tools/pack-release-packages.py <output-dir> 999.1.20-proof.fa2d1c9910f8 (invoked with cwd = Memories repo root; from references/Hexalith.EventStore at commit fa2d1c9910f8976553adb33dcdb1c9ff2ea75594)",
+  "feedDirectory": "tools/nuget-local-feeds/hexalith-eventstore-999.1.20-proof.fa2d1c9910f8",
+  "signing": {
+    "note": "NuGet.config sets signatureValidationMode=require repo-wide (Story 8.5 ADR-8.5-001(b)); this local feed's packages are author-signed with a self-signed, throwaway code-signing certificate generated solely to satisfy that policy for this rebuild, then pinned by fingerprint via NuGet.config's <trustedSigners><author> entry with allowUntrustedRoot=\"true\". The private key was generated in a scratch location and is not committed to this repository -- only the packages' embedded signatures and the trusted public fingerprint are durable/tracked.",
+    "certificateSubject": "CN=Hexalith Memories Story 28.1 Local EventStore Rebuild",
+    "certificateFingerprintSha256": "6DA10FAC47615E9D4CA5472A52FA6172F4B0E71FE319D6F2C54825D4A131EC48",
+    "trustedSignersEntryName": "HexalithMemoriesStory281LocalEventStoreRebuild",
+    "timestamper": "http://timestamp.digicert.com (RFC 3161)"
+  },
+  "hashNote": "SHA-256 values below are of the SIGNED AND TIMESTAMPED .nupkg files as they sit in feedDirectory (each dotnet nuget sign rewrites package bytes).",
+  "packages": [
+    {
+      "id": "Hexalith.EventStore.Admin.Abstractions",
+      "sha256": "4e8af79d222fe55a1329eb9464ba93cc5150f4ce4acf60f56e772f4758fc1412"
+    },
+    {
+      "id": "Hexalith.EventStore.Admin.Cli",
+      "sha256": "e46216360032c45f2db2a5ff240e27afa432d53eac1170098271adc4cf575ed6"
+    },
+    {
+      "id": "Hexalith.EventStore.Admin.Server",
+      "sha256": "0ce4086625bba93ece0e629f825873aaa1c8aabfb48a0081687f79da0808ca12"
+    },
+    {
+      "id": "Hexalith.EventStore.Aspire",
+      "sha256": "8f18e065e7bdaa2c338165bf39119a82604304ea3a1a6cd4288290223cd57a10"
+    },
+    {
+      "id": "Hexalith.EventStore.Client",
+      "sha256": "75f74ecfd1d3ca59c92dbcdb6d0f3d926f0db42cf7d1bf0dd108ce728edd78e2"
+    },
+    {
+      "id": "Hexalith.EventStore.Contracts",
+      "sha256": "af877a1e58a7742fffbdad4d7006694545c4225a1231e2570b1cb53cd6a8962a"
+    },
+    {
+      "id": "Hexalith.EventStore.DomainService",
+      "sha256": "d9ffc2ab8f106313b65af69eed5cd1becfa0615ce86f42fc9986f5ec37ceff24"
+    },
+    {
+      "id": "Hexalith.EventStore.Gateway",
+      "sha256": "e2971cc02d9bf007929d97eb5eb01a8ad36ca85ced2624a0a71d4764767fbcdf"
+    },
+    {
+      "id": "Hexalith.EventStore.RestApi.Generators",
+      "sha256": "7fd61322bd4e7365850061be6cdcb6061894851a0ec88cd69123f118466ff137"
+    },
+    {
+      "id": "Hexalith.EventStore.Server",
+      "sha256": "44a8028445070dfdee201ff1df45c25f20d00e57b3a14067a06cb9b48bebf2e5"
+    },
+    {
+      "id": "Hexalith.EventStore.ServiceDefaults",
+      "sha256": "cbb5ed71f64289b8ea5bb9f6e214c0228dc58d80a28f456af7bf9dfd3978750f"
+    },
+    {
+      "id": "Hexalith.EventStore.SignalR",
+      "sha256": "6dad412bbdbd460fb855048a4533a63b1eff27fb197978c64a47aa9731911822"
+    },
+    {
+      "id": "Hexalith.EventStore.Testing",
+      "sha256": "cd74b5df729c0c8aecdf42462031d67a751cd3f8d22ef373efe652f1296e825e"
+    },
+    {
+      "id": "Hexalith.EventStore.Testing.Integration",
+      "sha256": "1f5eb09bb346a1efb5683baf74f882ccbda70efd4110fe3d4e457cc32ded2a3a"
+    }
+  ]
+}

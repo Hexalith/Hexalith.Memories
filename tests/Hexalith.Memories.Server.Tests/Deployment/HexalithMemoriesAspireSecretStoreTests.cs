@@ -106,11 +106,27 @@ public sealed class HexalithMemoriesAspireSecretStoreTests
         // AC1: the server sidecar and the CS0618 project-level workaround must both reference `secretStore`,
         // and the server must wait for it before starting. Two `.WithReference(secretStore)` call sites
         // (sidecar-level, project-level) and one `.WaitFor(secretStore)` are the complete expected wiring;
-        // removing any of them drops the corresponding count below its expected value.
+        // removing any of them drops the corresponding count below its expected value. The aggregate counts
+        // alone would not catch a regression that drops one wiring call while adding a compensating duplicate
+        // elsewhere, so each site below is also pinned to its exact attachment point via unique surrounding
+        // context ([Review][Patch] hardening).
         string source = ReadRepoFile("src", "Hexalith.Memories.Aspire", "HexalithMemoriesServerExtensions.cs");
 
         CountOccurrences(source, ".WithReference(secretStore)").ShouldBe(2);
         CountOccurrences(source, ".WaitFor(secretStore)").ShouldBe(1);
+
+        // Sidecar-level: secretStore chained inside .WithDaprSidecar(...), alongside stateStore/pubSub/llm.
+        source.ShouldContain(
+            ".WithReference(stateStore)\n                .WithReference(pubSub)\n                .WithReference(secretStore)\n                .WithReference(llm))",
+            Case.Sensitive);
+
+        // Project-level CS0618 workaround: the same four references reattached directly on `server`.
+        source.ShouldContain(
+            "server = server\n            .WithReference(stateStore)\n            .WithReference(pubSub)\n            .WithReference(secretStore)\n            .WithReference(llm);",
+            Case.Sensitive);
+
+        // The server waits for the secret store before starting.
+        source.ShouldContain(".WaitFor(secretStore)\n            .WaitFor(llm);", Case.Sensitive);
     }
 
     [Fact]
@@ -131,6 +147,33 @@ public sealed class HexalithMemoriesAspireSecretStoreTests
         CountOccurrences(source, ".WithReference(secretStore)").ShouldBe(5);
         CountOccurrences(source, ".WaitFor(secretStore)").ShouldBe(2);
         source.ShouldContain("clock = clock.WithReference(secretStore);", Case.Sensitive);
+
+        // The aggregate counts alone would not catch a regression that misattaches a reference while keeping
+        // the total unchanged, so each site is also pinned to its exact attachment point below ([Review][Patch]
+        // hardening).
+
+        // Clock sidecar-level reference + wait, pinned to the clock's own CreateSidecarOptions call.
+        source.ShouldContain(
+            "\"memories-access-telemetry-clock\",\n                    3800,\n                    50301,\n                    daprConfigurationPath,\n                    daprPlacementHostAddress,\n                    daprSchedulerHostAddress))\n                .WithReference(secretStore))\n            .WaitFor(secretStore);",
+            Case.Sensitive);
+
+        // Lifecycle sidecar-level references, pinned to the lifecycle's own CreateSidecarOptions call.
+        source.ShouldContain(
+            "\"memories-access-telemetry\",\n                    3700,\n                    50201,\n                    daprConfigurationPath,\n                    daprPlacementHostAddress,\n                    daprSchedulerHostAddress))\n                .WithReference(stateStore)\n                .WithReference(secretStore)\n                .WithReference(configurationStore))",
+            Case.Sensitive);
+
+        // Lifecycle waits for all three of its sidecar-referenced components.
+        source.ShouldContain(
+            ".WaitFor(stateStore)\n            .WaitFor(secretStore)\n            .WaitFor(configurationStore);",
+            Case.Sensitive);
+
+        // Project-level CS0618 workaround: lifecycle and server both reattach secretStore directly.
+        source.ShouldContain(
+            "lifecycle = lifecycle\n            .WithReference(stateStore)\n            .WithReference(secretStore)\n            .WithReference(configurationStore);",
+            Case.Sensitive);
+        source.ShouldContain(
+            "server = server\n            .WithReference(secretStore)\n            .WithReference(configurationStore)",
+            Case.Sensitive);
     }
 
     private static int CountOccurrences(string text, string substring)
@@ -183,6 +226,7 @@ public sealed class HexalithMemoriesAspireSecretStoreTests
             candidate = Path.GetFullPath(Path.Combine(candidate, ".."));
         }
 
-        return AppContext.BaseDirectory;
+        throw new InvalidOperationException(
+            $"Could not locate the repository root (Hexalith.Memories.slnx) within 8 levels above {AppContext.BaseDirectory}.");
     }
 }

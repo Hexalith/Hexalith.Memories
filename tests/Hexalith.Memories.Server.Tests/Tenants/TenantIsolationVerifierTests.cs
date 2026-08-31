@@ -972,6 +972,47 @@ public class TenantIsolationVerifierTests
     }
 
     [Fact]
+    public async Task VerifyAsync_DimensionMismatchWithForeignAndMissingActiveMarkersSameCheck_ComposesAllThreeRemediationSentences()
+    {
+        (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
+            tenants:
+            [
+                new TenantInfo("tenant-a", "Tenant A", TenantStatus.Active, DateTimeOffset.UtcNow),
+                new TenantInfo("tenant-b", "Tenant B", TenantStatus.Active, DateTimeOffset.UtcNow),
+            ]);
+
+        SetupSuccessfulIndexInfo(redisDb, "tenant-a", rawDimensions: 1536);
+        string foreignKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "triple-foreign");
+        string missingKey = IndexSchemaDefinitions.BuildSemanticKey("tenant-a", "triple-missing");
+        SetupRedisKeyScan(
+            redisServer,
+            IndexSchemaDefinitions.GetSemanticKeyPrefix("tenant-a"),
+            foreignKey,
+            missingKey);
+        SetupSemanticRecord(redisDb, foreignKey, "triple-foreign", "tenant-b");
+        SetupSemanticRecord(redisDb, missingKey, "triple-missing", tenantId: null);
+        SetupGraphList(falkorDb, "tenant-a", "tenant-b");
+
+        TenantIsolationVerificationResult result = await verifier.VerifyAsync("tenant-a", CancellationToken.None);
+
+        result.AllPassed.ShouldBeFalse();
+        TenantIsolationCheckResult semanticCheck = result.Checks.First(c => c.CheckName == "SemanticIsolation");
+        semanticCheck.Passed.ShouldBeFalse();
+        semanticCheck.Remediation.ShouldNotBeNull();
+
+        // All three problem kinds (non-marker dimension mismatch, a foreign marker, and a missing marker) can
+        // surface in the same check at once; every sentence must be composed together, not collapsed to one.
+        semanticCheck.Remediation.ShouldContain(
+            $"Repair or re-provision tenant 'tenant-a' Redis Vector indexes and reindex its semantic data using the validated {VectorDimensions}-dimension embedding configuration.");
+        semanticCheck.Remediation.ShouldContain(
+            $"For the confirmed marker mismatch (possible contamination) on '{foreignKey}', inspect and quarantine the named key(s), then run tenant-scoped marker repair or reindex for tenant 'tenant-a' only after provenance is verified — never delete the prefix.");
+        semanticCheck.Remediation.ShouldContain(
+            $"For the incomplete evidence (missing marker, not confirmed leakage) on '{missingKey}', inspect and quarantine the named key(s) before any tenant-scoped marker repair or reindex for tenant 'tenant-a', applied only after provenance is verified — never delete the prefix.");
+        semanticCheck.Remediation.ShouldNotContain("remove mismatched target-prefix hashes");
+        AssertNoMutationDependencyCalls(redisDb, falkorDb);
+    }
+
+    [Fact]
     public async Task VerifyAsync_ForeignActiveMarkerWithExtraPayloadFields_DoesNotExposePayloadContent()
     {
         (TenantIsolationVerifier verifier, IDatabase redisDb, IDatabase falkorDb, IServer redisServer) = CreateVerifier(
