@@ -14,11 +14,12 @@ using Shouldly;
 
 /// <summary>
 /// Drift guards for the approved 2026-06-26 AppHost security-service correction
-/// and EventStore 3.100.0 catalog/restore consumption.
+/// and EventStore Story 1.20 owner-approved proof-identity catalog/restore consumption
+/// (Story 28.1; supersedes the earlier 3.100.0 pin).
 /// </summary>
 public sealed class AppHostSecurityConfigurationTests
 {
-    private const string EventStoreCatalogVersion = "3.100.0";
+    private const string EventStoreCatalogVersion = "999.1.20-proof.fa2d1c9910f8";
     private const string EventStorePackagePrefix = "Hexalith.EventStore.";
 
     [Fact]
@@ -84,7 +85,7 @@ public sealed class AppHostSecurityConfigurationTests
             "Directory.Packages.props");
 
         catalog.ShouldContain(
-            "<HexalithEventStoreVersion Condition=\"'$(HexalithEventStoreVersion)' == ''\">3.100.0</HexalithEventStoreVersion>",
+            $"<HexalithEventStoreVersion Condition=\"'$(HexalithEventStoreVersion)' == ''\">{EventStoreCatalogVersion}</HexalithEventStoreVersion>",
             Case.Sensitive);
 
         XElement[] eventStoreVersions = [.. XDocument.Parse(catalog)
@@ -186,6 +187,13 @@ public sealed class AppHostSecurityConfigurationTests
     [Fact]
     public void ProjectAssets_RestoreEventStorePackagesAtCatalogVersion()
     {
+        // Story 28.1 known gap (see spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md,
+        // "Ask First" #1): the approved proof version 999.1.20-proof.fa2d1c9910f8 is not published on
+        // nuget.org (the only configured source) and no isolated/local feed has been sanctioned, so a
+        // real `dotnet restore` of this project in Release/package mode currently fails with NU1102
+        // and this test fails accordingly -- that failure is the accurate, current state of
+        // Release/package-mode restorability, not a stale assertion. It will pass again once the
+        // approved package bytes become restorable from a sanctioned source.
         string serverAssets = ReadRepoFile(
             "src",
             "Hexalith.Memories.Server",
@@ -194,8 +202,8 @@ public sealed class AppHostSecurityConfigurationTests
 
         using JsonDocument document = JsonDocument.Parse(serverAssets);
         JsonElement libraries = document.RootElement.GetProperty("libraries");
-        libraries.TryGetProperty("Hexalith.EventStore.Client/3.100.0", out JsonElement client)
-            .ShouldBeTrue("Server restore must include the exact library key Hexalith.EventStore.Client/3.100.0.");
+        libraries.TryGetProperty($"Hexalith.EventStore.Client/{EventStoreCatalogVersion}", out JsonElement client)
+            .ShouldBeTrue($"Server restore must include the exact library key Hexalith.EventStore.Client/{EventStoreCatalogVersion}.");
         client.GetProperty("type").GetString().ShouldBe("package");
 
         foreach (JsonProperty library in libraries.EnumerateObject())

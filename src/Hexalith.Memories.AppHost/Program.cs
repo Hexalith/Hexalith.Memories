@@ -280,6 +280,34 @@ IResourceBuilder<ContainerResource> falkordb = builder
     .WithEndpoint(targetPort: 6379, name: "falkordb");
 EndpointReference falkordbEndpoint = falkordb.GetEndpoint("falkordb");
 
+// Story 28.1: EventStore command-gateway resource. AddHexalithEventStoreGatewayProject() adds only
+// the project resource -- never AddHexalithEventStore(...), which would hardcode its own
+// "statestore"/"pubsub" Dapr components and collide with the Story-9.1-owned stateStore/pubSub
+// components above. The gateway sidecar and project-level references instead point at those same
+// stateStore/pubSub builders, mirroring the "memories" resource's own wiring below, so each
+// Redis-backed component keeps exactly one owner.
+IResourceBuilder<ProjectResource> eventStoreGateway = builder
+    .AddHexalithEventStoreGatewayProject()
+    .WithDaprSidecar(sidecar =>
+    {
+        _ = sidecar.WithOptions(CreateDaprSidecarOptions(
+            appId: "eventstore",
+            httpPort: 3501,
+            grpcPort: 50002,
+            configPath: daprConfigPath,
+            placementHostAddress: daprPlacementHostAddress,
+            schedulerHostAddress: daprSchedulerHostAddress));
+        _ = sidecar.WithReference(stateStore);
+        _ = sidecar.WithReference(pubSub);
+    })
+    .WaitFor(redis);
+
+#pragma warning disable CS0618 // CommunityToolkit.Aspire.Hosting.Dapr 9.7 reads project-level component references.
+eventStoreGateway = eventStoreGateway
+    .WithReference(stateStore)
+    .WithReference(pubSub);
+#pragma warning restore CS0618
+
 // Memories Server with DAPR sidecar
 // DAPR sidecar manages connections to Redis/FalkorDB via component config
 // AppPort is intentionally omitted so Aspire Testing can auto-detect the
