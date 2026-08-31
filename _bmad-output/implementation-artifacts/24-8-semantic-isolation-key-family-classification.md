@@ -52,7 +52,7 @@ Allowed files for this story:
 - `src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs` — UPDATE exact canonical staging reconstruction helpers.
 - `src/Hexalith.Memories.Server/Infrastructure/SemanticKeyFamily.cs` — ADD the exhaustive semantic family model.
 - `src/Hexalith.Memories.Server/Infrastructure/SemanticKeyFamilyClassifier.cs` — ADD the bounded, collision-safe family registry and classifier.
-- `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs` — UPDATE semantic classification before tenant-marker evidence.
+- `src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs` — UPDATE semantic classification before tenant-marker evidence; also extracts the pre-existing syntactic-scan's connectivity-exception construction into the shared `CreateNoConnectedRedisServerException` helper (message-only, no behavior change) so the new semantic scan can reuse it.
 - `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs` — UPDATE only if method-correct denial-before-dependency evidence requires it.
 - `tests/Hexalith.Memories.Server.Tests/Infrastructure/IndexSchemaDefinitionsTests.cs` — UPDATE family totality, exact reconstruction, future-family, and opaque-ID coverage.
 - `tests/Hexalith.Memories.Server.Tests/Migration/RedisEmbeddingMigrationStoreTests.cs` — UPDATE markerless staging shape and no-lifecycle-mutation evidence.

@@ -133,6 +133,32 @@ public class IndexSchemaDefinitionsTests
         naturalLanguageVersion.ShouldBe("run-2");
     }
 
+    [Theory]
+    [InlineData("", "mu-1")]
+    [InlineData("   ", "mu-1")]
+    [InlineData("tenant-a", "")]
+    [InlineData("tenant-a", "   ")]
+    public void TryParseStagingVersion_InvalidTenantOrMemoryUnitId_ReturnsFalseWithoutThrowing(
+        string tenantId,
+        string memoryUnitId)
+    {
+        bool rawParsed = IndexSchemaDefinitions.TryParseSemanticStagingVersion(
+            tenantId,
+            (RedisKey)"tenant-a:vec:staging:run-1:mu-1",
+            memoryUnitId,
+            out string rawVersion);
+        bool naturalLanguageParsed = IndexSchemaDefinitions.TryParseNaturalLanguageSemanticStagingVersion(
+            tenantId,
+            (RedisKey)"tenant-a:vecnl:staging:run-1:mu-1",
+            memoryUnitId,
+            out string naturalLanguageVersion);
+
+        rawParsed.ShouldBeFalse();
+        rawVersion.ShouldBe(string.Empty);
+        naturalLanguageParsed.ShouldBeFalse();
+        naturalLanguageVersion.ShouldBe(string.Empty);
+    }
+
     [Fact]
     public void TryParseStagingVersion_ActiveReservedLookingOpaqueId_DoesNotGuessStaging()
     {
@@ -208,6 +234,7 @@ public class IndexSchemaDefinitionsTests
     [InlineData("tenant-a:vec:mu-1:7", "mu-1", false, "7", "12", "12")]
     [InlineData("tenant-a:vec:mu-1:7", "mu-1", false, "007", "0", "12")]
     [InlineData("tenant-a:vec:mu-1", "different-id", false, null, null, null)]
+    [InlineData("tenant-a:vecnl:mu-1:7", "mu-1", true, "7", "0", "12")]
     public void SemanticFamilyClassifier_UnregisteredOrContradictoryShape_ReturnsUnknown(
         string key,
         string memoryUnitId,
@@ -264,10 +291,15 @@ public class IndexSchemaDefinitionsTests
             .Distinct()
             .ToArray();
 
+        // Compared against the enum type directly (not against SemanticKeyFamilyClassifier.RegisteredFamilies,
+        // which is itself derived from this same registry) so this stays an independent totality proof: it fails
+        // if a new SemanticKeyFamily value is ever added without a corresponding registry entry.
+        SemanticKeyFamily[] explicitEnumFamilies = Enum.GetValues<SemanticKeyFamily>()
+            .Except([SemanticKeyFamily.Unknown, SemanticKeyFamily.Ambiguous])
+            .ToArray();
+
         registeredNamespaceConstants.ShouldBe(declaredNamespaceConstants);
-        namespaceFamilies.ShouldBe(
-            SemanticKeyFamilyClassifier.RegisteredFamilies.ToArray(),
-            ignoreOrder: true);
+        namespaceFamilies.ShouldBe(explicitEnumFamilies, ignoreOrder: true);
     }
 
     [Fact]

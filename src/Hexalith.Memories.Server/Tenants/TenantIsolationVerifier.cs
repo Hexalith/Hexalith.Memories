@@ -22,6 +22,14 @@ using StackExchange.Redis;
 /// Confirms that architectural isolation guarantees hold — does not enforce isolation at runtime.</summary>
 public sealed partial class TenantIsolationVerifier
 {
+    // Index positions into both _semanticDiscriminatorFields and the HashGetAsync result it drives; keep the
+    // field order and these constants in lock-step.
+    private const int MemoryUnitIdFieldIndex = 0;
+    private const int TenantIdFieldIndex = 1;
+    private const int ChunkSequenceFieldIndex = 2;
+    private const int ChunkStartOffsetFieldIndex = 3;
+    private const int ChunkEndOffsetFieldIndex = 4;
+
     private static readonly RedisValue[] _semanticDiscriminatorFields =
     [
         "memoryUnitId",
@@ -594,10 +602,10 @@ public sealed partial class TenantIsolationVerifier
                 SemanticKeyFamily family = SemanticKeyFamilyClassifier.Classify(
                     tenantId,
                     key,
-                    discriminatorValues[0],
-                    discriminatorValues[2],
-                    discriminatorValues[3],
-                    discriminatorValues[4],
+                    discriminatorValues[MemoryUnitIdFieldIndex],
+                    discriminatorValues[ChunkSequenceFieldIndex],
+                    discriminatorValues[ChunkStartOffsetFieldIndex],
+                    discriminatorValues[ChunkEndOffsetFieldIndex],
                     hasNaturalLanguageDescription);
 
                 if (family is SemanticKeyFamily.Unknown or SemanticKeyFamily.Ambiguous)
@@ -614,7 +622,7 @@ public sealed partial class TenantIsolationVerifier
                 }
 
                 activeCount++;
-                RedisValue storedTenantId = discriminatorValues[1];
+                RedisValue storedTenantId = discriminatorValues[TenantIdFieldIndex];
                 string storageName = family switch
                 {
                     SemanticKeyFamily.ActiveRawBase => "raw semantic base",

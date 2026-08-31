@@ -112,6 +112,14 @@ internal static class SemanticKeyFamilyClassifier
             matches.Add(SemanticKeyFamily.LegacyNaturalLanguage);
         }
 
+        // SemanticKeyFamily.Ambiguous is provably unreachable under the current registry: every non-chunk raw
+        // family (ActiveRawBase, RawStaging) and every non-chunk NL family (ActiveNaturalLanguage,
+        // NaturalLanguageStaging, LegacyNaturalLanguage) reconstructs against a fixed-length namespace prefix
+        // (":vec:" / ":vecnl:" / ":vec:staging:" / ":vecnl:staging:" / ":vec:nl:"), and those prefixes all have
+        // distinct fixed lengths, so a key text of the form tenantId + shortPrefix + memoryUnitId can never also
+        // satisfy the length/position checks for a longer staging prefix built from the same memoryUnitId — and
+        // ActiveRawChunk is mutually exclusive with every non-chunk family by the hasAnyChunkField gate above.
+        // The branch stays as an explicit fail-closed guard for any future family that breaks this invariant.
         return matches.Count switch
         {
             0 => SemanticKeyFamily.Unknown,

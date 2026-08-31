@@ -1,5 +1,6 @@
 ---
-status: blocked
+status: ready-for-dev
+baseline_revision: b42e0f64cac307d6b9535d4112ccc8a2fb967ac0
 ---
 
 # BMad Dev Auto Result

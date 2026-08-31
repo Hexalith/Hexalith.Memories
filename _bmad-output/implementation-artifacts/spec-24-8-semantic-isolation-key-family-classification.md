@@ -69,6 +69,18 @@ context:
 - Given reserved-looking opaque IDs, when classification runs, then canonical reconstruction plus record shape—not token parsing—keeps legitimate active keys active; unresolved evidence becomes a classification gap.
 - Given an unregistered future namespace or migration shape, when schema/classifier guards and verification run, then classification fails closed and no staging or tenant data is mutated.
 
+### Review Findings
+
+- [ ] [Review][Patch] Family-totality test partially compares the classifier registry against itself, so `Classify()`'s hardcoded dispatch could silently drift from the registry with no test catching it [tests/Hexalith.Memories.Server.Tests/Infrastructure/IndexSchemaDefinitionsTests.cs:267-270]
+- [ ] [Review][Patch] Public `TryParseSemanticStagingVersion`/`TryParseNaturalLanguageSemanticStagingVersion` throw `ArgumentException` instead of returning `false` for null/whitespace input, violating the Try-pattern convention on a public API surface [src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs:808-809]
+- [ ] [Review][Patch] No test exercises a natural-language record that also carries complete chunk fields; it falls through to `Unknown` correctly today but is unverified [src/Hexalith.Memories.Server/Infrastructure/SemanticKeyFamilyClassifier.cs:59-113]
+- [ ] [Review][Patch] `discriminatorValues[0..4]` magic positional indices are tied to `_semanticDiscriminatorFields` field order 30+ lines away with no compile-time safety, feeding tenant-isolation classification [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:594-601]
+- [ ] [Review][Patch] The new shared `CreateNoConnectedRedisServerException` helper extraction touches the pre-existing syntactic scan path, outside this story's declared "semantic classification" File Scope wording; message-only, no behavior change [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:504]
+- [ ] [Review][Patch] `SemanticKeyFamily.Ambiguous` branch has no reachable/passing test proving it fires; three independent review layers converged on this [src/Hexalith.Memories.Server/Infrastructure/SemanticKeyFamilyClassifier.cs:115-120]
+- [x] [Review][Defer] Transient Redis exception during the second of two sequential semantic scans discards already-collected first-scan evidence, downgrading to a generic "backend unavailable" result [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:343-397] — deferred, pre-existing pattern predating Story 24.8
+- [x] [Review][Defer] `Remediation` text always prioritizes classification-gap wording over marker-mismatch (or dimension-mismatch) wording when both co-occur in the same check [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:365-377] — deferred; this diff did not close the pre-existing carried-forward ledger item `24.6-F8-W9` ("dual remediation when classification gap and dimension mismatch co-occur"), which already names Story 24.8 as its natural closure point
+- [x] [Review][Defer] The two-round-trip discriminator read (`HashGetAsync` + separate `HashExistsAsync`) was not folded into one batched call [src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs:578-585] — deferred; this diff did not close the pre-existing carried-forward ledger item `24.6-F8-W7`, which already names Story 24.8 as its natural closure point
+
 ## Spec Change Log
 
 - 2026-08-17 — Implemented the approved family registry/classifier, bounded verifier integration, exact staging reconstruction, focused matrix, migration-shape proof, and lifecycle evidence without changing the frozen intent or migration writer.

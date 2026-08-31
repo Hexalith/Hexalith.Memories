@@ -798,6 +798,10 @@ internal static class IndexSchemaDefinitions
         return !string.IsNullOrWhiteSpace(memoryUnitId);
     }
 
+    /// <summary>Attempts to parse a staging version from a candidate key. Never throws for invalid
+    /// <paramref name="tenantId"/> or <paramref name="memoryUnitId"/>; every validation failure -- including
+    /// tenant/memory-unit-id validation, not only canonical-key reconstruction -- returns <see langword="false"/>,
+    /// preserving the Try-pattern contract for callers.</summary>
     private static bool TryParseStagingVersion(
         string tenantId,
         RedisKey key,
@@ -805,26 +809,26 @@ internal static class IndexSchemaDefinitions
         bool naturalLanguage,
         out string version)
     {
-        tenantId = ValidateTenantId(tenantId);
-        memoryUnitId = ValidateMemoryUnitId(memoryUnitId);
-        string? keyText = key.ToString();
-        string stagingPrefix = tenantId + (naturalLanguage
-            ? StagingNaturalLanguageSemanticKeyPrefixSuffixPrefix
-            : StagingSemanticKeyPrefixSuffixPrefix);
-        int memoryUnitStart = keyText?.Length - memoryUnitId.Length ?? -1;
-        if (string.IsNullOrEmpty(keyText)
-            || !keyText.StartsWith(stagingPrefix, StringComparison.Ordinal)
-            || memoryUnitStart <= stagingPrefix.Length
-            || keyText[memoryUnitStart - 1] != ':'
-            || !keyText.AsSpan(memoryUnitStart).SequenceEqual(memoryUnitId))
-        {
-            version = string.Empty;
-            return false;
-        }
-
-        string candidateVersion = keyText[stagingPrefix.Length..(memoryUnitStart - 1)];
         try
         {
+            tenantId = ValidateTenantId(tenantId);
+            memoryUnitId = ValidateMemoryUnitId(memoryUnitId);
+            string? keyText = key.ToString();
+            string stagingPrefix = tenantId + (naturalLanguage
+                ? StagingNaturalLanguageSemanticKeyPrefixSuffixPrefix
+                : StagingSemanticKeyPrefixSuffixPrefix);
+            int memoryUnitStart = keyText?.Length - memoryUnitId.Length ?? -1;
+            if (string.IsNullOrEmpty(keyText)
+                || !keyText.StartsWith(stagingPrefix, StringComparison.Ordinal)
+                || memoryUnitStart <= stagingPrefix.Length
+                || keyText[memoryUnitStart - 1] != ':'
+                || !keyText.AsSpan(memoryUnitStart).SequenceEqual(memoryUnitId))
+            {
+                version = string.Empty;
+                return false;
+            }
+
+            string candidateVersion = keyText[stagingPrefix.Length..(memoryUnitStart - 1)];
             string reconstructed = naturalLanguage
                 ? BuildNaturalLanguageSemanticStagingKey(tenantId, candidateVersion, memoryUnitId)
                 : BuildSemanticStagingKey(tenantId, candidateVersion, memoryUnitId);
@@ -833,15 +837,15 @@ internal static class IndexSchemaDefinitions
                 version = string.Empty;
                 return false;
             }
+
+            version = candidateVersion;
+            return true;
         }
         catch (ArgumentException)
         {
             version = string.Empty;
             return false;
         }
-
-        version = candidateVersion;
-        return true;
     }
 
     private static Dictionary<string, string> ParseKeyValuePairs(RedisResult raw)

@@ -3452,4 +3452,18 @@ block required by the schema above.
   summary: Isolate the server embedding-provider options test from parallel static options state.
   evidence: `AddMemoriesServerServices_WithHostEmbeddingProvidersConfig_SeedsCurrentOptionsAndOllama` observed the repository default endpoint during one full release-suite run, passed alone, and passed on an immediate complete rerun; the CI runner and telemetry-root changes do not touch that options surface.
 
+## Deferred from: code review of spec-24-8-semantic-isolation-key-family-classification (2026-08-31)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md`
+  summary: Transient Redis exception during the second of two sequential semantic scans discards already-collected first-scan evidence.
+  evidence: `CheckSemanticIsolationAsync` awaits the raw-prefix scan then the natural-language-prefix scan under one shared `try`/`catch (RedisConnectionException/RedisServerException)`; if the second scan throws, any marker mismatches or classification gaps the first scan already collected are discarded and the check returns a generic backend-unavailable result instead of surfacing the already-detected isolation problem. Pre-existing pattern predating Story 24.8 (the same shared-try shape already existed for `ScanHashPrefixForTenantFieldMismatchesAsync`'s raw/NL split); this diff extends it to also carry classification-gap evidence.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md`
+  summary: `Remediation` text still does not support dual guidance when a classification gap co-occurs with another problem.
+  evidence: `CheckSemanticIsolationAsync`'s `hasClassificationGap ? "Register or migrate..." : "Repair or re-provision..."` ternary always picks gap wording over marker-mismatch (or dimension-mismatch) wording when both are present in `Details`. This is the same unresolved gap as carried-forward ledger item `24.6-F8-W9` ("dual remediation when classification gap and dimension mismatch co-occur"), which already named Story 24.8 as its natural closure point; this diff did not close it, only extended the same single-priority pattern to also cover the new classification-gap case.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-24-8-semantic-isolation-key-family-classification.md`
+  summary: The two-round-trip discriminator read was not folded into one batched call.
+  evidence: `ScanSemanticHashPrefixForTenantEvidenceAsync` still issues a separate `HashGetAsync` (5 fields) and `HashExistsAsync` (`naturalLanguageDescription`) per scanned key. This is the same unresolved gap as carried-forward ledger item `24.6-F8-W7`, which already named Story 24.8 as its natural closure point; this diff did not close it.
+
 
