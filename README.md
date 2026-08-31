@@ -37,7 +37,7 @@ dotnet build Hexalith.Memories.slnx
 dotnet run --project src/Hexalith.Memories.AppHost
 ```
 
-On first AppHost run, a gitignored local `secrets.json` placeholder is created automatically if it does not already exist. Wait for the Aspire dashboard to show the `memories` resource as Running.
+On first AppHost run, a session-scoped OpenBao container starts and the AppHost generates OpenBao-backed `secretstores.hashicorp.vault` Dapr components automatically; there is no local `secrets.json` file. Wait for the Aspire dashboard to show the `memories` resource as Running.
 
 ### 5. Install the CLI (~1 min first time, ~10s subsequent)
 
@@ -71,7 +71,7 @@ Running the AppHost boots the local development topology:
 - Dapr sidecar gRPC on port `50001`
 - Aspire Dashboard opened by the AppHost
 
-The deployment-oriented Dapr component manifests live under `deploy/dapr/components/`. The AppHost also attaches equivalent Dapr component resources for local development so the sidecar can load the state store and secret store automatically.
+The deployment-oriented Dapr component manifests live under `deploy/dapr/components/`, including `secretstore.yaml` and `access-telemetry-secrets.yaml`, both `secretstores.hashicorp.vault` backed by OpenBao. The AppHost also attaches equivalent Dapr component resources for local development, generated using its own session-scoped OpenBao container, so the sidecar can load the state store and secret store automatically.
 
 ## Useful endpoints
 

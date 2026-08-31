@@ -363,6 +363,19 @@ environment variables into application or database containers. Therefore `redis-
 deleting those copies breaks pod startup. Adopting the OpenBao Agent Injector or CSI provider for those
 values is a separate deployment change, and both are disabled in `deploy/openbao/values.yaml` today.
 
+Story 29.2 retired the standalone `deploy/dapr/components/secretstore.yaml` and
+`deploy/dapr/components/access-telemetry-secrets.yaml` templates' prior `secretstores.kubernetes` /
+`secretstores.local.file` types. They now mirror the table above exactly — same
+`type: secretstores.hashicorp.vault`, same bootstrap Secret names, same OpenBao prefixes and scopes —
+but are deployment-oriented templates, not bound to a live cluster; they carry no bootstrap Secret of
+their own, and whichever platform applies them (Kubernetes, or a standalone Dapr self-hosted host) must
+supply `openbao-runtime-bootstrap` / `openbao-access-telemetry-bootstrap` before the sidecar can start.
+`Hexalith.Memories.Aspire`'s two hosting extensions (`AddHexalithMemoriesSearchIndexServer`,
+`AddHexalithMemoriesAccessTelemetry`) apply the same rule at the AppHost-composition layer: each takes
+an externally-provisioned secret-store `IResourceBuilder<IDaprComponentResource>` instead of
+constructing one, so the library itself never depends on OpenBao, Kubernetes, or any other secret
+provider.
+
 ## Health and access checks
 
 Run checks without printing secret values:

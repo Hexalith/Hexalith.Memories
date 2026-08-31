@@ -15,12 +15,18 @@ environment. That boilerplate now lives here.
 ```csharp
 using Hexalith.Memories.Aspire;
 
-// stateStore / pubSub are the shared DAPR components the Memories server should reuse
-// (for example the ones returned by Hexalith.EventStore.Aspire's AddHexalithEventStore).
+// stateStore / pubSub / secretStore are the shared DAPR components the Memories server should reuse
+// (for example stateStore/pubSub from Hexalith.EventStore.Aspire's AddHexalithEventStore, and an
+// OpenBao-backed secretstores.hashicorp.vault component the consumer provisions and scopes itself).
+IResourceBuilder<IDaprComponentResource> secretStore = builder.AddDaprComponent(
+    "secretstore",
+    "secretstores.hashicorp.vault",
+    new DaprComponentOptions { LocalPath = secretStoreYamlPath });
+
 HexalithMemoriesSearchIndexServerResources memories = builder.AddHexalithMemoriesSearchIndexServer(
     stateStore,
     pubSub,
-    secretStoreComponentPath: secretStoreYamlPath,
+    secretStore,
     llmComponentPath: llmYamlPath,
     daprPlacementHostAddress: placementAddress,
     daprSchedulerHostAddress: schedulerAddress);
@@ -32,7 +38,26 @@ _ = memories.Server
 ```
 
 The helper only **adds** the Memories topology and returns the resource builders; the consuming
-AppHost owns its DAPR component YAML files and any source-to-index routing.
+AppHost owns its DAPR component YAML files, its secret-store provisioning (this library never creates
+a secret-store component or depends on any secret-provider SDK), and any source-to-index routing.
+
+`AddHexalithMemoriesAccessTelemetry` takes the same externally-provisioned `secretStore` parameter for
+the access-telemetry lifecycle, clock, and server components — the consumer supplies one secret-store
+resource, scoped and named to match its own Dapr configuration (for example `access-telemetry-secrets`
+in the OpenBao-backed root AppHost topology):
+
+```csharp
+IResourceBuilder<IDaprComponentResource> accessTelemetrySecretStore = builder.AddDaprComponent(
+    "access-telemetry-secrets",
+    "secretstores.hashicorp.vault",
+    new DaprComponentOptions { LocalPath = accessTelemetrySecretsYamlPath });
+
+HexalithMemoriesAccessTelemetryResources accessTelemetry = builder.AddHexalithMemoriesAccessTelemetry(
+    memories.Server,
+    stateStoreComponentPath: accessTelemetryStateStoreYamlPath,
+    accessTelemetrySecretStore,
+    configurationStoreComponentPath: accessTelemetryConfigYamlPath);
+```
 
 By default the helper creates a `memories-vectors` `redis/redis-stack` container for the Memories
 search/vector store. Pass `redisConnectionString` only when the consuming AppHost owns a compatible

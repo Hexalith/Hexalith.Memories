@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>Hexalith.Memories.Aspire</PackageId>
-    <Description>.NET Aspire hosting extensions for Hexalith.Memories — adds the Memories search-index server (FalkorDB graph store, secret store, conversation/LLM component, DAPR sidecar) to a consuming domain-module AppHost.</Description>
+    <Description>.NET Aspire hosting extensions for Hexalith.Memories — adds the Memories search-index server (FalkorDB graph store, conversation/LLM component, DAPR sidecar, referencing a consumer-supplied secret store) to a consuming domain-module AppHost.</Description>
     <Authors>ITANEO</Authors>
     <Company>ITANEO</Company>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

@@ -175,14 +175,11 @@ the platform secret manager only.
 
 ## DAPR Secret Store
 
-Local AppHost uses `secretstores.local.file` named `secretstore` and points at repo-root `secrets.json`.
-That file is local/dev only.
-
-```json
-{
-  "{SECRET_NAME}": "{SECRET_VALUE}"
-}
-```
+The local AppHost (Story 29.1) runs a session-scoped OpenBao container and generates the `secretstore`
+and `access-telemetry-secrets` Dapr components as `secretstores.hashicorp.vault`, seeded automatically
+at startup. There is no local-file secret store and no repo-root `secrets.json`; see
+[docs/operations/openbao.md](openbao.md) for the generated component shape, bootstrap sequence, and
+isolation contract.
 
 If the DAPR configuration uses secret scopes, include each tenant secret name:
 
@@ -200,8 +197,10 @@ spec:
           - "{SECRET_NAME}"
 ```
 
-Production deployments should bind `secretstore` to the platform secret manager. Secret values are never
-stored in `TenantEmbeddingConfig`, never returned by tenant configuration APIs, and never logged.
+Standalone and Kubernetes deployments bind `secretstore` to OpenBao via `secretstores.hashicorp.vault`
+(`deploy/dapr/components/secretstore.yaml`, `deploy/kubernetes/base/dapr/secretstore.yaml`). Secret
+values are never stored in `TenantEmbeddingConfig`, never returned by tenant configuration APIs, and
+never logged.
 
 ## Migration Runbook
 

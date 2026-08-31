@@ -32,7 +32,7 @@ public sealed class DaprComponentTemplateTests
     }
 
     [Fact]
-    public void SecretStoreTemplate_UsesKubernetesStoreScopedToRuntimeApps()
+    public void SecretStoreTemplate_UsesOpenBaoVaultStoreScopedToRuntimeApps()
     {
         string content = NormalizeLineEndings(File.ReadAllText(LocateRepoFile(Path.Combine(
             "deploy",
@@ -40,11 +40,69 @@ public sealed class DaprComponentTemplateTests
             "components",
             "secretstore.yaml"))));
 
-        content.ShouldContain("type: secretstores.kubernetes", Case.Sensitive);
+        content.ShouldContain("type: secretstores.hashicorp.vault", Case.Sensitive);
+        content.ShouldContain("name: vaultAddr", Case.Sensitive);
+        content.ShouldContain("value: https://hexalith-keys.openbao.svc.cluster.local:8200", Case.Sensitive);
+        content.ShouldContain("name: caPem", Case.Sensitive);
+        content.ShouldContain("name: openbao-runtime-bootstrap", Case.Sensitive);
+        content.ShouldContain("key: ca.pem", Case.Sensitive);
+        content.ShouldContain("name: vaultToken", Case.Sensitive);
+        content.ShouldContain("key: token", Case.Sensitive);
+        content.ShouldContain("name: skipVerify", Case.Sensitive);
+        content.ShouldContain("value: \"false\"", Case.Sensitive);
+        content.ShouldContain("name: tlsServerName", Case.Sensitive);
+        content.ShouldContain("value: hexalith-keys.openbao.svc.cluster.local", Case.Sensitive);
+        content.ShouldContain("name: vaultKVPrefix", Case.Sensitive);
+        content.ShouldContain("value: hexalith/memories/runtime", Case.Sensitive);
+        content.ShouldContain("name: vaultKVUsePrefix", Case.Sensitive);
+        content.ShouldContain("value: \"true\"", Case.Sensitive);
+        content.ShouldContain("name: enginePath", Case.Sensitive);
+        content.ShouldContain("value: secret", Case.Sensitive);
+        content.ShouldContain("name: vaultValueType", Case.Sensitive);
+        content.ShouldContain("value: map", Case.Sensitive);
         content.ShouldContain("scopes:", Case.Sensitive);
         content.ShouldContain("- eventstore", Case.Sensitive);
         content.ShouldContain("- memories", Case.Sensitive);
         content.ShouldNotContain("secretstores.local.file", Case.Sensitive);
+        content.ShouldNotContain("secretstores.kubernetes", Case.Sensitive);
+        content.ShouldNotContain("secretsFile", Case.Sensitive);
+    }
+
+    [Fact]
+    public void AccessTelemetrySecretsTemplate_UsesOpenBaoVaultStoreScopedToAccessTelemetryApps()
+    {
+        string content = NormalizeLineEndings(File.ReadAllText(LocateRepoFile(Path.Combine(
+            "deploy",
+            "dapr",
+            "components",
+            "access-telemetry-secrets.yaml"))));
+
+        content.ShouldContain("type: secretstores.hashicorp.vault", Case.Sensitive);
+        content.ShouldContain("name: vaultAddr", Case.Sensitive);
+        content.ShouldContain("value: https://hexalith-keys.openbao.svc.cluster.local:8200", Case.Sensitive);
+        content.ShouldContain("name: caPem", Case.Sensitive);
+        content.ShouldContain("name: openbao-access-telemetry-bootstrap", Case.Sensitive);
+        content.ShouldContain("key: ca.pem", Case.Sensitive);
+        content.ShouldContain("name: vaultToken", Case.Sensitive);
+        content.ShouldContain("key: token", Case.Sensitive);
+        content.ShouldContain("name: skipVerify", Case.Sensitive);
+        content.ShouldContain("value: \"false\"", Case.Sensitive);
+        content.ShouldContain("name: tlsServerName", Case.Sensitive);
+        content.ShouldContain("value: hexalith-keys.openbao.svc.cluster.local", Case.Sensitive);
+        content.ShouldContain("name: vaultKVPrefix", Case.Sensitive);
+        content.ShouldContain("value: hexalith/memories/access-telemetry", Case.Sensitive);
+        content.ShouldContain("name: vaultKVUsePrefix", Case.Sensitive);
+        content.ShouldContain("value: \"true\"", Case.Sensitive);
+        content.ShouldContain("name: enginePath", Case.Sensitive);
+        content.ShouldContain("value: secret", Case.Sensitive);
+        content.ShouldContain("name: vaultValueType", Case.Sensitive);
+        content.ShouldContain("value: map", Case.Sensitive);
+        content.ShouldContain("scopes:", Case.Sensitive);
+        content.ShouldContain("- memories", Case.Sensitive);
+        content.ShouldContain("- memories-access-telemetry", Case.Sensitive);
+        content.ShouldContain("- memories-access-telemetry-clock", Case.Sensitive);
+        content.ShouldNotContain("secretstores.local.file", Case.Sensitive);
+        content.ShouldNotContain("secretstores.kubernetes", Case.Sensitive);
         content.ShouldNotContain("secretsFile", Case.Sensitive);
     }
 

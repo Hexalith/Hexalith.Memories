@@ -12,8 +12,8 @@ namespace Hexalith.Memories.Aspire;
 
 /// <summary>
 /// Provides the Aspire hosting extension that adds the Hexalith.Memories search-index server (FalkorDB graph
-/// store, secret store, conversation/LLM component, the <c>memories</c> project and its DAPR sidecar) to
-/// a consuming domain-module AppHost.
+/// store, conversation/LLM component, the <c>memories</c> project and its DAPR sidecar, referencing a
+/// consumer-supplied secret store) to a consuming domain-module AppHost.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,10 +22,12 @@ namespace Hexalith.Memories.Aspire;
 /// boilerplate now lives here, in the Memories platform Aspire library, so consumers call a single helper.
 /// </para>
 /// <para>
-/// The server reuses the <paramref name="stateStore"/> and <paramref name="pubSub"/> DAPR components supplied by
-/// the consumer (typically the shared EventStore state store and pub/sub) and runs its own Redis Stack
-/// search/vector store and FalkorDB graph store plus consumer-supplied secret-store and conversation components.
-/// The <c>memories</c> project is
+/// The server reuses the <paramref name="stateStore"/>, <paramref name="pubSub"/> and <paramref name="secretStore"/>
+/// DAPR components supplied by the consumer (typically the shared EventStore state store/pub-sub and an
+/// OpenBao-backed secret store) and runs its own Redis Stack search/vector store and FalkorDB graph store plus a
+/// consumer-supplied conversation component. This library never provisions a secret store itself (no
+/// <c>secretstores.local.file</c>, no OpenBao SDK/HTTP dependency) — it only references the resource the consumer
+/// hands in. The <c>memories</c> project is
 /// referenced cross-repo with <see cref="IProjectMetadata.SuppressBuild"/> set to <see langword="true"/>; the
 /// Memories platform is built independently (Aspire runs children with <c>--no-build</c>). This helper only
 /// <i>adds</i> the topology and returns the resource builders — any source-to-index routing is applied by the
@@ -42,7 +44,12 @@ public static class HexalithMemoriesServerExtensions
     /// <param name="builder">The distributed application builder.</param>
     /// <param name="stateStore">The shared DAPR state-store component the Memories server reuses.</param>
     /// <param name="pubSub">The shared DAPR pub/sub component the Memories server reuses.</param>
-    /// <param name="secretStoreComponentPath">Path to the local-file secret-store component YAML (consumer-owned).</param>
+    /// <param name="secretStore">
+    /// The externally-provisioned DAPR secret-store component the Memories server references (for example an
+    /// OpenBao-backed <c>secretstores.hashicorp.vault</c> component the consumer owns and seeds). This helper never
+    /// creates its own secret-store component; the consumer is responsible for provisioning, scoping, and
+    /// authenticating it.
+    /// </param>
     /// <param name="llmComponentPath">Path to the conversation/LLM component YAML (consumer-owned).</param>
     /// <param name="redisConnectionString">Optional Redis connection string for the Memories vector/search store. When omitted, the helper adds a <c>redis/redis-stack</c> container.</param>
     /// <param name="eventStoreTopic">The pub/sub topic the Memories server subscribes for EventStore integration. Defaults to <c>"memories-events"</c>.</param>
@@ -55,13 +62,13 @@ public static class HexalithMemoriesServerExtensions
     /// A <see cref="HexalithMemoriesSearchIndexServerResources"/> exposing the server, FalkorDB, secret-store and
     /// LLM resource builders for further customization.
     /// </returns>
-    /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/>, <paramref name="stateStore"/> or <paramref name="pubSub"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="builder"/>, <paramref name="stateStore"/>, <paramref name="pubSub"/> or <paramref name="secretStore"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Thrown when a required path, topic or name is <see langword="null"/> or whitespace.</exception>
     public static HexalithMemoriesSearchIndexServerResources AddHexalithMemoriesSearchIndexServer(
         this IDistributedApplicationBuilder builder,
         IResourceBuilder<IDaprComponentResource> stateStore,
         IResourceBuilder<IDaprComponentResource> pubSub,
-        string secretStoreComponentPath,
+        IResourceBuilder<IDaprComponentResource> secretStore,
         string llmComponentPath,
         string? redisConnectionString = null,
         string eventStoreTopic = "memories-events",
@@ -74,7 +81,7 @@ public static class HexalithMemoriesServerExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(stateStore);
         ArgumentNullException.ThrowIfNull(pubSub);
-        ArgumentException.ThrowIfNullOrWhiteSpace(secretStoreComponentPath);
+        ArgumentNullException.ThrowIfNull(secretStore);
         ArgumentException.ThrowIfNullOrWhiteSpace(llmComponentPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(eventStoreTopic);
         ArgumentException.ThrowIfNullOrWhiteSpace(serverName);
@@ -83,11 +90,8 @@ public static class HexalithMemoriesServerExtensions
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(daprGrpcPort);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(daprGrpcPort, 65535);
 
-        // Static dev secret store + conversation (echo) components, loaded from the consumer-owned YAML files.
-        IResourceBuilder<IDaprComponentResource> secretStore = builder.AddDaprComponent(
-            "memories-secretstore",
-            "secretstores.local.file",
-            new DaprComponentOptions { LocalPath = secretStoreComponentPath });
+        // Static dev conversation (echo) component, loaded from the consumer-owned YAML file. The secret store is
+        // never created here -- it is externally provisioned and passed in by the consumer (Story 29.2).
         IResourceBuilder<IDaprComponentResource> llm = builder.AddDaprComponent(
             "memories-llm",
             "conversation.echo",

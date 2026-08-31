@@ -3481,4 +3481,14 @@ block required by the schema above.
   summary: The two-round-trip discriminator read was not folded into one batched call.
   evidence: `ScanSemanticHashPrefixForTenantEvidenceAsync` still issues a separate `HashGetAsync` (5 fields) and `HashExistsAsync` (`naturalLanguageDescription`) per scanned key. This is the same unresolved gap as carried-forward ledger item `24.6-F8-W7`, which already named Story 24.8 as its natural closure point; this diff did not close it.
 
+## Deferred from: code review of spec-29-2-provider-neutral-aspire-composition-and-secret-verification (2026-08-31)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-29-2-provider-neutral-aspire-composition-and-secret-verification.md`
+  summary: `references/Hexalith.Tenants/src/Hexalith.Tenants.AppHost/Program.cs` still calls `AddHexalithMemoriesSearchIndexServer` with the retired `string secretStoreComponentPath` positional argument and will fail to build once it references an updated `Hexalith.Memories.Aspire` package.
+  evidence: Story 29.2 changed that parameter to `IResourceBuilder<IDaprComponentResource> secretStore` (an intentional, spec-required breaking change so the reusable extension accepts an externally-provisioned secret-store resource instead of hard-coding `secretstores.local.file`). Fixing the Tenants call site requires a coordinated change in the `Hexalith.Tenants` submodule/repo, which this story's boundaries explicitly exclude from casual editing.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-29-2-provider-neutral-aspire-composition-and-secret-verification.md`
+  summary: `docs/operations/openbao.md`'s new Story 29.2 passage claims a standalone Dapr self-hosted host (not just Kubernetes) can supply the `openbao-runtime-bootstrap`/`openbao-access-telemetry-bootstrap` bootstrap Secrets that `deploy/dapr/components/secretstore.yaml` and `access-telemetry-secrets.yaml` reference via `secretKeyRef`, but this has not been verified against Dapr's actual self-hosted secret-store resolution behavior outside Kubernetes.
+  evidence: `secretKeyRef` in a Dapr component's metadata typically resolves through a Kubernetes secret store in k8s-hosted Dapr; a bare self-hosted Dapr install would need its own separately configured secret-store component to resolve those references, which these standalone templates do not define or document. If that mechanism does not work outside Kubernetes as claimed, the "standalone Dapr self-hosted host" deployability statement in `docs/operations/openbao.md` is inaccurate and should be corrected or scoped to Kubernetes only.
+
 
