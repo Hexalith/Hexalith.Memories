@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-08-29
+last_updated: 2026-08-31
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -424,8 +424,8 @@ development_status:
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
   24-6-graph-content-level-tenant-isolation-evidence: done  # 2026-08-29: twelfth-pass review over the first real commit (7b3f29ce) of the closure work. Resolved the outstanding submodule-pointer Ask-First decision (deliberate, option a); rebuilt Server.Tests clean (0 warnings/errors) and got live discovery for the first time since the eighth-pass snapshot: 101/101 (52 baseline + 6 story + 28 Story 24.7 + 15 Story 24.8 = 101). File List reconciled matched 26/26 including the six references/* gitlinks; readiness, slice-scope, and tenant-isolation-evidence gates all pass. 4 further ledger-hygiene patches applied. Owning class 7/7 in 254.358s (unchanged, no integration source touched this pass).
-  24-7-tenant-configured-vector-dimension-verification: review # 2026-08-17: Administrator accepted the exact unrelated Debug-build blocker for this record-only closure. All five record patches are closed; Story 24.7 remains 52 -> 80 with external Story 24.8 +15 and the current built-assembly lane passed 95/95. Ten paths reconcile as nine owned plus the named FrontComposer exclusion; status-sensitive governance gates were rerun after synchronization.
-  24-8-semantic-isolation-key-family-classification: review
+  24-7-tenant-configured-vector-dimension-verification: done # 2026-08-31: fifth-pass adversarial review (six layers) found no functional defect; resolved its one decision (unit-level AC1-AC3 coverage confirmed sufficient) and applied two record-only patches (deferred-work.md schema reformat; stale Dev Notes correction). Fresh rebuild/test rerun at HEAD b42e0f64 passed clean: 0 warnings/errors, 95/95 tests. Readiness and slice-scope gates rerun and passed against the fixed 10-path inventory.
+  24-8-semantic-isolation-key-family-classification: done
   24-9-non-destructive-tenant-marker-diagnostics: backlog
   epic-24-retrospective: done
 
