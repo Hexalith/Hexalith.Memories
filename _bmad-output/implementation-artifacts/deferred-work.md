@@ -3284,17 +3284,32 @@ structured field block required by the schema above.
 
 ## Deferred from: code review of spec-24-7-tenant-configured-vector-dimension-verification (2026-08-13)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md`
-  summary: TenantIsolationVerifier constructor leaves the four pre-existing parameters unguarded.
-  evidence: Only the new `embeddingConfigProvider` parameter gained an ArgumentNullException guard; `registry`, `redis`, `falkorDb`, and `logger` predate Story 24.7 and still surface null as NullReferenceException at first use, deviating from the documented `ArgumentNullException.ThrowIfNull` boundary rule.
+- **TenantIsolationVerifier constructor leaves the four pre-existing parameters unguarded.**
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md`
-  summary: Make the concrete tenant embedding configuration provider stop its actor read when caller cancellation wins.
-  evidence: `TenantEmbeddingConfigProvider.GetAsync` accepts a cancellation token but awaits `GetEmbeddingConfigAsync()` without applying it, so `TenantIsolationVerifier` can stop waiting through `WaitAsync` while the actor call continues and may populate the cache after the verification request is cancelled.
+  - ID: 24.7-CTOR-UNGUARDED-PARAMS
+  - Status: carried-forward
+  - Source story: 24-7-tenant-configured-vector-dimension-verification
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Re-open trigger: A future change to `TenantIsolationVerifier`'s constructor, or a dedicated null-safety hardening pass.
+  - Rationale: Only the new `embeddingConfigProvider` parameter gained an ArgumentNullException guard; `registry`, `redis`, `falkorDb`, and `logger` predate Story 24.7 and still surface null as NullReferenceException at first use, deviating from the documented `ArgumentNullException.ThrowIfNull` boundary rule. Pre-existing behavior; only the new parameter was in Story 24.7's scope.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-24-7-tenant-configured-vector-dimension-verification.md`
-  summary: Bound semantic-isolation mismatch evidence returned for large tenant key sets.
-  evidence: `ScanHashPrefixForTenantFieldMismatchesAsync` records every missing or foreign tenant marker and `CheckSemanticIsolationAsync` joins the full list into `Details`; this behavior predates Story 24.7 and can produce an unbounded diagnostic response when many hashes are contaminated.
+- **Make the concrete tenant embedding configuration provider stop its actor read when caller cancellation wins.**
+
+  - ID: 24.7-PROVIDER-CANCELLATION-IGNORED
+  - Status: carried-forward
+  - Source story: 24-7-tenant-configured-vector-dimension-verification
+  - Target artifact: src/Hexalith.Memories.Server/Ingestion/TenantEmbeddingConfigProvider.cs
+  - Re-open trigger: A provider-focused change to `TenantEmbeddingConfigProvider`, or evidence that a cancelled verification populates the cache with a result the caller never observed.
+  - Rationale: `TenantEmbeddingConfigProvider.GetAsync` accepts a cancellation token but awaits `GetEmbeddingConfigAsync()` without applying it, so `TenantIsolationVerifier` can stop waiting through `WaitAsync` while the actor call continues and may populate the cache after the verification request is cancelled. Pre-existing behavior outside Story 24.7's mapped file scope.
+
+- **Bound semantic-isolation mismatch evidence returned for large tenant key sets.**
+
+  - ID: 24.7-SEMANTIC-EVIDENCE-UNBOUNDED
+  - Status: carried-forward
+  - Source story: 24-7-tenant-configured-vector-dimension-verification
+  - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
+  - Re-open trigger: The owning diagnostic-bounding slice is selected, or an operator reports an oversized `SemanticIsolation.Details` response.
+  - Rationale: `ScanHashPrefixForTenantFieldMismatchesAsync` records every missing or foreign tenant marker and `CheckSemanticIsolationAsync` joins the full list into `Details`; this behavior predates Story 24.7 and can produce an unbounded diagnostic response when many hashes are contaminated. Pre-existing behavior; bounding it is out of Story 24.7's frozen scope.
 
 ## Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence — eighth pass (2026-08-14)
 
