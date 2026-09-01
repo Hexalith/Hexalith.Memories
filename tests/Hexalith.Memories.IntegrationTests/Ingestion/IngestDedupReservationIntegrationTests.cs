@@ -15,7 +15,12 @@ using Shouldly;
 
 using StackExchange.Redis;
 
-/// <summary>Real-Redis concurrency coverage for the REST-ingress dedup reservation.</summary>
+/// <summary>
+/// Story 18.4 (AC3) / MEM-4 / DW-18 -- the production-backed real-Redis authority for the REST-ingress
+/// dedup reservation: a two-thread <c>SET ... NX</c> race against a live Redis Stack container plus the
+/// <c>IngestDedupReservation.ReleaseAsync</c> deletion-scope proof. The substitute-based deterministic
+/// coverage (including the fail-open path of ADR 9.1-B) stays in <c>IngestDedupReservationTests</c>.
+/// </summary>
 [Collection("RedisStack")]
 [Trait("Category", "Integration")]
 public sealed class IngestDedupReservationIntegrationTests
@@ -27,6 +32,10 @@ public sealed class IngestDedupReservationIntegrationTests
 
     private static readonly TimeSpan ReservationTtl = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RendezvousTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Deliberately unreachable bound used to prove the rendezvous fails fast instead of
+    /// hanging; contrasted with <see cref="RendezvousTimeout"/>, the bound the real race runs under.</summary>
+    private static readonly TimeSpan InjectedRendezvousTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan TtlObservationAllowance = TimeSpan.FromSeconds(30);
 
     private readonly RedisStackFixture _redis;
@@ -129,6 +138,7 @@ public sealed class IngestDedupReservationIntegrationTests
     {
         string uniqueSuffix = Guid.NewGuid().ToString("N");
         string tenantId = $"tenant-{uniqueSuffix}";
+        string neighbourTenantId = $"neighbour-{uniqueSuffix}";
         string caseId = $"case-{uniqueSuffix}";
         string sourceUri = $"file:///ingest-rendezvous-{uniqueSuffix}.pdf";
         string reservationKey = "ingest-reserve:" + DedupKeyBuilder.BuildIdentityKey(
@@ -136,21 +146,48 @@ public sealed class IngestDedupReservationIntegrationTests
             caseId,
             sourceUri,
             idempotencyToken: null);
+
+        // A live reservation for a different tenant over the same case/source: production ReleaseAsync must
+        // not reach across the tenant boundary. Negative cross-tenant evidence for the deletion blast radius.
+        string neighbourKey = "ingest-reserve:" + DedupKeyBuilder.BuildIdentityKey(
+            neighbourTenantId,
+            caseId,
+            sourceUri,
+            idempotencyToken: null);
+        string neighbourInstanceId = $"workflow-neighbour-{uniqueSuffix}";
         string sentinelKey = $"{reservationKey}:sentinel";
         IDatabase database = _redis.Connection.GetDatabase();
         IngestDedupReservation reservation = new(
             _redis.Connection,
             NullLogger<IngestDedupReservation>.Instance);
 
+        neighbourKey.ShouldNotBe(reservationKey);
+
         try
         {
             try
             {
-                bool reservationStored = await database.StringSetAsync(
-                    reservationKey,
-                    "cleanup-target",
-                    ReservationTtl);
-                reservationStored.ShouldBeTrue();
+                // The key under deletion is created by the production reserve path, not hand-written by the
+                // test, so a divergence between reserve-side and release-side key construction fails here.
+                IngestReservationResult held = await reservation.TryReserveAsync(
+                    tenantId,
+                    caseId,
+                    sourceUri,
+                    idempotencyToken: null,
+                    $"workflow-{uniqueSuffix}",
+                    ReservationTtl,
+                    CancellationToken.None);
+                held.Outcome.ShouldBe(IngestReservationOutcome.Reserved);
+
+                IngestReservationResult neighbourHeld = await reservation.TryReserveAsync(
+                    neighbourTenantId,
+                    caseId,
+                    sourceUri,
+                    idempotencyToken: null,
+                    neighbourInstanceId,
+                    ReservationTtl,
+                    CancellationToken.None);
+                neighbourHeld.Outcome.ShouldBe(IngestReservationOutcome.Reserved);
 
                 bool sentinelStored = await database.StringSetAsync(
                     sentinelKey,
@@ -167,12 +204,13 @@ public sealed class IngestDedupReservationIntegrationTests
                     caseId,
                     sourceUri,
                     $"workflow-{uniqueSuffix}",
-                    TimeSpan.FromMilliseconds(100)));
+                    InjectedRendezvousTimeout));
             }
             finally
             {
                 // The deletion under proof is the production release path, not a key computed by the test:
-                // a prefix-scoped or over-broad delete inside ReleaseAsync must fail the sentinel assertion.
+                // a prefix-scoped, tenant-crossing, or otherwise over-broad delete inside ReleaseAsync must
+                // fail the sentinel or neighbour assertion below.
                 await reservation.ReleaseAsync(
                     tenantId,
                     caseId,
@@ -183,10 +221,17 @@ public sealed class IngestDedupReservationIntegrationTests
 
             (await database.KeyExistsAsync(reservationKey)).ShouldBeFalse();
             (await database.StringGetAsync(sentinelKey)).ToString().ShouldBe("must-survive");
+            (await database.StringGetAsync(neighbourKey)).ToString().ShouldBe(neighbourInstanceId);
         }
         finally
         {
             _ = await database.KeyDeleteAsync(sentinelKey);
+            await reservation.ReleaseAsync(
+                neighbourTenantId,
+                caseId,
+                sourceUri,
+                idempotencyToken: null,
+                CancellationToken.None);
         }
     }
 

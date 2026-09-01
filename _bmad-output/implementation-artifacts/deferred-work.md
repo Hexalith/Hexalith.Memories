@@ -5359,3 +5359,11 @@ origin: migrated from legacy ledger (""), 2026-09-01
 location: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md:39; _bmad-output/planning-artifacts/epics.md
 reason: Commit `8a5fa3c6` (2026-08-08, landed under `spec-gh-29804293613-fix-production-deployment-verification`, outside Story 27.3) redesigned the lane to stage a real disposable OpenBao before scale-up; qualifying run `33400812038` (job `99516369413`, artifact `9761351293`) reports `secret-store-substitution.json` with `substitutionPerformed: false` and `substitutionVerified: true`, both Components still typed `secretstores.hashicorp.vault`, and a confirmed `200` health packet showing `dapr-statestore: Healthy`. This demonstrates the real OpenBao secret-resolution path that AC6 still calls unproven while making AC6's literal "the patch, the post-patch readback" clause structurally unreachable under the improved design; the 2026-09-01 review closed checkpoint C2 on this evidence, but the binding text still needs human-approved correction in both governed copies. Source story: 27-3-production-adapter-and-deployment-profile. Re-open trigger: an approved `correct-course` proposal rewrites AC6's patch/post-patch-readback clause and OpenBao-path disclosure in both governed copies.
 status: open
+
+### DW-722: The REST /api/v1/ingest DuplicateInFlight branch — the loser receiving the winner's instance id instead of scheduling a second workflow — has no test at any level.
+origin: spec-deferred 5cecf9383b7b
+location: src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs:127
+source_spec: `spec-dw-18-redis-ingest-race-proof.md`
+severity: medium
+reason: Grepping DuplicateInFlight across src/ and tests/ returns only IngestDedupReservation.cs, IngestDedupReservationTests.cs (substitute unit) and the new IngestDedupReservationIntegrationTests.cs. The endpoint branch at src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs:127 that returns Accepted(IngestStatusLocation(winnerInstanceId)) is observed by none of them, so returning the caller's own instance id there — or falling through to a second ScheduleAsync — would not fail any test. Pre-existing: this bundle adds the class-level race proof and does not touch the endpoint.
+status: open
