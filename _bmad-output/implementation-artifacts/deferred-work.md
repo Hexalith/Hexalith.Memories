@@ -126,7 +126,9 @@ decision: 2026-09-01 Implement bounded retention — Define the approved period 
 origin: migrated from legacy ledger ("New accepted-debt entries (Epic 18 retrospective Action Item 4)"), 2026-09-01
 location: tests/Hexalith.Memories.Server.Tests/Ingestion/IngestDedupReservationTests.cs (real-Redis / Aspire-Testcontainers concurrency lane)
 reason: - **18.4-REDIS-RACE - accepted.** Real two-thread Redis race test for the Story 18.4 atomic ingest-dedup reservation runs only in an Aspire/Testcontainers lane this sandbox cannot execute. - ID: 18.4-REDIS-RACE - Status: accepted - Source story: 19-1-deferred-register-active-entry-classification-sweep - Target artifact: tests/Hexalith.Memories.Server.Tests/Ingestion/IngestDedupReservationTests.cs (real-Redis / Aspire-Testcontainers concurrency lane) - Re-open trigger: before any production claim about concurrent ingest, run the real two-thread Redis race wherever a Docker/Aspire lane is available, or that lane becomes runnable in CI. - Rationale: Story 18.4 is substitute-proven by a deterministic winner/loser reservation test and unit-proven today; the real two-thread Redis race is infra-lane-deferred because this sandbox cannot run the Docker/Aspire lane. Owner: Amelia / release maintainer. [Source: epic-18-retro-2026-06-25.md Action Item 4; Story 18.4 / MEM-4]
-status: open
+status: done 2026-09-01
+resolution: resolved by sweep bundle dw-redis-ingest-race-proof
+resolution-undo: 359d6619c61ffa57f0fd81f56e167e58a181ed120faa003eb485b6f0fda64b4a 2026-09-01 7374617475733a206f70656e
 
 ### DW-19: 18.8-DAPR-SMOKE: accepted. Dapr-sidecar pub/sub smoke for cross-module event delivery (Story 18.8) runs only in an Aspire/Testcontainers lane this sandbox cannot execute.
 

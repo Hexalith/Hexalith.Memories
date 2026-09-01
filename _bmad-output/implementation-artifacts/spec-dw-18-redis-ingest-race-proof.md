@@ -10,7 +10,20 @@ context:
   - 'tests/README.md'
 warnings:
   - 'oversized'
-deferred: []
+deferred:
+  - summary: >-
+      The REST /api/v1/ingest DuplicateInFlight branch — the loser receiving the winner's instance id
+      instead of scheduling a second workflow — has no test at any level.
+    evidence: |-
+      Grepping DuplicateInFlight across src/ and tests/ returns only IngestDedupReservation.cs,
+      IngestDedupReservationTests.cs (substitute unit) and the new IngestDedupReservationIntegrationTests.cs.
+      The endpoint branch at src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs:127 that returns
+      Accepted(IngestStatusLocation(winnerInstanceId)) is observed by none of them, so returning the caller's
+      own instance id there — or falling through to a second ScheduleAsync — would not fail any test.
+      Pre-existing: this bundle adds the class-level race proof and does not touch the endpoint.
+    location: >-
+      src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs:127
+    severity: medium
 ---
 
 <intent-contract>
@@ -81,6 +94,29 @@ deferred: []
   - `[medium]` `[patch]` Moved both sentinel-test setup writes inside nested cleanup protection so partial setup and assertion failures still delete both unique keys.
   - `[low]` `[patch]` Asserted both real Redis setup writes succeeded so the key-scoped cleanup proof cannot pass vacuously.
 
+### 2026-09-01 — Review pass (follow-up)
+- intent_gap: 0
+- bad_spec: 0
+- patch: 2: (high 0, medium 2, low 0)
+- defer: 1: (high 0, medium 1, low 0)
+- reject: 22
+- addressed_findings:
+  - `[medium]` `[patch]` The key-scoped cleanup proof was tautological: the second test deleted the
+    reservation key with its own `database.KeyDeleteAsync` and then asserted the sibling `:sentinel` key
+    survived, so no line of it entered production code and a prefix-scoped or over-broad delete inside
+    `IngestDedupReservation.ReleaseAsync` could not fail it. The deletion under proof is now the production
+    `ReleaseAsync` call, and the test is renamed
+    `ReleaseAsync_AfterBoundedRendezvousTimeout_TimesOutAndDeletesOnlyTheReservationKey` so its subject is a
+    production member rather than the file's private test helper. The bounded-rendezvous `TimeoutException`
+    proof and the outer sentinel cleanup are unchanged.
+  - `[medium]` `[patch]` The race ran exactly once, so a non-atomic check-then-set regression passed whenever
+    the two calls happened not to overlap — the pinned CI gate rested on a single scheduling interleaving.
+    The race now repeats over `RaceRounds = 25` fresh identities inside the same pinned method, each round
+    keeping every outcome, winner-linkage, persisted-value and TTL assertion, with the round index carried in
+    the count assertions' failure messages. Verified by mutation: replacing the production `SET NX` with
+    `KeyExistsAsync` + unconditional `StringSetAsync` fails the test (`race round 0 must have exactly one
+    winner`); production source was restored and re-verified green.
+
 ## Design Notes
 
 The ledger's historical `Server.Tests` location cannot host this proof safely: that project is the Docker-free mocked lane, while `tools/test-projects.integration-fast.txt` executes only `Hexalith.Memories.IntegrationTests`. The integration assembly already references Server, owns the stable Redis fixture, and has `InternalsVisibleTo`, so relocation to the integration project is the minimal executable interpretation of the intent.
@@ -98,25 +134,49 @@ The ledger's historical `Server.Tests` location cannot host this proof safely: t
 
 Status: done
 
-Summary: Added a production-backed two-thread Redis reservation race test in the stable Docker integration lane. The proof establishes exactly one `Reserved` winner, one `DuplicateInFlight` loser that observes the winner ID, a persisted winner value with the requested TTL, bounded rendezvous failure, and key-scoped cleanup. The exact race method is now mandatory integration-fast evidence.
+Summary: Follow-up review pass over the DW-18 bundle. The production-backed two-thread Redis reservation race
+already existed in the stable Docker integration lane; this pass hardened the two ways it could pass without
+proving anything. The race is now repeated over 25 fresh identities so a lost-update regression cannot slip
+through a single lucky interleaving, and the key-scoped cleanup row is now proven against production
+`ReleaseAsync` instead of the test's own key delete. No intent gap or bad-spec loopback was required.
 
 Files changed:
-- `tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestDedupReservationIntegrationTests.cs` -- added the real Redis race and matrix-edge integration tests with production reservation/release calls.
-- `tests/Hexalith.Memories.Server.Tests/Ingestion/IngestDedupReservationTests.cs` -- updated the authority note to distinguish deterministic substitute coverage from the real Redis proof.
-- `tools/integration-fast-required-surfaces.txt` -- pinned the exact passed race method in the integration-fast coverage gate.
-- `_bmad-output/implementation-artifacts/spec-dw-18-redis-ingest-race-proof.md` -- recorded intent, implementation scope, verification, review triage, and completion evidence.
+- `tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestDedupReservationIntegrationTests.cs` -- race repeated over
+  `RaceRounds = 25` fresh identities with round-indexed failure messages; cleanup test rerouted through production
+  `ReleaseAsync` and renamed to a production-member subject.
+- `tests/Hexalith.Memories.Server.Tests/Ingestion/IngestDedupReservationTests.cs` -- authority note split between the
+  deterministic substitute proof and the real-Redis race proof (unchanged this pass).
+- `tools/integration-fast-required-surfaces.txt` -- pins the exact passed race method; the method name was deliberately
+  not renamed, so the gate entry still resolves.
+- `_bmad-output/implementation-artifacts/spec-dw-18-redis-ingest-race-proof.md` -- triage log, deferred item, and this
+  completion record.
 
-Review findings breakdown: 5 patches applied (high 0, medium 3, low 2); 0 items deferred; 16 items rejected. No intent gap or bad-spec loopback was required.
+Review findings breakdown: 2 patches applied (high 0, medium 2, low 0); 1 item deferred; 22 items rejected.
 
-Follow-up review recommendation: true. Patched finding score = `(3 × medium 3) + (1 × low 2) = 11`; no high-severity patch was present.
+Follow-up review recommendation: true. Patched finding score = `(3 x medium 2) + (1 x low 0) = 6`, which is 5 or
+more; no high-severity patch was present.
 
 Verification performed:
-- `docker version && docker info` -- passed; Docker client/server 29.6.1 available.
-- IntegrationTests Release build -- passed with 0 warnings and 0 errors.
-- `IngestDedupReservationIntegrationTests` -- 2 passed, 0 failed, 0 skipped against the digest-pinned real Redis Stack container; all I/O matrix rows executed.
-- Server.Tests Release build -- passed with 0 warnings and 0 errors.
-- `DedupKeyBuilderTests` -- 13 passed, including focused different-tenant and different-case negative evidence.
-- Integration-fast verifier fixtures -- 6 passed.
-- `git diff --check` -- passed.
+- `docker version` -- passed; Docker server 29.6.1 available.
+- `dotnet build tests/Hexalith.Memories.IntegrationTests/... --configuration Release -m:1` -- passed, 0 warnings, 0 errors.
+- `IngestDedupReservationIntegrationTests` -- Total 2, Failed 0, Skipped 0 against the digest-pinned real Redis Stack
+  container (3.5s wall clock for all 25 race rounds plus the cleanup test).
+- Mutation check of the race proof -- replacing the production `SET ... NX` with a check-then-set produced
+  `Total 2, Failed 1` with `race round 0 must have exactly one winner`; `src/Hexalith.Memories.Server/Ingestion/`
+  `IngestDedupReservation.cs` was then restored (`git checkout --`), confirmed content-identical to HEAD, rebuilt,
+  and re-run green.
+- `dotnet build tests/Hexalith.Memories.Server.Tests/... --configuration Release -m:1` -- passed, 0 warnings, 0 errors.
+- `DedupKeyBuilderTests` -- Total 13, Failed 0, including the focused different-tenant and different-case negative
+  evidence the intent required to be preserved.
+- `python3 -m unittest discover -s tests/tooling/integration_fast_coverage -p '*_test.py'` -- 6 passed.
+- `git diff --check` -- clean.
 
-Residual risks: The complete integration-fast suite was not run locally; the exact new race method is pinned in `tools/integration-fast-required-surfaces.txt` so CI must execute and pass it. The deferred-work ledger was intentionally not edited; the orchestrator owns resolution recording.
+Residual risks:
+- The full integration-fast lane was not run locally; only the focused class was executed. The exact race method
+  remains pinned in `tools/integration-fast-required-surfaces.txt`, so CI must execute and pass it.
+- The race proof stops at the `IngestDedupReservation` class boundary. The caller-visible half of MEM-4 — two
+  concurrent `POST /api/v1/ingest` calls yielding one scheduled workflow and the loser receiving the winner's
+  instance id — is untested at the endpoint and is recorded as the deferred item in this spec's frontmatter.
+- `Barrier.SignalAndWait` blocks thread-pool threads from inside `Task.Run`, as the intent's constraints require.
+  The 30s per-round bound absorbs normal CI pool pressure, but severe starvation would surface as a timeout.
+- The deferred-work ledger was not edited by this run; the orchestrator owns DW-18's status and resolution.

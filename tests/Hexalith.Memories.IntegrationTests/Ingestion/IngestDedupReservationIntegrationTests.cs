@@ -20,6 +20,11 @@ using StackExchange.Redis;
 [Trait("Category", "Integration")]
 public sealed class IngestDedupReservationIntegrationTests
 {
+    /// <summary>Rounds of the two-contender race. A single round can be won by a non-atomic
+    /// check-then-set implementation whenever the two calls happen not to overlap, so the race is
+    /// repeated over fresh identities until a lost-update regression is forced to surface.</summary>
+    private const int RaceRounds = 25;
+
     private static readonly TimeSpan ReservationTtl = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan RendezvousTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan TtlObservationAllowance = TimeSpan.FromSeconds(30);
@@ -31,87 +36,96 @@ public sealed class IngestDedupReservationIntegrationTests
     [Fact]
     public async Task TryReserveAsync_TwoConcurrentRealRedisCallers_ExactlyOneWinsAndLoserObservesWinnerId()
     {
-        string uniqueSuffix = Guid.NewGuid().ToString("N");
-        string tenantId = $"tenant-{uniqueSuffix}";
-        string caseId = $"case-{uniqueSuffix}";
-        string sourceUri = $"file:///ingest-race-{uniqueSuffix}.pdf";
-        string candidateA = $"workflow-a-{uniqueSuffix}";
-        string candidateB = $"workflow-b-{uniqueSuffix}";
-        string reservationKey = "ingest-reserve:" + DedupKeyBuilder.BuildIdentityKey(
-            tenantId,
-            caseId,
-            sourceUri,
-            idempotencyToken: null);
-
         IDatabase database = _redis.Connection.GetDatabase();
         IngestDedupReservation reservation = new(
             _redis.Connection,
             NullLogger<IngestDedupReservation>.Instance);
 
-        try
+        for (int round = 0; round < RaceRounds; round++)
         {
-            using Barrier rendezvous = new(participantCount: 2);
-            Task<IngestReservationResult> contenderA = Task.Run(
-                () => ReserveAfterRendezvousAsync(
-                    rendezvous,
-                    reservation,
-                    tenantId,
-                    caseId,
-                    sourceUri,
-                    candidateA,
-                    RendezvousTimeout));
-            Task<IngestReservationResult> contenderB = Task.Run(
-                () => ReserveAfterRendezvousAsync(
-                    rendezvous,
-                    reservation,
-                    tenantId,
-                    caseId,
-                    sourceUri,
-                    candidateB,
-                    RendezvousTimeout));
-
-            IngestReservationResult[] results = await Task.WhenAll(contenderA, contenderB);
-
-            results.Count(result => result.Outcome == IngestReservationOutcome.Reserved).ShouldBe(1);
-            results.Count(result => result.Outcome == IngestReservationOutcome.DuplicateInFlight).ShouldBe(1);
-            results.Count(result => result.Outcome == IngestReservationOutcome.FailOpen).ShouldBe(0);
-
-            IngestReservationResult winner = results.Single(
-                result => result.Outcome == IngestReservationOutcome.Reserved);
-            IngestReservationResult loser = results.Single(
-                result => result.Outcome == IngestReservationOutcome.DuplicateInFlight);
-            string expectedWinningInstanceId = results[0].Outcome == IngestReservationOutcome.Reserved
-                ? candidateA
-                : candidateB;
-            string winningInstanceId = winner.ExistingInstanceId.ShouldNotBeNull();
-
-            winningInstanceId.ShouldBe(expectedWinningInstanceId);
-            loser.ExistingInstanceId.ShouldBe(winningInstanceId);
-
-            RedisValue persistedWinner = await database.StringGetAsync(reservationKey);
-            TimeSpan? persistedTtl = await database.KeyTimeToLiveAsync(reservationKey);
-
-            persistedWinner.ToString().ShouldBe(winningInstanceId);
-            TimeSpan liveTtl = persistedTtl.ShouldNotBeNull();
-            liveTtl.ShouldBeGreaterThan(TimeSpan.Zero);
-            liveTtl.ShouldBeGreaterThanOrEqualTo(ReservationTtl - TtlObservationAllowance);
-            liveTtl.ShouldBeLessThanOrEqualTo(ReservationTtl);
-        }
-        finally
-        {
-            await reservation.ReleaseAsync(
+            string uniqueSuffix = Guid.NewGuid().ToString("N");
+            string tenantId = $"tenant-{uniqueSuffix}";
+            string caseId = $"case-{uniqueSuffix}";
+            string sourceUri = $"file:///ingest-race-{uniqueSuffix}.pdf";
+            string candidateA = $"workflow-a-{uniqueSuffix}";
+            string candidateB = $"workflow-b-{uniqueSuffix}";
+            string reservationKey = "ingest-reserve:" + DedupKeyBuilder.BuildIdentityKey(
                 tenantId,
                 caseId,
                 sourceUri,
-                idempotencyToken: null,
-                CancellationToken.None);
-        }
+                idempotencyToken: null);
 
-        (await database.KeyExistsAsync(reservationKey)).ShouldBeFalse();
+            try
+            {
+                using Barrier rendezvous = new(participantCount: 2);
+                Task<IngestReservationResult> contenderA = Task.Run(
+                    () => ReserveAfterRendezvousAsync(
+                        rendezvous,
+                        reservation,
+                        tenantId,
+                        caseId,
+                        sourceUri,
+                        candidateA,
+                        RendezvousTimeout));
+                Task<IngestReservationResult> contenderB = Task.Run(
+                    () => ReserveAfterRendezvousAsync(
+                        rendezvous,
+                        reservation,
+                        tenantId,
+                        caseId,
+                        sourceUri,
+                        candidateB,
+                        RendezvousTimeout));
+
+                IngestReservationResult[] results = await Task.WhenAll(contenderA, contenderB);
+
+                results
+                    .Count(result => result.Outcome == IngestReservationOutcome.Reserved)
+                    .ShouldBe(1, $"race round {round} must have exactly one winner");
+                results
+                    .Count(result => result.Outcome == IngestReservationOutcome.DuplicateInFlight)
+                    .ShouldBe(1, $"race round {round} must have exactly one duplicate loser");
+                results
+                    .Count(result => result.Outcome == IngestReservationOutcome.FailOpen)
+                    .ShouldBe(0, $"race round {round} must not fail open");
+
+                IngestReservationResult winner = results.Single(
+                    result => result.Outcome == IngestReservationOutcome.Reserved);
+                IngestReservationResult loser = results.Single(
+                    result => result.Outcome == IngestReservationOutcome.DuplicateInFlight);
+                string expectedWinningInstanceId = results[0].Outcome == IngestReservationOutcome.Reserved
+                    ? candidateA
+                    : candidateB;
+                string winningInstanceId = winner.ExistingInstanceId.ShouldNotBeNull();
+
+                winningInstanceId.ShouldBe(expectedWinningInstanceId);
+                loser.ExistingInstanceId.ShouldBe(winningInstanceId);
+
+                RedisValue persistedWinner = await database.StringGetAsync(reservationKey);
+                TimeSpan? persistedTtl = await database.KeyTimeToLiveAsync(reservationKey);
+
+                persistedWinner.ToString().ShouldBe(winningInstanceId);
+                TimeSpan liveTtl = persistedTtl.ShouldNotBeNull();
+                liveTtl.ShouldBeGreaterThan(TimeSpan.Zero);
+                liveTtl.ShouldBeGreaterThanOrEqualTo(ReservationTtl - TtlObservationAllowance);
+                liveTtl.ShouldBeLessThanOrEqualTo(ReservationTtl);
+            }
+            finally
+            {
+                await reservation.ReleaseAsync(
+                    tenantId,
+                    caseId,
+                    sourceUri,
+                    idempotencyToken: null,
+                    CancellationToken.None);
+            }
+
+            (await database.KeyExistsAsync(reservationKey)).ShouldBeFalse();
+        }
     }
 
     [Fact]
-    public async Task ReserveAfterRendezvousAsync_MissingContender_TimesOutAndCleanupIsKeyScoped()
+    public async Task ReleaseAsync_AfterBoundedRendezvousTimeout_TimesOutAndDeletesOnlyTheReservationKey()
     {
         string uniqueSuffix = Guid.NewGuid().ToString("N");
         string tenantId = $"tenant-{uniqueSuffix}";
@@ -157,7 +171,14 @@ public sealed class IngestDedupReservationIntegrationTests
             }
             finally
             {
-                _ = await database.KeyDeleteAsync(reservationKey);
+                // The deletion under proof is the production release path, not a key computed by the test:
+                // a prefix-scoped or over-broad delete inside ReleaseAsync must fail the sentinel assertion.
+                await reservation.ReleaseAsync(
+                    tenantId,
+                    caseId,
+                    sourceUri,
+                    idempotencyToken: null,
+                    CancellationToken.None);
             }
 
             (await database.KeyExistsAsync(reservationKey)).ShouldBeFalse();
