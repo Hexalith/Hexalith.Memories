@@ -13,6 +13,13 @@ env:
   DAPR_RUNTIME_VERSION: '1.18.1'
   MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS: '127.0.0.1:50005'
   MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS: '127.0.0.1:50006'
+  # Story 28.1: single source of truth for the two literals every
+  # "Provision ephemeral EventStore local NuGet feed" step below passes to
+  # tools/ci/provision-eventstore-local-feed.sh. Update both here (and the matching pair in
+  # ci.yml) if EventStore Story 1.20's approved identity ever changes -- do not hand-edit the
+  # individual `run:` lines.
+  EVENTSTORE_APPROVED_SHA: 'fa2d1c9910f8976553adb33dcdb1c9ff2ea75594'
+  EVENTSTORE_APPROVED_VERSION: '999.1.20-proof.fa2d1c9910f8'
 
 jobs:
   integration-fast:
@@ -48,6 +55,7 @@ jobs:
           dapr --version
 
       - name: Provision ephemeral EventStore local NuGet feed
+        timeout-minutes: 6
         # Story 28.1 (sprint-change-approved "Option B"): HexalithEventStoreVersion is pinned to
         # a proof-identity version (999.1.20-proof.fa2d1c9910f8) not published on nuget.org.
         # Restoring it requires a local feed rebuilt from the approved source SHA and signed with
@@ -57,7 +65,7 @@ jobs:
         # tools/ci/provision-eventstore-local-feed.sh and
         # spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md. Required here because the
         # integration-slow lane is what runs this story's own Category=IntegrationSlow proof test.
-        run: tools/ci/provision-eventstore-local-feed.sh fa2d1c9910f8976553adb33dcdb1c9ff2ea75594 999.1.20-proof.fa2d1c9910f8
+        run: tools/ci/provision-eventstore-local-feed.sh "$EVENTSTORE_APPROVED_SHA" "$EVENTSTORE_APPROVED_VERSION"
 
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
@@ -111,6 +119,7 @@ jobs:
           dapr --version
 
       - name: Provision ephemeral EventStore local NuGet feed
+        timeout-minutes: 6
         # Story 28.1 (sprint-change-approved "Option B"): HexalithEventStoreVersion is pinned to
         # a proof-identity version (999.1.20-proof.fa2d1c9910f8) not published on nuget.org.
         # Restoring it requires a local feed rebuilt from the approved source SHA and signed with
@@ -120,7 +129,7 @@ jobs:
         # tools/ci/provision-eventstore-local-feed.sh and
         # spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md. Required here because the
         # integration-slow lane is what runs this story's own Category=IntegrationSlow proof test.
-        run: tools/ci/provision-eventstore-local-feed.sh fa2d1c9910f8976553adb33dcdb1c9ff2ea75594 999.1.20-proof.fa2d1c9910f8
+        run: tools/ci/provision-eventstore-local-feed.sh "$EVENTSTORE_APPROVED_SHA" "$EVENTSTORE_APPROVED_VERSION"
 
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
@@ -164,6 +173,7 @@ jobs:
         run: docker info
 
       - name: Provision ephemeral EventStore local NuGet feed
+        timeout-minutes: 6
         # Story 28.1 (sprint-change-approved "Option B"): HexalithEventStoreVersion is pinned to
         # a proof-identity version (999.1.20-proof.fa2d1c9910f8) not published on nuget.org.
         # Restoring it requires a local feed rebuilt from the approved source SHA and signed with
@@ -173,7 +183,7 @@ jobs:
         # tools/ci/provision-eventstore-local-feed.sh and
         # spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md. Required here because the
         # integration-slow lane is what runs this story's own Category=IntegrationSlow proof test.
-        run: tools/ci/provision-eventstore-local-feed.sh fa2d1c9910f8976553adb33dcdb1c9ff2ea75594 999.1.20-proof.fa2d1c9910f8
+        run: tools/ci/provision-eventstore-local-feed.sh "$EVENTSTORE_APPROVED_SHA" "$EVENTSTORE_APPROVED_VERSION"
 
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,

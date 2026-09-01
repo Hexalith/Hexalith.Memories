@@ -1,0 +1,116 @@
+// <copyright file="EventStoreAppHostResourceGraphTests.cs" company="ITANEO">
+// Copyright (c) ITANEO (https://www.itaneo.com). All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+// </copyright>
+
+namespace Hexalith.Memories.IntegrationTests.EventStoreIntegration;
+
+using System.Linq;
+using System.Threading.Tasks;
+
+using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
+using Aspire.Hosting.Testing;
+
+using CommunityToolkit.Aspire.Hosting.Dapr;
+
+using Hexalith.Memories.TestHelpers.Process;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using Shouldly;
+
+/// <summary>
+/// Story 28.1 code-review finding: a typo'd Dapr AppId, a dropped port, or a dropped
+/// <c>WithReference</c> on the <c>eventstore</c> resource would still compile and build green --
+/// nothing previously inspected the actual Aspire resource graph. These tests build (never start)
+/// the real <c>Hexalith.Memories.AppHost</c> distributed-application model and assert on the
+/// <c>eventstore</c> resource's Dapr sidecar options and its <c>stateStore</c>/<c>pubSub</c>
+/// references, plus the single-ownership invariant for the <c>statestore</c>/<c>pubsub</c>
+/// components that <c>src/Hexalith.Memories.AppHost/Program.cs</c>'s boundaries exist to protect.
+/// Building the model executes the AppHost's Program.cs top-level statements (same as
+/// <see cref="Fixtures.AspireIngestionPipelineFixture"/>) but the test never calls
+/// <c>StartAsync</c>, so no container/process/Dapr sidecar is actually launched -- this stays
+/// fast and Docker-free, unlike the fixtures elsewhere in this project that do start the topology.
+/// Placed in this project (not alongside <c>AppHostSecurityConfigurationTests</c> in
+/// <c>Hexalith.Memories.Server.Tests</c>) because referencing the AppHost project from
+/// <c>Hexalith.Memories.Server.Tests</c> makes the bare <c>Program</c> type ambiguous with
+/// <c>Hexalith.Memories.Server</c>'s own <c>Program</c> (used throughout that project's
+/// <c>WebApplicationFactory&lt;Program&gt;</c> tests) -- confirmed by attempting it (CS0433 across
+/// six existing files). This project already references both projects successfully.
+/// </summary>
+[Trait("Category", "Integration")]
+public sealed class EventStoreAppHostResourceGraphTests
+{
+    private const string EventStoreResourceName = "eventstore";
+    private const string StateStoreComponentName = "statestore";
+    private const string PubSubComponentName = "pubsub";
+
+    [Fact]
+    public async Task EventStoreResource_HasExpectedDaprSidecarAndComponentReferences()
+    {
+        using EnvVarScope aspNetCoreEnvironment = EnvVarScope.Set("ASPNETCORE_ENVIRONMENT", "Development");
+        using EnvVarScope dotNetEnvironment = EnvVarScope.Set("DOTNET_ENVIRONMENT", "Development");
+        using EnvVarScope enableKeycloak = EnvVarScope.Set("EnableKeycloak", "false");
+        using EnvVarScope randomizePorts = EnvVarScope.Set("MEMORIES_ASPIRE_RANDOMIZE_PROJECT_PORTS", "true");
+
+        await using IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
+            .CreateAsync<Projects.Hexalith_Memories_AppHost>();
+        await using DistributedApplication app = await builder.BuildAsync();
+
+        DistributedApplicationModel model = app.Services.GetRequiredService<DistributedApplicationModel>();
+
+        // Exactly one `eventstore` resource -- satisfies the "AppHost adds exactly one `eventstore`
+        // resource" boundary and rules out AddHexalithEventStore(...) also having been called with a
+        // different resource name for the gateway itself.
+        IResource eventStoreResource = model.Resources
+            .Where(r => r.Name == EventStoreResourceName)
+            .ShouldHaveSingleItem();
+
+        // Exactly one `statestore` and one `pubsub` Dapr component in the whole model. If
+        // AddHexalithEventStore(...) had also been called (the "Never" boundary this story
+        // forbids), it hardcodes components of these exact names -- Aspire would either reject
+        // the duplicate resource name at build time (this test would then fail with a build
+        // exception, not silently pass) or, were that ever relaxed, this count assertion would
+        // catch the resulting double ownership directly.
+        model.Resources.OfType<IDaprComponentResource>()
+            .Count(r => r.Name == StateStoreComponentName)
+            .ShouldBe(1, $"exactly one '{StateStoreComponentName}' Dapr component (single ownership)");
+        model.Resources.OfType<IDaprComponentResource>()
+            .Count(r => r.Name == PubSubComponentName)
+            .ShouldBe(1, $"exactly one '{PubSubComponentName}' Dapr component (single ownership)");
+
+        // The `eventstore` resource's Dapr sidecar: AppId/ports must match Program.cs exactly --
+        // Memories Server reaches this resource via Dapr *service invocation* to app-id
+        // "eventstore" (MemoriesServerServiceCollectionExtensions.cs), so a typo'd AppId here
+        // would silently break that call path without any build-time signal.
+        DaprSidecarAnnotation sidecarAnnotation = eventStoreResource.Annotations
+            .OfType<DaprSidecarAnnotation>()
+            .ShouldHaveSingleItem();
+        IDaprSidecarResource sidecar = sidecarAnnotation.Sidecar;
+
+        DaprSidecarOptionsAnnotation optionsAnnotation = sidecar.Annotations
+            .OfType<DaprSidecarOptionsAnnotation>()
+            .ShouldHaveSingleItem();
+        optionsAnnotation.Options.AppId.ShouldBe("eventstore");
+        optionsAnnotation.Options.DaprHttpPort.ShouldBe(3501);
+        optionsAnnotation.Options.DaprGrpcPort.ShouldBe(50002);
+
+        // Sidecar-level component references (set inside the WithDaprSidecar(sidecar => ...)
+        // lambda in Program.cs).
+        string[] sidecarComponentNames = [.. sidecar.Annotations
+            .OfType<DaprComponentReferenceAnnotation>()
+            .Select(a => a.Component.Name)];
+        sidecarComponentNames.ShouldContain(StateStoreComponentName);
+        sidecarComponentNames.ShouldContain(PubSubComponentName);
+
+        // Project-level component references (the CS0618-suppressed
+        // `eventStoreGateway.WithReference(stateStore).WithReference(pubSub)` pattern mirrored
+        // from the `memories` resource in Program.cs).
+        string[] projectComponentNames = [.. eventStoreResource.Annotations
+            .OfType<DaprComponentReferenceAnnotation>()
+            .Select(a => a.Component.Name)];
+        projectComponentNames.ShouldContain(StateStoreComponentName);
+        projectComponentNames.ShouldContain(PubSubComponentName);
+    }
+}

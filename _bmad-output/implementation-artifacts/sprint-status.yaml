@@ -460,7 +460,7 @@ development_status:
   27-1-access-telemetry-retention-ownership-decision: done
   27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-production-adapter-and-deployment-profile: review
-  27-21-runtime-and-control-plane-identity: awaiting-operator
+  27-21-runtime-and-control-plane-identity: in-progress
   27-4-retention-verification-operations-runbook-and-a41-close-out: backlog
   # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
   # C1.15 as backlog; producer existence does not pass that gate. The remaining twenty-four C1
@@ -474,7 +474,7 @@ development_status:
   # authorization prerequisite is satisfied as of 2026-08-02. Story 28.1 remains backlog and has no
   # implementation file pending explicit selection and exact source/package identity adoption.
   epic-28: in-progress
-  28-1-adopt-owner-approved-eventstore-runtime-identity: in-progress
+  28-1-adopt-owner-approved-eventstore-runtime-identity: review  # 2026-09-01: source-SHA gitlink pin, package-identity rebuild (local dev + ephemeral CI provisioning), and the single `eventstore` AppHost resource are done and verified. Task 4 (real EventStore-originated Dapr publish full-stack proof) is an accepted, deferred residual, not full completion — it needs an EventStore domain-service resource this story is not scoped to add; see DW-713 (the gap and candidate resolutions), DW-716 (CI provisioning duplication + unconfirmed AppHost start-ordering), and DW-717 (production-deployment-verification job not confirmed to need the same provisioning) in deferred-work.md.
   epic-28-retrospective: optional
 
   # Epic 29: OpenBao-First Dapr Secret Management

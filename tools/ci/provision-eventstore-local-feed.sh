@@ -61,6 +61,18 @@ if [[ "$ACTUAL_SHA" != "$EVENTSTORE_SOURCE_SHA" ]]; then
     exit 1
 fi
 
+# A checkout at the right commit with uncommitted local edits is NOT the verified approved
+# source -- it is arbitrary, unaudited working-tree content sitting on top of that commit. Fail
+# closed rather than silently packing and signing it as if it were the approved SHA.
+EVENTSTORE_DIRTY_STATUS="$(git -C "$EVENTSTORE_DIR" status --porcelain)"
+if [[ -n "$EVENTSTORE_DIRTY_STATUS" ]]; then
+    log "ERROR: references/Hexalith.EventStore has uncommitted local modifications; refusing to" \
+        "pack/sign a working tree that is not exactly the approved source SHA. 'git status" \
+        "--porcelain' output:"
+    log "$EVENTSTORE_DIRTY_STATUS"
+    exit 1
+fi
+
 if [[ ! -f "$RELEASE_MANIFEST" ]]; then
     log "ERROR: release package manifest not found at $RELEASE_MANIFEST."
     exit 1
@@ -102,6 +114,71 @@ log "Packing Hexalith.EventStore.* packages at $PACKAGE_VERSION from source SHA 
 # (SDK 10.0.400, rollForward latestFeature) is what resolves -- this is the same mechanism, and
 # produces the same package set, EventStore's own release recipe uses, just run under the SDK
 # this repo actually mandates.
+
+# Read the project list into a real file rather than a process-substitution pipe: a
+# process-substitution's exit code is invisible to the consuming `while`/`set -e` (a crashed or
+# truncated `python3` would silently look like "zero projects" instead of failing the script).
+# Writing to a file lets us check python3's own exit code directly, and separately verify the
+# parsed count matches the manifest's own package count before packing anything.
+PROJECT_LIST_FILE="$WORK_ROOT/release-packages.projects.nul"
+EXPECTED_PACKAGE_COUNT="$(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+print(len(data['packages']))
+" "$RELEASE_MANIFEST")"
+if [[ -z "$EXPECTED_PACKAGE_COUNT" || "$EXPECTED_PACKAGE_COUNT" -eq 0 ]]; then
+    log "ERROR: could not determine an expected package count from $RELEASE_MANIFEST."
+    exit 1
+fi
+
+if ! python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+with open(sys.argv[2], 'wb') as out:
+    for package in data['packages']:
+        out.write(package['project'].encode('utf-8') + b'\0')
+" "$RELEASE_MANIFEST" "$PROJECT_LIST_FILE"; then
+    log "ERROR: failed to parse $RELEASE_MANIFEST (python3 exited non-zero) -- refusing to" \
+        "continue with a possibly truncated or missing project list."
+    exit 1
+fi
+
+PARSED_PROJECT_COUNT="$(tr -dc '\0' < "$PROJECT_LIST_FILE" | wc -c | tr -d ' ')"
+if [[ "$PARSED_PROJECT_COUNT" -ne "$EXPECTED_PACKAGE_COUNT" ]]; then
+    log "ERROR: parsed $PARSED_PROJECT_COUNT project path(s) from $RELEASE_MANIFEST but the" \
+        "manifest itself lists $EXPECTED_PACKAGE_COUNT package(s) -- the project list may have" \
+        "been truncated or the parser crashed mid-stream. Refusing to pack a partial/corrupt set."
+    exit 1
+fi
+
+pack_one_project_with_retry() {
+    local project_path="$1"
+    local attempt
+    local -r max_attempts=3
+    local -r retry_delay_seconds=5
+    for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+        # Redirect dotnet's own stdout to stderr: this script's stdout contract is "the generated
+        # config path, and nothing else" (see USAGE/OUTPUT above), so build noise must not land
+        # there.
+        if ( cd "$REPO_ROOT" && dotnet pack "$project_path" \
+            --configuration Release \
+            --output "$FEED_DIR" \
+            -p:Version="$PACKAGE_VERSION" \
+            -p:GeneratePackageOnBuild=false \
+            -p:UseHexalithProjectReferences=false ) 1>&2; then
+            return 0
+        fi
+        log "  dotnet pack attempt $attempt/$max_attempts failed for $(basename "$project_path")."
+        if [[ "$attempt" -lt "$max_attempts" ]]; then
+            sleep "$retry_delay_seconds"
+        fi
+    done
+    return 1
+}
+
+PACKED_PROJECT_COUNT=0
 while IFS= read -r -d '' project_relative_path; do
     project_path="$EVENTSTORE_DIR/$project_relative_path"
     if [[ ! -f "$project_path" ]]; then
@@ -109,25 +186,23 @@ while IFS= read -r -d '' project_relative_path; do
         exit 1
     fi
     log "  dotnet pack $project_relative_path"
-    # Redirect dotnet's own stdout to stderr: this script's stdout contract is "the generated
-    # config path, and nothing else" (see USAGE/OUTPUT above), so build noise must not land there.
-    ( cd "$REPO_ROOT" && dotnet pack "$project_path" \
-        --configuration Release \
-        --output "$FEED_DIR" \
-        -p:Version="$PACKAGE_VERSION" \
-        -p:GeneratePackageOnBuild=false \
-        -p:UseHexalithProjectReferences=false ) 1>&2
-done < <(python3 -c "
-import json, sys
-with open(sys.argv[1]) as f:
-    data = json.load(f)
-for package in data['packages']:
-    sys.stdout.write(package['project'] + '\0')
-" "$RELEASE_MANIFEST")
+    if ! pack_one_project_with_retry "$project_path"; then
+        log "ERROR: failed to pack $project_relative_path after retrying."
+        exit 1
+    fi
+    PACKED_PROJECT_COUNT=$((PACKED_PROJECT_COUNT + 1))
+done < "$PROJECT_LIST_FILE"
+
+if [[ "$PACKED_PROJECT_COUNT" -ne "$EXPECTED_PACKAGE_COUNT" ]]; then
+    log "ERROR: packed $PACKED_PROJECT_COUNT project(s) but expected $EXPECTED_PACKAGE_COUNT" \
+        "per $RELEASE_MANIFEST."
+    exit 1
+fi
 
 NUPKG_COUNT="$(find "$FEED_DIR" -maxdepth 1 -name '*.nupkg' | wc -l | tr -d ' ')"
-if [[ "$NUPKG_COUNT" -eq 0 ]]; then
-    log "ERROR: no .nupkg files were produced in $FEED_DIR."
+if [[ "$NUPKG_COUNT" -ne "$EXPECTED_PACKAGE_COUNT" ]]; then
+    log "ERROR: found $NUPKG_COUNT .nupkg file(s) in $FEED_DIR but expected" \
+        "$EXPECTED_PACKAGE_COUNT per $RELEASE_MANIFEST."
     exit 1
 fi
 log "Packed $NUPKG_COUNT package(s)."
@@ -143,6 +218,18 @@ CERT_CRT="$CERT_DIR/codesign.crt"
 CERT_PFX="$CERT_DIR/codesign.pfx"
 # Random per-run password: only ever held in this process's memory/local temp files, never
 # printed, never exported, and shredded along with the rest of $CERT_DIR on exit.
+#
+# KNOWN LIMITATION: `dotnet nuget sign --certificate-password` only accepts the password as a
+# plain CLI argument (checked via `dotnet nuget sign --help` on the SDK this script targets) --
+# there is no environment-variable or stdin-based alternative. That makes the password briefly
+# visible to other processes on the same machine via /proc/<pid>/cmdline (or `ps`) for the
+# lifetime of each `dotnet nuget sign` invocation below. Accepted as a low-severity residual risk
+# given: this certificate is generated fresh per job run, is never exported or reused, secures
+# nothing beyond satisfying this job's own signatureValidationMode=require check, and its
+# private-key material is shredded immediately after signing (see cleanup_private_key_material) --
+# a process on the same ephemeral runner that could read another process's /proc/<pid>/cmdline
+# could reach the key file directly anyway. If a future NuGet CLI version adds an
+# env-var/stdin/file-based password option, switch to it here.
 CERT_PASSWORD="$(openssl rand -base64 32)"
 
 cat > "$CERT_CONF" <<EOF
@@ -183,18 +270,24 @@ TIMESTAMP_SERVERS=(
     "http://timestamp.entrust.net/TSS/RFC3161sha2TS"
 )
 
+# Per-attempt wall-clock bound so a hung/slow TSA connection cannot stall the job indefinitely --
+# each attempt gets at most 90s before being killed and falling through to the next server (or
+# failing the package if all three are tried).
+readonly TSA_ATTEMPT_TIMEOUT_SECONDS=90
+
 sign_one_package() {
     local package_path="$1"
     local server
     for server in "${TIMESTAMP_SERVERS[@]}"; do
-        if dotnet nuget sign "$package_path" \
+        if timeout "${TSA_ATTEMPT_TIMEOUT_SECONDS}s" dotnet nuget sign "$package_path" \
             --certificate-path "$CERT_PFX" \
             --certificate-password "$CERT_PASSWORD" \
             --overwrite \
             --timestamper "$server" >/dev/null 2>&1; then
             return 0
         fi
-        log "  timestamper $server failed for $(basename "$package_path"); trying next."
+        log "  timestamper $server failed or timed out after ${TSA_ATTEMPT_TIMEOUT_SECONDS}s for" \
+            "$(basename "$package_path"); trying next."
     done
     return 1
 }
@@ -228,28 +321,38 @@ out_path = os.environ["GENERATED_CONFIG"]
 tree = ET.parse(tracked_path)
 root = tree.getroot()
 
+
+def require_element_with_children(parent, tag, path):
+    """Find `tag` under `parent` and fail closed if it is missing OR present-but-empty.
+
+    A present-but-childless element (e.g. `<packageSources></packageSources>`) would otherwise
+    parse successfully and silently produce an ephemeral config missing nuget.org / its trust
+    entries entirely -- fail loudly instead of generating that incomplete config.
+    """
+    element = parent.find(tag)
+    if element is None:
+        raise SystemExit(f"{path}: no <{tag}> element found.")
+    if len(element) == 0:
+        raise SystemExit(
+            f"{path}: <{tag}> element has no children -- refusing to generate a config that "
+            f"would silently drop it (expected at least one entry, e.g. nuget.org)."
+        )
+    return element
+
+
 # Copy the tracked config's <config> block verbatim (signatureValidationMode etc.) -- this
 # script must never weaken that policy, only add a scoped local source + its own trust entry.
-config_block = root.find("config")
-if config_block is None:
-    raise SystemExit(f"{tracked_path}: no <config> element found; refusing to generate a config "
-                      "without confirming signatureValidationMode.")
+config_block = require_element_with_children(root, "config", tracked_path)
 
 # Copy every existing packageSource (nuget.org today) verbatim.
-tracked_sources = root.find("packageSources")
-if tracked_sources is None:
-    raise SystemExit(f"{tracked_path}: no <packageSources> element found.")
+tracked_sources = require_element_with_children(root, "packageSources", tracked_path)
 
 # Copy every existing packageSourceMapping <packageSource> block verbatim.
-tracked_mapping = root.find("packageSourceMapping")
-if tracked_mapping is None:
-    raise SystemExit(f"{tracked_path}: no <packageSourceMapping> element found.")
+tracked_mapping = require_element_with_children(root, "packageSourceMapping", tracked_path)
 
 # Copy every existing trustedSigners entry (nuget.org's repository certificates) verbatim, so
 # this script never hand-duplicates/hardcodes them and silently drifts if they rotate.
-tracked_trusted_signers = root.find("trustedSigners")
-if tracked_trusted_signers is None:
-    raise SystemExit(f"{tracked_path}: no <trustedSigners> element found.")
+tracked_trusted_signers = require_element_with_children(root, "trustedSigners", tracked_path)
 
 configuration = ET.Element("configuration")
 

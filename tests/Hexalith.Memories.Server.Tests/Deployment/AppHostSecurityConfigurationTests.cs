@@ -187,13 +187,13 @@ public sealed class AppHostSecurityConfigurationTests
     [Fact]
     public void ProjectAssets_RestoreEventStorePackagesAtCatalogVersion()
     {
-        // Story 28.1 known gap (see spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md,
-        // "Ask First" #1): the approved proof version 999.1.20-proof.fa2d1c9910f8 is not published on
-        // nuget.org (the only configured source) and no isolated/local feed has been sanctioned, so a
-        // real `dotnet restore` of this project in Release/package mode currently fails with NU1102
-        // and this test fails accordingly -- that failure is the accurate, current state of
-        // Release/package-mode restorability, not a stale assertion. It will pass again once the
-        // approved package bytes become restorable from a sanctioned source.
+        // Story 28.1: the approved proof version 999.1.20-proof.fa2d1c9910f8 is not published on
+        // nuget.org, so this project's obj/project.assets.json only contains this exact library key
+        // when the local EventStore rebuild feed was used for the last restore -- run
+        // `dotnet restore --configfile tools/nuget-local-feeds/NuGet.local.config` (local dev) or let
+        // CI's `tools/ci/provision-eventstore-local-feed.sh` provision an ephemeral one first (see
+        // spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md). A plain `dotnet restore`
+        // against the tracked NuGet.config alone fails with NU1102 and never reaches this assertion.
         string serverAssets = ReadRepoFile(
             "src",
             "Hexalith.Memories.Server",
