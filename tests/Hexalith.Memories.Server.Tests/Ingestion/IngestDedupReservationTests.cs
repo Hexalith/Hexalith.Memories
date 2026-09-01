@@ -20,8 +20,8 @@ using StackExchange.Redis;
 /// <summary>
 /// Story 18.4 (AC3) — the authoritative deterministic unit proof that the REST-ingress preflight reservation
 /// closes the concurrent same-source ingest race: exactly one ingest wins (atomic <c>SET … NX</c>) and the
-/// loser observes the winner's workflow instance id. A true multi-thread real-Redis race would be an Aspire/
-/// Testcontainers integration test; this substitute-based winner/loser sequencing is the unit-level proof.
+/// loser observes the winner's workflow instance id. This class owns substitute-controlled deterministic
+/// coverage; <c>IngestDedupReservationIntegrationTests</c> owns the production-backed two-thread Redis race proof.
 /// </summary>
 public class IngestDedupReservationTests
 {
