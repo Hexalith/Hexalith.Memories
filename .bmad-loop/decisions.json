@@ -1,0 +1,218 @@
+{
+  "DW-158": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Search open and closed exact-title matches, reopen the prior incident, append evidence, and test reruns.",
+    "key": "1",
+    "label": "Reopen and comment",
+    "resolution": ""
+  },
+  "DW-17": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Define the approved period and scope, implement purge or TTL behavior, document it, and add privacy verification.",
+    "key": "1",
+    "label": "Implement bounded retention",
+    "resolution": ""
+  },
+  "DW-197": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "",
+    "key": "3",
+    "label": "Await publisher program",
+    "resolution": ""
+  },
+  "DW-200": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Build a representative view prototype, measure query latency and write amplification, and recommend a substrate.",
+    "key": "1",
+    "label": "Benchmark Postgres view",
+    "resolution": ""
+  },
+  "DW-201": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "keep-open",
+    "intent": "",
+    "key": "3",
+    "label": "Await operator auth model",
+    "resolution": ""
+  },
+  "DW-230": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add fields to paginated envelopes, populate them consistently, update consumers, and test compatibility.",
+    "key": "1",
+    "label": "Add pagination metadata",
+    "resolution": ""
+  },
+  "DW-430": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Emit a v2 length-prefixed handle with at least 128 hash bits and accept v1 during migration.",
+    "key": "1",
+    "label": "Versioned length-prefixed handle",
+    "resolution": ""
+  },
+  "DW-438": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Keep backend recovery primary and add deterministic IncreaseTokenBudget when Combined includes budget omission.",
+    "key": "1",
+    "label": "Emit additive recoveries",
+    "resolution": ""
+  },
+  "DW-520": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add concise dated pointers to current architecture without rewriting historical assertions.",
+    "key": "1",
+    "label": "Add forward references",
+    "resolution": ""
+  },
+  "DW-565": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Define a bounded unavailable response and recovery contract, then add integration evidence.",
+    "key": "1",
+    "label": "Define fail-closed 503",
+    "resolution": ""
+  },
+  "DW-578": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Apply the lifecycle sanitizer before every provider and add privacy-negative tests.",
+    "key": "1",
+    "label": "Sanitize before fan-out",
+    "resolution": ""
+  },
+  "DW-579": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Restore the document to A41 or Story 27.4 targets and reconcile it during close-out.",
+    "key": "1",
+    "label": "Restore obligation",
+    "resolution": ""
+  },
+  "DW-593": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Provide approved endpoints and CIDRs, restrict egress, and add manifest guards.",
+    "key": "1",
+    "label": "Supply restricted authorities",
+    "resolution": ""
+  },
+  "DW-600": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a release-note correction and regression-test the commit-msg gate.",
+    "key": "1",
+    "label": "Add follow-up note",
+    "resolution": ""
+  },
+  "DW-631": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Benchmark current runs and update docs, workflow timeouts, and naming to the measured budget.",
+    "key": "2",
+    "label": "Adopt measured budget",
+    "resolution": ""
+  },
+  "DW-638": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add three axis-specific integration classes or equivalent cases without weakening the all-axis proof.",
+    "key": "1",
+    "label": "Add axis-specific evidence",
+    "resolution": ""
+  },
+  "DW-639": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Return incomplete verification whenever any required FT.INFO dimension is absent and test each field.",
+    "key": "1",
+    "label": "Fail closed",
+    "resolution": ""
+  },
+  "DW-640": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Classify blank tenantId as incomplete structural evidence and use non-destructive remediation.",
+    "key": "1",
+    "label": "Treat as missing marker",
+    "resolution": ""
+  },
+  "DW-641": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a dated correction with links to the governing artifacts and preserve the original record.",
+    "key": "1",
+    "label": "Append dated addendum",
+    "resolution": ""
+  },
+  "DW-642": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add the field to the proposal schema, migrate the entry, and guard it in validation.",
+    "key": "1",
+    "label": "Require proof boundary",
+    "resolution": ""
+  },
+  "DW-643": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Record the exact RedisEmbeddingMigrationStoreTests method and verify the command selects it.",
+    "key": "1",
+    "label": "Name exact method",
+    "resolution": ""
+  },
+  "DW-645": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Recognize Story 27.21 and C1.15 ownership while preserving the frozen-artifact carve-out.",
+    "key": "1",
+    "label": "Update the guard",
+    "resolution": ""
+  },
+  "DW-713": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a Memories-owned EventStore domain-service resource and prove commands through it end to end.",
+    "key": "1",
+    "label": "Own a domain service",
+    "resolution": ""
+  },
+  "DW-716": {
+    "answered_at": "2026-09-01",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Extract the action, regression-test Dapr retry behavior, document it, and retain no WaitFor only if safe.",
+    "key": "2",
+    "label": "Prove retry behavior",
+    "resolution": ""
+  }
+}

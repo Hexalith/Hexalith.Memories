@@ -118,6 +118,8 @@ origin: migrated from legacy ledger ("Story 20.5 Deferred Retention Slice (2026-
 location: docs/dev/telemetry.md`, the Story 27.1 architecture decision, the selected access-telemetry sink/storage deployment and purge implementation, and focused lifecycle/tenant-privacy tests, or this entry updated to a complete explicit accepted-debt disposition.
 reason: - **20.5-A41-ACCESS-TELEMETRY-RETENTION - carried-forward.** Audit finding A41 also requires a bounded retention/TTL policy for access telemetry. Story 20.5 implemented inbound request rate limiting and expanded mutating-operation audit emission, but retention is intentionally kept separate because access telemetry storage ownership and purge cadence need an operator-facing policy decision. - ID: 20.5-A41-ACCESS-TELEMETRY-RETENTION - Status: carried-forward - Source story: 20-5-inbound-rate-limiting-quotas-and-audit-completeness - Backlog home: Epic 27, registered Stories 27.1-27.4, plus the held C1 successor definitions in approved Sprint Change Proposal 2026-08-01. Story 27.3 owns C0 and independent C2/C3/C4 adapter qualification; all twenty-five C1 gates have no registered story owner; Story 27.4 owns deployment-shaped verification and close-out but remains `backlog` until compliant successor files are later registered and every C1 gate passes on its own evidence. Production lifecycle writes remain disabled and A41 remains open. Scheduling or a held proposal annex does not satisfy the resolution gate. **Corrected 2026-08-01 by approved Sprint Change Proposal 2026-08-01.** - Target artifact: `docs/dev/telemetry.md`, the Story 27.1 architecture decision, the selected access-telemetry sink/storage deployment and purge implementation, and focused lifecycle/tenant-privacy tests, or this entry updated to a complete explicit accepted-debt disposition. - Resolution gate: Keep this entry `carried-forward` and the matching sprint action `open` until bounded retention/TTL is implemented, documented, and validated, or accepted debt records a named approver and owner, affected storage/scope, rationale, risk and consequence, compensating controls, and a time-bounded review/expiry date or measurable reopen trigger. - Re-open trigger: Review before any claim that A41 is fully closed, before any production-retention assurance is made, and at the accepted-debt review/expiry trigger if that path is selected. - Rationale: Inbound quotas and audit completeness are implemented in Story 20.5; access telemetry retention remains unaddressed and is carried forward to avoid falsely closing the A41 retention requirement. Owner: operations maintainer / security remediation owner. **Current correction 2026-09-01:** Story 27.21 is the registered `in-progress` owner of C1.15; the remaining twenty-four C1 gates stay unowned. This dated correction changes no A41, Production-write, Story 27.4, or deferred-record status.
 status: open
+decision: 2026-09-01 Implement bounded retention — Define the approved period and scope, implement purge or TTL behavior, document it, and add privacy verification.
+decision: 2026-09-01 Implement bounded retention — Define the approved period and scope, implement purge or TTL behavior, document it, and add privacy verification.
 
 ### DW-18: 18.4-REDIS-RACE: accepted. Real two-thread Redis race test for the Story 18.4 atomic ingest-dedup reservation runs only in an Aspire/Testcontainers lane this sandbox cannot execute.
 
@@ -397,7 +399,10 @@ resolution: already resolved: commit 3445e66b
 origin: migrated from legacy ledger ("Closed/Accepted by: Story 15.1 Release Edge-Case Preflight Hardening (2026-05-13)"), 2026-09-01
 location: docs/dev/release-runbook.md
 reason: - **12.1-RV3 - accepted.** The repository removed its partial job-level `github.event.head_commit.message` skip parser and documents GitHub's native push skip handling as the release contract. The remaining edge is accepted because a workflow skipped by GitHub before job creation cannot run an in-workflow repository validator. - ID: 12.1-RV3 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: docs/dev/release-runbook.md - Re-open trigger: first silently skipped release caused by a bracketed skip instruction in a release-eligible merge/squash commit message, or GitHub exposes a pre-job policy hook that can reject such commits before native skip handling suppresses the workflow. - Rationale: Release maintainer ownership remains with the final merge/squash message author and reviewer. Story 15.1 makes the outcome predictable by removing the repository's partial parser, adding `CiTestInventoryTests.ReleaseWorkflow_ReleaseJob_DoesNotUseHeadCommitSkipCondition`, and documenting that bracketed skip instructions anywhere in the final commit message can suppress release. Accepted until 2026-08-13 unless the re-open trigger fires sooner.
-status: open
+status: done 2026-09-01
+decision: 2026-09-01 Renew accepted risk — Re-accept the limitation with an owner, review control, and new review date.
+resolution: closed by human decision: Re-accept the limitation with an owner, review control, and new review date.
+decision: 2026-09-01 Renew accepted risk — Re-accept the limitation with an owner, review control, and new review date.
 
 ### DW-56: 12.1-RV4: resolved. The release restore contract is now explicitly
 
@@ -912,7 +917,10 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.4 (2026-05-02)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:163-181
 reason: - **13.4-RV3 — OIDC mode does not enforce `ApiSecretKeyName` distinctness/role.** `src/Hexalith.Memories.Server/Ingestion/EmbeddingProviderDefaults.cs:163-181` — A tenant migrating from Google to OIDC Ollama could carry over a Google API-key secret name (`google-embedding-api-key`); validator only enforces the regex shape. Operator footgun. Re-open trigger: Story 13.5 surface change that exposes a tenant-config diff/mutation endpoint where naive carry-over is plausible.
-status: open
+status: done 2026-09-01
+decision: 2026-09-01 Keep names opaque — Let lookup and authentication determine role and document that contract.
+resolution: closed by human decision: Let lookup and authentication determine role and document that contract.
+decision: 2026-09-01 Keep names opaque — Let lookup and authentication determine role and document that contract.
 
 ### DW-124: 13.4-RV4: No assertion that endpoint paths invoke `Validate`. `src/Hexalith.Memories.Server/Endpoints/*` — Validator hardening (auth modes, URL shape, OIDC requirements) is dead code if no caller invokes it on POST/PUT. The single endpoint test in this story asserts JSON projection on a hand-built `TenantConfigurationView`, not the full ingest path. Cross-cutting concern. Re-open trigger: Story 13.5 (`TenantConfigurationActor` storage flow) or Story 13.7 (integration tests) — at least one should pin the actor/endpoint→Validate contract.
 
@@ -1174,6 +1182,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-12.5 (
 location: tools/create-partial-publish-issue.ps1:92
 reason: - **12.5-RV8 — Closed-then-reopened partial-publish issue creates a duplicate.** `tools/create-partial-publish-issue.ps1:92` filters `--state open` only. After a maintainer manually reconciles and closes the issue, a same-version rerun creates a new issue rather than reopening or commenting. Spec is silent; semantics may need refinement after first real reconciliation cycle.
 status: open
+decision: 2026-09-01 Reopen and comment — Search open and closed exact-title matches, reopen the prior incident, append evidence, and test reruns.
+decision: 2026-09-01 Reopen and comment — Search open and closed exact-title matches, reopen the prior incident, append evidence, and test reruns.
 
 ### DW-159: 12.3-RV1: CI duplicate runs on `pull_request` and `push`. Concurrency keys differ (`pull_request.number` vs `github.ref`) so neither cancels the other. Not regression-critical; revisit when CI minutes become a constraint or when divergent results from the two paths cause confusion.
 
@@ -1461,13 +1471,18 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-VersionMismatchAttributeApproach.** Replace regex-based `VersionMismatch` with a publisher-declared `[EventType("ClaimSubmitted", Version=2)]` attribute, surfaced via `ReflectionTypeLoader` at startup. Becomes an O(1) dictionary lookup with no ReDoS surface, no length cap, no regex-timeout event id 9141. Deferred: requires coordinating a convention change with every publisher repo.
 status: open
+decision: 2026-09-01 Await publisher program
+decision: 2026-09-01 Await publisher program
 
 ### DW-198: Story-9.3-SubscriptionStatusConfigured. 4-state `HandlerSubscriptionStatus` enum (add `Configured` between `Unknown` and `Active`) to disambiguate "routing is set up but has never seen events" from "routing is set up and has seen events." Breaking change for downstream C# `switch` consumers. Re-open trigger: operator feedback post-landing indicates the 3-state model is ambiguous.
 
 origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registration & Mismatch Detection (2026-04-24)"), 2026-09-01
 location: n/a
 reason: - **Story-9.3-SubscriptionStatusConfigured.** 4-state `HandlerSubscriptionStatus` enum (add `Configured` between `Unknown` and `Active`) to disambiguate "routing is set up but has never seen events" from "routing is set up and has seen events." Breaking change for downstream C# `switch` consumers. **Re-open trigger:** operator feedback post-landing indicates the 3-state model is ambiguous.
-status: open
+status: done 2026-09-01
+decision: 2026-09-01 Keep three states — Retain the stable enum until concrete ambiguity justifies a break.
+resolution: closed by human decision: Retain the stable enum until concrete ambiguity justifies a break.
+decision: 2026-09-01 Keep three states — Retain the stable enum until concrete ambiguity justifies a break.
 
 ### DW-199: Story-9.3-ObservationStoreRebuildFromAuditLog. Rebuild observation store from `AccessTelemetryLog` on startup to recover from sidecar-restart observation loss (Risk #8 degraded mode). Out of scope for 9.3.
 
@@ -1482,6 +1497,8 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-PostgresObservationStoreAlternative.** Investigate using an `AccessTelemetryLog`-backed Postgres VIEW in place of the dedicated Redis observation store — eliminates Redis write amplification (Risk #1) and sidecar-restart loss (Risk #8) in one move. Blocked until (a) `AccessTelemetryLog` backing is confirmed as Postgres and (b) a read-latency benchmark of the VIEW-based approach shows acceptable p95.
 status: open
+decision: 2026-09-01 Benchmark Postgres view — Build a representative view prototype, measure query latency and write amplification, and recommend a substrate.
+decision: 2026-09-01 Benchmark Postgres view — Build a representative view prototype, measure query latency and write amplification, and recommend a substrate.
 
 ### DW-201: Story-9.3-CrossTenantVersionConsumerLookup. A dedicated endpoint for publisher-owners to see "which tenants consume each version of my event type." Requires cross-tenant read permissions (operator-scope authZ). Deferred because the simpler tenant-scoped `VersionMismatch` detection satisfies the operational need inside 9.3; Epic 5 tenant-isolation invariant prevents a naive implementation.
 
@@ -1489,6 +1506,8 @@ origin: migrated from legacy ledger ("Deferred from: Story 9.3 Handler Registrat
 location: n/a
 reason: - **Story-9.3-CrossTenantVersionConsumerLookup.** A dedicated endpoint for publisher-owners to see "which tenants consume each version of my event type." Requires cross-tenant read permissions (operator-scope authZ). Deferred because the simpler tenant-scoped `VersionMismatch` detection satisfies the operational need inside 9.3; Epic 5 tenant-isolation invariant prevents a naive implementation.
 status: open
+decision: 2026-09-01 Await operator auth model
+decision: 2026-09-01 Await operator auth model
 
 ### DW-202: Story-9.3-PostLaunchCategoryReview. Measure 3 months of post-launch `memories.handlers.mismatches` counter data tagged by category; drop categories showing near-zero operator acknowledgement or >95% false-positive rate. Target review: 2026-09 or later. The three-category decision is explicitly revisitable based on measured telemetry, not speculation.
 
@@ -1697,6 +1716,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 2-6-explain-
 location: n/a
 reason: - **Return `offset` and `maxResults` pagination metadata in search response envelopes** — AC 3 still calls for `offset`, `maxResults`, and `totalCount` in paginated responses, but the response contracts still expose only `TotalCount`. This appears to predate the explain-mode change and would require a broader response-contract update across `SearchResult` and `HybridSearchResult`.
 status: open
+decision: 2026-09-01 Add pagination metadata — Add fields to paginated envelopes, populate them consistently, update consumers, and test compatibility.
+decision: 2026-09-01 Add pagination metadata — Add fields to paginated envelopes, populate them consistently, update consumers, and test compatibility.
 
 ### DW-231: InternalsVisibleTo in packable library without strong-name key
 
@@ -1859,7 +1880,10 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 7-2-output-formats-and-explain-display (2026-04-16)"), 2026-09-01
 location: src/Hexalith.Memories.Cli/Output/IOutputFormatter.cs
 reason: - **`IOutputFormatter<T>.Write` signature has no `CancellationToken`** — Broken downstream pipe (`memories … | head -1` on a large body) surfaces as "Unexpected error contacting Memories Server" rather than a clean broken-pipe exit; Ctrl+C during a synchronous write has no effect. Signature change is architectural and out-of-scope for 7.2. [src/Hexalith.Memories.Cli/Output/IOutputFormatter.cs]
-status: open
+status: done 2026-09-01
+decision: 2026-09-01 Retain bounded sync writes — The bounded payloads do not justify broad API churn.
+resolution: closed by human decision: The bounded payloads do not justify broad API churn.
+decision: 2026-09-01 Retain bounded sync writes — The bounded payloads do not justify broad API churn.
 
 ### DW-253: `Uri.EscapeDataString` on path-segment IDs produces `%2F` for embedded slashes
 
@@ -3190,6 +3214,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-ev
 location: n/a
 reason: - **2.7-CR8. SHA-256 expansion handle truncated to 16 hex (64 bits) + `|`-delimited material allows injection collisions.** `EvidencePacketMapper.cs:508-513`. Rationale: needs handle-format decision (length, delimiter, length-prefix vs delimiter).
 status: open
+decision: 2026-09-01 Versioned length-prefixed handle — Emit a v2 length-prefixed handle with at least 128 hash bits and accept v1 during migration.
+decision: 2026-09-01 Versioned length-prefixed handle — Emit a v2 length-prefixed handle with at least 128 hash bits and accept v1 during migration.
 
 ### DW-431: 2.7-CR9. `source.CaseId` copied verbatim from upstream with no scope-consistency check
 
@@ -3219,7 +3245,10 @@ resolution: already resolved: tests/Hexalith.Memories.Server.Tests/Search/Eviden
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR12. `evidenceStrength: None` + `state: Complete` contradiction when best score is 0.** Rationale: needs precedence design between strength and state.
-status: open
+status: done 2026-09-01
+decision: 2026-09-01 Keep semantics orthogonal — State describes execution and evidenceStrength describes quality; document that split.
+resolution: closed by human decision: State describes execution and evidenceStrength describes quality; document that split.
+decision: 2026-09-01 Keep semantics orthogonal — State describes execution and evidenceStrength describes quality; document that split.
 
 ### DW-435: 2.7-CR13. `EvidencePacketSource.Score` always serializes (required `double` source) — cannot represent "score unknown".
 
@@ -3249,6 +3278,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-ev
 location: n/a
 reason: - **2.7-CR16. `Combined` omission reason on degraded result strips token-budget hint from recovery.** Rationale: paired with 2.7-CR11/CR12 precedence redesign.
 status: open
+decision: 2026-09-01 Emit additive recoveries — Keep backend recovery primary and add deterministic IncreaseTokenBudget when Combined includes budget omission.
+decision: 2026-09-01 Emit additive recoveries — Keep backend recovery primary and add deterministic IncreaseTokenBudget when Combined includes budget omission.
 
 ### DW-439: 2.7-CR17. `McpErrorPayload` not registered in source-gen `MemoriesJsonContext`
 
@@ -3270,7 +3301,10 @@ resolution: already resolved: tests/Hexalith.Memories.Contracts.Tests/V1/Evidenc
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR19. `EvidencePacket` placed directly on lower-level `SearchResult`/`HybridSearchResult` records** instead of an envelope wrapper (design smell). Rationale: revert would require envelope wrapping at every consumer; mitigated by `[JsonIgnore(WhenWritingNull)]`.
-status: open
+status: done 2026-09-01
+decision: 2026-09-01 Ratify nullable property — The additive property is compatible and protected by serialization tests.
+resolution: closed by human decision: The additive property is compatible and protected by serialization tests.
+decision: 2026-09-01 Ratify nullable property — The additive property is compatible and protected by serialization tests.
 
 ### DW-442: 2.7-CR20. `EvidencePacketResultSummary.Query` echoes raw caller query verbatim
 
@@ -3847,6 +3881,8 @@ origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spe
 location: _bmad-output/implementation-artifacts/spec-24-4-metric-naming-and-committed-dashboards.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-24-4-metric-naming-and-committed-dashboards.md` summary: Decide whether historical BMAD implementation-artifact records (stories 9.2/9.3/20.5) should be forward-referenced or updated so they stop citing pre-rename metric names. evidence: Story 24.4 renamed instruments (e.g. `memories_conversation_cache_hit_total` -> `memories.conversation.cache.hits`, `memories.rate_limit.rejections` -> `memories.rate.limit.rejections`), but `_bmad-output/implementation-artifacts/9-2-*.md`, `20-5-*.md`, and `7-5-*.md` still name the old instruments. These are point-in-time story records outside the spec's "source, tests, or docs" scope, so whether to rewrite history or add forward-reference notes is a judgment call the orchestrator owns.
 status: open
+decision: 2026-09-01 Add forward references — Add concise dated pointers to current architecture without rewriting historical assertions.
+decision: 2026-09-01 Add forward references — Add concise dated pointers to current architecture without rewriting historical assertions.
 
 ### DW-521: 24.2-RV3: Pre-existing: two `DeleteMemoryUnitProjectionActivityTests` fail at HEAD (unrelated to Story 24.2). `RunAsync_HappyPath_ShouldDeleteAnnotationsBeforeTargetAndSyntacticHashLast` and `RunAsync_VectorDeleteFails_ShouldKeepSyntacticHashForRetry` fail on the full server slice (2 of 2441). Verified pre-existing by stashing the 24.2 review patches and re-running the class (still 2/3 failing), so NOT introduced by read-path caching — the delete-projection Redis hash/vector ordering area, likely from a later commit (24.3/24.4/CI). Flagged during the 24.2 code review for separate triage. Re-open trigger: whoever owns the delete-projection area investigates the NSubstitute in-order sequence assertion on annotation/target/syntactic-hash deletion.
 
@@ -4167,6 +4203,8 @@ origin: migrated from legacy ledger ("Story 26.3 Explicit Integration Deferrals 
 location: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs
 reason: - **26.3-ALL-BACKENDS-STATESTORE - accepted.** Stopping Redis Stack and FalkorDB also removes workflow, actor, pub/sub, and state-store availability. - ID: 26.3-ALL-BACKENDS-STATESTORE - Status: accepted - Source story: 26-3-integration-stub-closure - Target artifact: tests/Hexalith.Memories.IntegrationTests/Search/DegradationIntegrationTests.cs - Re-open trigger: define and implement the supported API contract for total Redis-backed control-plane collapse, then add bounded recovery assertions against that real dependency graph. - Rationale: The legacy `ALL_BACKENDS_UNAVAILABLE` comment assumes independent retrieval containers that the AppHost does not have. Owner: platform reliability maintainer.
 status: open
+decision: 2026-09-01 Define fail-closed 503 — Define a bounded unavailable response and recovery contract, then add integration evidence.
+decision: 2026-09-01 Define fail-closed 503 — Define a bounded unavailable response and recovery contract, then add integration evidence.
 
 ### DW-566: 26.3-SINGLE-AXIS-REDIS-COLLAPSE: accepted. A Redis resource stop is not a syntactic-only outage and can prevent the service from reading authorization, tenant, workflow, and actor state.
 
@@ -4261,6 +4299,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-1-access-
 location: _bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md` summary: Reconcile raw privacy-sensitive state on the preserved JSON-console and optional OTLP routes with the bounded lifecycle target. evidence: Search and source-URI events can already expose raw query, subject, or source URI values through the existing logging routes. Story 27.1 documents that pre-existing deviation and sanitizes only the accepted Dapr lifecycle path; a later scope decision must choose sanitization before provider fan-out or explicit category exclusion from durable external routes.
 status: open
+decision: 2026-09-01 Sanitize before fan-out — Apply the lifecycle sanitizer before every provider and add privacy-negative tests.
+decision: 2026-09-01 Sanitize before fan-out — Apply the lifecycle sanitizer before every provider and add privacy-negative tests.
 
 ### DW-579: Restate or intentionally retire the `docs/operations/rate-limiting.md` documentation obligation dropped from the `20.5-A41-ACCESS-TELEMETRY-RETENTION` target-artifact list.
 
@@ -4268,6 +4308,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-1-access-
 location: _bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md` summary: Restate or intentionally retire the `docs/operations/rate-limiting.md` documentation obligation dropped from the `20.5-A41-ACCESS-TELEMETRY-RETENTION` target-artifact list. evidence: The concurrent A41-entry rewrite in commit `8bb0708a` (sprint-change-proposal scope, not Story 27.1) replaced the old `Target artifact: docs/operations/rate-limiting.md and the future access-telemetry storage/purge implementation` line with a new target list that omits rate-limiting.md entirely, leaving that file's documentation obligation without a stated disposition. The fourth code-review pass of Story 27.1 (2026-07-17) surfaced the orphaned obligation; ownership belongs to the A41/Story 27.4 close-out coordination after Story 27.3 qualification, not this decision story.
 status: open
+decision: 2026-09-01 Restore obligation — Restore the document to A41 or Story 27.4 targets and reconcile it during close-out.
+decision: 2026-09-01 Restore obligation — Restore the document to A41 or Story 27.4 targets and reconcile it during close-out.
 
 ### DW-580: Creation-lock release in `DaprAggregateCaseMappingStore.ReleaseCreationLockAsync` deletes unconditionally and can release a rival instance's active lock after the holder's TTL lease expired.
 
@@ -4370,6 +4412,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: deploy/kubernetes/base/access-telemetry-network-policy.yaml
 reason: - Clock NetworkPolicy egress to TCP/443 is unrestricted (no `to:`); tighten to real UTC-source CIDRs before enablement. [deploy/kubernetes/base/access-telemetry-network-policy.yaml:99] - ID: 27.3-CR19 - Status: open - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 2/3) - Target artifact: deploy/kubernetes/base/access-telemetry-network-policy.yaml - Re-open trigger: before Production lifecycle enablement; the clock egress must be restricted to the real UTC-source CIDRs once the three `.example.invalid` authorities are replaced. - Rationale: The clock NetworkPolicy allows egress on TCP/443 with no `to:` selector, so the trusted-time workload can reach any address on the internet. The real UTC-source CIDRs are not knowable while all three configured authorities are `.example.invalid` placeholders, so narrowing the rule now would encode a fiction. Owner: clock-authority owner. Consequence: an unrestricted egress path exists on a workload that is scaled to zero and fail-closed.
 status: open
+decision: 2026-09-01 Supply restricted authorities — Provide approved endpoints and CIDRs, restrict egress, and add manifest guards.
+decision: 2026-09-01 Supply restricted authorities — Provide approved endpoints and CIDRs, restrict egress, and add manifest guards.
 
 ### DW-594: `maxConns: 64` x 2 replicas (128) can exceed PostgreSQL `max_connections=100` under the C1 two-writer load; reconcile before/at the load probe.
 
@@ -4422,6 +4466,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: .githooks / commitlint configuration
 reason: - **27.3-CR9 - commit `358bef35` bypasses the Conventional Commits contract.** Its subject carries - ID: 27.3-CR9 - Status: open - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 3a/3) - Target artifact: .githooks / commitlint configuration - Re-open trigger: confirm the commit-msg hook rejects a missing type prefix, and decide whether the omitted product change needs a follow-up release note. - Rationale: Commit `358bef35` carries no Conventional Commits type prefix, and its body lists only the three new test files while omitting the `InMemoryAccessTelemetryStateStore.cs` purge-ordering product change in the same commit. It is already published on `main`, so correcting the message needs a history rewrite; the durable fix is the commit-msg gate, not this commit. Owner: repository workflow owner. Consequence: release semantics and the changed-surface audit trail are both wrong for that one commit. no type prefix and its body enumerates only the three new test files, omitting the `InMemoryAccessTelemetryStateStore.cs` purge-ordering product change in the same commit. The commit is already published on `main`, so correcting the message itself would require a history rewrite. Owner: repository workflow owner. Consequence: `feat`/`fix` release semantics and the changed-surface audit trail are both wrong for that commit. Reopen trigger: confirm the commit-msg hook rejects a missing type prefix, and record whether the omitted product change needs a follow-up release note.
 status: open
+decision: 2026-09-01 Add follow-up note — Add a release-note correction and regression-test the commit-msg gate.
+decision: 2026-09-01 Add follow-up note — Add a release-note correction and regression-test the commit-msg gate.
 
 ### DW-601: The readiness gate does not require completion dates for evidence rows at review or done.
 
@@ -4647,6 +4693,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-gh-30655137033-fix-ci-cd-issues.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-gh-30655137033-fix-ci-cd-issues.md` summary: Reconcile the documented approximately five-minute `integration-fast` budget with observed 15–20 minute executions. evidence: The final exact selector passed in 15m38s and earlier unchanged broad runs took 19–20 minutes, while `tests/README.md` still defines this lane as an approximately five-minute budget; the discrepancy predates and is not caused by the OpenBao/MCP stabilization patch.
 status: open
+decision: 2026-09-01 Adopt measured budget — Benchmark current runs and update docs, workflow timeouts, and naming to the measured budget.
+decision: 2026-09-01 Adopt measured budget — Benchmark current runs and update docs, workflow timeouts, and naming to the measured budget.
 
 ### DW-632: Make the normal story-readiness gate require an executed C0 receipt and reviewer-owned command evidence before accepting review or done.
 
@@ -4696,6 +4744,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Align Story 24.6 Cross-Tenant Negative Evidence with the three axis-specific search classes required before removing the all-axis test. evidence: Review found the registered 24.6 evidence contract omits GraphScopedSearchIntegrationTests, SyntacticSearchIntegrationTests, and SemanticSearchIntegrationTests that Dev Notes and Planned Verification require citing.
 status: open
+decision: 2026-09-01 Add axis-specific evidence — Add three axis-specific integration classes or equivalent cases without weakening the all-axis proof.
+decision: 2026-09-01 Add axis-specific evidence — Add three axis-specific integration classes or equivalent cases without weakening the all-axis proof.
 
 ### DW-639: Resolve Story 24.7 AC1 wording so missing FT.INFO dimensions fail closed instead of ambiguous “all available” vs “all three” agreement.
 
@@ -4703,6 +4753,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Resolve Story 24.7 AC1 wording so missing FT.INFO dimensions fail closed instead of ambiguous “all available” vs “all three” agreement. evidence: The approved proposal says “all available values agree” while the registered story and epics.md require “all three values agree,” leaving undefined behavior when one index dimension is missing.
 status: open
+decision: 2026-09-01 Fail closed — Return incomplete verification whenever any required FT.INFO dimension is absent and test each field.
+decision: 2026-09-01 Fail closed — Return incomplete verification whenever any required FT.INFO dimension is absent and test each field.
 
 ### DW-640: Define blank or whitespace-only tenantId handling for Story 24.9 marker diagnostics.
 
@@ -4710,6 +4762,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Define blank or whitespace-only tenantId handling for Story 24.9 marker diagnostics. evidence: Edge-case review showed proven-active hashes with empty/whitespace tenantId are unclassified and can be mislabeled as foreign contamination.
 status: open
+decision: 2026-09-01 Treat as missing marker — Classify blank tenantId as incomplete structural evidence and use non-destructive remediation.
+decision: 2026-09-01 Treat as missing marker — Classify blank tenantId as incomplete structural evidence and use non-destructive remediation.
 
 ### DW-641: Add a retrospective addendum or reopen note when epic-24 returns to in-progress after epic-24-retrospective is done for Stories 24.6-24.9.
 
@@ -4717,6 +4771,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Add a retrospective addendum or reopen note when epic-24 returns to in-progress after epic-24-retrospective is done for Stories 24.6-24.9. evidence: sprint-status.yaml reopens epic-24 while leaving epic-24-retrospective done with no addendum covering the residual backlog registration.
 status: open
+decision: 2026-09-01 Append dated addendum — Add a dated correction with links to the governing artifacts and preserve the original record.
+decision: 2026-09-01 Append dated addendum — Add a dated correction with links to the governing artifacts and preserve the original record.
 
 ### DW-642: Align Story 24.6 accepted-blocker schema so “proof boundary” is required consistently across proposal and registered story/epics text.
 
@@ -4724,6 +4780,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Align Story 24.6 accepted-blocker schema so “proof boundary” is required consistently across proposal and registered story/epics text. evidence: Registered AC4 requires a proof boundary field while the matching proposal AC omits it.
 status: open
+decision: 2026-09-01 Require proof boundary — Add the field to the proposal schema, migrate the entry, and guard it in validation.
+decision: 2026-09-01 Require proof boundary — Add the field to the proposal schema, migrate the entry, and guard it in validation.
 
 ### DW-643: Name the concrete RedisEmbeddingMigrationStoreTests method required by Story 24.8 Cross-Tenant Negative Evidence.
 
@@ -4731,6 +4789,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Name the concrete RedisEmbeddingMigrationStoreTests method required by Story 24.8 Cross-Tenant Negative Evidence. evidence: Planned Verification commands the migration store tests without a named assertion contract in the evidence table.
 status: open
+decision: 2026-09-01 Name exact method — Record the exact RedisEmbeddingMigrationStoreTests method and verify the command selects it.
+decision: 2026-09-01 Name exact method — Record the exact RedisEmbeddingMigrationStoreTests method and verify the command selects it.
 
 ### DW-644: Add a reciprocal pointer from docs/operations/route-surface.md to the new directory-ingestion authoritative contract.
 
@@ -4745,6 +4805,8 @@ origin: migrated from legacy ledger ("Deferred from: code review of 27-3-product
 location: _bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-23-documentation-verification.md` summary: Reconcile AccessTelemetry C1 ownership guard text with Story 27.21 C1.15 registration and the frozen Never/test File Scope carve-out. evidence: This story co-shipped AccessTelemetryRetentionDecisionTests pinning unowned C1 text; later 27.21 registration and planning copies partially supersede that pin without updating the guard.
 status: open
+decision: 2026-09-01 Update the guard — Recognize Story 27.21 and C1.15 ownership while preserving the frozen-artifact carve-out.
+decision: 2026-09-01 Update the guard — Recognize Story 27.21 and C1.15 ownership while preserving the frozen-artifact carve-out.
 
 ### DW-646: OpenBao root/unseal/scoped tokens and KV field values still ride kubectl exec / bao argv during disposable bootstrap.
 
@@ -4837,7 +4899,10 @@ resolution: already resolved: TenantIsolationVerifier.cs:448 and :915-918 qualif
 origin: migrated from legacy ledger ("Deferred from: code review of spec-24-6-graph-content-level-tenant-isolation-evidence (2026-08-12)"), 2026-09-01
 location: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs
 reason: - **The HTTP-visible graph detail has no explicit length or format contract.** - ID: 24.6-CR-W7 - Status: carried-forward - Source story: spec-24-6-graph-content-level-tenant-isolation-evidence - Target artifact: src/Hexalith.Memories.Server/Tenants/TenantIsolationVerifier.cs - Rationale: The roughly 330-character prose detail is intentionally operator-facing and is now pinned for its required structural-only, `GRAPH.LIST`, and proof-method tokens; introducing a new structured or maximum-length contract would expand the public API surface. - Re-open trigger: The V1 response receives a formal details-length/format requirement or an operator surface truncates the required proof citation.
-status: open
+status: done 2026-09-01
+decision: 2026-09-01 Retain prose contract — Keep the current bounded token assertions as the supported contract.
+resolution: closed by human decision: Keep the current bounded token assertions as the supported contract.
+decision: 2026-09-01 Retain prose contract — Keep the current bounded token assertions as the supported contract.
 
 ### DW-659: Production graph write-path tenant selection lacks a direct negative control.
 
@@ -5231,6 +5296,8 @@ origin: migrated from legacy ledger ("Deferred from: spec-28-1-adopt-owner-appro
 location: _bmad-output/planning-artifacts/epics.md` (Epic 28, a new follow-up story)
 reason: - **Task 4 full-stack proof needs an EventStore domain-service resource Story 28.1 is not scoped to add.** - ID: 28.1-TASK4-FULLSTACK-PROOF-NEEDS-DOMAIN-SERVICE - Status: accepted - Source story: spec-28-1-adopt-owner-approved-eventstore-runtime-identity - Target artifact: `_bmad-output/planning-artifacts/epics.md` (Epic 28, a new follow-up story) - Rationale: Story 28.1's Task 3 correctly added exactly one `eventstore` gateway resource to Memories' AppHost (`src/Hexalith.Memories.AppHost/Program.cs`), per the spec's own "Never redesign ingestion/projection/deployment topology beyond identity adoption plus the one `eventstore` resource" boundary. EventStore's own full-stack proof pattern (`references/Hexalith.EventStore/tests/Hexalith.EventStore.IntegrationTests/Fixtures/AspirePubSubProofTestFixture.cs` + `ContractTests/PubSubDeliveryProofTests.cs`) submits a command to the Gateway HTTP API and asserts a Dapr-published CloudEvent, but that pattern's domain logic (e.g. the `counter` sample domain) is compiled into a **separate** Aspire-composed domain-service resource (`Hexalith.EventStore.AppHost/Program.cs:119`, `AddProject<Projects.Hexalith_EventStore_Sample>("sample")`) that Memories' AppHost has no equivalent of. `SandboxCommandRequest.cs`'s own doc comment confirms any command requires "the domain service Handle method" to exist. Adding one would expand Story 28.1's topology beyond its approved scope — exactly the case `epics.md`'s Story 28.1 final Given/When/Then clause ("Given adoption exposes a behavioral incompatibility... fails closed and routes that behavior change to a separately approved compatibility story rather than expanding silently") anticipates, and consistent with spec-28-1's own "Never redesign ingestion/projection/deployment topology beyond identity adoption plus the one `eventstore` resource" boundary. (Note: this is not a numbered "AC7" in either document; an earlier pass of this entry miscited it as one.) - Candidate resolutions (neither attempted, both need a human/architecture decision, not a unilateral dev choice): (1) add a Memories-owned EventStore domain-service resource to the AppHost so a real EventStore-originating command can be submitted and its Dapr-published event traced into Memories — the direct analog of EventStore's own proof pattern; or (2) route Memories' own existing Tenant/Case domain commands (which already reach the live `eventstore` gateway) back through `hexalith-eventstore/*` topic naming into Memories' own ingestion — investigated and set aside this session because no existing tenant-routing config maps that back to Memories' ingestion, and wiring one up risks an unverified self-referential duplicate-indexing loop. - Resolution criteria (per the original 23.7 entry, unchanged): a real EventStore-originating publish reaches Memories through Dapr; the resulting memory is persisted and searchable through Redis and FalkorDB; duplicate replay is ignored; negative evidence proves no cross-tenant result leakage. - Re-open trigger: a follow-up story is selected to close this gap; or any story/review claims EventStore-to-Memories full-stack proof without meeting every resolution criterion above.
 status: open
+decision: 2026-09-01 Own a domain service — Add a Memories-owned EventStore domain-service resource and prove commands through it end to end.
+decision: 2026-09-01 Own a domain service — Add a Memories-owned EventStore domain-service resource and prove commands through it end to end.
 
 ### DW-714: Classification-gap co-occurring with an active marker defect still suppresses marker-specific `Remediation` entirely.
 
@@ -5252,6 +5319,8 @@ origin: code review of spec-28-1-adopt-owner-approved-eventstore-runtime-identit
 location: .github/workflows/ci.yml; .github/workflows/nightly.yml; src/Hexalith.Memories.AppHost/Program.cs
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md` summary: `tools/ci/provision-eventstore-local-feed.sh`'s ~9-line invocation is copy-pasted verbatim into 7 CI job definitions across `ci.yml`/`nightly.yml` instead of a shared composite action, and local dev follows a separate, independently-maintained manual procedure (recorded in the spec's Verification section) for producing the same artifact rather than invoking the same script. evidence: confirmed by direct inspection of both workflow files -- the identical step comment and `run:` line appear in `build`, `test-unit-contract`, `web-e2e-specimen`, `integration-fast` (ci.yml) and `integration-fast`, `integration-slow`, `benchmark` (nightly.yml). Real DRY/drift risk (a future SHA/version rotation needs 7+ synchronized edits plus the local dev docs), but not a correctness defect in the current diff, and refactoring into a composite action is a real engineering task, not a trivial patch. **Partially mitigated (2026-09-01 follow-up patch pass):** the two hardcoded literals (`fa2d1c9910f8976553adb33dcdb1c9ff2ea75594` / `999.1.20-proof.fa2d1c9910f8`) that were duplicated across all 7 CI call sites are now centralized in each workflow file's top-level `env:` block (`EVENTSTORE_APPROVED_SHA` / `EVENTSTORE_APPROVED_VERSION`), reducing the literal-duplication surface from ~14 hardcoded values to 2 per workflow file. The *step itself* (name, comment, `run:` line referencing those env vars) is still repeated 7 times -- collapsing that into a shared composite action remains the open, real-engineering-task portion of this finding. -- source_spec: same. summary: No explicit Aspire `WaitFor` ordering is established between the `memories` resource (which reaches `eventstore` via Dapr service invocation) and the new `eventStoreGateway` resource, so it's unclear whether Memories Server could attempt to invoke the `eventstore` app-id before that resource/sidecar is ready. evidence: `src/Hexalith.Memories.AppHost/Program.cs`'s new `eventStoreGateway` only has `.WaitFor(redis)`; no `WaitFor(eventStoreGateway)` was added to the `memories`/`server` resource. Whether this is a real race depends on Dapr's own service-invocation retry/resiliency semantics, which needs an architect's judgment call rather than a mechanical fix -- do not guess at an ordering constraint without confirming Dapr's actual behavior here. - Re-open trigger: a follow-up story touches this CI wiring or the AppHost resource graph again, a flaky/racy `eventstore` invocation is observed at runtime, or (specific to the rebuild-and-self-sign CI provisioning workaround as a whole) EventStore's own team reseals Story 1.20's proof packet under Memories' mandated SDK `10.0.400` -- at that point `tools/ci/provision-eventstore-local-feed.sh`, `tools/nuget-local-feeds/`, and every CI step wired to them become retirable in favor of restoring the now-reproducible, originally-approved package hash directly, and this whole workaround (script, local-dev config, per-run signing) should be removed rather than kept running indefinitely alongside a now-available real fix.
 status: open
+decision: 2026-09-01 Prove retry behavior — Extract the action, regression-test Dapr retry behavior, document it, and retain no WaitFor only if safe.
+decision: 2026-09-01 Prove retry behavior — Extract the action, regression-test Dapr retry behavior, document it, and retain no WaitFor only if safe.
 
 ### DW-717: `production-deployment-verification` CI job not wired to the ephemeral EventStore local-feed provisioning script; unconfirmed whether it needs it.
 
