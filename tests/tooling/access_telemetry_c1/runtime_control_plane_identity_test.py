@@ -15,8 +15,22 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNNER = REPO_ROOT / "tools" / "verify-access-telemetry-c1.ps1"
 FIXTURE = Path(__file__).parent / "fixtures" / "c1_15_complete.json"
+STORY = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "27-21-runtime-and-control-plane-identity.md"
+SPRINT_STATUS = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
+DEFERRED_WORK = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "deferred-work.md"
+EPIC_CONTEXT = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "epic-27-context.md"
+BASE_KUSTOMIZATION = REPO_ROOT / "deploy" / "kubernetes" / "base" / "kustomization.yaml"
+LIFECYCLE_DEPLOYMENTS = REPO_ROOT / "deploy" / "kubernetes" / "base" / "access-telemetry-deployments.yaml"
+PRODUCTION_KUSTOMIZATION = REPO_ROOT / "deploy" / "kubernetes" / "overlays" / "production" / "kustomization.yaml"
+PRODUCTION_DISABLED_PATCH = (
+    REPO_ROOT / "deploy" / "kubernetes" / "overlays" / "production" / "access-telemetry-disabled-patch.yaml"
+)
 TOKEN_CANARY = "C1_SECRET_CANARY_DO_NOT_EMIT_7429"
 TARGET_SELECTOR = "app.kubernetes.io/name=memories-access-telemetry"
+LIFECYCLE_DEPLOYMENT_NAMES = (
+    "memories-access-telemetry",
+    "memories-access-telemetry-clock",
+)
 
 
 def write_executable(path: Path, content: str) -> None:
@@ -60,8 +74,11 @@ def write_fake_kubectl(directory: Path) -> None:
                     print("unexpected selector", file=sys.stderr)
                     raise SystemExit(98)
                 prior_pod_gets = [call for call in prior_calls if "get" in call and "pods" in call]
-                pods = scenario.get("podsAfter", scenario["pods"]) if prior_pod_gets else scenario["pods"]
-                print(json.dumps(pods))
+                if prior_pod_gets and "podsAfterRaw" in scenario:
+                    print(scenario["podsAfterRaw"])
+                else:
+                    pods = scenario.get("podsAfter", scenario["pods"]) if prior_pod_gets else scenario["pods"]
+                    print(json.dumps(pods))
                 raise SystemExit(0)
 
             if "exec" not in args:
@@ -126,6 +143,7 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         second_name = "memories-access-telemetry-7cc55d9fd8-second"
         second_pod = copy.deepcopy(first_pod)
         second_pod["metadata"]["name"] = second_name
+        second_pod["metadata"]["uid"] = "b5720433-c832-4b36-a698-862dbde85641"
         scenario["pods"]["items"].append(second_pod)
         scenario["daprdVersions"][second_name] = scenario["daprdVersions"][first_name]
         scenario["metadata"][second_name] = copy.deepcopy(scenario["metadata"][first_name])
@@ -333,12 +351,22 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
 
     def test_two_pods_are_recorded_and_all_identity_drift_blocks(self) -> None:
         complete = copy.deepcopy(self.base_scenario)
-        _, second_name = self.add_second_pod(complete)
+        first_name, second_name = self.add_second_pod(complete)
 
         result, packets, _, _ = self.run_gate(complete)
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual(2, len(packets[0]["observations"]["pods"]))
+        emitted_identities = [
+            (pod["pod"], pod["podUid"])
+            for pod in packets[0]["observations"]["pods"]
+        ]
+        self.assertEqual(
+            [
+                (first_name, "7e36eb30-17d5-48de-9c67-f9c6b95430ce"),
+                (second_name, "b5720433-c832-4b36-a698-862dbde85641"),
+            ],
+            emitted_identities,
+        )
 
         cases = {}
         runtime = copy.deepcopy(self.base_scenario)
@@ -389,6 +417,37 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
                 self.assertEqual(["running-target-identity-drift"], packets[0]["blockers"])
                 self.assertEqual("not-evaluated", packets[0]["gateStatus"])
 
+    def test_duplicate_pod_uid_blocks_before_exec_but_case_differing_uid_is_distinct(self) -> None:
+        duplicate_uid = copy.deepcopy(self.base_scenario)
+        first_name, second_name = self.add_second_pod(duplicate_uid)
+        duplicate_uid["pods"]["items"][1]["metadata"]["uid"] = (
+            duplicate_uid["pods"]["items"][0]["metadata"]["uid"]
+        )
+
+        result, packets, calls, _ = self.run_gate(duplicate_uid)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["duplicate-running-pod-uid"], packets[0]["blockers"])
+        self.assertFalse(any("exec" in call for call in calls))
+        self.assertNotIn(TOKEN_CANARY, json.dumps(packets[0]) + result.stdout + result.stderr)
+
+        case_differing_uid = copy.deepcopy(self.base_scenario)
+        self.add_second_pod(case_differing_uid)
+        case_differing_uid["pods"]["items"][1]["metadata"]["uid"] = (
+            case_differing_uid["pods"]["items"][0]["metadata"]["uid"].upper()
+        )
+
+        result, packets, _, _ = self.run_gate(case_differing_uid)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            [
+                (first_name, "7e36eb30-17d5-48de-9c67-f9c6b95430ce"),
+                (second_name, "7E36EB30-17D5-48DE-9C67-F9C6B95430CE"),
+            ],
+            [(pod["pod"], pod["podUid"]) for pod in packets[0]["observations"]["pods"]],
+        )
+
     def test_invalid_alpha_pair_blocks_explicitly(self) -> None:
         scenario = copy.deepcopy(self.base_scenario)
         pod = next(iter(scenario["alphaOptIn"]))
@@ -429,26 +488,180 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         malformed = copy.deepcopy(self.base_scenario)
         malformed["pods"]["items"] = malformed["pods"]["items"][0]
 
-        result, packets, _, _ = self.run_gate(malformed)
+        result, packets, calls, _ = self.run_gate(malformed)
 
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(["malformed-pod-list-json"], packets[0]["blockers"])
+        self.assertFalse(any("exec" in call for call in calls))
 
         duplicate = copy.deepcopy(self.base_scenario)
-        duplicate["pods"]["items"].append(copy.deepcopy(duplicate["pods"]["items"][0]))
-        result, packets, _, _ = self.run_gate(duplicate)
+        first_name, _ = self.add_second_pod(duplicate)
+        duplicate["pods"]["items"][1]["metadata"]["name"] = first_name
+        result, packets, calls, _ = self.run_gate(duplicate)
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(["duplicate-running-pod"], packets[0]["blockers"])
+        self.assertFalse(any("exec" in call for call in calls))
 
-    def test_pod_identity_change_during_capture_blocks(self) -> None:
-        scenario = copy.deepcopy(self.base_scenario)
-        scenario["podsAfter"] = copy.deepcopy(scenario["pods"])
-        scenario["podsAfter"]["items"][0]["metadata"]["uid"] = "b5720433-c832-4b36-a698-862dbde85641"
+    def test_initial_pod_identity_requires_nonblank_string_names_and_uids_before_exec(self) -> None:
+        cases: dict[str, tuple[str, object, str]] = {
+            "blank-name": ("name", " ", "running-pod-name-missing"),
+            "blank-uid": ("uid", " ", "running-pod-uid-missing"),
+            "numeric-name": ("name", 7, "running-pod-name-missing"),
+            "numeric-uid": ("uid", 7, "running-pod-uid-missing"),
+        }
 
-        result, packets, _, _ = self.run_gate(scenario)
+        for name, (field, value, blocker) in cases.items():
+            with self.subTest(name=name):
+                scenario = copy.deepcopy(self.base_scenario)
+                self.add_second_pod(scenario)
+                scenario["pods"]["items"][1]["metadata"][field] = value
 
-        self.assertNotEqual(0, result.returncode)
-        self.assertEqual(["running-pod-changed"], packets[0]["blockers"])
+                result, packets, calls, _ = self.run_gate(scenario)
+
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual([blocker], packets[0]["blockers"])
+                self.assertFalse(any("exec" in call for call in calls))
+                self.assertNotIn(TOKEN_CANARY, json.dumps(packets[0]) + result.stdout + result.stderr)
+
+    def test_every_post_capture_collection_shape_and_identity_drift_blocks(self) -> None:
+        def stable_recheck() -> dict:
+            scenario = copy.deepcopy(self.base_scenario)
+            scenario["podsAfter"] = copy.deepcopy(scenario["pods"])
+            return scenario
+
+        cases: dict[str, tuple[dict, str]] = {}
+
+        malformed_json = copy.deepcopy(self.base_scenario)
+        malformed_json["podsAfterRaw"] = "{not-json"
+        cases["malformed-json"] = (malformed_json, "malformed-pod-list-json")
+
+        malformed_items = stable_recheck()
+        malformed_items["podsAfter"]["items"] = malformed_items["podsAfter"]["items"][0]
+        cases["non-array-items"] = (malformed_items, "malformed-pod-list-json")
+
+        count = stable_recheck()
+        count["podsAfter"]["items"] = []
+        cases["count"] = (count, "running-pod-changed")
+
+        running_count = stable_recheck()
+        running_count["podsAfter"]["items"][0]["status"]["phase"] = "Pending"
+        cases["running-count"] = (running_count, "running-pod-changed")
+
+        replacement = stable_recheck()
+        replacement["podsAfter"]["items"][0]["metadata"]["name"] = "memories-access-telemetry-replacement"
+        cases["replacement"] = (replacement, "running-pod-changed")
+
+        blank_name = stable_recheck()
+        blank_name["podsAfter"]["items"][0]["metadata"]["name"] = " "
+        cases["blank-name"] = (blank_name, "running-pod-changed")
+
+        duplicate_name = copy.deepcopy(self.base_scenario)
+        self.add_second_pod(duplicate_name)
+        duplicate_name["podsAfter"] = copy.deepcopy(duplicate_name["pods"])
+        duplicate_name["podsAfter"]["items"][1]["metadata"]["name"] = (
+            duplicate_name["podsAfter"]["items"][0]["metadata"]["name"]
+        )
+        cases["duplicate-name"] = (duplicate_name, "running-pod-changed")
+
+        label = stable_recheck()
+        label["podsAfter"]["items"][0]["metadata"]["labels"]["app.kubernetes.io/name"] = "memories"
+        cases["label"] = (label, "running-pod-changed")
+
+        deletion = stable_recheck()
+        deletion["podsAfter"]["items"][0]["metadata"]["deletionTimestamp"] = "2026-09-01T12:00:00Z"
+        cases["deletion"] = (deletion, "running-pod-changed")
+
+        ready_missing = stable_recheck()
+        ready_missing["podsAfter"]["items"][0]["status"]["conditions"] = []
+        cases["ready-missing"] = (ready_missing, "running-pod-changed")
+
+        ready_duplicate = stable_recheck()
+        ready_duplicate["podsAfter"]["items"][0]["status"]["conditions"].append(
+            {"type": "Ready", "status": "True"}
+        )
+        cases["ready-duplicate"] = (ready_duplicate, "running-pod-changed")
+
+        ready_false = stable_recheck()
+        ready_false["podsAfter"]["items"][0]["status"]["conditions"][0]["status"] = "False"
+        cases["ready-false"] = (ready_false, "running-pod-changed")
+
+        ready_type_case_drift = stable_recheck()
+        ready_type_case_drift["podsAfter"]["items"][0]["status"]["conditions"][0]["type"] = "ready"
+        cases["ready-type-case-drift"] = (ready_type_case_drift, "running-pod-changed")
+
+        lifecycle_missing = stable_recheck()
+        lifecycle_missing["podsAfter"]["items"][0]["status"]["containerStatuses"] = [
+            status
+            for status in lifecycle_missing["podsAfter"]["items"][0]["status"]["containerStatuses"]
+            if status["name"] != "lifecycle"
+        ]
+        cases["lifecycle-status-missing"] = (lifecycle_missing, "running-pod-changed")
+
+        lifecycle_duplicate = stable_recheck()
+        lifecycle_statuses = lifecycle_duplicate["podsAfter"]["items"][0]["status"]["containerStatuses"]
+        lifecycle_statuses.append(copy.deepcopy(next(status for status in lifecycle_statuses if status["name"] == "lifecycle")))
+        cases["lifecycle-status-duplicate"] = (lifecycle_duplicate, "running-pod-changed")
+
+        daprd_missing = stable_recheck()
+        daprd_missing["podsAfter"]["items"][0]["status"]["containerStatuses"] = [
+            status
+            for status in daprd_missing["podsAfter"]["items"][0]["status"]["containerStatuses"]
+            if status["name"] != "daprd"
+        ]
+        cases["daprd-status-missing"] = (daprd_missing, "running-pod-changed")
+
+        daprd_duplicate = stable_recheck()
+        daprd_statuses = daprd_duplicate["podsAfter"]["items"][0]["status"]["containerStatuses"]
+        daprd_statuses.append(copy.deepcopy(next(status for status in daprd_statuses if status["name"] == "daprd")))
+        cases["daprd-status-duplicate"] = (daprd_duplicate, "running-pod-changed")
+
+        for original_name, drifted_name in (("lifecycle", "Lifecycle"), ("daprd", "Daprd")):
+            container_name_case_drift = stable_recheck()
+            statuses = container_name_case_drift["podsAfter"]["items"][0]["status"]["containerStatuses"]
+            next(status for status in statuses if status["name"] == original_name)["name"] = drifted_name
+            cases[f"{original_name}-name-case-drift"] = (container_name_case_drift, "running-pod-changed")
+
+        for container_name in ("lifecycle", "daprd"):
+            non_boolean = stable_recheck()
+            statuses = non_boolean["podsAfter"]["items"][0]["status"]["containerStatuses"]
+            next(status for status in statuses if status["name"] == container_name)["ready"] = "true"
+            cases[f"{container_name}-ready-non-boolean"] = (non_boolean, "running-pod-changed")
+
+            not_ready = stable_recheck()
+            statuses = not_ready["podsAfter"]["items"][0]["status"]["containerStatuses"]
+            next(status for status in statuses if status["name"] == container_name)["ready"] = False
+            cases[f"{container_name}-not-ready"] = (not_ready, "running-pod-changed")
+
+        uid_missing = stable_recheck()
+        uid_missing["podsAfter"]["items"][0]["metadata"]["uid"] = ""
+        cases["uid-missing"] = (uid_missing, "running-pod-changed")
+
+        uid_changed = stable_recheck()
+        uid_changed["podsAfter"]["items"][0]["metadata"]["uid"] = "cc30cc1b-a706-4681-b944-3e923d96fa20"
+        cases["uid-changed"] = (uid_changed, "running-pod-changed")
+
+        image_missing = stable_recheck()
+        image_statuses = image_missing["podsAfter"]["items"][0]["status"]["containerStatuses"]
+        next(status for status in image_statuses if status["name"] == "daprd")["imageID"] = ""
+        cases["image-missing"] = (image_missing, "running-pod-changed")
+
+        image_changed = stable_recheck()
+        image_statuses = image_changed["podsAfter"]["items"][0]["status"]["containerStatuses"]
+        next(status for status in image_statuses if status["name"] == "daprd")["imageID"] = (
+            "docker-pullable://ghcr.io/dapr/daprd@sha256:" + "c" * 64
+        )
+        cases["image-changed"] = (image_changed, "running-pod-changed")
+
+        for name, (scenario, blocker) in cases.items():
+            with self.subTest(name=name):
+                result, packets, calls, _ = self.run_gate(scenario)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual([blocker], packets[0]["blockers"])
+                self.assertEqual("not-evaluated", packets[0]["gateStatus"])
+                self.assertFalse(packets[0]["productionGatePassed"])
+                self.assertNotIn(TOKEN_CANARY, json.dumps(packets[0]) + result.stdout + result.stderr)
+                pod_gets = [call for call in calls if "get" in call and "pods" in call]
+                self.assertEqual(2, len(pod_gets))
 
     def test_missing_runtime_metadata_token_blocks(self) -> None:
         scenario = copy.deepcopy(self.base_scenario)
@@ -547,6 +760,123 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(["secret-shaped-output"], packets[0]["blockers"])
         self.assertNotIn("Bearer-sensitive-value", json.dumps(packets[0]) + result.stdout + result.stderr)
+
+    def test_unavailable_production_target_and_operator_residual_remain_explicitly_open(self) -> None:
+        base_kustomization = BASE_KUSTOMIZATION.read_text(encoding="utf-8")
+        production_kustomization = PRODUCTION_KUSTOMIZATION.read_text(encoding="utf-8")
+        base_deployments = LIFECYCLE_DEPLOYMENTS.read_text(encoding="utf-8")
+        production_patch = PRODUCTION_DISABLED_PATCH.read_text(encoding="utf-8")
+
+        self.assertIn("- access-telemetry-deployments.yaml", base_kustomization)
+        self.assertIn("- ../../base", production_kustomization)
+        self.assertIn("- path: access-telemetry-disabled-patch.yaml", production_kustomization)
+
+        zero_scaled = True
+        for deployment_name in LIFECYCLE_DEPLOYMENT_NAMES:
+            base_documents = [
+                document
+                for document in base_deployments.split("\n---\n")
+                if re.search(rf"(?m)^  name: {re.escape(deployment_name)}$", document)
+            ]
+            self.assertEqual(1, len(base_documents), deployment_name)
+            self.assertRegex(base_documents[0], r"(?m)^kind: Deployment$")
+
+            patch_documents = [
+                document
+                for document in production_patch.split("\n---\n")
+                if re.search(rf"(?m)^  name: {re.escape(deployment_name)}$", document)
+            ]
+            self.assertEqual(1, len(patch_documents), deployment_name)
+            self.assertRegex(patch_documents[0], r"(?m)^kind: Deployment$")
+            zero_scaled = zero_scaled and re.search(r"(?m)^  replicas: 0$", patch_documents[0]) is not None
+
+        production_inputs = sorted((REPO_ROOT / "deploy" / "kubernetes" / "base").rglob("*.yaml"))
+        production_inputs.extend(
+            sorted((REPO_ROOT / "deploy" / "kubernetes" / "overlays" / "production").rglob("*.yaml"))
+        )
+        production_text = "\n".join(path.read_text(encoding="utf-8") for path in production_inputs)
+        explicit_alpha_pair_present = all(
+            option_name in production_text
+            for option_name in (
+                "AccessTelemetryLifecycle__ComponentIsAlpha",
+                "AccessTelemetryLifecycle__AllowAlphaComponent",
+            )
+        )
+        self.assertTrue(zero_scaled or not explicit_alpha_pair_present)
+        self.assertIn("ACCESS_TELEMETRY_ENABLED=false", production_text)
+
+        story_text = STORY.read_text(encoding="utf-8")
+        sprint_status = SPRINT_STATUS.read_text(encoding="utf-8")
+        self.assertRegex(story_text, r"(?m)^Status: in-progress$")
+        self.assertRegex(
+            sprint_status,
+            r"(?m)^  27-21-runtime-and-control-plane-identity: in-progress$",
+        )
+        self.assertRegex(
+            sprint_status,
+            r"(?m)^  27-4-retention-verification-operations-runbook-and-a41-close-out: backlog$",
+        )
+
+        slice_proof_match = re.search(
+            r"(?ms)^## Slice Proof\s*$.*?(?=^## |\Z)",
+            story_text,
+        )
+        self.assertIsNotNone(slice_proof_match)
+        slice_rows = [
+            line
+            for line in slice_proof_match.group(0).splitlines()
+            if line.startswith("| C1.15 |")
+        ]
+        self.assertEqual(1, len(slice_rows))
+        slice_cells = [cell.strip() for cell in slice_rows[0].strip("|").split("|")]
+        self.assertEqual(["pending", "not complete"], slice_cells[-2:])
+        self.assertIn(
+            "pwsh ./tools/verify-access-telemetry-c1.ps1 -Gate C1.15 -ProfileId PG-ONPREM-1 "
+            "-EvidenceDirectory ./artifacts/access-telemetry-c1/C1.15",
+            story_text,
+        )
+
+        change_log_match = re.search(
+            r"(?ms)^## Change Log\s*$.*?(?=^## |\Z)",
+            story_text,
+        )
+        self.assertIsNotNone(change_log_match)
+        change_log_rows = change_log_match.group(0).splitlines()
+        creation_rows = [line for line in change_log_rows if line.startswith("| 2026-08-03 | create-story |")]
+        review_rows = [line for line in change_log_rows if line.startswith("| 2026-08-03 | code-review |")]
+        self.assertEqual(1, len(creation_rows))
+        self.assertEqual(1, len(review_rows))
+        self.assertIn("Creation baseline records 6 discovered test methods", creation_rows[0])
+        self.assertIn("comparable discovery `6 -> 12` test methods", review_rows[0])
+
+        a41_action_match = re.search(
+            r'(?ms)^  - epic: 20\s*$\n    action: "Keep 20\.5-A41-ACCESS-TELEMETRY-RETENTION .*?'
+            r'(?=^  - epic:|\Z)',
+            sprint_status,
+        )
+        self.assertIsNotNone(a41_action_match)
+        self.assertRegex(a41_action_match.group(0), r"(?m)^    status: open(?:\s|$)")
+
+        epic_context = EPIC_CONTEXT.read_text(encoding="utf-8")
+        self.assertIn(
+            "The remaining twenty-four C1 gates stay held without a registered owner.",
+            epic_context,
+        )
+
+        deferred_work = DEFERRED_WORK.read_text(encoding="utf-8")
+        deferred_sections = {}
+        for deferred_id in ("17", "718"):
+            section_match = re.search(
+                rf"(?ms)^### DW-{deferred_id}:.*?(?=^### DW-|\Z)",
+                deferred_work,
+            )
+            self.assertIsNotNone(section_match)
+            deferred_sections[deferred_id] = section_match.group(0)
+
+        self.assertRegex(deferred_sections["17"], r"(?m)^status: open$")
+        residual = deferred_sections["718"]
+        self.assertIn("27.21-C1.15-REAL-PACKET-REVIEW", residual)
+        self.assertRegex(residual, r"(?m)^status: open$")
 
     def test_unsupported_gate_fails_parameter_validation_before_producer_runs(self) -> None:
         result, packets, calls, evidence = self.run_gate(

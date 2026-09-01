@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-08-31
+last_updated: 2026-09-01
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -163,6 +163,7 @@ story_execution_order:
       - 24-9-non-destructive-tenant-marker-diagnostics
   epic-27:
     reason: "Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 is the first registered one-gate successor and owns only C1.15 as backlog. Its producer and fixture exist, but C1.15 remains pending/not complete and is not passed. Story 27.3 still owns C0 and its independent C2/C3/C4 work; the remaining twenty-four C1 gates are held, unregistered, and unowned. Story 27.4 remains backlog and cannot start until all twenty-five successors are registered, done, and passed on real per-gate evidence under one profile hash. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record."
+    # Current hardening 2026-09-01: Story 27.21 is in-progress for repository-side producer hardening only; C1.15 remains pending/not complete and every downstream gate remains unchanged.
     order:
       - 27-1-access-telemetry-retention-ownership-decision
       - 27-2-bounded-retention-ttl-and-purge-implementation
@@ -467,6 +468,7 @@ development_status:
   # definitions are held without a current story owner or status. Production writes remain
   # disabled, Story 27.4 remains backlog, and A41 remains open until all C1.1-C1.25 gates pass
   # on real per-gate evidence under the same immutable profile hash.
+  # Current hardening 2026-09-01: Story 27.21 is in-progress; this status update changes no gate disposition.
   epic-27-retrospective: optional
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption

@@ -382,20 +382,33 @@ try {
         throw 'no-running-lifecycle-pod'
     }
 
-    $perPod = [System.Collections.Generic.List[object]]::new()
     $seenPodNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $seenPodUids = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $validatedPodUids = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
     foreach ($pod in $runningPods) {
-        $podName = [string]$pod.metadata.name
-        if ([string]::IsNullOrWhiteSpace($podName)) {
+        $rawPodName = $pod.metadata.name
+        if ($rawPodName -isnot [string] -or [string]::IsNullOrWhiteSpace($rawPodName)) {
             throw 'running-pod-name-missing'
         }
+        $podName = [string]$rawPodName
         if (-not $seenPodNames.Add($podName)) {
             throw 'duplicate-running-pod'
         }
-        $podUid = [string]$pod.metadata.uid
-        if ([string]::IsNullOrWhiteSpace($podUid)) {
+        $rawPodUid = $pod.metadata.uid
+        if ($rawPodUid -isnot [string] -or [string]::IsNullOrWhiteSpace($rawPodUid)) {
             throw 'running-pod-uid-missing'
         }
+        $podUid = [string]$rawPodUid
+        if (-not $seenPodUids.Add($podUid)) {
+            throw 'duplicate-running-pod-uid'
+        }
+        $validatedPodUids.Add($podName, $podUid)
+    }
+
+    $perPod = [System.Collections.Generic.List[object]]::new()
+    foreach ($pod in $runningPods) {
+        $podName = [string]$pod.metadata.name
+        $podUid = $validatedPodUids[$podName]
 
         $podLabel = [string]$pod.metadata.labels.'app.kubernetes.io/name'
         if (-not [string]::Equals($podLabel, $expectedAppId, [StringComparison]::Ordinal)) {
@@ -405,15 +418,21 @@ try {
             $null -ne $pod.metadata.deletionTimestamp) {
             throw 'running-pod-not-stable'
         }
-        $readyConditions = @($pod.status.conditions | Where-Object { $_.type -eq 'Ready' })
+        $readyConditions = @($pod.status.conditions | Where-Object {
+            [string]::Equals([string]$_.type, 'Ready', [StringComparison]::Ordinal)
+        })
         if ($readyConditions.Count -ne 1 -or
             -not [string]::Equals([string]$readyConditions[0].status, 'True', [StringComparison]::Ordinal)) {
             throw 'running-pod-not-stable'
         }
 
         $containerStatuses = @($pod.status.containerStatuses)
-        $lifecycleStatus = @($containerStatuses | Where-Object { $_.name -eq 'lifecycle' })
-        $sidecarStatus = @($containerStatuses | Where-Object { $_.name -eq 'daprd' })
+        $lifecycleStatus = @($containerStatuses | Where-Object {
+            [string]::Equals([string]$_.name, 'lifecycle', [StringComparison]::Ordinal)
+        })
+        $sidecarStatus = @($containerStatuses | Where-Object {
+            [string]::Equals([string]$_.name, 'daprd', [StringComparison]::Ordinal)
+        })
         if ($lifecycleStatus.Count -ne 1 -or $sidecarStatus.Count -ne 1 -or
             $lifecycleStatus[0].ready -isnot [bool] -or $sidecarStatus[0].ready -isnot [bool] -or
             -not $lifecycleStatus[0].ready -or -not $sidecarStatus[0].ready) {
@@ -602,10 +621,16 @@ try {
         $initialPod = $initialPods[$podAfterName]
         $podAfterUid = [string]$podAfter.metadata.uid
         $podAfterLabel = [string]$podAfter.metadata.labels.'app.kubernetes.io/name'
-        $readyConditionsAfter = @($podAfter.status.conditions | Where-Object { $_.type -eq 'Ready' })
+        $readyConditionsAfter = @($podAfter.status.conditions | Where-Object {
+            [string]::Equals([string]$_.type, 'Ready', [StringComparison]::Ordinal)
+        })
         $containerStatusesAfter = @($podAfter.status.containerStatuses)
-        $lifecycleStatusAfter = @($containerStatusesAfter | Where-Object { $_.name -eq 'lifecycle' })
-        $sidecarStatusAfter = @($containerStatusesAfter | Where-Object { $_.name -eq 'daprd' })
+        $lifecycleStatusAfter = @($containerStatusesAfter | Where-Object {
+            [string]::Equals([string]$_.name, 'lifecycle', [StringComparison]::Ordinal)
+        })
+        $sidecarStatusAfter = @($containerStatusesAfter | Where-Object {
+            [string]::Equals([string]$_.name, 'daprd', [StringComparison]::Ordinal)
+        })
         if (-not [string]::Equals($podAfterUid, [string]$initialPod.podUid, [StringComparison]::Ordinal) -or
             -not [string]::Equals($podAfterLabel, $expectedAppId, [StringComparison]::Ordinal) -or
             ($null -ne $podAfter.metadata.PSObject.Properties['deletionTimestamp'] -and

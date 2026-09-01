@@ -4947,6 +4947,8 @@ Operators can configure and verify a bounded lifecycle for access telemetry thro
 
 **Successor registration 2026-08-03.** Story 27.21 is the first one-gate transaction registered under the approved 2026-08-03 sequence. It owns only C1.15 and remains `backlog`; its fixture proves only producer behavior. No Production C1.15 result exists until the literal command captures a complete running-target packet and independent review accepts it.
 
+**Current hardening state 2026-09-01.** Story 27.21 is now `in-progress` for repository-side producer hardening. C1.15 remains `pending` / `not complete`; no Production observation, independent approval, write enablement, Story 27.4 advancement, or A41 closure is claimed.
+
 ### Story 27.1: Access-Telemetry Retention Ownership Decision (Decision-First)
 
 As an architect and operator,
@@ -5001,6 +5003,8 @@ So that future compliantly authored running-target C1 stories can start from a r
 
 **Current ownership correction 2026-08-03.** The preceding paragraph and historical AC1-AC5 text preserve the 2026-08-01 rollback state. Story 27.21 now owns only C1.15 as `backlog`; its producer exists but its checkpoint remains `pending` / `not complete`. The other twenty-four C1 gates remain held and unowned. This correction does not change Story 27.3 scope or discharge any C1 gate.
 
+**Current hardening state 2026-09-01.** Story 27.21 is `in-progress` for repository-side producer hardening only. Its checkpoint and every Story 27.3, Story 27.4, Production-write, and A41 boundary remain unchanged.
+
 **Binding-contract reconciliation 2026-08-03.** Story 27.3's current acceptance authority is only stable AC6-AC8 for C2/C3/C4, with C0 retained as its predecessor checkpoint. Exact former AC1-AC5 text and transferred C1 execution/checkpoint material remain only in the story file's explicitly non-binding historical records; they confer no Story 27.3 completion or successor-registration authority.
 
 **Review-readiness correction 2026-08-01.** C0 is reopened and blocked on open predecessor gaps `DW 27.3-CR42` through `DW 27.3-CR46`. Story 27.2's portable selector still executes 8/8, but five methods do not yet prove the claimed purge/write overlap, measured 250-events/s admission, independent overlapping writers, measured sixty-second outage/retry schedule, or structure-aware least-privilege boundary. Story 27.3 cannot enter review until the Story 27.2 lifecycle-checkpoint owner closes all five gaps on executed evidence and C0 is independently re-reviewed.
@@ -5020,7 +5024,7 @@ So that A41 closes only after the policy works in the deployment shape.
 **Predecessor Gate:**
 
 - Story 27.3 is `done` with C0 and C2-C4 complete against the immutable `PG-ONPREM-1` profile and with all its remediation, review, and ledger obligations closed. Its administratively transferred C1 umbrella is not qualification evidence and does not advance this story by itself.
-- Actual Story 27.7 through Story 27.31 files must exist, pass their creation guards, be registered by approved changes, and be `done`. Story 27.21 is currently the only registered successor and is `backlog`, so this predecessor gate remains unsatisfied.
+- Actual Story 27.7 through Story 27.31 files must exist, pass their creation guards, be registered by approved changes, and be `done`. Story 27.21 is currently the only registered successor and is `in-progress`, so this predecessor gate remains unsatisfied.
 - All twenty-five C1 child gates (C1.1-C1.25) are `passed` on their own required running-target evidence. A held, unregistered, pending, stale, skipped, or shared-discharge row fails this predecessor gate.
 - Story 27.3, all twenty-five C1 successors, and Story 27.4 use the same immutable profile hash. Any mismatch keeps Production lifecycle writes disabled, Story 27.4 `backlog`, and A41 open.
 
@@ -5042,7 +5046,7 @@ So that A41 closes only after the policy works in the deployment shape.
 
 ### Story 27.21: Runtime and Control-Plane Identity
 
-**Status:** backlog. **Owner:** Deployment Adapter Developer.
+**Status:** in-progress. **Owner:** Deployment Adapter Developer.
 
 As a Deployment Adapter Developer,
 I want one read-only C1.15 producer for the running access-telemetry lifecycle workload,

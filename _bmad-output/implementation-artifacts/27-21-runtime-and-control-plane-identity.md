@@ -4,7 +4,7 @@ baseline_commit: 3f758f9ab019ca64a793e268470a7e4663cbc1fa
 
 # Story 27.21: Runtime and Control-Plane Identity
 
-Status: backlog
+Status: in-progress
 
 ## Story
 
@@ -12,7 +12,7 @@ As a Deployment Adapter Developer,
 I want one read-only C1.15 producer for the running access-telemetry lifecycle workload,
 so that an independent reviewer can evaluate runtime and control-plane identity without another gate being inferred or discharged.
 
-This is the first successor transaction. It introduces the neutral shared runner and packet scaffold, implements only the C1.15 mode, and discharges no other gate.
+This was the first successor registration transaction and was initially registered as `backlog`. The current producer-hardening work is `in-progress`; it still implements only the C1.15 mode and discharges no gate.
 
 ## Acceptance Criteria
 
@@ -54,7 +54,7 @@ This story owns exactly one independently demonstrable gate. The row is also the
 
 ## Dev Notes
 
-- The approved execution order places identity Stories 27.21-27.24 before the capability/evidence successors. This transaction creates only Story 27.21 and only C1.15.
+- The approved execution order places identity Stories 27.21-27.24 before the capability/evidence successors. The initial transaction created only Story 27.21 and only C1.15 as `backlog`; the current hardening pass moves that existing owner to `in-progress` without registering another gate.
 - Dapr `enabledFeatures` and the lifecycle options `ComponentIsAlpha` / `AllowAlphaComponent` are separate observations. An empty but present feature list is a valid observation; either missing alpha value is blocking.
 - The producer executes the authenticated metadata request inside the lifecycle container. The bounded raw response crosses `kubectl exec` only into runner memory, is secret-scanned, and is discarded; only strictly validated allowlisted fields and their projection hash enter the packet. No token value is accepted into a packet, blocker, transcript, source hash, or command ledger.
 - The checked-in Production manifest keeps the lifecycle Deployment at zero replicas and does not yet set the explicit alpha pair. The producer therefore exists before real C1.15 evidence can exist; this is expected and is not a Production pass.
@@ -78,18 +78,23 @@ Verified 2026-08-03 against worktree baseline `3f758f9ab019ca64a793e268470a7e466
 - `dotnet test tests/Hexalith.Memories.Cli.Tests/Hexalith.Memories.Cli.Tests.csproj -c Release --no-restore --filter 'FullyQualifiedName~CiWorkflow_RunsEveryToolingFixtureSuiteThatGuardsAShippedTool' --noLogo` — 1 test passed; the new tooling lane is wired into CI.
 - `python3 tools/check-story-slice-scope.py --require-record --story-key 27-21-runtime-and-control-plane-identity` — required before registration and rerun after registration.
 - `git diff --check` — required before registration and rerun after registration.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p '*_test.py' -v` — current 2026-09-01 review-loop-2 hardening lane passed 20/20 test methods, including malformed-name/UID no-exec rejection, duplicate-identity rejection, ordinal recheck drift, exhaustive recheck branches, and unavailable-target governance fixtures.
+- `python3 tools/check-story-slice-scope.py --require-record --story-key 27-21-runtime-and-control-plane-identity` — current 2026-09-01 result: `story-slice-scope: OK - 1 story file(s) checked`.
+- The spec-scoped tracked `git diff --check` and untracked-spec `git diff --no-index --check -- /dev/null ...` checks passed; the latter returned the expected exit 1 solely because the clean untracked spec differs from `/dev/null`.
 
 ## Dev Agent Record
 
 ### Completion Notes
 
 - Implemented only the C1.15 observation producer and a neutral packet envelope.
+- Hardened the producer with an all-pod ordinal name/UID uniqueness pre-pass before the first exec probe, exact distinct valid identities, and fail-closed recheck coverage for every collection-shape, readiness, identity, and image branch.
 - Fixture success establishes producer behavior, not the Production gate result.
-- Story status and checkpoint state remain `backlog`, `pending`, and `not complete`; Production lifecycle writes, Story 27.4, and A41 remain unchanged.
+- The initial registration remains a historical `backlog` event. Current story and sprint state are `in-progress`, while the checkpoint remains `pending` / `not complete`; Production lifecycle writes, Story 27.4, and A41 remain unchanged.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity.md`
+- `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-2.md`
 - `.github/workflows/ci.yml`
 - `tools/verify-access-telemetry-c1.ps1`
 - `tests/tooling/access_telemetry_c1/fixtures/c1_15_complete.json`
@@ -106,3 +111,4 @@ Verified 2026-08-03 against worktree baseline `3f758f9ab019ca64a793e268470a7e466
 | :--- | :---- | :----- | :--------- | :----------------------- |
 | 2026-08-03 | create-story | Created the one-gate C1.15 story, producer, fixture, and conditional backlog registration; no Production pass or write enablement. | Creation baseline records 6 discovered test methods; phase delta `+0`, cumulative story delta `+0`; exact evidence: `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p 'runtime_control_plane_identity_test.py' -v` (6 passed). | `matched 9/9` story-scoped paths from `git status --short -- _bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity.md tools/verify-access-telemetry-c1.ps1 tests/tooling/access_telemetry_c1/fixtures/c1_15_complete.json tests/tooling/access_telemetry_c1/runtime_control_plane_identity_test.py _bmad-output/implementation-artifacts/27-21-runtime-and-control-plane-identity.md _bmad-output/implementation-artifacts/epic-27-context.md _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/planning-artifacts/epics.md _bmad-output/implementation-artifacts/sprint-status.yaml`; unrelated pre-existing dirty paths and unrelated pre-existing hunks in `epics.md` are user-owned and outside this scoped comparison. |
 | 2026-08-03 | code-review | Applied bounded review patches for authenticated-fixture enforcement, timeout handling, strict metadata schema/bounds, stable-pod readiness, complete multi-pod drift detection, allowlisted source-hash provenance, read-only packet creation, exact hash assertions, and CI adoption. C1.15 remains unevaluated. | Review phase delta `+6`, cumulative story delta `+6`; comparable discovery `6 -> 12` test methods under `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p 'runtime_control_plane_identity_test.py' -v` (12 passed). CI inventory: 1/1 passed under the exact focused `dotnet test` command recorded above. | `matched 10/10` story-scoped paths from `git status --short -- .github/workflows/ci.yml _bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity.md tools/verify-access-telemetry-c1.ps1 tests/tooling/access_telemetry_c1/fixtures/c1_15_complete.json tests/tooling/access_telemetry_c1/runtime_control_plane_identity_test.py _bmad-output/implementation-artifacts/27-21-runtime-and-control-plane-identity.md _bmad-output/implementation-artifacts/epic-27-context.md _bmad-output/implementation-artifacts/deferred-work.md _bmad-output/planning-artifacts/epics.md _bmad-output/implementation-artifacts/sprint-status.yaml`; unrelated pre-existing dirty paths and unrelated pre-existing hunks in `epics.md` remain user-owned and outside this scoped comparison. |
+| 2026-09-01 | C1.15 identity hardening | Added the no-exec full identity pre-pass, distinct/case-sensitive UID fixtures, exhaustive post-capture drift blockers, and truthful current-state/unavailable-target governance. C1.15 remains unevaluated. | Hardening phase adds 3 focused test methods (`17 -> 20`) plus branch-shaped subtests; current verification is recorded above after execution. | `matched 8/8` current-pass paths: `tools/verify-access-telemetry-c1.ps1`, `tests/tooling/access_telemetry_c1/runtime_control_plane_identity_test.py`, `_bmad-output/implementation-artifacts/27-21-runtime-and-control-plane-identity.md`, `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/planning-artifacts/epics.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`, `_bmad-output/implementation-artifacts/epic-27-context.md`, and `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-2.md`; unrelated worktree changes remain untouched. |
