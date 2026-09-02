@@ -2,8 +2,8 @@
 title: 'DW-18 real Redis ingest reservation race proof'
 type: 'chore'
 created: '2026-09-01'
-status: 'done'
-baseline_revision: 'fa1ecb526ebb77b49704e68904225a6f87b130c0'
+status: blocked
+baseline_revision: 0411d500eeb0c230fdc6e8d7651a6cb08f6efb2c
 review_loop_iteration: 0
 followup_review_recommended: true
 context:
@@ -175,40 +175,6 @@ The ledger's historical `Server.Tests` location cannot host this proof safely: t
 
 ## Auto Run Result
 
-Status: done
-Blocking condition: none
+Status: blocked
+Blocking condition: dirty working tree
 
-**Implemented change.** A follow-up review pass over the DW-18 bundle (baseline
-`fa1ecb526ebb77b49704e68904225a6f87b130c0`). Three patches were applied to the existing test-only change: the
-integration-fast required-surface manifest now pins both new proof methods, the `ReleaseAsync` deletion-scope
-test seeds its target through the production reserve path and gains cross-tenant negative evidence, and the
-new class gained story traceability plus a named constant. No production source and no ledger entry was
-modified.
-
-**Files changed in this pass:**
-- `tests/Hexalith.Memories.IntegrationTests/Ingestion/IngestDedupReservationIntegrationTests.cs` -- production-seeded reservation under the deletion-scope proof, a different-tenant reservation that must survive `ReleaseAsync`, Story/AC/DW traceability summary, and the named `InjectedRendezvousTimeout`.
-- `tools/integration-fast-required-surfaces.txt` -- added `ingest-reservation-release-scope` pinning the release/scope method by exact class+method.
-- `_bmad-output/implementation-artifacts/spec-dw-18-redis-ingest-race-proof.md` -- triage log entry, second deferred item, this result.
-
-**Review findings breakdown:** 3 patches applied (0 high, 2 medium, 1 low), 1 item deferred (medium:
-`IngestDedupReservation` accepts a `CancellationToken` it never uses), 27 rejected. 0 intent gaps, 0 bad-spec
-loopbacks; `review_loop_iteration` stayed at 0.
-
-**Follow-up review recommendation:** true. Patched severities this pass: 0 high, 2 medium, 1 low; score =
-`3 x 2 + 1 x 1 = 7`, which is >= 5.
-
-**Verification performed (all green, 2026-09-01):**
-- `docker version` / `docker info` -- Docker Desktop, server 29.6.1, daemon reachable.
-- `dotnet build tests/Hexalith.Memories.IntegrationTests/... --configuration Release -m:1` -- 0 warnings, 0 errors.
-- `DiffEngine_Disabled=true dotnet exec .../Hexalith.Memories.IntegrationTests.dll -class ...IngestDedupReservationIntegrationTests` -- Total: 2, Failed: 0, Skipped: 0 against a real Redis Stack container.
-- Mutation sensitivity: an over-broad `ingest-reserve:*` prefix delete inside production `ReleaseAsync` fails the sentinel assertion; the same sweep skipping `:sentinel` keys fails the neighbour-tenant assertion (Total: 2, Failed: 1 in both). Production source restored byte-identical and re-verified green.
-- `dotnet build tests/Hexalith.Memories.Server.Tests/... && dotnet exec ... -class ...DedupKeyBuilderTests` -- Total: 13, Failed: 0 (cross-tenant/case key non-collision evidence intact).
-- `dotnet exec ... -class ...Ingestion.IngestDedupReservationTests` -- Total: 12, Failed: 0; `-class ...Deployment.OperationalRunbookSetTests` (the other consumer of the surfaces manifest) -- Total: 10, Failed: 0.
-- `python3 -m unittest discover -s tests/tooling/integration_fast_coverage -p '*_test.py'` -- Ran 6 tests, OK.
-- `tools/verify-integration-fast-coverage.py` `load_requirements` parses the amended manifest: 21 surfaces, both `ingest-reservation-*` entries resolved to exact class+method.
-
-**Residual risks:**
-- The proof remains class-level. The REST `/api/v1/ingest` `DuplicateInFlight` branch and the `PreflightDedupEnabled` flag are still observed by no test; the first is carried as a deferred item on this spec.
-- The race is statistical, not deterministic: 25 rounds of two contenders sharing one `IConnectionMultiplexer`. A lost-update mutation is caught at round 0 today, but no per-round detection rate is measured.
-- Both contenders block thread-pool threads in `Barrier.SignalAndWait` under a 30 s bound; under severe CI thread-pool starvation the now-gated method fails closed (red lane) rather than silently green. `Task.Run` workers are mandated by the intent contract, so this was not changed.
-- The real-Redis `FailOpen` branches (expired-between-set-and-read, Redis outage) stay unit-proven only.
