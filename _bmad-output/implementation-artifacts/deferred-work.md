@@ -5367,3 +5367,19 @@ source_spec: `spec-dw-18-redis-ingest-race-proof.md`
 severity: medium
 reason: Grepping DuplicateInFlight across src/ and tests/ returns only IngestDedupReservation.cs, IngestDedupReservationTests.cs (substitute unit) and the new IngestDedupReservationIntegrationTests.cs. The endpoint branch at src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs:127 that returns Accepted(IngestStatusLocation(winnerInstanceId)) is observed by none of them, so returning the caller's own instance id there — or falling through to a second ScheduleAsync — would not fail any test. Pre-existing: this bundle adds the class-level race proof and does not touch the endpoint.
 status: open
+
+### DW-723: IngestDedupReservation.TryReserveAsync and ReleaseAsync accept a CancellationToken and never pass it to any StackExchange.Redis call, so an aborted ingest request keeps waiting on Redis.
+origin: spec-deferred 6eb563b84d8e
+location: src/Hexalith.Memories.Server/Ingestion/IngestDedupReservation.cs:71,116
+source_spec: `spec-dw-18-redis-ingest-race-proof.md`
+severity: medium
+reason: src/Hexalith.Memories.Server/Ingestion/IngestDedupReservation.cs declares `CancellationToken cancellationToken` on both public methods; the bodies call StringSetAsync, StringGetAsync and KeyDeleteAsync with no token overload and never read the parameter. The repository convention (project-context.md, "Async APIs carry CancellationToken - public async service/client methods should accept and pass through cancellation") is therefore only half met, and the dead parameter reads as if cancellation were honoured. Pre-existing: this test-only bundle does not touch the production class, and both new tests pass CancellationToken.None, which keeps the gap invisible.
+status: open
+
+### DW-724: Follow-up review still recommended for dw-redis-ingest-race-proof after the damping cap was spent
+origin: review-budget-followup
+location: n/a
+source_spec: `spec-dw-18-redis-ingest-race-proof.md`
+severity: low
+reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260901-065621-43db; this entry preserves the lingering recommendation for a deliberate later review.
+status: open
