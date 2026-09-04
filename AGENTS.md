@@ -49,8 +49,8 @@ Before working in a Hexalith repository, locate, read, and follow
 - Write every commit message, including drafts from Claude, Codex, Cursor, or Copilot, as a Conventional
   Commit: `<type>[optional scope][!]: <description>`. Use one of `build`, `chore`,
   `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, or `test`.
-  Pick the most specific type; use `chore` for maintenance when no more specific
-  type describes the work.
+  Pick a type that accurately describes the work; `chore` is valid for general
+  maintenance.
 - Never propose a machine-shaped or bare-verb subject. Git's default
   `Update subproject reference ...`, and a plain `Update ...`, `Add ...`,
   `Fix ...`, or `Bump ...`, fail validation. Write, for example,

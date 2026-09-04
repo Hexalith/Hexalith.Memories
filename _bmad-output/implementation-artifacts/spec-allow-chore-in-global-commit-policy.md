@@ -2,7 +2,7 @@
 title: 'Allow chore in the repository-wide commit policy'
 type: 'bugfix'
 created: '2026-09-02'
-status: 'in-review'
+status: 'done'
 baseline_commit: '7fa095591bf9c9479aea7280319216959eaaa25f'
 review_loop_iteration: 1
 context:
@@ -88,6 +88,9 @@ reset, rewrite, or combine the user's existing changes.
   test. Human authorized the submodule edit; added both guides and a CI fixture to scope. Avoid:
   simultaneously permitting/forbidding `chore`. KEEP: explicit allowlist, other rules, story gates,
   synchronized entry points, and unchanged index. Do not commit or update the gitlink.
+- 2026-09-04 -- Review patches made `chore` unambiguously valid as general maintenance whenever
+  the owning policy allows it, bounded each commitlint subprocess to 30 seconds, and reconciled
+  verification evidence with the concurrent external `/pushall` commits and LF normalization.
 
 ## Verification
 
@@ -97,25 +100,34 @@ reset, rewrite, or combine the user's existing changes.
 - Compare both entry-point triplets and search changed AI.Tools guides for remaining prohibitions.
 - Run `git diff --check` in both repositories and compare the root index's three object IDs.
 
-**Results (2026-09-04):**
+**Results (2026-09-04, refreshed after review patches):**
 - Repository-pinned `@commitlint/cli@21.1.0` fixture: 3 tests ran and passed, covering the accepted
-  maintenance subject plus unsupported-type and malformed-header rejection.
+  maintenance subject plus unsupported-type and malformed-header rejection; every subprocess is
+  bounded by a 30-second timeout.
 - Story-scope direct check exited 0 with `No story key resolved; story-scope check is a no-op.`;
   all 53 focused story-scope tests passed.
-- Both root and AI.Tools entry-point triplets compared byte-identical. The changed AI.Tools guides
-  contained no remaining `chore` prohibition.
-- Root tracked and no-index whitespace checks passed. AI.Tools' canonical CRLF files passed
-  `git -c core.whitespace=cr-at-eol diff --check`; plain `git diff --check` treats their CR bytes as
-  trailing whitespace because that repository has no line-ending attributes.
+- Both root and AI.Tools entry-point triplets compared byte-identical. The reviewed policy files
+  contained no remaining conditional or contradictory `chore` restriction.
+- Plain `git diff --check` passed in both repositories. The external AI.Tools commit normalized both
+  changed guides from CRLF to LF, which the refreshed review changes preserve.
 - The focused CI inventory test proving every tooling fixture is workflow-registered passed. Its
   66-test class has one unrelated baseline failure: the baseline CI already has five restore steps
   while the guard expects four.
-- The three pre-existing staged object IDs remained exactly
+- Before the concurrent external operation, the three pre-existing staged object IDs remained
+  exactly
   `aa6ea831d81ad897b7392e76ff73749ed2afe337`,
   `15a00e8d1999892a4bfd6a7f2f355d328576b446`, and
-  `d2b7ede359830c27934ac9f577e3073955c3e2c2`.
+  `d2b7ede359830c27934ac9f577e3073955c3e2c2`. The concurrent external `/pushall` operation then
+  created and pushed root commit `b865d40faf1372ba6bfe512b1fd2342e1b7c6beb` and AI.Tools
+  commit `1190b6db1930fb324e0c1e7bf86d28632c0f6377`; those were not actions of this agent and are not
+  claimed as this agent's work. The root commit externally included the parent AI.Tools gitlink and
+  unrelated files; those remain excluded from this spec's owned file list. This review patch did
+  not stage, commit, or push any file.
 
 ## Final File List
+
+The parent `references/Hexalith.AI.Tools` gitlink and unrelated files included by the external
+`/pushall` commit are not owned by this spec and are intentionally excluded below.
 
 - `commitlint.config.mjs`
 - `AGENTS.md`
@@ -126,3 +138,29 @@ reset, rewrite, or combine the user's existing changes.
 - `references/Hexalith.AI.Tools/hexalith-llm-instructions.md`
 - `references/Hexalith.AI.Tools/hexalith-git-instructions.md`
 - `spec-allow-chore-in-global-commit-policy.md`
+
+## Suggested Review Order
+
+**Policy enforcement**
+
+- The explicit allowlist accepts `chore` while preserving every other commitlint rule.
+  [`commitlint.config.mjs:12`](../../commitlint.config.mjs#L12)
+
+**Shared guidance**
+
+- Synchronized root entry points describe `chore` as valid general maintenance.
+  [`AGENTS.md:49`](../../AGENTS.md#L49)
+
+- Authoritative Git guidance aligns type selection, policy boundaries, and the reported example.
+  [`hexalith-git-instructions.md:200`](../../references/Hexalith.AI.Tools/hexalith-git-instructions.md#L200)
+
+- Authoritative LLM guidance permits `chore` whenever the owning policy allows it.
+  [`hexalith-llm-instructions.md:305`](../../references/Hexalith.AI.Tools/hexalith-llm-instructions.md#L305)
+
+**Regression coverage**
+
+- Behavioral fixtures exercise accepted, unsupported, and malformed subjects through pinned commitlint.
+  [`commitlint_config_test.py:32`](../../tests/tooling/commitlint/commitlint_config_test.py#L32)
+
+- CI runs the fixture immediately after installing the repository-pinned Node tooling.
+  [`ci.yml:262`](../../.github/workflows/ci.yml#L262)
