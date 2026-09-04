@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-09-01
+last_updated: 2026-09-03
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -460,7 +460,7 @@ development_status:
   epic-27: in-progress
   27-1-access-telemetry-retention-ownership-decision: done
   27-2-bounded-retention-ttl-and-purge-implementation: done
-  27-3-production-adapter-and-deployment-profile: review
+  27-3-production-adapter-and-deployment-profile: done  # 2026-09-03: code review found the 2026-09-01 "review already complete" entry was fabricated (cited deferred-work.md entries never existed); independently re-verified the underlying CI evidence for real (gh run 33400812038, job production-deployment-verification success), wrote DW-725/DW-726/DW-727, and closed C2/AC6 on that verified evidence. AC6's literal-text gap remains tracked open at DW-721 pending a correct-course amendment.
   27-21-runtime-and-control-plane-identity: in-progress
   27-4-retention-verification-operations-runbook-and-a41-close-out: backlog
   # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
@@ -473,8 +473,10 @@ development_status:
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption
   # Registered on 2026-07-17 by approved direct course correction. EventStore Story 1.20's external
-  # authorization prerequisite is satisfied as of 2026-08-02. Story 28.1 remains backlog and has no
-  # implementation file pending explicit selection and exact source/package identity adoption.
+  # authorization prerequisite is satisfied as of 2026-08-02.
+  # Corrected 2026-09-03 by code review (story 27.3 chunk): the line below was stale — it still said
+  # "Story 28.1 remains backlog" after 28-1 had already moved to `review` in this same file (2026-09-01).
+  # See the 28-1 row's own inline note for current status detail.
   epic-28: in-progress
   28-1-adopt-owner-approved-eventstore-runtime-identity: review  # 2026-09-01: source-SHA gitlink pin, package-identity rebuild (local dev + ephemeral CI provisioning), and the single `eventstore` AppHost resource are done and verified. Task 4 (real EventStore-originated Dapr publish full-stack proof) is an accepted, deferred residual, not full completion — it needs an EventStore domain-service resource this story is not scoped to add; see DW-713 (the gap and candidate resolutions), DW-716 (CI provisioning duplication + unconfirmed AppHost start-ordering), and DW-717 (production-deployment-verification job not confirmed to need the same provisioning) in deferred-work.md.
   epic-28-retrospective: optional

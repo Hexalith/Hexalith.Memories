@@ -259,6 +259,9 @@ jobs:
       - name: Verify semantic-release configuration offline
         run: npm run verify:semantic-release-config
 
+      - name: Run commitlint configuration fixtures
+        run: python3 -m unittest discover -s tests/tooling/commitlint -p "*_test.py"
+
       - name: Provision ephemeral EventStore local NuGet feed
         timeout-minutes: 6
         # Story 28.1: see the identical step in the `build` job above for the full rationale.

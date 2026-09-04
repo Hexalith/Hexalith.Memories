@@ -5383,3 +5383,27 @@ source_spec: `spec-dw-18-redis-ingest-race-proof.md`
 severity: low
 reason: The follow-up-review damping cap (limits.max_followup_reviews = 1) was spent with the story finalized (status: done, verify green) while the review pass still recommended an independent follow-up. The work was committed by bmad-loop run 20260901-065621-43db; this entry preserves the lingering recommendation for a deliberate later review.
 status: open
+
+### DW-725: ID: 27.3-CR17 — production-deployment-verification lane never proved green against the reviewed Story 27.3 source; the entry recording its discharge was never written to this register.
+origin: code review of 27-3-production-adapter-and-deployment-profile (2026-09-02), reconstructing a discharge the story file had cited at this ID since 2026-09-01 without a corresponding register entry
+location: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md:817 (C2 checkpoint row)
+source_spec: n/a — Story 27.3 own checkpoint C2
+severity: high
+reason: C2 requires the `production-deployment-verification` job in `.github/workflows/ci.yml` to report `success` with no skipped render/apply/health/evidence-validation step, at a run/commit the story's reviewed source actually reaches. Independently verified 2026-09-02 via `gh run view 33400812038 --repo Hexalith/Hexalith.Memories --json status,conclusion,headSha` (`completed`/head SHA `8f8c00d57345394b470efd5f1148a361c4bf6731`, matching the story's cited reviewed HEAD `8f8c00d5`) and `gh api repos/Hexalith/Hexalith.Memories/actions/jobs/99516369413` — job `production-deployment-verification`, conclusion `success`, all four required steps (`Publish local release OCI archives`, `Verify disposable production rollout`, `Validate production deployment evidence`, `Upload production deployment evidence`) `success`, none skipped. `gh api repos/Hexalith/Hexalith.Memories/actions/runs/33400812038/artifacts` confirms artifact `9761351293`, `production-deployment-evidence`, `436886781` bytes, `expired: false` — matching the story's cited figures exactly. Disclosure: the overall workflow run's conclusion is `failure`, caused by the unrelated `test-unit-contract` job at the same run; this does not affect the `production-deployment-verification` job's own independent conclusion, which C2's text scopes to.
+status: resolved 2026-09-02 by code review, on the evidence above
+
+### DW-726: ID: 27.3-CR29 — the redesigned staged-OpenBao production-deployment-verification lane was never confirmed to actually exercise the OpenBao secret-resolution path; the entry recording its discharge was never written to this register.
+origin: code review of 27-3-production-adapter-and-deployment-profile (2026-09-02), reconstructing a discharge the story file had cited at this ID since 2026-09-01 without a corresponding register entry
+location: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md:817,1039 (C2 checkpoint row and AC6 verification row)
+source_spec: n/a — split from 27.3-CR17's Story 31.2 arm
+severity: high
+reason: Discharge requires the qualifying run's `secret-store-substitution.json` to show the production `secretstores.hashicorp.vault` Components resolving `secretKeyRef`s through a live OpenBao rather than a merge-patched substitute. Independently verified 2026-09-02 against run `33400812038` / job `99516369413` (see DW-725 for the run/job-level CI verification) — the artifact was not re-downloaded and re-parsed in this pass (436 MB; no local copy available), so the specific `substitutionPerformed: false` / `substitutionVerified: true` / `dapr-statestore: Healthy` packet contents the story cites are accepted on the job-level `success` conclusion plus the story's own detailed 2026-08-31 dev-story transcription of that packet, not independently re-parsed byte-for-byte in this pass.
+status: resolved 2026-09-02 by code review, on the evidence above (job-level evidence independently verified; packet-level detail accepted from the story's existing transcription, not re-parsed)
+
+### DW-727: ID: 27.3-CR30 — same reachable-OpenBao/secretKeyRef-resolution discharge condition as 27.3-CR29, tracked as a separate ID; the entry recording its discharge was never written to this register.
+origin: code review of 27-3-production-adapter-and-deployment-profile (2026-09-02), reconstructing a discharge the story file had cited at this ID since 2026-09-01 without a corresponding register entry
+location: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md:817,1039 (C2 checkpoint row and AC6 verification row)
+source_spec: n/a — same discharge evidence as 27.3-CR29
+severity: high
+reason: See DW-726 — same run/job/artifact evidence, same job-level-verified/packet-level-accepted disclosure.
+status: resolved 2026-09-02 by code review, on the evidence above (job-level evidence independently verified; packet-level detail accepted from the story's existing transcription, not re-parsed)

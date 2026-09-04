@@ -6,13 +6,13 @@ export default {
   // exceed 100 characters. Subject casing and body line length are unrestricted, while headers
   // retain a 150-character cap. Type/scope/format enforcement from config-conventional is retained.
   // The shared AI baseline (AGENTS.md / CLAUDE.md / .github/copilot-instructions.md) requires a
-  // type that describes the work and forbids `chore`, so drop it from config-conventional's
-  // type-enum. Matches Hexalith.EventStore, which enforces the same ten-type list.
+  // type that describes the work and permits `chore` for maintenance that has no more specific
+  // type, so retain it in the explicit config-conventional type-enum.
   rules: {
     'type-enum': [
       2,
       'always',
-      ['build', 'ci', 'docs', 'feat', 'fix', 'perf', 'refactor', 'revert', 'style', 'test'],
+      ['build', 'chore', 'ci', 'docs', 'feat', 'fix', 'perf', 'refactor', 'revert', 'style', 'test'],
     ],
     'subject-case': [0],
     'body-max-line-length': [0],
