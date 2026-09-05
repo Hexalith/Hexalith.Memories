@@ -27,6 +27,7 @@ class CoverageContractTests(unittest.TestCase):
                 "Hexalith.Memories.AccessTelemetry",
                 "Hexalith.Memories.AccessTelemetry.Clock",
                 "Hexalith.Memories.AccessTelemetry.Contracts",
+                "Hexalith.Memories.Aspire",
                 "Hexalith.Memories.Cli",
                 "Hexalith.Memories.Client.Rest",
                 "Hexalith.Memories.Contracts",
