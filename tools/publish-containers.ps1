@@ -313,12 +313,6 @@ function Build-ContainerArchive {
         '-p:ContinuousIntegrationBuild=true',
         "-p:ContainerArchiveOutputPath=$($Image.archive)"
     )
-    # Story 28.1 / DW-717: when CI provisioned the ephemeral EventStore proof feed, force
-    # publish restores through that config so Hexalith.EventStore.* resolves off nuget.org.
-    if (-not [string]::IsNullOrWhiteSpace($env:EVENTSTORE_LOCAL_NUGET_CONFIG)) {
-        $arguments += "--configfile"
-        $arguments += $env:EVENTSTORE_LOCAL_NUGET_CONFIG
-    }
     $result = Invoke-NativeCommand -Command 'dotnet' -Arguments $arguments
     if ($result.ExitCode -ne 0) {
         return New-Outcome -Image $Image -Status 'failed' -ExitCode $result.ExitCode -Error (Get-FailureText $result) -Disposition 'build-failed'

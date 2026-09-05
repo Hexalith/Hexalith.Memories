@@ -13,13 +13,6 @@ env:
   DAPR_RUNTIME_VERSION: '1.18.1'
   MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS: '127.0.0.1:50005'
   MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS: '127.0.0.1:50006'
-  # Story 28.1: single source of truth for the two literals every
-  # "Provision ephemeral EventStore local NuGet feed" step below passes to
-  # tools/ci/provision-eventstore-local-feed.sh. Update both here (and the matching pair in
-  # ci.yml) if EventStore Story 1.20's approved identity ever changes -- do not hand-edit the
-  # individual `run:` lines.
-  EVENTSTORE_APPROVED_SHA: 'fa2d1c9910f8976553adb33dcdb1c9ff2ea75594'
-  EVENTSTORE_APPROVED_VERSION: '999.1.20-proof.fa2d1c9910f8'
 
 jobs:
   integration-fast:
@@ -54,25 +47,13 @@ jobs:
           docker run -d --name dapr_scheduler -p 50006:50006 -p 2379:2379 -v dapr_scheduler:/var/lock daprio/dapr:${{ env.DAPR_RUNTIME_VERSION }} ./scheduler --etcd-data-dir=/var/lock/dapr/scheduler --override-broadcast-host-port=127.0.0.1:50006 --etcd-client-listen-address=0.0.0.0
           dapr --version
 
-      - name: Provision ephemeral EventStore local NuGet feed
-        timeout-minutes: 6
-        # Story 28.1 (sprint-change-approved "Option B"): HexalithEventStoreVersion is pinned to
-        # a proof-identity version (999.1.20-proof.fa2d1c9910f8) not published on nuget.org.
-        # Restoring it requires a local feed rebuilt from the approved source SHA and signed with
-        # a certificate, but that certificate/key/prebuilt .nupkg must NEVER be persisted in the
-        # repo, in CI caches, or in CI secrets -- this step generates everything fresh in this
-        # job's own $RUNNER_TEMP and the job discards it on exit. See
-        # tools/ci/provision-eventstore-local-feed.sh and
-        # spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md. Required here because the
-        # integration-slow lane is what runs this story's own Category=IntegrationSlow proof test.
-        run: tools/ci/provision-eventstore-local-feed.sh "$EVENTSTORE_APPROVED_SHA" "$EVENTSTORE_APPROVED_VERSION"
 
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
         # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
         # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Run Tier 3 integration tests (fast lane, excludes IntegrationSlow and Performance)
         run: bash ./tools/test.sh --filter "Category=Integration&Category!=IntegrationSlow&Category!=Performance" --configuration Release
@@ -118,25 +99,13 @@ jobs:
           docker run -d --name dapr_scheduler -p 50006:50006 -p 2379:2379 -v dapr_scheduler:/var/lock daprio/dapr:${{ env.DAPR_RUNTIME_VERSION }} ./scheduler --etcd-data-dir=/var/lock/dapr/scheduler --override-broadcast-host-port=127.0.0.1:50006 --etcd-client-listen-address=0.0.0.0
           dapr --version
 
-      - name: Provision ephemeral EventStore local NuGet feed
-        timeout-minutes: 6
-        # Story 28.1 (sprint-change-approved "Option B"): HexalithEventStoreVersion is pinned to
-        # a proof-identity version (999.1.20-proof.fa2d1c9910f8) not published on nuget.org.
-        # Restoring it requires a local feed rebuilt from the approved source SHA and signed with
-        # a certificate, but that certificate/key/prebuilt .nupkg must NEVER be persisted in the
-        # repo, in CI caches, or in CI secrets -- this step generates everything fresh in this
-        # job's own $RUNNER_TEMP and the job discards it on exit. See
-        # tools/ci/provision-eventstore-local-feed.sh and
-        # spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md. Required here because the
-        # integration-slow lane is what runs this story's own Category=IntegrationSlow proof test.
-        run: tools/ci/provision-eventstore-local-feed.sh "$EVENTSTORE_APPROVED_SHA" "$EVENTSTORE_APPROVED_VERSION"
 
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
         # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
         # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Run Tier 3 integration tests (slow lane only)
         run: bash ./tools/test.sh --filter "Category=IntegrationSlow" --configuration Release
@@ -172,25 +141,13 @@ jobs:
       - name: Verify Docker
         run: docker info
 
-      - name: Provision ephemeral EventStore local NuGet feed
-        timeout-minutes: 6
-        # Story 28.1 (sprint-change-approved "Option B"): HexalithEventStoreVersion is pinned to
-        # a proof-identity version (999.1.20-proof.fa2d1c9910f8) not published on nuget.org.
-        # Restoring it requires a local feed rebuilt from the approved source SHA and signed with
-        # a certificate, but that certificate/key/prebuilt .nupkg must NEVER be persisted in the
-        # repo, in CI caches, or in CI secrets -- this step generates everything fresh in this
-        # job's own $RUNNER_TEMP and the job discards it on exit. See
-        # tools/ci/provision-eventstore-local-feed.sh and
-        # spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md. Required here because the
-        # integration-slow lane is what runs this story's own Category=IntegrationSlow proof test.
-        run: tools/ci/provision-eventstore-local-feed.sh "$EVENTSTORE_APPROVED_SHA" "$EVENTSTORE_APPROVED_VERSION"
 
       - name: Restore solution
         # Directory.Build.props keeps NU1901-1904 non-fatal (Hexalith ci-cd-standards.md,
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
         # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
         # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
 
       - name: Build solution
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore
