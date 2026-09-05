@@ -767,9 +767,14 @@ def validate(args: argparse.Namespace) -> int:
         return 0
 
     artifacts_root = Path(args.artifacts_root)
-    story_path = artifacts_root / f"{source.key}.md"
-    if not story_path.exists():
-        raise ValidationError(f"Story artifact not found: {to_posix(story_path)}")
+    plain_path = artifacts_root / f"{source.key}.md"
+    spec_path = artifacts_root / f"spec-{source.key}.md"
+    if plain_path.exists():
+        story_path = plain_path
+    elif spec_path.exists():
+        story_path = spec_path
+    else:
+        raise ValidationError(f"Story artifact not found: {to_posix(plain_path)} (also checked {to_posix(spec_path)})")
 
     text = read_text_lf(story_path)
     frontmatter = parse_frontmatter(text)

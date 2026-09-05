@@ -38,7 +38,7 @@ from pathlib import Path
 STORY_DIR = "_bmad-output/implementation-artifacts"
 STORY_KEY_PATTERN = re.compile(r"^(\d+)-(\d+)-[a-z][a-z0-9-]*$")
 STORY_FILE_PATTERN = re.compile(
-    rf"^{re.escape(STORY_DIR)}/(\d+-\d+-[a-z][a-z0-9-]*)\.md$"
+    rf"^{re.escape(STORY_DIR)}/(?:spec-)?(\d+-\d+-[a-z][a-z0-9-]*)\.md$"
 )
 # Registration surfaces. A change to either binds the stories it registers, which
 # is what closes the "compliant while backlog" loophole.
@@ -486,7 +486,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if changed is None:
         if args.story_key:
-            changed = [f"{STORY_DIR}/{args.story_key}.md"]
+            spec_path = root / STORY_DIR / f"spec-{args.story_key}.md"
+            plain_path = root / STORY_DIR / f"{args.story_key}.md"
+            if spec_path.is_file() and not plain_path.is_file():
+                changed = [f"{STORY_DIR}/spec-{args.story_key}.md"]
+            else:
+                changed = [f"{STORY_DIR}/{args.story_key}.md"]
         else:
             # Be explicit rather than exiting 0 silently: a bare invocation that
             # passes is not evidence the gate ran against anything.

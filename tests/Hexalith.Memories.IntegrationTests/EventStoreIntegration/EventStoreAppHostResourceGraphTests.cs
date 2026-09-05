@@ -5,7 +5,9 @@
 
 namespace Hexalith.Memories.IntegrationTests.EventStoreIntegration;
 
+using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Aspire.Hosting;
@@ -112,5 +114,49 @@ public sealed class EventStoreAppHostResourceGraphTests
             .Select(a => a.Component.Name)];
         projectComponentNames.ShouldContain(StateStoreComponentName);
         projectComponentNames.ShouldContain(PubSubComponentName);
+    }
+
+    /// <summary>
+    /// Story 28.1 code-review finding (verification-gap layer): the resource-graph test above only
+    /// builds the model -- it never proves the <c>eventstore</c> gateway project actually starts
+    /// successfully. Every fixture-based integration test in this project waits only for
+    /// <c>"memories"</c> to become healthy and forces
+    /// <c>Memories:Testing:UseInMemoryCommandStore=true</c>, so none of them route through, or
+    /// observe, the real <c>eventstore</c> resource either.
+    ///
+    /// <para><b>Running this test (skip removed) surfaced a real, previously-undetected defect,
+    /// confirmed 2026-09-05:</b> <see cref="HexalithEventStorePlatformExtensions.AddHexalithEventStoreGatewayProject"/>
+    /// always adds the gateway as a project resource (<c>builder.AddProject&lt;EventStoreProjectMetadata&gt;</c>),
+    /// which Aspire always launches via <c>dotnet run</c> against the EventStore submodule's own
+    /// project file -- regardless of Memories' own <c>UseHexalithProjectReferences</c> package/source
+    /// mode. .NET SDK resolution walks up from that project's own directory and finds
+    /// <c>references/Hexalith.EventStore/global.json</c> (pinned to SDK <c>10.0.302</c>,
+    /// <c>rollForward: latestPatch</c>) before it ever reaches Memories' root <c>global.json</c>
+    /// (SDK <c>10.0.400</c>). Any environment with only the mandated SDK 10.0.400 installed --
+    /// which this repo requires everywhere else -- cannot launch the <c>eventstore</c> project at
+    /// all: <c>dotnet run</c> fails with "Install the [10.0.302] .NET SDK or update [...] to match
+    /// an installed SDK", and the resource never becomes healthy. The two obvious fixes are both
+    /// out of this story's scope: installing SDK 10.0.302 alongside 10.0.400 is an environment
+    /// change, and editing the submodule's <c>global.json</c> is forbidden by this spec's own
+    /// "submodule content is not edited" boundary. Filed as deferred work (<c>DW-728</c>); skipped
+    /// rather than left red so this defect is visible without breaking every run of this suite
+    /// pending a human decision on the fix.</para>
+    /// </summary>
+    [Fact(Skip = @"28.1-DW-728: eventstore gateway project resource cannot start under SDK 10.0.400-only environments -- references/Hexalith.EventStore/global.json pins 10.0.302 and Aspire always launches the gateway via dotnet run against that project regardless of package/source mode. Owner: Administrator. Unskip when: SDK 10.0.302 is installed alongside 10.0.400 in the target environment, or an approved change to how the gateway project is launched removes the dependency on that submodule's own global.json.")]
+    public async Task EventStoreResource_StartsAndBecomesHealthy()
+    {
+        using EnvVarScope aspNetCoreEnvironment = EnvVarScope.Set("ASPNETCORE_ENVIRONMENT", "Development");
+        using EnvVarScope dotNetEnvironment = EnvVarScope.Set("DOTNET_ENVIRONMENT", "Development");
+        using EnvVarScope enableKeycloak = EnvVarScope.Set("EnableKeycloak", "false");
+        using EnvVarScope randomizePorts = EnvVarScope.Set("MEMORIES_ASPIRE_RANDOMIZE_PROJECT_PORTS", "true");
+
+        await using IDistributedApplicationTestingBuilder builder = await DistributedApplicationTestingBuilder
+            .CreateAsync<Projects.Hexalith_Memories_AppHost>();
+        await using DistributedApplication app = await builder.BuildAsync();
+        await app.StartAsync();
+
+        using CancellationTokenSource healthyCts = new(TimeSpan.FromMinutes(3));
+        _ = await app.ResourceNotifications
+            .WaitForResourceHealthyAsync(EventStoreResourceName, healthyCts.Token);
     }
 }
