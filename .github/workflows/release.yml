@@ -14,6 +14,9 @@ concurrency:
 
 env:
   KUBECTL_VERSION: 'v1.35.0'
+  # Story 28.1: keep in lockstep with .github/workflows/ci.yml and nightly.yml.
+  EVENTSTORE_APPROVED_SHA: 'fa2d1c9910f8976553adb33dcdb1c9ff2ea75594'
+  EVENTSTORE_APPROVED_VERSION: '999.1.20-proof.fa2d1c9910f8'
 
 # Least-privilege scopes for the release job:
 # - contents: write - semantic-release creates the release tag and GitHub Release.
@@ -29,7 +32,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -45,6 +48,13 @@ jobs:
         uses: Hexalith/Hexalith.Builds/Github/initialize-dotnet@main
         with:
           global-json-file: global.json
+
+      - name: Provision ephemeral EventStore local NuGet feed
+        timeout-minutes: 15
+        # Story 28.1: HexalithEventStoreVersion is the proof identity, not on nuget.org.
+        # Mirror CI's ephemeral pack/sign path so Release restore/build/tests use the same
+        # owner-approved packages (see tools/ci/provision-eventstore-local-feed.sh).
+        run: tools/ci/provision-eventstore-local-feed.sh "$EVENTSTORE_APPROVED_SHA" "$EVENTSTORE_APPROVED_VERSION"
 
       - name: Initialize kubectl
         uses: azure/setup-kubectl@v4
@@ -70,7 +80,7 @@ jobs:
         # "Dependency Auditing"), but that only reaches this repo's own projects. Repeat it here
         # via -p: so the same restore graph's Hexalith.FrontComposer submodule project (a separate
         # Directory.Build.props chain) isn't fatally blocked by the AngleSharp/bunit NU1902 chain.
-        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904
+        run: dotnet restore Hexalith.Memories.slnx -p:Configuration=Release -p:WarningsNotAsErrors=NU1901%3BNU1902%3BNU1903%3BNU1904 --configfile "$EVENTSTORE_LOCAL_NUGET_CONFIG"
 
       - name: Build
         run: dotnet build Hexalith.Memories.slnx --configuration Release --no-restore

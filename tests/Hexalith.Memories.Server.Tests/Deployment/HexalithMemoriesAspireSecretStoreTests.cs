@@ -210,7 +210,8 @@ public sealed class HexalithMemoriesAspireSecretStoreTests
         Array.Copy(segments, 0, parts, 1, segments.Length);
         string path = Path.Combine(parts);
         File.Exists(path).ShouldBeTrue($"Source file not found at {path}");
-        return File.ReadAllText(path);
+        // Working-tree checkouts use CRLF via .gitattributes (* eol=crlf); assertion needles use LF.
+        return File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal);
     }
 
     private static string ResolveRepoRoot()
