@@ -12,6 +12,7 @@ internal static class AccessTelemetryYamlLeastPrivilegeValidator
 {
     private static readonly string[] ExpectedGrants =
     [
+        "access-telemetry-adapter|/v1/access-telemetry/physical-reclamation-evidence|POST|allow",
         "memories|/v1/access-telemetry/heartbeat|POST|allow",
         "memories|/v1/access-telemetry/validate|POST|allow",
         "memories|/v1/access-telemetry/write|POST|allow",
@@ -20,9 +21,17 @@ internal static class AccessTelemetryYamlLeastPrivilegeValidator
 
     private static readonly string[] ExpectedPolicyIds =
     [
+        "access-telemetry-adapter",
         "memories",
         "memories-access-telemetry-inspector",
     ];
+
+    private static readonly Dictionary<string, string> ExpectedNamespaces = new(StringComparer.Ordinal)
+    {
+        ["access-telemetry-adapter"] = "hexalith-memories-qualification",
+        ["memories"] = "hexalith-memories",
+        ["memories-access-telemetry-inspector"] = "hexalith-memories",
+    };
 
     /// <summary>Parses a YAML string and requires exactly one mapping document.</summary>
     /// <param name="yaml">The YAML document text.</param>
@@ -77,7 +86,12 @@ internal static class AccessTelemetryYamlLeastPrivilegeValidator
             RequireRequiredKeys(policy, "policy", "appId", "namespace", "trustDomain", "defaultAction", "operations");
             string appId = GetScalar(policy, "appId", "policy");
             policyIds.Add(appId);
-            RequireScalar(policy, "namespace", "hexalith-memories", $"{appId} namespace");
+            if (!ExpectedNamespaces.TryGetValue(appId, out string? expectedNamespace))
+            {
+                throw new InvalidDataException($"Unexpected policy identity '{appId}'.");
+            }
+
+            RequireScalar(policy, "namespace", expectedNamespace, $"{appId} namespace");
             RequireScalar(policy, "trustDomain", "public", $"{appId} trust domain");
             RequireScalar(policy, "defaultAction", "deny", $"{appId} default action");
 
