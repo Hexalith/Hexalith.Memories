@@ -90,7 +90,11 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
                 if (_queue.TryEnqueue(record!, out AccessTelemetryReason reason))
                 {
                     ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Enqueued, AccessTelemetryReason.None);
-                    ServerAccessTelemetryLifecycleMetrics.RecordQueueBytes(_queue.ByteCount);
+                    ServerAccessTelemetryLifecycleMetrics.RecordQueue(
+                        _queue.Count,
+                        _queue.ByteCount,
+                        _queue.OldestEmittedAtUtc,
+                        _timeProvider ?? TimeProvider.System);
                 }
                 else
                 {

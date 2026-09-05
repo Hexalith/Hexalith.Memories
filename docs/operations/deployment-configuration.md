@@ -167,6 +167,8 @@ Story 26.1 closes the former aspirate-manifest deferral with the Kustomize base 
 
 ## Operational runbooks
 
+- [Access telemetry lifecycle](./access-telemetry-lifecycle.md)
+- [Access telemetry PostgreSQL 18.4 appendix](./access-telemetry-adapter-production.md)
 - [Capacity planning](./capacity-planning.md)
 - [Incident response](./incident-response.md)
 - [Index rebuild and recovery decisions](./index-rebuild.md)

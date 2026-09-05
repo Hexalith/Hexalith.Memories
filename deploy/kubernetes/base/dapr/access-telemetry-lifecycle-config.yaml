@@ -41,3 +41,11 @@ spec:
           - name: /v1/access-telemetry/inspect
             httpVerb: ["GET"]
             action: allow
+      - appId: access-telemetry-adapter
+        namespace: hexalith-memories-qualification
+        trustDomain: public
+        defaultAction: deny
+        operations:
+          - name: /v1/access-telemetry/physical-reclamation-evidence
+            httpVerb: ["POST"]
+            action: allow

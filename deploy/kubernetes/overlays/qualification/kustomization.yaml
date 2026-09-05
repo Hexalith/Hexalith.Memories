@@ -1,0 +1,50 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: hexalith-memories-qualification
+resources:
+  - namespace.yaml
+  - ../../base
+patches:
+  - path: qualification-enabled-patch.yaml
+  # Dapr ACL source namespaces are values inside Configuration specs; the
+  # kustomize namespace transformer does not rewrite them.  Keep every
+  # qualification-side invocation inside the isolated namespace explicitly.
+  - target:
+      group: dapr.io
+      version: v1alpha1
+      kind: Configuration
+      name: memories-config
+    patch: |-
+      - op: replace
+        path: /spec/accessControl/policies/0/namespace
+        value: hexalith-memories-qualification
+  - target:
+      group: dapr.io
+      version: v1alpha1
+      kind: Configuration
+      name: memories-access-telemetry-config
+    patch: |-
+      - op: replace
+        path: /spec/accessControl/policies/0/namespace
+        value: hexalith-memories-qualification
+      - op: replace
+        path: /spec/accessControl/policies/1/namespace
+        value: hexalith-memories-qualification
+  - target:
+      group: dapr.io
+      version: v1alpha1
+      kind: Configuration
+      name: memories-access-telemetry-clock-config
+    patch: |-
+      - op: replace
+        path: /spec/accessControl/policies/0/namespace
+        value: hexalith-memories-qualification
+      - op: replace
+        path: /spec/accessControl/policies/1/namespace
+        value: hexalith-memories-qualification
+configMapGenerator:
+  - name: memories-production-config
+    behavior: merge
+    literals:
+      - ACCESS_TELEMETRY_ENABLED=true
+      - ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH=dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14

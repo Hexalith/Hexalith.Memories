@@ -52,7 +52,7 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
         if (expired > 0)
         {
             ServerAccessTelemetryLifecycleMetrics.Record(expired, AccessTelemetryRecordState.Dropped, AccessTelemetryReason.Expired);
-            ServerAccessTelemetryLifecycleMetrics.RecordQueueBytes(_queue.ByteCount);
+            RefreshQueueMetrics();
         }
 
         IReadOnlyList<AccessTelemetryRecord> batch = _queue.PeekBatch(
@@ -74,13 +74,13 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
             if (response.Accepted > 0)
             {
                 _queue.Acknowledge(response.Accepted);
+                RefreshQueueMetrics();
                 ServerAccessTelemetryLifecycleMetrics.Record(response.Accepted, AccessTelemetryRecordState.Persisted, AccessTelemetryReason.None);
                 _status.RecordActivity(now);
             }
 
             if (response.Rejected == 0 && response.Accepted == batch.Count && response.Reason == AccessTelemetryReason.None)
             {
-                ServerAccessTelemetryLifecycleMetrics.RecordQueueBytes(_queue.ByteCount);
                 _failureCount = 0;
                 _status.Publish(AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None);
             }
@@ -95,6 +95,7 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
                 if (response.Rejected > 0)
                 {
                     _queue.Acknowledge(1);
+                    RefreshQueueMetrics();
                     ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Dropped, response.Reason);
                     _status.RecordActivity(now);
                 }
@@ -176,4 +177,11 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
         _status.Publish(AccessTelemetryHealthState.Degraded, AccessTelemetryReason.DependencyUnavailable);
         ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Retried, AccessTelemetryReason.DependencyUnavailable);
     }
+
+    private void RefreshQueueMetrics()
+        => ServerAccessTelemetryLifecycleMetrics.RecordQueue(
+            _queue.Count,
+            _queue.ByteCount,
+            _queue.OldestEmittedAtUtc,
+            _timeProvider);
 }

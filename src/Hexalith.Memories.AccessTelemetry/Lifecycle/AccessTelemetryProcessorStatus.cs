@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.AccessTelemetry.Lifecycle;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
+using Hexalith.Memories.AccessTelemetry.Observability;
 
 /// <summary>Process-local bounded processor health shared with readiness reporting.</summary>
 internal sealed class AccessTelemetryProcessorStatus
@@ -19,7 +20,9 @@ internal sealed class AccessTelemetryProcessorStatus
     public void Publish(AccessTelemetryHealthState health, AccessTelemetryReason reason, DateTimeOffset? activityUtc = null)
     {
         Snapshot current = Current;
-        Volatile.Write(ref _current, new Snapshot(health, reason, activityUtc ?? current.LastAcceptedOrRejectedUtc));
+        DateTimeOffset? lastActivityUtc = activityUtc ?? current.LastAcceptedOrRejectedUtc;
+        Volatile.Write(ref _current, new Snapshot(health, reason, lastActivityUtc));
+        AccessTelemetryLifecycleMetrics.RecordProcessorHealth(health, reason, lastActivityUtc);
     }
 
     /// <summary>Bounded immutable processor status.</summary>

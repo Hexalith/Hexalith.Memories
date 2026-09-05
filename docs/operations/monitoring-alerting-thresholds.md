@@ -173,6 +173,11 @@ notifications.
 
 ## Related runbooks and sources
 
+- The bounded access-telemetry lifecycle signals, `Unhealthy`/`Degraded`/`NoData`
+  precedence, queue-versus-capacity semantics, and true last-evidence timestamp
+  are governed by
+  [Access Telemetry Lifecycle Operations](./access-telemetry-lifecycle.md).
+
 - [Incident Response](./incident-response.md)
 - [Capacity Planning](./capacity-planning.md)
 - [Deployment Configuration](./deployment-configuration.md)

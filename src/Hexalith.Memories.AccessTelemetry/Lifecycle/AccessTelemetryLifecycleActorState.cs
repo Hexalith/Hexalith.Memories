@@ -22,6 +22,9 @@ internal sealed record AccessTelemetryLifecycleActorState
     /// <summary>Gets the next shard cursor in the fixed range 0..63.</summary>
     public int ExpiryShardCursor { get; init; }
 
+    /// <summary>Gets whether the durable expiry cursor still identifies due work.</summary>
+    public bool PurgeHasMore { get; init; }
+
     /// <summary>Gets the last successful purge time.</summary>
     public long? LastPurgeUnixMilliseconds { get; init; }
 
@@ -30,6 +33,12 @@ internal sealed record AccessTelemetryLifecycleActorState
 
     /// <summary>Gets the physical-reclamation evidence ID without claiming proof.</summary>
     public string PhysicalReclamationEvidenceId { get; init; } = "pending-story-27-3";
+
+    /// <summary>Gets the verified physical-reclamation observation time, when present.</summary>
+    public long? PhysicalReclamationEvidenceUnixMilliseconds { get; init; }
+
+    /// <summary>Gets the immutable C3 artifact hash accepted from the adapter authority.</summary>
+    public string? PhysicalReclamationArtifactSha256 { get; init; }
 
     /// <summary>Gets the staged marker-key generation.</summary>
     public string? StagedMarkerKeyGeneration { get; init; }

@@ -74,6 +74,7 @@ internal sealed class DaprAccessTelemetryClockEvidenceProvider : IAccessTelemetr
             throw new AccessTelemetryContractException("clock_untrusted");
         }
 
+        ServerAccessTelemetryLifecycleMetrics.RecordAttestation(attestation, _timeProvider.GetUtcNow(), _timeProvider);
         return attestation;
         }
         finally

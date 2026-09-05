@@ -24,6 +24,9 @@ public interface IAccessTelemetryLifecycleActor : IActor
     /// <summary>Returns sanitized operations-only lifecycle evidence.</summary>
     Task<AccessTelemetryInspectionResponse> InspectAsync();
 
+    /// <summary>Records verified physical-reclamation evidence from the adapter authority.</summary>
+    Task RecordPhysicalReclamationEvidenceAsync(AccessTelemetryPhysicalReclamationEvidence evidence);
+
     /// <summary>Stages a new marker-key generation against the live writer snapshot.</summary>
     Task StageMarkerKeyAsync(string newGeneration);
 

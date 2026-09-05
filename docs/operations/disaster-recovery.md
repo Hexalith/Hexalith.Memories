@@ -341,6 +341,12 @@ is not proof of recovery.
 
 ## Rollback, stop conditions, and resume
 
+Access telemetry `PG-ONPREM-1` is deliberately outside this service's Redis/
+FalkorDB recovery claim. It has one PostgreSQL replica and no node, disk,
+control-plane, or site HA claim. Use the named backup/restore RPO/RTO procedure
+in the [PostgreSQL 18.4 Production Appendix](./access-telemetry-adapter-production.md),
+and never infer zero loss from a pod replacement.
+
 - On paired PVC restore failure, scale both StatefulSets to zero, preserve events and failed PVCs for
   forensics, and retry from the immutable pair only with incident-command approval. A pod-only restart with
   both original PVCs intact may still isolate the affected StatefulSet.

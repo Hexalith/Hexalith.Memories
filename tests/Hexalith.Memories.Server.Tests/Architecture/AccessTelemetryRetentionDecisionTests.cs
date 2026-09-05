@@ -26,8 +26,11 @@ using AccessTelemetryEvent = Hexalith.Memories.Contracts.V1.AccessTelemetryEvent
 public sealed partial class AccessTelemetryRetentionDecisionTests
 {
     private const string AdrRelativePath = "docs/dev/adr-27.1-001-access-telemetry-lifecycle.md";
+    private const string EvidenceMatrixRelativePath = "_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md";
     private const string AccessEventSourceRelativePath = "src/Hexalith.Memories.Contracts/V1/AccessTelemetryEvent.cs";
     private const string ArchitectureRelativePath = "_bmad-output/planning-artifacts/architecture.md";
+    private const string LifecycleMetricContractRelativePath = "src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryMetricContract.cs";
+    private const string LifecycleRunbookRelativePath = "docs/operations/access-telemetry-lifecycle.md";
     private const string OperationSourceRelativePath = "src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLog.cs";
     private const string TelemetryRelativePath = "docs/dev/telemetry.md";
 
@@ -615,6 +618,36 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
         qualification.ShouldContain("neither may be inferred from the other", Case.Sensitive);
         qualification.ShouldContain("is rejected for C1", Case.Sensitive);
         qualification.ShouldContain("remain Dapr-only", Case.Sensitive);
+    }
+
+    [Fact]
+    public void Adr_Story27_4Handoff_ProjectsToPendingEvidenceAndRuntimeMetricContracts()
+    {
+        string handoff = NormalizeWhitespace(
+            ReadDocument(AdrRelativePath).GetSection("Stories 27.3 and 27.4 Verification and Operations Handoff"));
+        handoff.ShouldContain("container-service-neutral lifecycle runbook", Case.Sensitive);
+        handoff.ShouldContain("physical reclamation", Case.Sensitive);
+        handoff.ShouldContain("business readiness must stay available", Case.Sensitive);
+
+        string runbook = ReadRepoFile(LifecycleRunbookRelativePath);
+        runbook.ShouldContain("A41 is open until remote publish verification succeeds", Case.Sensitive);
+        runbook.ShouldContain("Production lifecycle writes remain disabled", Case.Sensitive);
+
+        string evidence = ReadRepoFile(EvidenceMatrixRelativePath);
+        evidence.ShouldContain("## Canonical C0-C6 matrix", Case.Sensitive);
+        evidence.ShouldContain("`operator-pending`", Case.Sensitive);
+        evidence.ShouldContain("Only authentic external packets in state `passed` can satisfy C2-C6", Case.Sensitive);
+
+        string metricContract = ReadRepoFile(LifecycleMetricContractRelativePath);
+        foreach (string label in new[] { "state", "reason", "outcome" })
+        {
+            metricContract.ShouldContain($"\"{label}\"", Case.Sensitive);
+        }
+
+        foreach (string forbidden in new[] { "tenant_id", "user", "case_id", "memory_unit_id" })
+        {
+            metricContract.ShouldNotContain($"\"{forbidden}\"", Case.Sensitive);
+        }
     }
 
     private static void AssertCellCounts(

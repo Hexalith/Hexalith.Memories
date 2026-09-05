@@ -130,6 +130,26 @@ app.MapGet("/v1/access-telemetry/inspect", async (IActorProxyFactory proxyFactor
     return Results.Ok(await actor.InspectAsync().ConfigureAwait(false));
 }).AllowAnonymous();
 
+// This route is reachable only through the lifecycle app's authenticated Dapr
+// sidecar. The deny-by-default Dapr access-control policy grants it solely to the
+// access-telemetry-adapter app identity; the body therefore contains evidence,
+// never a caller-controlled authority or trust verdict.
+app.MapPost("/v1/access-telemetry/physical-reclamation-evidence", async (
+    AccessTelemetryPhysicalReclamationEvidence evidence,
+    IActorProxyFactory proxyFactory) =>
+{
+    IAccessTelemetryLifecycleActor actor = proxyFactory.CreateActorProxy<IAccessTelemetryLifecycleActor>(
+        new ActorId("global"),
+        nameof(AccessTelemetryLifecycleActor));
+    await actor.RecordPhysicalReclamationEvidenceAsync(evidence).ConfigureAwait(false);
+    return Results.Accepted();
+}).AllowAnonymous();
+
 app.Run();
 
 internal partial class Program;
+
+// Stable entry-point marker for in-process HTTP tests.  The solution also has
+// a clock-service Program type, so using Program directly is ambiguous to the
+// shared test assembly.
+internal sealed class AccessTelemetryService;

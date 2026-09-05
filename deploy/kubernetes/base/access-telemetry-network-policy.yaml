@@ -15,6 +15,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: memories-access-telemetry-inspector
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: access-telemetry-adapter
   egress:
     - to:
         - podSelector:

@@ -157,3 +157,13 @@ System Health). Inbound HTTP request rejections use the Story 20.5
 - [Failure recovery and re-ingestion](./failure-recovery.md)
 - [Directory ingestion](./directory-ingestion.md)
 - [Ingestion workflow determinism (contributor)](../dev/ingestion-workflow-determinism.md)
+
+## Access-telemetry lifecycle obligation
+
+Story 20.5's inbound per-tenant quota behavior is complete and unchanged. Rate
+limiting neither supplies nor closes access-telemetry retention. The residual
+`20.5-A41-ACCESS-TELEMETRY-RETENTION` remains open until the immutable
+same-profile chain in
+[Access Telemetry Lifecycle Operations](./access-telemetry-lifecycle.md) passes
+remote publish verification; scheduling, documentation, static manifests, or
+quota tests cannot discharge it.

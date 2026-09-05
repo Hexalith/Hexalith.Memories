@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 
+using System.Globalization;
+
 using Hexalith.Memories.AccessTelemetry.Contracts;
 
 /// <summary>Nonblocking, process-local queue bounded by both record count and canonical bytes.</summary>
@@ -40,6 +42,40 @@ internal sealed class BoundedAccessTelemetryQueue
     /// <summary>Gets the queued canonical byte count.</summary>
     public int ByteCount
         => Volatile.Read(ref _byteCount);
+
+    /// <summary>Gets the oldest queued emission time without exposing its record identity.</summary>
+    public DateTimeOffset? OldestEmittedAtUtc
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _records.Count == 0 ? null : ParseEmittedAt(_records.Peek().Record);
+            }
+        }
+    }
+
+    /// <summary>Gets the non-negative age of the oldest queued record without exposing its identity.</summary>
+    public double GetOldestAgeSeconds(DateTimeOffset observedAt)
+    {
+        lock (_gate)
+        {
+            if (_records.Count == 0)
+            {
+                return 0;
+            }
+
+            DateTimeOffset emittedAt = ParseEmittedAt(_records.Peek().Record);
+            return Math.Max(0, (observedAt - emittedAt).TotalSeconds);
+        }
+    }
+
+    private static DateTimeOffset ParseEmittedAt(AccessTelemetryRecord record)
+        => DateTimeOffset.ParseExact(
+                record.EmittedAtUtc,
+                "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
 
     /// <summary>Attempts to enqueue without waiting and drops the new record at either bound.</summary>
     public bool TryEnqueue(AccessTelemetryRecord record, out AccessTelemetryReason reason)

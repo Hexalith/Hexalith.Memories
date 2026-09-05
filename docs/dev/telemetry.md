@@ -26,8 +26,10 @@ These Production examples are optional export routes only. They do not name or
 configure an access-record retention backend. Access telemetry still reaches
 JSON console and, when configured, OTLP. Story 27.2 also ships a separate,
 disabled-by-default Dapr lifecycle path defined by
-[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md); Story 27.3 still owns
-exact Production adapter selection and physical-reclamation evidence.
+[ADR 27.1-001](adr-27.1-001-access-telemetry-lifecycle.md). The immutable
+`PG-ONPREM-1` profile is selected, but its complete C1 running-target packet and
+independent approvals remain absent. Story 27.4 supplies repository-complete
+producers and guards without treating that operator tail as executed evidence.
 
 CLI-side telemetry is **opt-in** — set `HEXALITH_MEMORIES_OTEL_ENDPOINT` or pass `--telemetry` to any
 `memories` subcommand to export CLI spans.
@@ -203,8 +205,18 @@ Retention is bounded from one hour through seven days; Development may use the
 Aspire/Dapr/Kubernetes resources declare the fixed identities and authorities,
 but the Production overlay keeps the Server provider and lifecycle writes
 disabled with an unproven profile. Story 27.3 must select and pin the exact
-Production adapter, execute its behavioral/failover/capacity/reclamation
-evidence, and explicitly enable the path.
+Production adapter. Operators must still execute the complete C1 predecessor,
+the Production-shaped C2-C4 qualification scenarios, and the C5/C6 post-evidence
+approvals before explicitly enabling the path.
+
+The container-neutral procedures, strict evidence schema, and A41 close-out
+chain are documented in
+[Access Telemetry Lifecycle Operations](../operations/access-telemetry-lifecycle.md).
+The selected adapter's capacity, PostgreSQL allocator-reclamation, recovery,
+upgrade, and decommission details are in the
+[PostgreSQL 18.4 Production Appendix](../operations/access-telemetry-adapter-production.md).
+Offline repository validation never contacts a target and leaves every external
+checkpoint `operator-pending`.
 
 `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward and its action
 remains open. Portable logical deletion and evidence hooks are not physical

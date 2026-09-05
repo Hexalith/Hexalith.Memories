@@ -287,6 +287,12 @@ verified paired-backend backup identities. Never attach Secret values or source 
 
 ## Related runbooks and sources
 
+- Access telemetry uses a separate 1-hour/24-hour/7-day, 70/80/90% admission
+  contract and physical-reclamation workspace. Follow
+  [Access Telemetry Lifecycle Operations](./access-telemetry-lifecycle.md) and
+  the [PostgreSQL 18.4 Production Appendix](./access-telemetry-adapter-production.md);
+  a PVC request or empty queue is not capacity evidence.
+
 - [Deployment Configuration](./deployment-configuration.md)
 - [Monitoring and Alerting Thresholds](./monitoring-alerting-thresholds.md)
 - [Incident Response](./incident-response.md)

@@ -10,6 +10,7 @@ using System.Net.Http;
 using Dapr.Client;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
+using Hexalith.Memories.AccessTelemetry.Observability;
 
 /// <summary>Dapr-addressed lifecycle clock client with persistent local replay protection.</summary>
 internal sealed class DaprLifecycleClockEvidenceProvider : ILifecycleClockEvidenceProvider
@@ -76,6 +77,7 @@ internal sealed class DaprLifecycleClockEvidenceProvider : ILifecycleClockEviden
             throw new AccessTelemetryContractException("clock_untrusted");
         }
 
+        AccessTelemetryLifecycleMetrics.RecordAttestation(attestation, _timeProvider.GetUtcNow(), _timeProvider);
         return new LifecycleClockEvidence(attestation, _processEpoch, _serviceInstanceId);
     }
 }

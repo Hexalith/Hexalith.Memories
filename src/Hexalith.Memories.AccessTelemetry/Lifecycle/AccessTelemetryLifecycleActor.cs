@@ -140,7 +140,7 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             HealthReason = reason == AccessTelemetryReason.RecordIdConflict ? reason : state.HealthReason,
         };
         await StateManager.SetStateAsync(StateName, updated).ConfigureAwait(false);
-        AccessTelemetryLifecycleMetrics.RecordCapacity(updated.RetainedRecordCount);
+        AccessTelemetryLifecycleMetrics.RecordCapacity(updated.RetainedRecordCount, AdmittedCapacity());
         return new AccessTelemetryWriteBatchResponse { Accepted = accepted, Rejected = records.Count - accepted, Reason = reason };
     }
 
@@ -250,10 +250,18 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             ReminderSequence = state.ReminderSequence + 1,
             ExpiryMinuteCursor = result.LastExpiryMinute ?? state.ExpiryMinuteCursor,
             ExpiryShardCursor = result.LastExpiryShard ?? state.ExpiryShardCursor,
+            PurgeHasMore = result.HasMore,
             Health = _processor.Health,
             HealthReason = _processor.HealthReason,
         };
         await StateManager.SetStateAsync(StateName, updated).ConfigureAwait(false);
+        AccessTelemetryLifecycleMetrics.RecordCapacity(updated.RetainedRecordCount, AdmittedCapacity());
+        AccessTelemetryLifecycleMetrics.RecordExpiryState(
+            updated.RetainedRecordCount,
+            updated.PurgeHasMore ? CalculateOldestDueUtc(updated.ExpiryMinuteCursor) : null,
+            updated.LastPurgeUnixMilliseconds is null
+                ? null
+                : DateTimeOffset.FromUnixTimeMilliseconds(updated.LastPurgeUnixMilliseconds.Value));
         AccessTelemetryOptions options = _optionsProvider.Current;
         _ = await RegisterReminderAsync(
             PurgeReminderName,
@@ -266,19 +274,84 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
     public async Task<AccessTelemetryInspectionResponse> InspectAsync()
     {
         EnsureGlobalActor();
-        _ = await GetTrustedNowAsync().ConfigureAwait(false);
+        DateTimeOffset trustedNow = await GetTrustedNowAsync().ConfigureAwait(false);
         AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
-        AccessTelemetryLifecycleMetrics.RecordPhysicalEvidence(present: false);
+        DateTimeOffset? physicalEvidenceUtc = state.PhysicalReclamationEvidenceUnixMilliseconds is null
+            ? null
+            : DateTimeOffset.FromUnixTimeMilliseconds(state.PhysicalReclamationEvidenceUnixMilliseconds.Value);
+        AccessTelemetryLifecycleMetrics.RecordPhysicalEvidence(physicalEvidenceUtc is not null, physicalEvidenceUtc);
+        AccessTelemetryLifecycleMetrics.RecordCapacity(state.RetainedRecordCount, AdmittedCapacity());
+        AccessTelemetryLifecycleMetrics.RecordExpiryState(
+            state.RetainedRecordCount,
+            state.PurgeHasMore ? CalculateOldestDueUtc(state.ExpiryMinuteCursor) : null,
+            state.LastPurgeUnixMilliseconds is null
+                ? null
+                : DateTimeOffset.FromUnixTimeMilliseconds(state.LastPurgeUnixMilliseconds.Value));
         return new AccessTelemetryInspectionResponse
         {
             Health = state.Health == AccessTelemetryHealthState.Unhealthy ? state.Health : _processor.Health,
             Reason = state.HealthReason != AccessTelemetryReason.None ? state.HealthReason : _processor.HealthReason,
             RetainedRecordCount = state.RetainedRecordCount,
-            OldestExpiryMinute = state.ExpiryMinuteCursor == 0 ? null : state.ExpiryMinuteCursor,
+            OldestExpiryMinute = !state.PurgeHasMore || state.ExpiryMinuteCursor == 0
+                ? null
+                : state.ExpiryMinuteCursor,
             LastPurgeUnixMilliseconds = state.LastPurgeUnixMilliseconds,
             ConfigurationEpoch = state.Configuration?.Epoch ?? "unconfigured",
-            PhysicalReclamationEvidencePending = true,
+            PhysicalReclamationEvidencePending = physicalEvidenceUtc is null,
         };
+    }
+
+    /// <inheritdoc/>
+    public async Task RecordPhysicalReclamationEvidenceAsync(AccessTelemetryPhysicalReclamationEvidence evidence)
+    {
+        EnsureGlobalActor();
+        ArgumentNullException.ThrowIfNull(evidence);
+        AccessTelemetryOptions options = _optionsProvider.Current;
+        DateTimeOffset trustedNow = await GetTrustedNowAsync().ConfigureAwait(false);
+        // Caller authority is established by Dapr mTLS/access-control before the
+        // adapter-only HTTP route reaches this actor. Evidence data does not carry
+        // caller-supplied Authority/Verified flags that could self-assert trust.
+        if (!string.Equals(evidence.EvidenceId, options.PhysicalReclamationEvidenceId, StringComparison.Ordinal) ||
+            !string.Equals(evidence.ComponentProfileHash, options.ComponentProfileHash, StringComparison.Ordinal) ||
+            evidence.ArtifactSha256 is not { Length: 64 } artifactSha256 ||
+            !artifactSha256.All(static character => character is >= '0' and <= '9' or >= 'a' and <= 'f'))
+        {
+            throw new AccessTelemetryContractException("physical_evidence_untrusted");
+        }
+
+        DateTimeOffset observedAt;
+        try
+        {
+            observedAt = DateTimeOffset.FromUnixTimeMilliseconds(evidence.ObservedAtUnixMilliseconds);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            throw new AccessTelemetryContractException("physical_evidence_stale");
+        }
+        if (observedAt > trustedNow.AddSeconds(1) || observedAt < trustedNow.AddHours(-24))
+        {
+            throw new AccessTelemetryContractException("physical_evidence_stale");
+        }
+
+        AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
+        await StateManager.SetStateAsync(
+            StateName,
+            state with
+            {
+                PhysicalReclamationEvidenceId = evidence.EvidenceId,
+                PhysicalReclamationEvidenceUnixMilliseconds = evidence.ObservedAtUnixMilliseconds,
+                PhysicalReclamationArtifactSha256 = evidence.ArtifactSha256,
+            }).ConfigureAwait(false);
+        AccessTelemetryLifecycleMetrics.RecordPhysicalEvidence(present: true, observedAt);
+    }
+
+    private static DateTimeOffset? CalculateOldestDueUtc(long expiryMinute)
+        => expiryMinute <= 0 ? null : DateTimeOffset.FromUnixTimeSeconds(expiryMinute * 60);
+
+    private long AdmittedCapacity()
+    {
+        TimeSpan retention = _optionsProvider.Current.Retention ?? AccessTelemetryOptions.DefaultRetention;
+        return checked((retention.Ticks / TimeSpan.TicksPerSecond) * 250L);
     }
 
     /// <inheritdoc/>

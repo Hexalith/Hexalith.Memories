@@ -209,6 +209,11 @@ memory content, or another tenant's evidence.
 
 ## Related runbooks and sources
 
+- For a lifecycle-only outage, preserve business readiness and JSON-console/
+  configured-OTLP continuity, then follow
+  [Access Telemetry Lifecycle Operations](./access-telemetry-lifecycle.md).
+  A running container or green dashboard alone is not recovery evidence.
+
 - [Deployment Configuration](./deployment-configuration.md)
 - [Failure Recovery](./failure-recovery.md)
 - [Backup and Restore](./backup-restore.md)

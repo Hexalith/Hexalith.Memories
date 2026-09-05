@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.AccessTelemetry.Capability;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
+using Hexalith.Memories.AccessTelemetry.Observability;
 
 /// <summary>Restart-scoped terminal runtime gate updated only by the capability probe runner.</summary>
 internal sealed class AccessTelemetryRuntimeGate : IAccessTelemetryRuntimeGate
@@ -29,7 +30,8 @@ internal sealed class AccessTelemetryRuntimeGate : IAccessTelemetryRuntimeGate
         get
         {
             AccessTelemetryCapabilityGateResult current = Volatile.Read(ref _current);
-            return current.AllowsWrites && current.ValidUntilUtc <= _timeProvider.GetUtcNow()
+            return current.AllowsWrites &&
+                (current.ValidUntilUtc is null || current.ValidUntilUtc <= _timeProvider.GetUtcNow())
                 ? new AccessTelemetryCapabilityGateResult(
                     false,
                     true,
@@ -44,5 +46,11 @@ internal sealed class AccessTelemetryRuntimeGate : IAccessTelemetryRuntimeGate
     {
         ArgumentNullException.ThrowIfNull(decision);
         Volatile.Write(ref _current, decision);
+        AccessTelemetryLifecycleMetrics.RecordRuntimeGate(
+            decision.AllowsWrites,
+            decision.ValidUntilUtc,
+            decision.Health,
+            decision.Reason,
+            _timeProvider);
     }
 }

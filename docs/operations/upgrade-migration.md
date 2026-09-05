@@ -271,6 +271,13 @@ attach credentials, Secret values, content, or unrelated tenant evidence.
 
 ## Related runbooks and sources
 
+- Any access-telemetry PostgreSQL, Dapr component/runtime, Kubernetes, storage,
+  TLS, topology, or resource change invalidates its approved deployment evidence.
+  A canonical identity/capability/workload-object change also requires a new
+  profile hash. Follow the qualification and rollback gates in
+  [Access Telemetry Lifecycle Operations](./access-telemetry-lifecycle.md) and
+  the [PostgreSQL 18.4 Production Appendix](./access-telemetry-adapter-production.md).
+
 - [Release Runbook](../dev/release-runbook.md)
 - [Deployment Configuration](./deployment-configuration.md)
 - [Backup and Restore](./backup-restore.md)

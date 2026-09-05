@@ -12,6 +12,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.Telemetry;
 
 using Shouldly;
@@ -49,6 +50,7 @@ public sealed class MemoriesDashboardTests
     {
         using JsonDocument document = LoadDashboard();
         IReadOnlyDictionary<string, string> metricLookup = BuildPrometheusMetricLookup();
+        IReadOnlyDictionary<string, IReadOnlyList<string>> metricTagPolicy = BuildMetricTagPolicy();
         HashSet<string> fallbackAllowedTagKeys = BuildAllowedTagKeys();
 
         foreach (string query in ExtractDashboardQueries(document.RootElement))
@@ -76,8 +78,8 @@ public sealed class MemoriesDashboardTests
 
                 foreach (string canonicalMetricName in canonicalMetricNames)
                 {
-                    HashSet<string> allowedTags = [.. MemoriesMeter.MetricTagKeyPolicy[canonicalMetricName]];
-                    if (HistogramMetricNames.Contains(canonicalMetricName))
+                    HashSet<string> allowedTags = [.. metricTagPolicy[canonicalMetricName]];
+                    if (IsHistogram(canonicalMetricName))
                     {
                         allowedTags.Add("le");
                     }
@@ -97,7 +99,7 @@ public sealed class MemoriesDashboardTests
         HashSet<string> referencedMetrics = [.. ExtractDashboardQueries(document.RootElement)
             .SelectMany(q => MetricRegex.Matches(q).Select(m => m.Groups["metric"].Value))];
 
-        foreach (string metricName in MemoriesMeter.MetricTagKeyPolicy.Keys)
+        foreach (string metricName in BuildMetricTagPolicy().Keys)
         {
             BuildPrometheusMetricNameVariants(metricName).Any(referencedMetrics.Contains).ShouldBeTrue(metricName);
         }
@@ -116,6 +118,29 @@ public sealed class MemoriesDashboardTests
                 forbidden.ShouldNotContain(tagKey);
             }
         }
+    }
+
+    [Fact]
+    public void LifecyclePanels_ExposeNoDataAndUseTrueEvidenceTimestamp()
+    {
+        using JsonDocument document = LoadDashboard();
+        JsonElement[] panels = document.RootElement.GetProperty("panels")
+            .EnumerateArray()
+            .Where(panel => panel.GetProperty("title").GetString()?.StartsWith("Access Telemetry", StringComparison.Ordinal) == true)
+            .ToArray();
+
+        panels.Length.ShouldBeGreaterThanOrEqualTo(8);
+        panels.ShouldAllBe(panel =>
+            panel.GetProperty("fieldConfig").GetProperty("defaults").GetProperty("noValue").GetString() == "Unhealthy / NoData");
+
+        string[] queries = panels.SelectMany(ExtractDashboardQueries).ToArray();
+        queries.ShouldContain("max(memories_access_telemetry_lifecycle_queue_records)");
+        queries.ShouldContain("max(memories_access_telemetry_lifecycle_capacity_records)");
+        queries.ShouldContain("time() - max(memories_access_telemetry_lifecycle_physical_evidence_last_timestamp_seconds)");
+        queries.ShouldContain(
+            "max by (state) (memories_access_telemetry_lifecycle_profile) or on() label_replace(vector(1), \"state\", \"no_data\", \"\", \"\")");
+        queries.ShouldNotContain(query => query.Contains("state!=\"matched\"", StringComparison.Ordinal));
+        queries.ShouldNotContain(query => query.Contains("time() - timestamp(", StringComparison.Ordinal));
     }
 
     private static JsonDocument LoadDashboard() =>
@@ -169,30 +194,34 @@ public sealed class MemoriesDashboardTests
     }
 
     private static HashSet<string> BuildAllowedPrometheusMetricNames() =>
-        [.. MemoriesMeter.MetricTagKeyPolicy.Keys.SelectMany(BuildPrometheusMetricNameVariants)];
+        [.. BuildMetricTagPolicy().Keys.SelectMany(BuildPrometheusMetricNameVariants)];
 
     private static IEnumerable<string> BuildPrometheusMetricNameVariants(string metricName)
     {
         string normalizedName = metricName.Replace('.', '_');
-        yield return normalizedName;
+        string exportedName = AccessTelemetryMetricContract.MetricUnitSuffixes.TryGetValue(metricName, out string? unitSuffix)
+            ? $"{normalizedName}_{unitSuffix}"
+            : normalizedName;
+        yield return exportedName;
 
-        if (CounterMetricNames.Contains(metricName))
+        if (IsCounter(metricName))
         {
-            yield return normalizedName + "_total";
+            yield return exportedName + "_total";
         }
 
-        if (HistogramMetricNames.Contains(metricName))
+        string? histogramUnit = GetHistogramUnit(metricName);
+        if (histogramUnit is not null)
         {
-            yield return normalizedName + "_milliseconds_bucket";
-            yield return normalizedName + "_milliseconds_count";
-            yield return normalizedName + "_milliseconds_sum";
+            yield return $"{normalizedName}_{histogramUnit}_bucket";
+            yield return $"{normalizedName}_{histogramUnit}_count";
+            yield return $"{normalizedName}_{histogramUnit}_sum";
         }
     }
 
     private static IReadOnlyDictionary<string, string> BuildPrometheusMetricLookup()
     {
         Dictionary<string, string> lookup = new(StringComparer.Ordinal);
-        foreach (string metricName in MemoriesMeter.MetricTagKeyPolicy.Keys)
+        foreach (string metricName in BuildMetricTagPolicy().Keys)
         {
             foreach (string prometheusMetricName in BuildPrometheusMetricNameVariants(metricName))
             {
@@ -205,10 +234,38 @@ public sealed class MemoriesDashboardTests
 
     private static HashSet<string> BuildAllowedTagKeys()
     {
-        HashSet<string> tagKeys = [.. MemoriesMeter.MetricTagKeyPolicy.Values.SelectMany(v => v)];
+        HashSet<string> tagKeys = [.. BuildMetricTagPolicy().Values.SelectMany(v => v)];
         tagKeys.Add("le");
         return tagKeys;
     }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> BuildMetricTagPolicy()
+    {
+        var policy = new Dictionary<string, IReadOnlyList<string>>(MemoriesMeter.MetricTagKeyPolicy, StringComparer.Ordinal);
+        foreach ((string metricName, IReadOnlyList<string> tags) in AccessTelemetryMetricContract.MetricTagKeyPolicy)
+        {
+            policy.Add(metricName, tags);
+        }
+
+        return policy;
+    }
+
+    private static string? GetHistogramUnit(string metricName)
+    {
+        if (HistogramMetricNames.Contains(metricName))
+        {
+            return "milliseconds";
+        }
+
+        return AccessTelemetryMetricContract.HistogramUnitSuffixes.TryGetValue(metricName, out string? unit)
+            ? unit
+            : null;
+    }
+
+    private static bool IsCounter(string metricName)
+        => CounterMetricNames.Contains(metricName) || AccessTelemetryMetricContract.CounterMetricNames.Contains(metricName);
+
+    private static bool IsHistogram(string metricName) => GetHistogramUnit(metricName) is not null;
 
     private static IEnumerable<string> ExtractTagKeys(string query)
     {

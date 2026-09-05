@@ -424,6 +424,420 @@
       ],
       "title": "Handler Mismatches",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Current lifecycle delivery queue dimensions. Missing series are NoData and must not be interpreted as zero.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "queue bytes"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "oldest age"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 35
+      },
+      "id": 16,
+      "targets": [
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_queue_records)",
+          "legendFormat": "queue records"
+        },
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_queue_bytes)",
+          "legendFormat": "queue bytes"
+        },
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_queue_oldest_age_seconds)",
+          "legendFormat": "oldest age"
+        }
+      ],
+      "title": "Access Telemetry Queue",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Bounded lifecycle outcomes and retry rate; identity-bearing labels are prohibited.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "ops/s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 35
+      },
+      "id": 17,
+      "targets": [
+        {
+          "expr": "sum by (state, reason) (rate(memories_access_telemetry_lifecycle_records_total[5m]))",
+          "legendFormat": "{{state}} {{reason}}"
+        }
+      ],
+      "title": "Access Telemetry Lifecycle Outcomes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Clock-attestation latency, evidence age, absolute local/reference delta, and signed interval uncertainty.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "ms"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "evidence age"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 35
+      },
+      "id": 18,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(memories_access_telemetry_lifecycle_attestation_duration_milliseconds_bucket[5m])))",
+          "legendFormat": "request p95"
+        },
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_attestation_age_seconds)",
+          "legendFormat": "evidence age"
+        },
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_attestation_delta_milliseconds)",
+          "legendFormat": "absolute delta"
+        },
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_attestation_uncertainty_milliseconds)",
+          "legendFormat": "uncertainty"
+        }
+      ],
+      "title": "Access Telemetry Clock Attestation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Retained-record capacity is deliberately distinct from the Server delivery queue.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "utilization"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 42
+      },
+      "id": 19,
+      "targets": [
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_capacity_records)",
+          "legendFormat": "retained records"
+        },
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_capacity_utilization)",
+          "legendFormat": "utilization"
+        }
+      ],
+      "title": "Access Telemetry Capacity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Logical expiry and purge status; these series do not claim physical reclamation.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "s"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "index depth"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "purge p95"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reminders/s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ops/s"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 42
+      },
+      "id": 20,
+      "targets": [
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_expiry_index_depth)",
+          "legendFormat": "index depth"
+        },
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_expiry_oldest_due_age_seconds)",
+          "legendFormat": "oldest due age"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(memories_access_telemetry_lifecycle_expiry_lag_seconds_bucket[5m])))",
+          "legendFormat": "expiry lag p95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(memories_access_telemetry_lifecycle_purge_duration_milliseconds_bucket[5m])))",
+          "legendFormat": "purge p95"
+        },
+        {
+          "expr": "max(memories_access_telemetry_lifecycle_purge_cohort_age_seconds)",
+          "legendFormat": "purge cohort age"
+        },
+        {
+          "expr": "sum by (outcome) (rate(memories_access_telemetry_lifecycle_reminders_total[5m]))",
+          "legendFormat": "reminders/s"
+        }
+      ],
+      "title": "Access Telemetry Expiry and Purge",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Dapr and state-operation p95 latency use runtime histogram units.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 42
+      },
+      "id": 21,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(memories_access_telemetry_lifecycle_dapr_duration_milliseconds_bucket[5m])))",
+          "legendFormat": "Dapr p95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(memories_access_telemetry_lifecycle_state_duration_milliseconds_bucket[5m])))",
+          "legendFormat": "state p95"
+        }
+      ],
+      "title": "Access Telemetry Dependency Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Evidence age is derived from the producer-recorded evidence timestamp, never scrape time.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "s"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "evidence observations/s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ops/s"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 49
+      },
+      "id": 22,
+      "targets": [
+        {
+          "expr": "sum by (state) (rate(memories_access_telemetry_lifecycle_physical_evidence_total[5m]))",
+          "legendFormat": "evidence observations/s"
+        },
+        {
+          "expr": "time() - max(memories_access_telemetry_lifecycle_physical_evidence_last_timestamp_seconds)",
+          "legendFormat": "last evidence age"
+        }
+      ],
+      "title": "Access Telemetry Reclamation Evidence",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Unhealthy has precedence over Degraded; a missing series is an unhealthy NoData condition.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 49
+      },
+      "id": 23,
+      "targets": [
+        {
+          "expr": "max by (state, reason) (memories_access_telemetry_lifecycle_health)",
+          "legendFormat": "{{state}} {{reason}}"
+        }
+      ],
+      "title": "Access Telemetry Lifecycle Health",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "The matched series stays visible while current; only an absent profile series is synthesized as no_data.",
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unhealthy / NoData",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 49
+      },
+      "id": 24,
+      "targets": [
+        {
+          "expr": "max by (state) (memories_access_telemetry_lifecycle_profile) or on() label_replace(vector(1), \"state\", \"no_data\", \"\", \"\")",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "title": "Access Telemetry Profile Drift",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

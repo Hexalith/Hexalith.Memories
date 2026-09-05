@@ -193,6 +193,120 @@ public sealed class CapabilityAndObservabilityCheckpointTests
     }
 
     [Fact]
+    public void LifecycleGauges_UseLiveClockAndAggregateHealthWithoutInventingPhysicalEvidence()
+    {
+        DateTimeOffset now = new(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
+        var clock = new FakeTimeProvider(now);
+        List<(string Name, double Value, KeyValuePair<string, object?>[] Tags)> doubles = [];
+        List<(string Name, long Value, KeyValuePair<string, object?>[] Tags)> integers = [];
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, current) =>
+        {
+            if (instrument.Meter.Name == AccessTelemetryLifecycleMetrics.MeterName)
+            {
+                current.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<double>((instrument, value, tags, _) =>
+            doubles.Add((instrument.Name, value, tags.ToArray())));
+        listener.SetMeasurementEventCallback<long>((instrument, value, tags, _) =>
+            integers.Add((instrument.Name, value, tags.ToArray())));
+        listener.Start();
+
+        AccessTelemetryLifecycleMetrics.RecordRuntimeGate(
+            true,
+            now.AddSeconds(30),
+            AccessTelemetryHealthState.Healthy,
+            AccessTelemetryReason.None,
+            clock);
+        AccessTelemetryLifecycleMetrics.RecordProcessorHealth(
+            AccessTelemetryHealthState.Degraded,
+            AccessTelemetryReason.DependencyUnavailable);
+        AccessTelemetryLifecycleMetrics.RecordAttestation(CreateAttestation(now.AddSeconds(-10)), now, clock);
+        AccessTelemetryLifecycleMetrics.RecordExpiryState(7, now.AddSeconds(-30), now.AddSeconds(-20));
+        AccessTelemetryLifecycleMetrics.RecordCapacity(450, 900);
+        AccessTelemetryLifecycleMetrics.RecordPhysicalEvidence(present: false);
+        AccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Dropped, AccessTelemetryReason.QueueFull);
+        AccessTelemetryLifecycleMetrics.RecordDaprLatency(11);
+        AccessTelemetryLifecycleMetrics.RecordAttestationLatency(12);
+        AccessTelemetryLifecycleMetrics.RecordStateLatency(13);
+        AccessTelemetryLifecycleMetrics.RecordExpiryLag(30);
+        AccessTelemetryLifecycleMetrics.RecordPurgeLatency(14);
+        AccessTelemetryLifecycleMetrics.RecordReminder(succeeded: true);
+        listener.RecordObservableInstruments();
+
+        Last(integers, AccessTelemetryMetricContract.CapacityRecords).Value.ShouldBe(450);
+        Last(doubles, AccessTelemetryMetricContract.CapacityUtilization).Value.ShouldBe(0.5);
+        Last(integers, AccessTelemetryMetricContract.ExpiryIndexDepth).Value.ShouldBe(7);
+        Last(doubles, AccessTelemetryMetricContract.AttestationAge).Value.ShouldBe(10);
+        Last(doubles, AccessTelemetryMetricContract.ExpiryOldestDueAge).Value.ShouldBe(30);
+        Last(doubles, AccessTelemetryMetricContract.PurgeCohortAge).Value.ShouldBe(20);
+        Last(integers, AccessTelemetryMetricContract.Profile).Tags.ShouldContain(
+            new KeyValuePair<string, object?>("state", "matched"));
+        Last(integers, AccessTelemetryMetricContract.Health).Tags.ShouldContain(
+            new KeyValuePair<string, object?>("state", "degraded"));
+        integers.ShouldNotContain(measurement =>
+            measurement.Name == AccessTelemetryMetricContract.PhysicalEvidenceLastTimestamp);
+
+        AccessTelemetryLifecycleMetrics.RecordPhysicalEvidence(present: true, now.AddSeconds(-60));
+        clock.Advance(TimeSpan.FromSeconds(5));
+        listener.RecordObservableInstruments();
+
+        Last(doubles, AccessTelemetryMetricContract.AttestationAge).Value.ShouldBe(15);
+        Last(doubles, AccessTelemetryMetricContract.ExpiryOldestDueAge).Value.ShouldBe(35);
+        Last(doubles, AccessTelemetryMetricContract.PurgeCohortAge).Value.ShouldBe(25);
+        Last(integers, AccessTelemetryMetricContract.PhysicalEvidenceLastTimestamp).Value
+            .ShouldBe(now.AddSeconds(-60).ToUnixTimeSeconds());
+        string[] observedNames = doubles.Select(static measurement => measurement.Name)
+            .Concat(integers.Select(static measurement => measurement.Name))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        foreach (string expected in AccessTelemetryMetricContract.MetricTagKeyPolicy.Keys.Except(
+            [
+                AccessTelemetryMetricContract.QueueRecords,
+                AccessTelemetryMetricContract.QueueBytes,
+                AccessTelemetryMetricContract.QueueOldestAge,
+            ],
+            StringComparer.Ordinal))
+        {
+            observedNames.ShouldContain(expected);
+        }
+
+        AccessTelemetryLifecycleMetrics.RecordProcessorHealth(
+            AccessTelemetryHealthState.Healthy,
+            AccessTelemetryReason.None);
+        listener.RecordObservableInstruments();
+        Last(integers, AccessTelemetryMetricContract.Health).Tags.ShouldContain(
+            new KeyValuePair<string, object?>("state", "no_data"));
+        AccessTelemetryLifecycleMetrics.RecordProcessorHealth(
+            AccessTelemetryHealthState.Healthy,
+            AccessTelemetryReason.None,
+            clock.GetUtcNow());
+        listener.RecordObservableInstruments();
+        Last(integers, AccessTelemetryMetricContract.Health).Tags.ShouldContain(
+            new KeyValuePair<string, object?>("state", "healthy"));
+
+        AccessTelemetryLifecycleMetrics.RecordProcessorHealth(
+            AccessTelemetryHealthState.Unhealthy,
+            AccessTelemetryReason.ClockUntrusted);
+        listener.RecordObservableInstruments();
+        Last(integers, AccessTelemetryMetricContract.Health).Tags.ShouldContain(
+            new KeyValuePair<string, object?>("state", "unhealthy"));
+        Last(integers, AccessTelemetryMetricContract.Health).Tags.ShouldContain(
+            new KeyValuePair<string, object?>("reason", "clock_untrusted"));
+
+        AccessTelemetryLifecycleMetrics.RecordProcessorHealth(
+            AccessTelemetryHealthState.Healthy,
+            AccessTelemetryReason.None);
+        clock.Advance(TimeSpan.FromSeconds(25));
+        listener.RecordObservableInstruments();
+        Last(integers, AccessTelemetryMetricContract.Profile).Tags.ShouldContain(
+            new KeyValuePair<string, object?>("state", "unproven"));
+        Last(integers, AccessTelemetryMetricContract.Health).Tags.ShouldContain(
+            new KeyValuePair<string, object?>("reason", "capability_unproven"));
+    }
+
+    [Fact]
     public void HealthPrecedence_IsUnhealthyThenDegradedThenNoDataOrHealthy()
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -239,6 +353,30 @@ public sealed class CapabilityAndObservabilityCheckpointTests
             CapacityEvidenceId = "capacity-development",
             PhysicalReclamationEvidenceId = "pending-story-27-3",
             ValidUntilUtc = DateTimeOffset.UtcNow.AddHours(1),
+        };
+
+    private static (string Name, T Value, KeyValuePair<string, object?>[] Tags) Last<T>(
+        IEnumerable<(string Name, T Value, KeyValuePair<string, object?>[] Tags)> measurements,
+        string name)
+        => measurements.Last(measurement => string.Equals(measurement.Name, name, StringComparison.Ordinal));
+
+    private static SignedClockAttestation CreateAttestation(DateTimeOffset issuedAt)
+        => new()
+        {
+            DeploymentId = "deployment-a",
+            AppId = "memories-access-telemetry",
+            ServiceInstanceId = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XB",
+            ProcessEpoch = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XC",
+            ComponentProfileHash = new string('a', 64),
+            RequestingProcessEpoch = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+            RequestingServiceInstanceId = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XA",
+            Nonce = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XD",
+            NotBeforeUnixMilliseconds = issuedAt.AddMilliseconds(-10).ToUnixTimeMilliseconds(),
+            NotAfterUnixMilliseconds = issuedAt.AddMilliseconds(10).ToUnixTimeMilliseconds(),
+            IssuedAtUnixMilliseconds = issuedAt.ToUnixTimeMilliseconds(),
+            ExpiresAtUnixMilliseconds = issuedAt.AddSeconds(30).ToUnixTimeMilliseconds(),
+            SignerKeyEpoch = "clock-key-1",
+            Signature = Convert.ToBase64String(new byte[64]),
         };
 
     private static AccessTelemetryCapabilityProbeContext ProbeContext(DateTimeOffset validUntilUtc)

@@ -168,6 +168,11 @@ Queued | Extracting | Embedding | Indexing
 
 ## Operational runbooks
 
+- Access-telemetry queue, retry, actor/reminder, clock, adapter-fault, and
+  reclamation recovery are separate from ingestion reprocessing. Follow
+  [Access Telemetry Lifecycle Operations](./access-telemetry-lifecycle.md) and
+  its [PostgreSQL 18.4 appendix](./access-telemetry-adapter-production.md).
+
 - [Rate limiting and provider recovery](./rate-limiting.md)
 - [Directory ingestion](./directory-ingestion.md)
 - [Ingestion workflow determinism (contributor)](../dev/ingestion-workflow-determinism.md)

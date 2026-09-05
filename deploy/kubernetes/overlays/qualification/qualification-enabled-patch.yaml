@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memories-access-telemetry
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: lifecycle
+          env:
+            - name: DOTNET_ENVIRONMENT
+              value: Qualification
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memories-access-telemetry-clock
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: clock
+          env:
+            - name: DOTNET_ENVIRONMENT
+              value: Qualification
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memories
+spec:
+  template:
+    spec:
+      containers:
+        - name: memories
+          env:
+            - name: DOTNET_ENVIRONMENT
+              value: Qualification

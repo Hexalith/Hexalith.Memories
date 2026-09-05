@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PRD Validation: Hexalith.Memories</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+    --grade-exc: #16a34a;
+    --grade-good: #65a30d;
+    --grade-fair: #d97706;
+    --grade-poor: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .grade {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 600;
+    color: white;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .grade-excellent { background: var(--grade-exc); }
+  .grade-good { background: var(--grade-good); }
+  .grade-fair { background: var(--grade-fair); }
+  .grade-poor { background: var(--grade-poor); }
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+
+</style>
+</head>
+<body>
+  <div class="container">
+
+    <header class="report-header">
+      <div class="title">
+        <h1>Hexalith.Memories — Validation Report</h1>
+        <div class="subtitle">_bmad-output/planning-artifacts/prd.md</div>
+      </div>
+      <div class="grade grade-poor">Poor</div>
+    </header>
+
+    <div class="synthesis">
+      <p>The PRD still has a real thesis, named trade-offs, and unusually concrete NFRs, pipeline, compliance, and licensing substance for an older BMad format. What does not hold is a single ship contract: "MVP" names both a CLI proof-of-thesis prototype and a launch checklist that includes MCP, EventStore causality, and a <code>dotnet add package</code> onboarding path the feature table deferred. At launch / chain-top stakes, with architecture, epics, UX, and months of sprint changes already downstream of this document, those forks will keep generating the wrong stories unless the PRD picks one increment and phases the rest.</p>
+      <p>Adversarial review refuses to sign the go/no-go: the 80% kill switch cannot fail as written, Phase 1 has no causal graph to fuse, and Greenfield classification already inventories nine published packages. Product-brief reconciliation shows the PRD kept the brief's identity but not its v1 contract — MCP and EventStore left MVP while leftover sentences still treat them as launch gates. Downstream drift is decisive: two approved August 2026 Major sprint-change proposals required PRD amendments that never landed, and architecture now treats EventStore as domain source of truth while the PRD still schedules it as Phase 1.5 integration.</p>
+    </div>
+
+    <div class="dimension-summary">
+      <div class="dim-card">
+        <div class="dim-name">Decision-readiness</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Substance over theater</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Strategic coherence</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Done-ness clarity</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Scope honesty</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Downstream usability</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Shape fit</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+    </div>
+
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Decision-readiness</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>A March decision-maker could have acted: proof-of-thesis before integration surfaces, physical isolation and cases from day one, fusion as a dedicated spike, MCP as a 4-week fast-follow, and a graph-axis fallback. Those are stated as decisions, not considerations.</p>
+            <p>What a decision-maker cannot do now is execute the ship checklist without choosing which layer of the document is authoritative. The body has been patched toward implementation (RRF, Google-only embeddings, OpenBao, published packages, TenantProvisioningWorkflow) while the gates, hero journey, and resource line still describe the March greenfield bet. There are zero Open Questions, [ASSUMPTION] tags, or [NOTE FOR PM] callouts; remaining tensions were edited into coexistence rather than left visible.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">&quot;MVP&quot; means two incompatible ship contracts</h3>
+              <span class="finding-location">§ Success Criteria › MVP Go/No-Go vs § MVP Feature Set vs § Phase 1.5</span>
+            </header>
+            <div class="finding-note">The go/no-go table is titled MVP and requires MCP end-to-end and causal-chain completeness as soft gates, plus a dotnet add package hard onboarding path, while Phase 1 explicitly excludes EventStore and MCP. NFR31 operationalizes &lt;30 minutes as a Docker README walkthrough.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Split into a Phase 1 thesis gate and a launch gate; point the &lt;30 min hard gate at one onboarding path.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Fusion algorithm is two different decisions</h3>
+              <span class="finding-location">§ MVP Strategy &amp; Philosophy / Risk Mitigation vs NFR24</span>
+            </header>
+            <div class="finding-note">Sequencing still treats fusion as BM25 normalization + cosine + graph proximity weighting. Domain and NFR24 have already chosen weighted reciprocal-rank fusion.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Declare RRF as the decision; demote the three-normalization paragraph to historical context or a rejected alternative.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Case membership is specified without an identity model</h3>
+              <span class="finding-location">§ Journey 4, FR28–FR29 vs Service Communication Model</span>
+            </header>
+            <div class="finding-note">Journey 4 and FR28/FR29 require memories case add-member --user tomas. The communication model says per-user identity is not in MVP. ingested_by is a provenance string, not membership.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either defer FR28/FR29/Journey 4 to Phase 2, or define the MVP member as an unauthenticated identifier and state what enforcement exists.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">License is a public trust commitment and still a recommendation</h3>
+              <span class="finding-location">§ Open-Source Licensing</span>
+            </header>
+            <div class="finding-note">Hexalith.Memories license: Apache 2.0 (recommended) sits next to a README sentence the PRD wants treated as a promise: We will not change to a restrictive license.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Record Apache 2.0 as the decision, or list the remaining blocker.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Substance over theater</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The earned core is not furniture: NFR1–NFR31 have targets, conditions, verification, and phase tags; the edge-type table distinguishes caused_by from correlated_with with a concrete failure mode; the compliance section refuses &#x27;just infrastructure&#x27; and limits tenant delete and telemetry; licensing names SSPL/AGPL implications instead of a vibe. Journeys 1, 2, 5, 7, and 9 actually constrain CLI, isolation, and agent behavior.</p>
+            <p>The overweight is the surrounding cast: six named humans plus an LLM Agent, ten journeys, and an Innovation section that partly restates the thesis.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Several personas/journeys do not drive an MVP (or even Phase 1.5) decision</h3>
+              <span class="finding-location">§ User Success, Journeys 4, 6, 8, 10</span>
+            </header>
+            <div class="finding-note">Marcus&#x27;s success criterion is Brief me on this case within 5 minutes, but onboarding briefing is Phase 2. Priya never uses Memories; she consumes a Phase 2 REST app. Journey 6 is Phase 3. Journey 10 is project infrastructure tracked separately.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Keep Alex / Kenji / LLM Agent as load-bearing; mark the rest as vision illustrations or move them out of Success Criteria.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Novelty claims that the rest of the PRD does not need</h3>
+              <span class="finding-location">§ What Makes This Special, § Innovation &amp; Novel Patterns</span>
+            </header>
+            <div class="finding-note">No competitor offers this (team-scoped collaborative memory) and Interpretive Infrastructure (Positioning Innovation) do not add a testable bet beyond the three-axis kill switch and the isolation NFRs.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Keep the table; drop uniqueness superlatives unless Discovery named a disconfirming competitor.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Strategic coherence</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>There is a thesis, and it is repeated as a kill switch: if hybrid retrieval doesn&#x27;t outperform single-axis on 80%+ of benchmark queries the product direction must be re-evaluated. MVP features 1–7 follow that bet. The fast-follow is justified as adoptability, not as more thesis.</p>
+            <p>What breaks the arc is that the document&#x27;s opening sells a different product than the thesis MVP proves, and the kill-switch methodology is narrower than the claim it supposedly validates.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">The kill switch is partly tautological</h3>
+              <span class="finding-location">§ Executive Summary vs § Measurable Outcomes › The Three-Axis Kill Switch</span>
+            </header>
+            <div class="finding-note">Front matter says hybrid must outperform single-axis on 80%+ of benchmark queries. The protocol then restricts the suite to 5–10 queries requiring all three axes. A set constructed to need all three axes cannot falsify three-axis is the right product.</div>
+            <div class="finding-fix"><strong>Fix:</strong> State the population (representative mix vs thesis-stress queries), keep 80% only for the chosen population, and make the reviewer fallback a documented downgrade of gate confidence.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Hero differentiators are not the MVP bet</h3>
+              <span class="finding-location">§ What Makes This Special vs § MVP Feature Set / Phase 2</span>
+            </header>
+            <div class="finding-note">The specialness pitch is causal intelligence via EventStore zero-code, plus team-scoped collaborative memory. EventStore is Phase 1.5; discussions/diffing/briefings are Phase 2. MVP actually bets on hybrid retrieval plus non-retrofittable isolation.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Lead the exec summary with the Phase 1 proof (hybrid + isolation + CLI); treat causality and collaboration as sequenced bets with their own gates.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Isolation is both un-deferrable and deferrable</h3>
+              <span class="finding-location">§ MVP Strategy &amp; Philosophy vs § Resource Risks</span>
+            </header>
+            <div class="finding-note">Philosophy: cases and multi-tenancy from day one (architectural decisions that can&#x27;t be retrofitted). Resource fallback: Cases and tenant isolation deferred to fast-follow. If isolation cannot be retrofitted, the fallback is a different architecture.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Strike the fallback or reclassify isolation as retrofittable with an explicit cost.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Done-ness clarity</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>An engineer can take NFR1–NFR31, the ingestion state machine, edge taxonomy, and --explain score semantics to a test plan. They cannot take FR1–FR74 the same way. The older one-liner FR shape is acceptable only where nearby tables supply consequences; too many FRs either span later phases with no tag, or refuse the decision that would make done checkable. Downstream story creation will over-build Phase 1 or under-specify recovery, identity, and CLI.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Functional requirements are not increment-scoped</h3>
+              <span class="finding-location">§ Functional Requirements vs § MVP Feature Set / CLI Specification</span>
+            </header>
+            <div class="finding-note">Seventy-four FRs, one phase tag (FR71). MCP, EventStore, case members, annotations, memories status, batch directory ingest, and export sit in the same flat list as MVP search/ingest. Journey 9&#x27;s MVP climax is memories ingest ./sample-claims/ while NFR4 requires MVP graph-traversal latency with no MVP traverse command.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Tag every FR with Phase 1 / 1.5 / 2 / 3 (or not a product FR) so extract does not depend on tribal crosswalk.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Several FRs have no single testable consequence</h3>
+              <span class="finding-location">FR13, FR31, FR43, FR57; soft gate Case model correctly scopes memory</span>
+            </header>
+            <div class="finding-note">FR13: handles partial backend write failures with defined recovery behavior (rollback or retry) — rollback and retry are different products. FR31: health indicators. FR43: prevents configuration changes that would create data inconsistency without explicit operator acknowledgment. FR57: discover available actions from any system state.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Pick rollback or retry for FR13; replace health/inconsistency/discover with observable outputs; replace the case soft gate with an isolation/ownership test.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Latency done disagrees with itself</h3>
+              <span class="finding-location">§ User Success vs NFR1–NFR3 vs NFR7</span>
+            </header>
+            <div class="finding-note">LLM Agent success wants Search-to-response time &lt;200ms cached, &lt;2s cold. NFR3 wants hybrid p95 &lt;1s at 10K units with no cache distinction. NFR7&#x27;s cold start is service boot within 60s, not query cold.</div>
+            <div class="finding-fix"><strong>Fix:</strong> One latency budget per surface (cached/uncached/hybrid) and point User Success at those NFR IDs.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Scope honesty</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Omissions are mostly listed (Phase 2/3 bullets, Journey 6/10 scope notes, thesis-only MVP is not adoptable, SSPL/AGPL, tenant-delete cross-reference limitation, telemetry is not a tamper-evident audit trail). That is more honest than a silent backlog.</p>
+            <p>It is not honest enough for a green-light-to-build PRD: there is no Non-Goals section, no [NON-GOAL for MVP] on REST/briefing/Python clients/per-unit ACLs, and open-item density is zero at launch stakes. The dangerous omissions are the ones the front of the document still performs as in-scope.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Tensions were smoothed instead of opened</h3>
+              <span class="finding-location">document-wide</span>
+            </header>
+            <div class="finding-note">No Open Questions, no [ASSUMPTION], no [NOTE FOR PM], no Assumptions Index. The remaining forks (what MVP means, RRF vs weighted scores, members without identity, &lt;30 min path, isolation fallback) are exactly the callouts that section is for.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a short open-item list that names each fork and the owner; do not invent resolved answers in prose.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Journey scope notes instruct the wrong increment</h3>
+              <span class="finding-location">§ Journey 2, § Journey 9, § Journey Requirements Summary</span>
+            </header>
+            <div class="finding-note">Journey 2: They must be explicitly included in MVP Feature #3 (EventStore Integration). MVP Feature #3 is Three-Axis Search; EventStore is Phase 1.5 Feature #1. Journey 9 is listed as full MVP, then climaxes with Alex publishes a test event to the DAPR topic.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Re-bind each journey to a phase; delete or rewrite the Journey 2 feature-number instruction; strip DAPR publish from Journey 9 or move it to 1.5.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">No Non-Goals section where it would do work</h3>
+              <span class="finding-location">§ Phase 2 / Phase 3 vs hero copy</span>
+            </header>
+            <div class="finding-note">Phase lists exist, but Every feature is accessible through both MCP and CLI, Both interfaces are first-class citizens, and Marcus/Priya success metrics still read as near-term.</div>
+            <div class="finding-fix"><strong>Fix:</strong> A Non-Goals block that names MCP/EventStore/REST/briefing/members as non-goals for Phase 1, with the 4-week pull-forward as the only exception.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Downstream usability</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>This is chain-top (already fed UX, architecture, epics, sprint changes), so extract quality matters more than for a standalone PRD. IDs are contiguous (FR1–FR74, NFR1–NFR31, Journeys 1–10) and MCP tool names are stable. What extract cannot trust is vocabulary or increment. There is no Glossary; the same nouns shift meaning; several source of truth pointers already leave the PRD.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Domain nouns collide without a glossary</h3>
+              <span class="finding-location">chain-top extract risk</span>
+            </header>
+            <div class="finding-note">Confidence is query-result relevance, per-field metadata confidence, and edge-type default confidence. Audit is NFR/FR67 for audit purposes and Journey 5&#x27;s audit log, while Compliance says this is not a tamper-evident audit trail. Three-axis sits beside an axis=nl fourth score. Member implies identity the communication model forbids.</div>
+            <div class="finding-fix"><strong>Fix:</strong> A short Glossary that pins memory unit, case, tenant, axis (and whether nl is an axis), Evidence Packet, confidence (three kinds), audit/telemetry, member; then align FR/NFR wording.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Authoritative shape has already moved out of the PRD</h3>
+              <span class="finding-location">§ Evidence Packet, § Package Distribution</span>
+            </header>
+            <div class="finding-note">Evidence Packet concrete shape is owned by Contracts.V1 (see Architecture). Package inventory defers to tools/release-packages.json and describes 9 published NuGet packages plus a compatibility-only Redis package.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either freeze PRD-owned names/IDs and say implementation SoT lives elsewhere, or add an addendum that records post-architecture decisions so the PRD is not a palimpsest.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Shape fit</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Developer Tool / API Backend is the right class; the load-bearing shape is the capability spec (CLI matrix, pipeline, packages, NFR tables, kill switch), not a consumer multi-stakeholder product. That half fits. The other half is a ten-journey narrative template wrapped around a solo-originally OSS server, still labeled Greenfield while the package section reads like a shipped inventory. Chain-top rigor on IDs and gates is warranted; UJ density at this level is not.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">User-journey density is consumer-product shaped</h3>
+              <span class="finding-location">§ User Journeys</span>
+            </header>
+            <div class="finding-note">Ten journeys, including an end-beneficiary who never touches the API (Priya) and a contributor-experience arc (Dani). For this product type, Alex (CLI), Kenji (tenant ops), and the LLM Agent integration path are enough.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Treat Journeys 1, 2, 5, 7, 9 as normative; demote the rest to appendix illustrations.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Classification and resource model were not updated when the body was</h3>
+              <span class="finding-location">§ Project Classification, § Resource Requirements vs § Package Distribution</span>
+            </header>
+            <div class="finding-note">Still Greenfield, Solo developer. Estimated 22-32 stories. The same document lists published packages, a compatibility-only Redis facade, Aspire AppHost, and TenantProvisioningWorkflow as if they were already the system.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Reclassify as brownfield/in-progress, drop or update the solo/story estimate, and date-stamp which sections are still March intent vs patched fact.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="reviewer-section">
+      <details>
+        <summary>
+          <h2>Adversarial review</h2>
+          <span class="reviewer-source">_bmad-output/planning-artifacts/review-adversarial-general.md</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Refuse to sign this PRD as a go/no-go instrument. The core bet is declared with a kill switch that cannot fail as written, an MVP that never touches the product&#x27;s advertised causal/zero-code/MCP story, and a Greenfield classification that already inventories nine published NuGet packages. The document is excellent at sounding decisive — 80%, hard gates, physical isolation, zero mapping code — and systematically unwilling to specify the comparisons, edge sources, identity model, or relevance protocol that would make those words expensive. A skeptical engineer would treat it as a positioning memo stapled to an in-flight codebase, not as a decision artifact.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">The 80% hybrid kill switch is unfalsifiable as specified</h3>
+              <span class="finding-location">Success Criteria § Measurable Outcomes; Innovation § Validation Approach; FR25; NFR24–NFR26</span>
+            </header>
+            <div class="finding-note">The protocol selects 5–10 queries that require all three axes, scores hybrid vs each single axis with NDCG@10, calls 80% a hard line, and never defines a delta, a corpus, a graded-relevance scale, or a two-axis control. Queries requiring all three axes are constructed so hybrid then wins by construction. The industry baseline — BM25+vector — is never the control.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Frozen corpus and realistic (not graph-filtered) queries; graded labels after queries exist; primary comparison hybrid vs BM25+semantic; pre-registered ΔNDCG and N; named kill actions. Delete the unlabeled A/B fallback.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">MVP proves a retrieval toy, not the product thesis</h3>
+              <span class="finding-location">Executive Summary; § MVP Feature Set; Phase 1.5; Journey 1; MVP Go/No-Go Gate</span>
+            </header>
+            <div class="finding-note">The product is sold as a causal memory server for LLM agents with zero-code EventStore indexing; Phase 1 is CLI ingest/search on files. You can pass every hard gate and still have proven none of: agents getting better answers, CausationId becoming a queryable story, or dotnet add package auto-indexing an event stream.</div>
+            <div class="finding-fix"><strong>Fix:</strong> State that thesis MVP proves the algorithm only, then either demote EventStore/MCP/causal narrative from the exec summary until Phase 1.5, or put one of them on the hard-gate list. Make Phase 1.5 slip a product delay, not an MVP scope accordion.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">Phase 1 has no honest graph to fuse</h3>
+              <span class="finding-location">MVP Feature Set #3–#4; Causal Intelligence; FR16–FR17, FR33, FR46–FR50; Journey 9</span>
+            </header>
+            <div class="finding-note">Hybrid fusion is the thesis and an MVP hard gate, but the edges that make a graph axis more than a folder tree (caused_by, correlated_with) are EventStore metadata scheduled for Phase 1.5. File ingest never specifies how non-trivial edges appear. Implementers will invent an edge story to make the benchmark pass.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Closed Phase 1 edge inventory. If causal edges are absent, forbid three-axis until EventStore lands; validate BM25 vs vector vs BM25+vector in Phase 1. Remove DAPR event publish from Journey 9 or move it to 1.5.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">The document classifies a shipping system as Greenfield</h3>
+              <span class="finding-location">Project Classification; Technical Architecture § Package Distribution</span>
+            </header>
+            <div class="finding-note">Front matter says greenfield. The architecture chapter inventories nine published packages, non-packable services, tools/release-packages.json as source of truth, and a compatibility-only Redis package retained for existing package consumers. Nobody can tell requirement from retrospective.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Reclassify as brownfield / in-progress. Add a status column on every FR/NFR: shipped, partial, not started. Split current topology we must not break from net-new MVP remaining work.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Competitive landscape is a straw man; no competitor offers this is load-bearing theater</h3>
+              <span class="finding-location">What Makes This Special; Innovation § Market Context</span>
+            </header>
+            <div class="finding-note">The table compares Memories to Mem0, Zep, LangChain Memory, Elasticsearch, and Qdrant + custom glue. The omitted field is GraphRAG, Neo4j LLM graphs, LlamaIndex PropertyGraphIndex, Vespa, Weaviate hybrid, Azure AI Search. Team discussions, memory diffing, and brief me on this case are Phase 2.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Rebuild the table against hybrid-search and GraphRAG incumbents. Mark each differentiator as shipped in MVP, Phase 2, or EventStore-only. Replace no competitor offers this with a falsifiable claim.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Zero mapping code / zero configuration is already retracted in the same PRD</h3>
+              <span class="finding-location">Executive Summary; Journey 1–2; FR59–FR62</span>
+            </header>
+            <div class="finding-note">Marketing says zero mapping, zero configuration, auto-discovery for any DAPR publisher. Journey 2 requires registering ClaimSubmittedV2 handlers. The innovation fallback admits low-code with a thin adapter for everyone but EventStore. MVP does not ship the EventStore package at all.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Put the honest contract in the executive summary: EventStore happy path is subscription + conventions; schema changes require handler registration; non-EventStore is an adapter. Delete zero configuration or list the exact config files and secret stores.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">The kill switch does not kill</h3>
+              <span class="finding-location">Executive Summary; Measurable Outcomes; Innovation § Risk Mitigation</span>
+            </header>
+            <div class="finding-note">Three wordings, three severities, one outcome: keep building. Engineering has already pre-authorized the pivot that preserves FalkorDB, actors, tenant-isolated graphs, and the case model — almost the entire MVP cost.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Write a single kill-switch paragraph that names sunk-cost actions, or delete kill-switch language so nobody plans against a lie.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">The cannot-retrofit foundation is also the first budget cut</h3>
+              <span class="finding-location">MVP Strategy vs Resource Risks vs Hard gates</span>
+            </header>
+            <div class="finding-note">The same document says isolation/cases are load-bearing architecture and optional if the solo developer gets tired. When 22–32 stories collide with fusion R&amp;D, the PRD authorizes dropping the thing it called non-retrofittable.</div>
+            <div class="finding-fix"><strong>Fix:</strong> If physical isolation is a hard gate, remove it from the absolute-minimum cut list. If the true MVP is Engine+Search+CLI+Benchmarks, drop isolation from hard gates and from enterprise marketing until it exists.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Physically isolated per-tenant indexes is logical namespacing in a shared Redis</h3>
+              <span class="finding-location">Executive Summary; Journey 5; FR38; NFR8; Compliance Boundary</span>
+            </header>
+            <div class="finding-note">Journey 5 provisions physically separate Redis indexes — all namespaced and isolated. Isolation tests are application-layer tenant-ID checks. Separate index names on one Redis/FalkorDB process is not physical isolation.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Define isolation tiers L1–L3. Tag MVP as L1. Strike physical and enterprise-grade isolation unless L2 is in scope with a provisioner that actually creates separate data stores.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">The worst FRs are slogans; FR13 is the exhibit</h3>
+              <span class="finding-location">FR13; also FR43, FR53, FR59, FR74</span>
+            </header>
+            <div class="finding-note">FR13 authorizes both destroying in-flight writes and leaving them to retry — opposite products. FR53 demands all retrieval/ingestion via CLI while the MVP CLI cut list forbids status, traverse, handlers, members, and batch directories.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Rewrite the dangerous ones first. FR13 must pick one consistency model plus an observable CLI/API state. Phase-tag every FR. Ban or in recovery FRs.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">The 30-minute onboarding hard gate clocks a path that does not exist in Phase 1</h3>
+              <span class="finding-location">Executive Summary; User Success (Alex); NFR31; Journey 1</span>
+            </header>
+            <div class="finding-note">The clock starts at dotnet add package. MVP has no EventStore zero-code flow, no reusable Client package, and a runtime of Aspire + DAPR sidecars + Redis Stack + FalkorDB + OpenBao-backed secrets + a Google embedding key.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Write the Phase 1 stopwatch procedure as a numbered script starting at the command you actually ship. Move the EventStore 30-minute claim to a Phase 1.5 hard gate.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Case members, ingested_by, and tenant mismatch exist; a user identity model does not</h3>
+              <span class="finding-location">Service Communication Model; FR28–FR29, FR65, FR67; Journeys 4–5</span>
+            </header>
+            <div class="finding-note">The PRD postpones per-user identity and specifies add/remove case members, mandatory ingested_by, activity feeds, and audit telemetry as free-text strings with no authentication binding.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either add a minimal principal model to MVP or remove FR28–FR29, member journeys, insider-threat claims, and audit until identity exists.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Confidence is defined as calibrated truth and as not accuracy in the same chapter</h3>
+              <span class="finding-location">Compliance Boundary vs AI Reliability; FR63–FR64</span>
+            </header>
+            <div class="finding-note">Two incompatible contracts for the same number, with calibration deferred, while --explain, MCP, and Priya&#x27;s 0.95 causal-chain confidence are sold as trust. Applications will treat 0.95 as the denial reason is true.</div>
+            <div class="finding-fix"><strong>Fix:</strong> One semantics table: relevance composite vs metadata-origin confidence vs edge-existence confidence. Remove 0.8 ≈ 80% reliability from MVP or make calibration an MVP acceptance test.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">An open-source adopter outside Hexalith would refuse the runtime and license tax</h3>
+              <span class="finding-location">Open-Source Licensing; Deployment Topology; Embedding Provider</span>
+            </header>
+            <div class="finding-note">Apache 2.0 is only recommended. Default path requires .NET 10, DAPR, Aspire, Redis Stack (SSPL), FalkorDB (AGPL), OpenBao, a Google embedding key, and git submodules. Legal text claims AGPL does not touch application code because DAPR is in the middle.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Decide the license. Add an adopter persona gate without EventStore, OpenBao, or Hexalith submodules — or explicitly declare Hexalith-only MVP.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Latency, freshness, and atomic three-backend index NFRs disagree with the journeys</h3>
+              <span class="finding-location">LLM Agent success; NFR1–NFR4, NFR6; Async Ingestion; NFR18; FR6, FR13</span>
+            </header>
+            <div class="finding-note">Agent success wants 200ms; hybrid p95 is 1s; graph traversal p95 is 2s. Atomic triple-write vs serve partial axes is unresolved. Cold vs cached is undefined.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Collapse to one latency budget per surface. Pick atomic-index XOR degraded-read and write it into FR13/NFR18 together. Add MVP freshness for file ingest.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="reviewer-section">
+      <details>
+        <summary>
+          <h2>Product-brief reconciliation</h2>
+          <span class="reviewer-source">_bmad-output/planning-artifacts/review-product-brief.md</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The PRD keeps the brief&#x27;s product identity — three-axis retrieval that answers why, case-scoped team memory, physical tenant isolation, EventStore causality, Redis-first with a Qdrant escape hatch — and it keeps the named people (Alex, the LLM agent, Marcus, Kenji, Priya). It does not keep the brief&#x27;s contract for v1. MCP and EventStore zero-code, which the brief put in Phase 1 as beachhead-critical, become a post-thesis fast-follow, while leftover brief sentences (dotnet add package, every feature is accessible through both MCP and CLI) still read as MVP gates. Without an addendum, large implementation expansions sit in the product contract.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">EventStore zero-code and MCP are no longer MVP, but the beachhead contract still talks as if they are</h3>
+              <span class="finding-location">Brief Phase 1 #3/#7 vs PRD Phase 1.5 / Journey 1</span>
+            </header>
+            <div class="finding-note">The brief&#x27;s v1 is a memory server LLM agents can call and EventStore developers can drop in. The PRD&#x27;s v1 is a CLI-operated retrieval prototype. Keeping Journey 1 as the success path and keeping dotnet add package as a hard MVP gate launders the brief&#x27;s beachhead into a phase that explicitly excludes it.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Either put EventStore auto-index + MCP back in Phase 1, or rewrite the MVP gates, Journey 1, Executive Summary, and Alex JTBD so they describe file/URL CLI proof-of-thesis only.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">Full feature parity on MCP + CLI is contradicted by the parity matrix</h3>
+              <span class="finding-location">Brief design principle vs PRD Interface Capability Parity Matrix</span>
+            </header>
+            <div class="finding-note">Executive Summary repeats Every feature is accessible through both MCP and CLI. The matrix then: Not all capabilities map to all interfaces. MCP gets search/ingest/traverse/case-info only. MVP CLI is further cut to benchmark essentials.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Delete or qualify the exec-summary parity sentence. If the product is MCP for agent work, CLI for ops, say that as a decided principle.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Ingest-from-anywhere (cloud, git, images, video) vanishes from the roadmap</h3>
+              <span class="finding-location">Brief Executive Summary vs PRD FR1–FR4 / Phase 2–3</span>
+            </header>
+            <div class="finding-note">Problem copy still mentions cloud drives. FRs: local files, URLs, directory, text from plain text, PDF, markdown. After EventStore left MVP, this drop leaves any team with files and URLs only.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add an explicit later-phase ingestion roadmap or an explicit deferral with owner and revisit condition.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Thirty-minute gate silently changed meaning</h3>
+              <span class="finding-location">Brief Alex JTBD vs PRD User Success / NFR31</span>
+            </header>
+            <div class="finding-note">Brief clock starts at dotnet add package Hexalith.Memories.Client and ends at first search on auto-indexed events. PRD NFR31 times a README quickstart on a clean machine with Docker. Three different clocks share one slogan.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Split gates: (MVP) timed CLI ingest→search; (P1.5) timed dotnet add package→first event search.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Unauthorized absolute-minimum cut drops cases and tenant isolation</h3>
+              <span class="finding-location">Brief Moat 1 / Proposed Solution #5 vs PRD Resource Risks</span>
+            </header>
+            <div class="finding-note">The brief said neither is optional. The PRD authorizes Engine + Search + CLI + Benchmarks with cases and tenant isolation deferred to fast-follow. That sentence authorizes a product that cannot keep either remaining moat.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Strike the cases/tenancy deferral. If a further cut exists, name only CLI polish or benchmark automation.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Jobs-to-be-done, Marcus&#x27;s hiring jobs, and non-users are not contracted</h3>
+              <span class="finding-location">Brief JTBD table vs PRD Success Criteria</span>
+            </header>
+            <div class="finding-note">No JTBD table, no non-users. Marcus success is brief me in 5 minutes (a Phase 2 capability). Decay detection is only a Phase 3 bullet. Priya has Journey 8 and no success metric.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Restore a short JTBD + non-users block. Give Marcus decay/cross-case insight an explicit phase.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Competitive Why Now, knowledge-base rivals, and the 12–18 month window are gone</h3>
+              <span class="finding-location">Brief Why Now / R5 / R6 vs PRD Market Context</span>
+            </header>
+            <div class="finding-note">Competitive table drops Notion/Confluence, Weaviate, OpenSearch. No Why Now. No 12–18 month window. Speed-to-market as the R5 mitigation is inverted by a thesis-only MVP.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Re-home Why Now, the wiki competitors, and R5/R6 in a short Market Context that architecture/UX can quote.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Extraction phrases dropped; README-as-product and explore-as-trust-building weakened</h3>
+              <span class="finding-location">Brief DX / Trust Building vs PRD MVP CLI / NFR30–31</span>
+            </header>
+            <div class="finding-note">README ships with MVP but is documentation, not a story-estimated feature. explore is Phase 1.5. No FR for extraction phrases themselves.</div>
+            <div class="finding-fix"><strong>Fix:</strong> FR for custom extraction phrases in MVP, or an explicit cut. Put README/demo and explore on the MVP story list if debug-first DX is still a gate.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Aspire-mandatory topology, OpenBao secrets, and a nine-package current inventory</h3>
+              <span class="finding-location">PRD Developer Tool / Package Distribution</span>
+            </header>
+            <div class="finding-note">The brief&#x27;s shape was Contracts / Server / Client / Redis / Cli / Mcp / EventStore and Day 1 dotnet run starts the service. The PRD binds Kenji and Alex to Aspire+OpenBao as product, not as one implementation.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Move topology, package inventory, and secret backend to addendum or architecture. If Aspire is a real product decision, confirm it against the brief&#x27;s simpler onboarding.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Zero-code generalized from EventStore to any DAPR pub/sub (Marten, Wolverine, Axon)</h3>
+              <span class="finding-location">PRD What Makes This Special / Innovation #2</span>
+            </header>
+            <div class="finding-note">Brief Moat 2 was Hexalith-ecosystem-specific. R6&#x27;s expansion path was standalone case + three-axis for non-EventStore users, not zero-code for every bus. This changes who the beachhead is.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Confirm whether generic-DAPR is a Phase 1.5 requirement, a later experiment, or marketing.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">REST-as-ingress in MVP vs brief REST API Phase 2</h3>
+              <span class="finding-location">PRD Service Communication vs Brief Phase 2</span>
+            </header>
+            <div class="finding-note">External consumers connect through a REST API behind infrastructure-managed ingress. Phase 2 still lists REST API for application search UIs. Plumbing REST for CLI is a reasonable elaboration; productizing REST as the external path is a new surface.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Name internal/CLI HTTP in MVP separately from the application search API Priya&#x27;s screenshot needs in Phase 2.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Go/no-go and benchmark character no longer match the brief&#x27;s proof</h3>
+              <span class="finding-location">Brief 5-of-6 vs PRD 3 hard + 2-of-3 soft</span>
+            </header>
+            <div class="finding-note">The brief&#x27;s example benchmark needed documents + discussions + events. Discussions remain Phase 2, EventStore Phase 1.5 — so the brief&#x27;s example query cannot be a Phase 1 benchmark. NDCG is a tightening; losing the example scene is the fidelity loss.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Publish 5–10 benchmark scenes that match whatever actually ships in MVP; move discussion/event scenes to P1.5.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Ecosystem health bars dropped or retimed</h3>
+              <span class="finding-location">Brief ecosystem metrics vs PRD Business/Technical Success</span>
+            </header>
+            <div class="finding-note">Second embedding provider within 6 months, works with all DAPR state stores, 5x productivity, validated migration path as Phase 2 priority — dropped or undated. Several were poorly measurable; they are still brief commitments the PRD does not absorb or defer by name.</div>
+            <div class="finding-fix"><strong>Fix:</strong> For each: keep with a date, defer with a phase, or record a rejected-alternative note.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Phase map compressed and a few items moved without saying so</h3>
+              <span class="finding-location">Brief Phases 2–4 vs PRD Phases 2–3</span>
+            </header>
+            <div class="finding-note">Phase 2 adds embedding versioning (pulled forward from Phase 3). Phase 3 swallows brief Phase 3 + Phase 4. No R3 cross-case-reference escape hatch. The audit rewrite (telemetry is not a tamper-evident audit trail) is more honest than the brief.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Publish a one-line phase crosswalk vs the brief. Restore R3 as a Phase 2 open question. Keep the telemetry-vs-audit distinction and state that it supersedes the brief.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Interpretive-infrastructure / compliance program</h3>
+              <span class="finding-location">PRD Domain-Specific Requirements</span>
+            </header>
+            <div class="finding-note">Three-tier Storage → Interpretation → Application model, GDPR-enabling tenant delete, Building Compliant Applications on Memories, legal disclaimer. Brief had isolation and Phase 4 compliance evidence. It did not create a compliance-enablement product line.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Confirm this is in-scope for the PRD vs a later enterprise phase. If architecture/legal depth, move to addendum.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Fusion algorithm, Evidence Packet, and nl as a scored axis</h3>
+              <span class="finding-location">NFR24–25; Evidence Packet; confidence table</span>
+            </header>
+            <div class="finding-note">The brief required three-axis hybrid and causal graphs, not a specific fusion, a named packet, or a fourth query axis. These freeze R&amp;D the brief wanted to validate if treated as product law.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Keep gap detection and caused_by vs correlated_with. Mark RRF/Evidence Packet/nl as current design of record, with permission to change fusion during the spike.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Apache 2.0 no-relicense pledge, SSPL/AGPL dependency strategy</h3>
+              <span class="finding-location">§ Open-Source Licensing</span>
+            </header>
+            <div class="finding-note">Brief only said open-source. A public no-relicense pledge is a business commitment. Dependency licensing is addendum-grade unless it constrains the Redis/FalkorDB MVP choice (it does).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Confirm Apache 2.0 + pledge with the author. Keep SSPL/AGPL constraints visible if Redis Stack + FalkorDB remain the MVP backends.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Contributor journey, samples path, extra FRs, identity/provenance</h3>
+              <span class="finding-location">Journey 10; FR12, FR21, FR22, FR36, FR37, FR65, FR71, FR74</span>
+            </header>
+            <div class="finding-note">None of this is in the brief. Most is normal PRD elaboration. The 6-month MCP listing hard target is new pressure given MCP itself left MVP.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Keep operational FRs. Tie the MCP-listing clock to Phase 1.5 ship. Mark Journey 10 as community/infra. Confirm annotations as Phase 2 with briefing.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Brand line and first-week critical path are not in the contract</h3>
+              <span class="finding-location">Brief title line / First Week Build Sequence</span>
+            </header>
+            <div class="finding-note">Connected knowledge that understands why is not in the PRD. First-week table absent. Tagline change is tone; the week-1 demo is the same sequencing issue as the critical finding.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Decide the brand line. Replace the week-1 table with an MVP demo scene that matches actual Phase 1 scope.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Solo-developer / 22–32 story sizing and fusion-as-primary-R&amp;D</h3>
+              <span class="finding-location">PRD Resource Requirements / Executive Summary</span>
+            </header>
+            <div class="finding-note">Brief estimated 29–44 stories across 7 epics including MCP, EventStore, and full CLI. Elevating fusion slightly displaces the brief&#x27;s risk (whether three axes help users).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Treat sizing as planning, not product. Keep both kill switches: fusion quality and user-visible three-axis value.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+    <section class="reviewer-section">
+      <details>
+        <summary>
+          <h2>Downstream drift</h2>
+          <span class="reviewer-source">_bmad-output/planning-artifacts/review-downstream-drift.md</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>The PRD is no longer a trustworthy source-extract for UX, architecture, or stories. FR1–FR74 and NFR1–NFR31 identifiers still match across the three planning spines, and several 2026-05/06 change-control patches did land (Google-only MVP embeddings, sidecar event intake, OpenBao NFR9, RRF in NFR24, FR71 Phase 2 tag). After that, change control moved the product — EventStore as domain source of truth, JWT ingress, DAPR Workflow ingestion, C# 14, physical-isolation ACL target, Dapr Agents, 31 epics of brownfield work — while two approved 2026-08-03 Major SCPs that explicitly required PRD amendments were never applied. Extracting from the PRD today reconstitutes a March 2026 greenfield thesis with a few later footnotes, not the contract implementers actually follow.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">Approved August 2026 PRD amendments never landed</h3>
+              <span class="finding-location">prd.md vs sprint-change-proposal-2026-08-03-*.md</span>
+            </header>
+            <div class="finding-note">Two approved Major SCPs required C# 14, a phase register, identity/provenance, EventStore-commit state machine, NFR11 as current, NFR32–NFR34, and deletion of the isolation-escape hatch. The 2026-08-04 readiness report still lists those defects; PRD last patched 2026-07-19. The two patch sets even disagree on what NFR33 means.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Apply a single reconciled PRD amendment covering both August patch sets. Do not treat either SCP as already done.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">EventStore is domain truth in architecture, a Phase 1.5 integration in the PRD</h3>
+              <span class="finding-location">PRD Phase 1.5 vs Architecture driver #3 / Epic 21 / Epic 28</span>
+            </header>
+            <div class="finding-note">Three EventStore contracts are now in play: (1) zero-code CloudEvent ingestion, (2) aggregate source of truth for Memories domain writes, (3) consumer pin of Hexalith.EventStore bits. The PRD only knows (1) and still describes indexing as an atomic Redis triple-write owned by a pipeline actor.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Split the three contracts. Keep FR59–62 as Phase 1.5 product integration. Rewrite FR13/NFR17 so EventStore acknowledgement is the durable commit and search/graph writes are rebuildable projections.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Greenfield living contract vs months of brownfield delivery</h3>
+              <span class="finding-location">PRD Project Classification vs epics Epic 0–31</span>
+            </header>
+            <div class="finding-note">April 2026 SCP: The MVP roadmap is now exhausted at the planning level. Classification still licenses a 22–32 story plan, a restarted implementation sequence, and a resource-tight escape that drops tenant isolation.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Reclassify as brownfield / change-controlled. Replace the story-count estimate with a pointer to epics.md + sprint-status.yaml. Keep the original MVP thesis as historical context.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">External auth and identity: PRD still Phase 1.5 / tenant-only; Epic 20 already shipped JWT</h3>
+              <span class="finding-location">NFR11 vs Story 20.1 / 2026-07-04 SCP</span>
+            </header>
+            <div class="finding-note">NFR11 is tagged P1.5. Per-user identity is Not in MVP. Story 20.1 added RequireAuthenticatedUser for /api/**. Extracting NFR11 from the PRD would schedule authentication as fast-follow work that change control already treated as a production-exposure blocker.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Move NFR11 to MVP/current; name the anonymous health/Dapr exceptions; replace per-user identity not in MVP with the 08-03 identity contract.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Ingestion is a DAPR Workflow in architecture, a pipeline actor in the PRD</h3>
+              <span class="finding-location">§ Async Ingestion Pipeline vs Architecture driver #4 / D23</span>
+            </header>
+            <div class="finding-note">The PRD&#x27;s actor-queue story is the pre-D23 design. Leaving it in place makes FR8/FR9/FR13/NFR17 extract as build a pipeline actor, which architecture forbids for orchestration.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Rewrite the pipeline section: workflow owns stages, retry, and compensation; a per-tenant actor (if any) owns only rate-limit budget. Change NFR17 verification to workflow history / Durable Task persistence.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Fusion spike text still describes magnitude blending; NFR24 and architecture settled on RRF</h3>
+              <span class="finding-location">§ Implementation Sequencing vs Story 22.4 / Epic 26 SCP</span>
+            </header>
+            <div class="finding-note">Identifier-level NFR24 matches. The living design paragraph in Scoping does not. An extractor using the MVP Strategy section would spike a different algorithm than the one Gate 1 already governs.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Replace the BM25/cosine/proximity-weighting spike with RRF + explain-of-rank-contributions. Numeric k and default weights: architecture owns these; PRD should defer.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">MCP/CLI every feature vs capability alignment and Phase 1.5 MCP</h3>
+              <span class="finding-location">Executive Summary vs Architecture Interface Philosophy</span>
+            </header>
+            <div class="finding-note">MCP timing (Phase 1.5, 4-week fast-follow) is still aligned. The exec-summary parity claim and unphased FR53 are not. Journey 2&#x27;s MVP Feature #3 = EventStore error is still in the PRD.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Strike every feature / both interfaces. Point FR53/FR54 at the existing parity matrix and a phase register. Move Journey 2&#x27;s handlers/replay note to Phase 1.5 Epic 9/10.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">C# 13 / package-count / backend-access wording still contradict repository and architecture facts</h3>
+              <span class="finding-location">PRD Language matrix / Package Distribution vs architecture Current Verified Versions / D30</span>
+            </header>
+            <div class="finding-note">PRD still says .NET 10 / C# 13 and 9 published NuGet packages + 3 non-packable. Architecture Current Verified Versions says C# 14. 2026-08-31 EventStore identity SCP records Memories&#x27; mandated SDK as 10.0.400.</div>
+            <div class="finding-fix"><strong>Fix:</strong> PRD language baseline .NET 10 / C# 14; SDK pin deferred to global.json. tools/release-packages.json is the only count. Split Dapr state vs direct backend clients.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Physical isolation: PRD still separate indexes; architecture moved the security boundary to ACL users</h3>
+              <span class="finding-location">FR38 vs Story 24.3 / Epic 24</span>
+            </header>
+            <div class="finding-note">The PRD requirement (zero leaks, tenant-scoped indexes, automated verify) is not obsolete. The mechanism the PRD implies (index names = isolation) is what architecture later demoted.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Keep NFR8/FR38/FR40 outcomes. Add one sentence that physical isolation target is tenant-scoped backend principals (ACL users + resolver); indexes/databases remain lifecycle resources.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Dapr Agents / polyglot runtime never entered the PRD</h3>
+              <span class="finding-location">Architecture D27/D28 vs PRD Language Future column</span>
+            </header>
+            <div class="finding-note">Architecture revision 2026-03-25 added Dapr Agents Python sidecar and polyglot architecture. Single-command boot: dotnet run --project Hexalith.Memories.AppHost boots all containers (including Python AI Agent). Silence reads as C# only.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Architecture owns Dapr Agents. PRD should either defer or add one constraint: optional Python ai-agent sidecar via DAPR invocation, not in-process C# agents.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">FR71 / export: PRD Phase 2 tag vs already shipped vs Epic 26 backup slice</h3>
+              <span class="finding-location">FR71 vs Story 8.3 / 2026-08-03 remediation §1.1</span>
+            </header>
+            <div class="finding-note">The PRD phase tag is still the right MVP gate. The living contract is wrong as a delivery record: Story 8.3 is done; export services, REST endpoints, client methods, and CLI commands exist. Planning and sprint registration are stale.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Keep FR71 out of MVP acceptance. Add completed non-MVP (Story 8.3); Epic 26 covers operational backup/restore only.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Rate limiting: deferred to ingress in one PRD table, a product FR in the next</h3>
+              <span class="finding-location">Service Communication vs FR8 / FR69</span>
+            </header>
+            <div class="finding-note">Service Communication: Rate limiting | Deferred to infrastructure. FR8 per-tenant ingestion load; FR69 per-tenant embedding ceilings. Downstream consistently made rate limiting a product concern.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Delete Deferred to infrastructure. Distinguish embedding-provider throttle (FR69, actor) from inbound request quotas (Epic 20) from ingress.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Journey 1 / samples still sell EventStore zero-code as day-one onboarding</h3>
+              <span class="finding-location">Journey 1 / samples table vs MVP Feature Set</span>
+            </header>
+            <div class="finding-note">The PRD almost corrects itself (partial), then lets Journey 1 and the samples table keep the zero-code story as the primary success path. Extracting journeys into UX without the scoping table would pull Epic 9 into MVP.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Relabel Journey 1 as Phase 1.5 success path; make Journey 9 (CLI first case) the MVP success path in the summary table.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">NFR6 / FR71 inventory wording drifted in epics, not in architecture&#x27;s count</h3>
+              <span class="finding-location">Epics Requirements Inventory vs PRD</span>
+            </header>
+            <div class="finding-note">Epics NFR6 drops the degradation-when-rate-limited clause. Epics FR71 drops the Phase 2 sentence. ID inventory is intact; epics Requirements Inventory is no longer a lossless copy of the PRD.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Restore omitted clauses in epics inventory, or mark the inventory as a pointer to the PRD rather than a second full copy.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Epics Additional Requirements still freeze architecture D3 as eventual consistency</h3>
+              <span class="finding-location">Epics Additional Requirements vs Architecture Decision Registry D3</span>
+            </header>
+            <div class="finding-note">Epics: Eventual consistency + DAPR Workflow saga/compensation (D3). Architecture D3: EventStore aggregate source of truth + rebuildable projections + DAPR Workflow projection compensation.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Update epics D3 bullet to match architecture. PRD FR13 should use the EventStore-commit language from the August SCP.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">UX makes explain mandatory on every search; PRD keeps --explain opt-in</h3>
+              <span class="finding-location">FR19 vs UX Effortless Interactions / UX-DR7</span>
+            </header>
+            <div class="finding-note">This is unresolved among all three spines, so the PRD is not uniquely stale — it is uniquely silent on the decision UX already made.</div>
+            <div class="finding-fix"><strong>Fix:</strong> PRD should pick: either every core search returns compact trust fields and --explain expands math, or UX-DR7 is opt-in.</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Access-telemetry PostgreSQL / OpenBao platform are operational, not a Redis-only product pivot</h3>
+              <span class="finding-location">PRD Redis-first vs Epic 27 / 29 / 31</span>
+            </header>
+            <div class="finding-note">No approved SCP replaced Redis search with another product backend. The miss is that the PRD never says telemetry may leave Redis, so an extractor could treat PG as scope creep.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Architecture owns telemetry substrate. PRD FR67 should defer store choice and repeat that access telemetry is not a compliance audit trail.</div>
+          </article>
+        </div>
+      </details>
+    </section>
+
+
+    <div class="mechanical">
+      <h3>Mechanical notes</h3>
+      <ul>
+        <li>No Glossary, no Assumptions Index, no addendum.md, no .memlog.md — empty roundtrip by construction, not by discipline.</li>
+        <li>FR1–FR74 and NFR1–NFR31 are unique and contiguous; only FR71 carries a phase tag. Journey summary uses persona titles instead of Journey IDs until MVP Feature #3 (EventStore Integration) fails to resolve (MVP #3 is Three-Axis Search).</li>
+        <li><code>memories tenant switch</code> appears in Journey 5 and the CLI command table but not in MVP command scope (create/delete/verify only).</li>
+        <li>Dual embedding (payload + natural-language description) is both an EventStore Phase 1.5 feature (FR60) and an <code>axis=nl</code> score in the MVP Evidence Packet table — easy to extract as a fourth retrieval axis.</li>
+        <li>User Success cached/cold latency has no matching NFR; NFR7 Cold start time is process boot, not cache warmth.</li>
+        <li>Evidence Packet, <code>Contracts.V1</code>, and <code>tools/release-packages.json</code> are forward references to architecture/repo layout, not intra-PRD links.</li>
+        <li>UJ protagonists are named (Alex, Marcus, Kenji, Priya, Dani); Journey 7 correctly has none.</li>
+        <li>Required-for-stakes gaps: Non-Goals, Open Questions, Glossary.</li>
+        <li>FR/NFR identifiers still match across PRD, architecture counts, and epics inventory; drift is meaning, phase, and unapplied change control.</li>
+      </ul>
+    </div>
+
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>Rubric: .agents/skills/bmad-prd/assets/prd-validation-checklist.md</span>
+        <span>Generated: 2026-09-05T10:24:01+02:00</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

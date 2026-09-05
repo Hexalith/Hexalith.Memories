@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle;
 
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -26,6 +27,7 @@ using Shouldly;
 using AccessTelemetryEvent = Hexalith.Memories.Contracts.V1.AccessTelemetryEvent;
 
 /// <summary>Story 27.2 C2 checkpoint for Server admission and delivery.</summary>
+[Collection(Infrastructure.TelemetryTestCollection.Name)]
 public sealed class AccessTelemetryDeliveryCheckpointTests
 {
     private static readonly DateTimeOffset Now = new(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
@@ -395,14 +397,94 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
             .Returns(
                 new AccessTelemetryWriteBatchResponse { Accepted = 1, Rejected = 2, Reason = AccessTelemetryReason.DependencyUnavailable },
                 new AccessTelemetryWriteBatchResponse { Accepted = 2, Rejected = 0, Reason = AccessTelemetryReason.None });
-        var worker = CreateWorker(queue, client);
+        var clock = new FakeTimeProvider(Now);
+        var worker = new AccessTelemetryDeliveryWorker(
+            queue,
+            client,
+            clock,
+            new AccessTelemetryOptions(),
+            new AccessTelemetryLifecycleStatus(enabled: true));
+        List<long> observedQueueRecords = [];
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, current) =>
+        {
+            if (instrument.Meter.Name == ServerAccessTelemetryLifecycleMetrics.MeterName &&
+                instrument.Name == AccessTelemetryMetricContract.QueueRecords)
+            {
+                current.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, _, _) => observedQueueRecords.Add(value));
+        listener.Start();
 
         await worker.DrainOnceAsync(CancellationToken.None);
         queue.Count.ShouldBe(2);
+        listener.RecordObservableInstruments();
+        observedQueueRecords.ShouldNotBeEmpty();
+        observedQueueRecords[^1].ShouldBe(2);
         await worker.DrainOnceAsync(CancellationToken.None);
 
         queue.Count.ShouldBe(0);
         await client.Received(2).SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void ServerLifecycleInstruments_EmitLiveQueueAndAttestationAges()
+    {
+        var clock = new FakeTimeProvider(Now);
+        List<(string Name, double Value)> doubles = [];
+        List<(string Name, long Value)> integers = [];
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, current) =>
+        {
+            if (instrument.Meter.Name == ServerAccessTelemetryLifecycleMetrics.MeterName)
+            {
+                current.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<double>((instrument, value, _, _) =>
+            doubles.Add((instrument.Name, value)));
+        listener.SetMeasurementEventCallback<long>((instrument, value, _, _) =>
+            integers.Add((instrument.Name, value)));
+        listener.Start();
+
+        ServerAccessTelemetryLifecycleMetrics.RecordQueue(3, 123, Now.AddSeconds(-10), clock);
+        ServerAccessTelemetryLifecycleMetrics.RecordAttestation(CreateAttestation(Now.AddSeconds(-5)), Now, clock);
+        ServerAccessTelemetryLifecycleMetrics.Record(
+            AccessTelemetryRecordState.Enqueued,
+            AccessTelemetryReason.None);
+        ServerAccessTelemetryLifecycleMetrics.RecordDaprLatency(11);
+        ServerAccessTelemetryLifecycleMetrics.RecordAttestationLatency(12);
+        listener.RecordObservableInstruments();
+
+        integers.Last(measurement => measurement.Name == AccessTelemetryMetricContract.QueueRecords).Value.ShouldBe(3);
+        integers.Last(measurement => measurement.Name == AccessTelemetryMetricContract.QueueBytes).Value.ShouldBe(123);
+        doubles.Last(measurement => measurement.Name == AccessTelemetryMetricContract.QueueOldestAge).Value.ShouldBe(10);
+        doubles.Last(measurement => measurement.Name == AccessTelemetryMetricContract.AttestationAge).Value.ShouldBe(5);
+        clock.Advance(TimeSpan.FromSeconds(5));
+        listener.RecordObservableInstruments();
+        doubles.Last(measurement => measurement.Name == AccessTelemetryMetricContract.QueueOldestAge).Value.ShouldBe(15);
+        doubles.Last(measurement => measurement.Name == AccessTelemetryMetricContract.AttestationAge).Value.ShouldBe(10);
+
+        string[] observedNames = doubles.Select(static measurement => measurement.Name)
+            .Concat(integers.Select(static measurement => measurement.Name))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        foreach (string expected in new[]
+        {
+            AccessTelemetryMetricContract.Records,
+            AccessTelemetryMetricContract.QueueRecords,
+            AccessTelemetryMetricContract.QueueBytes,
+            AccessTelemetryMetricContract.QueueOldestAge,
+            AccessTelemetryMetricContract.DaprDuration,
+            AccessTelemetryMetricContract.AttestationDuration,
+            AccessTelemetryMetricContract.AttestationAge,
+            AccessTelemetryMetricContract.AttestationDelta,
+            AccessTelemetryMetricContract.AttestationUncertainty,
+        })
+        {
+            observedNames.ShouldContain(expected);
+        }
     }
 
     [Fact]
@@ -583,8 +665,10 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
     private static string Format(DateTimeOffset value)
         => value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", System.Globalization.CultureInfo.InvariantCulture);
 
-    private static SignedClockAttestation CreateAttestation()
-        => new()
+    private static SignedClockAttestation CreateAttestation(DateTimeOffset? issuedAt = null)
+    {
+        DateTimeOffset instant = issuedAt ?? Now;
+        return new()
         {
             DeploymentId = "deployment-a",
             AppId = "memories",
@@ -594,13 +678,14 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
             RequestingProcessEpoch = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
             RequestingServiceInstanceId = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XA",
             Nonce = "01HM5Q9WXGK6T8Q4Z5Y6V7W8XD",
-            NotBeforeUnixMilliseconds = Now.AddMilliseconds(-10).ToUnixTimeMilliseconds(),
-            NotAfterUnixMilliseconds = Now.AddMilliseconds(10).ToUnixTimeMilliseconds(),
-            IssuedAtUnixMilliseconds = Now.ToUnixTimeMilliseconds(),
-            ExpiresAtUnixMilliseconds = Now.AddSeconds(30).ToUnixTimeMilliseconds(),
+            NotBeforeUnixMilliseconds = instant.AddMilliseconds(-10).ToUnixTimeMilliseconds(),
+            NotAfterUnixMilliseconds = instant.AddMilliseconds(10).ToUnixTimeMilliseconds(),
+            IssuedAtUnixMilliseconds = instant.ToUnixTimeMilliseconds(),
+            ExpiresAtUnixMilliseconds = instant.AddSeconds(30).ToUnixTimeMilliseconds(),
             SignerKeyEpoch = "clock-key-1",
             Signature = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64)),
         };
+    }
 
     private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
