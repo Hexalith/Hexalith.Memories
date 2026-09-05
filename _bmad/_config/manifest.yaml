@@ -1,51 +1,63 @@
 installation:
-  version: 6.11.0
+  version: 6.12.0
   installDate: 2026-07-11T08:23:58.845Z
-  lastUpdated: 2026-08-11T21:53:27.213Z
+  lastUpdated: 2026-09-05T06:31:08.158Z
+  installShims: false
 modules:
   - name: core
-    version: 6.11.0
+    version: 6.12.0
     installDate: 2026-07-11T08:23:58.087Z
-    lastUpdated: 2026-08-11T21:53:27.191Z
+    lastUpdated: 2026-09-05T06:31:08.144Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: bmm
-    version: 6.11.0
+    version: 6.12.0
     installDate: 2026-07-11T08:23:58.032Z
-    lastUpdated: 2026-08-11T21:53:27.194Z
+    lastUpdated: 2026-09-05T06:31:08.146Z
     source: built-in
     npmPackage: null
     repoUrl: null
   - name: cis
     version: main
     installDate: 2026-07-11T08:23:58.735Z
-    lastUpdated: 2026-08-11T21:53:27.198Z
+    lastUpdated: 2026-09-05T06:31:08.149Z
     source: external
     npmPackage: bmad-creative-intelligence-suite
     repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
     channel: next
-    sha: 491b8ab24b0e16741228936c0e904d98ecf10cb2
+    sha: 97298b22fee1c7e482710d3a8414adb5cfccccd9
   - name: tea
     version: main
     installDate: 2026-07-11T08:23:58.699Z
-    lastUpdated: 2026-08-11T21:53:27.206Z
+    lastUpdated: 2026-09-05T06:31:08.151Z
     source: external
     npmPackage: bmad-method-test-architecture-enterprise
     repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
     channel: next
-    sha: 5f5a8eb5db08a5e4d9e9ed7956ff31892534e911
+    sha: 7ba2130193c473b53d2e323b4da9a80697eef88e
   - name: bmad-loop
     version: main
     installDate: 2026-07-11T08:23:58.111Z
-    lastUpdated: 2026-08-11T21:53:27.213Z
+    lastUpdated: 2026-09-05T06:31:08.155Z
     source: external
     npmPackage: null
     repoUrl: https://github.com/bmad-code-org/bmad-loop
     channel: next
-    sha: 0dac53a470fcc9e6d19426c239a31574ae9cdd41
+    sha: c47333d1bf3f1f779445fa70378685831610cf5b
+  - name: bmb
+    version: v2.2.2
+    installDate: 2026-09-05T06:31:08.027Z
+    lastUpdated: 2026-09-05T06:31:08.158Z
+    source: external
+    npmPackage: bmad-builder
+    repoUrl: https://github.com/bmad-code-org/bmad-builder
+    channel: stable
+    sha: 4a1422274a2acb0fb0ec0511753da6263948f072
 ides:
   - claude-code
   - codex
-  - github-copilot
   - cursor
+  - github-copilot
+  - antigravity-cli
+  - antigravity

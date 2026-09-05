@@ -22,7 +22,7 @@ externalPointerStatus: ''
 
 ---
 
-Note: This workflow does not generate tests. If gaps exist, run `*atdd` or `*automate` to create coverage.
+Note: This workflow does not generate tests. If gaps exist, run `/bmad-testarch-atdd` or `/bmad-testarch-automate` to create coverage.
 
 ## PHASE 1: REQUIREMENTS TRACEABILITY
 
@@ -560,7 +560,7 @@ Top blockers requiring immediate attention:
 
 3. **Re-Run Gate After Fixes**
    - Re-run full test suite after fixes
-   - Re-run `bmad tea *trace` workflow
+   - Re-run `/bmad-testarch-trace`
    - Verify decision is PASS before deploying
 
 ---
