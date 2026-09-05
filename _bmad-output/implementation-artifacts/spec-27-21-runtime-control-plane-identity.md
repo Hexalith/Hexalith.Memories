@@ -195,3 +195,7 @@ Verification performed:
 - `git diff --check` — passed after repository-policy line-ending normalization.
 
 Residual risks: C1.15 remains `not-evaluated`; no approved running lifecycle pod or independently reviewed packet was available in this repository session. The packet records the approved context label and namespace but does not add a Kubernetes cluster fingerprint, profile hash, or cryptographic signature because those identities are outside the frozen C1.15 field set and are owned by the surrounding Epic 27 evidence sequence.
+
+## 2026-09-05 DW-718 Halt Note
+
+Fresh read-only eligibility checks reconfirmed the approved PG-ONPREM-1 target is still ineligible: both Production lifecycle Deployments remain `replicas: 0`, the explicit alpha env pair remains absent from the base Deployments, and namespace `hexalith-memories` (context `jpiquot@local`) has no Ready `memories-access-telemetry` pods. DW-718 capture was halted by human decision without cluster or Production-manifest mutation and without synthesizing a C1.15 packet. This handoff remains `awaiting-operator`; `operator_actions` are unchanged; C1.15 remains `pending` / `not complete`.
