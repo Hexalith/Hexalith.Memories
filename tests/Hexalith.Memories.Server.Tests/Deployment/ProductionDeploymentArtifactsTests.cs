@@ -492,19 +492,22 @@ public sealed class ProductionDeploymentArtifactsTests
             ReadYamlSequence(document, "verbs").ShouldBe(["get"]);
         }
 
-        // The lifecycle ACL stays deny-default with exactly the four named operations. The verb
-        // exclusions are case-insensitive: Dapr matches HTTP verbs case-insensitively, so a
-        // case-sensitive substring check let `httpVerb: ["delete"]` through.
+        // The lifecycle ACL stays deny-default with the named operations (including the Story 27.4
+        // qualification adapter physical-reclamation evidence route). The verb exclusions are
+        // case-insensitive: Dapr matches HTTP verbs case-insensitively, so a case-sensitive
+        // substring check let `httpVerb: ["delete"]` through.
         string lifecycleConfiguration = GetDocument(rendered, "Configuration", "memories-access-telemetry-config");
-        (lifecycleConfiguration.Split("defaultAction: deny").Length - 1).ShouldBe(3);
-        (lifecycleConfiguration.Split("appId:").Length - 1).ShouldBe(2);
-        (lifecycleConfiguration.Split("action: allow").Length - 1).ShouldBe(4);
+        (lifecycleConfiguration.Split("defaultAction: deny").Length - 1).ShouldBe(4);
+        (lifecycleConfiguration.Split("appId:").Length - 1).ShouldBe(3);
+        (lifecycleConfiguration.Split("action: allow").Length - 1).ShouldBe(5);
         lifecycleConfiguration.ShouldContain("appId: memories\n");
         lifecycleConfiguration.ShouldContain("appId: memories-access-telemetry-inspector");
+        lifecycleConfiguration.ShouldContain("appId: access-telemetry-adapter");
         lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/write");
         lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/heartbeat");
         lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/validate");
         lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/inspect");
+        lifecycleConfiguration.ShouldContain("name: /v1/access-telemetry/physical-reclamation-evidence");
         lifecycleConfiguration.ShouldNotContain("name: /**");
         lifecycleConfiguration.ShouldNotContain("DELETE", Case.Insensitive);
         lifecycleConfiguration.ShouldNotContain("PUT", Case.Insensitive);
