@@ -515,6 +515,9 @@ internal static class MemoriesServerServiceCollectionExtensions
         var status = new AccessTelemetryLifecycleStatus(options.Enabled);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(status);
+        builder.Services.AddSingleton<AccessTelemetryQualificationAccounting>();
+        builder.Services.AddSingleton<AccessTelemetryQualificationGate>();
+        builder.Services.AddSingleton<AccessTelemetryQualificationWorkloadRunner>();
         AccessTelemetryOptions registrationOptions = options.Enabled &&
             options.RetentionSource == RetentionConfigurationSource.DaprConfiguration &&
             options.Retention is null

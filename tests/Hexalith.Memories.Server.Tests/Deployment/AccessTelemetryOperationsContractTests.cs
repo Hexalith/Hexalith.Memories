@@ -64,6 +64,17 @@ public sealed class AccessTelemetryOperationsContractTests
         configuration.Single(row => row[0] == "Queue")[1].ShouldContain("8,192 records and 64 MiB", Case.Sensitive);
         configuration.Single(row => row[0] == "Physical reclamation")[1].ShouldContain("24 hours", Case.Sensitive);
 
+        string replacement = NormalizeWhitespace(document.GetSection("C2 production replacement verification"));
+        replacement.ShouldContain("both Server writers and their sidecars", Case.Sensitive);
+        replacement.ShouldContain("all three Placement members", Case.Sensitive);
+        replacement.ShouldContain("all three Scheduler members", Case.Sensitive);
+        replacement.ShouldContain("one aggregate replacement result cannot discharge multiple instances", Case.Sensitive);
+        replacement.ShouldContain("Production remains disabled throughout", Case.Sensitive);
+
+        string rollout = NormalizeWhitespace(document.GetSection("Rollout and enablement"));
+        rollout.ShouldContain("`qualification-target-identity`", Case.Sensitive);
+        rollout.ShouldContain("exact non-Production namespace, approved profile hash, and disabled write state", Case.Sensitive);
+
         string closeOut = document.GetSection("A41 close-out chain");
         closeOut.ShouldContain("--checkpoint a41-inventory", Case.Sensitive);
         closeOut.ShouldContain("--checkpoint close-out-preflight", Case.Sensitive);

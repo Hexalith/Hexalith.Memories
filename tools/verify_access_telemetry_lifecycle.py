@@ -1795,11 +1795,19 @@ STORY_27_4_WORKLOAD_SHA256 = _sha256(_canonical_json(ADR_TWO_WRITER_WORKLOAD.to_
 REQUIRED_REPLACEMENTS: tuple[str, ...] = (
     "actor-activation",
     "clock-service",
-    "dapr-sidecar",
+    "clock-service-dapr-sidecar",
     "lifecycle-service",
-    "placement-member",
-    "scheduler-member",
-    "server",
+    "lifecycle-service-dapr-sidecar",
+    "placement-member-1",
+    "placement-member-2",
+    "placement-member-3",
+    "scheduler-member-1",
+    "scheduler-member-2",
+    "scheduler-member-3",
+    "server-writer-1",
+    "server-writer-1-dapr-sidecar",
+    "server-writer-2",
+    "server-writer-2-dapr-sidecar",
 )
 REQUIRED_FAILURE_SCENARIOS: tuple[str, ...] = (
     "actor-failover",
@@ -1956,6 +1964,29 @@ A41_SEMANTIC_TRANSITIONS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
 }
 
 
+class _EvidenceAggregateBudget:
+    """Account distinct immutable evidence files against one closed-chain bound."""
+
+    def __init__(self, evidence_root: Path, maximum_bytes: int = _MAX_SNAPSHOT_BYTES) -> None:
+        self._evidence_root = evidence_root
+        self._maximum_bytes = maximum_bytes
+        self._accounted_paths: set[Path] = set()
+        self._aggregate_bytes = 0
+
+    def account(self, path: Path, name: str) -> Path:
+        """Authenticate and account one distinct evidence file."""
+
+        resolved_path = _safe_input_path(path, approved_root=self._evidence_root)
+        if resolved_path not in self._accounted_paths:
+            self._aggregate_bytes += resolved_path.stat().st_size
+            if self._aggregate_bytes > self._maximum_bytes:
+                raise EvidenceValidationError(
+                    f"terminal evidence chain exceeds the {self._maximum_bytes}-byte aggregate bound at {name}"
+                )
+            self._accounted_paths.add(resolved_path)
+        return resolved_path
+
+
 def _require_mapping(value: Any, name: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise EvidenceValidationError(f"{name} must be an object")
@@ -2050,17 +2081,28 @@ def _require_utc_milliseconds(value: Any, name: str) -> int:
     return _require_integer(value, name, minimum=946_684_800_000, maximum=4_102_444_800_000)
 
 
-def _validate_fresh_run(started: int, finished: int, name: str) -> None:
+def _validate_fresh_run(
+    started: int,
+    finished: int,
+    name: str,
+    *,
+    maximum_duration_ms: int = 86_400_000,
+) -> None:
     now = _utc_now_milliseconds()
-    if finished < started or finished - started > 86_400_000:
-        raise EvidenceValidationError(f"{name} timestamps are out of order or exceed 24 hours")
+    if finished < started or finished - started > maximum_duration_ms:
+        raise EvidenceValidationError(f"{name} timestamps are out of order or exceed the allowed duration")
     if finished > now + _FUTURE_SKEW_MILLISECONDS:
         raise EvidenceValidationError(f"{name} finished more than one second in the future")
     if finished < now - _CHECKPOINT_FRESHNESS_MILLISECONDS:
         raise EvidenceValidationError(f"{name} is older than the 15-minute acceptance window")
 
 
-def _validate_secret_safe(value: Any, name: str = "evidence") -> None:
+def _validate_secret_safe(
+    value: Any,
+    name: str = "evidence",
+    *,
+    maximum_string_length: int = 4096,
+) -> None:
     """Reject secret aliases, non-finite numbers, and raw-value-shaped evidence."""
 
     if isinstance(value, Mapping):
@@ -2086,18 +2128,26 @@ def _validate_secret_safe(value: Any, name: str = "evidence") -> None:
                 normalized.startswith("raw") or secret_alias or _UNSAFE_EVIDENCE_KEY.search(normalized)
             ):
                 raise EvidenceValidationError(f"{name} contains prohibited field alias {key!r}")
-            _validate_secret_safe(child, f"{name}.{key}")
+            _validate_secret_safe(
+                child,
+                f"{name}.{key}",
+                maximum_string_length=maximum_string_length,
+            )
         return
     if isinstance(value, list):
         for index, child in enumerate(value):
-            _validate_secret_safe(child, f"{name}[{index}]")
+            _validate_secret_safe(
+                child,
+                f"{name}[{index}]",
+                maximum_string_length=maximum_string_length,
+            )
         return
     if isinstance(value, float):
         if value != value or value in {float("inf"), float("-inf")}:
             raise EvidenceValidationError(f"{name} contains a non-finite number")
         return
     if isinstance(value, str):
-        if len(value) > 4096:
+        if len(value) > maximum_string_length:
             raise EvidenceValidationError(f"{name} contains an oversized string")
         if _UNSAFE_EVIDENCE_VALUE.search(value):
             raise EvidenceValidationError(f"{name} contains secret-shaped content")
@@ -2148,6 +2198,7 @@ def _read_bounded_json(
     *,
     approved_root: Path | None = None,
     maximum_bytes: int = _MAX_EVIDENCE_BYTES,
+    maximum_string_length: int = 4096,
 ) -> Mapping[str, Any]:
     resolved = _safe_input_path(path, approved_root=approved_root)
     payload = resolved.read_bytes()
@@ -2162,7 +2213,7 @@ def _read_bounded_json(
     if text.encode("utf-8") != payload:
         raise EvidenceValidationError("evidence input is not canonical UTF-8")
     result = _require_mapping(_json_without_duplicates(text, str(path)), str(path))
-    _validate_secret_safe(result)
+    _validate_secret_safe(result, maximum_string_length=maximum_string_length)
     return result
 
 
@@ -2374,7 +2425,8 @@ def _validate_predecessor(
         raise EvidenceValidationError(
             f"C1 predecessor must contain the canonical 25 gates; missing={missing}, extra={extra}"
         )
-    artifact_identities: set[tuple[str, str]] = set()
+    artifact_paths: set[str] = set()
+    artifact_hashes: set[str] = set()
     for gate_id in _canonical_c1_gate_ids():
         gate = _require_mapping(gates[gate_id], f"C1.gates.{gate_id}")
         gate_fields = frozenset(
@@ -2415,12 +2467,19 @@ def _validate_predecessor(
         artifact_path_value = _require_nonempty_string(
             gate.get("artifact_path"), f"C1.gates.{gate_id}.artifact_path", maximum=512
         ).replace("\\", "/")
-        if Path(artifact_path_value).is_absolute() or ".." in Path(artifact_path_value).parts:
+        if (
+            Path(artifact_path_value).is_absolute()
+            or ".." in Path(artifact_path_value).parts
+            or artifact_path_value.startswith("./")
+        ):
             raise EvidenceValidationError(f"C1 gate {gate_id} artifact path must be evidence-root relative")
-        artifact_identity = (artifact_path_value, gate["artifact_sha256"])
-        if artifact_identity in artifact_identities:
-            raise EvidenceValidationError("each C1 gate requires its own attributable artifact")
-        artifact_identities.add(artifact_identity)
+        artifact_sha256 = gate["artifact_sha256"]
+        if artifact_path_value in artifact_paths or artifact_sha256 in artifact_hashes:
+            raise EvidenceValidationError(
+                "each C1 gate requires its own artifact path and artifact hash"
+            )
+        artifact_paths.add(artifact_path_value)
+        artifact_hashes.add(artifact_sha256)
         if repository_root is not None:
             if evidence_root is None:
                 raise EvidenceValidationError("C1 artifact validation requires an external evidence root")
@@ -2486,7 +2545,12 @@ def _validate_common_checkpoint(
     _require_nonempty_string(payload["owner"], "owner")
     started = _require_utc_milliseconds(payload["started_utc"], "started_utc")
     finished = _require_utc_milliseconds(payload["finished_utc"], "finished_utc")
-    _validate_fresh_run(started, finished, "checkpoint")
+    _validate_fresh_run(
+        started,
+        finished,
+        "checkpoint",
+        maximum_duration_ms=720_000_000 if checkpoint == "c3-retention-reclamation" else 86_400_000,
+    )
     if _require_integer(payload["failure_count"], "failure_count") != 0:
         raise EvidenceValidationError("checkpoint contains failures")
     if _require_integer(payload["skip_count"], "skip_count") != 0:
@@ -2700,6 +2764,8 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
         frozenset(
             {
                 "non_production",
+                "identity_observation",
+                "initial_writes_state",
                 "enable_observation",
                 "disable_observation",
                 "final_observation",
@@ -2709,6 +2775,13 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
         "qualification_transition",
     )
     _require_bool(transition["non_production"], "qualification_transition.non_production", True)
+    _validate_result_observation(
+        transition["identity_observation"],
+        "qualification_transition.identity_observation",
+        "qualification-target-identity",
+    )
+    if transition["initial_writes_state"] != "disabled":
+        raise EvidenceValidationError("qualification target was not initially disabled")
     _validate_result_observation(
         transition["enable_observation"], "qualification_transition.enable_observation", "qualification-enable"
     )
@@ -2856,6 +2929,8 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
         frozenset(
             {
                 "non_production",
+                "identity_observation",
+                "initial_writes_state",
                 "enable_observation",
                 "disable_observation",
                 "final_observation",
@@ -2865,6 +2940,13 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
         "qualification_transition",
     )
     _require_bool(transition["non_production"], "qualification_transition.non_production", True)
+    _validate_result_observation(
+        transition["identity_observation"],
+        "qualification_transition.identity_observation",
+        "qualification-target-identity",
+    )
+    if transition["initial_writes_state"] != "disabled":
+        raise EvidenceValidationError("qualification target was not initially disabled")
     _validate_result_observation(
         transition["enable_observation"], "qualification_transition.enable_observation", "qualification-enable"
     )
@@ -3018,6 +3100,8 @@ def _validate_c4(results: Mapping[str, Any]) -> None:
         frozenset(
             {
                 "non_production",
+                "identity_observation",
+                "initial_writes_state",
                 "enable_observation",
                 "disable_observation",
                 "final_observation",
@@ -3027,6 +3111,13 @@ def _validate_c4(results: Mapping[str, Any]) -> None:
         "qualification_transition",
     )
     _require_bool(transition["non_production"], "qualification_transition.non_production", True)
+    _validate_result_observation(
+        transition["identity_observation"],
+        "qualification_transition.identity_observation",
+        "qualification-target-identity",
+    )
+    if transition["initial_writes_state"] != "disabled":
+        raise EvidenceValidationError("qualification target was not initially disabled")
     _validate_result_observation(
         transition["enable_observation"], "qualification_transition.enable_observation", "qualification-enable"
     )
@@ -3074,11 +3165,20 @@ def _bounded_reason(error: BaseException) -> str:
     return reason[:512] or error.__class__.__name__
 
 
-def _write_json_exclusive(path: Path, payload: Mapping[str, Any]) -> None:
+def _write_json_exclusive(
+    path: Path,
+    payload: Mapping[str, Any],
+    *,
+    maximum_bytes: int = _MAX_EVIDENCE_BYTES,
+) -> None:
     if path.is_symlink():
         raise EvidenceValidationError(f"refusing symlink evidence output: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (_canonical_json(payload) + "\n").encode("utf-8")
+    if not encoded or len(encoded) > maximum_bytes:
+        raise EvidenceValidationError(
+            f"evidence output must contain 1..{maximum_bytes} bytes"
+        )
     try:
         with path.open("xb") as stream:
             stream.write(encoded)
@@ -3241,16 +3341,21 @@ def _run_bounded_process(
     *,
     cwd: Path,
     timeout_seconds: int,
+    environment: Mapping[str, str] | None = None,
 ) -> tuple[int, bytes, bytes]:
     """Stream one child with deterministic limits and terminate on the first exceeded bound."""
 
-    process = subprocess.Popen(
-        tuple(command),
-        cwd=cwd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    try:
+        process = subprocess.Popen(
+            tuple(command),
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+        )
+    except OSError as exc:
+        raise EvidenceValidationError("reviewed producer could not be started") from exc
     stdout = bytearray()
     stderr = bytearray()
     selector = selectors.DefaultSelector()
@@ -3326,6 +3431,11 @@ def run_story_27_4_producer_checkpoint(
             raise EvidenceValidationError("immutable evidence output already exists")
         predecessor = _read_bounded_json(resolved_predecessor, approved_root=approved_root)
         _validate_predecessor(predecessor, root, approved_root)
+        platform_operations_reviewer = next(
+            _require_nonempty_string(item.get("reviewer"), "C1 platform-operations reviewer")
+            for item in _require_sequence(predecessor.get("approvals"), "C1.approvals")
+            if isinstance(item, Mapping) and item.get("role") == "platform-operations"
+        )
         producer_path = root / relative_producer
         if not producer_path.is_file() or producer_path.is_symlink():
             raise EvidenceValidationError("registered producer is unavailable or is a symlink")
@@ -3344,16 +3454,23 @@ def run_story_27_4_producer_checkpoint(
         producer_authenticated = True
         input_sha256 = hashlib.sha256(resolved_input.read_bytes()).hexdigest()
         started = _utc_now_milliseconds()
-        return_code, stdout, stderr = _run_bounded_process(
-            (
+        producer_command = [
                 sys.executable,
                 "-B",
                 str(producer_path),
                 "--scenario-input",
                 str(resolved_input),
-            ),
+                "--platform-operations-reviewer",
+                platform_operations_reviewer,
+        ]
+        if checkpoint == "c3-retention-reclamation":
+            producer_command.extend(
+                ("--journal", str(approved_root / "c3-retention-reclamation.journal.jsonl"))
+            )
+        return_code, stdout, stderr = _run_bounded_process(
+            tuple(producer_command),
             cwd=root,
-            timeout_seconds=3600,
+            timeout_seconds=720_000 if checkpoint == "c3-retention-reclamation" else 50_400,
         )
         finished = _utc_now_milliseconds()
         if return_code != 0:
@@ -3368,6 +3485,22 @@ def run_story_27_4_producer_checkpoint(
         payload = _read_bounded_json(temporary, approved_root=approved_root)
         mutable = dict(payload)
         child_commands = _require_sequence(mutable.get("commands"), "commands")
+        packet_started = started
+        if checkpoint == "c3-retention-reclamation":
+            # A resumed C3 packet includes the authenticated command prefix from
+            # its exclusive journal.  Bind the wrapper to the complete observed
+            # interval rather than pretending all multi-day observations were
+            # made by this final process invocation.
+            packet_started = min(
+                [started]
+                + [
+                    _require_utc_milliseconds(
+                        _require_mapping(command, f"commands[{index}]").get("started_utc_ms"),
+                        f"commands[{index}].started_utc_ms",
+                    )
+                    for index, command in enumerate(child_commands)
+                ]
+            )
         arguments = {
             "scenario_input_sha256": input_sha256,
             "target_kind": "non-production-qualification",
@@ -3385,7 +3518,7 @@ def run_story_27_4_producer_checkpoint(
             "arguments": arguments,
             "arguments_sha256": _sha256(_canonical_json(arguments)),
         }
-        mutable["started_utc"] = started
+        mutable["started_utc"] = packet_started
         mutable["finished_utc"] = finished
         mutable["commands"] = [
             {
@@ -3425,6 +3558,8 @@ def run_story_27_4_producer_checkpoint(
                             str(producer_path),
                             "--scenario-input",
                             str(resolved_input),
+                            "--platform-operations-reviewer",
+                            platform_operations_reviewer,
                             "--disable-only",
                         ),
                         cwd=repository_root,
@@ -3483,8 +3618,10 @@ def _read_git_blob(repository_root: Path, commit: str, relative: str) -> bytes |
     return result.stdout
 
 
-def collect_a41_inventory(repository_root: Path) -> dict[str, Any]:
-    """Return an exhaustive, hash-bound inventory of tracked A41 references."""
+def _collect_a41_inventory_and_blobs(
+    repository_root: Path,
+) -> tuple[dict[str, Any], dict[str, bytes | None]]:
+    """Read each authenticated source-HEAD blob once for inventory and recovery."""
 
     root = repository_root.resolve(strict=True)
     head = _git_checked(root, "rev-parse", "--verify", "HEAD^{commit}")
@@ -3522,6 +3659,7 @@ def collect_a41_inventory(repository_root: Path) -> dict[str, Any]:
         candidates.add(relative)
 
     references = []
+    source_blobs: dict[str, bytes | None] = {}
     for relative in sorted(candidates):
         if relative in A41_ALLOWED_MUTATION_PATHS:
             classification = "close-out-mutable"
@@ -3529,23 +3667,31 @@ def collect_a41_inventory(repository_root: Path) -> dict[str, Any]:
             classification = "historical-or-orchestrator-read-only"
         else:
             classification = "a41-reference-read-only"
+        blob = _read_git_blob(root, head, relative)
+        source_blobs[relative] = blob
         references.append(
             {
                 "path": relative,
                 "classification": classification,
-                "sha256": (
-                    hashlib.sha256(blob).hexdigest()
-                    if (blob := _read_git_blob(root, head, relative)) is not None
-                    else None
-                ),
+                "sha256": hashlib.sha256(blob).hexdigest() if blob is not None else None,
             }
         )
-    return {
-        "schema_version": 1,
-        "source_head": head,
-        "allowed_mutations": list(A41_ALLOWED_MUTATION_PATHS),
-        "references": references,
-    }
+    return (
+        {
+            "schema_version": 1,
+            "source_head": head,
+            "allowed_mutations": list(A41_ALLOWED_MUTATION_PATHS),
+            "references": references,
+        },
+        source_blobs,
+    )
+
+
+def collect_a41_inventory(repository_root: Path) -> dict[str, Any]:
+    """Return an exhaustive, hash-bound inventory of tracked A41 references."""
+
+    inventory, _ = _collect_a41_inventory_and_blobs(repository_root)
+    return inventory
 
 
 def write_a41_inventory(repository_root: Path, evidence_path: Path, evidence_root: Path) -> int:
@@ -3660,7 +3806,12 @@ def _validate_c0_adapter_profile(
         relative = _require_nonempty_string(
             item["path"], f"C0.immutable_artifacts[{name!r}].path", maximum=512
         ).replace("\\", "/")
-        if Path(relative).is_absolute() or ".." in Path(relative).parts or relative in seen_paths:
+        if (
+            Path(relative).is_absolute()
+            or ".." in Path(relative).parts
+            or relative.startswith("./")
+            or relative in seen_paths
+        ):
             raise EvidenceValidationError("C0 immutable artifact paths must be unique and evidence-root relative")
         seen_paths.add(relative)
         immutable_path = _require_evidence_path(
@@ -3677,6 +3828,8 @@ def _validate_terminal_bundle(
     repository_root: Path,
     evidence_root: Path,
 ) -> None:
+    aggregate_budget = _EvidenceAggregateBudget(evidence_root)
+
     _require_exact_fields(bundle, frozenset({"profile_sha256", "checkpoints"}), "terminal bundle")
     if bundle["profile_sha256"] != STORY_27_4_PROFILE_SHA256:
         raise EvidenceValidationError("terminal bundle profile drifted from PG-ONPREM-1")
@@ -3700,10 +3853,14 @@ def _validate_terminal_bundle(
         artifact_path = _require_nonempty_string(
             item.get("artifact_path"), f"{name}.artifact_path", maximum=512
         ).replace("\\", "/")
-        if Path(artifact_path).is_absolute() or ".." in Path(artifact_path).parts:
+        if (
+            Path(artifact_path).is_absolute()
+            or ".." in Path(artifact_path).parts
+            or artifact_path.startswith("./")
+        ):
             raise EvidenceValidationError(f"terminal artifact {name} path must be evidence-root relative")
         artifact_sha = _require_hex64(item.get("artifact_sha256"), f"{name}.artifact_sha256")
-        artifact = _safe_input_path(evidence_root / artifact_path, approved_root=evidence_root)
+        artifact = aggregate_budget.account(evidence_root / artifact_path, f"terminal artifact {name}")
         if hashlib.sha256(artifact.read_bytes()).hexdigest() != artifact_sha:
             raise EvidenceValidationError(f"terminal bundle checkpoint {name} artifact hash mismatch")
         artifact_payload = _read_bounded_json(artifact, approved_root=evidence_root)
@@ -3727,13 +3884,56 @@ def _validate_terminal_bundle(
             raise EvidenceValidationError(f"terminal artifact {name} profile differs by content")
         if name == "C1":
             _validate_predecessor(artifact_payload, repository_root, evidence_root)
+            gate_items: Sequence[Any]
+            if isinstance(artifact_payload.get("gates"), Mapping):
+                gate_items = list(artifact_payload["gates"].values())
+            else:
+                gate_items = _require_sequence(
+                    artifact_payload.get("successors"),
+                    "C1.successors",
+                )
+            for index, gate_value in enumerate(gate_items):
+                gate = _require_mapping(gate_value, f"C1 artifact[{index}]")
+                relative = _require_nonempty_string(
+                    gate.get("artifact_path"),
+                    f"C1 artifact[{index}].artifact_path",
+                    maximum=512,
+                ).replace("\\", "/")
+                aggregate_budget.account(
+                    evidence_root / relative,
+                    f"C1 artifact[{index}]",
+                )
             c1_artifact_payload = artifact_payload
         elif name in {"C2", "C3", "C4"}:
+            _require_exact_fields(
+                artifact_payload,
+                frozenset(
+                    {
+                        "schema_version",
+                        "producer",
+                        "checkpoint",
+                        "status",
+                        "evidence_mode",
+                        "profile_sha256",
+                        "owner",
+                        "captured_utc",
+                        "reason",
+                        "observation",
+                        "production_lifecycle_writes",
+                        "a41_status",
+                        "evidence_is_approval",
+                        "packet_sha256",
+                    }
+                ),
+                f"terminal artifact {name}",
+            )
             if (
-                artifact_payload.get("producer") != "verify-access-telemetry-lifecycle/v1"
+                artifact_payload.get("schema_version") != _STORY_PACKET_SCHEMA_VERSION
+                or artifact_payload.get("producer") != "verify-access-telemetry-lifecycle/v1"
                 or artifact_payload.get("evidence_mode") != "controlled-producer"
                 or artifact_payload.get("a41_status") != "open"
                 or artifact_payload.get("production_lifecycle_writes") != "disabled"
+                or artifact_payload.get("evidence_is_approval") is not False
             ):
                 raise EvidenceValidationError(
                     f"terminal artifact {name} is not controlled-producer evidence"
@@ -3748,6 +3948,35 @@ def _validate_terminal_bundle(
             observation = _require_mapping(
                 artifact_payload.get("observation"), f"terminal artifact {name}.observation"
             )
+            _require_exact_fields(
+                observation,
+                frozenset(
+                    {
+                        "input_sha256",
+                        "producer_payload_sha256",
+                        "producer_payload",
+                        "predecessor_sha256",
+                        "source_commit",
+                        "result_count",
+                    }
+                ),
+                f"terminal artifact {name}.observation",
+            )
+            _require_hex64(observation.get("input_sha256"), f"terminal artifact {name}.input_sha256")
+            _require_hex64(
+                observation.get("predecessor_sha256"),
+                f"terminal artifact {name}.predecessor_sha256",
+            )
+            _require_nonempty_string(artifact_payload.get("owner"), f"terminal artifact {name}.owner")
+            _require_nonempty_string(artifact_payload.get("reason"), f"terminal artifact {name}.reason")
+            captured = int(
+                _parse_utc(
+                    artifact_payload.get("captured_utc"),
+                    f"terminal artifact {name}.captured_utc",
+                ).timestamp()
+                * 1000
+            )
+            _validate_fresh_run(captured, captured, f"terminal artifact {name}")
             payload = _require_mapping(
                 observation.get("producer_payload"), f"terminal artifact {name}.producer_payload"
             )
@@ -3756,6 +3985,15 @@ def _validate_terminal_bundle(
             behavioral_artifacts[name] = payload
     if c1_artifact_payload is None:
         raise EvidenceValidationError("terminal bundle has no authenticated C1 artifact")
+    for name in ("C2", "C3", "C4"):
+        observation = _require_mapping(
+            chain_payloads[name].get("observation"),
+            f"terminal artifact {name}.observation",
+        )
+        if observation.get("predecessor_sha256") != artifact_hashes["C1"]:
+            raise EvidenceValidationError(
+                f"terminal artifact {name} does not bind the bundled C1 predecessor"
+            )
     for name, checkpoint in (
         ("C2", "c2-production-replacement"),
         ("C3", "c3-retention-reclamation"),
@@ -3784,14 +4022,38 @@ def _validate_terminal_bundle(
     adapter_relative = _require_nonempty_string(
         c0_results["adapter_profile_path"], "C0.adapter_profile_path", maximum=512
     ).replace("\\", "/")
-    if Path(adapter_relative).is_absolute() or ".." in Path(adapter_relative).parts:
+    if (
+        Path(adapter_relative).is_absolute()
+        or ".." in Path(adapter_relative).parts
+        or adapter_relative.startswith("./")
+    ):
         raise EvidenceValidationError("C0 adapter-profile path must be evidence-root relative")
-    adapter_artifact = _safe_input_path(evidence_root / adapter_relative, approved_root=evidence_root)
+    adapter_artifact = aggregate_budget.account(
+        evidence_root / adapter_relative,
+        "C0 adapter-profile artifact",
+    )
     if hashlib.sha256(adapter_artifact.read_bytes()).hexdigest() != _require_hex64(
         c0_results["adapter_profile_sha256"], "C0.adapter_profile_sha256"
     ):
         raise EvidenceValidationError("C0 adapter-profile artifact hash mismatch")
     _validate_c0_adapter_profile(adapter_artifact, repository_root, evidence_root)
+    adapter_packet = _read_bounded_json(adapter_artifact, approved_root=evidence_root)
+    adapter_results = _require_mapping(adapter_packet.get("results"), "C0 adapter-profile results")
+    immutable_artifacts = _require_mapping(
+        adapter_results.get("immutable_artifacts"),
+        "C0 immutable artifacts",
+    )
+    for name, value in immutable_artifacts.items():
+        item = _require_mapping(value, f"C0 immutable artifact {name}")
+        relative = _require_nonempty_string(
+            item.get("path"),
+            f"C0 immutable artifact {name}.path",
+            maximum=512,
+        ).replace("\\", "/")
+        aggregate_budget.account(
+            evidence_root / relative,
+            f"C0 immutable artifact {name}",
+        )
 
     c1_reviewers = {
         _require_nonempty_string(item.get("reviewer"), "C1 approval reviewer")
@@ -3842,6 +4104,7 @@ def create_recoverable_snapshot(
     repository_root: Path,
     snapshot_path: Path,
     inventory: Mapping[str, Any],
+    source_blobs: Mapping[str, bytes | None] | None = None,
 ) -> dict[str, Any]:
     """Write the exact pre-mutation A41 bytes to an exclusive recovery packet."""
 
@@ -3853,7 +4116,15 @@ def create_recoverable_snapshot(
         if isinstance(item, Mapping)
     }
     for relative in A41_ALLOWED_MUTATION_PATHS:
-        data = _read_git_blob(root, inventory["source_head"], relative)
+        if source_blobs is not None and relative not in source_blobs:
+            raise EvidenceValidationError(
+                f"authenticated source blob is missing from the snapshot input: {relative}"
+            )
+        data = (
+            source_blobs.get(relative)
+            if source_blobs is not None
+            else _read_git_blob(root, inventory["source_head"], relative)
+        )
         if data is not None:
             digest = hashlib.sha256(data).hexdigest()
             if inventory_hashes.get(relative) != digest:
@@ -3872,7 +4143,7 @@ def create_recoverable_snapshot(
     }
     if len((_canonical_json(snapshot) + "\n").encode("utf-8")) > _MAX_SNAPSHOT_BYTES:
         raise EvidenceValidationError("recoverable snapshot exceeds the 4 MiB aggregate bound")
-    _write_json_exclusive(snapshot_path, snapshot)
+    _write_json_exclusive(snapshot_path, snapshot, maximum_bytes=_MAX_SNAPSHOT_BYTES)
     return snapshot
 
 
@@ -3957,10 +4228,10 @@ def run_close_out_preflight(
         remote_url = _git_checked(root, "remote", "get-url", normalized_remote).strip().rstrip("/")
         if not remote_url:
             raise EvidenceValidationError("intended close-out remote has no configured URL")
-        inventory = collect_a41_inventory(root)
+        inventory, source_blobs = _collect_a41_inventory_and_blobs(root)
         if inventory["source_head"] != head:
             raise EvidenceValidationError("A41 inventory head changed during preflight")
-        create_recoverable_snapshot(root, resolved_snapshot, inventory)
+        create_recoverable_snapshot(root, resolved_snapshot, inventory, source_blobs)
         if _assert_clean_repository(root) != head:
             raise EvidenceValidationError("repository changed while close-out preflight was captured")
         packet = _close_out_packet(
@@ -4063,6 +4334,7 @@ def _authenticate_snapshot(
         snapshot_path,
         approved_root=evidence_root,
         maximum_bytes=_MAX_SNAPSHOT_BYTES,
+        maximum_string_length=_MAX_SNAPSHOT_BYTES,
     )
     snapshot_sha = hashlib.sha256(
         _safe_input_path(snapshot_path, approved_root=evidence_root).read_bytes()

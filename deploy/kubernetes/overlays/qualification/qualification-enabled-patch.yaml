@@ -3,7 +3,9 @@ kind: Deployment
 metadata:
   name: memories-access-telemetry
 spec:
-  replicas: 1
+  # The repository overlay is deliberately inert. The reviewed host-side
+  # qualification runner alone may scale this deployment for an expiring run.
+  replicas: 0
   template:
     spec:
       containers:
@@ -11,13 +13,16 @@ spec:
           env:
             - name: DOTNET_ENVIRONMENT
               value: Qualification
+            - name: AccessTelemetryLifecycle__PhysicalReclamationEvidenceId
+              value: story-27-4-c3
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: memories-access-telemetry-clock
 spec:
-  replicas: 1
+  # Keep the independent clock disabled until the runner owns a Lease and gate.
+  replicas: 0
   template:
     spec:
       containers:
@@ -38,3 +43,17 @@ spec:
           env:
             - name: DOTNET_ENVIRONMENT
               value: Qualification
+            - name: AccessTelemetryQualification__GatePath
+              value: /var/run/hexalith/access-telemetry-qualification/gate.json
+            - name: HEXALITH_QUALIFICATION_WRITER
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: access-telemetry-qualification-gate
+              mountPath: /var/run/hexalith/access-telemetry-qualification
+              readOnly: true
+      volumes:
+        - name: access-telemetry-qualification-gate
+          configMap:
+            name: access-telemetry-qualification-gate

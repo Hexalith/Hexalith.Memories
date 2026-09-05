@@ -19,13 +19,14 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
     private readonly AccessTelemetrySanitizerAccessor _sanitizerAccessor;
     private readonly AccessTelemetryLifecycleStatus? _status;
     private readonly TimeProvider? _timeProvider;
+    private readonly AccessTelemetryQualificationAccounting? _qualificationAccounting;
 
     /// <summary>Initializes a category-bound lifecycle logger.</summary>
     public AccessTelemetryLifecycleLogger(
         string categoryName,
         BoundedAccessTelemetryQueue queue,
         AccessTelemetrySanitizer sanitizer)
-        : this(categoryName, queue, CreateAccessor(sanitizer), null, null)
+        : this(categoryName, queue, CreateAccessor(sanitizer), null, null, null)
     {
     }
 
@@ -34,7 +35,7 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
         string categoryName,
         BoundedAccessTelemetryQueue queue,
         AccessTelemetrySanitizerAccessor sanitizerAccessor)
-        : this(categoryName, queue, sanitizerAccessor, null, null)
+        : this(categoryName, queue, sanitizerAccessor, null, null, null)
     {
     }
 
@@ -44,13 +45,15 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
         BoundedAccessTelemetryQueue queue,
         AccessTelemetrySanitizerAccessor sanitizerAccessor,
         AccessTelemetryLifecycleStatus? status,
-        TimeProvider? timeProvider)
+        TimeProvider? timeProvider,
+        AccessTelemetryQualificationAccounting? qualificationAccounting = null)
     {
         _categoryMatches = string.Equals(categoryName, RequiredCategory, StringComparison.Ordinal);
         _queue = queue;
         _sanitizerAccessor = sanitizerAccessor;
         _status = status;
         _timeProvider = timeProvider;
+        _qualificationAccounting = qualificationAccounting;
     }
 
     /// <inheritdoc/>
@@ -78,6 +81,10 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
         try
         {
             AccessTelemetryEvent? source = ExtractTypedState(state);
+            if (source is not null)
+            {
+                _qualificationAccounting?.RecordAttempted();
+            }
             if (source is not null && _status is not null && _timeProvider is not null)
             {
                 _status.RecordActivity(_timeProvider.GetUtcNow());
@@ -90,6 +97,7 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
                 if (_queue.TryEnqueue(record!, out AccessTelemetryReason reason))
                 {
                     ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Enqueued, AccessTelemetryReason.None);
+                    _qualificationAccounting?.RecordEnqueued();
                     ServerAccessTelemetryLifecycleMetrics.RecordQueue(
                         _queue.Count,
                         _queue.ByteCount,
@@ -99,15 +107,18 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
                 else
                 {
                     ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Dropped, reason);
+                    _qualificationAccounting?.RecordDropped();
                 }
             }
             else if (source is not null && sanitizer is null)
             {
                 ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Rejected, AccessTelemetryReason.RemoteValidationPending);
+                _qualificationAccounting?.RecordRejected(1);
             }
             else if (source is not null)
             {
                 ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Rejected, AccessTelemetryReason.SchemaMismatch);
+                _qualificationAccounting?.RecordRejected(1);
             }
         }
         catch (Exception caught) when (caught is not OutOfMemoryException and not StackOverflowException)

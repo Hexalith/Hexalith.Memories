@@ -3,6 +3,9 @@ kind: Kustomization
 namespace: hexalith-memories-qualification
 resources:
   - namespace.yaml
+  - qualification-gate.yaml
+  - qualification-operator-rbac.yaml
+  - physical-evidence-reporter-job.yaml
   - ../../base
 patches:
   - path: qualification-enabled-patch.yaml

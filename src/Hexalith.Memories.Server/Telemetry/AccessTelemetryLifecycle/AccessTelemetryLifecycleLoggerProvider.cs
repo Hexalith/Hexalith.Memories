@@ -15,10 +15,11 @@ internal sealed class AccessTelemetryLifecycleLoggerProvider : ILoggerProvider
     private readonly AccessTelemetrySanitizerAccessor _sanitizerAccessor;
     private readonly AccessTelemetryLifecycleStatus? _status;
     private readonly TimeProvider? _timeProvider;
+    private readonly AccessTelemetryQualificationAccounting? _qualificationAccounting;
 
     /// <summary>Initializes the lifecycle provider.</summary>
     public AccessTelemetryLifecycleLoggerProvider(BoundedAccessTelemetryQueue queue, AccessTelemetrySanitizer sanitizer)
-        : this(queue, CreateAccessor(sanitizer), null, null)
+        : this(queue, CreateAccessor(sanitizer), null, null, null)
     {
     }
 
@@ -26,7 +27,7 @@ internal sealed class AccessTelemetryLifecycleLoggerProvider : ILoggerProvider
     public AccessTelemetryLifecycleLoggerProvider(
         BoundedAccessTelemetryQueue queue,
         AccessTelemetrySanitizerAccessor sanitizerAccessor)
-        : this(queue, sanitizerAccessor, null, null)
+        : this(queue, sanitizerAccessor, null, null, null)
     {
     }
 
@@ -35,17 +36,25 @@ internal sealed class AccessTelemetryLifecycleLoggerProvider : ILoggerProvider
         BoundedAccessTelemetryQueue queue,
         AccessTelemetrySanitizerAccessor sanitizerAccessor,
         AccessTelemetryLifecycleStatus? status,
-        TimeProvider? timeProvider)
+        TimeProvider? timeProvider,
+        AccessTelemetryQualificationAccounting? qualificationAccounting = null)
     {
         _queue = queue;
         _sanitizerAccessor = sanitizerAccessor;
         _status = status;
         _timeProvider = timeProvider;
+        _qualificationAccounting = qualificationAccounting;
     }
 
     /// <inheritdoc/>
     public ILogger CreateLogger(string categoryName)
-        => new AccessTelemetryLifecycleLogger(categoryName, _queue, _sanitizerAccessor, _status, _timeProvider);
+        => new AccessTelemetryLifecycleLogger(
+            categoryName,
+            _queue,
+            _sanitizerAccessor,
+            _status,
+            _timeProvider,
+            _qualificationAccounting);
 
     /// <inheritdoc/>
     public void Dispose()

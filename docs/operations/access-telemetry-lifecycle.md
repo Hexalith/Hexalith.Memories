@@ -74,10 +74,15 @@ records only unless an independently approved accelerated-purge operation exists
    own artifact and reviewed source identity; an aggregate count is not evidence.
 5. Obtain the independent C1 Platform Operations and security authorizations for
    the same `profile_sha256` and immutable C1 evidence hashes.
-6. Enable only the approved profile in the isolated non-Production qualification
-   namespace. Re-read running images, Dapr component and configuration, workload
-   identity, profile hash, and key generation before the first write. Any mismatch
-   is `configuration_invalid`, not a retry condition. Production stays disabled.
+6. Keep the checked-in qualification lifecycle and clock deployments at zero. The
+   host-side producer must first prove the disabled gate and empty namespace Lease,
+   verify its namespace and shared `dapr-system` RBAC, acquire that Lease under the
+   named approval, scale only the qualification workloads, and open the exact-profile
+   gate for at most 45 minutes. Re-read running images, Dapr component and
+   configuration, workload identity, profile hash, and key generation before the
+   first write. Any mismatch is `configuration_invalid`, not a retry condition.
+   Production stays disabled. An expired gate or stale Lease is rejected and
+   explicitly restored to disabled/empty; it is never bypassed.
 7. Run C2-C4 with reviewed scenario producers and archive the immutable per-run
    packets. Continue to C5/C6 and terminal validation only with zero failures and
    zero skips.
@@ -86,8 +91,16 @@ Use the repository verifier as the packet boundary. C2-C4 are selected from its
 closed repository-owned producer registry; an operator cannot supply an executable
 or raw argument vector. The allowlisted scenario document contains only
 `schema_version: 1` and the target kind, Kubernetes context, qualification
-namespace, and exact profile hash. It contains no commands, counters, pass flags,
-timestamps, credentials, or arbitrary environment values. Set `EVIDENCE_ROOT` to
+namespace, and exact profile hash. Shared-system authority is derived from the
+already-validated Platform Operations approval in C1, never from scenario input. It contains no
+commands, counters, pass flags, timestamps, credentials, or arbitrary environment
+values. For example:
+
+```json
+{"schema_version":1,"target":{"kind":"non-production-qualification","kube_context":"operator@qualification","namespace":"hexalith-memories-qualification","profile_sha256":"dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14"}}
+```
+
+Set `EVIDENCE_ROOT` to
 an existing absolute directory outside the repository, then run:
 
 ```bash
@@ -130,26 +143,33 @@ python3 tools/verify-access-telemetry-lifecycle.py \
 Replace only the checkpoint and output filename for C3 and C4; the verifier selects
 `tools/access_telemetry_c3_producer.py` or
 `tools/access_telemetry_c4_producer.py` and verifies its Git blob before execution.
-The producer controls its bounded Kubernetes command transcript and always attempts
-the fixed disable operation after a failure. Every passing packet proves the
-qualification lane's final state is disabled. Evidence paths are exclusive: choose
-a new run ID after every rejected or interrupted run. Never edit, overwrite, or
-relabel a packet.
+The producer controls its bounded, closed `kubectl` argument vectors and always
+attempts the fixed disable operation after a failure. It never invokes a generic
+`/operations/qualification/{checkpoint}/{command}` endpoint. The only Server
+qualification surface is the no-input, gate-checked fixed workload endpoint, called
+concurrently inside the two selected Server pods. Before enabling, its
+`qualification-target-identity` command must observe the exact non-Production
+namespace, approved profile hash, and disabled write state. Every passing packet
+proves both that initial identity and the qualification lane's final disabled state.
+Lease acquisition uses an atomic JSON Patch that tests the observed resource version
+and empty holder before recording the C1 reviewer identity.
+Evidence paths are exclusive: choose a new run ID after every rejected or interrupted
+run. Never edit, overwrite, or relabel a packet.
 
 ## C2 production replacement verification
 
-producer controls every action and observation. It must prove unique sanitized
 Maintain two Server writers at the ADR total of exactly 250 accepted records/s while
 the component sustains at least 500 operations/s during purge. Run the 30-minute
 scenario only in the authorized non-Production qualification namespace while the
 reviewed producer controls every action and observation. It must prove unique sanitized
-producer controls every action and observation. It must prove unique sanitized
 record IDs, actor serialization, idempotent same-envelope retry, changed-envelope
 conflict rejection, and exact Dapr transaction acknowledgement. Dependency
 inspection must return an empty direct-backend set.
 
-Replace, one at a time, every Server process, lifecycle-service process, clock
-service, Dapr sidecar, actor activation, Placement member, and Scheduler member.
+Replace, one at a time, both Server writers and their sidecars, the lifecycle and
+clock services and their sidecars, the actor activation, all three Placement members,
+and all three Scheduler members. The verifier's closed registry names every instance;
+one aggregate replacement result cannot discharge multiple instances.
 For each replacement record the controlled command, start/end UTC, immutable
 stdout/stderr hashes, nonzero observation count, zero acknowledged-record loss,
 recovery, and console continuity. When OTLP is configured, record its continuity as
@@ -158,10 +178,18 @@ durable state/reminder reconstruction, and exact profile equality before resumin
 
 Stop immediately on a missing replacement, skipped command, count mismatch,
 acknowledged loss, profile drift, state/reminder reconstruction gap, or direct
-backend dependency. Leave Production writes disabled if C1 was not already a
-complete independent pass.
+backend dependency. Production remains disabled throughout; the producer must also
+restore the isolated qualification target to disabled before its packet can pass.
 
 ## C3 retention, purge, and reclamation verification
+
+The C3 producer holds an exclusive lock on
+`$EVIDENCE_ROOT/c3-retention-reclamation.journal.jsonl`. Each fsync'd JSONL entry
+binds its sequence, predecessor hash, fixed command ID, aggregate result hash, and
+UTC time. A concurrent producer or any rewritten, truncated, or reordered history
+fails closed. This journal preserves attributable progress for the multi-day 1-hour,
+24-hour, and 168-hour run; it is supporting recovery state, never passing evidence
+by itself.
 
 Create separately identifiable 1-hour, 24-hour, and 168-hour cohorts plus later
 records that must survive the older cohort's purge. Bind every cohort to database,
@@ -187,7 +215,11 @@ The adapter then runs its separately authorized physical collector. Record the s
 cohort/database/schema/table identity, the executed reclamation command, allocator
 bytes before and after, and elapsed seconds from active purge. Pass only when the
 cohort is attributable, allocator bytes decrease, and age is at most 86,400 seconds.
-Never record an operating-system disk shrink claim.
+The suspended qualification reporter Job is enabled only for this observation. It
+uses the reviewed deployed lifecycle image and adapter Dapr identity, carries no
+Kubernetes service-account token or RBAC, and submits only the fixed aggregate C3
+document to the authenticated physical-evidence route. Never record an
+operating-system disk shrink claim.
 
 ## C4 failure, privacy, and observability verification
 

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-telemetry-qualification-gate
+  labels:
+    app.kubernetes.io/part-of: hexalith-memories
+    hexalith.io/qualification-default: disabled
+data:
+  gate.json: >-
+    {"schemaVersion":1,"state":"disabled","profileSha256":"dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14","expiresUtcMs":0}
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: access-telemetry-qualification
+spec:
+  holderIdentity: ""
+  leaseDurationSeconds: 0

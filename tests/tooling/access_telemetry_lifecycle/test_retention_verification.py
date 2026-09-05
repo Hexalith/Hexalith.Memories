@@ -29,16 +29,22 @@ from verify_access_telemetry_lifecycle import (  # noqa: E402
     STORY_27_4_PRODUCERS,
     STORY_27_4_PROFILE_SHA256,
     STORY_27_4_WORKLOAD_SHA256,
+    _EvidenceAggregateBudget,
+    _authenticate_snapshot,
     _canonical_json,
+    _collect_a41_inventory_and_blobs,
     _read_bounded_json,
     _require_evidence_path,
     _run_bounded_process,
     _sha256,
     _validated_evidence_root,
     _validate_mutation_manifest,
+    _write_json_exclusive,
     collect_a41_inventory,
+    create_recoverable_snapshot,
     validate_story_27_4_checkpoint,
 )
+from access_telemetry_producer_common import _C3Journal  # noqa: E402
 
 
 SHA = "a" * 64
@@ -56,6 +62,8 @@ def observation(command_id: str) -> dict[str, object]:
 def transition() -> dict[str, object]:
     return {
         "non_production": True,
+        "identity_observation": observation("qualification-target-identity"),
+        "initial_writes_state": "disabled",
         "enable_observation": observation("qualification-enable"),
         "disable_observation": observation("qualification-disable"),
         "final_observation": observation("qualification-final-state"),
@@ -409,6 +417,10 @@ class RetentionVerificationTests(unittest.TestCase):
         reused["gates"]["C1.2"]["artifact_sha256"] = reused["gates"]["C1.1"]["artifact_sha256"]
         with self.assertRaises(ValueError):
             validate_story_27_4_checkpoint("c2-production-replacement", c2_payload(), reused)
+        reused_hash = predecessor()
+        reused_hash["gates"]["C1.2"]["artifact_sha256"] = reused_hash["gates"]["C1.1"]["artifact_sha256"]
+        with self.assertRaises(ValueError):
+            validate_story_27_4_checkpoint("c2-production-replacement", c2_payload(), reused_hash)
         enabled = predecessor()
         enabled["production_lifecycle_writes"] = "enabled"
         with self.assertRaises(ValueError):
@@ -442,6 +454,11 @@ class RetentionVerificationTests(unittest.TestCase):
                     [sys.executable, "-c", "import sys; sys.stdout.write('x' * 1048577)"],
                     cwd=Path(directory),
                     timeout_seconds=10,
+                )
+            with self.assertRaises(ValueError):
+                _write_json_exclusive(
+                    Path(directory) / "oversized-output.json",
+                    {"value": "x" * 1_048_577},
                 )
 
     def test_evidence_paths_reject_traversal_and_symlink_aliases(self) -> None:
@@ -503,7 +520,8 @@ class RetentionVerificationTests(unittest.TestCase):
 
             result = subprocess.run(
                 [sys.executable, "-B", str(TOOLS_DIR / "access_telemetry_c2_producer.py"),
-                 "--scenario-input", str(scenario_input)],
+                 "--scenario-input", str(scenario_input), "--platform-operations-reviewer",
+                 "c1-operator-reviewer"],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -513,8 +531,14 @@ class RetentionVerificationTests(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             operations = operation_log.read_text(encoding="utf-8").splitlines()
             self.assertEqual(
-                ["qualification-enable", "writer-1", "qualification-disable", "qualification-final-state"],
-                operations,
+                ["qualification-target-identity", "qualification-enable"],
+                operations[:2],
+            )
+            self.assertIn("writer-1", operations[2:-2])
+            self.assertIn("writer-2", operations[2:-2])
+            self.assertEqual(
+                ["qualification-disable", "qualification-final-state"],
+                operations[-2:],
             )
 
     def test_producer_restores_disabled_state_when_enable_response_is_malformed(self) -> None:
@@ -538,7 +562,8 @@ class RetentionVerificationTests(unittest.TestCase):
 
             result = subprocess.run(
                 [sys.executable, "-B", str(TOOLS_DIR / "access_telemetry_c2_producer.py"),
-                 "--scenario-input", str(scenario_input)],
+                 "--scenario-input", str(scenario_input), "--platform-operations-reviewer",
+                 "c1-operator-reviewer"],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -547,9 +572,95 @@ class RetentionVerificationTests(unittest.TestCase):
 
             self.assertEqual(1, result.returncode)
             self.assertEqual(
-                ["qualification-enable", "qualification-disable", "qualification-final-state"],
+                [
+                    "qualification-target-identity",
+                    "qualification-enable",
+                    "qualification-disable",
+                    "qualification-final-state",
+                ],
                 operation_log.read_text(encoding="utf-8").splitlines(),
             )
+
+    def test_producer_refuses_unverifiable_target_identity_and_still_disables(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            operation_log = base / "operations.log"
+            scenario_input = base / "scenario-input.json"
+            scenario_input.write_text(json.dumps({"schema_version": 1, "target": {
+                "kind": "non-production-qualification", "kube_context": "operator@local",
+                "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
+            }}), encoding="utf-8")
+            environment = {
+                **os.environ,
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                "QUALIFICATION_INVALID_OPERATION": "qualification-target-identity",
+                "QUALIFICATION_OPERATION_LOG": str(operation_log),
+            }
+
+            result = subprocess.run(
+                [sys.executable, "-B", str(TOOLS_DIR / "access_telemetry_c2_producer.py"),
+                 "--scenario-input", str(scenario_input), "--platform-operations-reviewer",
+                 "c1-operator-reviewer"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+
+            self.assertEqual(1, result.returncode)
+            self.assertEqual(
+                [
+                    "qualification-target-identity",
+                    "qualification-disable",
+                    "qualification-final-state",
+                ],
+                operation_log.read_text(encoding="utf-8").splitlines(),
+            )
+
+    def test_c3_journal_is_exclusive_append_only_and_tamper_evident(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "c3.jsonl"
+            def journal_result(command_id: str) -> dict[str, object]:
+                timestamp = now_ms()
+                arguments = {"operation": command_id}
+                return {
+                    "result_count": 1,
+                    "_command": {
+                        "command_id": command_id,
+                        "arguments": arguments,
+                        "arguments_sha256": _sha256(_canonical_json(arguments)),
+                        "started_utc_ms": timestamp,
+                        "finished_utc_ms": timestamp,
+                        "exit_code": 0,
+                        "stdout_sha256": SHA,
+                        "stderr_sha256": SHA,
+                        "result_count": 1,
+                    },
+                }
+
+            with _C3Journal(path) as journal:
+                journal.append("cohort-1h-expiry", journal_result("cohort-1h-expiry"))
+                with self.assertRaises(ValueError):
+                    _C3Journal(path)
+                journal.append("cohort-1h-purge", journal_result("cohort-1h-purge"))
+
+            with _C3Journal(path) as journal:
+                self.assertEqual(
+                    ["cohort-1h-expiry", "cohort-1h-purge"],
+                    list(journal.resume_results),
+                )
+
+            lines = path.read_text(encoding="utf-8").splitlines()
+            first = json.loads(lines[0])
+            first["recorded_utc_ms"] += 1
+            lines[0] = json.dumps(first, separators=(",", ":"), sort_keys=True)
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+            with self.assertRaises(ValueError):
+                _C3Journal(path)
 
     def test_a41_inventory_hashes_authenticated_head_blobs(self) -> None:
         inventory = collect_a41_inventory(REPO_ROOT)
@@ -562,6 +673,57 @@ class RetentionVerificationTests(unittest.TestCase):
             "close-out-mutable",
             by_path["_bmad-output/implementation-artifacts/deferred-work.md"]["classification"],
         )
+
+    def test_snapshot_reuses_authenticated_blobs_and_chain_budget_is_aggregate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            repository = base / "repository"
+            evidence = base / "evidence"
+            repository.mkdir()
+            evidence.mkdir()
+            self._run("git", "init", "-q", "-b", "main", str(repository))
+            self._run("git", "-C", str(repository), "config", "user.email", "test@example.invalid")
+            self._run("git", "-C", str(repository), "config", "user.name", "Test")
+            install_a41_files(repository, "A41 open\n")
+            (repository / A41_ALLOWED_MUTATION_PATHS[0]).write_text(
+                "A41 open\n" + ("recoverable-content\n" * 512),
+                encoding="utf-8",
+            )
+            self._run("git", "-C", str(repository), "add", ".")
+            self._run("git", "-C", str(repository), "commit", "-q", "-m", "test: create source baseline")
+
+            inventory, source_blobs = _collect_a41_inventory_and_blobs(repository)
+            with patch(
+                "verify_access_telemetry_lifecycle._read_git_blob",
+                side_effect=AssertionError("snapshot attempted a second Git blob read"),
+            ):
+                snapshot = create_recoverable_snapshot(
+                    repository,
+                    evidence / "snapshot.json",
+                    inventory,
+                    source_blobs,
+                )
+            self.assertEqual(set(A41_ALLOWED_MUTATION_PATHS), set(snapshot["paths"]))
+            snapshot_path = evidence / "snapshot.json"
+            authenticated = _authenticate_snapshot(
+                snapshot_path,
+                {
+                    "source_head": inventory["source_head"],
+                    "snapshot_sha256": hashlib.sha256(snapshot_path.read_bytes()).hexdigest(),
+                },
+                evidence,
+            )
+            self.assertEqual(snapshot["source_head"], authenticated["source_head"])
+
+            budget = _EvidenceAggregateBudget(evidence)
+            for index in range(4):
+                path = evidence / f"large-{index}.bin"
+                path.write_bytes(b"x" * 1_048_000)
+                budget.account(path, f"large-{index}")
+            overflow = evidence / "overflow.bin"
+            overflow.write_bytes(b"x" * 3_000)
+            with self.assertRaises(ValueError):
+                budget.account(overflow, "overflow")
 
     def test_registered_producers_and_complete_close_out_chain(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -631,7 +793,11 @@ class RetentionVerificationTests(unittest.TestCase):
                         "--owner", "operator",
                         "--evidence-root", str(evidence),
                         "--evidence", str(output))
-                    self.assertEqual(0, result.returncode, result.stderr)
+                    self.assertEqual(
+                        0,
+                        result.returncode,
+                        result.stderr + (output.read_text(encoding="utf-8") if output.exists() else ""),
+                    )
                     artifacts[name] = output
                 adapter_path = evidence / "adapter-profile.json"
                 c0_path = evidence / "C0.json"
@@ -910,11 +1076,68 @@ def install_fake_kubectl(directory: Path) -> None:
     script.write_text("""#!/usr/bin/env python3
 import json, os, sys, time
 args = sys.argv[1:]
+step = int(os.environ.get('HEXALITH_STORY_27_4_STEP', '0'))
 if '--' in args and args[-1] in {'--version', '--build-info'} and args[-2] in {'/daprd', 'daprd'}:
     print('1.18.1' if args[-1] == '--version' else 'Version: 1.18.1\\nGit Commit: qualification-test')
     raise SystemExit(0)
+op = os.environ.get('HEXALITH_STORY_27_4_COMMAND_ID') or sys.argv[-1].rsplit('/', 1)[-1]
+changed = step >= (3 if op.endswith('-purge') else 4)
+pod_phase = 'same' if op.endswith('-dapr-sidecar') else ('new' if changed else 'old')
+operation_log = os.environ.get('QUALIFICATION_OPERATION_LOG')
+if operation_log:
+    with open(operation_log, 'a', encoding='utf-8') as stream:
+        existing = []
+        try:
+            with open(operation_log, encoding='utf-8') as current:
+                existing = current.read().splitlines()
+        except OSError: pass
+        if not existing or existing[-1] != op:
+            stream.write(op + '\\n')
+if os.environ.get('QUALIFICATION_FAIL_OPERATION') == op:
+    raise SystemExit(9)
+if os.environ.get('QUALIFICATION_INVALID_OPERATION') == op:
+    print('{')
+    raise SystemExit(0)
+if 'auth' in args and 'can-i' in args:
+    print('yes')
+    raise SystemExit(0)
 if 'get' in args and args[-1] == 'json':
     resource = args[args.index('get') + 1]
+    if resource == 'namespace':
+        print(json.dumps({'metadata': {'name': 'memories-qualification'}}, separators=(',', ':')))
+        raise SystemExit(0)
+    if resource == 'configmap':
+        name = args[args.index('get') + 2]
+        if name == 'access-telemetry-qualification-gate':
+            enabled = op == 'qualification-enable'
+            gate = {'schemaVersion': 1, 'state': 'enabled' if enabled else 'disabled',
+                'profileSha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+                'expiresUtcMs': int(time.time() * 1000) + 2700000 if enabled else 0}
+            print(json.dumps({'data': {'gate.json': json.dumps(gate, separators=(',', ':'))}}, separators=(',', ':')))
+            raise SystemExit(0)
+        print(json.dumps({'metadata': {'name': name}, 'data': {'retentionSeconds': '604800'}}, separators=(',', ':')))
+        raise SystemExit(0)
+    if resource == 'lease':
+        enabled = op == 'qualification-enable'
+        print(json.dumps({'metadata': {'resourceVersion': '10'}, 'spec': {
+            'holderIdentity': 'story-27-4/c1-operator-reviewer' if enabled else '',
+            'leaseDurationSeconds': 2700 if enabled else 0}}, separators=(',', ':')))
+        raise SystemExit(0)
+    if resource == 'deployment':
+        name = args[args.index('get') + 2]
+        replicas = (1 if name.endswith('-clock') else 2) if op == 'qualification-enable' else 0
+        print(json.dumps({'metadata': {'name': name}, 'spec': {'replicas': replicas}}, separators=(',', ':')))
+        raise SystemExit(0)
+    if resource in {'component', 'components.dapr.io'} and 'access-telemetry-store' in args:
+        print(json.dumps({'apiVersion': 'dapr.io/v1alpha1', 'kind': 'Component',
+            'metadata': {'name': 'access-telemetry-store'},
+            'spec': {'type': 'state.postgresql', 'version': 'v2'}}, separators=(',', ':')))
+        raise SystemExit(0)
+    if resource in {'configuration.dapr.io', 'configurations.dapr.io'} and 'memories-config' in args:
+        print(json.dumps({'apiVersion': 'dapr.io/v1alpha1', 'kind': 'Configuration',
+            'metadata': {'name': 'memories-config'},
+            'spec': {'accessControl': {'defaultAction': 'deny', 'policies': []}}}, separators=(',', ':')))
+        raise SystemExit(0)
     postgres_image = 'docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a'
     items = {
         'deployments': [
@@ -940,27 +1163,78 @@ if 'get' in args and args[-1] == 'json':
              'status': {'readyReplicas': 1}},
         ],
         'pods': [
-            {'metadata': {'name': 'memories-1', 'generation': 1},
-             'spec': {'nodeName': 'qualification-node'}, 'status': {'phase': 'Running', 'containerStatuses': [
-                 {'name': 'memories', 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:bb'},
-                 {'name': 'daprd', 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:cc'},
+            {'metadata': {'name': 'memories-1', 'uid': 'pod-1-' + pod_phase, 'generation': 1},
+             'spec': {'nodeName': 'qualification-node'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:bb'},
+                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:cc'},
+             ]}},
+            {'metadata': {'name': 'memories-2', 'uid': 'pod-2-' + pod_phase, 'generation': 1},
+             'spec': {'nodeName': 'qualification-node'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:bb'},
+                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:cc'},
+             ]}},
+            {'metadata': {'name': 'memories-3', 'uid': 'pod-3-' + pod_phase, 'generation': 1},
+             'spec': {'nodeName': 'qualification-node'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:bb'},
+                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:cc'},
              ]}},
         ],
     }.get(resource, [])
     print(json.dumps({'items': items}, separators=(',', ':')))
     raise SystemExit(0)
-op = sys.argv[-1].rsplit('/', 1)[-1]
-operation_log = os.environ.get('QUALIFICATION_OPERATION_LOG')
-if operation_log:
-    with open(operation_log, 'a', encoding='utf-8') as stream:
-        stream.write(op + '\\n')
-if os.environ.get('QUALIFICATION_FAIL_OPERATION') == op:
-    raise SystemExit(9)
-if os.environ.get('QUALIFICATION_INVALID_OPERATION') == op:
-    print('{')
-    raise SystemExit(0)
 now = int(time.time() * 1000)
-if op in {'qualification-enable', 'qualification-disable', 'qualification-final-state'}:
+command_text = ' '.join(args)
+if '/operations/access-telemetry/qualification/fixed-workload' in command_text:
+    if op.startswith('writer-'):
+        index = int(op[-1]); value = {'writer': f'memories-{index}', 'attempted': 225001,
+            'acknowledged': 225000, 'persisted': 225000, 'conflicted': 1,
+            'transactionAcknowledgements': 225000, 'dropped': 0, 'rejected': 0, 'resultCount': 5}
+    else:
+        value = {'writer': 'memories-1', 'attempted': 2, 'acknowledged': 0, 'persisted': 0,
+            'conflicted': 0, 'transactionAcknowledgements': 0, 'dropped': 1, 'rejected': 1,
+            'resultCount': 2}
+    print(json.dumps(value, separators=(',', ':')))
+    raise SystemExit(0)
+if '/v1/access-telemetry/inspect' in command_text:
+    print(json.dumps({'health': 'Healthy', 'reason': 'None', 'retainedRecordCount': 100,
+        'configurationEpoch': 'qualification', 'physicalReclamationEvidencePending': False}, separators=(',', ':')))
+    raise SystemExit(0)
+if 'http://127.0.0.1:9090/metrics' in command_text:
+    print('# TYPE dapr_http_server_request_count counter')
+    print('dapr_http_server_request_count{app_id="memories"} 1')
+    raise SystemExit(0)
+if 'http://127.0.0.1:8080/ready' in command_text:
+    print(json.dumps({'schemaVersion': 1, 'status': 'Healthy', 'entries': {}}, separators=(',', ':')))
+    raise SystemExit(0)
+if 'logs' in args:
+    print('{"eventId":7506,"outcome":"ok"}')
+    raise SystemExit(0)
+if 'psql' in args and 'VACUUM (ANALYZE,' in command_text:
+    print('VACUUM')
+    raise SystemExit(0)
+if 'psql' in args and op.startswith('cohort-'):
+    hours = int(op.split('-')[1][:-1]); stage = op.rsplit('-', 1)[-1]
+    accepted = (now // 3600000) * 3600000 - (8 * 24 * 3600000)
+    expires = accepted + hours * 3600000; purged = expires + 60000
+    if stage == 'expiry':
+        value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
+            'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
+            'accepted_utc_ms': accepted, 'expires_utc_ms': expires, 'pre_tuple_count': 100,
+            'candidate_count': 100, 'newer_record_names': [f'newer-{hours}h-a'],
+            'newer_records_preserved': True}
+    elif stage == 'purge':
+        value = {'stage': stage, 'purged_utc_ms': purged, 'post_tuple_count': 0,
+            'logical_absence': True, 'newer_records_preserved': True}
+    else:
+        value = {'stage': stage, 'reclaimed_utc_ms': purged + 60000,
+            'allocator_bytes': 1000 if step == 0 else 700}
+    print(json.dumps(value, separators=(',', ':')))
+    raise SystemExit(0)
+if op == 'qualification-target-identity':
+    value = {'kind': 'non-production-qualification', 'namespace': 'memories-qualification',
+        'profile_sha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+        'writes_state': 'disabled'}
+elif op in {'qualification-enable', 'qualification-disable', 'qualification-final-state'}:
     value = {'state': 'enabled' if op == 'qualification-enable' else 'disabled'}
 elif op.startswith('writer-'):
     index = int(op[-1]); value = {'writer': f'server-writer-{index}', 'attempted': 225001,

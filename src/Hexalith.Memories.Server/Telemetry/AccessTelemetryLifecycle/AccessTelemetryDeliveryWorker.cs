@@ -19,6 +19,7 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
     private readonly TimeProvider _timeProvider;
     private readonly AccessTelemetryOptions _options;
     private readonly AccessTelemetryLifecycleStatus _status;
+    private readonly AccessTelemetryQualificationAccounting? _qualificationAccounting;
     private int _failureCount;
     private bool _terminal;
 
@@ -28,13 +29,15 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
         IAccessTelemetryDeliveryClient client,
         TimeProvider timeProvider,
         AccessTelemetryOptions options,
-        AccessTelemetryLifecycleStatus status)
+        AccessTelemetryLifecycleStatus status,
+        AccessTelemetryQualificationAccounting? qualificationAccounting = null)
     {
         _queue = queue;
         _client = client;
         _timeProvider = timeProvider;
         _options = options;
         _status = status;
+        _qualificationAccounting = qualificationAccounting;
     }
 
     /// <summary>Attempts one bounded delivery pass. Records remain queued unless fully acknowledged.</summary>
@@ -76,6 +79,7 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
                 _queue.Acknowledge(response.Accepted);
                 RefreshQueueMetrics();
                 ServerAccessTelemetryLifecycleMetrics.Record(response.Accepted, AccessTelemetryRecordState.Persisted, AccessTelemetryReason.None);
+                _qualificationAccounting?.RecordPersisted(response.Accepted);
                 _status.RecordActivity(now);
             }
 
@@ -86,6 +90,9 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
             }
             else if (response.Reason is AccessTelemetryReason.ConfigurationInvalid or AccessTelemetryReason.RecordIdConflict)
             {
+                _qualificationAccounting?.RecordRejected(
+                    response.Rejected,
+                    response.Reason == AccessTelemetryReason.RecordIdConflict);
                 _terminal = true;
                 _status.RecordActivity(now);
                 _status.PublishTerminal(response.Reason);
@@ -94,6 +101,7 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
             {
                 if (response.Rejected > 0)
                 {
+                    _qualificationAccounting?.RecordRejected(response.Rejected);
                     _queue.Acknowledge(1);
                     RefreshQueueMetrics();
                     ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Dropped, response.Reason);

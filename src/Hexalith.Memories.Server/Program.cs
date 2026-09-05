@@ -8,6 +8,7 @@ using Hexalith.Memories.Server.Hosting;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.NaturalLanguage;
 using Hexalith.Memories.Server.Telemetry;
+using Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 using Hexalith.Memories.ServiceDefaults;
 using Hexalith.Memories.ServiceDefaults.Security;
 using Hexalith.Memories.Telemetry;
@@ -93,6 +94,7 @@ app.MapCasesEndpoints();
 app.MapSearchEndpoints();
 app.MapGraphEndpoints();
 app.MapDerivedStoreEndpoints();
+app.MapAccessTelemetryQualificationEndpoint();
 
 app.Run();
 
