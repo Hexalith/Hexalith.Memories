@@ -1,6 +1,6 @@
 # DO NOT EDIT -- overwritten on every update.
 #
-# Workflow customization surface for bmad-sprint-planning. Mirrors the
+# Workflow customization surface for bmad-create-story. Mirrors the
 # agent customization shape under the [workflow] namespace.
 
 [workflow]
@@ -34,8 +34,8 @@ persistent_facts = [
   "file:{project-root}/**/project-context.md",
 ]
 
-# Scalar: executed when the workflow reaches its final step,
-# after sprint-status.yaml is generated and validated. Override wins.
+# Scalar: executed when the workflow reaches Step 6 (Update sprint status and finalize),
+# after the story file is saved and sprint-status.yaml is updated. Override wins.
 # Leave empty for no custom post-completion behavior.
 
 on_complete = ""

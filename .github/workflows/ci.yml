@@ -510,6 +510,12 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Provision ephemeral EventStore local NuGet feed
+        timeout-minutes: 15
+        # Story 28.1 / DW-717: container publish restores EventStore packages; the proof
+        # identity is not on nuget.org, so this job needs the same ephemeral feed as build.
+        run: tools/ci/provision-eventstore-local-feed.sh "$EVENTSTORE_APPROVED_SHA" "$EVENTSTORE_APPROVED_VERSION"
+
       - name: Initialize kubectl
         uses: azure/setup-kubectl@v4
         with:

@@ -1,6 +1,6 @@
 # DO NOT EDIT -- overwritten on every update.
 #
-# Workflow customization surface for bmad-sprint-planning. Mirrors the
+# Workflow customization surface for bmad-dev-story. Mirrors the
 # agent customization shape under the [workflow] namespace.
 
 [workflow]
@@ -32,10 +32,13 @@ activation_steps_append = []
 
 persistent_facts = [
   "file:{project-root}/**/project-context.md",
+  "Never add epic or story references as inline code comments (e.g. # Epic: X, # Story: PROJ-42).",
+  "Code comments explain why, not what — no AI workflow metadata, planning refs, or story tracking in source code.",
+  "Generated code must be production-ready: clean, minimal, and free of AI-generated noise.",
 ]
 
 # Scalar: executed when the workflow reaches its final step,
-# after sprint-status.yaml is generated and validated. Override wins.
+# after the story implementation is complete and status is updated. Override wins.
 # Leave empty for no custom post-completion behavior.
 
 on_complete = ""

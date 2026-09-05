@@ -314,7 +314,7 @@ public sealed partial class CiTestInventoryTests
 
         JsonElement overrides = manifest.RootElement.GetProperty("overrides");
         overrides.EnumerateObject().Select(static property => property.Name).ShouldBe(["fast-uri", "js-yaml", "semantic-release"]);
-        overrides.GetProperty("fast-uri").GetString().ShouldBe("3.1.5");
+        overrides.GetProperty("fast-uri").GetString().ShouldBe("3.1.7");
         overrides.GetProperty("js-yaml").GetString().ShouldBe("4.3.1");
         JsonElement semanticReleaseOverride = overrides.GetProperty("semantic-release");
         semanticReleaseOverride.EnumerateObject().Select(static property => property.Name).ShouldBe(["@semantic-release/npm"]);
@@ -335,7 +335,7 @@ public sealed partial class CiTestInventoryTests
             ["node_modules/@semantic-release/github"] = "12.0.8",
             ["node_modules/@semantic-release/release-notes-generator"] = "14.1.1",
             ["node_modules/cosmiconfig"] = "9.0.2",
-            ["node_modules/fast-uri"] = "3.1.5",
+            ["node_modules/fast-uri"] = "3.1.7",
             ["node_modules/js-yaml"] = "4.3.1",
             ["node_modules/semantic-release"] = "25.0.8",
             ["node_modules/undici"] = "7.29.0",
@@ -759,7 +759,7 @@ public sealed partial class CiTestInventoryTests
         // so the count stayed at 4 and the guard stayed green on exactly the drift it exists to catch.
         MatchCollection restoreInvocations = Regex.Matches(workflow, @"dotnet restore [^\r\n]*");
         restoreInvocations.Count.ShouldBe(
-            4,
+            5,
             "Every CI restore invocation must be accounted for by this guard; found a different number of restore steps.");
 
         Match[] restoreSteps = [.. restoreInvocations
