@@ -620,6 +620,38 @@ class RetentionVerificationTests(unittest.TestCase):
                 operation_log.read_text(encoding="utf-8").splitlines(),
             )
 
+    def test_producer_recovers_only_an_expired_story_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            operation_log = base / "operations.log"
+            scenario_input = base / "scenario-input.json"
+            scenario_input.write_text(json.dumps({"schema_version": 1, "target": {
+                "kind": "non-production-qualification", "kube_context": "operator@local",
+                "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
+            }}), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-B", str(TOOLS_DIR / "access_telemetry_c2_producer.py"),
+                 "--scenario-input", str(scenario_input), "--platform-operations-reviewer",
+                 "c1-operator-reviewer"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                    "QUALIFICATION_STALE_LEASE": "1",
+                    "QUALIFICATION_OPERATION_LOG": str(operation_log),
+                },
+            )
+            self.assertEqual(1, result.returncode)
+            self.assertEqual(
+                ["qualification-target-identity", "qualification-disable", "qualification-final-state"],
+                operation_log.read_text(encoding="utf-8").splitlines(),
+            )
+
     def test_c3_journal_is_exclusive_append_only_and_tamper_evident(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "c3.jsonl"
@@ -1109,7 +1141,7 @@ if 'get' in args and args[-1] == 'json':
     if resource == 'configmap':
         name = args[args.index('get') + 2]
         if name == 'access-telemetry-qualification-gate':
-            enabled = op == 'qualification-enable'
+            enabled = op in {'qualification-enable', 'qualification-renew'}
             gate = {'schemaVersion': 1, 'state': 'enabled' if enabled else 'disabled',
                 'profileSha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
                 'expiresUtcMs': int(time.time() * 1000) + 2700000 if enabled else 0}
@@ -1118,10 +1150,13 @@ if 'get' in args and args[-1] == 'json':
         print(json.dumps({'metadata': {'name': name}, 'data': {'retentionSeconds': '604800'}}, separators=(',', ':')))
         raise SystemExit(0)
     if resource == 'lease':
-        enabled = op == 'qualification-enable'
+        enabled = op in {'qualification-enable', 'qualification-renew'}
+        stale = os.environ.get('QUALIFICATION_STALE_LEASE') == '1' and op in {'qualification-target-identity', 'qualification-disable'}
         print(json.dumps({'metadata': {'resourceVersion': '10'}, 'spec': {
-            'holderIdentity': 'story-27-4/c1-operator-reviewer' if enabled else '',
-            'leaseDurationSeconds': 2700 if enabled else 0}}, separators=(',', ':')))
+            'holderIdentity': ('story-27-4/prior-reviewer/1-1' if stale else
+                os.environ.get('HEXALITH_STORY_27_4_LEASE_HOLDER', '') if enabled else ''),
+            'leaseDurationSeconds': 30 if stale else (2700 if enabled else 0),
+            'acquireTime': '2020-01-01T00:00:00Z' if stale else '2026-09-05T00:00:00Z'}}, separators=(',', ':')))
         raise SystemExit(0)
     if resource == 'deployment':
         name = args[args.index('get') + 2]
@@ -1199,6 +1234,18 @@ if '/v1/access-telemetry/inspect' in command_text:
     print(json.dumps({'health': 'Healthy', 'reason': 'None', 'retainedRecordCount': 100,
         'configurationEpoch': 'qualification', 'physicalReclamationEvidencePending': False}, separators=(',', ':')))
     raise SystemExit(0)
+if 'prometheus-operated.monitoring.svc.cluster.local' in command_text:
+    states = ['accepted','dropped','enqueued','expired','failed','persisted','purged','rejected','retried']
+    for state in states:
+        print(f'memories_access_telemetry_lifecycle_records_total{{state="{state}",reason="none"}} 1')
+    print('memories_access_telemetry_lifecycle_reminders_total{outcome="succeeded"} 1')
+    print('memories_access_telemetry_lifecycle_health{state="healthy",reason="none"} 1')
+    print('memories_access_telemetry_lifecycle_health{state="unhealthy",reason="dependency_unavailable"} 1')
+    print('memories_access_telemetry_lifecycle_health{state="no_data",reason="none"} 1')
+    print('memories_access_telemetry_lifecycle_profile{state="matched"} 1')
+    print('memories_access_telemetry_lifecycle_physical_evidence_total{state="present"} 1')
+    print('memories_access_telemetry_lifecycle_physical_evidence_last_timestamp_seconds 1700000000')
+    raise SystemExit(0)
 if 'http://127.0.0.1:9090/metrics' in command_text:
     print('# TYPE dapr_http_server_request_count counter')
     print('dapr_http_server_request_count{app_id="memories"} 1')
@@ -1207,6 +1254,16 @@ if 'http://127.0.0.1:8080/ready' in command_text:
     print(json.dumps({'schemaVersion': 1, 'status': 'Healthy', 'entries': {}}, separators=(',', ':')))
     raise SystemExit(0)
 if 'logs' in args:
+    if op == 'cohort-168h-reclamation':
+        # The producer verifies this receipt against the exact dynamically
+        # submitted aggregate; recompute the same deterministic fake payload.
+        aggregate = {'stage': 'reclamation', 'reclaimed_utc_ms': ((now // 3600000) * 3600000 - (8 * 24 * 3600000)) + 168 * 3600000 + 120000,
+            'allocator_bytes': 700}
+        print(json.dumps({'status': 'accepted', 'evidenceId': 'story-27-4-c3',
+            'componentProfileHash': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+            'artifactSha256': __import__('hashlib').sha256(json.dumps(aggregate, separators=(',', ':'), sort_keys=True).encode()).hexdigest(),
+            'observedAtUnixMilliseconds': aggregate['reclaimed_utc_ms']}, separators=(',', ':')))
+        raise SystemExit(0)
     print('{"eventId":7506,"outcome":"ok"}')
     raise SystemExit(0)
 if 'psql' in args and 'VACUUM (ANALYZE,' in command_text:
@@ -1216,7 +1273,9 @@ if 'psql' in args and op.startswith('cohort-'):
     hours = int(op.split('-')[1][:-1]); stage = op.rsplit('-', 1)[-1]
     accepted = (now // 3600000) * 3600000 - (8 * 24 * 3600000)
     expires = accepted + hours * 3600000; purged = expires + 60000
-    if stage == 'expiry':
+    if "'stage','index'" in command_text:
+        value = {'stage': 'index', 'index_name': 'idx_lifecycle_expiredate', 'post_index_candidate_count': 0}
+    elif stage == 'expiry':
         value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
             'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
             'accepted_utc_ms': accepted, 'expires_utc_ms': expires, 'pre_tuple_count': 100,
@@ -1286,6 +1345,31 @@ value['result_count'] = 1
 print(json.dumps(value, separators=(',', ':')))
 """, encoding="utf-8")
     script.chmod(0o755)
+    dotnet = directory / "dotnet"
+    dotnet.write_text("""#!/usr/bin/env python3
+tests = [
+    'PersistAsync_WritesRecordAndExpiryIndexAtomicallyWithCeilingTtl',
+    'PersistAsync_FutureOrExpiredSource_FailsClosed',
+    'AttestAsync_MajorityIntervalWiderThan250Milliseconds_FailsClosed',
+    'Verify_ContextProfileOrNonceMismatch_FailsClosed',
+    'Verify_ReplayStaleDeltaOrTamperedSignature_FailsClosed',
+    'LifecycleCounter_EmitsOnlyBoundedStateAndReasonLabels',
+    'LifecycleGauges_UseLiveClockAndAggregateHealthWithoutInventingPhysicalEvidence',
+    'HealthPrecedence_IsUnhealthyThenDegradedThenNoDataOrHealthy',
+    'RuntimeGate_ClosesImmediatelyWhenPublishedEvidenceExpires',
+    'SearchEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeSearchDependencies',
+    'TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState',
+    'TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies',
+    'VerifyAsync_DetectsMissingSemanticTenantId_ReturnsFailed',
+    'VerifyAsync_DetectsSemanticTenantIdMismatch_ReturnsFailed',
+    'VerifyAsync_DetectsSyntacticTenantIdMismatch_ReturnsFailed',
+]
+for name in tests:
+    print('Passed ' + name)
+print('=== TEST EXECUTION SUMMARY ===')
+print('  Tests: ' + str(len(tests)) + ', Errors: 0, Failed: 0, Skipped: 0, Not Run: 0')
+""", encoding="utf-8")
+    dotnet.chmod(0o755)
 
 
 if __name__ == "__main__":

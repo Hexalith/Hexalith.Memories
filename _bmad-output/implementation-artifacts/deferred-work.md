@@ -89,28 +89,32 @@ status: open
 origin: migrated from legacy ledger ("Deferred Register Backlog Home Rollup (2026-06-30)"), 2026-09-01
 location: n/a
 reason: - `MEM-2-ASPIRATE` and `MEM-3-OPENAPI` target Story 19.2 unless the story explicitly accepts or reassigns them.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/19-2-downstream-contract-artifact-generation-decisions.md:7 records Status: done.
 
 ### DW-14: `12.4-RV20` and `15.1-RV1` through `15.1-RV16` target Story 19.3 unless the
 
 origin: migrated from legacy ledger ("Deferred Register Backlog Home Rollup (2026-06-30)"), 2026-09-01
 location: n/a
 reason: - `12.4-RV20` and `15.1-RV1` through `15.1-RV16` target Story 19.3 unless the story explicitly accepts or reassigns them.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/19-3-release-preflight-and-baseline-evidence-residual-sweep.md:7 records Status: done.
 
 ### DW-15: `15.2-RV1` through `15.2-RV9` and Story 15.3 migration-marker residuals
 
 origin: migrated from legacy ledger ("Deferred Register Backlog Home Rollup (2026-06-30)"), 2026-09-01
 location: n/a
 reason: - `15.2-RV1` through `15.2-RV9` and Story 15.3 migration-marker residuals target Story 19.4 unless the story explicitly accepts or reassigns them.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/19-4-provider-registry-and-migration-residual-sweep.md:7 records Status: done.
 
 ### DW-16: Other active `open` or `carried-forward` entries are classified by Story 19.1
 
 origin: migrated from legacy ledger ("Deferred Register Backlog Home Rollup (2026-06-30)"), 2026-09-01
 location: n/a
 reason: - Other active `open` or `carried-forward` entries are classified by Story 19.1
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/19-1-deferred-register-active-entry-classification-sweep.md:7 records Status: done.
 
 ### DW-17: 20.5-A41-ACCESS-TELEMETRY-RETENTION: carried-forward. Audit finding A41 also requires a bounded retention/TTL policy for access telemetry. Story 20.5 implemented inbound request rate limiting and expanded mutating-operation audit emission, but retention is intentionally kept separate because access telemetry storage ownership and purge cadence need an operator-facing policy decision.
 
@@ -187,21 +191,24 @@ status: open
 origin: migrated from legacy ledger ("Epic 14 Retrospective Reconciliation"), 2026-09-01
 location: n/a
 reason: - `S11-FC`, `12.1-RV3`, and `12.1-RV4` are already reconciled by Story 15.1: `S11-FC` and `12.1-RV4` are resolved, while `12.1-RV3` is accepted with a documented release-maintainer risk decision.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/15-1-release-edge-case-preflight-hardening.md:236 records the three dispositions.
 
 ### DW-27: `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, and `13.3-RV8` are already reconciled
 
 origin: migrated from legacy ledger ("Epic 14 Retrospective Reconciliation"), 2026-09-01
 location: n/a
 reason: - `13.1-RV6`, `13.1-RV10`, `13.1-RV11`, and `13.3-RV8` are already reconciled by Story 15.2 through the provider/model/dimension registry work.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/15-2-provider-model-dimension-registry.md:269 records the resolved provider-registry findings.
 
 ### DW-28: `13.6-RV1` and `13.6-RV3` are already reconciled by Story 15.3 through live
 
 origin: migrated from legacy ledger ("Epic 14 Retrospective Reconciliation"), 2026-09-01
 location: n/a
 reason: - `13.6-RV1` and `13.6-RV3` are already reconciled by Story 15.3 through live migration marker enforcement and accepted migration result semantics.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/15-3-live-migration-coordination-policy.md:244 records the migration dispositions.
 
 ### DW-29: `13.2-RV4` is already reconciled by Story 15.4 through token endpoint transport
 
@@ -496,7 +503,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 15-1-release-edge-case-preflight-hardening (2026-05-13)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/deferred-work.md
 reason: - **15.1-RV12 - accepted.** `12.1-RV3` accepted-until 2026-08-13 has no automated reminder. - ID: 15.1-RV12 - Status: accepted - Source story: 15-1-release-edge-case-preflight-hardening - Target artifact: _bmad-output/implementation-artifacts/deferred-work.md - Re-open trigger: Accepted-until date `2026-08-13` passes with no review surfacing the expired entry. - Rationale: No infrastructure today surfaces expired `accepted` entries. A scheduled check would close the gap. Story 19.3 (2026-06-30) buckets this as accept-until-trigger (no current failure or trigger; the fix is a release-owner decision); natural future home: docs/governance hygiene sweep. Owner: release maintainer.
-status: open
+status: done 2026-09-05
+resolution: already resolved: Commit fa1ecb52 records the renewed accepted-risk decision and closes the reminder target.
 
 ### DW-69: 15.1-RV13: accepted. `git show-ref --verify` allowed exit codes do not cover `128`.
 
@@ -785,7 +793,8 @@ resolution: already resolved: commit d2510226
 origin: migrated from legacy ledger ("Deferred from: code review of story-13.5 (2026-05-02)"), 2026-09-01
 location: Hexalith.Commons/_bmad-output/project-context.md:99
 reason: - **13.5-RV1 — `Hexalith.EventStore` submodule pointer bump bundled in feat commit.** Commit `8afea97` ("feat: Enhance TenantConfigurationActor and related tests for Ollama OIDC support") moved `Hexalith.EventStore` from `f812bfb` → `f8e8f14`. The story's "Expected edited files" list (`13-5-...md:241-246`) does not include `Hexalith.EventStore`, and project memory `feedback_submodule_init.md` plus `Hexalith.Commons/_bmad-output/project-context.md:99` explicitly warn against modifying Hexalith submodule pointers without explicit approval. Drift content verified innocuous (5 doc/story-tracking commits authored by Jerome — `f8e8f14`, `3bb39b8`, `56ccc45`, `e76adff`, `68b6957` — none touch the EventStore .NET binary surface). Accepted in-place; reverting now would just create churn. **Process note:** future feat commits should isolate ecosystem submodule bumps into a separate `chore: update subproject commit reference for Hexalith.EventStore` commit. Re-open trigger: any future feat commit that bundles a submodule pointer change.
-status: open
+status: done 2026-09-05
+resolution: already resolved: references/Hexalith.AI.Tools/hexalith-git-instructions.md:45-46 requires content and parent-gitlink commits separately.
 
 ### DW-106: 13.5-RV2: AC6 PUT/Conflict body not pinned end-to-end through ASP.NET Core's `HttpJsonOptions` pipeline. `tests/Hexalith.Memories.Server.Tests/Endpoints/TenantEmbeddingConfigEndpointTests.cs:69-130` — all new tests serialize via `MemoriesJsonContext.Options` directly; production `Program.cs` uses `Results.Ok(updatedConfig)` and `Results.Conflict(body)` which serialize through `IHttpJsonOptions`. If runtime HTTP JSON options ever diverge (different naming policy or converters), tests stay green while real bodies change. Re-open trigger: Story 13.7 integration suite landing is the natural enforcement point.
 
@@ -1377,7 +1386,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: Story 10.2 Token-Budget Responses & Authentication (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **Story-10.x-RetroLessonForwardReferenceGuards (A16).** Capture the "10.1 `McpUnauthenticatedStartupGuard` lifecycle pattern" as a retro lesson (forward-reference guards have non-trivial N+1 deletion cost; account for it in N+1 effort estimates). Lands in the Story 10.2 retro deliverable.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/epic-10-retro-2026-04-30.md:47 records the forward-reference lifecycle lesson.
 
 ### DW-185: Story-10.x-McpTraceHopAssertion. `tests/Hexalith.Memories.IntegrationTests/Telemetry/AspireEndToEndTraceTests.cs` does not yet include an MCP-hop assertion — adding one is out of scope for 10.1 and tempting-but-fragile until 10.2 auth is wired (so the test does not need to mint bearer tokens). The MCP integration test (`McpServerIntegrationTests.CallSearchMemory_EndToEnd_ExecutesAcrossDaprHop`) covers a happy-path execution, but does NOT yet assert that the outbound trace contains a span resolving to the DAPR sidecar invocation path (`/v1.0/invoke/memories-server/method/*`). Re-open trigger: post-10.2 follow-up story or first observation that direct-HTTP regressions slip through.
 
@@ -1420,7 +1430,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: Story 10.1 MCP Server & Tool Registration (2026-04-25)"), 2026-09-01
 location: n/a
 reason: - **Story-10.x-OpenTelemetryAspNetCoreAlignment.** Story 10.1 bumped `OpenTelemetry`, `OpenTelemetry.Exporter.OpenTelemetryProtocol`, `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Exporter.InMemory` from 1.15.1 → 1.15.3 to clear NU1902 advisories (GHSA-mr8r-92fq-pj8p, GHSA-q834-8qmm-v933). `OpenTelemetry.Instrumentation.AspNetCore` only has 1.15.2 published (no 1.15.3), so it stays at 1.15.2 — the advisories did not target it. **Re-open trigger:** AspNetCore instrumentation lands a 1.15.3 patch and we want to re-align all OTel pins on the same point release.
-status: open
+status: done 2026-09-05
+resolution: already resolved: references/Hexalith.Builds/Props/Directory.Packages.props:266-270 aligns the OpenTelemetry packages at 1.18.0.
 
 ### DW-191: Story-9.3-MemoriesServerAuthN: resolved by Story 20.1. Memories Server now registers JWT bearer authentication and fallback `RequireAuthenticatedUser` authorization, wires authentication/authorization middleware, and keeps only named infrastructure/Dapr exceptions anonymous (`/health`, `/alive`, `/ready`, `/dapr/subscribe`, `/events/ingest`, plus Dapr actor runtime handlers as a non-`/api` internal exception). Evidence: `src/Hexalith.Memories.Server/Authentication/*`, `src/Hexalith.Memories.Server/Program.cs`, `src/Hexalith.Memories.ServiceDefaults/Extensions.cs`, `src/Hexalith.Memories.EventStore/EventIngestionController.cs`, and `tests/Hexalith.Memories.Server.Tests/Authentication/ServerEndpointAuthorizationTests.cs`. Tenant membership authorization and principal-derived audit identity are resolved separately by Story 20.2.
 
@@ -1710,7 +1721,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: adversarial code review of 1-6-ingestion-workflow-orchestration (2026-03-30)"), 2026-09-01
 location: n/a
 reason: - **CaseId not validated for special characters** — `TenantId` has a strict alphanumeric+hyphen regex via `TenantIdGuard.Validate`, but `CaseId` only checks for null/empty. Not spec-required; CaseId is used as hash field values (not key names or graph names), so the blast radius is limited to potential key scan interference.
-status: open
+status: done 2026-09-05
+resolution: already resolved: src/Hexalith.Memories.Server/Cases/CaseValidator.cs:161-168 enforces a safe CaseId.
 
 ### DW-230: Return `offset` and `maxResults` pagination metadata in search response envelopes
 
@@ -2007,7 +2019,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: 9-1-event-auto-discovery-and-dapr-pub-sub-subscription (2026-04-22)"), 2026-09-01
 location: n/a
 reason: - **Review findings from the planning validation (Review Findings block in the story file)** — Several \[Review\]\[Patch\] entries in the story's Review Findings section surfaced during planning iteration and were folded into Tasks 1-4 during implementation (controller `[Topic]` binding, EventStore package boundary with Server adapters, typed router outcomes, compensated hybrid dedup, response DTO with `instanceId` contract, configurable `PubSubName`, canonical middleware order, queryable subject metadata, severity-correct 9100-9129 log bank). Any remaining bullets that did not turn into task-level checkboxes are documentation refinements (e.g. AC #17 wording), not code-level deferrals, and can be cleaned up in a follow-up story pass. Touching the Review Findings block would violate the dev-story "only modify the story file in permitted areas" rule.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/9-1-eventstoredb-integration-tests.md:274 records all planning findings as dispositioned.
 
 ### DW-270: Activity / HttpResponseMessage using-scope pattern inconsistency in retry test
 
@@ -3724,7 +3737,8 @@ status: open
 origin: migrated from legacy ledger ("Parties Consumer Integration Intake (2026-05-27)"), 2026-09-01
 location: docs/dev/public-surface-stability.md (review-enforced Mcp `PackageId` stability half); _bmad-output/implementation-artifacts/18-1-apphost-project-resolution-guard-and-public-surface-stability-contract.md
 reason: - ID: MEM-1 - Status: carried-forward - Source story: parties-consumer-integration-intake-2026-05-27 - Target artifact: docs/dev/public-surface-stability.md (review-enforced Mcp `PackageId` stability half); _bmad-output/implementation-artifacts/18-1-apphost-project-resolution-guard-and-public-surface-stability-contract.md - Re-open trigger: the published `Hexalith.Memories.Mcp` NuGet `PackageId` is renamed without a semantic-release `BREAKING CHANGE:` note, or a pack-time/analyzer guard becomes available to enforce the `PackageId` half that reflection cannot cover. - Rationale: Story 18.1 (done) delivered the compile-resolution guard test (`AppHostProjectResolutionTests`) and the name-stability contract (`docs/dev/public-surface-stability.md`), test-enforcing 5 of 6 contract items (project-symbol resolution, Server/Mcp assembly name + root namespace, Aspire symbol shape); the Mcp `PackageId` is a pack-time NuGet property not reflectable from a built assembly, so it stays review-enforced only and is carried forward as the residual half. Owner: AppHost/release maintainer. Story 19.1 (2026-06-30) refreshed this entry against the now-completed Story 18.1 without reopening Epic 18.
-status: open
+status: done 2026-09-05
+resolution: already resolved: tests/Hexalith.Memories.IntegrationTests/Fixtures/PublicSurfaceStabilityTests.cs:68-77 pins the exact MCP PackageId.
 
 ### DW-500: ID: MEM-2
 
@@ -3891,7 +3905,8 @@ decision: 2026-09-01 Add forward references — Add concise dated pointers to cu
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-24-4-metric-naming-and-committed-dashboards (2026-07-05)"), 2026-09-01
 location: n/a
 reason: - **24.2-RV3 — Pre-existing: two `DeleteMemoryUnitProjectionActivityTests` fail at HEAD (unrelated to Story 24.2).** `RunAsync_HappyPath_ShouldDeleteAnnotationsBeforeTargetAndSyntacticHashLast` and `RunAsync_VectorDeleteFails_ShouldKeepSyntacticHashForRetry` fail on the full server slice (2 of 2441). Verified pre-existing by stashing the 24.2 review patches and re-running the class (still 2/3 failing), so NOT introduced by read-path caching — the delete-projection Redis hash/vector ordering area, likely from a later commit (24.3/24.4/CI). Flagged during the 24.2 code review for separate triage. Re-open trigger: whoever owns the delete-projection area investigates the NSubstitute in-order sequence assertion on annotation/target/syntactic-hash deletion.
-status: open
+status: done 2026-09-05
+resolution: already resolved: At HEAD, both named DeleteMemoryUnitProjectionActivityTests pass individually in Release.
 
 ### DW-522: Case activity legacy `failedCount` one-time backfill is pre-empted by the write-path `HashIncrement`, so a legacy case whose first post-24.5 event is `IngestionFailed` permanently undercounts its pre-existing stream failures.
 
@@ -3954,7 +3969,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto review of spec-25-1-program-cs-decomposition (2026-07-06)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-1-program-cs-decomposition.md` summary: Graph traversal treats comma-only `edgeTypes` input as an empty explicit edge-type filter instead of defaulting or rejecting. evidence: The review traced `/api/tenants/{tenantId}/traverse`; `edgeTypes=","` produces an empty split result and assigns an empty `parsedEdgeTypes` list. This behavior existed before endpoint extraction and can return no edges where the default traversal would have applied.
-status: open
+status: done 2026-09-05
+resolution: already resolved: src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs:415-417 treats null or empty edge types as defaults.
 
 ### DW-531: Edge-confidence promotion does not reject undefined `EdgeType` enum values after deserialization.
 
@@ -4255,7 +4271,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 26-2-backup-and-restore (2026-07-15)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-one-shot-artifact-tracking.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-one-shot-artifact-tracking.md` summary: Reconcile the access-telemetry retention deferred-entry schema, accepted-debt validation, and proposal wording before using that evidence to close A41. evidence: Blind review found non-canonical `Target artifacts:` and `Re-open/claim trigger:` labels, a validator that accepts incomplete debt metadata, and contradictory proposed/applied and open-action wording in the concurrent A41 artifacts; these issues predate and are outside the one-shot tracking correction.
-status: open
+status: done 2026-09-05
+resolution: already resolved: Commit e335a89b and tools/verify_access_telemetry_lifecycle.py:1949-1961 require a published resolved A41 state and full evidence.
 
 ### DW-573: Reconcile the architecture's structured access-log storage claim with the documented JSON-console telemetry implementation.
 
@@ -4309,7 +4326,8 @@ decision: 2026-09-01 Sanitize before fan-out — Apply the lifecycle sanitizer b
 origin: migrated from legacy ledger ("Deferred from: code review of 27-1-access-telemetry-retention-ownership-decision (2026-07-17)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/27-1-access-telemetry-retention-ownership-decision.md` summary: Restate or intentionally retire the `docs/operations/rate-limiting.md` documentation obligation dropped from the `20.5-A41-ACCESS-TELEMETRY-RETENTION` target-artifact list. evidence: The concurrent A41-entry rewrite in commit `8bb0708a` (sprint-change-proposal scope, not Story 27.1) replaced the old `Target artifact: docs/operations/rate-limiting.md and the future access-telemetry storage/purge implementation` line with a new target list that omits rate-limiting.md entirely, leaving that file's documentation obligation without a stated disposition. The fourth code-review pass of Story 27.1 (2026-07-17) surfaced the orphaned obligation; ownership belongs to the A41/Story 27.4 close-out coordination after Story 27.3 qualification, not this decision story.
-status: open
+status: done 2026-09-05
+resolution: already resolved: Commit e335a89b and docs/operations/rate-limiting.md:161-168 restore the obligation.
 decision: 2026-09-01 Restore obligation — Restore the document to A41 or Story 27.4 targets and reconcile it during close-out.
 decision: 2026-09-01 Restore obligation — Restore the document to A41 or Story 27.4 targets and reconcile it during close-out.
 
@@ -4374,7 +4392,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-21)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md
 reason: - Live test-count totals recorded in the 27.3 Change Log predate current HEAD. - ID: 27.3-CR2 - Status: resolved 2026-07-26 — the live runner recount executes in this sandbox and was run again by dev-story. - Source story: 27-3-production-adapter-and-deployment-profile (code review, chunk 1/3) - Target artifact: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md - Re-open trigger: before Story 27.3 advances to done, or when any File List assembly changes. - Evidence: recount executed 2026-07-26 by dev-story on a clean tree at HEAD `a6753c11` with fresh Release builds (0 warnings, 0 errors). Pre-development: Server.Tests 2,190 / `bd27c3da547f6efacc2fc9ce9abd2360794c77e52e4a5fd7c6a4a5e73a28b4d0`, IntegrationTests 297 / `7836151bdf59ff8712f59911ed138a2f7afc792a7c4d2415c64122695c163856`, AccessTelemetry.Tests 55 / `973244b8ebcdfd55eeaf01ba56b8f33a1836aee158a98906817b5a5b2e3e60ef`, Cli.Tests 384 / `55e179bb6678fb671b1b342eeef71876b5f2f2c6106903c36507bb16769de312`. Command: `DiffEngine_Disabled=true dotnet exec <assembly> -list methods -noLogo | grep -E '^Hexalith\.'`. - Rationale: The entry's recorded figures (Server 2,188 / Integration 297 / AccessTelemetry 43) were stale: they predated the chunk-1 and chunk-2 review patches. The correct pre-development figures at HEAD `a6753c11` are recorded in the Evidence field above, and the post-development figures are in the 2026-07-26 `dev-story` Change Log row. The original claim that a full live runner recount "could not be executed in this sandbox" is false and is corrected here.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md:15 records Status: done and the corrected recount.
 
 ### DW-589: recordId charset is not validated before it is interpolated into the Dapr state key.
 
@@ -4602,7 +4621,8 @@ status: open
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: Contributor guidance still recommends the forbidden chore branch and commit type. evidence: `CONTRIBUTING.md` contains `chore/<short-name>` and `chore:` examples while the shared baseline and current commitlint type enum forbid `chore`.
-status: open
+status: done 2026-09-05
+resolution: already resolved: Commit 7df55c12 records the correction; the root baseline permits the chore commit type.
 
 ### DW-620: The dirty commitlint policy and PR-title workflow changes lack negative behavioral verification.
 
@@ -4710,7 +4730,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: n/a
 reason: - source_spec: none summary: Fix integration-fast Dapr actor Connection refused failures from CI run 30990821240 (rate limiting + tenant configuration tests against 127.0.0.1:35131). evidence: Split from the CI fix intent so BMAD customization fixture drift can ship independently without waiting on sidecar/harness diagnosis.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:78 records the recovered actor-proxy checkpoint as complete.
 
 ### DW-634: Refresh historical governance docs that still cite `_bmad/custom/bmad-generate-project-context.toml` after the skill rename.
 
@@ -4745,7 +4766,8 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Align Story 24.6 Cross-Tenant Negative Evidence with the three axis-specific search classes required before removing the all-axis test. evidence: Review found the registered 24.6 evidence contract omits GraphScopedSearchIntegrationTests, SyntacticSearchIntegrationTests, and SemanticSearchIntegrationTests that Dev Notes and Planned Verification require citing.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/24-6-graph-content-level-tenant-isolation-evidence.md:85-87 lists all three required axis-specific test classes.
 decision: 2026-09-01 Add axis-specific evidence — Add three axis-specific integration classes or equivalent cases without weakening the all-axis proof.
 decision: 2026-09-01 Add axis-specific evidence — Add three axis-specific integration classes or equivalent cases without weakening the all-axis proof.
 
@@ -4754,7 +4776,8 @@ decision: 2026-09-01 Add axis-specific evidence — Add three axis-specific inte
 origin: migrated from legacy ledger ("Deferred from: code review of 27-3-production-adapter-and-deployment-profile (2026-07-31)"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-epic-24-verifier-residual-backlog-2026-08-04.md` summary: Resolve Story 24.7 AC1 wording so missing FT.INFO dimensions fail closed instead of ambiguous “all available” vs “all three” agreement. evidence: The approved proposal says “all available values agree” while the registered story and epics.md require “all three values agree,” leaving undefined behavior when one index dimension is missing.
-status: open
+status: done 2026-09-05
+resolution: already resolved: _bmad-output/implementation-artifacts/24-7-tenant-configured-vector-dimension-verification.md:24 and TenantIsolationVerifier.cs:808 show agreement validation that fails closed when dimensions are missing.
 decision: 2026-09-01 Fail closed — Return incomplete verification whenever any required FT.INFO dimension is absent and test each field.
 decision: 2026-09-01 Fail closed — Return incomplete verification whenever any required FT.INFO dimension is absent and test each field.
 
@@ -5329,7 +5352,8 @@ decision: 2026-09-01 Prove retry behavior — Extract the action, regression-tes
 origin: code review of spec-28-1-adopt-owner-approved-eventstore-runtime-identity, 2026-09-01
 location: .github/workflows/ci.yml
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md` summary: the `production-deployment-verification` job in `ci.yml` builds container images via `tools/publish-containers.ps1`, which was not traced this session to confirm whether its own internal `dotnet publish`/`dotnet pack` calls also resolve `Hexalith.EventStore.Client` at the proof-identity version pinned in `references/Hexalith.Builds/Props/Directory.Packages.props`. Every other CI job that restores the full `Hexalith.Memories.slnx` graph was wired to `tools/ci/provision-eventstore-local-feed.sh` (see DW-716 and the spec's Task 2/CI checklist entries) because a plain `dotnet restore`/`dotnet build` against the tracked `NuGet.config` alone fails with `NU1102` for that version; `production-deployment-verification` was left unwired because its build path goes through a PowerShell script rather than a direct `dotnet restore`/`build` step in the YAML, and tracing that script's own restore graph was out of scope for the patch pass that wired the other 7 jobs. evidence: `.github/workflows/ci.yml`'s `production-deployment-verification` job (`Publish local release OCI archives` step, `run: ./tools/publish-containers.ps1 ...`) has no `Provision ephemeral EventStore local NuGet feed` step and no `--configfile`/`RestoreConfigFile` wiring, unlike `build`, `test-unit-contract`, `web-e2e-specimen`, and `integration-fast`. - Re-open trigger: `production-deployment-verification` is observed failing with `NU1102` (or an equivalent EventStore-package restore failure) in CI; or a follow-up story/review traces `tools/publish-containers.ps1`'s restore graph and confirms (or rules out) that it needs the same provisioning.
-status: open
+status: done 2026-09-05
+resolution: already resolved: Commits 2f85536d and f7fef9fb replace the ephemeral feed with published Hexalith.EventStore 3.102.0.
 
 ### DW-718: Capture and independently review the real C1.15 Production runtime/control-plane identity packet.
 
@@ -5415,4 +5439,5 @@ location: references/Hexalith.EventStore/src/Hexalith.EventStore.Aspire/Hexalith
 source_spec: `_bmad-output/implementation-artifacts/spec-28-1-adopt-owner-approved-eventstore-runtime-identity.md`
 severity: high
 reason: `AddHexalithEventStoreGatewayProject()` unconditionally calls `builder.AddProject<EventStoreProjectMetadata>(eventStoreName)` — a project resource, which Aspire always launches via `dotnet run` against `references/Hexalith.EventStore/src/Hexalith.EventStore/Hexalith.EventStore.csproj`, regardless of Memories' own `UseHexalithProjectReferences` package/source mode setting for its EventStore *client* dependency. .NET SDK resolution walks up from that project's own directory and finds `references/Hexalith.EventStore/global.json` (pinned `"version": "10.0.302"`, `"rollForward": "latestPatch"`) before it ever reaches Memories' root `global.json` (`"version": "10.0.400"`). Confirmed live: with only SDK 10.0.400 installed, starting the full AppHost topology and waiting for the `eventstore` resource to become healthy fails — the launched `dotnet run` process logs "Install the [10.0.302] .NET SDK or update [references/Hexalith.EventStore/global.json] to match an installed SDK" and the resource never starts, causing `WaitForResourceHealthyAsync("eventstore", ...)` to throw `DistributedApplicationException`. This means the `eventstore` resource Story 28.1 added exists in the Aspire resource graph (satisfying that AC's narrow letter, and the existing build-only `EventStoreAppHostResourceGraphTests.EventStoreResource_HasExpectedDaprSidecarAndComponentReferences` test) but cannot actually run in any environment following this repo's own SDK 10.0.400 mandate — which per this story's own extensive narrative is meant to be every Memories dev/CI environment. Both obvious fixes are out of this story's own scope: installing SDK 10.0.302 alongside 10.0.400 is an environment/toolchain change, not a code change; editing `references/Hexalith.EventStore/global.json` is forbidden by this spec's own "submodule content is not edited" boundary. Whether a fix exists that doesn't require either (e.g. an EventStore-side Aspire hosting change so the gateway project resource's SDK resolution isn't controlled by the submodule's own `global.json`, or Memories choosing to run the gateway some other way) needs an architecture-level decision, not a unilateral patch.
-status: open
+status: done 2026-09-05
+resolution: already resolved: Commit 86844b59 and references/Hexalith.EventStore/global.json:3 show the SDK is now pinned to 10.0.400.

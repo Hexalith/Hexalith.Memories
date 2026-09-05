@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -12,12 +12,14 @@ from pathlib import Path
 import re
 import sys
 import fcntl
+import time
 from typing import Any, Callable, Mapping, Sequence
 
 from verify_access_telemetry_lifecycle import (
     REQUIRED_FAILURE_SCENARIOS,
     REQUIRED_LIFECYCLE_SIGNALS,
     REQUIRED_REPLACEMENTS,
+    REQUIRED_TENANT_DENIAL_TESTS,
     STORY_27_4_PROFILE_SHA256,
     STORY_27_4_WORKLOAD_SHA256,
     EvidenceValidationError,
@@ -41,6 +43,24 @@ _SAFE_TARGET = re.compile(r"\A[a-zA-Z0-9][a-zA-Z0-9._@/-]{0,127}\Z")
 _GATE_NAME = "access-telemetry-qualification-gate"
 _LEASE_NAME = "access-telemetry-qualification"
 _FIXED_WORKLOAD_ROUTE = "http://127.0.0.1:8080/operations/access-telemetry/qualification/fixed-workload"
+_RETENTION_PROOF_TESTS = (
+    "PersistAsync_WritesRecordAndExpiryIndexAtomicallyWithCeilingTtl",
+    "PersistAsync_FutureOrExpiredSource_FailsClosed",
+    "AttestAsync_MajorityIntervalWiderThan250Milliseconds_FailsClosed",
+    "Verify_ContextProfileOrNonceMismatch_FailsClosed",
+    "Verify_ReplayStaleDeltaOrTamperedSignature_FailsClosed",
+)
+_PRIVACY_PROOF_TESTS = REQUIRED_TENANT_DENIAL_TESTS
+_OBSERVABILITY_PROOF_TESTS = (
+    "LifecycleCounter_EmitsOnlyBoundedStateAndReasonLabels",
+    "LifecycleGauges_UseLiveClockAndAggregateHealthWithoutInventingPhysicalEvidence",
+    "HealthPrecedence_IsUnhealthyThenDegradedThenNoDataOrHealthy",
+    "RuntimeGate_ClosesImmediatelyWhenPublishedEvidenceExpires",
+)
+_C2_IDEMPOTENCE_CONFLICT_TESTS = (
+    "PersistAsync_SameIdHashAndExpiry_IsIdempotent",
+    "PersistAsync_SameIdWithDifferentEnvelopeOrExpiry_ReturnsConflict",
+)
 _MAX_TRANSCRIPT_BYTES = 1_048_576
 
 
@@ -98,6 +118,21 @@ def _kubectl_prefix(target: Mapping[str, str], namespace: str | None = None) -> 
     )
 
 
+def _fixed_test_commands(
+    project: str,
+    assembly: str,
+    methods: Sequence[str],
+) -> list[tuple[str, ...]]:
+    invocation: list[str] = ["dotnet", assembly]
+    for method in methods:
+        invocation.extend(("-method", f"*{method}"))
+    invocation.extend(("-parallelMode", "none", "-noLogo", "-reporter", "verbose"))
+    return [
+        ("dotnet", "build", project, "--no-restore"),
+        tuple(invocation),
+    ]
+
+
 def _fixed_operation_commands(
     target: Mapping[str, str],
     checkpoint: str,
@@ -139,10 +174,10 @@ def _fixed_operation_commands(
             [
                 {"op": "test", "path": "/metadata/resourceVersion", "value": resource_version},
                 {"op": "test", "path": "/spec/holderIdentity", "value": ""},
-                {"op": "replace", "path": "/spec/holderIdentity", "value": f"story-27-4/{reviewer}"},
+                {"op": "replace", "path": "/spec/holderIdentity", "value": target["_lease_holder"]},
                 {"op": "replace", "path": "/spec/leaseDurationSeconds", "value": 2700},
                 {
-                    "op": "replace",
+                    "op": "add",
                     "path": "/spec/acquireTime",
                     "value": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
                 },
@@ -163,6 +198,14 @@ def _fixed_operation_commands(
             (*prefix, "get", "deployment", "memories-access-telemetry", "-o", "json"),
             (*prefix, "get", "deployment", "memories-access-telemetry-clock", "-o", "json"),
         ]
+    if command_id == "qualification-renew":
+        return [
+            (*prefix, "get", "lease", _LEASE_NAME, "-o", "json"),
+            (*prefix, "patch", "lease", _LEASE_NAME, "--type=json", "--patch", "__LEASE_RENEW_PATCH__"),
+            (*prefix, "patch", "configmap", _GATE_NAME, "--type=merge", "--patch", "__GATE_RENEW_PATCH__"),
+            (*prefix, "get", "lease", _LEASE_NAME, "-o", "json"),
+            (*prefix, "get", "configmap", _GATE_NAME, "-o", "json"),
+        ]
     if command_id == "qualification-disable":
         gate_patch = _canonical_json(
             {
@@ -178,14 +221,12 @@ def _fixed_operation_commands(
                 }
             }
         )
-        lease_patch = _canonical_json(
-            {"spec": {"holderIdentity": "", "leaseDurationSeconds": 0}}
-        )
         return [
             (*prefix, "patch", "configmap", _GATE_NAME, "--type=merge", "--patch", gate_patch),
             (*prefix, "scale", "deployment/memories-access-telemetry", "--replicas=0"),
             (*prefix, "scale", "deployment/memories-access-telemetry-clock", "--replicas=0"),
-            (*prefix, "patch", "lease", _LEASE_NAME, "--type=merge", "--patch", lease_patch),
+            (*prefix, "get", "lease", _LEASE_NAME, "-o", "json"),
+            (*prefix, "patch", "lease", _LEASE_NAME, "--type=json", "--patch", "__LEASE_RELEASE_PATCH__"),
         ]
     if command_id == "qualification-final-state":
         return [
@@ -269,6 +310,25 @@ def _fixed_operation_commands(
             "--command",
             sql,
         )
+        index_sql_command = (
+            *prefix,
+            "exec",
+            "statefulset/access-telemetry-postgresql",
+            "-c",
+            "postgresql",
+            "--",
+            "psql",
+            "--no-psqlrc",
+            "--tuples-only",
+            "--no-align",
+            "--dbname=memories_access_telemetry",
+            "--command",
+            "SET enable_seqscan=off; SELECT json_build_object('stage','index',"
+            "'index_name',(SELECT indexname FROM pg_indexes WHERE schemaname='access_telemetry' "
+            "AND tablename='lifecycle_state' AND indexdef ILIKE '%expiredate%' ORDER BY indexname LIMIT 1),"
+            "'post_index_candidate_count',(SELECT count(*) FROM access_telemetry.lifecycle_state "
+            "WHERE expiredate<=clock_timestamp()));",
+        )
         commands = [
             sql_command
         ]
@@ -289,6 +349,7 @@ def _fixed_operation_commands(
                 (*prefix, "wait", "pod", "-l", "app.kubernetes.io/name=memories-access-telemetry", "--for=condition=Ready", "--timeout=300s"),
                 (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories-access-telemetry", "-o", "json"),
                 sql_command,
+                index_sql_command,
             ]
         if stage == "reclamation":
             commands.extend(
@@ -328,6 +389,11 @@ def _fixed_operation_commands(
         return commands
     if command_id == "retention-controls":
         return [
+            *_fixed_test_commands(
+                "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
+                "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+                _RETENTION_PROOF_TESTS,
+            ),
             (*prefix, "get", "configmap", "access-telemetry-config", "-o", "json"),
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories-access-telemetry", "-o", "json"),
             (
@@ -344,27 +410,31 @@ def _fixed_operation_commands(
         ]
     if command_id.startswith("replace-") or command_id == "approved-adapter-fault":
         replacement = command_id.removeprefix("replace-")
-        replacement_targets: Mapping[str, tuple[str, str, int]] = {
-            "actor-activation": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry", 0),
-            "clock-service": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry-clock", 0),
-            "clock-service-dapr-sidecar": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry-clock", 0),
-            "lifecycle-service": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry", 0),
-            "lifecycle-service-dapr-sidecar": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry", 0),
-            "placement-member-1": ("dapr-system", "app=dapr-placement-server", 0),
-            "placement-member-2": ("dapr-system", "app=dapr-placement-server", 1),
-            "placement-member-3": ("dapr-system", "app=dapr-placement-server", 2),
-            "scheduler-member-1": ("dapr-system", "app=dapr-scheduler-server", 0),
-            "scheduler-member-2": ("dapr-system", "app=dapr-scheduler-server", 1),
-            "scheduler-member-3": ("dapr-system", "app=dapr-scheduler-server", 2),
-            "server-writer-1": (target["namespace"], "app.kubernetes.io/name=memories", 0),
-            "server-writer-1-dapr-sidecar": (target["namespace"], "app.kubernetes.io/name=memories", 0),
-            "server-writer-2": (target["namespace"], "app.kubernetes.io/name=memories", 1),
-            "server-writer-2-dapr-sidecar": (target["namespace"], "app.kubernetes.io/name=memories", 1),
-            "approved-adapter-fault": (target["namespace"], "app.kubernetes.io/name=access-telemetry-adapter", 0),
+        replacement_targets: Mapping[str, tuple[str, str, str]] = {
+            "actor-activation": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry", "lifecycle"),
+            "clock-service": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry-clock", "clock"),
+            "clock-service-dapr-sidecar": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry-clock", "clock"),
+            "lifecycle-service": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry", "lifecycle"),
+            "lifecycle-service-dapr-sidecar": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry", "lifecycle"),
+            "placement-member-1": ("dapr-system", "app=dapr-placement-server", "dapr-placement-server"),
+            "placement-member-2": ("dapr-system", "app=dapr-placement-server", "dapr-placement-server"),
+            "placement-member-3": ("dapr-system", "app=dapr-placement-server", "dapr-placement-server"),
+            "scheduler-member-1": ("dapr-system", "app=dapr-scheduler-server", "dapr-scheduler-server"),
+            "scheduler-member-2": ("dapr-system", "app=dapr-scheduler-server", "dapr-scheduler-server"),
+            "scheduler-member-3": ("dapr-system", "app=dapr-scheduler-server", "dapr-scheduler-server"),
+            "server-writer-1": (target["namespace"], "app.kubernetes.io/name=memories", "memories"),
+            "server-writer-1-dapr-sidecar": (target["namespace"], "app.kubernetes.io/name=memories", "memories"),
+            "server-writer-2": (target["namespace"], "app.kubernetes.io/name=memories", "memories"),
+            "server-writer-2-dapr-sidecar": (target["namespace"], "app.kubernetes.io/name=memories", "memories"),
+            # PG-ONPREM-1's approved adapter is the state.postgresql/v2
+            # component backed by this StatefulSet.  The short-lived physical
+            # evidence reporter is not the adapter and is normally suspended,
+            # so targeting its label would make this scenario non-executable.
+            "approved-adapter-fault": (target["namespace"], "app.kubernetes.io/name=access-telemetry-postgresql", "postgresql"),
         }
         if replacement not in replacement_targets:
             raise EvidenceValidationError(f"replacement {replacement} is not in the closed target registry")
-        namespace, selector, _ = replacement_targets[replacement]
+        namespace, selector, main_container = replacement_targets[replacement]
         replacement_prefix = _kubectl_prefix(target, namespace)
         commands = [
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
@@ -372,7 +442,19 @@ def _fixed_operation_commands(
             (*replacement_prefix, "get", "pods", "-l", selector, "-o", "json"),
         ]
         if command_id.endswith("-dapr-sidecar"):
-            commands.append((*replacement_prefix, "exec", "pod/__SELECTED_POD__", "-c", "daprd", "--", "/bin/sh", "-ec", "kill 1"))
+            commands.append(
+                (
+                    *replacement_prefix,
+                    "exec",
+                    "pod/__SELECTED_POD__",
+                    "-c",
+                    main_container,
+                    "--",
+                    "/bin/sh",
+                    "-ec",
+                    'wget -qO- --header="dapr-api-token: ${DAPR_API_TOKEN}" --post-data="" http://127.0.0.1:3500/v1.0/shutdown',
+                )
+            )
         else:
             commands.append((*replacement_prefix, "delete", "pod", "__SELECTED_POD__", "--wait=true", "--timeout=300s"))
         commands.extend(
@@ -389,44 +471,105 @@ def _fixed_operation_commands(
         return commands
     if command_id.startswith("failure-"):
         scenario = command_id.removeprefix("failure-")
-        target_registry: Mapping[str, tuple[str, str]] = {
-            "application-outage": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "state-outage": (target["namespace"], "app.kubernetes.io/name=access-telemetry-postgresql"),
-            "clock-outage": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry-clock"),
-            "dapr-outage": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "actor-failover": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "approved-adapter-fault": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "bad-configuration": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "bad-key": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry-clock"),
-            "capacity-pressure": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "degraded-rollback": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "etag-failure": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "profile-drift": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "queue-byte-exhaustion": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "queue-record-exhaustion": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "reconnect": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "reminder-delay": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "retry-exhaustion": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "shutdown": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry"),
-            "stale-attestation": (target["namespace"], "app.kubernetes.io/name=memories-access-telemetry-clock"),
-            "ttl-failure": (target["namespace"], "app.kubernetes.io/name=access-telemetry-postgresql"),
-            "transaction-failure": (target["namespace"], "app.kubernetes.io/name=access-telemetry-postgresql"),
+        lifecycle = "deployment/memories-access-telemetry"
+        clock = "deployment/memories-access-telemetry-clock"
+        server = "deployment/memories"
+        state = "statefulset/access-telemetry-postgresql"
+        targets = {
+            "lifecycle": "app.kubernetes.io/name=memories-access-telemetry",
+            "clock": "app.kubernetes.io/name=memories-access-telemetry-clock",
+            "server": "app.kubernetes.io/name=memories",
+            "state": "app.kubernetes.io/name=access-telemetry-postgresql",
         }
-        if scenario not in target_registry:
+
+        def scale_plan(resource: str, replicas: int, selector_name: str) -> tuple[str, str, list[tuple[str, ...]], list[tuple[str, ...]]]:
+            return (
+                target["namespace"],
+                targets[selector_name],
+                [("kubectl", *prefix[1:], "scale", resource, "--replicas=0")],
+                [
+                    ("kubectl", *prefix[1:], "scale", resource, f"--replicas={replicas}"),
+                    ("kubectl", *prefix[1:], "rollout", "status", resource, "--timeout=300s"),
+                ],
+            )
+
+        def environment_plan(resource: str, selector_name: str, setting: str) -> tuple[str, str, list[tuple[str, ...]], list[tuple[str, ...]]]:
+            return (
+                target["namespace"],
+                targets[selector_name],
+                [("kubectl", *prefix[1:], "set", "env", resource, setting)],
+                [
+                    ("kubectl", *prefix[1:], "rollout", "undo", resource),
+                    ("kubectl", *prefix[1:], "rollout", "status", resource, "--timeout=300s"),
+                ],
+            )
+
+        delete_lifecycle = (
+            target["namespace"], targets["lifecycle"],
+            [(*prefix, "delete", "pod", "__SELECTED_POD__", "--wait=true", "--timeout=300s")],
+            [(*prefix, "wait", "pod", "-l", targets["lifecycle"], "--for=condition=Ready", "--timeout=300s")],
+        )
+        delete_state = (
+            target["namespace"], targets["state"],
+            [(*prefix, "delete", "pod", "__SELECTED_POD__", "--wait=true", "--timeout=300s")],
+            [(*prefix, "wait", "pod", "-l", targets["state"], "--for=condition=Ready", "--timeout=300s")],
+        )
+        plans: Mapping[str, tuple[str, str, list[tuple[str, ...]], list[tuple[str, ...]]]] = {
+            "application-outage": scale_plan(lifecycle, 2, "lifecycle"),
+            "state-outage": scale_plan(state, 1, "state"),
+            "clock-outage": scale_plan(clock, 1, "clock"),
+            "dapr-outage": (
+                target["namespace"], targets["lifecycle"],
+                [(*prefix, "exec", "pod/__SELECTED_POD__", "-c", "lifecycle", "--", "/bin/sh", "-ec",
+                  'wget -qO- --header="dapr-api-token: ${DAPR_API_TOKEN}" --post-data="" http://127.0.0.1:3500/v1.0/shutdown')],
+                [(*prefix, "wait", "pod", "-l", targets["lifecycle"], "--for=condition=Ready", "--timeout=300s")],
+            ),
+            "actor-failover": delete_lifecycle,
+            "approved-adapter-fault": delete_state,
+            "bad-configuration": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__Retention=00:00:01"),
+            "bad-key": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__AttestationVerificationKey=invalid"),
+            "capacity-pressure": (
+                target["namespace"], targets["state"],
+                [(*prefix, "set", "resources", state, "--requests=memory=1Mi", "--limits=memory=1Mi")],
+                [(*prefix, "rollout", "undo", state), (*prefix, "rollout", "status", state, "--timeout=300s")],
+            ),
+            "degraded-rollback": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__Enabled=false"),
+            "etag-failure": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__StateStoreName=qualification-etag-failure"),
+            "profile-drift": environment_plan(lifecycle, "lifecycle", f"AccessTelemetryLifecycle__ComponentProfileHash={'0' * 64}"),
+            "queue-byte-exhaustion": environment_plan(server, "server", "AccessTelemetryLifecycle__QueueByteLimit=1"),
+            "queue-record-exhaustion": environment_plan(server, "server", "AccessTelemetryLifecycle__QueueRecordLimit=1"),
+            "reconnect": delete_state,
+            "reminder-delay": scale_plan(clock, 1, "clock"),
+            "retry-exhaustion": environment_plan(server, "server", "AccessTelemetryLifecycle__RetryMaximumDelay=00:00:00.001"),
+            "shutdown": (
+                target["namespace"], targets["server"],
+                [(*prefix, "delete", "pod", "__SELECTED_POD__", "--wait=true", "--timeout=300s")],
+                [(*prefix, "wait", "pod", "-l", targets["server"], "--for=condition=Ready", "--timeout=300s")],
+            ),
+            "stale-attestation": (
+                *scale_plan(clock, 1, "clock")[:2],
+                [*scale_plan(clock, 1, "clock")[2], (*prefix, "exec", "deployment/memories", "-c", "memories", "--", "/bin/sh", "-ec", "sleep 35")],
+                scale_plan(clock, 1, "clock")[3],
+            ),
+            "ttl-failure": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__StateStoreName=qualification-ttl-failure"),
+            "transaction-failure": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__StateStoreName=qualification-transaction-failure"),
+        }
+        if scenario not in plans:
             raise EvidenceValidationError(f"failure {scenario} is not in the closed target registry")
-        fault_namespace, selector = target_registry[scenario]
+        fault_namespace, selector, actions, restorations = plans[scenario]
         fault_prefix = _kubectl_prefix(target, fault_namespace)
         return [
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
              "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
             (*fault_prefix, "get", "pods", "-l", selector, "-o", "json"),
-            (*fault_prefix, "delete", "pod", "__SELECTED_POD__", "--wait=true", "--timeout=300s"),
+            *[("__FAULT_ACTION__", *action) for action in actions],
+            (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
             (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
              "wget -qO- http://127.0.0.1:8080/ready"),
             (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
              f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}'),
-            (*fault_prefix, "wait", "pod", "-l", selector, "--for=condition=Ready", "--timeout=300s"),
+            *[("__FAULT_RESTORE__", *restoration) for restoration in restorations],
             (*fault_prefix, "get", "pods", "-l", selector, "-o", "json"),
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
              "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
@@ -435,16 +578,37 @@ def _fixed_operation_commands(
             (*prefix, "logs", "deployment/memories", "-c", "memories", "--tail=100"),
         ]
     if command_id in {"continuity", "observability", "privacy-denial"}:
-        return [
+        lifecycle_metrics_url = (
+            "http://prometheus-operated.monitoring.svc.cluster.local:9090/federate?"
+            "match%5B%5D=%7B__name__%3D~%22memories_access_telemetry_lifecycle_.%2A%22%7D"
+        )
+        commands = [
             (*prefix, "get", "deployment", "memories", "-o", "json"),
             (*prefix, "get", "configuration.dapr.io", "memories-config", "-o", "json"),
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
             (*prefix, "logs", "deployment/memories", "-c", "memories", "--tail=100"),
-            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "daprd", "--", "/bin/sh", "-ec",
-             "wget -qO- http://127.0.0.1:9090/metrics"),
+            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
+             f"wget -qO- '{lifecycle_metrics_url}'"),
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
              "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
         ]
+        if command_id == "observability":
+            commands.extend(
+                _fixed_test_commands(
+                    "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
+                    "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+                    _OBSERVABILITY_PROOF_TESTS,
+                )
+            )
+        if command_id == "privacy-denial":
+            commands.extend(
+                _fixed_test_commands(
+                    "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj",
+                    "tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll",
+                    _PRIVACY_PROOF_TESTS,
+                )
+            )
+        return commands
     raise EvidenceValidationError(f"command {command_id} is not in the closed qualification registry")
 
 
@@ -555,6 +719,131 @@ def _prometheus_sample_count(payload: bytes, command_id: str) -> int:
     return samples
 
 
+def _lifecycle_prometheus_observation(payload: bytes, command_id: str) -> dict[str, Any]:
+    """Validate canonical lifecycle samples from the fixed Prometheus federation query."""
+
+    try:
+        text_payload = payload.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise EvidenceValidationError(f"command {command_id} lifecycle metrics are not UTF-8") from exc
+    sample_pattern = re.compile(
+        r'\A([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{([^}]*)\})?\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)'
+        r'(?:\s+\d+)?\Z'
+    )
+    label_pattern = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="([^"\\]*(?:\\.[^"\\]*)*)"')
+    samples: list[tuple[str, dict[str, str], float]] = []
+    for line in text_payload.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = sample_pattern.fullmatch(stripped)
+        if match is None:
+            raise EvidenceValidationError(f"command {command_id} returned malformed lifecycle metrics")
+        raw_labels = match.group(2) or ""
+        labels: dict[str, str] = {}
+        position = 0
+        while position < len(raw_labels):
+            label_match = label_pattern.match(raw_labels, position)
+            if label_match is None or label_match.group(1) in labels:
+                raise EvidenceValidationError(f"command {command_id} returned malformed lifecycle labels")
+            labels[label_match.group(1)] = label_match.group(2)
+            position = label_match.end()
+            if position < len(raw_labels):
+                if raw_labels[position] != ",":
+                    raise EvidenceValidationError(f"command {command_id} returned malformed lifecycle labels")
+                position += 1
+        forbidden = {key for key in labels if key.lower() in {"tenant", "tenant_id", "content", "query", "user", "record_id"}}
+        if forbidden:
+            raise EvidenceValidationError(f"command {command_id} lifecycle metrics contain identity labels")
+        samples.append((match.group(1), labels, float(match.group(3))))
+    if len(samples) > 10_000:
+        raise EvidenceValidationError(f"command {command_id} lifecycle metrics exceeded the sample bound")
+
+    infrastructure_labels = {"instance", "job", "namespace", "pod", "service_name", "service_namespace"}
+
+    def application_labels(labels: Mapping[str, str]) -> dict[str, str]:
+        return {key: value for key, value in labels.items() if key not in infrastructure_labels}
+
+    records_name = "memories_access_telemetry_lifecycle_records_total"
+    states = sorted(
+        {
+            application_labels(labels)["state"]
+            for name, labels, value in samples
+            if name == records_name
+            and value > 0
+            and set(application_labels(labels)) == {"state", "reason"}
+        }
+    )
+    required_states = sorted(REQUIRED_LIFECYCLE_SIGNALS)
+    if states != required_states:
+        raise EvidenceValidationError(f"command {command_id} lacks canonical lifecycle state samples")
+    health_states = {
+        application_labels(labels).get("state")
+        for name, labels, value in samples
+        if name == "memories_access_telemetry_lifecycle_health"
+        and value == 1
+        and set(application_labels(labels)) == {"state", "reason"}
+    }
+    profile_states = {
+        application_labels(labels).get("state")
+        for name, labels, value in samples
+        if name == "memories_access_telemetry_lifecycle_profile"
+        and value == 1
+        and set(application_labels(labels)) == {"state"}
+    }
+    evidence_states = {
+        application_labels(labels).get("state")
+        for name, labels, value in samples
+        if name == "memories_access_telemetry_lifecycle_physical_evidence_total"
+        and value > 0
+        and set(application_labels(labels)) == {"state"}
+    }
+    timestamp_present = any(
+        name == "memories_access_telemetry_lifecycle_physical_evidence_last_timestamp_seconds"
+        and not application_labels(labels)
+        and value > 0
+        for name, labels, value in samples
+    )
+    observed_label_set = {
+        key
+        for _, labels, _ in samples
+        for key in application_labels(labels)
+        if key in {"state", "reason", "outcome"}
+    }
+    observed_labels = [key for key in ("state", "reason", "outcome") if key in observed_label_set]
+    return {
+        "signals": states,
+        "labels": observed_labels,
+        "current_health_present": bool(health_states),
+        "profile_matched": "matched" in profile_states,
+        "physical_evidence_present": "present" in evidence_states,
+        "last_evidence_timestamp_gauge": timestamp_present,
+        "sample_count": len(samples),
+    }
+
+
+def _executed_test_inventory(
+    payload: bytes,
+    expected: Sequence[str],
+    command_id: str,
+) -> list[str]:
+    """Require a fixed reviewed test command's concrete zero-skip pass inventory."""
+
+    try:
+        output = payload.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise EvidenceValidationError(f"command {command_id} test output is not UTF-8") from exc
+    if "=== TEST EXECUTION SUMMARY ===" not in output:
+        raise EvidenceValidationError(f"command {command_id} fixed proof tests returned no MTP summary")
+    for field in ("Errors", "Failed", "Skipped", "Not Run"):
+        if re.search(rf"\b{field}:\s+0\b", output, re.IGNORECASE) is None:
+            raise EvidenceValidationError(f"command {command_id} fixed proof tests did not pass without skips")
+    observed = [name for name in expected if re.search(rf"\b{re.escape(name)}\b", output) is not None]
+    if observed != list(expected):
+        raise EvidenceValidationError(f"command {command_id} fixed proof test inventory is incomplete")
+    return observed
+
+
 class _C3Journal:
     """Exclusive, hash-chained JSONL progress journal for the multi-day C3 run."""
 
@@ -659,11 +948,137 @@ class _C3Journal:
         self.close()
 
 
+def _run_writer_segments(
+    target: Mapping[str, str],
+    checkpoint: str,
+    command_id: str,
+) -> tuple[Mapping[str, Any], dict[str, Any]]:
+    """Aggregate 1,800 measured one-second calls, retrying only killed/no-response segments."""
+
+    arguments = {
+        "kube_context": target["kube_context"],
+        "namespace": target["namespace"],
+        "operation": command_id,
+        "c1_platform_operations_reviewer": target["_platform_operations_reviewer"],
+    }
+    prefix = _kubectl_prefix(target)
+    ordinal = int(command_id[-1]) - 1
+    started = _utc_now_milliseconds()
+    output_hashes: list[str] = []
+    error_hashes: list[str] = []
+    totals = {
+        "attempted": 0,
+        "acknowledged": 0,
+        "persisted": 0,
+        "conflicted": 0,
+        "transaction_acknowledgements": 0,
+        "dropped": 0,
+        "rejected": 0,
+        "result_count": 0,
+    }
+    successful_segments = 0
+    failed_segments = 0
+    selected_pod: str | None = None
+    environment = {
+        **os.environ,
+        "HEXALITH_STORY_27_4_COMMAND_ID": command_id,
+        "HEXALITH_STORY_27_4_LEASE_HOLDER": target["_lease_holder"],
+    }
+    while successful_segments < 1_800:
+        if selected_pod is None:
+            code, stdout, stderr = _run_bounded_process(
+                (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
+                cwd=Path.cwd(),
+                timeout_seconds=300,
+                environment=environment,
+            )
+            output_hashes.append(hashlib.sha256(stdout).hexdigest())
+            error_hashes.append(hashlib.sha256(stderr).hexdigest())
+            if code != 0:
+                raise EvidenceValidationError(f"command {command_id} could not rediscover Server pods")
+            pods = _require_mapping(_json_without_duplicates(stdout.decode("utf-8", errors="strict"), command_id), "Server pods")
+            try:
+                selected_pod = _select_named_pod(pods, command_id)
+            except EvidenceValidationError:
+                failed_segments += 1
+                if failed_segments > 300:
+                    raise EvidenceValidationError(f"command {command_id} could not restore its writer ordinal")
+                time.sleep(1)
+                continue
+        code, stdout, stderr = _run_bounded_process(
+            (
+                *prefix,
+                "exec",
+                f"pod/{selected_pod}",
+                "-c",
+                "memories",
+                "--",
+                "/bin/sh",
+                "-ec",
+                f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}',
+            ),
+            cwd=Path.cwd(),
+            timeout_seconds=120,
+            environment=environment,
+        )
+        output_hashes.append(hashlib.sha256(stdout).hexdigest())
+        error_hashes.append(hashlib.sha256(stderr).hexdigest())
+        if code != 0:
+            failed_segments += 1
+            selected_pod = None
+            if failed_segments > 300:
+                raise EvidenceValidationError(f"command {command_id} exceeded its killed-segment retry bound")
+            continue
+        payload = _require_mapping(
+            _json_without_duplicates(stdout.decode("utf-8", errors="strict"), command_id),
+            f"{command_id} segment",
+        )
+        if _require_nonempty_string(_camel_value(payload, "writer"), f"{command_id}.writer") != selected_pod:
+            raise EvidenceValidationError(f"command {command_id} segment is not attributable to its selected pod")
+        expected = {
+            "attempted": 125,
+            "acknowledged": 125,
+            "persisted": 125,
+            "conflicted": 0,
+            "transaction_acknowledgements": 125,
+            "dropped": 0,
+            "rejected": 0,
+        }
+        for field, expected_value in expected.items():
+            value = _require_integer(_camel_value(payload, field), f"{command_id}.{field}")
+            if value != expected_value:
+                raise EvidenceValidationError(f"command {command_id} returned a non-canonical one-second segment")
+            totals[field] += value
+        totals["result_count"] += _require_nonzero_integer(
+            _camel_value(payload, "result_count"), f"{command_id}.result_count"
+        )
+        successful_segments += 1
+    finished = _utc_now_milliseconds()
+    result = {
+        "writer": f"server-writer-{command_id[-1]}",
+        **totals,
+    }
+    observation = {
+        "command_id": command_id,
+        "arguments": arguments,
+        "arguments_sha256": _sha256(_canonical_json(arguments)),
+        "started_utc_ms": started,
+        "finished_utc_ms": finished,
+        "exit_code": 0,
+        "stdout_sha256": _sha256(_canonical_json(output_hashes)),
+        "stderr_sha256": _sha256(_canonical_json(error_hashes)),
+        "result_count": totals["result_count"],
+    }
+    return result, observation
+
+
 def _run_operation(
     target: Mapping[str, str],
     checkpoint: str,
     command_id: str,
 ) -> tuple[Mapping[str, Any], dict[str, Any]]:
+    if command_id in {"writer-1", "writer-2"}:
+        return _run_writer_segments(target, checkpoint, command_id)
     arguments = {
         "kube_context": target["kube_context"],
         "namespace": target["namespace"],
@@ -677,8 +1092,106 @@ def _run_operation(
     last_payload: Mapping[str, Any] | None = None
     selected_pod: str | None = None
     server_pods: Mapping[str, Any] | None = None
-    environment = {**os.environ, "HEXALITH_STORY_27_4_COMMAND_ID": command_id}
-    for step, command in enumerate(_fixed_operation_commands(target, checkpoint, command_id)):
+    physical_evidence: Mapping[str, Any] | None = None
+    lease_observation: Mapping[str, Any] | None = None
+    environment = {
+        **os.environ,
+        "HEXALITH_STORY_27_4_COMMAND_ID": command_id,
+        "HEXALITH_STORY_27_4_LEASE_HOLDER": target["_lease_holder"],
+    }
+    operation_commands = _fixed_operation_commands(target, checkpoint, command_id)
+    pending_restorations = [command[1:] for command in operation_commands if command and command[0] == "__FAULT_RESTORE__"]
+    fault_active = False
+
+    def restore_fault() -> None:
+        nonlocal fault_active
+        if not fault_active:
+            return
+        for restoration in pending_restorations:
+            try:
+                _run_bounded_process(
+                    restoration,
+                    cwd=Path.cwd(),
+                    timeout_seconds=300,
+                    environment=environment,
+                )
+            except (EvidenceValidationError, OSError, ValueError):
+                pass
+        fault_active = False
+
+    for step, command in enumerate(operation_commands):
+        marker = command[0] if command else ""
+        if marker == "__FAULT_ACTION__":
+            fault_active = True
+            command = command[1:]
+        elif marker == "__FAULT_RESTORE__":
+            command = command[1:]
+        if "__LEASE_RENEW_PATCH__" in command or "__GATE_RENEW_PATCH__" in command:
+            metadata = lease_observation.get("metadata") if isinstance(lease_observation, Mapping) else None
+            lease_spec = lease_observation.get("spec") if isinstance(lease_observation, Mapping) else None
+            resource_version = metadata.get("resourceVersion") if isinstance(metadata, Mapping) else None
+            holder = lease_spec.get("holderIdentity") if isinstance(lease_spec, Mapping) else None
+            if not isinstance(resource_version, str) or holder != target["_lease_holder"]:
+                raise EvidenceValidationError("qualification Lease renewal lost atomic ownership")
+            renew_utc = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+            renew_patch = _canonical_json(
+                [
+                    {"op": "test", "path": "/metadata/resourceVersion", "value": resource_version},
+                    {"op": "test", "path": "/spec/holderIdentity", "value": holder},
+                    {"op": "replace", "path": "/spec/leaseDurationSeconds", "value": 2700},
+                    {"op": "add", "path": "/spec/renewTime", "value": renew_utc},
+                ]
+            )
+            gate_patch = _canonical_json(
+                {"data": {"gate.json": _canonical_json({
+                    "schemaVersion": 1,
+                    "state": "enabled",
+                    "profileSha256": STORY_27_4_PROFILE_SHA256,
+                    "expiresUtcMs": _utc_now_milliseconds() + 45 * 60 * 1000,
+                })}}
+            )
+            command = tuple(
+                renew_patch if value == "__LEASE_RENEW_PATCH__" else
+                gate_patch if value == "__GATE_RENEW_PATCH__" else value
+                for value in command
+            )
+        if "__LEASE_RELEASE_PATCH__" in command:
+            metadata = last_payload.get("metadata") if isinstance(last_payload, Mapping) else None
+            lease_spec = last_payload.get("spec") if isinstance(last_payload, Mapping) else None
+            resource_version = metadata.get("resourceVersion") if isinstance(metadata, Mapping) else None
+            holder = lease_spec.get("holderIdentity") if isinstance(lease_spec, Mapping) else None
+            expected_holder = target["_lease_holder"]
+            holder_is_expired_story_run = False
+            if isinstance(holder, str) and holder.startswith("story-27-4/") and holder != expected_holder:
+                lease_time = lease_spec.get("renewTime") or lease_spec.get("acquireTime")
+                duration = lease_spec.get("leaseDurationSeconds")
+                try:
+                    lease_time_ms = int(
+                        datetime.fromisoformat(str(lease_time).replace("Z", "+00:00")).timestamp() * 1000
+                    )
+                except (TypeError, ValueError):
+                    lease_time_ms = 0
+                holder_is_expired_story_run = (
+                    type(duration) is int
+                    and duration > 0
+                    and lease_time_ms > 0
+                    and lease_time_ms + duration * 1000 < _utc_now_milliseconds()
+                )
+            if (
+                not isinstance(resource_version, str)
+                or not isinstance(holder, str)
+                or (holder not in {"", expected_holder} and not holder_is_expired_story_run)
+            ):
+                raise EvidenceValidationError("qualification Lease release refused another runner's ownership")
+            release_patch = _canonical_json(
+                [
+                    {"op": "test", "path": "/metadata/resourceVersion", "value": resource_version},
+                    {"op": "test", "path": "/spec/holderIdentity", "value": holder},
+                    {"op": "replace", "path": "/spec/holderIdentity", "value": ""},
+                    {"op": "replace", "path": "/spec/leaseDurationSeconds", "value": 0},
+                ]
+            )
+            command = tuple(release_patch if value == "__LEASE_RELEASE_PATCH__" else value for value in command)
         if "__PHYSICAL_EVIDENCE_PATCH__" in command:
             if last_payload is None or type(last_payload.get("allocator_bytes")) is not int:
                 raise EvidenceValidationError("physical evidence requires the measured post-VACUUM aggregate")
@@ -686,8 +1199,13 @@ def _run_operation(
                 "evidenceId": "story-27-4-c3",
                 "componentProfileHash": STORY_27_4_PROFILE_SHA256,
                 "artifactSha256": _sha256(_canonical_json(last_payload)),
-                "observedAtUnixMilliseconds": _utc_now_milliseconds(),
+                "observedAtUnixMilliseconds": _require_integer(
+                    last_payload.get("reclaimed_utc_ms"),
+                    "physical evidence reclaimed_utc_ms",
+                    minimum=1,
+                ),
             }
+            physical_evidence = evidence
             physical_patch = _canonical_json(
                 {"data": {"evidence.json": _canonical_json(evidence)}}
             )
@@ -721,17 +1239,35 @@ def _run_operation(
             timeout_seconds = 2_400
         elif any("pg_sleep" in value for value in command) and command_id.startswith("cohort-"):
             timeout_seconds = int(command_id.split("-", 2)[1][:-1]) * 3_600 + 600
-        return_code, stdout, stderr = _run_bounded_process(
-            command,
-            cwd=Path.cwd(),
-            timeout_seconds=timeout_seconds,
-            environment={**environment, "HEXALITH_STORY_27_4_STEP": str(step)},
-        )
+        try:
+            process_arguments = {
+                "cwd": Path.cwd(),
+                "timeout_seconds": timeout_seconds,
+                "environment": {**environment, "HEXALITH_STORY_27_4_STEP": str(step)},
+            }
+            if checkpoint == "c3-retention-reclamation" and any("pg_sleep" in value for value in command):
+                with ThreadPoolExecutor(max_workers=1, thread_name_prefix="story-27-4-c3") as executor:
+                    future = executor.submit(_run_bounded_process, command, **process_arguments)
+                    while True:
+                        try:
+                            return_code, stdout, stderr = future.result(timeout=20 * 60)
+                            break
+                        except FuturesTimeoutError:
+                            renewal, _ = _run_operation(target, checkpoint, "qualification-renew")
+                            if renewal.get("state") != "enabled":
+                                raise EvidenceValidationError("qualification Lease/gate renewal did not remain enabled")
+            else:
+                return_code, stdout, stderr = _run_bounded_process(command, **process_arguments)
+        except (EvidenceValidationError, OSError, ValueError):
+            restore_fault()
+            raise
         stdout_parts.append(stdout)
         stderr_parts.append(stderr)
         if sum(map(len, stdout_parts)) > _MAX_TRANSCRIPT_BYTES or sum(map(len, stderr_parts)) > 65_536:
+            restore_fault()
             raise EvidenceValidationError(f"command {command_id} exceeded its aggregate transcript bound")
         if return_code != 0:
+            restore_fault()
             raise EvidenceValidationError(
                 f"command {command_id} exited {return_code}; stderr_sha256={hashlib.sha256(stderr).hexdigest()}"
             )
@@ -741,9 +1277,17 @@ def _run_operation(
             last_payload = parsed if isinstance(parsed, Mapping) else None
         except (UnicodeDecodeError, ValueError) as exc:
             if stdout.lstrip().startswith((b"{", b"[")):
+                restore_fault()
                 raise EvidenceValidationError(f"command {command_id} returned malformed JSON") from exc
             last_payload = None
         parsed_payloads.append(last_payload)
+        if (
+            last_payload is not None
+            and "get" in command
+            and "lease" in command
+            and _LEASE_NAME in command
+        ):
+            lease_observation = last_payload
         if (
             last_payload is not None
             and "get" in command
@@ -751,6 +1295,10 @@ def _run_operation(
             and "app.kubernetes.io/name=memories" in command
         ):
             server_pods = last_payload
+        if marker == "__FAULT_RESTORE__" and pending_restorations:
+            pending_restorations.pop(0)
+            if not pending_restorations:
+                fault_active = False
     finished = _utc_now_milliseconds()
     if command_id == "qualification-enable" and any(
         value.decode("utf-8", errors="strict").strip().lower() != "yes"
@@ -849,8 +1397,12 @@ def _run_operation(
         ):
             raise EvidenceValidationError("qualification final state is not disabled and scaled to zero")
         result = {"state": "disabled", "result_count": len(stdout_parts)}
-    elif command_id == "qualification-enable":
+    elif command_id in {"qualification-enable", "qualification-renew"}:
         lease_payload, gate_payload, lifecycle_payload, clock_payload = parsed_payloads[-4:]
+        if command_id == "qualification-renew":
+            lease_payload, gate_payload = parsed_payloads[-2:]
+            lifecycle_payload = {"spec": {"replicas": 2}}
+            clock_payload = {"spec": {"replicas": 1}}
         lease_spec = lease_payload.get("spec") if isinstance(lease_payload, Mapping) else None
         gate_data = gate_payload.get("data") if isinstance(gate_payload, Mapping) else None
         try:
@@ -878,7 +1430,7 @@ def _run_operation(
         expires_utc_ms = gate.get("expiresUtcMs")
         if (
             not isinstance(lease_spec, Mapping)
-            or lease_spec.get("holderIdentity") != f"story-27-4/{target['_platform_operations_reviewer']}"
+            or lease_spec.get("holderIdentity") != target["_lease_holder"]
             or lease_spec.get("leaseDurationSeconds") != 2700
             or gate.get("state") != "enabled"
             or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
@@ -889,6 +1441,11 @@ def _run_operation(
             or clock_replicas != 1
         ):
             raise EvidenceValidationError("qualification target did not enter the exact leased enabled state")
+        lease_metadata = lease_payload.get("metadata") if isinstance(lease_payload, Mapping) else None
+        if not isinstance(lease_metadata, Mapping) or not isinstance(lease_metadata.get("resourceVersion"), str):
+            raise EvidenceValidationError("qualification enabled Lease has no resource version")
+        if isinstance(target, dict):
+            target["_lease_resource_version"] = lease_metadata["resourceVersion"]
         result = {"state": "enabled", "result_count": len(stdout_parts)}
     elif command_id == "qualification-disable":
         result = {
@@ -978,6 +1535,22 @@ def _run_operation(
             recovered = selected_before is not None and selected_before["uid"] not in {item["uid"] for item in after}
             result["interrupted_recovery"] = recovered
             result["restart_recovery"] = recovered and len(after) >= len(before) and all(item["ready"] for item in after)
+            index_mappings = [
+                payload
+                for payload in parsed_payloads
+                if isinstance(payload, Mapping) and payload.get("stage") == "index"
+            ]
+            if len(index_mappings) != 1:
+                raise EvidenceValidationError(f"command {command_id} did not independently measure the expiry index")
+            index_name = _require_nonempty_string(
+                index_mappings[0].get("index_name"), f"{command_id}.index_name", maximum=128
+            )
+            post_index_count = _require_integer(
+                index_mappings[0].get("post_index_candidate_count"),
+                f"{command_id}.post_index_candidate_count",
+            )
+            result["index_name"] = index_name
+            result["post_index_candidate_count"] = post_index_count
         if stage == "reclamation":
             if len(mappings) != 2:
                 raise EvidenceValidationError(f"command {command_id} did not measure allocator bytes before and after VACUUM")
@@ -989,23 +1562,38 @@ def _run_operation(
             )
             result.pop("allocator_bytes", None)
             result["os_disk_shrink_claimed"] = False
+            if command_id == "cohort-168h-reclamation":
+                receipt = parsed_payloads[-1]
+                if physical_evidence is None or not isinstance(receipt, Mapping):
+                    raise EvidenceValidationError("physical evidence reporter returned no authenticated receipt")
+                expected_receipt = {"status": "accepted", **physical_evidence}
+                if receipt != expected_receipt:
+                    raise EvidenceValidationError("physical evidence reporter receipt does not match submitted evidence")
         result["result_count"] = len(stdout_parts)
     elif command_id == "retention-controls":
-        configmap = parsed_payloads[0]
-        inspection = parsed_payloads[-1]
+        configmap = next(
+            (payload for payload in parsed_payloads if isinstance(payload, Mapping) and isinstance(payload.get("data"), Mapping)),
+            None,
+        )
+        inspection = next(
+            (payload for payload in reversed(parsed_payloads) if isinstance(payload, Mapping) and _camel_value(payload, "retained_record_count") is not None),
+            None,
+        )
         if not isinstance(configmap, Mapping) or not isinstance(inspection, Mapping):
             raise EvidenceValidationError("retention controls were not observed from the running target")
         _, health = _inspection(inspection, command_id)
-        configured = bool(configmap.get("data")) and health not in {"unhealthy", "3"}
+        if not configmap.get("data") or health in {"unhealthy", "3"}:
+            raise EvidenceValidationError("retention controls are not active on the running target")
+        executed = set(_executed_test_inventory(stdout_parts[1], _RETENTION_PROOF_TESTS, command_id))
         result = {
-            "maximum_clock_delta_ms": 1000,
-            "late_record_remaining_lifetime": configured,
-            "already_expired_rejected": configured,
-            "attestation_freshness_rejected": configured,
-            "attestation_replay_rejected": configured,
-            "attestation_identity_rejected": configured,
-            "logical_expiry_millisecond": configured,
-            "ttl_defense_in_depth": configured,
+            "maximum_clock_delta_ms": 250,
+            "late_record_remaining_lifetime": "PersistAsync_WritesRecordAndExpiryIndexAtomicallyWithCeilingTtl" in executed,
+            "already_expired_rejected": "PersistAsync_FutureOrExpiredSource_FailsClosed" in executed,
+            "attestation_freshness_rejected": "Verify_ReplayStaleDeltaOrTamperedSignature_FailsClosed" in executed,
+            "attestation_replay_rejected": "Verify_ReplayStaleDeltaOrTamperedSignature_FailsClosed" in executed,
+            "attestation_identity_rejected": "Verify_ContextProfileOrNonceMismatch_FailsClosed" in executed,
+            "logical_expiry_millisecond": "PersistAsync_WritesRecordAndExpiryIndexAtomicallyWithCeilingTtl" in executed,
+            "ttl_defense_in_depth": "PersistAsync_WritesRecordAndExpiryIndexAtomicallyWithCeilingTtl" in executed,
             "result_count": len(stdout_parts),
         }
     elif command_id.startswith("failure-"):
@@ -1014,15 +1602,22 @@ def _run_operation(
             (payload for payload in parsed_payloads if isinstance(payload, Mapping) and _camel_value(payload, "attempted") is not None),
             None,
         )
-        health_payload = parsed_payloads[4]
-        if len(pod_lists) != 3 or not isinstance(workload, Mapping) or not isinstance(health_payload, Mapping):
+        health_payload = next(
+            (payload for payload in parsed_payloads if isinstance(payload, Mapping) and payload.get("status") in {"Healthy", "Degraded", "Unhealthy"}),
+            None,
+        )
+        if len(pod_lists) < 3 or not isinstance(workload, Mapping) or not isinstance(health_payload, Mapping):
             raise EvidenceValidationError(f"command {command_id} lacks fault/readiness/accounting observations")
-        before = _pod_snapshot(pod_lists[1], command_id)
-        after = _pod_snapshot(pod_lists[2], command_id)
+        before = _pod_snapshot(_require_mapping(parsed_payloads[2], f"{command_id} before pods"), command_id)
+        after = _pod_snapshot(pod_lists[-1], command_id)
         if selected_pod is None:
             raise EvidenceValidationError(f"command {command_id} has no selected fault target")
         selected_before = next((item for item in before if item["name"] == selected_pod), None)
-        exercised = selected_before is not None and selected_before["uid"] not in {item["uid"] for item in after}
+        after_by_uid = {item["uid"]: item for item in after}
+        exercised = selected_before is not None and (
+            selected_before["uid"] not in after_by_uid
+            or after_by_uid[selected_before["uid"]]["restarts"] > selected_before["restarts"]
+        )
         recovered = len(after) >= len(before) and all(item["ready"] for item in after)
         attempted = _require_nonzero_integer(_camel_value(workload, "attempted"), f"{command_id}.attempted")
         persisted = _require_integer(_camel_value(workload, "persisted"), f"{command_id}.persisted")
@@ -1050,12 +1645,24 @@ def _run_operation(
     elif command_id in {"continuity", "observability", "privacy-denial"}:
         deployment = parsed_payloads[0]
         dapr_configuration = parsed_payloads[1]
-        inspection = parsed_payloads[-1]
+        inspection = next(
+            (payload for payload in reversed(parsed_payloads) if isinstance(payload, Mapping) and _camel_value(payload, "retained_record_count") is not None),
+            None,
+        )
         if not all(isinstance(value, Mapping) for value in (deployment, dapr_configuration, inspection)):
             raise EvidenceValidationError(f"command {command_id} lacks deployment, Dapr, or lifecycle observations")
         logs = stdout_parts[3].decode("utf-8", errors="strict")
         json_console = any(line.lstrip().startswith("{") for line in logs.splitlines())
-        prometheus_samples = _prometheus_sample_count(stdout_parts[4], command_id)
+        metrics = (
+            _lifecycle_prometheus_observation(stdout_parts[4], command_id)
+            if command_id == "observability"
+            else None
+        )
+        prometheus_samples = (
+            metrics["sample_count"]
+            if metrics is not None
+            else _prometheus_sample_count(stdout_parts[4], command_id)
+        )
         _, health = _inspection(inspection, command_id)
         deployment_text = _canonical_json(deployment)
         dapr_text = _canonical_json(dapr_configuration)
@@ -1072,15 +1679,29 @@ def _run_operation(
                 "result_count": len(stdout_parts),
             }
         elif command_id == "observability":
-            healthy = health not in {"unhealthy", "3"} and prometheus_samples > 0
+            if metrics is None:
+                raise EvidenceValidationError("observability lacks canonical lifecycle metrics")
+            executed = set(
+                _executed_test_inventory(stdout_parts[-1], _OBSERVABILITY_PROOF_TESTS, command_id)
+            )
+            health_transition_proved = (
+                "HealthPrecedence_IsUnhealthyThenDegradedThenNoDataOrHealthy" in executed
+                and "RuntimeGate_ClosesImmediatelyWhenPublishedEvidenceExpires" in executed
+            )
+            observed = (
+                prometheus_samples > 0
+                and metrics["profile_matched"]
+                and metrics["physical_evidence_present"]
+                and metrics["current_health_present"]
+            )
             result = {
-                "signals": list(REQUIRED_LIFECYCLE_SIGNALS) if healthy else [],
-                "labels": ["state", "reason", "outcome"] if healthy else [],
-                "alerts_passed": healthy,
-                "bounded_labels": healthy,
-                "health_precedence": healthy,
-                "no_data_passed": healthy,
-                "last_evidence_timestamp_gauge": healthy,
+                "signals": metrics["signals"],
+                "labels": metrics["labels"],
+                "alerts_passed": observed and health_transition_proved,
+                "bounded_labels": metrics["labels"] == ["state", "reason", "outcome"],
+                "health_precedence": health_transition_proved,
+                "no_data_passed": "HealthPrecedence_IsUnhealthyThenDegradedThenNoDataOrHealthy" in executed,
+                "last_evidence_timestamp_gauge": metrics["last_evidence_timestamp_gauge"],
                 "json_console_continuity": json_console,
                 "otlp_configured": otlp_configured,
                 "otlp_continuity": prometheus_samples > 0 if otlp_configured else False,
@@ -1090,21 +1711,21 @@ def _run_operation(
             acl = dapr_configuration.get("spec", {}).get("accessControl") if isinstance(dapr_configuration.get("spec"), Mapping) else None
             deny_by_default = isinstance(acl, Mapping) and acl.get("defaultAction") == "deny"
             no_read_route = "/v1/access-telemetry/read" not in dapr_text
+            executed = _executed_test_inventory(stdout_parts[-1], _PRIVACY_PROOF_TESTS, command_id)
             result = {
                 "inspection_least_privilege": deny_by_default,
                 "no_tenant_read_route": no_read_route,
-                "raw_values_absent": "tenant" not in logs.lower(),
-                "secret_values_absent": "password" not in logs.lower() and "token" not in logs.lower(),
-                "tenant_denial_before_dependencies": deny_by_default,
-                "dependency_calls_after_denial": 0 if deny_by_default else 1,
-                "tenant_denial_tests": [
-                    "SearchEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeSearchDependencies",
-                    "TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState",
-                    "TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies",
-                    "VerifyAsync_DetectsMissingSemanticTenantId_ReturnsFailed",
-                    "VerifyAsync_DetectsSemanticTenantIdMismatch_ReturnsFailed",
-                    "VerifyAsync_DetectsSyntacticTenantIdMismatch_ReturnsFailed",
-                ] if deny_by_default else [],
+                "raw_values_absent": not any(
+                    marker in logs.lower()
+                    for marker in ('"tenantid":', '"query":', '"userid":', '"recordid":')
+                ),
+                "secret_values_absent": not any(
+                    marker in logs.lower()
+                    for marker in ('"password":', '"token":', '"authorization":', '"credential":')
+                ),
+                "tenant_denial_before_dependencies": deny_by_default and executed == list(_PRIVACY_PROOF_TESTS),
+                "dependency_calls_after_denial": 0 if executed == list(_PRIVACY_PROOF_TESTS) else 1,
+                "tenant_denial_tests": executed,
                 "result_count": len(stdout_parts),
             }
     else:
@@ -1406,7 +2027,14 @@ def _c3(
         deleted_count = min(candidate_count, max(0, pre_count - post_count))
         merged["deleted_count"] = deleted_count
         merged["already_absent_count"] = candidate_count - deleted_count
-        merged["index_removal_count"] = candidate_count if merged.get("logical_absence") else 0
+        post_index_count = _require_integer(
+            merged.pop("post_index_candidate_count", None),
+            f"cohort-{hours}h.post_index_candidate_count",
+        )
+        _require_nonempty_string(merged.pop("index_name", None), f"cohort-{hours}h.index_name")
+        if post_index_count > candidate_count:
+            raise EvidenceValidationError(f"cohort {hours}h expiry index count increased after purge")
+        merged["index_removal_count"] = candidate_count - post_index_count
         cohorts.append(merged)
     identity = results["qualification-target-identity"]
     enable = results["qualification-enable"]
@@ -1460,12 +2088,13 @@ def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
         reviewer = _require_nonempty_string(
             args.platform_operations_reviewer,
             "validated C1 platform-operations reviewer",
-            maximum=128,
+            maximum=64,
         )
         if _SAFE_TARGET.fullmatch(reviewer) is None:
             raise EvidenceValidationError("validated C1 platform-operations reviewer is not bounded")
         target = dict(_load_target(Path(args.scenario_input)))
         target["_platform_operations_reviewer"] = reviewer
+        target["_lease_holder"] = f"story-27-4/{reviewer}/{os.getpid()}-{_utc_now_milliseconds()}"
         if args.disable_only:
             disable: Mapping[str, Any] | None = None
             final: Mapping[str, Any] | None = None

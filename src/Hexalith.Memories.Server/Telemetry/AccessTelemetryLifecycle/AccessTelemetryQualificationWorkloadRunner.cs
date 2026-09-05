@@ -17,6 +17,9 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
     /// <summary>The exact steady-state duration.</summary>
     public const int SteadyStateSeconds = 30 * 60;
 
+    /// <summary>The exact duration emitted by one resumable host-controlled segment.</summary>
+    public const int SegmentSeconds = 1;
+
     private static readonly IReadOnlyDictionary<string, object?> QueryParameters =
         new Dictionary<string, object?>(StringComparer.Ordinal)
         {
@@ -38,7 +41,7 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         AccessTelemetryQualificationAccounting accounting,
         AccessTelemetryQualificationGate gate,
         TimeProvider timeProvider)
-        : this(logger, accounting, gate, timeProvider, RecordsPerSecond, SteadyStateSeconds)
+        : this(logger, accounting, gate, timeProvider, RecordsPerSecond, SegmentSeconds)
     {
     }
 
@@ -65,7 +68,7 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         _steadyStateSeconds = steadyStateSeconds;
     }
 
-    /// <summary>Runs the fixed workload once and waits for its bounded lifecycle accounting.</summary>
+    /// <summary>Runs one fixed one-second segment and waits for its bounded lifecycle accounting.</summary>
     /// <param name="cancellationToken">Stops the request without weakening gate expiry.</param>
     /// <returns>Privacy-safe process-local aggregate accounting.</returns>
     public async Task<AccessTelemetryQualificationWorkloadResult> RunAsync(CancellationToken cancellationToken)

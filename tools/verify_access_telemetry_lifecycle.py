@@ -3429,6 +3429,10 @@ def run_story_27_4_producer_checkpoint(
         )
         if resolved_evidence.exists() or resolved_evidence.is_symlink():
             raise EvidenceValidationError("immutable evidence output already exists")
+        if _git_checked(root, "status", "--porcelain=v1", "--untracked-files=all"):
+            raise EvidenceValidationError(
+                "controlled producers require a clean tracked and untracked source worktree"
+            )
         predecessor = _read_bounded_json(resolved_predecessor, approved_root=approved_root)
         _validate_predecessor(predecessor, root, approved_root)
         platform_operations_reviewer = next(

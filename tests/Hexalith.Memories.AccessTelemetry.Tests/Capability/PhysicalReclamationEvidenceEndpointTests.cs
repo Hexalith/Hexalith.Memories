@@ -7,6 +7,7 @@ namespace Hexalith.Memories.AccessTelemetry.Tests.Capability;
 
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 
 using Dapr.Actors;
 using Dapr.Actors.Client;
@@ -58,6 +59,16 @@ public sealed class PhysicalReclamationEvidenceEndpointTests
                 TestContext.Current.CancellationToken);
 
             response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+            using JsonDocument receipt = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken),
+                cancellationToken: TestContext.Current.CancellationToken);
+            JsonElement root = receipt.RootElement;
+            root.EnumerateObject().Count().ShouldBe(5);
+            root.GetProperty("status").GetString().ShouldBe("accepted");
+            root.GetProperty("evidenceId").GetString().ShouldBe(evidence.EvidenceId);
+            root.GetProperty("componentProfileHash").GetString().ShouldBe(evidence.ComponentProfileHash);
+            root.GetProperty("artifactSha256").GetString().ShouldBe(evidence.ArtifactSha256);
+            root.GetProperty("observedAtUnixMilliseconds").GetInt64().ShouldBe(evidence.ObservedAtUnixMilliseconds);
             await actor.Received(1).RecordPhysicalReclamationEvidenceAsync(evidence);
         }
         finally

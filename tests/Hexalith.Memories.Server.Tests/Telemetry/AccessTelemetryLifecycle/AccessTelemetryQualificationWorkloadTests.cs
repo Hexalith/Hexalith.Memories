@@ -39,6 +39,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
     {
         AccessTelemetryQualificationWorkloadRunner.RecordsPerSecond.ShouldBe(125);
         AccessTelemetryQualificationWorkloadRunner.SteadyStateSeconds.ShouldBe(1_800);
+        AccessTelemetryQualificationWorkloadRunner.SegmentSeconds.ShouldBe(1);
         AccessTelemetryQualificationEndpointExtensions.Route.ShouldBe(
             "/operations/access-telemetry/qualification/fixed-workload");
     }

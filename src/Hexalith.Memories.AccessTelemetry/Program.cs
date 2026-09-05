@@ -142,7 +142,16 @@ app.MapPost("/v1/access-telemetry/physical-reclamation-evidence", async (
         new ActorId("global"),
         nameof(AccessTelemetryLifecycleActor));
     await actor.RecordPhysicalReclamationEvidenceAsync(evidence).ConfigureAwait(false);
-    return Results.Accepted();
+    return Results.Json(
+        new AccessTelemetryPhysicalReclamationEvidenceReceipt
+        {
+            Status = "accepted",
+            EvidenceId = evidence.EvidenceId,
+            ComponentProfileHash = evidence.ComponentProfileHash,
+            ArtifactSha256 = evidence.ArtifactSha256,
+            ObservedAtUnixMilliseconds = evidence.ObservedAtUnixMilliseconds,
+        },
+        statusCode: StatusCodes.Status202Accepted);
 }).AllowAnonymous();
 
 app.Run();
