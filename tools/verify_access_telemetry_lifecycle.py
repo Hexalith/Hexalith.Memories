@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation, localcontext
 import base64
 import binascii
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
@@ -2716,6 +2718,7 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
                 "otlp_continuity",
                 "continuity_observation",
                 "qualification_transition",
+                "renew_observations",
             }
         ),
         "results",
@@ -2987,6 +2990,15 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
     )
     if transition["final_writes_state"] != "disabled":
         raise EvidenceValidationError("qualification target was not restored to disabled")
+    renew_observations = _require_sequence(results["renew_observations"], "renew_observations")
+    if not renew_observations:
+        raise EvidenceValidationError("C2 did not renew its owned Lease and gate")
+    for index, observation in enumerate(renew_observations):
+        _validate_result_observation(
+            observation,
+            f"renew_observations[{index}]",
+            f"qualification-renew:{index + 1}",
+        )
 
 
 def _validate_c3(results: Mapping[str, Any]) -> None:
@@ -3213,7 +3225,14 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
             ("logical_absence", "newer_records_preserved", "interrupted_recovery", "restart_recovery"),
         )
         names = _require_sequence(cohort["newer_record_names"], f"cohorts[{index}].newer_record_names")
-        if not names or any(not isinstance(name, str) or _SAFE_NAME.fullmatch(name) is None for name in names):
+        if not names or any(
+            not isinstance(name, str)
+            or (
+                _SAFE_NAME.fullmatch(name) is None
+                and re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", name) is None
+            )
+            for name in names
+        ):
             raise EvidenceValidationError("C3 must name bounded newer-record fixtures")
         if hours == 168 and list(names) != list(control_names):
             raise EvidenceValidationError("C3 final horizon is not bound to the newer-record control")
@@ -3656,6 +3675,70 @@ def run_story_27_4_checkpoint(
         return 1
 
 
+_INLINE_KUBECTL_LOCK = threading.Lock()
+_INLINE_KUBECTL_CODE: dict[str, Any] = {}
+_INLINE_KUBECTL_ENV_MISSING = object()
+
+
+def _run_inline_kubectl(
+    command: Sequence[str],
+    *,
+    environment: Mapping[str, str] | None,
+    stdin_bytes: bytes | None,
+) -> tuple[int, bytes, bytes] | None:
+    """Execute the test kubectl fake in-process so 1,800 segments stay offline-fast."""
+
+    env = dict(environment or os.environ)
+    script = env.get("HEXALITH_STORY_27_4_INLINE_KUBECTL", "")
+    if not script or not command or Path(str(command[0])).name != "kubectl":
+        return None
+    path = Path(script)
+    if not path.is_file():
+        raise EvidenceValidationError("inline kubectl fake is missing")
+    with _INLINE_KUBECTL_LOCK:
+        compiled = _INLINE_KUBECTL_CODE.get(str(path))
+        if compiled is None:
+            compiled = compile(path.read_text(encoding="utf-8"), str(path), "exec")
+            _INLINE_KUBECTL_CODE[str(path)] = compiled
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        saved_argv = sys.argv
+        saved_stdout = sys.stdout
+        saved_stderr = sys.stderr
+        saved_stdin = sys.stdin
+        previous_env: dict[str, object] = {}
+        stdin_wrapper: io.TextIOWrapper | None = None
+        try:
+            sys.argv = [str(path), *[str(value) for value in command[1:]]]
+            sys.stdout = stdout
+            sys.stderr = stderr
+            for key, value in env.items():
+                previous_env[key] = os.environ.get(key, _INLINE_KUBECTL_ENV_MISSING)
+                os.environ[key] = value
+            if stdin_bytes:
+                stdin_wrapper = io.TextIOWrapper(io.BytesIO(stdin_bytes), encoding="utf-8")
+                sys.stdin = stdin_wrapper
+            exec(compiled, {"__name__": "__main__"})
+            return 0, stdout.getvalue().encode("utf-8"), stderr.getvalue().encode("utf-8")
+        except SystemExit as exc:
+            code = 0 if exc.code is None else exc.code
+            if not isinstance(code, int):
+                code = 1
+            return code, stdout.getvalue().encode("utf-8"), stderr.getvalue().encode("utf-8")
+        finally:
+            sys.argv = saved_argv
+            sys.stdout = saved_stdout
+            sys.stderr = saved_stderr
+            sys.stdin = saved_stdin
+            if stdin_wrapper is not None:
+                stdin_wrapper.close()
+            for key, value in previous_env.items():
+                if value is _INLINE_KUBECTL_ENV_MISSING:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = str(value)
+
+
 def _run_bounded_process(
     command: Sequence[str],
     *,
@@ -3666,6 +3749,9 @@ def _run_bounded_process(
 ) -> tuple[int, bytes, bytes]:
     """Stream one child with deterministic limits and terminate on the first exceeded bound."""
 
+    inline = _run_inline_kubectl(command, environment=environment, stdin_bytes=stdin_bytes)
+    if inline is not None:
+        return inline
     try:
         process = subprocess.Popen(
             tuple(command),

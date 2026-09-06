@@ -707,13 +707,26 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Dapr and state-operation p95 latency use runtime histogram units.",
+      "description": "Dapr and state-operation p95 latency use runtime histogram units. State operations/s is the unlabeled lifecycle state-store counter used for qualification throughput, not a tenant or content series.",
       "fieldConfig": {
         "defaults": {
           "noValue": "Unhealthy / NoData",
           "unit": "ms"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "state operations/s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ops/s"
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 7,
@@ -730,6 +743,10 @@
         {
           "expr": "histogram_quantile(0.95, sum by (le) (rate(memories_access_telemetry_lifecycle_state_duration_milliseconds_bucket[5m])))",
           "legendFormat": "state p95"
+        },
+        {
+          "expr": "sum(rate(memories_access_telemetry_lifecycle_state_operations_total[5m]))",
+          "legendFormat": "state operations/s"
         }
       ],
       "title": "Access Telemetry Dependency Latency",

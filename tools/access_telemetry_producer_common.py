@@ -114,6 +114,9 @@ _C4_EXPECTED_DISPOSITIONS: Mapping[str, str] = {
     )},
 }
 _TERMINATION_REQUESTED = threading.Event()
+_LEASE_MUTATION_LOCK = threading.Lock()
+_WRITER_RENEW_INTERVAL_SECONDS = 8 * 60
+_WRITER_RENEW_TEST_INTERVAL_SECONDS = 0.25
 _REPORTER_COMMAND = ["/bin/sh", "-ec"]
 _REPORTER_ARGUMENTS = [
     'wget -qO- --header="dapr-api-token: ${DAPR_API_TOKEN}" '
@@ -1474,6 +1477,31 @@ class _C3Journal:
         self.close()
 
 
+def _host_cadence_sleep(seconds: float) -> None:
+    """Wait for the next one-second host cadence, or skip when tests compress time."""
+
+    if seconds <= 0:
+        return
+    if os.environ.get("HEXALITH_STORY_27_4_HOST_CADENCE_QUANTUM") == "0":
+        return
+    time.sleep(seconds)
+
+
+def _writer_renew_interval_seconds() -> float:
+    if os.environ.get("HEXALITH_STORY_27_4_HOST_CADENCE_QUANTUM") == "0":
+        return _WRITER_RENEW_TEST_INTERVAL_SECONDS
+    return _WRITER_RENEW_INTERVAL_SECONDS
+
+
+def _command_mutates_qualification_lease(command_id: str) -> bool:
+    return (
+        command_id in {"qualification-enable", "qualification-renew", "qualification-disable"}
+        or command_id.startswith("replace-")
+        or command_id == "approved-adapter-fault"
+        or command_id.startswith("failure-")
+    )
+
+
 def _run_writer_segments(
     target: Mapping[str, str],
     checkpoint: str,
@@ -1481,7 +1509,7 @@ def _run_writer_segments(
     *,
     _segment_count: int = 1_800,
     _monotonic: Callable[[], float] = time.monotonic,
-    _sleep: Callable[[float], None] = time.sleep,
+    _sleep: Callable[[float], None] = _host_cadence_sleep,
     _process_runner: Callable[..., tuple[int, bytes, bytes]] = _run_bounded_process,
 ) -> tuple[Mapping[str, Any], dict[str, Any]]:
     """Dispatch one-second segments on an absolute host cadence with bounded concurrency."""
@@ -1709,6 +1737,17 @@ def _run_operation(
 ) -> tuple[Mapping[str, Any], dict[str, Any]]:
     if command_id in {"writer-1", "writer-2"}:
         return _run_writer_segments(target, checkpoint, command_id)
+    if _command_mutates_qualification_lease(command_id):
+        with _LEASE_MUTATION_LOCK:
+            return _run_locked_operation(target, checkpoint, command_id)
+    return _run_locked_operation(target, checkpoint, command_id)
+
+
+def _run_locked_operation(
+    target: Mapping[str, str],
+    checkpoint: str,
+    command_id: str,
+) -> tuple[Mapping[str, Any], dict[str, Any]]:
     if command_id == "qualification-disable" and isinstance(target, dict):
         target.pop("_disable_lease_authorized", None)
     arguments = {
@@ -3252,6 +3291,31 @@ def _execute_qualification(
         if remaining_command_ids[:2] == ["writer-1", "writer-2"]:
             # Both fixed requests must overlap so the cluster observes the ADR's
             # exact 250 accepted records/s, rather than two sequential 125/s runs.
+            stop_renew = threading.Event()
+            renew_error: list[BaseException] = []
+
+            def renew_session() -> None:
+                interval = _writer_renew_interval_seconds()
+                try:
+                    while not stop_renew.wait(timeout=interval):
+                        _, command = _run_operation(
+                            target, checkpoint, "qualification-renew"
+                        )
+                        if isinstance(target, dict):
+                            renewals = target.setdefault("_session_renew_commands", [])
+                            named = dict(command)
+                            named["command_id"] = f"qualification-renew:{len(renewals) + 1}"
+                            renewals.append(named)
+                except BaseException as exc:
+                    renew_error.append(exc)
+                    _TERMINATION_REQUESTED.set()
+
+            renew_thread = threading.Thread(
+                target=renew_session,
+                name="story-27-4-renew",
+                daemon=True,
+            )
+            renew_thread.start()
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="story-27-4-writer") as writers:
                 try:
                     futures = {
@@ -3286,6 +3350,13 @@ def _execute_qualification(
                 except BaseException:
                     _TERMINATION_REQUESTED.set()
                     raise
+                finally:
+                    stop_renew.set()
+                    renew_thread.join(timeout=30)
+            if isinstance(target, dict):
+                body_commands.extend(list(target.get("_session_renew_commands", [])))
+            if renew_error:
+                raise renew_error[0]
             remaining_command_ids = []
         else:
             sequential_results, sequential_commands = _execute(
@@ -3418,6 +3489,13 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
     enable = results["qualification-enable"]
     disable = results["qualification-disable"]
     final = results["qualification-final-state"]
+    renew_observations = [
+        _result_observation(command)
+        for command in commands
+        if str(command.get("command_id", "")).startswith("qualification-renew:")
+    ]
+    if not renew_observations:
+        raise EvidenceValidationError("C2 did not renew its owned Lease and gate")
     return {
         "writers": {
             "steady_state_minutes": 30,
@@ -3448,6 +3526,7 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
         "otlp_continuity": continuity.get("otlp_continuity"),
         "continuity_observation": _result_observation(continuity["_command"]),
         "qualification_transition": _transition(identity, enable, disable, final, target),
+        "renew_observations": renew_observations,
     }, commands
 
 

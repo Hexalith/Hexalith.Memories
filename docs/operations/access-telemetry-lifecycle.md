@@ -152,7 +152,8 @@ concurrently inside the two selected Server pods. Before enabling, its
 namespace, approved profile hash, and disabled write state. Every passing packet
 proves both that initial identity and the qualification lane's final disabled state.
 Lease acquisition uses an atomic JSON Patch that tests the observed resource version
-and empty holder before recording the C1 reviewer identity.
+and empty holder before recording the C1 reviewer identity. C2 and C4 renew that
+owned Lease and the qualification gate before session expiry.
 Evidence paths are exclusive: choose a new run ID after every rejected or interrupted
 run. Never edit, overwrite, or relabel a packet.
 
@@ -221,8 +222,13 @@ cohort is attributable, reusable allocator free space increases, and age is at m
 The suspended qualification reporter Job is enabled only for this observation. It
 uses the reviewed deployed lifecycle image and adapter Dapr identity, carries no
 Kubernetes service-account token or RBAC, and submits only the fixed aggregate C3
-document to the authenticated physical-evidence route. Never record an
-operating-system disk shrink claim.
+document to the authenticated physical-evidence route. Before that Job is released,
+the producer derives one deterministic artifact hash from the authenticated journal
+context and the complete immutable C3 command/result prefix. If interruption occurs
+after the Job completed but before the journal append, resume accepts only that
+Job's identical logs and authenticated receipt for the same hash. Never unsuspend a
+completed Job to rerun it, and never require namespace-wide Job create or delete
+authority. Never record an operating-system disk shrink claim.
 
 ## C4 failure, privacy, and observability verification
 
@@ -233,10 +239,16 @@ profile drift, reconnect, retry exhaustion, shutdown, and degraded rollback.
 
 For every condition prove a nonzero business-request sample, zero business
 failures, business readiness available, lifecycle health fail-closed, and continued
-JSON-console/configured-OTLP audit emission. `Unhealthy` takes precedence over
-`Degraded`; `NoData` is valid only when the provider is enabled, every lifecycle
-gate is otherwise healthy, and neither accepted nor rejected activity has occurred
-for 15 minutes.
+JSON-console/configured-OTLP audit emission. Authenticated business and privacy
+probes read the short-lived qualification JWT only from the absolute, non-symlink,
+owner-only file named by `HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE`. The producer
+streams that token only over stdin to the fixed in-pod request command. The token
+never appears in argv, environment, logs, journals, or packets, and it authorizes
+only tenant `story-27-4-qualification`. Missing, over-permissive, stale, malformed,
+or leaked credentials fail before the qualification gate opens. `Unhealthy` takes
+precedence over `Degraded`; `NoData` is valid only when the provider is enabled,
+every lifecycle gate is otherwise healthy, and neither accepted nor rejected
+activity has occurred for 15 minutes.
 
 Prove all nine lifecycle states (`accepted`, `rejected`, `enqueued`, `persisted`,
 `retried`, `failed`, `dropped`, `expired`, `purged`) and only bounded `state`,

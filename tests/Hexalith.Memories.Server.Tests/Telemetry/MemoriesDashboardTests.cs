@@ -136,6 +136,7 @@ public sealed class MemoriesDashboardTests
         string[] queries = panels.SelectMany(ExtractDashboardQueries).ToArray();
         queries.ShouldContain("max(memories_access_telemetry_lifecycle_queue_records)");
         queries.ShouldContain("max(memories_access_telemetry_lifecycle_capacity_records)");
+        queries.ShouldContain("sum(rate(memories_access_telemetry_lifecycle_state_operations_total[5m]))");
         queries.ShouldContain("time() - max(memories_access_telemetry_lifecycle_physical_evidence_last_timestamp_seconds)");
         queries.ShouldContain(
             "max by (state) (memories_access_telemetry_lifecycle_profile) or on() label_replace(vector(1), \"state\", \"no_data\", \"\", \"\")");

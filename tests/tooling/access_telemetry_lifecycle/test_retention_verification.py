@@ -50,11 +50,14 @@ from verify_access_telemetry_lifecycle import (  # noqa: E402
 )
 from access_telemetry_producer_common import (  # noqa: E402
     _C3Journal,
+    _TERMINATION_REQUESTED,
+    _execute_qualification,
     _load_business_bearer,
     _qualification_record_ids,
     _run_operation,
     _run_writer_segments,
 )
+import access_telemetry_producer_common as producer_common  # noqa: E402
 
 
 SHA = "a" * 64
@@ -326,6 +329,7 @@ def c2_payload() -> dict[str, object]:
         "otlp_continuity": True,
         "continuity_observation": observation("continuity"),
         "qualification_transition": transition(),
+        "renew_observations": [observation("qualification-renew:1")],
     }
     return bind_result_commands(payload)
 
@@ -489,12 +493,12 @@ class RetentionVerificationTests(unittest.TestCase):
                     "reclaimed_utc_ms": reclaimed, "allocator_free_bytes": 700,
                 },
             }
-            with patch.dict(os.environ, {
-                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                "QUALIFICATION_COMPLETED_REPORTER": "1",
-                "QUALIFICATION_ARTIFACT": SHA,
-                "QUALIFICATION_RECLAIMED": str(reclaimed),
-            }):
+            with patch.dict(os.environ, qualification_test_env(
+                fake_bin,
+                QUALIFICATION_COMPLETED_REPORTER="1",
+                QUALIFICATION_ARTIFACT=SHA,
+                QUALIFICATION_RECLAIMED=str(reclaimed),
+            )):
                 result, _ = _run_operation(
                     target, "c3-retention-reclamation", "cohort-168h-report"
                 )
@@ -508,7 +512,7 @@ class RetentionVerificationTests(unittest.TestCase):
         writer = payload["results"]["writers"]["writer_results"][0]
         writer["acknowledged"] -= 125
         writer["persisted"] -= 125
-        with self.assertRaises(EvidenceValidationError):
+        with self.assertRaises(ValueError):
             validate_story_27_4_checkpoint(
                 "c2-production-replacement", payload, predecessor()
             )
@@ -524,10 +528,10 @@ class RetentionVerificationTests(unittest.TestCase):
                 "_platform_operations_reviewer": "reviewer",
                 "_lease_holder": "story-27-4/reviewer/test",
             }
-            with patch.dict(os.environ, {
-                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                "QUALIFICATION_RENEW_FOREIGN": "1",
-            }):
+            with patch.dict(os.environ, qualification_test_env(
+                fake_bin,
+                QUALIFICATION_RENEW_FOREIGN="1",
+            )):
                 with self.assertRaises(EvidenceValidationError):
                     _run_operation(
                         target, "c4-failure-privacy-observability", "qualification-renew"
@@ -608,6 +612,45 @@ class RetentionVerificationTests(unittest.TestCase):
         self.assertEqual(1, result["replayed_segment_count"])
         self.assertEqual(375, result["acknowledged"] + result["conflicted"])
         self.assertEqual(0, result["dispatch_lag_max_milliseconds"])
+
+    def test_c2_session_renews_owned_lease_during_writer_window(self) -> None:
+        original_writer = producer_common._run_writer_segments
+
+        def delayed_writer(
+            target: object,
+            checkpoint: str,
+            command_id: str,
+            **kwargs: object,
+        ) -> tuple[object, dict[str, object]]:
+            time.sleep(0.4)
+            kwargs.setdefault("_segment_count", 1)
+            return original_writer(target, checkpoint, command_id, **kwargs)
+
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            target = {
+                "kube_context": "operator@local",
+                "namespace": "memories-qualification",
+                "_platform_operations_reviewer": "reviewer",
+                "_lease_holder": f"story-27-4/reviewer/{os.getpid()}-{now_ms()}",
+            }
+            with patch.dict(os.environ, qualification_test_env(fake_bin)):
+                with patch.object(producer_common, "_run_writer_segments", delayed_writer):
+                    try:
+                        _results, commands = _execute_qualification(
+                            target,
+                            "c2-production-replacement",
+                            ["writer-1", "writer-2"],
+                        )
+                    finally:
+                        _TERMINATION_REQUESTED.clear()
+
+        self.assertTrue(
+            any(str(command["command_id"]).startswith("qualification-renew") for command in commands),
+            [command["command_id"] for command in commands],
+        )
 
     def test_qualification_overlay_renders_zero_default_gate_reporter_and_least_privilege_rbac(self) -> None:
         import yaml
@@ -868,12 +911,11 @@ class RetentionVerificationTests(unittest.TestCase):
                 "kind": "non-production-qualification", "kube_context": "operator@local",
                 "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
             }}), encoding="utf-8")
-            environment = {
-                **os.environ,
-                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                "QUALIFICATION_FAIL_OPERATION": "writer-1",
-                "QUALIFICATION_OPERATION_LOG": str(operation_log),
-            }
+            environment = qualification_test_env(
+                fake_bin,
+                QUALIFICATION_FAIL_OPERATION="writer-1",
+                QUALIFICATION_OPERATION_LOG=str(operation_log),
+            )
 
             result = subprocess.run(
                 [sys.executable, "-B", str(TOOLS_DIR / "access_telemetry_c2_producer.py"),
@@ -911,12 +953,11 @@ class RetentionVerificationTests(unittest.TestCase):
                 "kind": "non-production-qualification", "kube_context": "operator@local",
                 "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
             }}), encoding="utf-8")
-            environment = {
-                **os.environ,
-                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                "QUALIFICATION_INVALID_OPERATION": "qualification-enable",
-                "QUALIFICATION_OPERATION_LOG": str(operation_log),
-            }
+            environment = qualification_test_env(
+                fake_bin,
+                QUALIFICATION_INVALID_OPERATION="qualification-enable",
+                QUALIFICATION_OPERATION_LOG=str(operation_log),
+            )
 
             result = subprocess.run(
                 [sys.executable, "-B", str(TOOLS_DIR / "access_telemetry_c2_producer.py"),
@@ -951,12 +992,11 @@ class RetentionVerificationTests(unittest.TestCase):
                 "kind": "non-production-qualification", "kube_context": "operator@local",
                 "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
             }}), encoding="utf-8")
-            environment = {
-                **os.environ,
-                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                "QUALIFICATION_INVALID_OPERATION": "qualification-target-identity",
-                "QUALIFICATION_OPERATION_LOG": str(operation_log),
-            }
+            environment = qualification_test_env(
+                fake_bin,
+                QUALIFICATION_INVALID_OPERATION="qualification-target-identity",
+                QUALIFICATION_OPERATION_LOG=str(operation_log),
+            )
 
             result = subprocess.run(
                 [sys.executable, "-B", str(TOOLS_DIR / "access_telemetry_c2_producer.py"),
@@ -993,12 +1033,11 @@ class RetentionVerificationTests(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
-                env={
-                    **os.environ,
-                    "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                    "QUALIFICATION_STALE_LEASE": "1",
-                    "QUALIFICATION_OPERATION_LOG": str(operation_log),
-                },
+                env=qualification_test_env(
+                    fake_bin,
+                    QUALIFICATION_STALE_LEASE="1",
+                    QUALIFICATION_OPERATION_LOG=str(operation_log),
+                ),
             )
             self.assertEqual(1, result.returncode)
             self.assertEqual(
@@ -1025,12 +1064,11 @@ class RetentionVerificationTests(unittest.TestCase):
                 check=False,
                 capture_output=True,
                 text=True,
-                env={
-                    **os.environ,
-                    "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                    "QUALIFICATION_ACTIVE_FOREIGN_LEASE": "1",
-                    "QUALIFICATION_OPERATION_LOG": str(operation_log),
-                },
+                env=qualification_test_env(
+                    fake_bin,
+                    QUALIFICATION_ACTIVE_FOREIGN_LEASE="1",
+                    QUALIFICATION_OPERATION_LOG=str(operation_log),
+                ),
             )
             self.assertEqual(1, result.returncode)
             self.assertEqual(
@@ -1173,10 +1211,10 @@ class RetentionVerificationTests(unittest.TestCase):
             bearer = evidence / "business-bearer.jwt"
             write_business_bearer(bearer)
             artifacts: dict[str, Path] = {"C1": c1_path}
-            with patch.dict(os.environ, {
-                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
-                "HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE": str(bearer),
-            }):
+            with patch.dict(os.environ, qualification_test_env(
+                fake_bin,
+                HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE=str(bearer),
+            )):
                 adapter_result = self._cli(
                     repository,
                     "--checkpoint", "adapter-profile",
@@ -1500,6 +1538,17 @@ def write_terminal_artifacts(evidence: Path, repository: Path, commit: str,
     return result
 
 
+def qualification_test_env(fake_bin: Path, **extra: str) -> dict[str, str]:
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+        "HEXALITH_STORY_27_4_HOST_CADENCE_QUANTUM": "0",
+        "HEXALITH_STORY_27_4_INLINE_KUBECTL": str(fake_bin / "kubectl"),
+    }
+    env.update(extra)
+    return env
+
+
 def install_fake_kubectl(directory: Path) -> None:
     script = directory / "kubectl"
     script.write_text("""#!/usr/bin/env python3
@@ -1507,6 +1556,15 @@ import hashlib, json, os, sys, time
 args = sys.argv[1:]
 step = int(os.environ.get('HEXALITH_STORY_27_4_STEP', '0'))
 namespace = args[args.index('--namespace') + 1] if '--namespace' in args else ''
+def selected_items(items):
+    if '-l' not in args or not isinstance(items, list):
+        return items
+    key, _, expected = args[args.index('-l') + 1].partition('=')
+    return [item for item in items if isinstance(item, dict)
+        and item.get('metadata', {}).get('labels', {}).get(key) == expected]
+def control_record_names():
+    run_id = 'run-' + hashlib.sha256(os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].encode()).hexdigest()[:24]
+    return qualification_ids(run_id, 'newer-control-seed-segment-0001')
 def qualification_ids(run_id, segment_id):
     correlation = hashlib.sha256(f'{run_id}/{segment_id}'.encode()).hexdigest()[:32]
     alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
@@ -1668,7 +1726,7 @@ if 'get' in args and args[-1] == 'json':
                      {'imageID': 'registry/injector@sha256:' + digest['injector']}]}},
             ],
         }.get(resource, [])
-        print(json.dumps({'items': system_items}, separators=(',', ':')))
+        print(json.dumps({'items': selected_items(system_items)}, separators=(',', ':')))
         raise SystemExit(0)
     items = {
         'deployments': [
@@ -1739,7 +1797,7 @@ if 'get' in args and args[-1] == 'json':
                  'containerStatuses': [{'name': 'postgresql', 'restartCount': 0, 'imageID': postgres_image}]}},
         ],
     }.get(resource, [])
-    print(json.dumps({'items': items}, separators=(',', ':')))
+    print(json.dumps({'items': selected_items(items)}, separators=(',', ':')))
     raise SystemExit(0)
 now = int(time.time() * 1000)
 command_text = ' '.join(args)
@@ -1852,9 +1910,8 @@ if 'psql' in command_text and op == 'c3-empty-preflight':
     print(json.dumps({'stage': 'preflight', 'record_count': 0, 'index_candidate_count': 0}, separators=(',', ':')))
     raise SystemExit(0)
 if 'psql' in command_text and op == 'newer-control-seed':
-    run_id = 'run-' + hashlib.sha256(os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].encode()).hexdigest()[:24]
     print(json.dumps({'stage': 'control', 'record_count': 125,
-        'newer_record_names': qualification_ids(run_id, 'newer-control-seed-segment-0001')}, separators=(',', ':')))
+        'newer_record_names': control_record_names()}, separators=(',', ':')))
     raise SystemExit(0)
 if 'psql' in command_text and op.startswith('cohort-'):
     hours = int(op.split('-')[1][:-1]); stage = op.rsplit('-', 1)[-1]
@@ -1876,8 +1933,8 @@ if 'psql' in command_text and op.startswith('cohort-'):
         value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
             'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
             'accepted_utc_ms': accepted, 'emitted_utc_ms': emitted, 'expires_utc_ms': expires,
-            'pre_tuple_count': 125, 'candidate_count': 125,
-            'newer_record_names': [f'{index:026d}' for index in range(1, 126)],
+            'pre_tuple_count': 125,             'candidate_count': 125,
+            'newer_record_names': control_record_names(),
             'newer_records_preserved': True}
     elif stage == 'purge':
         value = {'stage': stage, 'purged_utc_ms': purged, 'post_tuple_count': 0,
@@ -1912,7 +1969,7 @@ elif op == 'retention-controls':
         'logical_expiry_millisecond': True, 'ttl_defense_in_depth': True}
 elif op == 'newer-control-seed':
     value = {'record_count': 125,
-        'newer_record_names': [f'{index:026d}' for index in range(1, 126)]}
+        'newer_record_names': control_record_names()}
 elif op.startswith('cohort-'):
     hours = int(op.split('-')[1][:-1]); emitted = (now // 3600000) * 3600000 - (8 * 24 * 3600000)
     accepted = emitted + 25; expires = emitted + hours * 3600000; purged = expires + 60000
@@ -1923,7 +1980,7 @@ elif op.startswith('cohort-'):
         'reclaimed_utc_ms': purged + 60000, 'pre_tuple_count': 125, 'post_tuple_count': 0,
         'candidate_count': 125, 'deleted_count': 115, 'already_absent_count': 10,
         'index_removal_count': 125, 'logical_absence': True,
-        'newer_record_names': [f'{index:026d}' for index in range(1, 126)],
+        'newer_record_names': control_record_names(),
         'newer_records_preserved': True, 'interrupted_recovery': True, 'restart_recovery': True,
         'allocator_free_bytes_before': 100, 'allocator_free_bytes_after': 700, 'os_disk_shrink_claimed': False}
 elif op.startswith('failure-'):

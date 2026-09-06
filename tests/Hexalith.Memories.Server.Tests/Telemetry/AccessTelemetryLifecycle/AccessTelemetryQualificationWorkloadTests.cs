@@ -255,6 +255,10 @@ public sealed class AccessTelemetryQualificationWorkloadTests
     [Fact]
     public async Task Program_MapsTheQualificationRouteOnlyInTheQualificationEnvironment()
     {
+        string? originalAppToken = Environment.GetEnvironmentVariable(
+            DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable);
+        string? originalDaprToken = Environment.GetEnvironmentVariable(
+            DaprTokenStartupValidator.DaprApiTokenEnvironmentVariable);
         string gatePath = Path.GetTempFileName();
         File.WriteAllText(
             gatePath,
@@ -263,6 +267,12 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             "\",\"expiresUtcMs\":0}");
         try
         {
+            Environment.SetEnvironmentVariable(
+                DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable,
+                "qualification-program-app-token");
+            Environment.SetEnvironmentVariable(
+                DaprTokenStartupValidator.DaprApiTokenEnvironmentVariable,
+                "qualification-program-dapr-token");
             using var baseFactory = new TelemetryWebAppFactory();
             using WebApplicationFactory<Program> qualificationFactory = baseFactory.WithWebHostBuilder(builder =>
             {
@@ -281,6 +291,12 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
             using HttpRequestMessage qualificationRequest = CreateProgramRequest();
             using HttpRequestMessage productionRequest = CreateProgramRequest();
+            qualificationRequest.Headers.Add(
+                DaprApplicationTokenMiddleware.DaprApiTokenHeader,
+                "qualification-program-app-token");
+            productionRequest.Headers.Add(
+                DaprApplicationTokenMiddleware.DaprApiTokenHeader,
+                "qualification-program-app-token");
 
             using HttpResponseMessage qualificationResponse = await qualificationClient.SendAsync(
                 qualificationRequest,
@@ -294,6 +310,12 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         }
         finally
         {
+            Environment.SetEnvironmentVariable(
+                DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable,
+                originalAppToken);
+            Environment.SetEnvironmentVariable(
+                DaprTokenStartupValidator.DaprApiTokenEnvironmentVariable,
+                originalDaprToken);
             File.Delete(gatePath);
         }
     }
