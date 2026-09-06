@@ -134,6 +134,15 @@
     "label": "Add lifecycle guard",
     "resolution": ""
   },
+  "DW-556": {
+    "answered_at": "2026-09-06",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add tenant-scoped idempotency and in-flight suppression.",
+    "key": "idempotent",
+    "label": "Build idempotency",
+    "resolution": ""
+  },
   "DW-565": {
     "answered_at": "2026-09-01",
     "bundle_name": "",
