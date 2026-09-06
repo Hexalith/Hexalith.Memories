@@ -81,10 +81,9 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
         try
         {
             AccessTelemetryEvent? source = ExtractTypedState(state);
-            if (source is not null)
-            {
-                _qualificationAccounting?.RecordAttempted();
-            }
+            string? qualificationCorrelation = source is not null
+                ? _qualificationAccounting?.RecordAttempted(source)
+                : null;
             if (source is not null && _status is not null && _timeProvider is not null)
             {
                 _status.RecordActivity(_timeProvider.GetUtcNow());
@@ -97,7 +96,7 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
                 if (_queue.TryEnqueue(record!, out AccessTelemetryReason reason))
                 {
                     ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Enqueued, AccessTelemetryReason.None);
-                    _qualificationAccounting?.RecordEnqueued();
+                    _qualificationAccounting?.RecordEnqueued(record!, qualificationCorrelation);
                     ServerAccessTelemetryLifecycleMetrics.RecordQueue(
                         _queue.Count,
                         _queue.ByteCount,
@@ -107,18 +106,18 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
                 else
                 {
                     ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Dropped, reason);
-                    _qualificationAccounting?.RecordDropped();
+                    _qualificationAccounting?.RecordDropped(qualificationCorrelation);
                 }
             }
             else if (source is not null && sanitizer is null)
             {
                 ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Rejected, AccessTelemetryReason.RemoteValidationPending);
-                _qualificationAccounting?.RecordRejected(1);
+                _qualificationAccounting?.RecordRejected(qualificationCorrelation);
             }
             else if (source is not null)
             {
                 ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Rejected, AccessTelemetryReason.SchemaMismatch);
-                _qualificationAccounting?.RecordRejected(1);
+                _qualificationAccounting?.RecordRejected(qualificationCorrelation);
             }
         }
         catch (Exception caught) when (caught is not OutOfMemoryException and not StackOverflowException)

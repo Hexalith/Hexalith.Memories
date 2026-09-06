@@ -311,10 +311,44 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         // Caller authority is established by Dapr mTLS/access-control before the
         // adapter-only HTTP route reaches this actor. Evidence data does not carry
         // caller-supplied Authority/Verified flags that could self-assert trust.
-        if (!string.Equals(evidence.EvidenceId, options.PhysicalReclamationEvidenceId, StringComparison.Ordinal) ||
-            !string.Equals(evidence.ComponentProfileHash, options.ComponentProfileHash, StringComparison.Ordinal) ||
-            evidence.ArtifactSha256 is not { Length: 64 } artifactSha256 ||
-            !artifactSha256.All(static character => character is >= '0' and <= '9' or >= 'a' and <= 'f'))
+        AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
+        AccessTelemetryLifecycleActorState updated = ApplyPhysicalReclamationEvidence(
+            state,
+            evidence,
+            options.PhysicalReclamationEvidenceId,
+            options.ComponentProfileHash,
+            options.PhysicalReclamationReporterImageDigest,
+            trustedNow);
+        if (ReferenceEquals(updated, state))
+        {
+            return;
+        }
+
+        await StateManager.SetStateAsync(
+            StateName,
+            updated).ConfigureAwait(false);
+        DateTimeOffset observedAt = DateTimeOffset.FromUnixTimeMilliseconds(evidence.ObservedAtUnixMilliseconds);
+        AccessTelemetryLifecycleMetrics.RecordPhysicalEvidence(present: true, observedAt);
+    }
+
+    internal static AccessTelemetryLifecycleActorState ApplyPhysicalReclamationEvidence(
+        AccessTelemetryLifecycleActorState state,
+        AccessTelemetryPhysicalReclamationEvidence evidence,
+        string expectedEvidenceId,
+        string expectedProfileHash,
+        string expectedReporterImageDigest,
+        DateTimeOffset trustedNow)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(evidence);
+        if (!string.Equals(evidence.EvidenceId, expectedEvidenceId, StringComparison.Ordinal) ||
+            !string.Equals(evidence.ComponentProfileHash, expectedProfileHash, StringComparison.Ordinal) ||
+            !IsLowerHexSha256(evidence.ArtifactSha256) ||
+            !IsLowerHexSha256(expectedReporterImageDigest) ||
+            !string.Equals(
+                evidence.ReporterImageDigest,
+                expectedReporterImageDigest,
+                StringComparison.Ordinal))
         {
             throw new AccessTelemetryContractException("physical_evidence_untrusted");
         }
@@ -328,22 +362,37 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         {
             throw new AccessTelemetryContractException("physical_evidence_stale");
         }
+
         if (observedAt > trustedNow.AddSeconds(1) || observedAt < trustedNow.AddHours(-24))
         {
             throw new AccessTelemetryContractException("physical_evidence_stale");
         }
 
-        AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
-        await StateManager.SetStateAsync(
-            StateName,
-            state with
+        if (state.PhysicalReclamationArtifactSha256 is not null)
+        {
+            if (string.Equals(state.PhysicalReclamationEvidenceId, evidence.EvidenceId, StringComparison.Ordinal) &&
+                state.PhysicalReclamationEvidenceUnixMilliseconds == evidence.ObservedAtUnixMilliseconds &&
+                string.Equals(state.PhysicalReclamationArtifactSha256, evidence.ArtifactSha256, StringComparison.Ordinal) &&
+                string.Equals(state.PhysicalReclamationReporterImageDigest, evidence.ReporterImageDigest, StringComparison.Ordinal))
             {
-                PhysicalReclamationEvidenceId = evidence.EvidenceId,
-                PhysicalReclamationEvidenceUnixMilliseconds = evidence.ObservedAtUnixMilliseconds,
-                PhysicalReclamationArtifactSha256 = evidence.ArtifactSha256,
-            }).ConfigureAwait(false);
-        AccessTelemetryLifecycleMetrics.RecordPhysicalEvidence(present: true, observedAt);
+                return state;
+            }
+
+            throw new AccessTelemetryContractException("physical_evidence_conflict");
+        }
+
+        return state with
+        {
+            PhysicalReclamationEvidenceId = evidence.EvidenceId,
+            PhysicalReclamationEvidenceUnixMilliseconds = evidence.ObservedAtUnixMilliseconds,
+            PhysicalReclamationArtifactSha256 = evidence.ArtifactSha256,
+            PhysicalReclamationReporterImageDigest = evidence.ReporterImageDigest,
+        };
     }
+
+    private static bool IsLowerHexSha256(string? value)
+        => value is { Length: 64 } &&
+            value.All(static character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private static DateTimeOffset? CalculateOldestDueUtc(long expiryMinute)
         => expiryMinute <= 0 ? null : DateTimeOffset.FromUnixTimeSeconds(expiryMinute * 60);

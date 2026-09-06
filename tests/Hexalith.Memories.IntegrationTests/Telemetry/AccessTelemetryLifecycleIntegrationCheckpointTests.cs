@@ -199,6 +199,7 @@ public sealed class AccessTelemetryLifecycleIntegrationCheckpointTests
             MarkerKeyGeneration = "mk-2026a",
             CapacityEvidenceId = "lifecycle-checkpoint-capacity",
             PhysicalReclamationEvidenceId = "pending-story-27-3",
+            PhysicalReclamationReporterImageDigest = new string('d', 64),
             RetryInitialDelay = retryDelay,
             RetryMaximumDelay = retryDelay,
         };

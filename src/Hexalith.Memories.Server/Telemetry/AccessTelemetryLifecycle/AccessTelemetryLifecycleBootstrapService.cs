@@ -109,7 +109,8 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                         options.MarkerKeyGeneration,
                         timeProvider,
                         recordIds,
-                        validation.EffectiveRetention.Value));
+                        validation.EffectiveRetention.Value,
+                        environment.IsEnvironment("Qualification")));
                     _publishedFingerprint = fingerprint;
                     _publishedMarkerKeyHash = markerKeyHash;
                     _publishedMarkerKeyGeneration = options.MarkerKeyGeneration;

@@ -108,7 +108,9 @@ internal sealed class BoundedAccessTelemetryQueue
     }
 
     /// <summary>Removes matching records while preserving the FIFO order of all survivors.</summary>
-    public int RemoveWhere(Func<AccessTelemetryRecord, bool> predicate)
+    public int RemoveWhere(
+        Func<AccessTelemetryRecord, bool> predicate,
+        Action<AccessTelemetryRecord>? removedRecord = null)
     {
         ArgumentNullException.ThrowIfNull(predicate);
         lock (_gate)
@@ -122,6 +124,7 @@ internal sealed class BoundedAccessTelemetryQueue
                 {
                     _byteCount -= queued.CanonicalBytes;
                     removed++;
+                    removedRecord?.Invoke(queued.Record);
                 }
                 else
                 {

@@ -11,6 +11,7 @@ using System.Text.Json;
 using Dapr.Client;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
+using Hexalith.Memories.AccessTelemetry.Observability;
 
 /// <summary>Dapr state adapter with strong reads and explicit transactional expiry buckets.</summary>
 internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeProvider timeProvider) : IAccessTelemetryStateStore
@@ -132,6 +133,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
             operations,
             PartitionMetadata,
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        AccessTelemetryLifecycleMetrics.RecordStateOperations(operations.Count);
         return AccessTelemetryStoreWriteStatus.Inserted;
     }
 
@@ -276,6 +278,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
                 operations,
                 PartitionMetadata,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            AccessTelemetryLifecycleMetrics.RecordStateOperations(operations.Count);
         }
 
         (AccessTelemetryRecord? remaining, _) = await daprClient.GetStateAndETagAsync<AccessTelemetryRecord>(
@@ -422,6 +425,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
             operations,
             PartitionMetadata,
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        AccessTelemetryLifecycleMetrics.RecordStateOperations(operations.Count);
 
         (AccessTelemetryRecord? verifiedRecord, _) = await daprClient.GetStateAndETagAsync<AccessTelemetryRecord>(
             StoreName,
@@ -475,6 +479,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
                     StrongFirstWrite)],
                 PartitionMetadata,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            AccessTelemetryLifecycleMetrics.RecordStateOperations(1);
             (catalog, catalogEtag) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryCatalog>(
                 StoreName,
                 ExpiryCatalogKey,
@@ -503,6 +508,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
             [CreateBucketRemoval(bucket, bucketEtag, entry)],
             PartitionMetadata,
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        AccessTelemetryLifecycleMetrics.RecordStateOperations(1);
         (AccessTelemetryExpiryBucket? remaining, _) = await daprClient.GetStateAndETagAsync<AccessTelemetryExpiryBucket>(
             StoreName,
             GetBucketKey(bucket.ExpiryMinute, bucket.Shard),
@@ -534,6 +540,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
             [request],
             PartitionMetadata,
             cancellationToken: cancellationToken).ConfigureAwait(false);
+        AccessTelemetryLifecycleMetrics.RecordStateOperations(1);
     }
 
     private static string GetBucketKey(long expiryMinute, int shard)

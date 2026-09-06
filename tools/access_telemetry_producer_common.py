@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+import base64
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import signal
+import stat as stat_module
 import sys
 import fcntl
+import threading
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -31,6 +35,7 @@ from verify_access_telemetry_lifecycle import (
     _require_mapping,
     _require_nonempty_string,
     _require_nonzero_integer,
+    _require_sequence,
     _run_bounded_process,
     _sha256,
     _utc_now_milliseconds,
@@ -89,6 +94,156 @@ _C4_MECHANISM_PROOF_TESTS: Mapping[str, tuple[str, str, tuple[str, ...]]] = {
     ),
 }
 _MAX_TRANSCRIPT_BYTES = 1_048_576
+_QUALIFICATION_SESSION_SECONDS = 15 * 60
+_BUSINESS_BEARER_ENVIRONMENT = "HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE"
+_BUSINESS_TENANT = "story-27-4-qualification"
+_DENIED_TENANT = "story-27-4-denied"
+_MAX_BEARER_BYTES = 8_192
+_C4_EXPECTED_DISPOSITIONS: Mapping[str, str] = {
+    **{name: "persisted" for name in (
+        "actor-failover", "application-outage", "approved-adapter-fault",
+        "capacity-pressure", "clock-outage", "dapr-outage", "reconnect",
+        "reminder-delay", "shutdown", "state-outage",
+    )},
+    **{name: "dropped" for name in (
+        "queue-byte-exhaustion", "queue-record-exhaustion", "retry-exhaustion",
+    )},
+    **{name: "rejected" for name in (
+        "bad-configuration", "bad-key", "degraded-rollback", "etag-failure",
+        "profile-drift", "stale-attestation", "ttl-failure", "transaction-failure",
+    )},
+}
+_TERMINATION_REQUESTED = threading.Event()
+_REPORTER_COMMAND = ["/bin/sh", "-ec"]
+_REPORTER_ARGUMENTS = [
+    'wget -qO- --header="dapr-api-token: ${DAPR_API_TOKEN}" '
+    '--header="Content-Type: application/json" '
+    '--post-file=/evidence/evidence.json '
+    'http://127.0.0.1:3500/v1.0/invoke/memories-access-telemetry/'
+    'method/v1/access-telemetry/physical-reclamation-evidence'
+]
+_REPORTER_ENV = [
+    {
+        "name": "DAPR_API_TOKEN",
+        "valueFrom": {"secretKeyRef": {"name": "dapr-api-token", "key": "token"}},
+    }
+]
+_REPORTER_VOLUME_MOUNTS = [{"name": "evidence", "mountPath": "/evidence", "readOnly": True}]
+_REPORTER_VOLUMES = [
+    {"name": "evidence", "configMap": {"name": "access-telemetry-physical-evidence-report"}}
+]
+
+
+def _load_business_bearer() -> bytes:
+    """Load one owner-only short-lived JWT without retaining its path or claims."""
+
+    configured = os.environ.get(_BUSINESS_BEARER_ENVIRONMENT)
+    if not configured:
+        raise EvidenceValidationError("C4 requires the external qualification bearer file")
+    path = Path(configured)
+    if not path.is_absolute():
+        raise EvidenceValidationError("qualification bearer file must be an absolute non-symlink path")
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+        payload = os.read(descriptor, _MAX_BEARER_BYTES + 1)
+    except OSError as exc:
+        raise EvidenceValidationError("qualification bearer file is unavailable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if (
+        not stat_module.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or metadata.st_mode & 0o077
+    ):
+        raise EvidenceValidationError("qualification bearer file must be owner-only")
+    if not 32 <= len(payload) <= _MAX_BEARER_BYTES or payload != payload.strip():
+        raise EvidenceValidationError("qualification bearer is malformed or outside its bound")
+    try:
+        token = payload.decode("ascii", errors="strict")
+        parts = token.split(".")
+        if len(parts) != 3 or any(not part for part in parts):
+            raise ValueError("JWT segment count")
+        encoded_claims = parts[1] + "=" * (-len(parts[1]) % 4)
+        claims = _require_mapping(
+            _json_without_duplicates(
+                base64.urlsafe_b64decode(encoded_claims.encode("ascii")).decode(
+                    "utf-8", errors="strict"
+                ),
+                "qualification bearer claims",
+            ),
+            "qualification bearer claims",
+        )
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise EvidenceValidationError("qualification bearer is not a canonical JWT") from exc
+    expires = claims.get("exp")
+    now_seconds = int(time.time())
+    if type(expires) is not int or expires <= now_seconds + 60 or expires > now_seconds + 3_600:
+        raise EvidenceValidationError("qualification bearer is stale or not short-lived")
+    tenant_claim = claims.get("tenant_id", claims.get("tenants"))
+    if isinstance(tenant_claim, str):
+        tenants = tenant_claim.split()
+    elif isinstance(tenant_claim, list) and all(isinstance(value, str) for value in tenant_claim):
+        tenants = tenant_claim
+    else:
+        tenants = []
+    if tenants != [_BUSINESS_TENANT]:
+        raise EvidenceValidationError("qualification bearer is missing or exceeds the fixed tenant authority")
+    return payload + b"\n"
+
+
+def _business_probe_command(
+    target: Mapping[str, str],
+    command_id: str,
+    *,
+    privacy: bool = False,
+) -> tuple[str, ...]:
+    """Build the fixed in-pod request that receives its bearer only on stdin."""
+
+    prefix = _kubectl_prefix(target)
+    correlation = f"story-27-4-{command_id}"
+    if privacy:
+        request_script = (
+            "IFS= read -r bearer; "
+            "dependencies() { wget -qO- http://127.0.0.1:3500/metrics "
+            "| awk '/^dapr_http_client_completed_count/{sum+=$NF} END{print sum+0}'; } ; "
+            "status() { wget -S -qO /dev/null --header=\"Authorization: Bearer $bearer\" "
+            f"--header=\"X-Hexalith-Qualification-Run: {correlation}\" \"$1\" 2>&1 "
+            "| awk '/HTTP\\/{code=$2} END{print code+0}'; } ; "
+            f"allowed=$(status http://127.0.0.1:8080/api/v1/tenants/{_BUSINESS_TENANT}); "
+            "before_denial=$(dependencies); "
+            f"denied=$(status http://127.0.0.1:8080/api/v1/tenants/{_DENIED_TENANT}); "
+            "after_denial=$(dependencies); delta=$((after_denial-before_denial)); "
+            "printf '{\"allowed_status\":%s,\"denied_status\":%s,\"denied_dependency_calls\":%s}' "
+            "\"$allowed\" \"$denied\" \"$delta\""
+        )
+    else:
+        request_script = (
+            "IFS= read -r bearer; "
+            "code=$(wget -S -qO /dev/null --header=\"Authorization: Bearer $bearer\" "
+            f"--header=\"X-Hexalith-Qualification-Run: {correlation}\" "
+            "http://127.0.0.1:8080/api/v1/handlers 2>&1 "
+            "| awk '/HTTP\\/{value=$2} END{print value+0}'); "
+            "printf '{\"business_status\":%s}' \"$code\""
+        )
+    return (
+        "__BUSINESS_BEARER_STDIN__",
+        *prefix,
+        "exec",
+        "-i",
+        "pod/__SERVER_POD_0__",
+        "-c",
+        "memories",
+        "--",
+        "/bin/sh",
+        "-ec",
+        request_script,
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -145,6 +300,47 @@ def _kubectl_prefix(target: Mapping[str, str], namespace: str | None = None) -> 
     )
 
 
+def _fixed_workload_shell(target: Mapping[str, str], command_id: str) -> str:
+    """Build the bodyless invocation with bounded, retry-stable correlation."""
+
+    lease_holder = _require_nonempty_string(
+        target.get("_lease_holder"), "qualification lease holder", maximum=256
+    )
+    run_id = f"run-{_sha256(lease_holder)[:24]}"
+    segment_id = f"{command_id}-segment-0001"
+    if len(segment_id) > 64 or re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", segment_id) is None:
+        raise EvidenceValidationError("qualification workload segment identity is invalid")
+    return (
+        'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" '
+        f'--header="X-Hexalith-Qualification-Run: {run_id}" '
+        f'--header="X-Hexalith-Qualification-Segment: {segment_id}" '
+        f'--header="X-Hexalith-Qualification-Emitted-Utc-Ms: {_utc_now_milliseconds()}" '
+        f'--post-data="" {_FIXED_WORKLOAD_ROUTE}'
+    )
+
+
+def _qualification_record_ids(run_id: str, segment_id: str, count: int = 125) -> list[str]:
+    """Derive the exact retry-stable Crockford identities emitted by one segment."""
+
+    correlation = hashlib.sha256(f"{run_id}/{segment_id}".encode("utf-8")).hexdigest()[:32]
+    alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+    result: list[str] = []
+    for ordinal in range(count):
+        digest = bytearray(
+            hashlib.sha256(
+                f"qualification-{correlation}-{ordinal:03d}".encode("utf-8")
+            ).digest()
+        )
+        digest[0] &= 0x7f
+        value = int.from_bytes(digest[:16], byteorder="big", signed=False)
+        encoded = ["0"] * 26
+        for index in range(25, -1, -1):
+            value, remainder = divmod(value, 32)
+            encoded[index] = alphabet[remainder]
+        result.append("".join(encoded))
+    return result
+
+
 def _fixed_test_commands(
     project: str,
     assembly: str,
@@ -176,9 +372,20 @@ def _fixed_operation_commands(
             (*prefix, "get", "lease", _LEASE_NAME, "-o", "json"),
             (*prefix, "get", "deployment", "memories-access-telemetry", "-o", "json"),
             (*prefix, "get", "deployment", "memories-access-telemetry-clock", "-o", "json"),
+            (*prefix, "get", "deployments", "-o", "json"),
+            (*prefix, "get", "components.dapr.io", "-o", "json"),
+            (*prefix, "get", "configurations.dapr.io", "-o", "json"),
+            (*prefix, "get", "statefulsets", "-o", "json"),
+            (*prefix, "get", "job", "access-telemetry-physical-evidence-reporter", "-o", "json"),
+            (*prefix, "get", "pods", "-o", "json"),
+            (*prefix, "get", "serviceaccounts", "-o", "json"),
+            (*_kubectl_prefix(target, "dapr-system"), "get", "deployments", "-o", "json"),
+            (*_kubectl_prefix(target, "dapr-system"), "get", "statefulsets", "-o", "json"),
+            (*_kubectl_prefix(target, "dapr-system"), "get", "pods", "-o", "json"),
+            (*_kubectl_prefix(target, "dapr-system"), "get", "serviceaccounts", "-o", "json"),
         ]
     if command_id == "qualification-enable":
-        expires_utc_ms = _utc_now_milliseconds() + 45 * 60 * 1000
+        expires_utc_ms = _utc_now_milliseconds() + _QUALIFICATION_SESSION_SECONDS * 1000
         gate_patch = _canonical_json(
             {
                 "data": {
@@ -202,7 +409,7 @@ def _fixed_operation_commands(
                 {"op": "test", "path": "/metadata/resourceVersion", "value": resource_version},
                 {"op": "test", "path": "/spec/holderIdentity", "value": ""},
                 {"op": "replace", "path": "/spec/holderIdentity", "value": target["_lease_holder"]},
-                {"op": "replace", "path": "/spec/leaseDurationSeconds", "value": 2700},
+                {"op": "replace", "path": "/spec/leaseDurationSeconds", "value": _QUALIFICATION_SESSION_SECONDS},
                 {
                     "op": "add",
                     "path": "/spec/acquireTime",
@@ -211,9 +418,22 @@ def _fixed_operation_commands(
             ]
         )
         return [
-            (*prefix, "auth", "can-i", "patch", "leases.coordination.k8s.io"),
-            (*prefix, "auth", "can-i", "update", "deployments.apps/scale"),
+            (*prefix, "auth", "can-i", "patch", f"lease/{_LEASE_NAME}"),
+            (*prefix, "auth", "can-i", "patch", f"configmap/{_GATE_NAME}"),
+            (*prefix, "auth", "can-i", "update", "deployment/memories-access-telemetry", "--subresource=scale"),
+            (*prefix, "auth", "can-i", "update", "deployment/memories-access-telemetry-clock", "--subresource=scale"),
+            (*prefix, "auth", "can-i", "patch", "deployment/memories"),
+            (*prefix, "auth", "can-i", "patch", "deployment/memories-access-telemetry"),
+            (*prefix, "auth", "can-i", "patch", "deployment/memories-access-telemetry-clock"),
+            (*prefix, "auth", "can-i", "update", "statefulset/access-telemetry-postgresql", "--subresource=scale"),
+            (*prefix, "auth", "can-i", "delete", "pods"),
+            (*prefix, "auth", "can-i", "create", "pods", "--subresource=exec"),
+            (*prefix, "auth", "can-i", "get", "pods", "--subresource=log"),
+            (*prefix, "auth", "can-i", "patch", "configmap/access-telemetry-physical-evidence-report"),
+            (*prefix, "auth", "can-i", "patch", "job/access-telemetry-physical-evidence-reporter"),
             (*_kubectl_prefix(target, "dapr-system"), "auth", "can-i", "delete", "pods"),
+            (*_kubectl_prefix(target, "dapr-system"), "auth", "can-i", "update",
+             "statefulset/dapr-scheduler-server", "--subresource=scale"),
             (*prefix, "patch", "lease", _LEASE_NAME, "--type=json", "--patch", lease_patch),
             (*prefix, "patch", "configmap", _GATE_NAME, "--type=merge", "--patch", gate_patch),
             (*prefix, "scale", "deployment/memories-access-telemetry", "--replicas=2"),
@@ -261,6 +481,21 @@ def _fixed_operation_commands(
             (*prefix, "get", "lease", _LEASE_NAME, "-o", "json"),
             (*prefix, "get", "deployment", "memories-access-telemetry", "-o", "json"),
             (*prefix, "get", "deployment", "memories-access-telemetry-clock", "-o", "json"),
+            (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
+            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
+             "cat /var/run/hexalith/access-telemetry-qualification/gate.json"),
+            (*prefix, "exec", "pod/__SERVER_POD_1__", "-c", "memories", "--", "/bin/sh", "-ec",
+             "cat /var/run/hexalith/access-telemetry-qualification/gate.json"),
+        ]
+    if command_id == "component-throughput":
+        query = (
+            "http://prometheus-operated.monitoring.svc.cluster.local:9090/api/v1/query?"
+            "query=sum%28increase%28memories_access_telemetry_lifecycle_state_operations_total%5B30m%5D%29%29"
+        )
+        return [
+            (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
+            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
+             f"wget -qO- '{query}'"),
         ]
     if command_id == "idempotence-conflict-proof":
         return _fixed_test_commands(
@@ -281,26 +516,58 @@ def _fixed_operation_commands(
         control_sql = (
             "WITH records AS (SELECT key,convert_from(value,'UTF8')::jsonb AS doc,expiredate "
             "FROM access_telemetry.lifecycle_state WHERE key LIKE 'memories-access-telemetry||records/%'), "
-            "control AS (SELECT key,row_number() OVER (ORDER BY key) AS ordinal FROM records "
+            "control AS (SELECT key,doc->>'recordId' AS record_id FROM records "
             "WHERE expiredate>clock_timestamp() AND "
             "(doc->>'expiresAtUtc')::timestamptz-(doc->>'emittedAtUtc')::timestamptz="
             "make_interval(hours=>24)) "
             "SELECT json_build_object('stage','control','record_count',count(*),"
-            "'newer_record_names',coalesce((SELECT json_agg(format('newer-control-%s',"
-            "lpad(ordinal::text,3,'0')) ORDER BY ordinal) FROM (SELECT ordinal FROM control "
-            "ORDER BY ordinal LIMIT 16) bounded),'[]'::json)) FROM control;"
+            "'newer_record_names',coalesce((SELECT json_agg(record_id ORDER BY record_id) "
+            "FROM control),'[]'::json)) FROM control;"
         )
         return [
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
             (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
-             f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}'),
+             _fixed_workload_shell(target, command_id)),
             (*prefix, "exec", "statefulset/access-telemetry-postgresql", "-c", "postgresql", "--",
              "psql", "--no-psqlrc", "--tuples-only", "--no-align",
              "--dbname=memories_access_telemetry", "--command", control_sql),
         ]
+    if command_id == "cohort-168h-report":
+        return [
+            (*prefix, "get", "job", "access-telemetry-physical-evidence-reporter", "-o", "json"),
+            (*prefix, "get", "configmap", "access-telemetry-physical-evidence-report", "-o", "json"),
+            (*prefix, "patch", "configmap", "access-telemetry-physical-evidence-report", "--type=merge",
+             "--patch", "__PHYSICAL_EVIDENCE_PATCH__"),
+            (*prefix, "patch", "job", "access-telemetry-physical-evidence-reporter", "--type=merge",
+             "--patch", _canonical_json({"spec": {"suspend": False}})),
+            (*prefix, "wait", "job/access-telemetry-physical-evidence-reporter",
+             "--for=condition=Complete", "--timeout=300s"),
+            (*prefix, "logs", "job/access-telemetry-physical-evidence-reporter", "-c", "reporter", "--tail=20"),
+        ]
     if command_id.startswith("cohort-"):
         hours = int(command_id.split("-", 2)[1][:-1])
         stage = command_id.rsplit("-", 1)[-1]
+        stored_cohorts = target.get("_c3_cohort_record_ids")
+        record_ids = (
+            stored_cohorts.get(hours)
+            if isinstance(stored_cohorts, Mapping)
+            else None
+        )
+        exact_records = ""
+        if stage != "seed":
+            if not isinstance(record_ids, list) or len(record_ids) != 125 or any(
+                not isinstance(record_id, str) or
+                re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", record_id) is None
+                for record_id in record_ids
+            ):
+                raise EvidenceValidationError(f"cohort {hours}h exact record identity is unavailable")
+            exact_records = ",".join(f"'{record_id}'" for record_id in record_ids)
+            cohort_predicate = f"doc->>'recordId' IN ({exact_records})"
+        else:
+            cohort_predicate = (
+                "(doc->>'expiresAtUtc')::timestamptz-(doc->>'emittedAtUtc')::timestamptz="
+                f"make_interval(hours=>{hours})"
+            )
         # Dapr's PostgreSQL v2 state table stores the canonical record JSON in
         # value and the component TTL in expiredate.  Each statement emits one
         # aggregate JSON object; identifiers and horizons are closed here, not
@@ -308,9 +575,8 @@ def _fixed_operation_commands(
         cohort = (
             "WITH records AS (SELECT key,convert_from(value,'UTF8')::jsonb AS doc,expiredate "
             "FROM access_telemetry.lifecycle_state WHERE key LIKE 'memories-access-telemetry||records/%'), "
-            "cohort AS (SELECT * FROM records WHERE "
-            "(doc->>'expiresAtUtc')::timestamptz-(doc->>'emittedAtUtc')::timestamptz="
-            f"make_interval(hours=>{hours})), newer AS (SELECT key,row_number() OVER (ORDER BY key) AS ordinal "
+            "cohort AS (SELECT * FROM records WHERE " + cohort_predicate + "), "
+            "newer AS (SELECT key,doc->>'recordId' AS record_id "
             "FROM records WHERE expiredate>clock_timestamp()) "
         )
         sql = {
@@ -321,7 +587,8 @@ def _fixed_operation_commands(
                 "'accepted_utc_ms',(extract(epoch FROM min((doc->>'acceptedAtUtc')::timestamptz))*1000)::bigint,"
                 "'emitted_utc_ms',(extract(epoch FROM min((doc->>'emittedAtUtc')::timestamptz))*1000)::bigint,"
                 "'expires_utc_ms',(extract(epoch FROM min((doc->>'expiresAtUtc')::timestamptz))*1000)::bigint,"
-                "'pre_tuple_count',count(*)) FROM cohort;"
+                "'pre_tuple_count',count(*),'record_ids',coalesce(json_agg(doc->>'recordId' "
+                "ORDER BY doc->>'recordId'),'[]'::json)) FROM cohort;"
             ),
             "wait": (
                 cohort + "SELECT json_build_object('stage','wait','retention_hours'," + str(hours) +
@@ -338,7 +605,7 @@ def _fixed_operation_commands(
                 "'emitted_utc_ms',(extract(epoch FROM min((doc->>'emittedAtUtc')::timestamptz))*1000)::bigint,"
                 "'expires_utc_ms',(extract(epoch FROM min((doc->>'expiresAtUtc')::timestamptz))*1000)::bigint," 
                 "'pre_tuple_count',count(*),'candidate_count',count(*) FILTER (WHERE expiredate<=clock_timestamp())," 
-                "'newer_record_names',coalesce((SELECT json_agg(format('newer-control-%s',lpad(ordinal::text,3,'0')) ORDER BY ordinal) FROM (SELECT ordinal FROM newer ORDER BY ordinal LIMIT 16) n),'[]'::json),"
+                "'newer_record_names',coalesce((SELECT json_agg(record_id ORDER BY record_id) FROM newer),'[]'::json),"
                 "'newer_records_preserved',(SELECT count(*)>0 FROM newer)) FROM cohort;"
             ),
             "purge": (
@@ -407,14 +674,13 @@ def _fixed_operation_commands(
             "--no-align",
             "--dbname=memories_access_telemetry",
             "--command",
-            "SET enable_seqscan=off; SELECT json_build_object('stage','index',"
-            "'index_name',(SELECT indexname FROM pg_indexes WHERE schemaname='access_telemetry' "
-            "AND tablename='lifecycle_state' AND indexdef ILIKE '%expiredate%' ORDER BY indexname LIMIT 1),"
-            "'post_index_candidate_count',(SELECT count(*) FROM access_telemetry.lifecycle_state "
-            "WHERE expiredate<=clock_timestamp() AND "
-            "(convert_from(value,'UTF8')::jsonb->>'expiresAtUtc')::timestamptz-"
-            "(convert_from(value,'UTF8')::jsonb->>'emittedAtUtc')::timestamptz="
-            "make_interval(hours=>" + str(hours) + "));",
+            "WITH buckets AS (SELECT convert_from(value,'UTF8')::jsonb AS doc FROM "
+            "access_telemetry.lifecycle_state WHERE key LIKE "
+            "'memories-access-telemetry||expiry-bucket/%'), entries AS (SELECT "
+            "jsonb_array_elements(doc->'entries') AS entry FROM buckets) SELECT "
+            "json_build_object('stage','index','index_name','dapr-expiry-bucket-json',"
+            "'post_index_candidate_count',(SELECT count(*) FROM entries WHERE "
+            "entry->>'recordId' IN (" + exact_records + ")));",
         )
         commands = [
             sql_command
@@ -427,7 +693,7 @@ def _fixed_operation_commands(
                 ("__FAULT_ACTION__", *prefix, "rollout", "status", "deployment/memories", "--timeout=300s"),
                 (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
                 (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
-                 f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}'),
+                 _fixed_workload_shell(target, command_id)),
                 sql_command,
                 ("__FAULT_RESTORE__", *prefix, "exec", "statefulset/redis-stack", "-c", "redis", "--", "/bin/sh", "-ec",
                  'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning SET retentionSeconds 86400 | grep -qx OK'),
@@ -440,9 +706,7 @@ def _fixed_operation_commands(
             cohort_remaining_sql = (
                 "SELECT count(*) FROM access_telemetry.lifecycle_state WHERE key LIKE "
                 "'memories-access-telemetry||records/%' AND "
-                "(convert_from(value,'UTF8')::jsonb->>'expiresAtUtc')::timestamptz-"
-                "(convert_from(value,'UTF8')::jsonb->>'emittedAtUtc')::timestamptz="
-                "make_interval(hours=>" + str(hours) + ");"
+                "convert_from(value,'UTF8')::jsonb->>'recordId' IN (" + exact_records + ");"
             )
             commands = [
                 (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories-access-telemetry", "-o", "json"),
@@ -456,6 +720,21 @@ def _fixed_operation_commands(
                  "[ \"$remaining\" = 0 ] && exit 0; sleep 5; done; exit 1"),
                 sql_command,
                 index_sql_command,
+                (
+                    *prefix,
+                    "exec",
+                    "deployment/memories-access-telemetry",
+                    "-c",
+                    "lifecycle",
+                    "--",
+                    "/bin/sh",
+                    "-ec",
+                    "count=0; for id in " + " ".join(record_ids) + "; do "
+                    "value=$(wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" "
+                    "\"http://127.0.0.1:3500/v1.0/state/access-telemetry-store/records%2F$id?consistency=strong\"); "
+                    "[ -z \"$value\" ] || exit 1; count=$((count+1)); done; "
+                    "printf '{\"stage\":\"strong-absence\",\"strong_absent_read_count\":%s}' \"$count\"",
+                ),
             ]
         if stage == "reclamation":
             commands.extend(
@@ -480,19 +759,6 @@ def _fixed_operation_commands(
                     ),
                 ]
             )
-            if hours == 168:
-                commands.extend(
-                    [
-                        (*prefix, "get", "job", "access-telemetry-physical-evidence-reporter", "-o", "json"),
-                        (*prefix, "patch", "configmap", "access-telemetry-physical-evidence-report", "--type=merge",
-                         "--patch", "__PHYSICAL_EVIDENCE_PATCH__"),
-                        (*prefix, "patch", "job", "access-telemetry-physical-evidence-reporter", "--type=merge",
-                         "--patch", _canonical_json({"spec": {"suspend": False}})),
-                        (*prefix, "wait", "job/access-telemetry-physical-evidence-reporter",
-                         "--for=condition=Complete", "--timeout=300s"),
-                        (*prefix, "logs", "job/access-telemetry-physical-evidence-reporter", "-c", "reporter", "--tail=20"),
-                    ]
-                )
         return commands
     if command_id == "retention-controls":
         return [
@@ -544,6 +810,7 @@ def _fixed_operation_commands(
         namespace, selector, main_container = replacement_targets[replacement]
         replacement_prefix = _kubectl_prefix(target, namespace)
         commands = [
+            *_fixed_operation_commands(target, "qualification", "qualification-renew"),
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
              "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
             (*replacement_prefix, "get", "pods", "-l", selector, "-o", "json"),
@@ -711,6 +978,12 @@ def _fixed_operation_commands(
         proof = _C4_MECHANISM_PROOF_TESTS.get(scenario)
         proof_commands = _fixed_test_commands(*proof) if proof is not None else []
         return [
+            *_fixed_operation_commands(target, "qualification", "qualification-renew"),
+            # Every failure lane starts with a fresh Server process so a prior
+            # terminal delivery disposition or queue cannot discharge the next
+            # scenario.
+            (*prefix, "rollout", "restart", "deployment/memories"),
+            (*prefix, "rollout", "status", "deployment/memories", "--timeout=300s"),
             *proof_commands,
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
@@ -718,11 +991,11 @@ def _fixed_operation_commands(
             (*fault_prefix, "get", "pods", "-l", selector, "-o", "json"),
             *[("__FAULT_ACTION__", *action) for action in actions],
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
+            _business_probe_command(target, command_id),
             (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
-             "wget -qO- http://127.0.0.1:8080/ready"),
-            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
-             f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}'),
+             _fixed_workload_shell(target, command_id)),
             *[("__FAULT_RESTORE__", *restoration) for restoration in restorations],
+            (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
             (*fault_prefix, "get", "pods", "-l", selector, "-o", "json"),
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
              "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
@@ -739,12 +1012,32 @@ def _fixed_operation_commands(
             (*prefix, "get", "deployment", "memories", "-o", "json"),
             (*prefix, "get", "configuration.dapr.io", "memories-config", "-o", "json"),
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
-            (*prefix, "logs", "deployment/memories", "-c", "memories", "--tail=100"),
-            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
-             f"wget -qO- '{lifecycle_metrics_url}'"),
-            (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
-             "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
         ]
+        if command_id in {"continuity", "observability"}:
+            commands.extend(
+                [
+                    (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
+                     _fixed_workload_shell(target, command_id)),
+                    (*prefix, "logs", "deployment/memories", "-c", "memories", "--tail=100"),
+                    (*_kubectl_prefix(target, "monitoring"), "logs", "-l",
+                     "app.kubernetes.io/name=opentelemetry-collector", "--tail=500"),
+                ]
+            )
+        else:
+            commands.extend(
+                (
+                    _business_probe_command(target, command_id, privacy=True),
+                    (*prefix, "logs", "deployment/memories", "-c", "memories", "--tail=100"),
+                )
+            )
+        commands.extend(
+            [
+                (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
+                 f"wget -qO- '{lifecycle_metrics_url}'"),
+                (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
+                 "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
+            ]
+        )
         if command_id == "observability":
             commands.extend(
                 _fixed_test_commands(
@@ -854,6 +1147,46 @@ def _inspection(payload: Mapping[str, Any], command_id: str) -> tuple[int, str]:
     if type(retained) is not int or retained < 0 or not isinstance(health, (str, int)):
         raise EvidenceValidationError(f"command {command_id} returned an invalid lifecycle inspection")
     return retained, str(health).lower()
+
+
+def _has_correlated_audit_record(
+    payload: bytes,
+    workload: Mapping[str, Any],
+    command_id: str,
+) -> bool:
+    """Require event 7506 and the segment marker in one JSON record."""
+
+    run_id = _require_nonempty_string(_camel_value(workload, "run_id"), f"{command_id}.run_id")
+    segment_id = _require_nonempty_string(
+        _camel_value(workload, "segment_id"), f"{command_id}.segment_id"
+    )
+    correlation = _sha256(f"{run_id}/{segment_id}")[:32]
+    marker = f"qualification-{correlation}"
+
+    def values(value: Any) -> list[Any]:
+        if isinstance(value, Mapping):
+            return [item for child in value.values() for item in values(child)]
+        if isinstance(value, list):
+            return [item for child in value for item in values(child)]
+        return [value]
+
+    try:
+        text_payload = payload.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise EvidenceValidationError(f"command {command_id} audit output is not UTF-8") from exc
+    for line in text_payload.splitlines():
+        if not line.strip().startswith("{"):
+            continue
+        try:
+            record = _json_without_duplicates(line, f"{command_id} correlated audit record")
+        except ValueError as exc:
+            raise EvidenceValidationError(f"command {command_id} returned malformed JSON audit output") from exc
+        record_values = values(record)
+        if 7506 in record_values and any(
+            isinstance(value, str) and value.startswith(marker) for value in record_values
+        ):
+            return True
+    return False
 
 
 def _prometheus_sample_count(payload: bytes, command_id: str) -> int:
@@ -1013,10 +1346,13 @@ def _executed_test_inventory(
 class _C3Journal:
     """Exclusive, hash-chained JSONL progress journal for the multi-day C3 run."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, context: Mapping[str, Any] | None = None) -> None:
         if not path.is_absolute() or path.is_symlink():
             raise EvidenceValidationError("C3 journal must be an absolute non-symlink path")
         path.parent.mkdir(parents=True, exist_ok=True)
+        self._context_sha256 = _sha256(_canonical_json(context)) if context is not None else None
+        if context is not None:
+            _validate_secret_safe(context, "C3 journal context")
         descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
         self._stream = os.fdopen(descriptor, "r+b", buffering=0)
         try:
@@ -1048,11 +1384,18 @@ class _C3Journal:
                 raise EvidenceValidationError("C3 journal contains malformed UTF-8 JSON") from exc
             _require_exact_fields(
                 entry,
-                frozenset({"sequence", "previous_sha256", "command_id", "result_sha256", "recorded_utc_ms", "result", "command"}),
+                frozenset({"sequence", "previous_sha256", "context_sha256", "command_id", "result_sha256", "recorded_utc_ms", "result", "command"}),
                 "C3 journal entry",
             )
             if entry.get("sequence") != index or entry.get("previous_sha256") != previous:
                 raise EvidenceValidationError("C3 journal sequence/hash chain is not append-only")
+            context_sha256 = entry.get("context_sha256")
+            if not isinstance(context_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", context_sha256) is None:
+                raise EvidenceValidationError("C3 journal context hash is not canonical")
+            if self._context_sha256 is None:
+                self._context_sha256 = context_sha256
+            elif context_sha256 != self._context_sha256:
+                raise EvidenceValidationError("C3 journal context differs from this qualification session")
             _require_nonempty_string(entry.get("command_id"), "C3 journal command_id", maximum=128)
             _require_hex = entry.get("result_sha256")
             if not isinstance(_require_hex, str) or re.fullmatch(r"[0-9a-f]{64}", _require_hex) is None:
@@ -1072,11 +1415,14 @@ class _C3Journal:
         return entries
 
     def append(self, command_id: str, result: Mapping[str, Any]) -> None:
+        if self._context_sha256 is None:
+            self._context_sha256 = "0" * 64
         result_copy = {key: value for key, value in result.items() if key != "_command"}
         command = _require_mapping(result.get("_command"), "C3 journal command")
         entry = {
             "sequence": len(self._entries) + 1,
             "previous_sha256": self._previous,
+            "context_sha256": self._context_sha256,
             "command_id": command_id,
             "result_sha256": _sha256(_canonical_json(result_copy)),
             "recorded_utc_ms": _utc_now_milliseconds(),
@@ -1103,6 +1449,20 @@ class _C3Journal:
             results[command_id] = result
         return results
 
+    @property
+    def authenticated_prefix_sha256(self) -> str:
+        """Bind the context and exact completed JSONL prefix for reporter release."""
+
+        return _sha256(
+            _canonical_json(
+                {
+                    "context_sha256": self._context_sha256,
+                    "last_entry_sha256": self._previous,
+                    "entry_count": len(self._entries),
+                }
+            )
+        )
+
     def close(self) -> None:
         fcntl.flock(self._stream.fileno(), fcntl.LOCK_UN)
         self._stream.close()
@@ -1118,8 +1478,13 @@ def _run_writer_segments(
     target: Mapping[str, str],
     checkpoint: str,
     command_id: str,
+    *,
+    _segment_count: int = 1_800,
+    _monotonic: Callable[[], float] = time.monotonic,
+    _sleep: Callable[[float], None] = time.sleep,
+    _process_runner: Callable[..., tuple[int, bytes, bytes]] = _run_bounded_process,
 ) -> tuple[Mapping[str, Any], dict[str, Any]]:
-    """Aggregate 1,800 measured one-second calls, retrying only killed/no-response segments."""
+    """Dispatch one-second segments on an absolute host cadence with bounded concurrency."""
 
     arguments = {
         "kube_context": target["kube_context"],
@@ -1129,11 +1494,13 @@ def _run_writer_segments(
     }
     prefix = _kubectl_prefix(target)
     ordinal = int(command_id[-1]) - 1
+    run_id = f"run-{hashlib.sha256(target['_lease_holder'].encode('utf-8')).hexdigest()[:24]}"
     started = _utc_now_milliseconds()
     output_hashes: list[str] = []
     error_hashes: list[str] = []
     totals = {
         "attempted": 0,
+        "enqueued": 0,
         "acknowledged": 0,
         "persisted": 0,
         "conflicted": 0,
@@ -1142,100 +1509,184 @@ def _run_writer_segments(
         "rejected": 0,
         "result_count": 0,
     }
-    successful_segments = 0
     failed_segments = 0
-    selected_pod: str | None = None
+    segment_intervals: list[tuple[int, int]] = []
+    segment_ids: list[str] = []
+    record_inventory_hashes: list[str] = []
+    segment_proofs: list[dict[str, Any]] = []
     environment = {
         **os.environ,
         "HEXALITH_STORY_27_4_COMMAND_ID": command_id,
         "HEXALITH_STORY_27_4_LEASE_HOLDER": target["_lease_holder"],
     }
-    while successful_segments < 1_800:
-        if selected_pod is None:
-            code, stdout, stderr = _run_bounded_process(
-                (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
-                cwd=Path.cwd(),
-                timeout_seconds=300,
-                environment=environment,
-            )
-            output_hashes.append(hashlib.sha256(stdout).hexdigest())
-            error_hashes.append(hashlib.sha256(stderr).hexdigest())
-            if code != 0:
-                raise EvidenceValidationError(f"command {command_id} could not rediscover Server pods")
-            pods = _require_mapping(_json_without_duplicates(stdout.decode("utf-8", errors="strict"), command_id), "Server pods")
-            try:
-                selected_pod = _select_named_pod(pods, command_id)
-            except EvidenceValidationError:
-                failed_segments += 1
-                if failed_segments > 300:
-                    raise EvidenceValidationError(f"command {command_id} could not restore its writer ordinal")
-                time.sleep(1)
-                continue
-        try:
-            code, stdout, stderr = _run_bounded_process(
-                (
-                    *prefix,
-                    "exec",
-                    f"pod/{selected_pod}",
-                    "-c",
-                    "memories",
-                    "--",
-                    "/bin/sh",
-                    "-ec",
-                    f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}',
-                ),
-                cwd=Path.cwd(),
-                timeout_seconds=120,
-                environment=environment,
-            )
-        except EvidenceValidationError as exc:
-            # Replacement can terminate the in-flight pod before kubectl
-            # returns an exit status. Discard that unmeasured segment and
-            # rediscover a Ready replacement; never infer its accounting.
-            error_hashes.append(hashlib.sha256(str(exc).encode("utf-8")).hexdigest())
-            failed_segments += 1
-            selected_pod = None
-            if failed_segments > 300:
-                raise EvidenceValidationError(
-                    f"command {command_id} exceeded its killed-segment retry bound"
-                ) from exc
-            continue
-        output_hashes.append(hashlib.sha256(stdout).hexdigest())
-        error_hashes.append(hashlib.sha256(stderr).hexdigest())
+    emitted_times: dict[int, int] = {}
+    dispatched_monotonic: dict[int, float] = {}
+    responses: dict[int, tuple[str, int, bytes, bytes]] = {}
+    retries: dict[int, int] = {}
+
+    def invoke(index: int) -> tuple[str, int, bytes, bytes]:
+        segment_id = f"{command_id}-segment-{index + 1:04d}"
+        code, pods_stdout, pods_stderr = _process_runner(
+            (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
+            cwd=Path.cwd(), timeout_seconds=300, environment=environment,
+        )
         if code != 0:
-            failed_segments += 1
-            selected_pod = None
-            if failed_segments > 300:
-                raise EvidenceValidationError(f"command {command_id} exceeded its killed-segment retry bound")
-            continue
+            return "", code, pods_stdout, pods_stderr
+        pods = _require_mapping(
+            _json_without_duplicates(pods_stdout.decode("utf-8", errors="strict"), command_id),
+            "Server pods",
+        )
+        selected_pod = _select_named_pod(pods, command_id)
+        code, stdout, stderr = _process_runner(
+            (
+                *prefix, "exec", f"pod/{selected_pod}", "-c", "memories", "--",
+                "/bin/sh", "-ec",
+                f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" '
+                f'--header="X-Hexalith-Qualification-Run: {run_id}" '
+                f'--header="X-Hexalith-Qualification-Segment: {segment_id}" '
+                f'--header="X-Hexalith-Qualification-Emitted-Utc-Ms: {emitted_times[index]}" '
+                f'--post-data="" {_FIXED_WORKLOAD_ROUTE}',
+            ),
+            cwd=Path.cwd(), timeout_seconds=120, environment=environment,
+        )
+        return selected_pod, code, stdout, stderr
+
+    in_flight: dict[Future[tuple[str, int, bytes, bytes]], int] = {}
+    schedule_origin = _monotonic()
+    dispatch_lag_max_ms = 0
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix=f"story-27-4-{command_id}") as pool:
+        def collect(completed: set[Future[tuple[str, int, bytes, bytes]]]) -> None:
+            nonlocal failed_segments
+            for future in completed:
+                index = in_flight.pop(future)
+                try:
+                    selected_pod, code, stdout, stderr = future.result()
+                except (EvidenceValidationError, OSError, ValueError) as exc:
+                    selected_pod, code, stdout, stderr = "", -1, b"", str(exc).encode("utf-8")
+                output_hashes.append(hashlib.sha256(stdout).hexdigest())
+                error_hashes.append(hashlib.sha256(stderr).hexdigest())
+                if code == 0:
+                    responses[index] = (selected_pod, code, stdout, stderr)
+                    continue
+                failed_segments += 1
+                retries[index] = retries.get(index, 0) + 1
+                if failed_segments > 300 or retries[index] > 8:
+                    raise EvidenceValidationError(
+                        f"command {command_id} exceeded its killed-segment retry bound"
+                    )
+                in_flight[pool.submit(invoke, index)] = index
+
+        for index in range(_segment_count):
+            if _TERMINATION_REQUESTED.is_set():
+                raise EvidenceValidationError("qualification writer stopped for bounded cleanup")
+            due = schedule_origin + index
+            remaining = due - _monotonic()
+            if remaining > 0:
+                _sleep(remaining)
+            now = _monotonic()
+            dispatch_lag_max_ms = max(dispatch_lag_max_ms, int(max(0.0, now - due) * 1000))
+            if dispatch_lag_max_ms > 250:
+                raise EvidenceValidationError(f"command {command_id} exceeded its host dispatch cadence")
+            completed_now = {future for future in in_flight if future.done()}
+            if completed_now:
+                collect(completed_now)
+            while len(in_flight) >= 4:
+                completed, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+                collect(completed)
+            emitted_times[index] = _utc_now_milliseconds()
+            dispatched_monotonic[index] = now
+            in_flight[pool.submit(invoke, index)] = index
+        while in_flight:
+            completed, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+            collect(completed)
+
+    for index in range(_segment_count):
+        selected_pod, _, stdout, _ = responses[index]
+        segment_id = f"{command_id}-segment-{index + 1:04d}"
         payload = _require_mapping(
             _json_without_duplicates(stdout.decode("utf-8", errors="strict"), command_id),
             f"{command_id} segment",
         )
         if _require_nonempty_string(_camel_value(payload, "writer"), f"{command_id}.writer") != selected_pod:
             raise EvidenceValidationError(f"command {command_id} segment is not attributable to its selected pod")
-        expected = {
-            "attempted": 125,
-            "acknowledged": 125,
-            "persisted": 125,
-            "conflicted": 0,
-            "transaction_acknowledgements": 125,
-            "dropped": 0,
-            "rejected": 0,
+        if _require_nonempty_string(_camel_value(payload, "run_id"), f"{command_id}.run_id") != run_id:
+            raise EvidenceValidationError(f"command {command_id} segment is bound to another run")
+        if _require_nonempty_string(_camel_value(payload, "segment_id"), f"{command_id}.segment_id") != segment_id:
+            raise EvidenceValidationError(f"command {command_id} returned a non-canonical segment identity")
+        record_ids = _require_sequence(
+            _camel_value(payload, "record_ids"), f"{command_id}.record_ids"
+        )
+        expected_record_ids = _qualification_record_ids(run_id, segment_id)
+        if record_ids != expected_record_ids or len(set(record_ids)) != 125:
+            raise EvidenceValidationError(
+                f"command {command_id} did not return its exact deterministic record inventory"
+            )
+        segment_started = _require_integer(
+            _camel_value(payload, "started_utc_ms"), f"{command_id}.started_utc_ms", minimum=1
+        )
+        segment_finished = _require_integer(
+            _camel_value(payload, "finished_utc_ms"), f"{command_id}.finished_utc_ms", minimum=1
+        )
+        if not 950 <= segment_finished - segment_started <= 1_250:
+            raise EvidenceValidationError(f"command {command_id} segment did not measure one second")
+        attempted = _require_integer(_camel_value(payload, "attempted"), f"{command_id}.attempted")
+        enqueued = _require_integer(_camel_value(payload, "enqueued"), f"{command_id}.enqueued")
+        acknowledged = _require_integer(_camel_value(payload, "acknowledged"), f"{command_id}.acknowledged")
+        persisted = _require_integer(_camel_value(payload, "persisted"), f"{command_id}.persisted")
+        conflicted = _require_integer(_camel_value(payload, "conflicted"), f"{command_id}.conflicted")
+        transaction_acks = _require_integer(
+            _camel_value(payload, "transaction_acknowledgements"),
+            f"{command_id}.transaction_acknowledgements",
+        )
+        dropped = _require_integer(_camel_value(payload, "dropped"), f"{command_id}.dropped")
+        rejected = _require_integer(_camel_value(payload, "rejected"), f"{command_id}.rejected")
+        if not (
+            attempted == enqueued == 125
+            and acknowledged + conflicted == 125
+            and persisted == acknowledged
+            and transaction_acks == acknowledged
+            and dropped == rejected == 0
+            and (acknowledged == 125 or conflicted == 125)
+        ):
+            raise EvidenceValidationError(f"command {command_id} returned a non-canonical one-second segment")
+        values = {
+            "attempted": attempted, "enqueued": enqueued, "acknowledged": acknowledged,
+            "persisted": persisted, "conflicted": conflicted,
+            "transaction_acknowledgements": transaction_acks,
+            "dropped": dropped, "rejected": rejected,
         }
-        for field, expected_value in expected.items():
-            value = _require_integer(_camel_value(payload, field), f"{command_id}.{field}")
-            if value != expected_value:
-                raise EvidenceValidationError(f"command {command_id} returned a non-canonical one-second segment")
+        for field, value in values.items():
             totals[field] += value
         totals["result_count"] += _require_nonzero_integer(
             _camel_value(payload, "result_count"), f"{command_id}.result_count"
         )
-        successful_segments += 1
+        segment_intervals.append((segment_started, segment_finished))
+        segment_ids.append(segment_id)
+        record_inventory_hashes.append(_sha256(_canonical_json(record_ids)))
+        segment_proofs.append(
+            {
+                "segment_id": segment_id,
+                "writer": command_id,
+                "writer_pod": selected_pod,
+                "started_utc_ms": segment_started,
+                "finished_utc_ms": segment_finished,
+                "record_inventory_sha256": record_inventory_hashes[-1],
+                "durable_count": acknowledged + conflicted,
+                "replayed": conflicted == 125,
+            }
+        )
     finished = _utc_now_milliseconds()
     result = {
         "writer": f"server-writer-{command_id[-1]}",
+        "started_utc_ms": segment_intervals[0][0],
+        "finished_utc_ms": segment_intervals[-1][1],
+        "segment_count": len(segment_ids),
+        "replayed_segment_count": sum(1 for proof in segment_proofs if proof["replayed"]),
+        "dispatch_lag_max_milliseconds": dispatch_lag_max_ms,
+        "segment_inventory_sha256": _sha256(_canonical_json(segment_ids)),
+        "record_inventory_sha256": _sha256(_canonical_json(record_inventory_hashes)),
         **totals,
+        "_segment_proofs": segment_proofs,
     }
     observation = {
         "command_id": command_id,
@@ -1274,7 +1725,12 @@ def _run_operation(
     selected_pod: str | None = None
     server_pods: Mapping[str, Any] | None = None
     physical_evidence: Mapping[str, Any] | None = None
-    reclamation_observation: Mapping[str, Any] | None = None
+    reclamation_observation: Mapping[str, Any] | None = (
+        target.get("_c3_reclamation_observation")
+        if command_id == "cohort-168h-report"
+        and isinstance(target.get("_c3_reclamation_observation"), Mapping)
+        else None
+    )
     lease_observation: Mapping[str, Any] | None = None
     environment = {
         **os.environ,
@@ -1318,6 +1774,7 @@ def _run_operation(
         ):
             raise EvidenceValidationError("qualification cleanup lost Lease authority before mutation")
         marker = command[0] if command else ""
+        stdin_bytes: bytes | None = None
         if marker == "__FAULT_ACTION__":
             fault_active = True
             if selected_pod is None and isinstance(last_payload, Mapping):
@@ -1328,6 +1785,12 @@ def _run_operation(
                     raise
             command = command[1:]
         elif marker == "__FAULT_RESTORE__":
+            command = command[1:]
+        elif marker == "__BUSINESS_BEARER_STDIN__":
+            bearer = target.get("_business_bearer")
+            if not isinstance(bearer, bytes):
+                raise EvidenceValidationError("qualification bearer was not authenticated before target access")
+            stdin_bytes = bearer
             command = command[1:]
         if "__LEASE_RENEW_PATCH__" in command or "__GATE_RENEW_PATCH__" in command:
             metadata = lease_observation.get("metadata") if isinstance(lease_observation, Mapping) else None
@@ -1341,7 +1804,7 @@ def _run_operation(
                 [
                     {"op": "test", "path": "/metadata/resourceVersion", "value": resource_version},
                     {"op": "test", "path": "/spec/holderIdentity", "value": holder},
-                    {"op": "replace", "path": "/spec/leaseDurationSeconds", "value": 2700},
+                    {"op": "replace", "path": "/spec/leaseDurationSeconds", "value": _QUALIFICATION_SESSION_SECONDS},
                     {"op": "add", "path": "/spec/renewTime", "value": renew_utc},
                 ]
             )
@@ -1350,7 +1813,7 @@ def _run_operation(
                     "schemaVersion": 1,
                     "state": "enabled",
                     "profileSha256": STORY_27_4_PROFILE_SHA256,
-                    "expiresUtcMs": _utc_now_milliseconds() + 45 * 60 * 1000,
+                    "expiresUtcMs": _utc_now_milliseconds() + _QUALIFICATION_SESSION_SECONDS * 1000,
                 })}}
             )
             command = tuple(
@@ -1401,17 +1864,98 @@ def _run_operation(
                 or type(reclamation_observation.get("allocator_free_bytes")) is not int
             ):
                 raise EvidenceValidationError("physical evidence requires the measured post-VACUUM aggregate")
+            artifact_sha256 = _require_nonempty_string(
+                target.get("_c3_reporter_artifact_sha256"),
+                "authenticated C3 reporter prefix",
+                maximum=64,
+            )
+            if re.fullmatch(r"[0-9a-f]{64}", artifact_sha256) is None:
+                raise EvidenceValidationError("authenticated C3 reporter prefix is not canonical")
             evidence = {
                 "evidenceId": "story-27-4-c3",
                 "componentProfileHash": STORY_27_4_PROFILE_SHA256,
-                "artifactSha256": _sha256(_canonical_json(reclamation_observation)),
+                "artifactSha256": artifact_sha256,
+                "reporterImageDigest": _require_nonempty_string(
+                    target.get("_reporter_image"), "C1-reviewed reporter image"
+                ).rsplit("@sha256:", 1)[-1],
                 "observedAtUnixMilliseconds": _require_integer(
                     reclamation_observation.get("reclaimed_utc_ms"),
                     "physical evidence reclaimed_utc_ms",
                     minimum=1,
                 ),
             }
+            reporter_job = next(
+                (
+                    payload
+                    for payload in parsed_payloads
+                    if isinstance(payload, Mapping) and payload.get("kind") == "Job"
+                ),
+                None,
+            )
+            reporter_status = reporter_job.get("status") if isinstance(reporter_job, Mapping) else None
+            completed = (
+                isinstance(reporter_status, Mapping)
+                and reporter_status.get("succeeded") == 1
+                and reporter_status.get("failed", 0) == 0
+                and reporter_status.get("active", 0) == 0
+                and isinstance(reporter_status.get("completionTime"), str)
+            )
+            fresh = (
+                isinstance(reporter_job, Mapping)
+                and isinstance(reporter_job.get("spec"), Mapping)
+                and reporter_job["spec"].get("suspend") is True
+                and isinstance(reporter_status, Mapping)
+                and reporter_status.get("succeeded", 0) == 0
+                and reporter_status.get("failed", 0) == 0
+                and reporter_status.get("active", 0) == 0
+                and reporter_status.get("completionTime") is None
+            )
+            if not (fresh or completed):
+                raise EvidenceValidationError(
+                    "physical evidence reporter is neither fresh nor an exact completed resume"
+                )
+            if completed:
+                report_config = next(
+                    (
+                        payload
+                        for payload in reversed(parsed_payloads)
+                        if isinstance(payload, Mapping)
+                        and isinstance(payload.get("data"), Mapping)
+                        and "evidence.json" in payload["data"]
+                    ),
+                    None,
+                )
+                try:
+                    existing = _require_mapping(
+                        _json_without_duplicates(
+                            report_config["data"]["evidence.json"],
+                            "completed physical evidence report",
+                        ),
+                        "completed physical evidence report",
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise EvidenceValidationError(
+                        "completed physical evidence reporter has no authenticated input"
+                    ) from exc
+                _require_exact_fields(existing, frozenset(evidence), "completed physical evidence report")
+                if (
+                    existing.get("evidenceId") != evidence["evidenceId"]
+                    or existing.get("componentProfileHash") != evidence["componentProfileHash"]
+                    or existing.get("artifactSha256") != evidence["artifactSha256"]
+                    or existing.get("reporterImageDigest") != evidence["reporterImageDigest"]
+                    or type(existing.get("observedAtUnixMilliseconds")) is not int
+                    or existing["observedAtUnixMilliseconds"] <= 0
+                ):
+                    raise EvidenceValidationError(
+                        "completed physical evidence reporter is bound to another C3 prefix"
+                    )
+                physical_evidence = existing
+                if isinstance(target, dict):
+                    target["_reuse_completed_reporter"] = True
+                environment["HEXALITH_STORY_27_4_PHYSICAL_ARTIFACT_SHA256"] = artifact_sha256
+                continue
             physical_evidence = evidence
+            environment["HEXALITH_STORY_27_4_PHYSICAL_ARTIFACT_SHA256"] = evidence["artifactSha256"]
             physical_patch = _canonical_json(
                 {"data": {"evidence.json": _canonical_json(evidence)}}
             )
@@ -1419,6 +1963,11 @@ def _run_operation(
                 physical_patch if value == "__PHYSICAL_EVIDENCE_PATCH__" else value
                 for value in command
             )
+        if target.get("_reuse_completed_reporter") is True and (
+            ("patch" in command and "job" in command)
+            or ("wait" in command and any("job/access-telemetry-physical-evidence-reporter" == value for value in command))
+        ):
+            continue
         if any("__SERVER_POD_" in value for value in command):
             if server_pods is None:
                 restore_fault()
@@ -1461,6 +2010,7 @@ def _run_operation(
                 "cwd": Path.cwd(),
                 "timeout_seconds": timeout_seconds,
                 "environment": {**environment, "HEXALITH_STORY_27_4_STEP": str(step)},
+                "stdin_bytes": stdin_bytes,
             }
             return_code, stdout, stderr = _run_bounded_process(command, **process_arguments)
         except (EvidenceValidationError, OSError, ValueError):
@@ -1544,13 +2094,16 @@ def _run_operation(
             if not pending_restorations:
                 fault_active = False
     finished = _utc_now_milliseconds()
+    permission_count = sum(
+        1 for fixed in operation_commands if "auth" in fixed and "can-i" in fixed
+    )
     if command_id == "qualification-enable" and any(
         value.decode("utf-8", errors="strict").strip().lower() != "yes"
-        for value in stdout_parts[:3]
+        for value in stdout_parts[:permission_count]
     ):
         raise EvidenceValidationError("qualification operator lacks a required RBAC permission")
     if command_id == "qualification-target-identity":
-        namespace_payload, gate_payload, lease_payload, lifecycle_payload, clock_payload = parsed_payloads
+        namespace_payload, gate_payload, lease_payload, lifecycle_payload, clock_payload = parsed_payloads[:5]
         namespace_name = (
             namespace_payload.get("metadata", {}).get("name")
             if isinstance(namespace_payload, Mapping)
@@ -1620,15 +2173,323 @@ def _run_operation(
             raise EvidenceValidationError("qualification target identity is not an exact disabled-profile match")
         if isinstance(target, dict):
             target["_lease_resource_version"] = lease_metadata["resourceVersion"]
+        runtime_inventory: list[dict[str, Any]] = []
+        for kind, payload in (
+            ("Deployment", parsed_payloads[5]),
+            ("Component", parsed_payloads[6]),
+            ("Configuration", parsed_payloads[7]),
+            ("StatefulSet", parsed_payloads[8]),
+        ):
+            items = payload.get("items") if isinstance(payload, Mapping) else None
+            if not isinstance(items, list):
+                raise EvidenceValidationError("qualification runtime identity returned no closed item inventory")
+            for item in items:
+                metadata = item.get("metadata") if isinstance(item, Mapping) else None
+                name = metadata.get("name") if isinstance(metadata, Mapping) else None
+                if not isinstance(name, str) or not name:
+                    raise EvidenceValidationError("qualification runtime identity omitted an exact resource name")
+                identity_item: dict[str, Any] = {"kind": kind, "name": name}
+                if kind in {"Deployment", "StatefulSet"}:
+                    spec = item.get("spec") if isinstance(item, Mapping) else None
+                    template = spec.get("template") if isinstance(spec, Mapping) else None
+                    pod_spec = template.get("spec") if isinstance(template, Mapping) else None
+                    template_metadata = template.get("metadata") if isinstance(template, Mapping) else None
+                    annotations = (
+                        template_metadata.get("annotations")
+                        if isinstance(template_metadata, Mapping)
+                        else None
+                    )
+                    containers = pod_spec.get("containers") if isinstance(pod_spec, Mapping) else None
+                    images = [
+                        container.get("image")
+                        for container in containers or []
+                        if isinstance(container, Mapping)
+                    ]
+                    if not images or any(
+                        not isinstance(image, str)
+                        or re.fullmatch(r".+@sha256:[0-9a-f]{64}", image) is None
+                        for image in images
+                    ):
+                        raise EvidenceValidationError(
+                            f"qualification {kind}/{name} is not bound to digest-pinned container images"
+                        )
+                    identity_item["images"] = images
+                    service_account = (
+                        pod_spec.get("serviceAccountName") if isinstance(pod_spec, Mapping) else None
+                    )
+                    if not isinstance(service_account, str) or not service_account:
+                        raise EvidenceValidationError(
+                            f"qualification {kind}/{name} has no explicit service-account identity"
+                        )
+                    identity_item["service_account"] = service_account
+                    if kind == "Deployment" and name in {
+                        "memories",
+                        "memories-access-telemetry",
+                        "memories-access-telemetry-clock",
+                    }:
+                        expected_app_id = name
+                        if not isinstance(annotations, Mapping) or annotations.get("dapr.io/app-id") != expected_app_id:
+                            raise EvidenceValidationError(
+                                f"qualification Deployment/{name} has the wrong Dapr workload identity"
+                            )
+                        identity_item["dapr_app_id"] = expected_app_id
+                else:
+                    spec = item.get("spec") if isinstance(item, Mapping) else None
+                    identity_item["type"] = spec.get("type") if isinstance(spec, Mapping) else None
+                    identity_item["version"] = spec.get("version") if isinstance(spec, Mapping) else None
+                runtime_inventory.append(identity_item)
+        required_runtime_objects = {
+            ("Deployment", "memories"),
+            ("Deployment", "memories-access-telemetry"),
+            ("Deployment", "memories-access-telemetry-clock"),
+            ("Component", "access-telemetry-store"),
+            ("Configuration", "memories-access-telemetry-config"),
+            ("StatefulSet", "access-telemetry-postgresql"),
+        }
+        observed_runtime_objects = {
+            (str(item["kind"]), str(item["name"])) for item in runtime_inventory
+        }
+        if not required_runtime_objects.issubset(observed_runtime_objects):
+            raise EvidenceValidationError(
+                "qualification runtime identity omitted a required exact kind/name pair"
+            )
+        reporter_job = parsed_payloads[9]
+        reporter_spec = reporter_job.get("spec") if isinstance(reporter_job, Mapping) else None
+        reporter_template = reporter_spec.get("template") if isinstance(reporter_spec, Mapping) else None
+        reporter_pod_spec = reporter_template.get("spec") if isinstance(reporter_template, Mapping) else None
+        reporter_containers = (
+            reporter_pod_spec.get("containers") if isinstance(reporter_pod_spec, Mapping) else None
+        )
+        reporter_container = (
+            reporter_containers[0]
+            if isinstance(reporter_containers, list)
+            and len(reporter_containers) == 1
+            and isinstance(reporter_containers[0], Mapping)
+            else None
+        )
+        reporter_image = reporter_container.get("image") if isinstance(reporter_container, Mapping) else None
+        if (
+            not isinstance(reporter_image, str)
+            or re.fullmatch(r".+@sha256:[0-9a-f]{64}", reporter_image) is None
+            or reporter_pod_spec.get("automountServiceAccountToken") is not False
+            or reporter_pod_spec.get("serviceAccountName") != "access-telemetry-adapter"
+            or reporter_container.get("command") != _REPORTER_COMMAND
+            or reporter_container.get("args") != _REPORTER_ARGUMENTS
+            or reporter_container.get("env") != _REPORTER_ENV
+            or reporter_container.get("volumeMounts") != _REPORTER_VOLUME_MOUNTS
+            or reporter_pod_spec.get("volumes") != _REPORTER_VOLUMES
+        ):
+            raise EvidenceValidationError("qualification reporter runtime identity is not exact")
+        reporter_digest = reporter_image.rsplit("@sha256:", 1)[1]
+        lifecycle_deployments = parsed_payloads[5].get("items")
+        lifecycle_deployment = next(
+            (
+                item
+                for item in lifecycle_deployments
+                if isinstance(item, Mapping)
+                and isinstance(item.get("metadata"), Mapping)
+                and item["metadata"].get("name") == "memories-access-telemetry"
+            ),
+            None,
+        )
+        lifecycle_containers = (
+            lifecycle_deployment.get("spec", {}).get("template", {}).get("spec", {}).get("containers")
+            if isinstance(lifecycle_deployment, Mapping)
+            else None
+        )
+        lifecycle_container = next(
+            (
+                container
+                for container in lifecycle_containers or []
+                if isinstance(container, Mapping) and container.get("name") == "lifecycle"
+            ),
+            None,
+        )
+        reporter_options = [
+            item.get("value")
+            for item in (
+                lifecycle_container.get("env", [])
+                if isinstance(lifecycle_container, Mapping)
+                else []
+            )
+            if isinstance(item, Mapping)
+            and item.get("name")
+            == "AccessTelemetryLifecycle__PhysicalReclamationReporterImageDigest"
+        ]
+        if reporter_options != [reporter_digest]:
+            raise EvidenceValidationError(
+                "qualification lifecycle reporter digest differs from the reviewed Job image"
+            )
+        runtime_inventory.append({
+            "kind": "Job",
+            "name": "access-telemetry-physical-evidence-reporter",
+            "image": reporter_image,
+            "command": _REPORTER_COMMAND,
+            "args": _REPORTER_ARGUMENTS,
+            "env": _REPORTER_ENV,
+            "volume_mounts": _REPORTER_VOLUME_MOUNTS,
+            "volumes": _REPORTER_VOLUMES,
+            "service_account": "access-telemetry-adapter",
+            "reporter_digest_option": reporter_digest,
+        })
+        if isinstance(target, dict):
+            target["_reporter_image"] = reporter_image
+        qualification_service_accounts = parsed_payloads[11]
+        dapr_deployments = parsed_payloads[12]
+        dapr_statefulsets = parsed_payloads[13]
+        dapr_pods = parsed_payloads[14]
+        dapr_service_accounts = parsed_payloads[15]
+        for payload, required in (
+            (qualification_service_accounts, {
+                "memories",
+                "memories-access-telemetry",
+                "memories-access-telemetry-clock",
+                "access-telemetry-postgresql",
+                "access-telemetry-adapter",
+            }),
+            (dapr_service_accounts, {
+                "dapr-operator",
+                "dapr-placement",
+                "dapr-scheduler",
+                "dapr-sentry",
+                "dapr-injector",
+            }),
+        ):
+            items = payload.get("items") if isinstance(payload, Mapping) else None
+            names = {
+                item.get("metadata", {}).get("name")
+                for item in items or []
+                if isinstance(item, Mapping) and isinstance(item.get("metadata"), Mapping)
+            }
+            if not required.issubset(names):
+                raise EvidenceValidationError("qualification runtime identity omitted a service account")
+        for kind, payload in (("Deployment", dapr_deployments), ("StatefulSet", dapr_statefulsets)):
+            items = payload.get("items") if isinstance(payload, Mapping) else None
+            if not isinstance(items, list):
+                raise EvidenceValidationError("Dapr control-plane identity returned no workload inventory")
+            for item in items:
+                metadata = item.get("metadata") if isinstance(item, Mapping) else None
+                spec = item.get("spec") if isinstance(item, Mapping) else None
+                template = spec.get("template") if isinstance(spec, Mapping) else None
+                pod_spec = template.get("spec") if isinstance(template, Mapping) else None
+                name = metadata.get("name") if isinstance(metadata, Mapping) else None
+                containers = pod_spec.get("containers") if isinstance(pod_spec, Mapping) else None
+                images = [container.get("image") for container in containers or [] if isinstance(container, Mapping)]
+                service_account = pod_spec.get("serviceAccountName") if isinstance(pod_spec, Mapping) else None
+                if (
+                    not isinstance(name, str)
+                    or not name
+                    or not isinstance(service_account, str)
+                    or not service_account
+                    or not images
+                    or any(not isinstance(image, str) or re.fullmatch(r".+@sha256:[0-9a-f]{64}", image) is None for image in images)
+                ):
+                    raise EvidenceValidationError("Dapr control-plane workload identity is incomplete")
+                runtime_inventory.append({
+                    "kind": f"dapr-system/{kind}",
+                    "name": name,
+                    "images": images,
+                    "service_account": service_account,
+                })
+        required_dapr_objects = {
+            ("dapr-system/Deployment", "dapr-operator"),
+            ("dapr-system/Deployment", "dapr-sentry"),
+            ("dapr-system/Deployment", "dapr-sidecar-injector"),
+            ("dapr-system/StatefulSet", "dapr-placement-server"),
+            ("dapr-system/StatefulSet", "dapr-scheduler-server"),
+        }
+        if not required_dapr_objects.issubset({(str(item["kind"]), str(item["name"])) for item in runtime_inventory}):
+            raise EvidenceValidationError("qualification runtime identity omitted a Dapr control-plane workload")
+        for namespace, pod_payload in ((target["namespace"], parsed_payloads[10]), ("dapr-system", dapr_pods)):
+            pod_items = pod_payload.get("items") if isinstance(pod_payload, Mapping) else None
+            if not isinstance(pod_items, list):
+                raise EvidenceValidationError("qualification runtime identity returned no pod inventory")
+            for item in pod_items:
+                metadata = item.get("metadata") if isinstance(item, Mapping) else None
+                spec = item.get("spec") if isinstance(item, Mapping) else None
+                status = item.get("status") if isinstance(item, Mapping) else None
+                labels = metadata.get("labels") if isinstance(metadata, Mapping) else None
+                annotations = metadata.get("annotations") if isinstance(metadata, Mapping) else None
+                workload = (
+                    labels.get("app.kubernetes.io/name") or labels.get("app")
+                    if isinstance(labels, Mapping)
+                    else None
+                )
+                required_workloads = (
+                    {"memories", "access-telemetry-postgresql"}
+                    if namespace == target["namespace"]
+                    else {
+                        "dapr-operator",
+                        "dapr-placement-server",
+                        "dapr-scheduler-server",
+                        "dapr-sentry",
+                        "dapr-sidecar-injector",
+                    }
+                )
+                if workload not in required_workloads:
+                    continue
+                container_statuses = status.get("containerStatuses") if isinstance(status, Mapping) else None
+                images = sorted(
+                    container.get("imageID")
+                    for container in container_statuses or []
+                    if isinstance(container, Mapping) and isinstance(container.get("imageID"), str)
+                )
+                service_account = spec.get("serviceAccountName") if isinstance(spec, Mapping) else None
+                if (
+                    not isinstance(workload, str)
+                    or not workload
+                    or not isinstance(service_account, str)
+                    or not service_account
+                    or not images
+                    or any(re.search(r"sha256:[0-9a-f]{64}\Z", image) is None for image in images)
+                ):
+                    raise EvidenceValidationError("qualification running pod identity is incomplete")
+                runtime_inventory.append({
+                    "kind": "PodRuntime",
+                    "namespace": namespace,
+                    "workload": workload,
+                    "service_account": service_account,
+                    "dapr_app_id": annotations.get("dapr.io/app-id") if isinstance(annotations, Mapping) else None,
+                    "image_ids": images,
+                })
+        observed_running_workloads = {
+            (str(item.get("namespace")), str(item.get("workload")))
+            for item in runtime_inventory
+            if item.get("kind") == "PodRuntime"
+        }
+        required_running_workloads = {
+            (target["namespace"], "memories"),
+            (target["namespace"], "access-telemetry-postgresql"),
+            ("dapr-system", "dapr-operator"),
+            ("dapr-system", "dapr-placement-server"),
+            ("dapr-system", "dapr-scheduler-server"),
+            ("dapr-system", "dapr-sentry"),
+            ("dapr-system", "dapr-sidecar-injector"),
+        }
+        if not required_running_workloads.issubset(observed_running_workloads):
+            raise EvidenceValidationError("qualification runtime identity omitted a running image identity")
+        runtime_inventory.sort(
+            key=lambda item: (
+                str(item["kind"]),
+                str(item.get("namespace", "")),
+                str(item.get("name", item.get("workload", ""))),
+                _canonical_json(item.get("image_ids", [])),
+            )
+        )
+        runtime_identity_sha256 = _sha256(_canonical_json(runtime_inventory))
+        if isinstance(target, dict):
+            target["_runtime_identity_sha256"] = runtime_identity_sha256
         result = {
             "kind": "non-production-qualification",
             "namespace": target["namespace"],
             "profile_sha256": STORY_27_4_PROFILE_SHA256,
             "writes_state": "disabled",
+            "runtime_identity_sha256": runtime_identity_sha256,
             "result_count": len(stdout_parts),
         }
     elif command_id == "qualification-final-state":
-        gate_payload, lease_payload, lifecycle_payload, clock_payload = parsed_payloads
+        gate_payload, lease_payload, lifecycle_payload, clock_payload = parsed_payloads[:4]
+        projected_gates = parsed_payloads[-2:]
         gate_data = gate_payload.get("data", {}) if isinstance(gate_payload, Mapping) else {}
         try:
             gate = _require_mapping(
@@ -1661,6 +2522,8 @@ def _run_operation(
             or lease_spec.get("leaseDurationSeconds") != 0
             or lifecycle_replicas != 0
             or clock_replicas != 0
+            or len(projected_gates) != 2
+            or any(projected != gate for projected in projected_gates)
         ):
             raise EvidenceValidationError("qualification final state is not disabled and scaled to zero")
         result = {"state": "disabled", "result_count": len(stdout_parts)}
@@ -1698,12 +2561,12 @@ def _run_operation(
         if (
             not isinstance(lease_spec, Mapping)
             or lease_spec.get("holderIdentity") != target["_lease_holder"]
-            or lease_spec.get("leaseDurationSeconds") != 2700
+            or lease_spec.get("leaseDurationSeconds") != _QUALIFICATION_SESSION_SECONDS
             or gate.get("state") != "enabled"
             or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
             or type(expires_utc_ms) is not int
             or expires_utc_ms <= _utc_now_milliseconds()
-            or expires_utc_ms > _utc_now_milliseconds() + (45 * 60 * 1000) + 5_000
+            or expires_utc_ms > _utc_now_milliseconds() + (_QUALIFICATION_SESSION_SECONDS * 1000) + 5_000
             or lifecycle_replicas != 2
             or clock_replicas != 1
         ):
@@ -1717,6 +2580,30 @@ def _run_operation(
     elif command_id == "qualification-disable":
         result = {
             "state": "disabled",
+            "result_count": len(stdout_parts),
+        }
+    elif command_id == "component-throughput":
+        prometheus = parsed_payloads[-1] if parsed_payloads else None
+        data = prometheus.get("data") if isinstance(prometheus, Mapping) else None
+        series = data.get("result") if isinstance(data, Mapping) else None
+        value_pair = (
+            series[0].get("value")
+            if isinstance(series, list) and len(series) == 1 and isinstance(series[0], Mapping)
+            else None
+        )
+        if (
+            not isinstance(prometheus, Mapping)
+            or prometheus.get("status") != "success"
+            or not isinstance(value_pair, list)
+            or len(value_pair) != 2
+            or not isinstance(value_pair[1], str)
+            or re.fullmatch(r"[0-9]+(?:\.0+)?", value_pair[1]) is None
+        ):
+            raise EvidenceValidationError("C2 target state-operation counter query is not exact")
+        result = {
+            "counter_name": "memories_access_telemetry_lifecycle_state_operations_total",
+            "window_milliseconds": 1_800_000,
+            "operation_delta": int(float(value_pair[1])),
             "result_count": len(stdout_parts),
         }
     elif command_id == "idempotence-conflict-proof":
@@ -1757,6 +2644,8 @@ def _run_operation(
         result = {
             "exercised": exercised,
             "recovered": recovered,
+            "before_runtime_identity_sha256": _sha256(_canonical_json(before)),
+            "after_runtime_identity_sha256": _sha256(_canonical_json(after)),
             "acknowledged_loss": acknowledged_loss,
             "continuity_observed": recovered and acknowledged_loss == 0 and health_after not in {"unhealthy", "3"},
             "result_count": len(stdout_parts),
@@ -1814,14 +2703,68 @@ def _run_operation(
             for field, expected in expected_seed.items()
         ):
             raise EvidenceValidationError("newer-record control accounting is not exact")
+        response_record_ids = _require_sequence(
+            _camel_value(workload, "record_ids"), f"{command_id}.record_ids"
+        )
+        expected_record_ids = _qualification_record_ids(
+            _require_nonempty_string(_camel_value(workload, "run_id"), f"{command_id}.run_id"),
+            _require_nonempty_string(_camel_value(workload, "segment_id"), f"{command_id}.segment_id"),
+        )
         names = control.get("newer_record_names")
-        if control.get("record_count") != 125 or not isinstance(names, list) or not names:
+        if control.get("record_count") != 125 or not isinstance(names, list) or len(names) != 125:
             raise EvidenceValidationError("newer-record control did not isolate its 125 persisted rows")
-        if any(re.fullmatch(r"newer-control-[0-9]{3}", str(name)) is None for name in names):
-            raise EvidenceValidationError("newer-record control aliases are not bounded")
+        if (
+            response_record_ids != expected_record_ids
+            or names != expected_record_ids
+            or len(set(names)) != 125
+            or any(re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", str(name)) is None for name in names)
+        ):
+            raise EvidenceValidationError("newer-record control identities are not exact bounded ULIDs")
         result = {
             "record_count": 125,
             "newer_record_names": names,
+            "result_count": len(stdout_parts),
+        }
+    elif command_id == "cohort-168h-report":
+        reporter_job = next(
+            (
+                payload for payload in parsed_payloads
+                if isinstance(payload, Mapping) and payload.get("kind") == "Job"
+            ),
+            None,
+        )
+        reporter_spec = reporter_job.get("spec") if isinstance(reporter_job, Mapping) else None
+        template = reporter_spec.get("template") if isinstance(reporter_spec, Mapping) else None
+        pod_spec = template.get("spec") if isinstance(template, Mapping) else None
+        containers = pod_spec.get("containers") if isinstance(pod_spec, Mapping) else None
+        reporter = (
+            containers[0]
+            if isinstance(containers, list) and len(containers) == 1
+            and isinstance(containers[0], Mapping)
+            else None
+        )
+        if (
+            not isinstance(pod_spec, Mapping)
+            or pod_spec.get("automountServiceAccountToken") is not False
+            or pod_spec.get("serviceAccountName") != "access-telemetry-adapter"
+            or not isinstance(reporter, Mapping)
+            or reporter.get("image") != target.get("_reporter_image")
+            or reporter.get("command") != _REPORTER_COMMAND
+            or reporter.get("args") != _REPORTER_ARGUMENTS
+            or reporter.get("env") != _REPORTER_ENV
+            or reporter.get("volumeMounts") != _REPORTER_VOLUME_MOUNTS
+            or pod_spec.get("volumes") != _REPORTER_VOLUMES
+        ):
+            raise EvidenceValidationError("physical evidence reporter changed after C1 review")
+        receipt = parsed_payloads[-1] if parsed_payloads else None
+        if physical_evidence is None or not isinstance(receipt, Mapping):
+            raise EvidenceValidationError("physical evidence reporter returned no authenticated receipt")
+        if receipt != {"status": "accepted", **physical_evidence}:
+            raise EvidenceValidationError("physical evidence reporter receipt does not match submitted evidence")
+        result = {
+            "reported": True,
+            "artifact_sha256": physical_evidence["artifactSha256"],
+            "reporter_image_digest": physical_evidence["reporterImageDigest"],
             "result_count": len(stdout_parts),
         }
     elif command_id.startswith("cohort-"):
@@ -1855,7 +2798,18 @@ def _run_operation(
                 for field, expected in expected_seed.items()
             ):
                 raise EvidenceValidationError(f"command {command_id} seed accounting is not exact")
-            if result.get("pre_tuple_count") != 125:
+            response_record_ids = _require_sequence(
+                _camel_value(workload, "record_ids"), f"{command_id}.record_ids"
+            )
+            expected_record_ids = _qualification_record_ids(
+                _require_nonempty_string(_camel_value(workload, "run_id"), f"{command_id}.run_id"),
+                _require_nonempty_string(_camel_value(workload, "segment_id"), f"{command_id}.segment_id"),
+            )
+            if (
+                response_record_ids != expected_record_ids
+                or result.get("record_ids") != expected_record_ids
+                or result.get("pre_tuple_count") != 125
+            ):
                 raise EvidenceValidationError(f"command {command_id} did not isolate its 125-row cohort")
         if stage == "wait":
             if result.get("ready") is not True:
@@ -1899,6 +2853,19 @@ def _run_operation(
             )
             result["index_name"] = index_name
             result["post_index_candidate_count"] = post_index_count
+            strong_absence = [
+                payload
+                for payload in parsed_payloads
+                if isinstance(payload, Mapping) and payload.get("stage") == "strong-absence"
+            ]
+            if len(strong_absence) != 1 or _require_integer(
+                strong_absence[0].get("strong_absent_read_count"),
+                f"{command_id}.strong_absent_read_count",
+            ) != 125:
+                raise EvidenceValidationError(
+                    f"command {command_id} did not strongly read every exact Dapr key as absent"
+                )
+            result["strong_absent_read_count"] = 125
         if stage == "reclamation":
             if len(mappings) != 2:
                 raise EvidenceValidationError(f"command {command_id} did not measure allocator bytes before and after VACUUM")
@@ -1914,49 +2881,6 @@ def _run_operation(
                     f"command {command_id} did not increase PostgreSQL reusable free space"
                 )
             result["os_disk_shrink_claimed"] = False
-            if command_id == "cohort-168h-reclamation":
-                reporter_job = next(
-                    (
-                        payload
-                        for payload in parsed_payloads
-                        if isinstance(payload, Mapping) and payload.get("kind") == "Job"
-                    ),
-                    None,
-                )
-                reporter_spec = reporter_job.get("spec") if isinstance(reporter_job, Mapping) else None
-                reporter_status = reporter_job.get("status") if isinstance(reporter_job, Mapping) else None
-                template = reporter_spec.get("template") if isinstance(reporter_spec, Mapping) else None
-                pod_spec = template.get("spec") if isinstance(template, Mapping) else None
-                containers = pod_spec.get("containers") if isinstance(pod_spec, Mapping) else None
-                reporter_image = (
-                    containers[0].get("image")
-                    if isinstance(containers, list)
-                    and len(containers) == 1
-                    and isinstance(containers[0], Mapping)
-                    else None
-                )
-                if (
-                    not isinstance(reporter_spec, Mapping)
-                    or reporter_spec.get("suspend") is not True
-                    or not isinstance(reporter_status, Mapping)
-                    or reporter_status.get("succeeded", 0) != 0
-                    or reporter_status.get("failed", 0) != 0
-                    or reporter_status.get("active", 0) != 0
-                    or reporter_status.get("completionTime") is not None
-                    or not isinstance(reporter_image, str)
-                    or "@sha256:" not in reporter_image
-                    or ":0.0.0" in reporter_image
-                ):
-                    raise EvidenceValidationError(
-                        "physical evidence reporter is not a fresh suspended C1-reviewed digest; "
-                        "reapply the reviewed Job and resume with the same journal"
-                    )
-                receipt = parsed_payloads[-1]
-                if physical_evidence is None or not isinstance(receipt, Mapping):
-                    raise EvidenceValidationError("physical evidence reporter returned no authenticated receipt")
-                expected_receipt = {"status": "accepted", **physical_evidence}
-                if receipt != expected_receipt:
-                    raise EvidenceValidationError("physical evidence reporter receipt does not match submitted evidence")
         result["result_count"] = len(stdout_parts)
     elif command_id == "retention-controls":
         configmap = next(
@@ -2001,12 +2925,16 @@ def _run_operation(
             (payload for payload in parsed_payloads if isinstance(payload, Mapping) and _camel_value(payload, "attempted") is not None),
             None,
         )
-        health_payload = next(
-            (payload for payload in parsed_payloads if isinstance(payload, Mapping) and payload.get("status") in {"Healthy", "Degraded", "Unhealthy"}),
+        business_payload = next(
+            (
+                payload
+                for payload in parsed_payloads
+                if isinstance(payload, Mapping) and type(payload.get("business_status")) is int
+            ),
             None,
         )
-        if len(pod_lists) < 3 or not isinstance(workload, Mapping) or not isinstance(health_payload, Mapping):
-            raise EvidenceValidationError(f"command {command_id} lacks fault/readiness/accounting observations")
+        if len(pod_lists) < 3 or not isinstance(workload, Mapping) or not isinstance(business_payload, Mapping):
+            raise EvidenceValidationError(f"command {command_id} lacks fault/business/accounting observations")
         before = _pod_snapshot(pod_lists[1], command_id)
         after = _pod_snapshot(pod_lists[-1], command_id)
         if selected_pod is None:
@@ -2025,15 +2953,31 @@ def _run_operation(
         dropped = _require_integer(_camel_value(workload, "dropped"), f"{command_id}.dropped")
         if attempted != persisted + rejected + dropped:
             raise EvidenceValidationError(f"command {command_id} lifecycle accounting is not exact")
-        logs = stdout_parts[-1].decode("utf-8", errors="strict")
-        audit_continuity = any(line.lstrip().startswith("{") for line in logs.splitlines())
+        expected_disposition = _C4_EXPECTED_DISPOSITIONS[scenario]
+        observed_disposition = next(
+            (
+                disposition
+                for disposition, count in (
+                    ("persisted", persisted), ("rejected", rejected), ("dropped", dropped)
+                )
+                if count == attempted
+            ),
+            "mixed",
+        )
+        audit_continuity = _has_correlated_audit_record(stdout_parts[-1], workload, command_id)
         prometheus_samples = _prometheus_sample_count(stdout_parts[-2], command_id)
+        business_status = _require_integer(
+            business_payload.get("business_status"), f"{command_id}.business_status"
+        )
         result = {
-            "exercised": exercised and recovered and proof_executed,
-            "lifecycle_fail_closed": rejected + dropped > 0,
-            "business_readiness_available": health_payload.get("status") == "Healthy",
+            "exercised": (
+                exercised and recovered and proof_executed
+                and observed_disposition == expected_disposition
+            ),
+            "expected_disposition": expected_disposition,
+            "business_operation_succeeded": business_status == 200,
             "business_requests": 1,
-            "business_failures": 0 if health_payload.get("status") == "Healthy" else 1,
+            "business_failures": 0 if business_status == 200 else 1,
             "audit_continuity": audit_continuity and prometheus_samples > 0,
             "lifecycle_attempts": attempted,
             "lifecycle_persisted": persisted,
@@ -2050,17 +2994,29 @@ def _run_operation(
         )
         if not all(isinstance(value, Mapping) for value in (deployment, dapr_configuration, inspection)):
             raise EvidenceValidationError(f"command {command_id} lacks deployment, Dapr, or lifecycle observations")
-        logs = stdout_parts[3].decode("utf-8", errors="strict")
-        json_console = any(line.lstrip().startswith("{") for line in logs.splitlines())
+        correlated_workload = parsed_payloads[3] if command_id in {"continuity", "observability"} else None
+        console_index = 4 if correlated_workload is not None else 4
+        metrics_index = 6 if correlated_workload is not None else 5
+        logs = stdout_parts[console_index].decode("utf-8", errors="strict")
+        json_console = (
+            _has_correlated_audit_record(stdout_parts[console_index], correlated_workload, command_id)
+            if isinstance(correlated_workload, Mapping)
+            else any(line.lstrip().startswith("{") for line in logs.splitlines())
+        )
+        otlp_record = (
+            _has_correlated_audit_record(stdout_parts[5], correlated_workload, command_id)
+            if isinstance(correlated_workload, Mapping)
+            else False
+        )
         metrics = (
-            _lifecycle_prometheus_observation(stdout_parts[4], command_id)
+            _lifecycle_prometheus_observation(stdout_parts[metrics_index], command_id)
             if command_id == "observability"
             else None
         )
         prometheus_samples = (
             metrics["sample_count"]
             if metrics is not None
-            else _prometheus_sample_count(stdout_parts[4], command_id)
+            else _prometheus_sample_count(stdout_parts[metrics_index], command_id)
         )
         _, health = _inspection(inspection, command_id)
         deployment_text = _canonical_json(deployment)
@@ -2070,7 +3026,7 @@ def _run_operation(
             result = {
                 "console_continuity": json_console,
                 "otlp_configured": otlp_configured,
-                "otlp_continuity": prometheus_samples > 0 if otlp_configured else False,
+                "otlp_continuity": otlp_record if otlp_configured else False,
                 "direct_backend_dependencies": [
                     name for name in ("ConnectionStrings", "PostgreSql", "Redis") if name in deployment_text
                 ],
@@ -2103,7 +3059,7 @@ def _run_operation(
                 "last_evidence_timestamp_gauge": metrics["last_evidence_timestamp_gauge"],
                 "json_console_continuity": json_console,
                 "otlp_configured": otlp_configured,
-                "otlp_continuity": prometheus_samples > 0 if otlp_configured else False,
+                "otlp_continuity": otlp_record if otlp_configured else False,
                 "result_count": len(stdout_parts),
             }
         else:
@@ -2111,6 +3067,21 @@ def _run_operation(
             deny_by_default = isinstance(acl, Mapping) and acl.get("defaultAction") == "deny"
             no_read_route = "/v1/access-telemetry/read" not in dapr_text
             executed = _executed_test_inventory(stdout_parts[-1], _PRIVACY_PROOF_TESTS, command_id)
+            privacy_request = parsed_payloads[3]
+            if not isinstance(privacy_request, Mapping):
+                raise EvidenceValidationError("privacy denial returned no target HTTP observation")
+            allowed_status = _require_integer(
+                privacy_request.get("allowed_status"), "privacy.allowed_status"
+            )
+            denied_status = _require_integer(
+                privacy_request.get("denied_status"), "privacy.denied_status"
+            )
+            dependency_calls = _require_integer(
+                privacy_request.get("denied_dependency_calls"),
+                "privacy.denied_dependency_calls",
+                minimum=0,
+            )
+            target_denial = allowed_status == 200 and denied_status == 403
             result = {
                 "inspection_least_privilege": deny_by_default,
                 "no_tenant_read_route": no_read_route,
@@ -2122,8 +3093,13 @@ def _run_operation(
                     marker in logs.lower()
                     for marker in ('"password":', '"token":', '"authorization":', '"credential":')
                 ),
-                "tenant_denial_before_dependencies": deny_by_default and executed == list(_PRIVACY_PROOF_TESTS),
-                "dependency_calls_after_denial": 0 if executed == list(_PRIVACY_PROOF_TESTS) else 1,
+                "tenant_denial_before_dependencies": (
+                    deny_by_default
+                    and target_denial
+                    and dependency_calls == 0
+                    and executed == list(_PRIVACY_PROOF_TESTS)
+                ),
+                "dependency_calls_after_denial": dependency_calls,
                 "tenant_denial_tests": executed,
                 "result_count": len(stdout_parts),
             }
@@ -2235,6 +3211,13 @@ def _execute_qualification(
     if isinstance(target, dict):
         target.pop("_lease_acquired", None)
         target.pop("_cleanup_expired_lease", None)
+    if checkpoint == "c4-failure-privacy-observability":
+        # Credential validation is deliberately outside the protected mutation
+        # region so an unusable canary can never open the qualification gate.
+        if not isinstance(target.get("_business_bearer"), bytes):
+            if not isinstance(target, dict):
+                raise EvidenceValidationError("qualification bearer context is immutable")
+            target["_business_bearer"] = _load_business_bearer()
     try:
         identity, identity_command = _run_operation(
             target,
@@ -2270,27 +3253,39 @@ def _execute_qualification(
             # Both fixed requests must overlap so the cluster observes the ADR's
             # exact 250 accepted records/s, rather than two sequential 125/s runs.
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix="story-27-4-writer") as writers:
-                futures = {
-                    command_id: writers.submit(_run_operation, target, checkpoint, command_id)
-                    for command_id in remaining_command_ids[:2]
-                }
-                # Execute the replacement/fault observations while both fixed
-                # writers are still producing.  Waiting for the writers here
-                # would turn C2 into two disconnected tests and could not prove
-                # continuity through replacement under load.
-                sequential_results, sequential_commands = _execute(
-                    target,
-                    checkpoint,
-                    remaining_command_ids[2:],
-                    on_result,
-                    resume_results,
-                )
-                for command_id in remaining_command_ids[:2]:
-                    result, command = futures[command_id].result()
-                    body_results[command_id] = {**result, "_command": command}
-                    body_commands.append(command)
-                    if on_result is not None:
-                        on_result(command_id, body_results[command_id])
+                try:
+                    futures = {
+                        command_id: writers.submit(_run_operation, target, checkpoint, command_id)
+                        for command_id in remaining_command_ids[:2]
+                    }
+                    # Execute the replacement/fault observations while both fixed
+                    # writers are still producing.  Waiting for the writers here
+                    # would turn C2 into two disconnected tests and could not prove
+                    # continuity through replacement under load.
+                    sequential_results, sequential_commands = _execute(
+                        target,
+                        checkpoint,
+                        remaining_command_ids[2:],
+                        on_result,
+                        resume_results,
+                    )
+                    for command_id in remaining_command_ids[:2]:
+                        result, command = futures[command_id].result()
+                        body_results[command_id] = {**result, "_command": command}
+                        body_commands.append(command)
+                        if on_result is not None:
+                            on_result(command_id, body_results[command_id])
+                    throughput_result, throughput_command = _run_operation(
+                        target, checkpoint, "component-throughput"
+                    )
+                    body_results["component-throughput"] = {
+                        **throughput_result,
+                        "_command": throughput_command,
+                    }
+                    body_commands.append(throughput_command)
+                except BaseException:
+                    _TERMINATION_REQUESTED.set()
+                    raise
             remaining_command_ids = []
         else:
             sequential_results, sequential_commands = _execute(
@@ -2331,9 +3326,42 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
     ]
     results, commands = _execute_qualification(target, "c2-production-replacement", command_ids)
     writers = []
+    segment_proofs = sorted(
+        [
+            dict(proof)
+            for index in (1, 2)
+            for proof in _require_sequence(
+                results[f"writer-{index}"].get("_segment_proofs"),
+                f"writer-{index} segment proofs",
+            )
+            if isinstance(proof, Mapping)
+        ],
+        key=lambda proof: (proof["started_utc_ms"], proof["writer"]),
+    )
+
+    def post_replacement_proof(command: Mapping[str, Any]) -> dict[str, Any]:
+        finished_utc_ms = _require_integer(
+            command.get("finished_utc_ms"), "replacement command finished_utc_ms", minimum=1
+        )
+        proof = next(
+            (candidate for candidate in segment_proofs if candidate["started_utc_ms"] >= finished_utc_ms),
+            None,
+        )
+        if proof is None or proof.get("durable_count") != 125:
+            raise EvidenceValidationError(
+                "C2 replacement has no exact succeeding durable writer segment"
+            )
+        return {
+            key: proof[key]
+            for key in (
+                "segment_id", "writer", "writer_pod", "started_utc_ms", "finished_utc_ms",
+                "record_inventory_sha256", "durable_count",
+            )
+        }
     for index in (1, 2):
         result = _without_result_count(results[f"writer-{index}"])
         result.pop("_command", None)
+        result.pop("_segment_proofs", None)
         result.pop("dropped", None)
         result.pop("rejected", None)
         result["observation"] = _result_observation(results[f"writer-{index}"]["_command"])
@@ -2342,10 +3370,22 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
     for name in REQUIRED_REPLACEMENTS:
         value = _without_result_count(results[f"replace-{name}"])
         value.pop("_command", None)
+        value["mutation_finished_utc_ms"] = results[f"replace-{name}"]["_command"][
+            "finished_utc_ms"
+        ]
+        value["post_replacement_segment"] = post_replacement_proof(
+            results[f"replace-{name}"]["_command"]
+        )
         value["observation"] = _result_observation(results[f"replace-{name}"]["_command"])
         replacements[name] = value
     adapter = _without_result_count(results["approved-adapter-fault"])
     adapter.pop("_command", None)
+    adapter["mutation_finished_utc_ms"] = results["approved-adapter-fault"]["_command"][
+        "finished_utc_ms"
+    ]
+    adapter["post_replacement_segment"] = post_replacement_proof(
+        results["approved-adapter-fault"]["_command"]
+    )
     adapter["observation"] = _result_observation(results["approved-adapter-fault"]["_command"])
     continuity = results["continuity"]
     conflict_proof = results["idempotence-conflict-proof"]
@@ -2355,6 +3395,15 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
     conflicted = sum(results[f"writer-{index}"]["conflicted"] for index in (1, 2))
     transaction_acks = sum(
         results[f"writer-{index}"]["transaction_acknowledgements"] for index in (1, 2)
+    )
+    overlap_milliseconds = min(
+        results["writer-1"]["finished_utc_ms"], results["writer-2"]["finished_utc_ms"]
+    ) - max(results["writer-1"]["started_utc_ms"], results["writer-2"]["started_utc_ms"])
+    if overlap_milliseconds <= 0:
+        raise EvidenceValidationError("C2 writers returned no common measured interval")
+    component_counter = results["component-throughput"]
+    operation_delta = _require_nonzero_integer(
+        component_counter.get("operation_delta"), "component-throughput.operation_delta"
     )
     replacements_recovered = all(
         results[f"replace-{name}"]["exercised"]
@@ -2373,7 +3422,14 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
         "writers": {
             "steady_state_minutes": 30,
             "cluster_accepted_records_per_second": 250,
-            "component_operations_per_second": (persisted * 2) // (30 * 60),
+            "component_operations_per_second": (operation_delta * 1000) // overlap_milliseconds,
+            "component_counter": {
+                "counter_name": component_counter["counter_name"],
+                "window_milliseconds": component_counter["window_milliseconds"],
+                "operation_delta": operation_delta,
+                "observation": _result_observation(component_counter["_command"]),
+            },
+            "overlap_milliseconds": overlap_milliseconds,
             "writer_results": writers,
             "acknowledged_loss": acknowledged_loss,
             "actor_serialized": attempted == acknowledged + conflicted,
@@ -2399,8 +3455,20 @@ def _c3(
     target: Mapping[str, str],
     journal_path: Path,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    initial_identity, initial_identity_command = _run_operation(
+        target, "c3-retention-reclamation", "qualification-target-identity"
+    )
+    runtime_identity_sha256 = _require_nonempty_string(
+        initial_identity.get("runtime_identity_sha256"),
+        "C3 initial runtime identity",
+        maximum=64,
+    )
+    initial_identity_command = {
+        **initial_identity_command,
+        "command_id": "c3-runtime-identity",
+    }
     command_ids = ["retention-controls", "c3-empty-preflight"]
-    for hours in (1, 24, 168):
+    for hours in (168, 24, 1):
         command_ids.append(f"cohort-{hours}h-seed")
     for hours in (1, 24, 168):
         command_ids.append(f"cohort-{hours}h-wait")
@@ -2409,7 +3477,20 @@ def _c3(
         command_ids.extend(
             (f"cohort-{hours}h-expiry", f"cohort-{hours}h-purge", f"cohort-{hours}h-reclamation")
         )
-    with _C3Journal(journal_path) as journal:
+        if hours == 168:
+            command_ids.append("cohort-168h-report")
+    journal_context = {
+        "target_kind": target["kind"],
+        "kube_context": target["kube_context"],
+        "namespace": target["namespace"],
+        "profile_sha256": STORY_27_4_PROFILE_SHA256,
+        "workload_sha256": STORY_27_4_WORKLOAD_SHA256,
+        "c1_platform_operations_reviewer": target["_platform_operations_reviewer"],
+        "source_commit": os.environ.get("HEXALITH_STORY_27_4_SOURCE_COMMIT", "unbound"),
+        "producer_source_sha256": os.environ.get("HEXALITH_STORY_27_4_PRODUCER_SHA256", "unbound"),
+        "first_runtime_identity_sha256": runtime_identity_sha256,
+    }
+    with _C3Journal(journal_path, journal_context) as journal:
         resume_results = journal.resume_results
         resumed_ids = list(resume_results)
         if resumed_ids != command_ids[: len(resumed_ids)]:
@@ -2417,7 +3498,7 @@ def _c3(
                 "C3 journal must contain an exact completed prefix with no skips or reordering"
             )
         results: dict[str, Mapping[str, Any]] = {}
-        commands: list[dict[str, Any]] = []
+        commands: list[dict[str, Any]] = [initial_identity_command]
 
         def run_plain(command_id: str) -> None:
             if command_id in resume_results:
@@ -2475,10 +3556,27 @@ def _c3(
             results[command_id] = body
             commands.extend(renamed_commands)
 
+        def bind_cohort_identity(hours: int) -> None:
+            command_id = f"cohort-{hours}h-seed"
+            record_ids = _require_sequence(results[command_id].get("record_ids"), f"{command_id}.record_ids")
+            if len(record_ids) != 125 or len(set(record_ids)) != 125 or any(
+                not isinstance(record_id, str) or
+                re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", record_id) is None
+                for record_id in record_ids
+            ):
+                raise EvidenceValidationError(f"{command_id} did not bind 125 exact record ULIDs")
+            if not isinstance(target, dict):
+                raise EvidenceValidationError("C3 target context is not mutable")
+            cohorts = target.setdefault("_c3_cohort_record_ids", {})
+            if not isinstance(cohorts, dict):
+                raise EvidenceValidationError("C3 cohort identity context is invalid")
+            cohorts[hours] = list(record_ids)
+
         run_qualified("retention-controls")
         run_plain("c3-empty-preflight")
-        for hours in (1, 24, 168):
+        for hours in (168, 24, 1):
             run_qualified(f"cohort-{hours}h-seed")
+            bind_cohort_identity(hours)
         for hours in (1, 24, 168):
             run_plain(f"cohort-{hours}h-wait")
             if hours == 168:
@@ -2486,6 +3584,16 @@ def _c3(
             run_plain(f"cohort-{hours}h-expiry")
             run_qualified(f"cohort-{hours}h-purge")
             run_qualified(f"cohort-{hours}h-reclamation")
+            if hours == 168:
+                if not isinstance(target, dict):
+                    raise EvidenceValidationError("C3 target context is not mutable")
+                reclamation_result = results["cohort-168h-reclamation"]
+                target["_c3_reclamation_observation"] = {
+                    "reclaimed_utc_ms": reclamation_result["reclaimed_utc_ms"],
+                    "allocator_free_bytes": reclamation_result["allocator_free_bytes_after"],
+                }
+                target["_c3_reporter_artifact_sha256"] = journal.authenticated_prefix_sha256
+                run_qualified("cohort-168h-report")
     cohorts = []
     for hours in (1, 24, 168):
         merged: dict[str, Any] = {}
@@ -2523,6 +3631,8 @@ def _c3(
     for private in ("_command", "_session_commands", "_session_transition"):
         retention.pop(private, None)
     return {
+        "runtime_identity_sha256": runtime_identity_sha256,
+        "runtime_identity_observation": _result_observation(initial_identity_command),
         "retention": retention,
         "retention_observation": _result_observation(results["retention-controls"]["_command"]),
         "retention_transition": results["retention-controls"]["_session_transition"],
@@ -2532,6 +3642,13 @@ def _c3(
             "newer_record_names": results["newer-control-seed"]["newer_record_names"],
             "observation": _result_observation(results["newer-control-seed"]["_command"]),
             "transition": results["newer-control-seed"]["_session_transition"],
+        },
+        "physical_report": {
+            "reported": results["cohort-168h-report"]["reported"],
+            "artifact_sha256": results["cohort-168h-report"]["artifact_sha256"],
+            "reporter_image_digest": results["cohort-168h-report"]["reporter_image_digest"],
+            "observation": _result_observation(results["cohort-168h-report"]["_command"]),
+            "transition": results["cohort-168h-report"]["_session_transition"],
         },
         "cohorts": cohorts,
     }, commands
@@ -2571,6 +3688,15 @@ def _c4(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
 
 def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    previous_sigterm: Any = None
+    if threading.current_thread() is threading.main_thread():
+        previous_sigterm = signal.getsignal(signal.SIGTERM)
+
+        def request_cleanup(_signum: int, _frame: Any) -> None:
+            _TERMINATION_REQUESTED.set()
+            raise EvidenceValidationError("qualification producer termination requested")
+
+        signal.signal(signal.SIGTERM, request_cleanup)
     try:
         reviewer = _require_nonempty_string(
             args.platform_operations_reviewer,
@@ -2582,6 +3708,10 @@ def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
         target = dict(_load_target(Path(args.scenario_input)))
         target["_platform_operations_reviewer"] = reviewer
         target["_lease_holder"] = f"story-27-4/{reviewer}/{os.getpid()}-{_utc_now_milliseconds()}"
+        if checkpoint == "c4-failure-privacy-observability" and not args.disable_only:
+            # Credential validation is intentionally completed before the first
+            # kubectl command can inspect or mutate the qualification target.
+            target["_business_bearer"] = _load_business_bearer()
         if args.disable_only:
             try:
                 _run_operation(target, checkpoint, "qualification-target-identity")
@@ -2624,3 +3754,7 @@ def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
     except (EvidenceValidationError, OSError, ValueError, KeyError) as exc:
         print(str(exc)[:512], file=sys.stderr)
         return 1
+    finally:
+        if previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, previous_sigterm)
+        _TERMINATION_REQUESTED.clear()

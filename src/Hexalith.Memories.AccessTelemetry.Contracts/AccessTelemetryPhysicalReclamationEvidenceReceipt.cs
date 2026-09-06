@@ -20,6 +20,9 @@ public sealed record AccessTelemetryPhysicalReclamationEvidenceReceipt
     /// <summary>Gets the verified immutable C3 artifact hash.</summary>
     public required string ArtifactSha256 { get; init; }
 
+    /// <summary>Gets the C1-reviewed reporter image digest bound to the accepted artifact.</summary>
+    public required string ReporterImageDigest { get; init; }
+
     /// <summary>Gets when physical reclamation was observed.</summary>
     public required long ObservedAtUnixMilliseconds { get; init; }
 }

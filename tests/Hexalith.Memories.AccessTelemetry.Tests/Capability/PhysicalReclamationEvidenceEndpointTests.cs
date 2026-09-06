@@ -63,11 +63,12 @@ public sealed class PhysicalReclamationEvidenceEndpointTests
                 await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken),
                 cancellationToken: TestContext.Current.CancellationToken);
             JsonElement root = receipt.RootElement;
-            root.EnumerateObject().Count().ShouldBe(5);
+            root.EnumerateObject().Count().ShouldBe(6);
             root.GetProperty("status").GetString().ShouldBe("accepted");
             root.GetProperty("evidenceId").GetString().ShouldBe(evidence.EvidenceId);
             root.GetProperty("componentProfileHash").GetString().ShouldBe(evidence.ComponentProfileHash);
             root.GetProperty("artifactSha256").GetString().ShouldBe(evidence.ArtifactSha256);
+            root.GetProperty("reporterImageDigest").GetString().ShouldBe(evidence.ReporterImageDigest);
             root.GetProperty("observedAtUnixMilliseconds").GetInt64().ShouldBe(evidence.ObservedAtUnixMilliseconds);
             await actor.Received(1).RecordPhysicalReclamationEvidenceAsync(evidence);
         }
@@ -137,6 +138,7 @@ public sealed class PhysicalReclamationEvidenceEndpointTests
             EvidenceId = "physical-evidence-27-4",
             ComponentProfileHash = new string('a', 64),
             ArtifactSha256 = new string('b', 64),
+            ReporterImageDigest = new string('c', 64),
             ObservedAtUnixMilliseconds = 1_785_227_200_000,
         };
 

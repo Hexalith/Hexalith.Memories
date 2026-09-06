@@ -40,6 +40,9 @@ internal sealed record AccessTelemetryLifecycleActorState
     /// <summary>Gets the immutable C3 artifact hash accepted from the adapter authority.</summary>
     public string? PhysicalReclamationArtifactSha256 { get; init; }
 
+    /// <summary>Gets the C1-reviewed reporter image digest bound to the accepted artifact.</summary>
+    public string? PhysicalReclamationReporterImageDigest { get; init; }
+
     /// <summary>Gets the staged marker-key generation.</summary>
     public string? StagedMarkerKeyGeneration { get; init; }
 

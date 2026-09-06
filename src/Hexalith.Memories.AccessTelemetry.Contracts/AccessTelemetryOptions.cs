@@ -116,6 +116,9 @@ public sealed record AccessTelemetryOptions
     /// <summary>Gets the physical reclamation evidence identity or pending marker.</summary>
     public string PhysicalReclamationEvidenceId { get; init; } = string.Empty;
 
+    /// <summary>Gets the lowercase SHA-256 digest of the only reporter image authorized to submit evidence.</summary>
+    public string PhysicalReclamationReporterImageDigest { get; init; } = string.Empty;
+
     /// <summary>Gets the configured queue record limit.</summary>
     public int QueueRecordLimit { get; init; } = MaximumQueueRecords;
 

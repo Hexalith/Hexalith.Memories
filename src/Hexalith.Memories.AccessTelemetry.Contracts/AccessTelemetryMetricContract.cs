@@ -38,6 +38,9 @@ public static class AccessTelemetryMetricContract
     /// <summary>Dapr state operation latency in milliseconds.</summary>
     public const string StateDuration = "memories.access.telemetry.lifecycle.state.duration";
 
+    /// <summary>Completed lifecycle state operations, used for target-side throughput qualification.</summary>
+    public const string StateOperations = "memories.access.telemetry.lifecycle.state.operations";
+
     /// <summary>Current retained-record count, distinct from queue depth.</summary>
     public const string CapacityRecords = "memories.access.telemetry.lifecycle.capacity.records";
 
@@ -88,6 +91,7 @@ public static class AccessTelemetryMetricContract
             [AttestationDelta] = Array.Empty<string>(),
             [AttestationUncertainty] = Array.Empty<string>(),
             [StateDuration] = Array.Empty<string>(),
+            [StateOperations] = Array.Empty<string>(),
             [CapacityRecords] = Array.Empty<string>(),
             [CapacityUtilization] = Array.Empty<string>(),
             [ExpiryIndexDepth] = Array.Empty<string>(),
@@ -106,6 +110,7 @@ public static class AccessTelemetryMetricContract
     public static IReadOnlySet<string> CounterMetricNames { get; } = new HashSet<string>(StringComparer.Ordinal)
     {
         Records,
+        StateOperations,
         Reminders,
         PhysicalEvidence,
     };

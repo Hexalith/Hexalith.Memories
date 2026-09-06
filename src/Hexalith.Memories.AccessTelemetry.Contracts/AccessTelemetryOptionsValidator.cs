@@ -74,6 +74,11 @@ public static partial class AccessTelemetryOptionsValidator
         RequireMatch(options.MarkerKeyGeneration, KeyIdRegex(), nameof(options.MarkerKeyGeneration), errors);
         RequireNonblank(options.CapacityEvidenceId, nameof(options.CapacityEvidenceId), errors);
         RequireNonblank(options.PhysicalReclamationEvidenceId, nameof(options.PhysicalReclamationEvidenceId), errors);
+        RequireMatch(
+            options.PhysicalReclamationReporterImageDigest,
+            LowerHex64Regex(),
+            nameof(options.PhysicalReclamationReporterImageDigest),
+            errors);
 
         if (production && options.ComponentIsAlpha && !options.AllowAlphaComponent)
         {

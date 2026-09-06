@@ -13,6 +13,15 @@ internal static class AccessTelemetryQualificationEndpointExtensions
     /// <summary>The fixed route invoked separately inside each reviewed Server pod.</summary>
     public const string Route = "/operations/access-telemetry/qualification/fixed-workload";
 
+    /// <summary>The verifier-owned bounded run-correlation header.</summary>
+    public const string RunHeader = "X-Hexalith-Qualification-Run";
+
+    /// <summary>The verifier-owned canonical segment-correlation header.</summary>
+    public const string SegmentHeader = "X-Hexalith-Qualification-Segment";
+
+    /// <summary>The verifier-owned retry-stable segment emission timestamp header.</summary>
+    public const string EmittedUtcMsHeader = "X-Hexalith-Qualification-Emitted-Utc-Ms";
+
     /// <summary>Maps the route only when the process is explicitly running as Qualification.</summary>
     /// <param name="app">The Server application.</param>
     /// <returns>The application for chaining.</returns>
@@ -26,12 +35,23 @@ internal static class AccessTelemetryQualificationEndpointExtensions
 
         _ = app.MapPost(
                 Route,
-                async (AccessTelemetryQualificationWorkloadRunner runner, CancellationToken cancellationToken) =>
+                async (HttpContext context, AccessTelemetryQualificationWorkloadRunner runner, CancellationToken cancellationToken) =>
                 {
                     try
                     {
+                        string runId = context.Request.Headers[RunHeader].ToString();
+                        string segmentId = context.Request.Headers[SegmentHeader].ToString();
+                        if (!long.TryParse(
+                            context.Request.Headers[EmittedUtcMsHeader].ToString(),
+                            System.Globalization.NumberStyles.None,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out long emittedUtcMs))
+                        {
+                            throw new InvalidOperationException("qualification_segment_timestamp_invalid");
+                        }
+
                         AccessTelemetryQualificationWorkloadResult result = await runner
-                            .RunAsync(cancellationToken)
+                            .RunAsync(runId, segmentId, emittedUtcMs, cancellationToken)
                             .ConfigureAwait(false);
                         // HTTP success means the closed observation was returned. The
                         // host-side verifier, which owns the fault scenario, decides

@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 
 using System.Globalization;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -48,6 +49,7 @@ internal sealed class AccessTelemetrySanitizer
     private readonly string _markerKeyId;
     private readonly TimeProvider _timeProvider;
     private readonly MonotonicRecordIdGenerator _recordIds;
+    private readonly bool _qualificationMode;
     private readonly TimeSpan _retention;
 
     /// <summary>Initializes a sanitizer with already-loaded marker-key material.</summary>
@@ -56,7 +58,8 @@ internal sealed class AccessTelemetrySanitizer
         string markerKeyId,
         TimeProvider timeProvider,
         MonotonicRecordIdGenerator recordIds,
-        TimeSpan retention)
+        TimeSpan retention,
+        bool qualificationMode = false)
     {
         ArgumentNullException.ThrowIfNull(markerKey);
         if (markerKey.Length < 32)
@@ -69,6 +72,7 @@ internal sealed class AccessTelemetrySanitizer
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _recordIds = recordIds ?? throw new ArgumentNullException(nameof(recordIds));
         _retention = retention;
+        _qualificationMode = qualificationMode;
     }
 
     /// <summary>Attempts to sanitize one exact logger tuple.</summary>
@@ -104,9 +108,13 @@ internal sealed class AccessTelemetrySanitizer
             ValidateCaseAndResult(source, caseMarker);
 
             DateTimeOffset expiresAt = emittedAt.Add(_retention);
+            string? qualificationIdentity = _qualificationMode
+                ? TryGetQualificationIdentity(source)
+                : null;
             AccessTelemetryRecord candidate = new()
             {
-                AcceptedAtUtc = FormatTimestamp(_timeProvider.GetUtcNow()),
+                AcceptedAtUtc = FormatTimestamp(
+                    qualificationIdentity is null ? _timeProvider.GetUtcNow() : emittedAt),
                 CaseMarker = caseMarker,
                 DurationMs = source.DurationMs,
                 EmittedAtUtc = FormatTimestamp(emittedAt),
@@ -118,7 +126,9 @@ internal sealed class AccessTelemetrySanitizer
                 OperationType = source.OperationType,
                 Outcome = source.Outcome,
                 QueryParams = queryParams,
-                RecordId = _recordIds.NewId(),
+                RecordId = qualificationIdentity is null
+                    ? _recordIds.NewId()
+                    : CreateQualificationRecordId(qualificationIdentity),
                 ResultCount = source.ResultCount,
                 SchemaVersion = 1,
                 SpanId = rejectedTenant ? null : source.SpanId,
@@ -137,6 +147,39 @@ internal sealed class AccessTelemetrySanitizer
             reason = AccessTelemetryReason.SchemaMismatch;
             return false;
         }
+    }
+
+    internal static string CreateQualificationRecordId(string identity)
+    {
+        const string alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+        Span<byte> digest = stackalloc byte[32];
+        _ = SHA256.HashData(Encoding.UTF8.GetBytes(identity), digest);
+        digest[0] &= 0x7f;
+        BigInteger value = new(digest[..16], isUnsigned: true, isBigEndian: true);
+        Span<char> encoded = stackalloc char[26];
+        for (int index = encoded.Length - 1; index >= 0; index--)
+        {
+            value = BigInteger.DivRem(value, 32, out BigInteger remainder);
+            encoded[index] = alphabet[(int)remainder];
+        }
+
+        return new string(encoded);
+    }
+
+    private static string? TryGetQualificationIdentity(AccessTelemetryEvent source)
+    {
+        if (!string.Equals(source.TenantId, "qualification-tenant", StringComparison.Ordinal) ||
+            !source.QueryParams.TryGetValue("workflowInstanceIdPrefix", out object? value) ||
+            value is not string marker || marker.Length != 50 ||
+            !marker.StartsWith("qualification-", StringComparison.Ordinal) || marker[46] != '-')
+        {
+            return null;
+        }
+
+        return marker.AsSpan(14, 32).IndexOfAnyExcept("0123456789abcdef") < 0 &&
+            marker.AsSpan(47, 3).IndexOfAnyExcept("0123456789") < 0
+            ? marker
+            : null;
     }
 
     private static string BucketByteLength(long length)

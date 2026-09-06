@@ -1,10 +1,16 @@
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: access-telemetry-adapter
+automountServiceAccountToken: false
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: access-telemetry-physical-evidence-report
 data:
   evidence.json: >-
-    {"evidenceId":"story-27-4-c3","componentProfileHash":"dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14","artifactSha256":"0000000000000000000000000000000000000000000000000000000000000000","observedAtUnixMilliseconds":0}
+    {"evidenceId":"story-27-4-c3","componentProfileHash":"dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14","artifactSha256":"0000000000000000000000000000000000000000000000000000000000000000","reporterImageDigest":"0000000000000000000000000000000000000000000000000000000000000000","observedAtUnixMilliseconds":0}
 ---
 apiVersion: batch/v1
 kind: Job
@@ -33,6 +39,7 @@ spec:
         dapr.io/sidecar-memory-limit: 128Mi
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: access-telemetry-adapter
       restartPolicy: Never
       securityContext:
         seccompProfile:

@@ -12,8 +12,11 @@ import os
 from pathlib import Path
 import re
 import selectors
+import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
@@ -1502,7 +1505,12 @@ def _write_c0_adapter_profile_pass(
 
 def _workload_identity(deployments: list[Mapping[str, Any]]) -> dict[str, Any]:
     return {
-        summary["name"]: {"generation": summary["generation"], "images": summary["images"]}
+        summary["name"]: {
+            "kind": "Deployment",
+            "name": summary["name"],
+            "generation": summary["generation"],
+            "images": summary["images"],
+        }
         for summary in (_deployment_summary(item) for item in deployments)
         if summary["name"]
     }
@@ -2087,13 +2095,14 @@ def _validate_fresh_run(
     name: str,
     *,
     maximum_duration_ms: int = 86_400_000,
+    require_current_freshness: bool = True,
 ) -> None:
     now = _utc_now_milliseconds()
     if finished < started or finished - started > maximum_duration_ms:
         raise EvidenceValidationError(f"{name} timestamps are out of order or exceed the allowed duration")
     if finished > now + _FUTURE_SKEW_MILLISECONDS:
         raise EvidenceValidationError(f"{name} finished more than one second in the future")
-    if finished < now - _CHECKPOINT_FRESHNESS_MILLISECONDS:
+    if require_current_freshness and finished < now - _CHECKPOINT_FRESHNESS_MILLISECONDS:
         raise EvidenceValidationError(f"{name} is older than the 15-minute acceptance window")
 
 
@@ -2200,8 +2209,34 @@ def _read_bounded_json(
     maximum_bytes: int = _MAX_EVIDENCE_BYTES,
     maximum_string_length: int = 4096,
 ) -> Mapping[str, Any]:
+    result, _ = _read_bounded_json_snapshot(
+        path,
+        approved_root=approved_root,
+        maximum_bytes=maximum_bytes,
+        maximum_string_length=maximum_string_length,
+    )
+    return result
+
+
+def _read_bounded_json_snapshot(
+    path: Path,
+    *,
+    approved_root: Path | None = None,
+    maximum_bytes: int = _MAX_EVIDENCE_BYTES,
+    maximum_string_length: int = 4096,
+) -> tuple[Mapping[str, Any], bytes]:
+    """Read and validate one immutable byte snapshot without reopening its path."""
+
     resolved = _safe_input_path(path, approved_root=approved_root)
-    payload = resolved.read_bytes()
+    descriptor = os.open(resolved, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        status = os.fstat(descriptor)
+        if not stat.S_ISREG(status.st_mode) or status.st_size < 1 or status.st_size > maximum_bytes:
+            raise EvidenceValidationError(f"evidence input must contain 1..{maximum_bytes} bytes")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            payload = stream.read(maximum_bytes + 1)
+    finally:
+        os.close(descriptor)
     if not payload or len(payload) > maximum_bytes:
         raise EvidenceValidationError(f"evidence input must contain 1..{maximum_bytes} bytes")
     if payload.startswith(b"\xef\xbb\xbf"):
@@ -2214,7 +2249,31 @@ def _read_bounded_json(
         raise EvidenceValidationError("evidence input is not canonical UTF-8")
     result = _require_mapping(_json_without_duplicates(text, str(path)), str(path))
     _validate_secret_safe(result, maximum_string_length=maximum_string_length)
-    return result
+    return result, payload
+
+
+def _authenticated_worktree_bytes(
+    repository_root: Path,
+    relative: str,
+    expected_sha256: str,
+) -> bytes:
+    """Return the exact regular-file bytes whose Git blob hash was authenticated."""
+
+    candidate = repository_root / relative
+    if candidate.is_symlink() or not candidate.is_file():
+        raise EvidenceValidationError(f"authenticated source is unavailable: {relative}")
+    descriptor = os.open(candidate, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        status = os.fstat(descriptor)
+        if not stat.S_ISREG(status.st_mode) or status.st_size < 1 or status.st_size > _MAX_SNAPSHOT_BYTES:
+            raise EvidenceValidationError(f"authenticated source has invalid bounds: {relative}")
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            payload = stream.read(_MAX_SNAPSHOT_BYTES + 1)
+    finally:
+        os.close(descriptor)
+    if hashlib.sha256(payload).hexdigest() != expected_sha256:
+        raise EvidenceValidationError(f"authenticated source differs from source HEAD: {relative}")
+    return payload
 
 
 def _git_checked(repository_root: Path, *arguments: str) -> str:
@@ -2274,6 +2333,7 @@ def _expected_source_paths(checkpoint: Any) -> frozenset[str]:
     paths = {identity[1], "tools/verify_access_telemetry_lifecycle.py"}
     if checkpoint in STORY_27_4_CHECKPOINTS:
         paths.add("tools/access_telemetry_producer_common.py")
+        paths.add("deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml")
     return frozenset(paths)
 
 
@@ -2377,6 +2437,8 @@ def _validate_predecessor(
     predecessor: Mapping[str, Any],
     repository_root: Path | None = None,
     evidence_root: Path | None = None,
+    *,
+    require_authorization_freshness: bool = False,
 ) -> None:
     common_fields = frozenset(
         {
@@ -2461,7 +2523,8 @@ def _validate_predecessor(
         _require_hex64(gate.get("source_sha256"), f"C1.gates.{gate_id}.source_sha256")
         started = _require_utc_milliseconds(gate.get("started_utc_ms"), f"C1.gates.{gate_id}.started_utc_ms")
         finished = _require_utc_milliseconds(gate.get("finished_utc_ms"), f"C1.gates.{gate_id}.finished_utc_ms")
-        _validate_fresh_run(started, finished, f"C1 gate {gate_id}")
+        if require_authorization_freshness:
+            _validate_fresh_run(started, finished, f"C1 gate {gate_id}")
         _require_nonzero_integer(gate.get("result_count"), f"C1.gates.{gate_id}.result_count")
         _validate_command_ledger({"commands": [gate.get("command")]}, started, finished)
         artifact_path_value = _require_nonempty_string(
@@ -2532,6 +2595,8 @@ def _validate_common_checkpoint(
     checkpoint: str,
     payload: Mapping[str, Any],
     repository_root: Path | None,
+    *,
+    require_current_freshness: bool = True,
 ) -> None:
     _require_exact_fields(payload, _COMMON_CHECKPOINT_FIELDS, checkpoint)
     if _require_integer(payload["schema_version"], "schema_version", minimum=1, maximum=1) != 1:
@@ -2549,7 +2614,8 @@ def _validate_common_checkpoint(
         started,
         finished,
         "checkpoint",
-        maximum_duration_ms=720_000_000 if checkpoint == "c3-retention-reclamation" else 86_400_000,
+        maximum_duration_ms=777_600_000 if checkpoint == "c3-retention-reclamation" else 86_400_000,
+        require_current_freshness=require_current_freshness,
     )
     if _require_integer(payload["failure_count"], "failure_count") != 0:
         raise EvidenceValidationError("checkpoint contains failures")
@@ -2616,6 +2682,28 @@ def _validate_observation_bindings(payload: Mapping[str, Any]) -> None:
 
 
 def _validate_c2(results: Mapping[str, Any]) -> None:
+    def validate_post_replacement(value: Any, context: str) -> None:
+        proof = _require_mapping(value, context)
+        _require_exact_fields(
+            proof,
+            frozenset({
+                "segment_id", "writer", "writer_pod", "started_utc_ms", "finished_utc_ms",
+                "record_inventory_sha256", "durable_count",
+            }),
+            context,
+        )
+        if proof["writer"] not in {"writer-1", "writer-2"}:
+            raise EvidenceValidationError(f"{context} has an unknown writer")
+        _require_nonempty_string(proof["segment_id"], f"{context}.segment_id")
+        _require_nonempty_string(proof["writer_pod"], f"{context}.writer_pod")
+        started = _require_utc_milliseconds(proof["started_utc_ms"], f"{context}.started_utc_ms")
+        finished = _require_utc_milliseconds(proof["finished_utc_ms"], f"{context}.finished_utc_ms")
+        if not 950 <= finished - started <= 1_250:
+            raise EvidenceValidationError(f"{context} is not a measured one-second segment")
+        _require_hex64(proof["record_inventory_sha256"], f"{context}.record_inventory_sha256")
+        if _require_integer(proof["durable_count"], f"{context}.durable_count") != 125:
+            raise EvidenceValidationError(f"{context} does not prove exact durable survival")
+
     _require_exact_fields(
         results,
         frozenset(
@@ -2640,6 +2728,8 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
                 "steady_state_minutes",
                 "cluster_accepted_records_per_second",
                 "component_operations_per_second",
+                "component_counter",
+                "overlap_milliseconds",
                 "writer_results",
                 "acknowledged_loss",
                 "actor_serialized",
@@ -2664,6 +2754,27 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
         writers["component_operations_per_second"], "component_operations_per_second"
     ) < 500:
         raise EvidenceValidationError("C2 component throughput must be at least 500 operations/s")
+    component_counter = _require_mapping(writers["component_counter"], "writers.component_counter")
+    _require_exact_fields(
+        component_counter,
+        frozenset({"counter_name", "window_milliseconds", "operation_delta", "observation"}),
+        "writers.component_counter",
+    )
+    if component_counter["counter_name"] != "memories_access_telemetry_lifecycle_state_operations_total":
+        raise EvidenceValidationError("C2 component throughput uses the wrong target counter")
+    if _require_integer(component_counter["window_milliseconds"], "component_counter.window_milliseconds") != 1_800_000:
+        raise EvidenceValidationError("C2 component counter window is not the exact steady-state interval")
+    operation_delta = _require_nonzero_integer(
+        component_counter["operation_delta"], "component_counter.operation_delta"
+    )
+    _validate_result_observation(
+        component_counter["observation"], "component_counter.observation", "component-throughput"
+    )
+    overlap = _require_integer(writers["overlap_milliseconds"], "overlap_milliseconds")
+    if not 1_799_000 <= overlap <= 1_801_250:
+        raise EvidenceValidationError("C2 writers did not overlap for the exact 30-minute interval")
+    if writers["component_operations_per_second"] != (operation_delta * 1000) // overlap:
+        raise EvidenceValidationError("C2 component throughput was not derived from its target counter")
     writer_results = _require_sequence(writers["writer_results"], "writer_results")
     if len(writer_results) != 2:
         raise EvidenceValidationError("C2 requires exactly two Server writer results")
@@ -2675,7 +2786,15 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
             frozenset(
                 {
                     "writer",
+                    "started_utc_ms",
+                    "finished_utc_ms",
+                    "segment_count",
+                    "replayed_segment_count",
+                    "dispatch_lag_max_milliseconds",
+                    "segment_inventory_sha256",
+                    "record_inventory_sha256",
                     "attempted",
+                    "enqueued",
                     "acknowledged",
                     "persisted",
                     "conflicted",
@@ -2688,6 +2807,32 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
         if writer["writer"] != f"server-writer-{index + 1}":
             raise EvidenceValidationError("C2 writer identities must be the closed two-writer inventory")
         attempted = _require_nonzero_integer(writer["attempted"], f"writer_results[{index}].attempted")
+        enqueued = _require_nonzero_integer(writer["enqueued"], f"writer_results[{index}].enqueued")
+        writer_started = _require_utc_milliseconds(
+            writer["started_utc_ms"], f"writer_results[{index}].started_utc_ms"
+        )
+        writer_finished = _require_utc_milliseconds(
+            writer["finished_utc_ms"], f"writer_results[{index}].finished_utc_ms"
+        )
+        if not 1_799_000 <= writer_finished - writer_started <= 1_801_250:
+            raise EvidenceValidationError("C2 writer did not measure the exact 30-minute interval")
+        if _require_integer(writer["segment_count"], f"writer_results[{index}].segment_count") != 1_800:
+            raise EvidenceValidationError("C2 writer segment inventory is incomplete")
+        replayed_segments = _require_integer(
+            writer["replayed_segment_count"],
+            f"writer_results[{index}].replayed_segment_count",
+        )
+        if _require_integer(
+            writer["dispatch_lag_max_milliseconds"],
+            f"writer_results[{index}].dispatch_lag_max_milliseconds",
+        ) > 250:
+            raise EvidenceValidationError("C2 writer missed its absolute one-second host cadence")
+        _require_hex64(
+            writer["segment_inventory_sha256"], f"writer_results[{index}].segment_inventory_sha256"
+        )
+        _require_hex64(
+            writer["record_inventory_sha256"], f"writer_results[{index}].record_inventory_sha256"
+        )
         acknowledged = _require_nonzero_integer(
             writer["acknowledged"], f"writer_results[{index}].acknowledged"
         )
@@ -2697,14 +2842,17 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
             writer["transaction_acknowledgements"],
             f"writer_results[{index}].transaction_acknowledgements",
         )
-        if attempted != acknowledged + conflicted or persisted != acknowledged or transaction_acks != acknowledged:
+        if (attempted != enqueued or attempted != acknowledged + conflicted or
+                persisted != acknowledged or transaction_acks != acknowledged):
             raise EvidenceValidationError("C2 per-writer accounting is not exact")
+        if attempted != 225_000 or conflicted != replayed_segments * 125:
+            raise EvidenceValidationError("C2 per-writer segment reconciliation is not exact")
         _validate_result_observation(
             writer["observation"], f"writer_results[{index}].observation", f"writer-{index + 1}"
         )
-        total_acknowledged += acknowledged
+        total_acknowledged += acknowledged + conflicted
     if total_acknowledged != 250 * 30 * 60:
-        raise EvidenceValidationError("C2 did not acknowledge the exact fixed 30-minute workload")
+        raise EvidenceValidationError("C2 did not durably accept the exact fixed 30-minute workload")
     if _require_integer(writers["acknowledged_loss"], "acknowledged_loss") != 0:
         raise EvidenceValidationError("C2 lost acknowledged records")
     _require_true_fields(
@@ -2734,12 +2882,36 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
         replacement = _require_mapping(replacements[name], f"replacements.{name}")
         _require_exact_fields(
             replacement,
-            frozenset({"exercised", "recovered", "acknowledged_loss", "continuity_observed", "observation"}),
+            frozenset({
+                "exercised", "recovered", "before_runtime_identity_sha256",
+                "after_runtime_identity_sha256", "post_replacement_segment",
+                "mutation_finished_utc_ms",
+                "acknowledged_loss", "continuity_observed", "observation",
+            }),
             f"replacements.{name}",
         )
         _require_true_fields(replacement, f"replacements.{name}", ("exercised", "recovered", "continuity_observed"))
         if _require_integer(replacement["acknowledged_loss"], f"replacements.{name}.acknowledged_loss") != 0:
             raise EvidenceValidationError(f"C2 replacement {name} lost an acknowledged record")
+        before_identity = _require_hex64(
+            replacement["before_runtime_identity_sha256"],
+            f"replacements.{name}.before_runtime_identity_sha256",
+        )
+        after_identity = _require_hex64(
+            replacement["after_runtime_identity_sha256"],
+            f"replacements.{name}.after_runtime_identity_sha256",
+        )
+        if before_identity == after_identity:
+            raise EvidenceValidationError(f"C2 replacement {name} retained its runtime identity")
+        validate_post_replacement(
+            replacement["post_replacement_segment"],
+            f"replacements.{name}.post_replacement_segment",
+        )
+        if replacement["post_replacement_segment"]["started_utc_ms"] < _require_utc_milliseconds(
+            replacement["mutation_finished_utc_ms"],
+            f"replacements.{name}.mutation_finished_utc_ms",
+        ):
+            raise EvidenceValidationError(f"C2 replacement {name} is not interval-bound")
         _validate_result_observation(
             replacement["observation"], f"replacements.{name}.observation", f"replace-{name}"
         )
@@ -2747,12 +2919,26 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
     adapter_fault = _require_mapping(results["adapter_fault"], "results.adapter_fault")
     _require_exact_fields(
         adapter_fault,
-        frozenset({"exercised", "profile_unchanged", "acknowledged_loss", "recovered", "observation"}),
+        frozenset({
+            "exercised", "profile_unchanged", "before_runtime_identity_sha256",
+            "after_runtime_identity_sha256", "post_replacement_segment",
+            "mutation_finished_utc_ms",
+            "acknowledged_loss", "recovered", "observation",
+        }),
         "results.adapter_fault",
     )
     _require_true_fields(adapter_fault, "results.adapter_fault", ("exercised", "profile_unchanged", "recovered"))
     if _require_integer(adapter_fault["acknowledged_loss"], "adapter_fault.acknowledged_loss") != 0:
         raise EvidenceValidationError("C2 adapter fault lost an acknowledged record")
+    if adapter_fault["before_runtime_identity_sha256"] == adapter_fault["after_runtime_identity_sha256"]:
+        raise EvidenceValidationError("C2 adapter fault retained its runtime identity")
+    _require_hex64(adapter_fault["before_runtime_identity_sha256"], "adapter_fault.before_runtime_identity_sha256")
+    _require_hex64(adapter_fault["after_runtime_identity_sha256"], "adapter_fault.after_runtime_identity_sha256")
+    validate_post_replacement(adapter_fault["post_replacement_segment"], "adapter_fault.post_replacement_segment")
+    if adapter_fault["post_replacement_segment"]["started_utc_ms"] < _require_utc_milliseconds(
+        adapter_fault["mutation_finished_utc_ms"], "adapter_fault.mutation_finished_utc_ms"
+    ):
+        raise EvidenceValidationError("C2 adapter fault is not interval-bound")
     _validate_result_observation(
         adapter_fault["observation"], "adapter_fault.observation", "approved-adapter-fault"
     )
@@ -2808,15 +2994,24 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
         results,
         frozenset(
             {
+                "runtime_identity_sha256",
+                "runtime_identity_observation",
                 "retention",
                 "retention_observation",
                 "retention_transition",
                 "empty_preflight_observation",
                 "final_newer_control",
+                "physical_report",
                 "cohorts",
             }
         ),
         "results",
+    )
+    _require_hex64(results["runtime_identity_sha256"], "results.runtime_identity_sha256")
+    _validate_result_observation(
+        results["runtime_identity_observation"],
+        "runtime_identity_observation",
+        "c3-runtime-identity",
     )
 
     def validate_segment_transition(value: Any, context: str, command_id: str) -> None:
@@ -2901,16 +3096,31 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
     control_names = _require_sequence(
         final_control["newer_record_names"], "final_newer_control.newer_record_names"
     )
-    if not control_names or any(
-        not isinstance(name, str) or re.fullmatch(r"newer-control-[0-9]{3}", name) is None
+    if len(control_names) != 125 or len(set(control_names)) != 125 or any(
+        not isinstance(name, str) or re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", name) is None
         for name in control_names
     ):
-        raise EvidenceValidationError("C3 final newer-record control aliases are not bounded")
+        raise EvidenceValidationError("C3 final newer-record control must bind 125 exact record ULIDs")
     _validate_result_observation(
         final_control["observation"], "final_newer_control.observation", "newer-control-seed"
     )
     validate_segment_transition(
         final_control["transition"], "final_newer_control.transition", "newer-control-seed"
+    )
+    physical_report = _require_mapping(results["physical_report"], "results.physical_report")
+    _require_exact_fields(
+        physical_report,
+        frozenset({"reported", "artifact_sha256", "reporter_image_digest", "observation", "transition"}),
+        "results.physical_report",
+    )
+    _require_bool(physical_report["reported"], "physical_report.reported", True)
+    _require_hex64(physical_report["artifact_sha256"], "physical_report.artifact_sha256")
+    _require_hex64(physical_report["reporter_image_digest"], "physical_report.reporter_image_digest")
+    _validate_result_observation(
+        physical_report["observation"], "physical_report.observation", "cohort-168h-report"
+    )
+    validate_segment_transition(
+        physical_report["transition"], "physical_report.transition", "cohort-168h-report"
     )
 
     cohorts = _require_sequence(results["cohorts"], "results.cohorts")
@@ -2927,6 +3137,7 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
                     "database",
                     "schema",
                     "table",
+                    "record_ids",
                     "accepted_utc_ms",
                     "emitted_utc_ms",
                     "expires_utc_ms",
@@ -2938,6 +3149,7 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
                     "deleted_count",
                     "already_absent_count",
                     "index_removal_count",
+                    "strong_absent_read_count",
                     "logical_absence",
                     "newer_record_names",
                     "newer_records_preserved",
@@ -2970,11 +3182,19 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
         expires = _require_utc_milliseconds(cohort["expires_utc_ms"], f"cohorts[{index}].expires_utc_ms")
         purged = _require_utc_milliseconds(cohort["purged_utc_ms"], f"cohorts[{index}].purged_utc_ms")
         reclaimed = _require_utc_milliseconds(cohort["reclaimed_utc_ms"], f"cohorts[{index}].reclaimed_utc_ms")
-        if accepted > expires or expires - emitted != hours * 3_600_000:
+        if emitted > accepted or accepted > expires or expires - emitted != hours * 3_600_000:
             raise EvidenceValidationError("C3 cohort expiry does not equal its exact horizon")
         if not expires <= purged <= expires + 900_000 or not purged <= reclaimed <= purged + 86_400_000:
             raise EvidenceValidationError("C3 purge or physical-reclamation bound was not met")
         pre_count = _require_nonzero_integer(cohort["pre_tuple_count"], f"cohorts[{index}].pre_tuple_count")
+        record_ids = _require_sequence(cohort["record_ids"], f"cohorts[{index}].record_ids")
+        if len(record_ids) != 125 or len(set(record_ids)) != 125 or any(
+            not isinstance(record_id, str) or re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", record_id) is None
+            for record_id in record_ids
+        ):
+            raise EvidenceValidationError("C3 cohort must bind 125 exact record ULIDs")
+        if pre_count != len(record_ids):
+            raise EvidenceValidationError("C3 cohort tuple count differs from its exact record inventory")
         post_count = _require_integer(cohort["post_tuple_count"], f"cohorts[{index}].post_tuple_count")
         candidates = _require_nonzero_integer(cohort["candidate_count"], f"cohorts[{index}].candidate_count")
         deleted = _require_integer(cohort["deleted_count"], f"cohorts[{index}].deleted_count")
@@ -2982,6 +3202,11 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
         removed = _require_nonzero_integer(cohort["index_removal_count"], f"cohorts[{index}].index_removal_count")
         if deleted + absent != candidates or removed != candidates or pre_count - post_count != candidates:
             raise EvidenceValidationError("C3 cohort tuple and purge accounting is not exact")
+        if _require_integer(
+            cohort["strong_absent_read_count"],
+            f"cohorts[{index}].strong_absent_read_count",
+        ) != len(record_ids):
+            raise EvidenceValidationError("C3 strong Dapr absence proof is incomplete")
         _require_true_fields(
             cohort,
             f"cohorts[{index}]",
@@ -3038,8 +3263,8 @@ def _validate_c4(results: Mapping[str, Any]) -> None:
             frozenset(
                 {
                     "exercised",
-                    "lifecycle_fail_closed",
-                    "business_readiness_available",
+                    "expected_disposition",
+                    "business_operation_succeeded",
                     "business_requests",
                     "business_failures",
                     "audit_continuity",
@@ -3055,7 +3280,7 @@ def _validate_c4(results: Mapping[str, Any]) -> None:
         _require_true_fields(
             result,
             f"failure_scenarios.{name}",
-            ("exercised", "lifecycle_fail_closed", "business_readiness_available", "audit_continuity"),
+            ("exercised", "business_operation_succeeded", "audit_continuity"),
         )
         _require_nonzero_integer(result["business_requests"], f"failure_scenarios.{name}.business_requests")
         if _require_integer(result["business_failures"], f"failure_scenarios.{name}.business_failures") != 0:
@@ -3069,6 +3294,35 @@ def _validate_c4(results: Mapping[str, Any]) -> None:
         )
         if attempts != accounted:
             raise EvidenceValidationError(f"C4 failure {name} lifecycle accounting is not exact")
+        expected_disposition = _require_nonempty_string(
+            result["expected_disposition"],
+            f"failure_scenarios.{name}.expected_disposition",
+        )
+        expected_by_scenario = {
+            **{scenario: "persisted" for scenario in (
+                "actor-failover", "application-outage", "approved-adapter-fault",
+                "capacity-pressure", "clock-outage", "dapr-outage", "reconnect",
+                "reminder-delay", "shutdown", "state-outage",
+            )},
+            **{scenario: "dropped" for scenario in (
+                "queue-byte-exhaustion", "queue-record-exhaustion", "retry-exhaustion",
+            )},
+            **{scenario: "rejected" for scenario in (
+                "bad-configuration", "bad-key", "degraded-rollback", "etag-failure",
+                "profile-drift", "stale-attestation", "ttl-failure", "transaction-failure",
+            )},
+        }
+        if expected_disposition != expected_by_scenario[name]:
+            raise EvidenceValidationError(f"C4 failure {name} has the wrong closed disposition")
+        observed = {
+            "persisted": _require_integer(result["lifecycle_persisted"], "lifecycle_persisted"),
+            "rejected": _require_integer(result["lifecycle_rejected"], "lifecycle_rejected"),
+            "dropped": _require_integer(result["lifecycle_dropped"], "lifecycle_dropped"),
+        }
+        if observed[expected_disposition] != attempts or sum(
+            count for disposition, count in observed.items() if disposition != expected_disposition
+        ) != 0:
+            raise EvidenceValidationError(f"C4 failure {name} did not match its exact disposition")
         _validate_result_observation(
             result["observation"], f"failure_scenarios.{name}.observation", f"failure-{name}"
         )
@@ -3200,6 +3454,7 @@ def validate_story_27_4_checkpoint(
     *,
     repository_root: Path | None = None,
     evidence_root: Path | None = None,
+    require_current_freshness: bool = True,
 ) -> None:
     """Validate one complete, same-profile C2-C4 production checkpoint."""
 
@@ -3208,7 +3463,12 @@ def validate_story_27_4_checkpoint(
     _validate_secret_safe(payload)
     _validate_secret_safe(predecessor, "predecessor")
     _validate_predecessor(predecessor, repository_root, evidence_root)
-    _validate_common_checkpoint(checkpoint, payload, repository_root)
+    _validate_common_checkpoint(
+        checkpoint,
+        payload,
+        repository_root,
+        require_current_freshness=require_current_freshness,
+    )
     results = _require_mapping(payload["results"], "results")
     if checkpoint == "c2-production-replacement":
         _validate_c2(results)
@@ -3402,6 +3662,7 @@ def _run_bounded_process(
     cwd: Path,
     timeout_seconds: int,
     environment: Mapping[str, str] | None = None,
+    stdin_bytes: bytes | None = None,
 ) -> tuple[int, bytes, bytes]:
     """Stream one child with deterministic limits and terminate on the first exceeded bound."""
 
@@ -3409,7 +3670,7 @@ def _run_bounded_process(
         process = subprocess.Popen(
             tuple(command),
             cwd=cwd,
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.PIPE if stdin_bytes is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=environment,
@@ -3421,6 +3682,19 @@ def _run_bounded_process(
     selector = selectors.DefaultSelector()
     assert process.stdout is not None
     assert process.stderr is not None
+    if stdin_bytes is not None:
+        if len(stdin_bytes) > 16_384:
+            process.kill()
+            process.wait(timeout=5)
+            raise EvidenceValidationError("reviewed producer stdin exceeded its fixed bound")
+        assert process.stdin is not None
+        try:
+            process.stdin.write(stdin_bytes)
+            process.stdin.close()
+        except (BrokenPipeError, OSError) as exc:
+            process.kill()
+            process.wait(timeout=5)
+            raise EvidenceValidationError("reviewed producer rejected its bounded stdin") from exc
     selector.register(process.stdout, selectors.EVENT_READ, (stdout, _MAX_EVIDENCE_BYTES, "stdout"))
     selector.register(process.stderr, selectors.EVENT_READ, (stderr, _MAX_STDERR_BYTES, "stderr"))
     deadline = time.monotonic() + timeout_seconds
@@ -3442,7 +3716,26 @@ def _run_bounded_process(
                 buffer.extend(chunk)
         return_code = process.wait(timeout=max(0.1, deadline - time.monotonic()))
         return return_code, bytes(stdout), bytes(stderr)
+    except EvidenceValidationError:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                # The controlled producer handles SIGTERM by unwinding through
+                # its disable/final-state block.  One full gate window is the
+                # cleanup budget before a last-resort kill.
+                process.wait(timeout=900)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        raise
     except (OSError, subprocess.TimeoutExpired) as exc:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=900)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
         raise EvidenceValidationError("reviewed producer execution failed or timed out") from exc
     finally:
         selector.close()
@@ -3467,7 +3760,10 @@ def run_story_27_4_producer_checkpoint(
 
     temporary: Path | None = None
     resolved_evidence: Path | None = None
-    producer_path: Path | None = None
+    execution_directory: Path | None = None
+    execution_producer_path: Path | None = None
+    execution_input_path: Path | None = None
+    execution_predecessor_path: Path | None = None
     resolved_input: Path | None = None
     producer_authenticated = False
     try:
@@ -3493,37 +3789,54 @@ def run_story_27_4_producer_checkpoint(
             raise EvidenceValidationError(
                 "controlled producers require a clean tracked and untracked source worktree"
             )
-        predecessor = _read_bounded_json(resolved_predecessor, approved_root=approved_root)
-        _validate_predecessor(predecessor, root, approved_root)
+        predecessor, predecessor_bytes = _read_bounded_json_snapshot(
+            resolved_predecessor, approved_root=approved_root
+        )
+        _validate_predecessor(
+            predecessor,
+            root,
+            approved_root,
+            require_authorization_freshness=True,
+        )
         platform_operations_reviewer = next(
             _require_nonempty_string(item.get("reviewer"), "C1 platform-operations reviewer")
             for item in _require_sequence(predecessor.get("approvals"), "C1.approvals")
             if isinstance(item, Mapping) and item.get("role") == "platform-operations"
         )
-        producer_path = root / relative_producer
-        if not producer_path.is_file() or producer_path.is_symlink():
-            raise EvidenceValidationError("registered producer is unavailable or is a symlink")
         source_commit = _git_checked(root, "rev-parse", "--verify", "HEAD^{commit}")
         source_sha256 = _hash_git_blob(root, source_commit, relative_producer)
-        if hashlib.sha256(producer_path.read_bytes()).hexdigest() != source_sha256:
-            raise EvidenceValidationError("registered producer worktree bytes differ from source HEAD")
+        producer_bytes = _authenticated_worktree_bytes(root, relative_producer, source_sha256)
         common_producer = "tools/access_telemetry_producer_common.py"
         common_sha256 = _hash_git_blob(root, source_commit, common_producer)
-        if hashlib.sha256((root / common_producer).read_bytes()).hexdigest() != common_sha256:
-            raise EvidenceValidationError("producer support bytes differ from source HEAD")
+        common_bytes = _authenticated_worktree_bytes(root, common_producer, common_sha256)
         verifier_source = "tools/verify_access_telemetry_lifecycle.py"
         verifier_sha256 = _hash_git_blob(root, source_commit, verifier_source)
-        if hashlib.sha256((root / verifier_source).read_bytes()).hexdigest() != verifier_sha256:
-            raise EvidenceValidationError("producer verifier bytes differ from source HEAD")
+        verifier_bytes = _authenticated_worktree_bytes(root, verifier_source, verifier_sha256)
+        reporter_manifest = "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml"
+        reporter_sha256 = _hash_git_blob(root, source_commit, reporter_manifest)
+        reporter_bytes = _authenticated_worktree_bytes(root, reporter_manifest, reporter_sha256)
+        _, input_bytes = _read_bounded_json_snapshot(resolved_input, approved_root=approved_root)
+        execution_directory = Path(tempfile.mkdtemp(prefix=".story-27-4-auth-", dir=approved_root))
+        execution_producer_path = execution_directory / Path(relative_producer).name
+        execution_input_path = execution_directory / "scenario-input.json"
+        execution_predecessor_path = execution_directory / "predecessor.json"
+        execution_producer_path.write_bytes(producer_bytes)
+        (execution_directory / Path(common_producer).name).write_bytes(common_bytes)
+        (execution_directory / Path(verifier_source).name).write_bytes(verifier_bytes)
+        (execution_directory / Path(reporter_manifest).name).write_bytes(reporter_bytes)
+        execution_input_path.write_bytes(input_bytes)
+        execution_predecessor_path.write_bytes(predecessor_bytes)
+        for copied in execution_directory.iterdir():
+            copied.chmod(0o500 if copied.suffix == ".py" else 0o400)
         producer_authenticated = True
-        input_sha256 = hashlib.sha256(resolved_input.read_bytes()).hexdigest()
+        input_sha256 = hashlib.sha256(input_bytes).hexdigest()
         started = _utc_now_milliseconds()
         producer_command = [
                 sys.executable,
                 "-B",
-                str(producer_path),
+                str(execution_producer_path),
                 "--scenario-input",
-                str(resolved_input),
+                str(execution_input_path),
                 "--platform-operations-reviewer",
                 platform_operations_reviewer,
         ]
@@ -3534,7 +3847,12 @@ def run_story_27_4_producer_checkpoint(
         return_code, stdout, stderr = _run_bounded_process(
             tuple(producer_command),
             cwd=root,
-            timeout_seconds=720_000 if checkpoint == "c3-retention-reclamation" else 50_400,
+            timeout_seconds=777_600 if checkpoint == "c3-retention-reclamation" else 50_400,
+            environment={
+                **os.environ,
+                "HEXALITH_STORY_27_4_SOURCE_COMMIT": source_commit,
+                "HEXALITH_STORY_27_4_PRODUCER_SHA256": source_sha256,
+            },
         )
         finished = _utc_now_milliseconds()
         if return_code != 0:
@@ -3574,6 +3892,7 @@ def run_story_27_4_producer_checkpoint(
             relative_producer: source_sha256,
             common_producer: common_sha256,
             verifier_source: verifier_sha256,
+            reporter_manifest: reporter_sha256,
         }
         mutable["producer"] = {
             "command_id": command_id,
@@ -3603,7 +3922,7 @@ def run_story_27_4_producer_checkpoint(
         return run_story_27_4_checkpoint(
             checkpoint=checkpoint,
             input_path=temporary,
-            predecessor_path=resolved_predecessor,
+            predecessor_path=execution_predecessor_path,
             evidence_path=resolved_evidence,
             owner=normalized_owner,
             repository_root=root,
@@ -3613,15 +3932,15 @@ def run_story_27_4_producer_checkpoint(
     except (EvidenceValidationError, OSError, ValueError) as exc:
         if resolved_evidence is not None:
             disable_observation: dict[str, Any] = {}
-            if producer_authenticated and producer_path is not None and resolved_input is not None:
+            if producer_authenticated and execution_producer_path is not None and execution_input_path is not None:
                 try:
                     disable_code, disable_stdout, disable_stderr = _run_bounded_process(
                         (
                             sys.executable,
                             "-B",
-                            str(producer_path),
+                            str(execution_producer_path),
                             "--scenario-input",
-                            str(resolved_input),
+                            str(execution_input_path),
                             "--platform-operations-reviewer",
                             platform_operations_reviewer,
                             "--disable-only",
@@ -3657,6 +3976,8 @@ def run_story_27_4_producer_checkpoint(
                 temporary.unlink()
             except FileNotFoundError:
                 pass
+        if execution_directory is not None:
+            shutil.rmtree(execution_directory, ignore_errors=True)
 
 
 def _path_hash(path: Path) -> str | None:
@@ -3810,6 +4131,8 @@ def _validate_c0_adapter_profile(
     artifact_path: Path,
     repository_root: Path,
     evidence_root: Path,
+    *,
+    require_current_freshness: bool = True,
 ) -> None:
     """Authenticate the full source-bound adapter-profile packet referenced by C0."""
 
@@ -3831,7 +4154,12 @@ def _validate_c0_adapter_profile(
     del core["status"]
     del core["production_lifecycle_writes"]
     del core["packet_sha256"]
-    _validate_common_checkpoint("adapter-profile", core, repository_root)
+    _validate_common_checkpoint(
+        "adapter-profile",
+        core,
+        repository_root,
+        require_current_freshness=require_current_freshness,
+    )
     results = _require_mapping(packet.get("results"), "C0 adapter-profile results")
     _require_exact_fields(
         results,
@@ -3903,6 +4231,7 @@ def _validate_terminal_bundle(
         raise EvidenceValidationError("terminal bundle must contain exactly C0-C6 and terminal validation")
     c1_artifact_payload: Mapping[str, Any] | None = None
     behavioral_artifacts: dict[str, Mapping[str, Any]] = {}
+    behavioral_capture_ms: dict[str, int] = {}
     artifact_hashes: dict[str, str] = {}
     chain_payloads: dict[str, Mapping[str, Any]] = {}
     for name in sorted(expected):
@@ -4040,7 +4369,13 @@ def _validate_terminal_bundle(
                 ).timestamp()
                 * 1000
             )
-            _validate_fresh_run(captured, captured, f"terminal artifact {name}")
+            _validate_fresh_run(
+                captured,
+                captured,
+                f"terminal artifact {name}",
+                require_current_freshness=False,
+            )
+            behavioral_capture_ms[name] = captured
             payload = _require_mapping(
                 observation.get("producer_payload"), f"terminal artifact {name}.producer_payload"
             )
@@ -4058,6 +4393,10 @@ def _validate_terminal_bundle(
             raise EvidenceValidationError(
                 f"terminal artifact {name} does not bind the bundled C1 predecessor"
             )
+    if [behavioral_capture_ms[name] for name in ("C2", "C3", "C4")] != sorted(
+        behavioral_capture_ms.values()
+    ):
+        raise EvidenceValidationError("terminal C2-C4 artifacts are not in capture order")
     for name, checkpoint in (
         ("C2", "c2-production-replacement"),
         ("C3", "c3-retention-reclamation"),
@@ -4069,6 +4408,7 @@ def _validate_terminal_bundle(
             c1_artifact_payload,
             repository_root=repository_root,
             evidence_root=evidence_root,
+            require_current_freshness=False,
         )
     for name in ("C0", "C5", "C6", "terminal"):
         artifact_payload = chain_payloads[name]
@@ -4100,7 +4440,12 @@ def _validate_terminal_bundle(
         c0_results["adapter_profile_sha256"], "C0.adapter_profile_sha256"
     ):
         raise EvidenceValidationError("C0 adapter-profile artifact hash mismatch")
-    _validate_c0_adapter_profile(adapter_artifact, repository_root, evidence_root)
+    _validate_c0_adapter_profile(
+        adapter_artifact,
+        repository_root,
+        evidence_root,
+        require_current_freshness=False,
+    )
     adapter_packet = _read_bounded_json(adapter_artifact, approved_root=evidence_root)
     adapter_results = _require_mapping(adapter_packet.get("results"), "C0 adapter-profile results")
     immutable_artifacts = _require_mapping(
@@ -4141,7 +4486,14 @@ def _validate_terminal_bundle(
             raise EvidenceValidationError("post-evidence approvals must be mutually independent and new")
         post_reviewers.add(approver)
         approved = _require_utc_milliseconds(approval["approved_utc_ms"], f"{name}.approved_utc_ms")
-        _validate_fresh_run(approved, approved, f"{name} approval")
+        _validate_fresh_run(
+            approved,
+            approved,
+            f"{name} approval",
+            require_current_freshness=False,
+        )
+        if approved < max(behavioral_capture_ms.values()):
+            raise EvidenceValidationError(f"{name} approval predates the C2-C4 evidence")
         accepted = _require_mapping(
             approval["accepted_checkpoint_hashes"], f"{name}.accepted_checkpoint_hashes"
         )

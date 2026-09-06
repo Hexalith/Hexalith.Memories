@@ -166,6 +166,99 @@ public sealed class LifecycleActorCheckpointTests
         store.RecordCount.ShouldBe(1);
     }
 
+    [Fact]
+    public void PhysicalEvidence_BindsReporterDigestAndIsIdempotentButRejectsReplacement()
+    {
+        AccessTelemetryLifecycleActorState initial = new();
+        var evidence = new AccessTelemetryPhysicalReclamationEvidence
+        {
+            EvidenceId = "story-27-4-c3",
+            ComponentProfileHash = new string('a', 64),
+            ArtifactSha256 = new string('b', 64),
+            ReporterImageDigest = new string('c', 64),
+            ObservedAtUnixMilliseconds = Now.ToUnixTimeMilliseconds(),
+        };
+
+        AccessTelemetryLifecycleActorState accepted = AccessTelemetryLifecycleActor.ApplyPhysicalReclamationEvidence(
+            initial,
+            evidence,
+            evidence.EvidenceId,
+            evidence.ComponentProfileHash,
+            evidence.ReporterImageDigest,
+            Now);
+        AccessTelemetryLifecycleActorState replay = AccessTelemetryLifecycleActor.ApplyPhysicalReclamationEvidence(
+            accepted,
+            evidence,
+            evidence.EvidenceId,
+            evidence.ComponentProfileHash,
+            evidence.ReporterImageDigest,
+            Now);
+
+        replay.ShouldBeSameAs(accepted);
+        accepted.PhysicalReclamationReporterImageDigest.ShouldBe(evidence.ReporterImageDigest);
+        AccessTelemetryContractException conflict = Should.Throw<AccessTelemetryContractException>(() =>
+            AccessTelemetryLifecycleActor.ApplyPhysicalReclamationEvidence(
+                accepted,
+                evidence with { ArtifactSha256 = new string('d', 64) },
+                evidence.EvidenceId,
+                evidence.ComponentProfileHash,
+                evidence.ReporterImageDigest,
+                Now));
+        conflict.Message.ShouldBe("physical_evidence_conflict");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("reporter:latest")]
+    [InlineData("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")]
+    [InlineData("gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    public void PhysicalEvidence_RejectsMalformedReporterDigest(string? reporterDigest)
+    {
+        var evidence = new AccessTelemetryPhysicalReclamationEvidence
+        {
+            EvidenceId = "story-27-4-c3",
+            ComponentProfileHash = new string('a', 64),
+            ArtifactSha256 = new string('b', 64),
+            ReporterImageDigest = reporterDigest!,
+            ObservedAtUnixMilliseconds = Now.ToUnixTimeMilliseconds(),
+        };
+
+        AccessTelemetryContractException exception = Should.Throw<AccessTelemetryContractException>(() =>
+            AccessTelemetryLifecycleActor.ApplyPhysicalReclamationEvidence(
+                new AccessTelemetryLifecycleActorState(),
+                evidence,
+                evidence.EvidenceId,
+                evidence.ComponentProfileHash,
+                new string('c', 64),
+                Now));
+        exception.Message.ShouldBe("physical_evidence_untrusted");
+    }
+
+    [Fact]
+    public void PhysicalEvidence_RejectsAWellFormedButUnapprovedReporterDigest()
+    {
+        var evidence = new AccessTelemetryPhysicalReclamationEvidence
+        {
+            EvidenceId = "story-27-4-c3",
+            ComponentProfileHash = new string('a', 64),
+            ArtifactSha256 = new string('b', 64),
+            ReporterImageDigest = new string('d', 64),
+            ObservedAtUnixMilliseconds = Now.ToUnixTimeMilliseconds(),
+        };
+
+        AccessTelemetryContractException exception = Should.Throw<AccessTelemetryContractException>(() =>
+            AccessTelemetryLifecycleActor.ApplyPhysicalReclamationEvidence(
+                new AccessTelemetryLifecycleActorState(),
+                evidence,
+                evidence.EvidenceId,
+                evidence.ComponentProfileHash,
+                new string('c', 64),
+                Now));
+        exception.Message.ShouldBe("physical_evidence_untrusted");
+    }
+
     [Theory]
     [InlineData((int)AccessTelemetryDeleteStatus.StaleIndex, AccessTelemetryHealthState.Healthy)]
     [InlineData((int)AccessTelemetryDeleteStatus.VerificationFailed, AccessTelemetryHealthState.Unhealthy)]

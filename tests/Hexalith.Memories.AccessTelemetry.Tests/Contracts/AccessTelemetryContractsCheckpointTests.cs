@@ -96,6 +96,22 @@ public sealed class AccessTelemetryContractsCheckpointTests
         result.AllowsLifecycleWrites.ShouldBeFalse();
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("reporter:latest")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    public void Validate_ReporterImageDigestMustBeExactLowercaseSha256(string digest)
+    {
+        AccessTelemetryOptionsValidationResult result = AccessTelemetryOptionsValidator.Validate(
+            ValidOptions() with { PhysicalReclamationReporterImageDigest = digest },
+            "Development");
+
+        result.IsValid.ShouldBeFalse();
+        result.Errors.ShouldContain(static value => value.Contains(
+            nameof(AccessTelemetryOptions.PhysicalReclamationReporterImageDigest),
+            StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Canonicalizer_ProducesDeterministicExplicitNullJsonAndEnvelopeHash()
     {
@@ -271,6 +287,7 @@ public sealed class AccessTelemetryContractsCheckpointTests
             AttestationVerificationKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
             CapacityEvidenceId = "development-capacity",
             PhysicalReclamationEvidenceId = "pending-story-27-3",
+            PhysicalReclamationReporterImageDigest = new string('d', 64),
         };
 
     private static AccessTelemetryRecord CreateRecord()

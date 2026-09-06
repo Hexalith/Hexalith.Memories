@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import base64
 from copy import deepcopy
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +24,7 @@ from verify_access_telemetry_lifecycle import (  # noqa: E402
     A41_ALLOWED_MUTATION_PATHS,
     A41_PROTECTED_PATHS,
     A41_SEMANTIC_TRANSITIONS,
+    EvidenceValidationError,
     REQUIRED_FAILURE_SCENARIOS,
     REQUIRED_LIFECYCLE_SIGNALS,
     REQUIRED_REPLACEMENTS,
@@ -39,12 +42,19 @@ from verify_access_telemetry_lifecycle import (  # noqa: E402
     _sha256,
     _validated_evidence_root,
     _validate_mutation_manifest,
+    _validate_predecessor,
     _write_json_exclusive,
     collect_a41_inventory,
     create_recoverable_snapshot,
     validate_story_27_4_checkpoint,
 )
-from access_telemetry_producer_common import _C3Journal  # noqa: E402
+from access_telemetry_producer_common import (  # noqa: E402
+    _C3Journal,
+    _load_business_bearer,
+    _qualification_record_ids,
+    _run_operation,
+    _run_writer_segments,
+)
 
 
 SHA = "a" * 64
@@ -53,6 +63,21 @@ COMMIT = "b" * 40
 
 def now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def write_business_bearer(path: Path) -> None:
+    def encoded(value: dict[str, object]) -> str:
+        return base64.urlsafe_b64encode(
+            json.dumps(value, separators=(",", ":")).encode("utf-8")
+        ).rstrip(b"=").decode("ascii")
+
+    token = ".".join((
+        encoded({"alg": "none", "typ": "JWT"}),
+        encoded({"tenant_id": "story-27-4-qualification", "exp": int(time.time()) + 1800}),
+        "test-signature",
+    ))
+    path.write_text(token, encoding="ascii")
+    path.chmod(0o600)
 
 
 def observation(command_id: str) -> dict[str, object]:
@@ -177,6 +202,7 @@ def common(checkpoint: str) -> dict[str, object]:
         "c4-failure-privacy-observability",
     }:
         source_hashes["tools/access_telemetry_producer_common.py"] = SHA
+        source_hashes["deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml"] = SHA
     return {
         "schema_version": 1,
         "checkpoint": checkpoint,
@@ -217,18 +243,44 @@ def common(checkpoint: str) -> dict[str, object]:
 
 def c2_payload() -> dict[str, object]:
     payload = common("c2-production-replacement")
+    interval_end = now_ms() - 2_000
+    interval_start = interval_end - 1_800_000
+    post_segment = {
+        "segment_id": "writer-1-segment-0002",
+        "writer": "writer-1",
+        "writer_pod": "memories-1",
+        "started_utc_ms": interval_start + 2_000,
+        "finished_utc_ms": interval_start + 3_000,
+        "record_inventory_sha256": SHA,
+        "durable_count": 125,
+    }
     payload["results"] = {
         "writers": {
             "steady_state_minutes": 30,
             "cluster_accepted_records_per_second": 250,
             "component_operations_per_second": 500,
+            "component_counter": {
+                "counter_name": "memories_access_telemetry_lifecycle_state_operations_total",
+                "window_milliseconds": 1_800_000,
+                "operation_delta": 900_000,
+                "observation": observation("component-throughput"),
+            },
+            "overlap_milliseconds": 1_800_000,
             "writer_results": [
                 {
                     "writer": f"server-writer-{index}",
-                    "attempted": 225001,
+                    "started_utc_ms": interval_start,
+                    "finished_utc_ms": interval_end,
+                    "segment_count": 1_800,
+                    "replayed_segment_count": 0,
+                    "dispatch_lag_max_milliseconds": 0,
+                    "segment_inventory_sha256": SHA,
+                    "record_inventory_sha256": SHA,
+                    "attempted": 225000,
+                    "enqueued": 225000,
                     "acknowledged": 225000,
                     "persisted": 225000,
-                    "conflicted": 1,
+                    "conflicted": 0,
                     "transaction_acknowledgements": 225000,
                     "observation": observation(f"writer-{index}"),
                 }
@@ -248,6 +300,10 @@ def c2_payload() -> dict[str, object]:
             name: {
                 "exercised": True,
                 "recovered": True,
+                "before_runtime_identity_sha256": SHA,
+                "after_runtime_identity_sha256": "b" * 64,
+                "mutation_finished_utc_ms": interval_start + 1_000,
+                "post_replacement_segment": dict(post_segment),
                 "acknowledged_loss": 0,
                 "continuity_observed": True,
                 "observation": observation(f"replace-{name}"),
@@ -257,6 +313,10 @@ def c2_payload() -> dict[str, object]:
         "adapter_fault": {
             "exercised": True,
             "profile_unchanged": True,
+            "before_runtime_identity_sha256": SHA,
+            "after_runtime_identity_sha256": "b" * 64,
+            "mutation_finished_utc_ms": interval_start + 1_000,
+            "post_replacement_segment": dict(post_segment),
             "acknowledged_loss": 0,
             "recovered": True,
             "observation": observation("approved-adapter-fault"),
@@ -286,19 +346,21 @@ def c3_payload() -> dict[str, object]:
                 "database": "memories_access_telemetry",
                 "schema": "access_telemetry",
                 "table": "lifecycle_state",
+                "record_ids": [f"{hours * 1000 + index:026d}" for index in range(1, 126)],
                 "accepted_utc_ms": accepted,
                 "emitted_utc_ms": emitted,
                 "expires_utc_ms": expires,
                 "purged_utc_ms": purged,
                 "reclaimed_utc_ms": purged + 60_000,
-                "pre_tuple_count": 100,
+                "pre_tuple_count": 125,
                 "post_tuple_count": 0,
-                "candidate_count": 100,
-                "deleted_count": 90,
+                "candidate_count": 125,
+                "deleted_count": 115,
                 "already_absent_count": 10,
-                "index_removal_count": 100,
+                "index_removal_count": 125,
+                "strong_absent_read_count": 125,
                 "logical_absence": True,
-                "newer_record_names": [f"newer-control-{index:03d}" for index in range(1, 17)],
+                "newer_record_names": [f"{index:026d}" for index in range(1, 126)],
                 "newer_records_preserved": True,
                 "interrupted_recovery": True,
                 "restart_recovery": True,
@@ -316,6 +378,8 @@ def c3_payload() -> dict[str, object]:
             }
         )
     payload["results"] = {
+        "runtime_identity_sha256": SHA,
+        "runtime_identity_observation": observation("c3-runtime-identity"),
         "retention": {
             "maximum_clock_delta_ms": 250,
             "late_record_remaining_lifetime": True,
@@ -331,9 +395,16 @@ def c3_payload() -> dict[str, object]:
         "empty_preflight_observation": observation("c3-empty-preflight"),
         "final_newer_control": {
             "record_count": 125,
-            "newer_record_names": [f"newer-control-{index:03d}" for index in range(1, 17)],
+            "newer_record_names": [f"{index:026d}" for index in range(1, 126)],
             "observation": observation("newer-control-seed"),
             "transition": transition("newer-control-seed"),
+        },
+        "physical_report": {
+            "reported": True,
+            "artifact_sha256": SHA,
+            "reporter_image_digest": SHA,
+            "observation": observation("cohort-168h-report"),
+            "transition": transition("cohort-168h-report"),
         },
         "cohorts": cohorts,
     }
@@ -342,19 +413,33 @@ def c3_payload() -> dict[str, object]:
 
 def c4_payload() -> dict[str, object]:
     payload = common("c4-failure-privacy-observability")
+    expected = {
+        **{name: "persisted" for name in (
+            "actor-failover", "application-outage", "approved-adapter-fault",
+            "capacity-pressure", "clock-outage", "dapr-outage", "reconnect",
+            "reminder-delay", "shutdown", "state-outage",
+        )},
+        **{name: "dropped" for name in (
+            "queue-byte-exhaustion", "queue-record-exhaustion", "retry-exhaustion",
+        )},
+        **{name: "rejected" for name in (
+            "bad-configuration", "bad-key", "degraded-rollback", "etag-failure",
+            "profile-drift", "stale-attestation", "ttl-failure", "transaction-failure",
+        )},
+    }
     payload["results"] = {
         "failure_scenarios": {
             name: {
                 "exercised": True,
-                "lifecycle_fail_closed": True,
-                "business_readiness_available": True,
+                "expected_disposition": expected[name],
+                "business_operation_succeeded": True,
                 "business_requests": 2,
                 "business_failures": 0,
                 "audit_continuity": True,
                 "lifecycle_attempts": 2,
-                "lifecycle_persisted": 0,
-                "lifecycle_rejected": 1,
-                "lifecycle_dropped": 1,
+                "lifecycle_persisted": 2 if expected[name] == "persisted" else 0,
+                "lifecycle_rejected": 2 if expected[name] == "rejected" else 0,
+                "lifecycle_dropped": 2 if expected[name] == "dropped" else 0,
                 "observation": observation(f"failure-{name}"),
             }
             for name in REQUIRED_FAILURE_SCENARIOS
@@ -388,6 +473,213 @@ def c4_payload() -> dict[str, object]:
 
 
 class RetentionVerificationTests(unittest.TestCase):
+    def test_c3_reporter_resume_reuses_exact_completed_job_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            reclaimed = 1_700_000_000_000
+            target = {
+                "kube_context": "operator@local", "namespace": "memories-qualification",
+                "_platform_operations_reviewer": "reviewer",
+                "_lease_holder": "story-27-4/reviewer/test",
+                "_reporter_image": "registry/reporter@sha256:" + ("d" * 64),
+                "_c3_reporter_artifact_sha256": SHA,
+                "_c3_reclamation_observation": {
+                    "reclaimed_utc_ms": reclaimed, "allocator_free_bytes": 700,
+                },
+            }
+            with patch.dict(os.environ, {
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                "QUALIFICATION_COMPLETED_REPORTER": "1",
+                "QUALIFICATION_ARTIFACT": SHA,
+                "QUALIFICATION_RECLAIMED": str(reclaimed),
+            }):
+                result, _ = _run_operation(
+                    target, "c3-retention-reclamation", "cohort-168h-report"
+                )
+
+            self.assertTrue(result["reported"])
+            self.assertEqual(SHA, result["artifact_sha256"])
+            self.assertTrue(target["_reuse_completed_reporter"])
+
+    def test_c2_rejects_accepted_count_below_emitted_inventory(self) -> None:
+        payload = c2_payload()
+        writer = payload["results"]["writers"]["writer_results"][0]
+        writer["acknowledged"] -= 125
+        writer["persisted"] -= 125
+        with self.assertRaises(EvidenceValidationError):
+            validate_story_27_4_checkpoint(
+                "c2-production-replacement", payload, predecessor()
+            )
+
+    def test_qualification_renewal_rejects_lost_lease_ownership(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            target = {
+                "kube_context": "operator@local",
+                "namespace": "memories-qualification",
+                "_platform_operations_reviewer": "reviewer",
+                "_lease_holder": "story-27-4/reviewer/test",
+            }
+            with patch.dict(os.environ, {
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                "QUALIFICATION_RENEW_FOREIGN": "1",
+            }):
+                with self.assertRaises(EvidenceValidationError):
+                    _run_operation(
+                        target, "c4-failure-privacy-observability", "qualification-renew"
+                    )
+
+    def test_business_bearer_is_owner_only_short_lived_and_single_tenant(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bearer = root / "bearer.jwt"
+            write_business_bearer(bearer)
+            with patch.dict(os.environ, {
+                "HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE": str(bearer)
+            }):
+                self.assertEqual(bearer.read_bytes() + b"\n", _load_business_bearer())
+                bearer.chmod(0o644)
+                with self.assertRaises(EvidenceValidationError):
+                    _load_business_bearer()
+                bearer.chmod(0o600)
+            alias = root / "bearer-alias.jwt"
+            alias.symlink_to(bearer)
+            with patch.dict(os.environ, {
+                "HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE": str(alias)
+            }):
+                with self.assertRaises(EvidenceValidationError):
+                    _load_business_bearer()
+
+    def test_writer_scheduler_uses_absolute_cadence_and_reconciles_lost_response(self) -> None:
+        clock = [0.0]
+        sleeps: list[float] = []
+        attempts: dict[str, int] = {}
+
+        def monotonic() -> float:
+            return clock[0]
+
+        def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        def runner(command: tuple[str, ...], **_: object) -> tuple[int, bytes, bytes]:
+            text = " ".join(command)
+            if " get pods " in f" {text} ":
+                pods = {"items": [
+                    {"metadata": {"name": f"memories-{index}"}, "status": {
+                        "phase": "Running", "conditions": [{"type": "Ready", "status": "True"}]
+                    }} for index in (1, 2)
+                ]}
+                return 0, json.dumps(pods).encode(), b""
+            segment_id = re.search(r"X-Hexalith-Qualification-Segment: ([a-z0-9-]+)", text).group(1)
+            run_id = re.search(r"X-Hexalith-Qualification-Run: ([a-z0-9-]+)", text).group(1)
+            attempts[segment_id] = attempts.get(segment_id, 0) + 1
+            if segment_id.endswith("0002") and attempts[segment_id] == 1:
+                return 9, b"", b"pod replaced after durable commit"
+            ordinal = int(segment_id.rsplit("-", 1)[-1])
+            conflicted = 125 if segment_id.endswith("0002") else 0
+            payload = {
+                "writer": "memories-1", "runId": run_id, "segmentId": segment_id,
+                "recordIds": _qualification_record_ids(run_id, segment_id),
+                "startedUtcMs": 1_700_000_000_000 + ((ordinal - 1) * 1000),
+                "finishedUtcMs": 1_700_000_001_000 + ((ordinal - 1) * 1000),
+                "attempted": 125, "enqueued": 125, "acknowledged": 125 - conflicted,
+                "persisted": 125 - conflicted, "conflicted": conflicted,
+                "transactionAcknowledgements": 125 - conflicted,
+                "dropped": 0, "rejected": 0, "resultCount": 125,
+            }
+            return 0, json.dumps(payload).encode(), b""
+
+        target = {
+            "kube_context": "operator@local", "namespace": "memories-qualification",
+            "_platform_operations_reviewer": "reviewer", "_lease_holder": "story-27-4/reviewer/test",
+        }
+        result, _ = _run_writer_segments(
+            target, "c2-production-replacement", "writer-1", _segment_count=3,
+            _monotonic=monotonic, _sleep=sleep, _process_runner=runner,
+        )
+
+        self.assertEqual([1.0, 1.0], sleeps)
+        self.assertEqual(3, result["segment_count"])
+        self.assertEqual(1, result["replayed_segment_count"])
+        self.assertEqual(375, result["acknowledged"] + result["conflicted"])
+        self.assertEqual(0, result["dispatch_lag_max_milliseconds"])
+
+    def test_qualification_overlay_renders_zero_default_gate_reporter_and_least_privilege_rbac(self) -> None:
+        import yaml
+
+        completed = subprocess.run(
+            ("kubectl", "kustomize", str(REPO_ROOT / "deploy/kubernetes/overlays/qualification")),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        resources = [item for item in yaml.safe_load_all(completed.stdout) if isinstance(item, dict)]
+
+        def one(kind: str, name: str, namespace: str = "hexalith-memories-qualification") -> dict[str, object]:
+            matches = [
+                item for item in resources
+                if item.get("kind") == kind
+                and item.get("metadata", {}).get("name") == name
+                and item.get("metadata", {}).get("namespace") == namespace
+            ]
+            self.assertEqual(1, len(matches), f"{kind}/{namespace}/{name}")
+            return matches[0]
+
+        for name in ("memories-access-telemetry", "memories-access-telemetry-clock"):
+            self.assertEqual(0, one("Deployment", name)["spec"]["replicas"])
+        server = one("Deployment", "memories")
+        server_spec = server["spec"]["template"]["spec"]
+        gate_volume = next(item for item in server_spec["volumes"] if item["name"] == "access-telemetry-qualification-gate")
+        self.assertEqual("access-telemetry-qualification-gate", gate_volume["configMap"]["name"])
+        server_container = next(item for item in server_spec["containers"] if item["name"] == "memories")
+        gate_mount = next(item for item in server_container["volumeMounts"] if item["name"] == "access-telemetry-qualification-gate")
+        self.assertTrue(gate_mount["readOnly"])
+
+        reporter = one("Job", "access-telemetry-physical-evidence-reporter")
+        reporter_spec = reporter["spec"]["template"]["spec"]
+        self.assertFalse(reporter_spec["automountServiceAccountToken"])
+        self.assertTrue(reporter["spec"]["suspend"])
+        container = reporter_spec["containers"][0]
+        self.assertEqual(["/bin/sh", "-ec"], container["command"])
+        self.assertEqual(1, len(container["args"]))
+        self.assertIn("physical-reclamation-evidence", container["args"][0])
+
+        qualification_role = one("Role", "access-telemetry-qualification-operator")
+        lease_rule = next(
+            rule for rule in qualification_role["rules"] if rule["resources"] == ["leases"]
+        )
+        self.assertEqual(["access-telemetry-qualification"], lease_rule["resourceNames"])
+        deployment_write = next(
+            rule for rule in qualification_role["rules"]
+            if rule["resources"] == ["deployments"] and "patch" in rule["verbs"]
+        )
+        self.assertEqual(
+            {"memories", "memories-access-telemetry", "memories-access-telemetry-clock"},
+            set(deployment_write["resourceNames"]),
+        )
+        dapr_role = one(
+            "Role", "access-telemetry-qualification-dapr-control-plane", "dapr-system"
+        )
+        dapr_statefulsets = next(
+            rule for rule in dapr_role["rules"] if rule["resources"] == ["statefulsets"]
+        )
+        self.assertEqual(
+            {"dapr-placement-server", "dapr-scheduler-server"},
+            set(dapr_statefulsets["resourceNames"]),
+        )
+        self.assertFalse(any(
+            item.get("kind") in {"ClusterRole", "ClusterRoleBinding"}
+            and "qualification" in item.get("metadata", {}).get("name", "")
+            for item in resources
+        ))
+
     def test_complete_c2_c3_and_c4_packets_validate(self) -> None:
         for checkpoint, payload in (
             ("c2-production-replacement", c2_payload()),
@@ -426,6 +718,32 @@ class RetentionVerificationTests(unittest.TestCase):
         otlp["results"]["otlp_continuity"] = False
         with self.assertRaises(ValueError):
             validate_story_27_4_checkpoint("c2-production-replacement", otlp, predecessor())
+
+    def test_c1_freshness_is_authorization_only_and_retained_evidence_stays_valid(self) -> None:
+        retained = predecessor()
+        finished = now_ms() - (8 * 24 * 60 * 60 * 1000)
+        for gate in retained["gates"].values():
+            gate["started_utc_ms"] = finished - 1000
+            gate["finished_utc_ms"] = finished
+            gate["command"]["started_utc_ms"] = finished - 1000
+            gate["command"]["finished_utc_ms"] = finished
+        validate_story_27_4_checkpoint(
+            "c2-production-replacement", c2_payload(), retained
+        )
+        retained_checkpoint = c2_payload()
+        retained_checkpoint["started_utc"] = finished - 1000
+        retained_checkpoint["finished_utc"] = finished
+        for command in retained_checkpoint["commands"]:
+            command["started_utc_ms"] = finished - 1000
+            command["finished_utc_ms"] = finished
+        validate_story_27_4_checkpoint(
+            "c2-production-replacement",
+            retained_checkpoint,
+            retained,
+            require_current_freshness=False,
+        )
+        with self.assertRaises(ValueError):
+            _validate_predecessor(retained, require_authorization_freshness=True)
 
     def test_c3_horizons_use_emission_time_and_bind_the_final_newer_control(self) -> None:
         wrong_horizon = c3_payload()
@@ -572,6 +890,7 @@ class RetentionVerificationTests(unittest.TestCase):
             self.assertEqual(
                 ["qualification-target-identity", "qualification-enable"],
                 operations[:2],
+                result.stderr,
             )
             self.assertIn("writer-1", operations[2:-2])
             self.assertIn("writer-2", operations[2:-2])
@@ -851,8 +1170,13 @@ class RetentionVerificationTests(unittest.TestCase):
                 "kind": "non-production-qualification", "kube_context": "operator@local",
                 "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
             }}), encoding="utf-8")
+            bearer = evidence / "business-bearer.jwt"
+            write_business_bearer(bearer)
             artifacts: dict[str, Path] = {"C1": c1_path}
-            with patch.dict(os.environ, {"PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}):
+            with patch.dict(os.environ, {
+                "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                "HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE": str(bearer),
+            }):
                 adapter_result = self._cli(
                     repository,
                     "--checkpoint", "adapter-profile",
@@ -1103,6 +1427,12 @@ def install_tools(repository: Path) -> None:
                  "access_telemetry_producer_common.py", "access_telemetry_c2_producer.py",
                  "access_telemetry_c3_producer.py", "access_telemetry_c4_producer.py"):
         shutil.copy2(TOOLS_DIR / name, destination / name)
+    reporter = repository / "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml"
+    reporter.parent.mkdir(parents=True)
+    shutil.copy2(
+        REPO_ROOT / "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml",
+        reporter,
+    )
 
 
 def install_a41_files(repository: Path, content: str) -> None:
@@ -1153,7 +1483,7 @@ def write_terminal_artifacts(evidence: Path, repository: Path, commit: str,
                                  ("C6", "security", "post-evidence-security")):
         payload = chain_common(name, repository, commit)
         payload["results"] = {"role": role, "approver": approver,
-                              "approved_utc_ms": now_ms() - 1000,
+                              "approved_utc_ms": now_ms(),
                               "accepted_checkpoint_hashes": accepted}
         path = evidence / f"{name}.json"
         path.write_text(json.dumps(payload), encoding="utf-8")
@@ -1173,16 +1503,43 @@ def write_terminal_artifacts(evidence: Path, repository: Path, commit: str,
 def install_fake_kubectl(directory: Path) -> None:
     script = directory / "kubectl"
     script.write_text("""#!/usr/bin/env python3
-import json, os, sys, time
+import hashlib, json, os, sys, time
 args = sys.argv[1:]
 step = int(os.environ.get('HEXALITH_STORY_27_4_STEP', '0'))
+namespace = args[args.index('--namespace') + 1] if '--namespace' in args else ''
+def qualification_ids(run_id, segment_id):
+    correlation = hashlib.sha256(f'{run_id}/{segment_id}'.encode()).hexdigest()[:32]
+    alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+    result = []
+    for ordinal in range(125):
+        digest = bytearray(hashlib.sha256(f'qualification-{correlation}-{ordinal:03d}'.encode()).digest())
+        digest[0] &= 0x7f
+        value = int.from_bytes(digest[:16], 'big')
+        encoded = ['0'] * 26
+        for index in range(25, -1, -1):
+            value, remainder = divmod(value, 32)
+            encoded[index] = alphabet[remainder]
+        result.append(''.join(encoded))
+    return result
 if '--' in args and args[-1] in {'--version', '--build-info'} and args[-2] in {'/daprd', 'daprd'}:
     print('1.18.1' if args[-1] == '--version' else 'Version: 1.18.1\\nGit Commit: qualification-test')
     raise SystemExit(0)
 op = os.environ.get('HEXALITH_STORY_27_4_COMMAND_ID') or sys.argv[-1].rsplit('/', 1)[-1]
 proof_scenarios = {'failure-etag-failure', 'failure-ttl-failure', 'failure-transaction-failure',
     'failure-queue-byte-exhaustion', 'failure-queue-record-exhaustion'}
-changed = step >= (3 if op.endswith('-purge') else 6 if op in proof_scenarios else 4)
+if op.endswith('-purge'):
+    changed_at = 3
+elif op == 'approved-adapter-fault':
+    changed_at = 8
+elif op.startswith('replace-'):
+    changed_at = 7
+elif op in proof_scenarios:
+    changed_at = 12
+elif op.startswith('failure-'):
+    changed_at = 10
+else:
+    changed_at = 4
+changed = step >= changed_at
 pod_phase = 'same' if op.endswith('-dapr-sidecar') else ('new' if changed else 'old')
 operation_log = os.environ.get('QUALIFICATION_OPERATION_LOG')
 if operation_log:
@@ -1196,7 +1553,7 @@ if operation_log:
             stream.write(op + '\\n')
 if os.environ.get('QUALIFICATION_FAIL_OPERATION') == op:
     raise SystemExit(9)
-if os.environ.get('QUALIFICATION_INVALID_OPERATION') == op and (op != 'qualification-enable' or step >= 9):
+if os.environ.get('QUALIFICATION_INVALID_OPERATION') == op and (op != 'qualification-enable' or step >= 21):
     print('{')
     raise SystemExit(0)
 if 'auth' in args and 'can-i' in args:
@@ -1210,30 +1567,47 @@ if 'get' in args and args[-1] == 'json':
     if resource == 'configmap':
         name = args[args.index('get') + 2]
         if name == 'access-telemetry-qualification-gate':
-            enabled = op in {'qualification-enable', 'qualification-renew'}
+            enabled = op in {'qualification-enable', 'qualification-renew'} or op.startswith(('replace-', 'failure-')) or op == 'approved-adapter-fault'
             gate = {'schemaVersion': 1, 'state': 'enabled' if enabled else 'disabled',
                 'profileSha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
-                'expiresUtcMs': int(time.time() * 1000) + 2700000 if enabled else 0}
+                'expiresUtcMs': int(time.time() * 1000) + 900000 if enabled else 0}
             print(json.dumps({'data': {'gate.json': json.dumps(gate, separators=(',', ':'))}}, separators=(',', ':')))
+            raise SystemExit(0)
+        if op == 'cohort-168h-report' and os.environ.get('QUALIFICATION_COMPLETED_REPORTER') == '1':
+            evidence = {'evidenceId': 'story-27-4-c3',
+                'componentProfileHash': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+                'artifactSha256': os.environ['QUALIFICATION_ARTIFACT'],
+                'reporterImageDigest': 'd' * 64,
+                'observedAtUnixMilliseconds': int(os.environ['QUALIFICATION_RECLAIMED'])}
+            print(json.dumps({'metadata': {'name': name}, 'data': {
+                'evidence.json': json.dumps(evidence, separators=(',', ':'))}}, separators=(',', ':')))
             raise SystemExit(0)
         print(json.dumps({'metadata': {'name': name}, 'data': {'retentionSeconds': '604800'}}, separators=(',', ':')))
         raise SystemExit(0)
     if resource == 'lease':
-        enabled = op in {'qualification-enable', 'qualification-renew'}
+        enabled = op in {'qualification-enable', 'qualification-renew'} or op.startswith(('replace-', 'failure-')) or op == 'approved-adapter-fault'
         stale = os.environ.get('QUALIFICATION_STALE_LEASE') == '1' and op in {'qualification-target-identity', 'qualification-disable'}
         active_foreign = os.environ.get('QUALIFICATION_ACTIVE_FOREIGN_LEASE') == '1' and op == 'qualification-target-identity'
+        renew_foreign = os.environ.get('QUALIFICATION_RENEW_FOREIGN') == '1' and op == 'qualification-renew'
         print(json.dumps({'metadata': {'resourceVersion': '10'}, 'spec': {
-            'holderIdentity': ('foreign-controller' if active_foreign else 'story-27-4/prior-reviewer/1-1' if stale else
+            'holderIdentity': ('foreign-controller' if active_foreign or renew_foreign else 'story-27-4/prior-reviewer/1-1' if stale else
                 os.environ.get('HEXALITH_STORY_27_4_LEASE_HOLDER', '') if enabled else ''),
-            'leaseDurationSeconds': 2700 if active_foreign else (30 if stale else (2700 if enabled else 0)),
+            'leaseDurationSeconds': 900 if active_foreign else (30 if stale else (900 if enabled else 0)),
             'acquireTime': '2026-09-05T12:00:00Z' if active_foreign else ('2020-01-01T00:00:00Z' if stale else '2026-09-05T00:00:00Z')}}, separators=(',', ':')))
         raise SystemExit(0)
     if resource == 'job':
+        completed_reporter = op == 'cohort-168h-report' and os.environ.get('QUALIFICATION_COMPLETED_REPORTER') == '1'
         print(json.dumps({'apiVersion': 'batch/v1', 'kind': 'Job',
             'metadata': {'name': 'access-telemetry-physical-evidence-reporter'},
-            'spec': {'suspend': True, 'template': {'spec': {'containers': [
-                {'name': 'reporter', 'image': 'registry/reporter@sha256:' + ('d' * 64)}
-            ]}}}, 'status': {}}, separators=(',', ':')))
+            'spec': {'suspend': not completed_reporter, 'template': {'spec': {'automountServiceAccountToken': False,
+                'serviceAccountName': 'access-telemetry-adapter', 'containers': [
+                {'name': 'reporter', 'image': 'registry/reporter@sha256:' + ('d' * 64),
+                 'command': ['/bin/sh', '-ec'],
+                 'args': ['wget -qO- --header="dapr-api-token: ${DAPR_API_TOKEN}" --header="Content-Type: application/json" --post-file=/evidence/evidence.json http://127.0.0.1:3500/v1.0/invoke/memories-access-telemetry/method/v1/access-telemetry/physical-reclamation-evidence'],
+                 'env': [{'name': 'DAPR_API_TOKEN', 'valueFrom': {'secretKeyRef': {'name': 'dapr-api-token', 'key': 'token'}}}],
+                 'volumeMounts': [{'name': 'evidence', 'mountPath': '/evidence', 'readOnly': True}]}
+            ], 'volumes': [{'name': 'evidence', 'configMap': {'name': 'access-telemetry-physical-evidence-report'}}]}}},
+            'status': ({'succeeded': 1, 'completionTime': '2026-09-06T12:00:00Z'} if completed_reporter else {})}, separators=(',', ':')))
         raise SystemExit(0)
     if resource == 'deployment':
         name = args[args.index('get') + 2]
@@ -1251,14 +1625,66 @@ if 'get' in args and args[-1] == 'json':
             'spec': {'accessControl': {'defaultAction': 'deny', 'policies': []}}}, separators=(',', ':')))
         raise SystemExit(0)
     postgres_image = 'docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a'
+    digest = {'memories': 'b' * 64, 'lifecycle': 'a' * 64, 'clock': 'c' * 64,
+        'daprd': 'd' * 64, 'operator': 'e' * 64, 'placement': 'f' * 64,
+        'scheduler': '1' * 64, 'sentry': '2' * 64, 'injector': '3' * 64}
+    if resource == 'serviceaccounts':
+        names = (['dapr-operator', 'dapr-placement', 'dapr-scheduler', 'dapr-sentry', 'dapr-injector']
+            if namespace == 'dapr-system' else ['memories', 'memories-access-telemetry',
+            'memories-access-telemetry-clock', 'access-telemetry-postgresql', 'access-telemetry-adapter'])
+        print(json.dumps({'items': [{'metadata': {'name': name}} for name in names]}, separators=(',', ':')))
+        raise SystemExit(0)
+    if namespace == 'dapr-system':
+        system_items = {
+            'deployments': [
+                {'metadata': {'name': 'dapr-operator'}, 'spec': {'template': {'spec': {
+                    'serviceAccountName': 'dapr-operator', 'containers': [{'image': 'registry/operator@sha256:' + digest['operator']}]}}}},
+                {'metadata': {'name': 'dapr-sentry'}, 'spec': {'template': {'spec': {
+                    'serviceAccountName': 'dapr-sentry', 'containers': [{'image': 'registry/sentry@sha256:' + digest['sentry']}]}}}},
+                {'metadata': {'name': 'dapr-sidecar-injector'}, 'spec': {'template': {'spec': {
+                    'serviceAccountName': 'dapr-injector', 'containers': [{'image': 'registry/injector@sha256:' + digest['injector']}]}}}},
+            ],
+            'statefulsets': [
+                {'metadata': {'name': 'dapr-placement-server'}, 'spec': {'template': {'spec': {
+                    'serviceAccountName': 'dapr-placement', 'containers': [{'image': 'registry/placement@sha256:' + digest['placement']}]}}}},
+                {'metadata': {'name': 'dapr-scheduler-server'}, 'spec': {'template': {'spec': {
+                    'serviceAccountName': 'dapr-scheduler', 'containers': [{'image': 'registry/scheduler@sha256:' + digest['scheduler']}]}}}},
+            ],
+            'pods': [
+                {'metadata': {'name': 'dapr-operator-1', 'uid': 'dapr-operator-' + pod_phase, 'labels': {'app': 'dapr-operator'}},
+                 'spec': {'serviceAccountName': 'dapr-operator'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                     {'imageID': 'registry/operator@sha256:' + digest['operator']}]}},
+                *[{'metadata': {'name': f'dapr-placement-server-{index}', 'uid': f'dapr-placement-{index}-' + pod_phase, 'labels': {'app': 'dapr-placement-server'}},
+                   'spec': {'serviceAccountName': 'dapr-placement'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                       {'imageID': 'registry/placement@sha256:' + digest['placement']}]}} for index in range(3)],
+                *[{'metadata': {'name': f'dapr-scheduler-server-{index}', 'uid': f'dapr-scheduler-{index}-' + pod_phase, 'labels': {'app': 'dapr-scheduler-server'}},
+                   'spec': {'serviceAccountName': 'dapr-scheduler'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                       {'imageID': 'registry/scheduler@sha256:' + digest['scheduler']}]}} for index in range(3)],
+                {'metadata': {'name': 'dapr-sentry-1', 'uid': 'dapr-sentry-' + pod_phase, 'labels': {'app': 'dapr-sentry'}},
+                 'spec': {'serviceAccountName': 'dapr-sentry'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                     {'imageID': 'registry/sentry@sha256:' + digest['sentry']}]}},
+                {'metadata': {'name': 'dapr-sidecar-injector-1', 'uid': 'dapr-injector-' + pod_phase, 'labels': {'app': 'dapr-sidecar-injector'}},
+                 'spec': {'serviceAccountName': 'dapr-injector'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                     {'imageID': 'registry/injector@sha256:' + digest['injector']}]}},
+            ],
+        }.get(resource, [])
+        print(json.dumps({'items': system_items}, separators=(',', ':')))
+        raise SystemExit(0)
     items = {
         'deployments': [
             {'metadata': {'name': 'memories-access-telemetry', 'generation': 1},
-             'spec': {'replicas': 1, 'template': {'spec': {'containers': [{'name': 'lifecycle', 'image': 'registry/access-telemetry@sha256:aa'}]}}},
+             'spec': {'replicas': 1, 'template': {'metadata': {'annotations': {'dapr.io/app-id': 'memories-access-telemetry'}}, 'spec': {
+                 'serviceAccountName': 'memories-access-telemetry', 'containers': [{'name': 'lifecycle', 'image': 'registry/access-telemetry@sha256:' + digest['lifecycle'],
+                 'env': [{'name': 'AccessTelemetryLifecycle__PhysicalReclamationReporterImageDigest', 'value': 'd' * 64}]}]}}},
              'status': {'readyReplicas': 1, 'availableReplicas': 1}},
             {'metadata': {'name': 'memories', 'generation': 1},
-             'spec': {'replicas': 2, 'template': {'spec': {'containers': [{'name': 'memories', 'image': 'registry/memories@sha256:bb'}]}}},
+             'spec': {'replicas': 2, 'template': {'metadata': {'annotations': {'dapr.io/app-id': 'memories'}}, 'spec': {
+                 'serviceAccountName': 'memories', 'containers': [{'name': 'memories', 'image': 'registry/memories@sha256:' + digest['memories']}]}}},
              'status': {'readyReplicas': 2, 'availableReplicas': 2}},
+            {'metadata': {'name': 'memories-access-telemetry-clock', 'generation': 1},
+             'spec': {'replicas': 1, 'template': {'metadata': {'annotations': {'dapr.io/app-id': 'memories-access-telemetry-clock'}}, 'spec': {
+                 'serviceAccountName': 'memories-access-telemetry-clock', 'containers': [{'name': 'clock', 'image': 'registry/access-telemetry-clock@sha256:' + digest['clock']}]}}},
+             'status': {'readyReplicas': 1, 'availableReplicas': 1}},
         ],
         'components.dapr.io': [
             {'metadata': {'name': 'access-telemetry-store', 'generation': 1},
@@ -1271,25 +1697,46 @@ if 'get' in args and args[-1] == 'json':
         ],
         'statefulsets': [
             {'metadata': {'name': 'access-telemetry-postgresql', 'generation': 1},
-             'spec': {'replicas': 1, 'template': {'spec': {'containers': [{'name': 'postgresql', 'image': postgres_image}]}}},
+             'spec': {'replicas': 1, 'template': {'spec': {'serviceAccountName': 'access-telemetry-postgresql',
+                 'containers': [{'name': 'postgresql', 'image': postgres_image}]}}},
              'status': {'readyReplicas': 1}},
         ],
         'pods': [
-            {'metadata': {'name': 'memories-1', 'uid': 'pod-1-' + pod_phase, 'generation': 1},
-             'spec': {'nodeName': 'qualification-node'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
-                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:bb'},
-                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:cc'},
+            {'metadata': {'name': 'memories-1', 'uid': 'pod-1-' + pod_phase, 'generation': 1,
+                          'labels': {'app.kubernetes.io/name': 'memories'}, 'annotations': {'dapr.io/app-id': 'memories'}},
+             'spec': {'nodeName': 'qualification-node', 'serviceAccountName': 'memories'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:' + digest['memories']},
+                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:' + digest['daprd']},
              ]}},
-            {'metadata': {'name': 'memories-2', 'uid': 'pod-2-' + pod_phase, 'generation': 1},
-             'spec': {'nodeName': 'qualification-node'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
-                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:bb'},
-                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:cc'},
+            {'metadata': {'name': 'memories-2', 'uid': 'pod-2-' + pod_phase, 'generation': 1,
+                          'labels': {'app.kubernetes.io/name': 'memories'}, 'annotations': {'dapr.io/app-id': 'memories'}},
+             'spec': {'nodeName': 'qualification-node', 'serviceAccountName': 'memories'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:' + digest['memories']},
+                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:' + digest['daprd']},
              ]}},
-            {'metadata': {'name': 'memories-3', 'uid': 'pod-3-' + pod_phase, 'generation': 1},
-             'spec': {'nodeName': 'qualification-node'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
-                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:bb'},
-                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:cc'},
+            {'metadata': {'name': 'memories-3', 'uid': 'pod-3-' + pod_phase, 'generation': 1,
+                          'labels': {'app.kubernetes.io/name': 'memories'}, 'annotations': {'dapr.io/app-id': 'memories'}},
+             'spec': {'nodeName': 'qualification-node', 'serviceAccountName': 'memories'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                 {'name': 'memories', 'restartCount': 0, 'image': 'registry/memories:1', 'imageID': 'registry/memories@sha256:' + digest['memories']},
+                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'image': 'ghcr.io/dapr/daprd:1.18.1', 'imageID': 'ghcr.io/dapr/daprd@sha256:' + digest['daprd']},
              ]}},
+            *[{'metadata': {'name': f'lifecycle-{index}', 'uid': f'lifecycle-{index}-' + pod_phase,
+                            'labels': {'app.kubernetes.io/name': 'memories-access-telemetry'}},
+               'spec': {'serviceAccountName': 'memories-access-telemetry'},
+               'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                   {'name': 'lifecycle', 'restartCount': 0, 'imageID': 'registry/access-telemetry@sha256:' + digest['lifecycle']},
+                   {'name': 'daprd', 'restartCount': 1 if changed else 0, 'imageID': 'ghcr.io/dapr/daprd@sha256:' + digest['daprd']},
+               ]}} for index in (1, 2)],
+            {'metadata': {'name': 'clock-1', 'uid': 'clock-1-' + pod_phase,
+                          'labels': {'app.kubernetes.io/name': 'memories-access-telemetry-clock'}},
+             'spec': {'serviceAccountName': 'memories-access-telemetry-clock'},
+             'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}], 'containerStatuses': [
+                 {'name': 'clock', 'restartCount': 0, 'imageID': 'registry/access-telemetry-clock@sha256:' + digest['clock']},
+                 {'name': 'daprd', 'restartCount': 1 if changed else 0, 'imageID': 'ghcr.io/dapr/daprd@sha256:' + digest['daprd']},
+             ]}},
+            {'metadata': {'name': 'postgres-0', 'uid': 'postgres-' + pod_phase, 'labels': {'app.kubernetes.io/name': 'access-telemetry-postgresql'}},
+             'spec': {'serviceAccountName': 'access-telemetry-postgresql'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}],
+                 'containerStatuses': [{'name': 'postgresql', 'restartCount': 0, 'imageID': postgres_image}]}},
         ],
     }.get(resource, [])
     print(json.dumps({'items': items}, separators=(',', ':')))
@@ -1301,23 +1748,64 @@ if 'redis-cli' in command_text or '/v1.0/shutdown' in command_text:
 if any(verb in args for verb in {'patch', 'scale', 'rollout', 'wait', 'delete', 'set'}):
     raise SystemExit(0)
 if '/operations/access-telemetry/qualification/fixed-workload' in command_text:
+    import re
+    run_id = re.search(r'X-Hexalith-Qualification-Run: ([a-z0-9-]+)', command_text).group(1)
+    segment_id = re.search(r'X-Hexalith-Qualification-Segment: ([a-z0-9-]+)', command_text).group(1)
     if op.startswith('writer-'):
-        index = int(op[-1]); value = {'writer': f'memories-{index}', 'attempted': 125,
-            'acknowledged': 125, 'persisted': 125, 'conflicted': 0,
-            'transactionAcknowledgements': 125, 'dropped': 0, 'rejected': 0, 'resultCount': 125}
+        index = int(op[-1])
+        segment = int(segment_id.rsplit('-', 1)[-1])
+        segment_start = int(os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].rsplit('-', 1)[-1]) + ((segment - 1) * 1000)
+        value = {'runId': run_id, 'segmentId': segment_id, 'writer': f'memories-{index}',
+            'startedUtcMs': segment_start, 'finishedUtcMs': segment_start + 1000, 'attempted': 125,
+            'enqueued': 125, 'acknowledged': 125, 'persisted': 125, 'conflicted': 0,
+            'transactionAcknowledgements': 125, 'dropped': 0, 'rejected': 0,
+            'recordIds': qualification_ids(run_id, segment_id), 'resultCount': 125}
     elif op.endswith('-seed'):
-        value = {'writer': 'memories-1', 'attempted': 125, 'acknowledged': 125, 'persisted': 125,
+        value = {'runId': run_id, 'segmentId': segment_id, 'writer': 'memories-1',
+            'attempted': 125, 'enqueued': 125, 'acknowledged': 125, 'persisted': 125,
             'conflicted': 0, 'transactionAcknowledgements': 125, 'dropped': 0, 'rejected': 0,
-            'resultCount': 125}
+            'recordIds': qualification_ids(run_id, segment_id), 'resultCount': 125}
     else:
-        value = {'writer': 'memories-1', 'attempted': 2, 'acknowledged': 0, 'persisted': 0,
-            'conflicted': 0, 'transactionAcknowledgements': 0, 'dropped': 1, 'rejected': 1,
+        persisted_scenarios = {'failure-actor-failover', 'failure-application-outage',
+            'failure-approved-adapter-fault', 'failure-capacity-pressure', 'failure-clock-outage',
+            'failure-dapr-outage', 'failure-reconnect', 'failure-reminder-delay',
+            'failure-shutdown', 'failure-state-outage'}
+        dropped_scenarios = {'failure-queue-byte-exhaustion',
+            'failure-queue-record-exhaustion', 'failure-retry-exhaustion'}
+        disposition = ('persisted' if op in persisted_scenarios else
+            'dropped' if op in dropped_scenarios else 'rejected')
+        value = {'runId': run_id, 'segmentId': segment_id, 'writer': 'memories-1',
+            'attempted': 2, 'enqueued': 2, 'acknowledged': 2 if disposition == 'persisted' else 0,
+            'persisted': 2 if disposition == 'persisted' else 0, 'conflicted': 0,
+            'transactionAcknowledgements': 2 if disposition == 'persisted' else 0,
+            'dropped': 2 if disposition == 'dropped' else 0,
+            'rejected': 2 if disposition == 'rejected' else 0,
             'resultCount': 2}
     print(json.dumps(value, separators=(',', ':')))
+    raise SystemExit(0)
+if 'cat /var/run/hexalith/access-telemetry-qualification/gate.json' in command_text:
+    print(json.dumps({'schemaVersion': 1, 'state': 'disabled',
+        'profileSha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+        'expiresUtcMs': 0}, separators=(',', ':')))
+    raise SystemExit(0)
+if '/api/v1/handlers' in command_text:
+    print(json.dumps({'business_status': 200}, separators=(',', ':')))
+    raise SystemExit(0)
+if '/api/v1/tenants/story-27-4-qualification' in command_text:
+    print(json.dumps({'allowed_status': 200, 'denied_status': 403,
+        'denied_dependency_calls': 0}, separators=(',', ':')))
+    raise SystemExit(0)
+if 'consistency=strong' in command_text and 'records%2F' in command_text:
+    print(json.dumps({'stage': 'strong-absence', 'strong_absent_read_count': 125}, separators=(',', ':')))
     raise SystemExit(0)
 if '/v1/access-telemetry/inspect' in command_text:
     print(json.dumps({'health': 'Healthy', 'reason': 'None', 'retainedRecordCount': 100,
         'configurationEpoch': 'qualification', 'physicalReclamationEvidencePending': False}, separators=(',', ':')))
+    raise SystemExit(0)
+if 'memories_access_telemetry_lifecycle_state_operations_total' in command_text:
+    print(json.dumps({'status': 'success', 'data': {'result': [
+        {'value': [int(time.time()), '900000']}
+    ]}}, separators=(',', ':')))
     raise SystemExit(0)
 if 'prometheus-operated.monitoring.svc.cluster.local' in command_text:
     states = ['accepted','dropped','enqueued','expired','failed','persisted','purged','rejected','retried']
@@ -1339,17 +1827,23 @@ if 'http://127.0.0.1:8080/ready' in command_text:
     print(json.dumps({'schemaVersion': 1, 'status': 'Healthy', 'entries': {}}, separators=(',', ':')))
     raise SystemExit(0)
 if 'logs' in args:
-    if op == 'cohort-168h-reclamation':
+    if op == 'cohort-168h-report':
         # The producer verifies this receipt against the exact dynamically
         # submitted aggregate; recompute the same deterministic fake payload.
-        aggregate = {'stage': 'reclamation', 'reclaimed_utc_ms': ((now // 3600000) * 3600000 - (8 * 24 * 3600000)) + 168 * 3600000 + 120000,
+        aggregate = {'stage': 'reclamation', 'reclaimed_utc_ms': int(os.environ.get('QUALIFICATION_RECLAIMED', ((now // 3600000) * 3600000 - (8 * 24 * 3600000)) + 168 * 3600000 + 120000)),
             'allocator_free_bytes': 700}
         print(json.dumps({'status': 'accepted', 'evidenceId': 'story-27-4-c3',
             'componentProfileHash': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
-            'artifactSha256': __import__('hashlib').sha256(json.dumps(aggregate, separators=(',', ':'), sort_keys=True).encode()).hexdigest(),
+            'artifactSha256': os.environ['HEXALITH_STORY_27_4_PHYSICAL_ARTIFACT_SHA256'],
+            'reporterImageDigest': 'd' * 64,
             'observedAtUnixMilliseconds': aggregate['reclaimed_utc_ms']}, separators=(',', ':')))
         raise SystemExit(0)
-    print('{"eventId":7506,"outcome":"ok"}')
+    run_id = 'run-' + __import__('hashlib').sha256(
+        os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].encode()).hexdigest()[:24]
+    segment_id = f'{op}-segment-0001'
+    correlation = __import__('hashlib').sha256(f'{run_id}/{segment_id}'.encode()).hexdigest()[:32]
+    print(json.dumps({'eventId': 7506, 'auditEvent': {'queryParams': {
+        'workflowInstanceIdPrefix': f'qualification-{correlation}-000'}}}, separators=(',', ':')))
     raise SystemExit(0)
 if 'psql' in command_text and 'VACUUM (ANALYZE,' in command_text:
     print('VACUUM')
@@ -1358,8 +1852,9 @@ if 'psql' in command_text and op == 'c3-empty-preflight':
     print(json.dumps({'stage': 'preflight', 'record_count': 0, 'index_candidate_count': 0}, separators=(',', ':')))
     raise SystemExit(0)
 if 'psql' in command_text and op == 'newer-control-seed':
+    run_id = 'run-' + hashlib.sha256(os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].encode()).hexdigest()[:24]
     print(json.dumps({'stage': 'control', 'record_count': 125,
-        'newer_record_names': [f'newer-control-{index:03d}' for index in range(1, 17)]}, separators=(',', ':')))
+        'newer_record_names': qualification_ids(run_id, 'newer-control-seed-segment-0001')}, separators=(',', ':')))
     raise SystemExit(0)
 if 'psql' in command_text and op.startswith('cohort-'):
     hours = int(op.split('-')[1][:-1]); stage = op.rsplit('-', 1)[-1]
@@ -1368,10 +1863,12 @@ if 'psql' in command_text and op.startswith('cohort-'):
     if "'stage','index'" in command_text:
         value = {'stage': 'index', 'index_name': 'idx_lifecycle_expiredate', 'post_index_candidate_count': 0}
     elif stage == 'seed':
+        run_id = 'run-' + hashlib.sha256(os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].encode()).hexdigest()[:24]
         value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
             'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
             'accepted_utc_ms': accepted, 'emitted_utc_ms': emitted, 'expires_utc_ms': expires,
-            'pre_tuple_count': 125}
+            'pre_tuple_count': 125,
+            'record_ids': qualification_ids(run_id, f'cohort-{hours}h-seed-segment-0001')}
     elif stage == 'wait':
         value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
             'ready': True, 'candidate_count': 125}
@@ -1380,7 +1877,7 @@ if 'psql' in command_text and op.startswith('cohort-'):
             'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
             'accepted_utc_ms': accepted, 'emitted_utc_ms': emitted, 'expires_utc_ms': expires,
             'pre_tuple_count': 125, 'candidate_count': 125,
-            'newer_record_names': [f'newer-control-{index:03d}' for index in range(1, 17)],
+            'newer_record_names': [f'{index:026d}' for index in range(1, 126)],
             'newer_records_preserved': True}
     elif stage == 'purge':
         value = {'stage': stage, 'purged_utc_ms': purged, 'post_tuple_count': 0,
@@ -1415,21 +1912,22 @@ elif op == 'retention-controls':
         'logical_expiry_millisecond': True, 'ttl_defense_in_depth': True}
 elif op == 'newer-control-seed':
     value = {'record_count': 125,
-        'newer_record_names': [f'newer-control-{index:03d}' for index in range(1, 17)]}
+        'newer_record_names': [f'{index:026d}' for index in range(1, 126)]}
 elif op.startswith('cohort-'):
     hours = int(op.split('-')[1][:-1]); emitted = (now // 3600000) * 3600000 - (8 * 24 * 3600000)
     accepted = emitted + 25; expires = emitted + hours * 3600000; purged = expires + 60000
     value = {'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
         'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
+        'record_ids': [f'{hours * 1000 + index:026d}' for index in range(1, 126)],
         'accepted_utc_ms': accepted, 'emitted_utc_ms': emitted, 'expires_utc_ms': expires, 'purged_utc_ms': purged,
-        'reclaimed_utc_ms': purged + 60000, 'pre_tuple_count': 100, 'post_tuple_count': 0,
-        'candidate_count': 100, 'deleted_count': 90, 'already_absent_count': 10,
-        'index_removal_count': 100, 'logical_absence': True,
-        'newer_record_names': [f'newer-control-{index:03d}' for index in range(1, 17)],
+        'reclaimed_utc_ms': purged + 60000, 'pre_tuple_count': 125, 'post_tuple_count': 0,
+        'candidate_count': 125, 'deleted_count': 115, 'already_absent_count': 10,
+        'index_removal_count': 125, 'logical_absence': True,
+        'newer_record_names': [f'{index:026d}' for index in range(1, 126)],
         'newer_records_preserved': True, 'interrupted_recovery': True, 'restart_recovery': True,
         'allocator_free_bytes_before': 100, 'allocator_free_bytes_after': 700, 'os_disk_shrink_claimed': False}
 elif op.startswith('failure-'):
-    value = {'exercised': True, 'lifecycle_fail_closed': True, 'business_readiness_available': True,
+    value = {'exercised': True, 'expected_disposition': 'rejected', 'business_operation_succeeded': True,
         'business_requests': 2, 'business_failures': 0, 'audit_continuity': True, 'lifecycle_attempts': 2,
         'lifecycle_persisted': 0, 'lifecycle_rejected': 1, 'lifecycle_dropped': 1}
 elif op == 'observability':

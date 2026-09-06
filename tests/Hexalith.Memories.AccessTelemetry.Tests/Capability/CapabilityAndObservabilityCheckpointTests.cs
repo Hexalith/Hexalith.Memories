@@ -193,6 +193,29 @@ public sealed class CapabilityAndObservabilityCheckpointTests
     }
 
     [Fact]
+    public void StateOperationCounter_EmitsExactUnlabelledTargetDelta()
+    {
+        var measurements = new List<(long Value, KeyValuePair<string, object?>[] Tags)>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, current) =>
+        {
+            if (instrument.Name == AccessTelemetryMetricContract.StateOperations)
+            {
+                current.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, tags, _) =>
+            measurements.Add((value, tags.ToArray())));
+        listener.Start();
+
+        AccessTelemetryLifecycleMetrics.RecordStateOperations(3);
+
+        measurements.Count.ShouldBe(1);
+        measurements[0].Value.ShouldBe(3);
+        measurements[0].Tags.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void LifecycleGauges_UseLiveClockAndAggregateHealthWithoutInventingPhysicalEvidence()
     {
         DateTimeOffset now = new(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
@@ -230,6 +253,7 @@ public sealed class CapabilityAndObservabilityCheckpointTests
         AccessTelemetryLifecycleMetrics.RecordDaprLatency(11);
         AccessTelemetryLifecycleMetrics.RecordAttestationLatency(12);
         AccessTelemetryLifecycleMetrics.RecordStateLatency(13);
+        AccessTelemetryLifecycleMetrics.RecordStateOperations(3);
         AccessTelemetryLifecycleMetrics.RecordExpiryLag(30);
         AccessTelemetryLifecycleMetrics.RecordPurgeLatency(14);
         AccessTelemetryLifecycleMetrics.RecordReminder(succeeded: true);

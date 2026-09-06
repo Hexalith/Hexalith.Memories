@@ -7,6 +7,11 @@ resources:
   - qualification-operator-rbac.yaml
   - physical-evidence-reporter-job.yaml
   - ../../base
+transformers:
+  # These exact-name patches run after the built-in namespace transformer and
+  # restore the deliberately cross-namespace, namespaced Dapr RBAC exception.
+  - dapr-role-namespace-transformer.yaml
+  - dapr-role-binding-namespace-transformer.yaml
 patches:
   - path: qualification-enabled-patch.yaml
   # Dapr ACL source namespaces are values inside Configuration specs; the

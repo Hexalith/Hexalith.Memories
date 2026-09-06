@@ -518,8 +518,44 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         await client.Received(1).SendAsync(
             Arg.Is<IReadOnlyList<AccessTelemetryRecord>>(records => records != null && records.Count == 2),
             Arg.Any<CancellationToken>());
-        queue.Count.ShouldBe(3);
+        queue.Count.ShouldBe(1);
         stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(1));
+    }
+
+    [Theory]
+    [InlineData(AccessTelemetryReason.SchemaMismatch)]
+    [InlineData(AccessTelemetryReason.Expired)]
+    [InlineData(AccessTelemetryReason.ClockUntrusted)]
+    [InlineData(AccessTelemetryReason.ConfigurationInvalid)]
+    [InlineData(AccessTelemetryReason.RecordIdConflict)]
+    public async Task Worker_TerminalRejectionAcknowledgesTheExactRejectedPrefix(
+        AccessTelemetryReason reason)
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        foreach (int index in Enumerable.Range(0, 3))
+        {
+            _ = index;
+            queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        }
+
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(new AccessTelemetryWriteBatchResponse { Accepted = 0, Rejected = 3, Reason = reason });
+        var accounting = new AccessTelemetryQualificationAccounting();
+        var worker = new AccessTelemetryDeliveryWorker(
+            queue,
+            client,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions(),
+            new AccessTelemetryLifecycleStatus(enabled: true),
+            accounting);
+
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        queue.Count.ShouldBe(0);
+        accounting.Current.Rejected.ShouldBe(3);
+        accounting.Current.Conflicted.ShouldBe(reason == AccessTelemetryReason.RecordIdConflict ? 3 : 0);
     }
 
     [Fact]

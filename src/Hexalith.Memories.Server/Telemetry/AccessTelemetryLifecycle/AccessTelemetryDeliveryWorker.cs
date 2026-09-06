@@ -49,12 +49,15 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
         }
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
+        List<AccessTelemetryRecord> expiredRecords = [];
         int expired = _queue.RemoveWhere(record =>
             ParseUtc(record.ExpiresAtUtc) <= now ||
-            ParseUtc(record.EmittedAtUtc).Add(AccessTelemetryOptions.MaximumRetryAge) <= now);
+            ParseUtc(record.EmittedAtUtc).Add(AccessTelemetryOptions.MaximumRetryAge) <= now,
+            expiredRecords.Add);
         if (expired > 0)
         {
             ServerAccessTelemetryLifecycleMetrics.Record(expired, AccessTelemetryRecordState.Dropped, AccessTelemetryReason.Expired);
+            _qualificationAccounting?.RecordDropped(expiredRecords);
             RefreshQueueMetrics();
         }
 
@@ -79,7 +82,7 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
                 _queue.Acknowledge(response.Accepted);
                 RefreshQueueMetrics();
                 ServerAccessTelemetryLifecycleMetrics.Record(response.Accepted, AccessTelemetryRecordState.Persisted, AccessTelemetryReason.None);
-                _qualificationAccounting?.RecordPersisted(response.Accepted);
+                _qualificationAccounting?.RecordPersisted(batch, 0, response.Accepted);
                 _status.RecordActivity(now);
             }
 
@@ -91,20 +94,37 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
             else if (response.Reason is AccessTelemetryReason.ConfigurationInvalid or AccessTelemetryReason.RecordIdConflict)
             {
                 _qualificationAccounting?.RecordRejected(
+                    batch,
+                    response.Accepted,
                     response.Rejected,
                     response.Reason == AccessTelemetryReason.RecordIdConflict);
+                _queue.Acknowledge(response.Rejected);
+                RefreshQueueMetrics();
+                ServerAccessTelemetryLifecycleMetrics.Record(
+                    response.Rejected,
+                    AccessTelemetryRecordState.Rejected,
+                    response.Reason);
                 _terminal = true;
                 _status.RecordActivity(now);
                 _status.PublishTerminal(response.Reason);
             }
-            else if (response.Reason is AccessTelemetryReason.SchemaMismatch or AccessTelemetryReason.Expired)
+            else if (response.Reason is
+                AccessTelemetryReason.SchemaMismatch or
+                AccessTelemetryReason.Expired or
+                AccessTelemetryReason.ClockUntrusted)
             {
                 if (response.Rejected > 0)
                 {
-                    _qualificationAccounting?.RecordRejected(response.Rejected);
-                    _queue.Acknowledge(1);
+                    _qualificationAccounting?.RecordRejected(
+                        batch,
+                        response.Accepted,
+                        response.Rejected);
+                    _queue.Acknowledge(response.Rejected);
                     RefreshQueueMetrics();
-                    ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Dropped, response.Reason);
+                    ServerAccessTelemetryLifecycleMetrics.Record(
+                        response.Rejected,
+                        AccessTelemetryRecordState.Rejected,
+                        response.Reason);
                     _status.RecordActivity(now);
                 }
 

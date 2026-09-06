@@ -397,7 +397,8 @@ server = server
     .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyReference", "access-telemetry-marker-key")
     .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyGeneration", "development-key-1")
     .WithEnvironment("AccessTelemetryLifecycle__CapacityEvidenceId", "development-capacity-probe")
-    .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationEvidenceId", "development-reclamation-hook");
+    .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationEvidenceId", "development-reclamation-hook")
+    .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationReporterImageDigest", new string('d', 64));
 
 IResourceBuilder<ProjectResource> accessTelemetryClock = builder
     .AddProject<Projects.Hexalith_Memories_AccessTelemetry_Clock>(
@@ -454,6 +455,7 @@ IResourceBuilder<ProjectResource> accessTelemetry = builder
     .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyGeneration", "development-key-1")
     .WithEnvironment("AccessTelemetryLifecycle__CapacityEvidenceId", "development-capacity-probe")
     .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationEvidenceId", "development-reclamation-hook")
+    .WithEnvironment("AccessTelemetryLifecycle__PhysicalReclamationReporterImageDigest", new string('d', 64))
     .WithEnvironment("AccessTelemetryLifecycle__CapabilityEvidence__ExactVersionPinned", "true")
     .WaitFor(redis)
     .WaitFor(openBao)

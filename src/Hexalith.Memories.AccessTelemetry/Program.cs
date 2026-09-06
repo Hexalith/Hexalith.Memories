@@ -149,6 +149,7 @@ app.MapPost("/v1/access-telemetry/physical-reclamation-evidence", async (
             EvidenceId = evidence.EvidenceId,
             ComponentProfileHash = evidence.ComponentProfileHash,
             ArtifactSha256 = evidence.ArtifactSha256,
+            ReporterImageDigest = evidence.ReporterImageDigest,
             ObservedAtUnixMilliseconds = evidence.ObservedAtUnixMilliseconds,
         },
         statusCode: StatusCodes.Status202Accepted);

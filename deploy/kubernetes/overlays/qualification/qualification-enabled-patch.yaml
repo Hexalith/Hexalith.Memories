@@ -15,6 +15,10 @@ spec:
               value: Qualification
             - name: AccessTelemetryLifecycle__PhysicalReclamationEvidenceId
               value: story-27-4-c3
+            # The authorized operator replaces this together with the reporter
+            # Job image using the exact C1-reviewed sha256 suffix.
+            - name: AccessTelemetryLifecycle__PhysicalReclamationReporterImageDigest
+              value: 0000000000000000000000000000000000000000000000000000000000000000
 ---
 apiVersion: apps/v1
 kind: Deployment

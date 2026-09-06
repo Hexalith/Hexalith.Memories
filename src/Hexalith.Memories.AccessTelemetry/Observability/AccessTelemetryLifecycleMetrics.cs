@@ -20,6 +20,7 @@ internal static class AccessTelemetryLifecycleMetrics
     private static readonly Histogram<double> DaprLatency = Meter.CreateHistogram<double>(AccessTelemetryMetricContract.DaprDuration, "ms");
     private static readonly Histogram<double> AttestationLatency = Meter.CreateHistogram<double>(AccessTelemetryMetricContract.AttestationDuration, "ms");
     private static readonly Histogram<double> StateLatency = Meter.CreateHistogram<double>(AccessTelemetryMetricContract.StateDuration, "ms");
+    private static readonly Counter<long> StateOperations = Meter.CreateCounter<long>(AccessTelemetryMetricContract.StateOperations);
     private static readonly Histogram<double> ExpiryLag = Meter.CreateHistogram<double>(AccessTelemetryMetricContract.ExpiryLag, "s");
     private static readonly Histogram<double> PurgeLatency = Meter.CreateHistogram<double>(AccessTelemetryMetricContract.PurgeDuration, "ms");
     private static readonly Counter<long> Reminders = Meter.CreateCounter<long>(AccessTelemetryMetricContract.Reminders);
@@ -129,6 +130,9 @@ internal static class AccessTelemetryLifecycleMetrics
 
     /// <summary>Records state latency without identity labels.</summary>
     public static void RecordStateLatency(double milliseconds) => StateLatency.Record(milliseconds);
+
+    /// <summary>Records completed target-side state operations without inferred multipliers.</summary>
+    public static void RecordStateOperations(long count) => StateOperations.Add(count);
 
     /// <summary>Records bounded capacity without identity labels.</summary>
     public static void RecordCapacity(long records, long? admittedCapacity = null)
