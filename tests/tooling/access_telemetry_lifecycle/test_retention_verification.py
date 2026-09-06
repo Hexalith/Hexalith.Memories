@@ -59,14 +59,15 @@ def observation(command_id: str) -> dict[str, object]:
     return {"command_id": command_id, "output_sha256": SHA, "result_count": 1}
 
 
-def transition() -> dict[str, object]:
+def transition(command_id: str | None = None) -> dict[str, object]:
+    prefix = f"{command_id}:" if command_id else ""
     return {
         "non_production": True,
-        "identity_observation": observation("qualification-target-identity"),
+        "identity_observation": observation(prefix + "qualification-target-identity"),
         "initial_writes_state": "disabled",
-        "enable_observation": observation("qualification-enable"),
-        "disable_observation": observation("qualification-disable"),
-        "final_observation": observation("qualification-final-state"),
+        "enable_observation": observation(prefix + "qualification-enable"),
+        "disable_observation": observation(prefix + "qualification-disable"),
+        "final_observation": observation(prefix + "qualification-final-state"),
         "final_writes_state": "disabled",
     }
 
@@ -237,6 +238,7 @@ def c2_payload() -> dict[str, object]:
             "actor_serialized": True,
             "idempotent_retry": True,
             "conflict_rejected": True,
+            "idempotence_conflict_observation": observation("idempotence-conflict-proof"),
             "transaction_acknowledged": True,
             "reconstructed": True,
             "reconnected": True,
@@ -273,8 +275,9 @@ def c3_payload() -> dict[str, object]:
     base = now_ms() - (8 * 24 * 3_600_000)
     cohorts = []
     for hours in (1, 24, 168):
-        accepted = base
-        expires = accepted + (hours * 3_600_000)
+        emitted = base
+        accepted = emitted + 25
+        expires = emitted + (hours * 3_600_000)
         purged = expires + 60_000
         cohorts.append(
             {
@@ -284,6 +287,7 @@ def c3_payload() -> dict[str, object]:
                 "schema": "access_telemetry",
                 "table": "lifecycle_state",
                 "accepted_utc_ms": accepted,
+                "emitted_utc_ms": emitted,
                 "expires_utc_ms": expires,
                 "purged_utc_ms": purged,
                 "reclaimed_utc_ms": purged + 60_000,
@@ -294,16 +298,21 @@ def c3_payload() -> dict[str, object]:
                 "already_absent_count": 10,
                 "index_removal_count": 100,
                 "logical_absence": True,
-                "newer_record_names": [f"newer-{hours}h-a", f"newer-{hours}h-b"],
+                "newer_record_names": [f"newer-control-{index:03d}" for index in range(1, 17)],
                 "newer_records_preserved": True,
                 "interrupted_recovery": True,
                 "restart_recovery": True,
-                "allocator_bytes_before": 1000,
-                "allocator_bytes_after": 700,
+                "allocator_free_bytes_before": 100,
+                "allocator_free_bytes_after": 700,
                 "os_disk_shrink_claimed": False,
+                "seed_observation": observation(f"cohort-{hours}h-seed"),
+                "wait_observation": observation(f"cohort-{hours}h-wait"),
                 "expiry_observation": observation(f"cohort-{hours}h-expiry"),
                 "purge_observation": observation(f"cohort-{hours}h-purge"),
                 "reclamation_observation": observation(f"cohort-{hours}h-reclamation"),
+                "seed_transition": transition(f"cohort-{hours}h-seed"),
+                "purge_transition": transition(f"cohort-{hours}h-purge"),
+                "reclamation_transition": transition(f"cohort-{hours}h-reclamation"),
             }
         )
     payload["results"] = {
@@ -318,8 +327,15 @@ def c3_payload() -> dict[str, object]:
             "ttl_defense_in_depth": True,
         },
         "retention_observation": observation("retention-controls"),
+        "retention_transition": transition("retention-controls"),
+        "empty_preflight_observation": observation("c3-empty-preflight"),
+        "final_newer_control": {
+            "record_count": 125,
+            "newer_record_names": [f"newer-control-{index:03d}" for index in range(1, 17)],
+            "observation": observation("newer-control-seed"),
+            "transition": transition("newer-control-seed"),
+        },
         "cohorts": cohorts,
-        "qualification_transition": transition(),
     }
     return bind_result_commands(payload)
 
@@ -410,6 +426,29 @@ class RetentionVerificationTests(unittest.TestCase):
         otlp["results"]["otlp_continuity"] = False
         with self.assertRaises(ValueError):
             validate_story_27_4_checkpoint("c2-production-replacement", otlp, predecessor())
+
+    def test_c3_horizons_use_emission_time_and_bind_the_final_newer_control(self) -> None:
+        wrong_horizon = c3_payload()
+        wrong_horizon["results"]["cohorts"][0]["emitted_utc_ms"] += 1
+        with self.assertRaises(ValueError):
+            validate_story_27_4_checkpoint(
+                "c3-retention-reclamation", wrong_horizon, predecessor()
+            )
+
+        acceptance_jitter = c3_payload()
+        acceptance_jitter["results"]["cohorts"][0]["accepted_utc_ms"] += 200
+        validate_story_27_4_checkpoint(
+            "c3-retention-reclamation", acceptance_jitter, predecessor()
+        )
+
+        mismatched_control = c3_payload()
+        mismatched_control["results"]["cohorts"][2]["newer_record_names"] = [
+            "newer-control-999"
+        ]
+        with self.assertRaises(ValueError):
+            validate_story_27_4_checkpoint(
+                "c3-retention-reclamation", mismatched_control, predecessor()
+            )
 
     def test_c1_requires_unique_25_gate_artifacts_disabled_production_and_authorization(self) -> None:
         reused = predecessor()
@@ -581,7 +620,7 @@ class RetentionVerificationTests(unittest.TestCase):
                 operation_log.read_text(encoding="utf-8").splitlines(),
             )
 
-    def test_producer_refuses_unverifiable_target_identity_and_still_disables(self) -> None:
+    def test_producer_refuses_unverifiable_target_identity_without_mutating_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             fake_bin = base / "bin"
@@ -612,11 +651,7 @@ class RetentionVerificationTests(unittest.TestCase):
 
             self.assertEqual(1, result.returncode)
             self.assertEqual(
-                [
-                    "qualification-target-identity",
-                    "qualification-disable",
-                    "qualification-final-state",
-                ],
+                ["qualification-target-identity"],
                 operation_log.read_text(encoding="utf-8").splitlines(),
             )
 
@@ -649,6 +684,38 @@ class RetentionVerificationTests(unittest.TestCase):
             self.assertEqual(1, result.returncode)
             self.assertEqual(
                 ["qualification-target-identity", "qualification-disable", "qualification-final-state"],
+                operation_log.read_text(encoding="utf-8").splitlines(),
+            )
+
+    def test_producer_rejects_active_foreign_lease_without_mutating_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            operation_log = base / "operations.log"
+            scenario_input = base / "scenario-input.json"
+            scenario_input.write_text(json.dumps({"schema_version": 1, "target": {
+                "kind": "non-production-qualification", "kube_context": "operator@local",
+                "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
+            }}), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-B", str(TOOLS_DIR / "access_telemetry_c2_producer.py"),
+                 "--scenario-input", str(scenario_input), "--platform-operations-reviewer",
+                 "c1-operator-reviewer"],
+                check=False,
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+                    "QUALIFICATION_ACTIVE_FOREIGN_LEASE": "1",
+                    "QUALIFICATION_OPERATION_LOG": str(operation_log),
+                },
+            )
+            self.assertEqual(1, result.returncode)
+            self.assertEqual(
+                ["qualification-target-identity"],
                 operation_log.read_text(encoding="utf-8").splitlines(),
             )
 
@@ -1113,7 +1180,9 @@ if '--' in args and args[-1] in {'--version', '--build-info'} and args[-2] in {'
     print('1.18.1' if args[-1] == '--version' else 'Version: 1.18.1\\nGit Commit: qualification-test')
     raise SystemExit(0)
 op = os.environ.get('HEXALITH_STORY_27_4_COMMAND_ID') or sys.argv[-1].rsplit('/', 1)[-1]
-changed = step >= (3 if op.endswith('-purge') else 4)
+proof_scenarios = {'failure-etag-failure', 'failure-ttl-failure', 'failure-transaction-failure',
+    'failure-queue-byte-exhaustion', 'failure-queue-record-exhaustion'}
+changed = step >= (3 if op.endswith('-purge') else 6 if op in proof_scenarios else 4)
 pod_phase = 'same' if op.endswith('-dapr-sidecar') else ('new' if changed else 'old')
 operation_log = os.environ.get('QUALIFICATION_OPERATION_LOG')
 if operation_log:
@@ -1127,7 +1196,7 @@ if operation_log:
             stream.write(op + '\\n')
 if os.environ.get('QUALIFICATION_FAIL_OPERATION') == op:
     raise SystemExit(9)
-if os.environ.get('QUALIFICATION_INVALID_OPERATION') == op:
+if os.environ.get('QUALIFICATION_INVALID_OPERATION') == op and (op != 'qualification-enable' or step >= 9):
     print('{')
     raise SystemExit(0)
 if 'auth' in args and 'can-i' in args:
@@ -1152,11 +1221,19 @@ if 'get' in args and args[-1] == 'json':
     if resource == 'lease':
         enabled = op in {'qualification-enable', 'qualification-renew'}
         stale = os.environ.get('QUALIFICATION_STALE_LEASE') == '1' and op in {'qualification-target-identity', 'qualification-disable'}
+        active_foreign = os.environ.get('QUALIFICATION_ACTIVE_FOREIGN_LEASE') == '1' and op == 'qualification-target-identity'
         print(json.dumps({'metadata': {'resourceVersion': '10'}, 'spec': {
-            'holderIdentity': ('story-27-4/prior-reviewer/1-1' if stale else
+            'holderIdentity': ('foreign-controller' if active_foreign else 'story-27-4/prior-reviewer/1-1' if stale else
                 os.environ.get('HEXALITH_STORY_27_4_LEASE_HOLDER', '') if enabled else ''),
-            'leaseDurationSeconds': 30 if stale else (2700 if enabled else 0),
-            'acquireTime': '2020-01-01T00:00:00Z' if stale else '2026-09-05T00:00:00Z'}}, separators=(',', ':')))
+            'leaseDurationSeconds': 2700 if active_foreign else (30 if stale else (2700 if enabled else 0)),
+            'acquireTime': '2026-09-05T12:00:00Z' if active_foreign else ('2020-01-01T00:00:00Z' if stale else '2026-09-05T00:00:00Z')}}, separators=(',', ':')))
+        raise SystemExit(0)
+    if resource == 'job':
+        print(json.dumps({'apiVersion': 'batch/v1', 'kind': 'Job',
+            'metadata': {'name': 'access-telemetry-physical-evidence-reporter'},
+            'spec': {'suspend': True, 'template': {'spec': {'containers': [
+                {'name': 'reporter', 'image': 'registry/reporter@sha256:' + ('d' * 64)}
+            ]}}}, 'status': {}}, separators=(',', ':')))
         raise SystemExit(0)
     if resource == 'deployment':
         name = args[args.index('get') + 2]
@@ -1219,11 +1296,19 @@ if 'get' in args and args[-1] == 'json':
     raise SystemExit(0)
 now = int(time.time() * 1000)
 command_text = ' '.join(args)
+if 'redis-cli' in command_text or '/v1.0/shutdown' in command_text:
+    raise SystemExit(0)
+if any(verb in args for verb in {'patch', 'scale', 'rollout', 'wait', 'delete', 'set'}):
+    raise SystemExit(0)
 if '/operations/access-telemetry/qualification/fixed-workload' in command_text:
     if op.startswith('writer-'):
-        index = int(op[-1]); value = {'writer': f'memories-{index}', 'attempted': 225001,
-            'acknowledged': 225000, 'persisted': 225000, 'conflicted': 1,
-            'transactionAcknowledgements': 225000, 'dropped': 0, 'rejected': 0, 'resultCount': 5}
+        index = int(op[-1]); value = {'writer': f'memories-{index}', 'attempted': 125,
+            'acknowledged': 125, 'persisted': 125, 'conflicted': 0,
+            'transactionAcknowledgements': 125, 'dropped': 0, 'rejected': 0, 'resultCount': 125}
+    elif op.endswith('-seed'):
+        value = {'writer': 'memories-1', 'attempted': 125, 'acknowledged': 125, 'persisted': 125,
+            'conflicted': 0, 'transactionAcknowledgements': 125, 'dropped': 0, 'rejected': 0,
+            'resultCount': 125}
     else:
         value = {'writer': 'memories-1', 'attempted': 2, 'acknowledged': 0, 'persisted': 0,
             'conflicted': 0, 'transactionAcknowledgements': 0, 'dropped': 1, 'rejected': 1,
@@ -1258,7 +1343,7 @@ if 'logs' in args:
         # The producer verifies this receipt against the exact dynamically
         # submitted aggregate; recompute the same deterministic fake payload.
         aggregate = {'stage': 'reclamation', 'reclaimed_utc_ms': ((now // 3600000) * 3600000 - (8 * 24 * 3600000)) + 168 * 3600000 + 120000,
-            'allocator_bytes': 700}
+            'allocator_free_bytes': 700}
         print(json.dumps({'status': 'accepted', 'evidenceId': 'story-27-4-c3',
             'componentProfileHash': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
             'artifactSha256': __import__('hashlib').sha256(json.dumps(aggregate, separators=(',', ':'), sort_keys=True).encode()).hexdigest(),
@@ -1266,27 +1351,43 @@ if 'logs' in args:
         raise SystemExit(0)
     print('{"eventId":7506,"outcome":"ok"}')
     raise SystemExit(0)
-if 'psql' in args and 'VACUUM (ANALYZE,' in command_text:
+if 'psql' in command_text and 'VACUUM (ANALYZE,' in command_text:
     print('VACUUM')
     raise SystemExit(0)
-if 'psql' in args and op.startswith('cohort-'):
+if 'psql' in command_text and op == 'c3-empty-preflight':
+    print(json.dumps({'stage': 'preflight', 'record_count': 0, 'index_candidate_count': 0}, separators=(',', ':')))
+    raise SystemExit(0)
+if 'psql' in command_text and op == 'newer-control-seed':
+    print(json.dumps({'stage': 'control', 'record_count': 125,
+        'newer_record_names': [f'newer-control-{index:03d}' for index in range(1, 17)]}, separators=(',', ':')))
+    raise SystemExit(0)
+if 'psql' in command_text and op.startswith('cohort-'):
     hours = int(op.split('-')[1][:-1]); stage = op.rsplit('-', 1)[-1]
-    accepted = (now // 3600000) * 3600000 - (8 * 24 * 3600000)
-    expires = accepted + hours * 3600000; purged = expires + 60000
+    emitted = (now // 3600000) * 3600000 - (8 * 24 * 3600000)
+    accepted = emitted + 25; expires = emitted + hours * 3600000; purged = expires + 60000
     if "'stage','index'" in command_text:
         value = {'stage': 'index', 'index_name': 'idx_lifecycle_expiredate', 'post_index_candidate_count': 0}
+    elif stage == 'seed':
+        value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
+            'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
+            'accepted_utc_ms': accepted, 'emitted_utc_ms': emitted, 'expires_utc_ms': expires,
+            'pre_tuple_count': 125}
+    elif stage == 'wait':
+        value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
+            'ready': True, 'candidate_count': 125}
     elif stage == 'expiry':
         value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
             'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
-            'accepted_utc_ms': accepted, 'expires_utc_ms': expires, 'pre_tuple_count': 100,
-            'candidate_count': 100, 'newer_record_names': [f'newer-{hours}h-a'],
+            'accepted_utc_ms': accepted, 'emitted_utc_ms': emitted, 'expires_utc_ms': expires,
+            'pre_tuple_count': 125, 'candidate_count': 125,
+            'newer_record_names': [f'newer-control-{index:03d}' for index in range(1, 17)],
             'newer_records_preserved': True}
     elif stage == 'purge':
         value = {'stage': stage, 'purged_utc_ms': purged, 'post_tuple_count': 0,
             'logical_absence': True, 'newer_records_preserved': True}
     else:
         value = {'stage': stage, 'reclaimed_utc_ms': purged + 60000,
-            'allocator_bytes': 1000 if step == 0 else 700}
+            'allocator_free_bytes': 100 if step == 0 else 700}
     print(json.dumps(value, separators=(',', ':')))
     raise SystemExit(0)
 if op == 'qualification-target-identity':
@@ -1312,17 +1413,21 @@ elif op == 'retention-controls':
         'already_expired_rejected': True, 'attestation_freshness_rejected': True,
         'attestation_replay_rejected': True, 'attestation_identity_rejected': True,
         'logical_expiry_millisecond': True, 'ttl_defense_in_depth': True}
+elif op == 'newer-control-seed':
+    value = {'record_count': 125,
+        'newer_record_names': [f'newer-control-{index:03d}' for index in range(1, 17)]}
 elif op.startswith('cohort-'):
-    hours = int(op.split('-')[1][:-1]); accepted = (now // 3600000) * 3600000 - (8 * 24 * 3600000)
-    expires = accepted + hours * 3600000; purged = expires + 60000
+    hours = int(op.split('-')[1][:-1]); emitted = (now // 3600000) * 3600000 - (8 * 24 * 3600000)
+    accepted = emitted + 25; expires = emitted + hours * 3600000; purged = expires + 60000
     value = {'retention_hours': hours, 'cohort_id': f'retention-{hours}h',
         'database': 'memories_access_telemetry', 'schema': 'access_telemetry', 'table': 'lifecycle_state',
-        'accepted_utc_ms': accepted, 'expires_utc_ms': expires, 'purged_utc_ms': purged,
+        'accepted_utc_ms': accepted, 'emitted_utc_ms': emitted, 'expires_utc_ms': expires, 'purged_utc_ms': purged,
         'reclaimed_utc_ms': purged + 60000, 'pre_tuple_count': 100, 'post_tuple_count': 0,
         'candidate_count': 100, 'deleted_count': 90, 'already_absent_count': 10,
-        'index_removal_count': 100, 'logical_absence': True, 'newer_record_names': [f'newer-{hours}h-a'],
+        'index_removal_count': 100, 'logical_absence': True,
+        'newer_record_names': [f'newer-control-{index:03d}' for index in range(1, 17)],
         'newer_records_preserved': True, 'interrupted_recovery': True, 'restart_recovery': True,
-        'allocator_bytes_before': 1000, 'allocator_bytes_after': 700, 'os_disk_shrink_claimed': False}
+        'allocator_free_bytes_before': 100, 'allocator_free_bytes_after': 700, 'os_disk_shrink_claimed': False}
 elif op.startswith('failure-'):
     value = {'exercised': True, 'lifecycle_fail_closed': True, 'business_readiness_available': True,
         'business_requests': 2, 'business_failures': 0, 'audit_continuity': True, 'lifecycle_attempts': 2,
@@ -1357,6 +1462,12 @@ tests = [
     'LifecycleGauges_UseLiveClockAndAggregateHealthWithoutInventingPhysicalEvidence',
     'HealthPrecedence_IsUnhealthyThenDegradedThenNoDataOrHealthy',
     'RuntimeGate_ClosesImmediatelyWhenPublishedEvidenceExpires',
+    'PersistAsync_SameIdHashAndExpiry_IsIdempotent',
+    'PersistAsync_SameIdWithDifferentEnvelopeOrExpiry_ReturnsConflict',
+    'WriteRecordAndIndexAsync_ConcurrentCatalogWriteBetweenReadAndCommit_ThrowsAndCommitsNoPartialState',
+    'WriteRecordAndIndexAsync_TtlReapedRecordWithLingeringBucketEntry_ReturnsConflictWithoutResurrection',
+    'DeleteAndVerifyAsync_SecondOperationFails_CommitsNoPartialDelete',
+    'Queue_DropsNewestAtExactRecordAndByteBounds',
     'SearchEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeSearchDependencies',
     'TenantPathEndpoint_WithMismatchedTenant_ReturnsTenantForbiddenBeforeTenantState',
     'TenantScopedIngestSchedulingEndpoint_WithMismatchedBodyTenant_ReturnsTenantForbiddenBeforeSchedulingDependencies',

@@ -2645,6 +2645,7 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
                 "actor_serialized",
                 "idempotent_retry",
                 "conflict_rejected",
+                "idempotence_conflict_observation",
                 "transaction_acknowledged",
                 "reconstructed",
                 "reconnected",
@@ -2717,6 +2718,11 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
             "reconstructed",
             "reconnected",
         ),
+    )
+    _validate_result_observation(
+        writers["idempotence_conflict_observation"],
+        "results.writers.idempotence_conflict_observation",
+        "idempotence-conflict-proof",
     )
     if _require_sequence(writers["direct_backend_dependencies"], "direct_backend_dependencies"):
         raise EvidenceValidationError("C2 observed a direct backend dependency")
@@ -2800,9 +2806,48 @@ def _validate_c2(results: Mapping[str, Any]) -> None:
 def _validate_c3(results: Mapping[str, Any]) -> None:
     _require_exact_fields(
         results,
-        frozenset({"retention", "retention_observation", "cohorts", "qualification_transition"}),
+        frozenset(
+            {
+                "retention",
+                "retention_observation",
+                "retention_transition",
+                "empty_preflight_observation",
+                "final_newer_control",
+                "cohorts",
+            }
+        ),
         "results",
     )
+
+    def validate_segment_transition(value: Any, context: str, command_id: str) -> None:
+        transition = _require_mapping(value, context)
+        _require_exact_fields(
+            transition,
+            frozenset(
+                {
+                    "non_production",
+                    "identity_observation",
+                    "initial_writes_state",
+                    "enable_observation",
+                    "disable_observation",
+                    "final_observation",
+                    "final_writes_state",
+                }
+            ),
+            context,
+        )
+        _require_bool(transition["non_production"], f"{context}.non_production", True)
+        if transition["initial_writes_state"] != "disabled" or transition["final_writes_state"] != "disabled":
+            raise EvidenceValidationError(f"{context} did not bound an exact disabled-to-disabled session")
+        for field, suffix in (
+            ("identity_observation", "qualification-target-identity"),
+            ("enable_observation", "qualification-enable"),
+            ("disable_observation", "qualification-disable"),
+            ("final_observation", "qualification-final-state"),
+        ):
+            _validate_result_observation(
+                transition[field], f"{context}.{field}", f"{command_id}:{suffix}"
+            )
     retention = _require_mapping(results["retention"], "results.retention")
     _require_exact_fields(
         retention,
@@ -2837,6 +2882,36 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
     _validate_result_observation(
         results["retention_observation"], "retention_observation", "retention-controls"
     )
+    validate_segment_transition(
+        results["retention_transition"], "retention_transition", "retention-controls"
+    )
+    _validate_result_observation(
+        results["empty_preflight_observation"],
+        "empty_preflight_observation",
+        "c3-empty-preflight",
+    )
+    final_control = _require_mapping(results["final_newer_control"], "results.final_newer_control")
+    _require_exact_fields(
+        final_control,
+        frozenset({"record_count", "newer_record_names", "observation", "transition"}),
+        "results.final_newer_control",
+    )
+    if _require_integer(final_control["record_count"], "final_newer_control.record_count") != 125:
+        raise EvidenceValidationError("C3 final newer-record control must contain exactly 125 records")
+    control_names = _require_sequence(
+        final_control["newer_record_names"], "final_newer_control.newer_record_names"
+    )
+    if not control_names or any(
+        not isinstance(name, str) or re.fullmatch(r"newer-control-[0-9]{3}", name) is None
+        for name in control_names
+    ):
+        raise EvidenceValidationError("C3 final newer-record control aliases are not bounded")
+    _validate_result_observation(
+        final_control["observation"], "final_newer_control.observation", "newer-control-seed"
+    )
+    validate_segment_transition(
+        final_control["transition"], "final_newer_control.transition", "newer-control-seed"
+    )
 
     cohorts = _require_sequence(results["cohorts"], "results.cohorts")
     if len(cohorts) != 3:
@@ -2853,6 +2928,7 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
                     "schema",
                     "table",
                     "accepted_utc_ms",
+                    "emitted_utc_ms",
                     "expires_utc_ms",
                     "purged_utc_ms",
                     "reclaimed_utc_ms",
@@ -2867,12 +2943,17 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
                     "newer_records_preserved",
                     "interrupted_recovery",
                     "restart_recovery",
-                    "allocator_bytes_before",
-                    "allocator_bytes_after",
+                    "allocator_free_bytes_before",
+                    "allocator_free_bytes_after",
                     "os_disk_shrink_claimed",
+                    "seed_observation",
+                    "wait_observation",
                     "expiry_observation",
                     "purge_observation",
                     "reclamation_observation",
+                    "seed_transition",
+                    "purge_transition",
+                    "reclamation_transition",
                 }
             ),
             f"cohorts[{index}]",
@@ -2885,10 +2966,11 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
             raise EvidenceValidationError("C3 database/schema attribution differs from PG-ONPREM-1")
         _require_nonempty_string(cohort["table"], f"cohorts[{index}].table", maximum=128)
         accepted = _require_utc_milliseconds(cohort["accepted_utc_ms"], f"cohorts[{index}].accepted_utc_ms")
+        emitted = _require_utc_milliseconds(cohort["emitted_utc_ms"], f"cohorts[{index}].emitted_utc_ms")
         expires = _require_utc_milliseconds(cohort["expires_utc_ms"], f"cohorts[{index}].expires_utc_ms")
         purged = _require_utc_milliseconds(cohort["purged_utc_ms"], f"cohorts[{index}].purged_utc_ms")
         reclaimed = _require_utc_milliseconds(cohort["reclaimed_utc_ms"], f"cohorts[{index}].reclaimed_utc_ms")
-        if expires - accepted != hours * 3_600_000:
+        if accepted > expires or expires - emitted != hours * 3_600_000:
             raise EvidenceValidationError("C3 cohort expiry does not equal its exact horizon")
         if not expires <= purged <= expires + 900_000 or not purged <= reclaimed <= purged + 86_400_000:
             raise EvidenceValidationError("C3 purge or physical-reclamation bound was not met")
@@ -2908,58 +2990,36 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
         names = _require_sequence(cohort["newer_record_names"], f"cohorts[{index}].newer_record_names")
         if not names or any(not isinstance(name, str) or _SAFE_NAME.fullmatch(name) is None for name in names):
             raise EvidenceValidationError("C3 must name bounded newer-record fixtures")
-        before = _require_nonzero_integer(
-            cohort["allocator_bytes_before"], f"cohorts[{index}].allocator_bytes_before"
+        if hours == 168 and list(names) != list(control_names):
+            raise EvidenceValidationError("C3 final horizon is not bound to the newer-record control")
+        before = _require_integer(
+            cohort["allocator_free_bytes_before"], f"cohorts[{index}].allocator_free_bytes_before"
         )
-        after = _require_integer(cohort["allocator_bytes_after"], f"cohorts[{index}].allocator_bytes_after")
-        if after >= before:
-            raise EvidenceValidationError("C3 physical reclamation did not return allocator bytes")
+        after = _require_nonzero_integer(
+            cohort["allocator_free_bytes_after"], f"cohorts[{index}].allocator_free_bytes_after"
+        )
+        if after <= before:
+            raise EvidenceValidationError("C3 physical reclamation did not increase reusable free space")
         _require_bool(cohort["os_disk_shrink_claimed"], f"cohorts[{index}].os_disk_shrink_claimed", False)
-        for observation_name in ("expiry_observation", "purge_observation", "reclamation_observation"):
+        for observation_name in (
+            "seed_observation",
+            "wait_observation",
+            "expiry_observation",
+            "purge_observation",
+            "reclamation_observation",
+        ):
             stage = observation_name.removesuffix("_observation")
             _validate_result_observation(
                 cohort[observation_name],
                 f"cohorts[{index}].{observation_name}",
                 f"cohort-{hours}h-{stage}",
             )
-
-    transition = _require_mapping(results["qualification_transition"], "qualification_transition")
-    _require_exact_fields(
-        transition,
-        frozenset(
-            {
-                "non_production",
-                "identity_observation",
-                "initial_writes_state",
-                "enable_observation",
-                "disable_observation",
-                "final_observation",
-                "final_writes_state",
-            }
-        ),
-        "qualification_transition",
-    )
-    _require_bool(transition["non_production"], "qualification_transition.non_production", True)
-    _validate_result_observation(
-        transition["identity_observation"],
-        "qualification_transition.identity_observation",
-        "qualification-target-identity",
-    )
-    if transition["initial_writes_state"] != "disabled":
-        raise EvidenceValidationError("qualification target was not initially disabled")
-    _validate_result_observation(
-        transition["enable_observation"], "qualification_transition.enable_observation", "qualification-enable"
-    )
-    _validate_result_observation(
-        transition["disable_observation"], "qualification_transition.disable_observation", "qualification-disable"
-    )
-    _validate_result_observation(
-        transition["final_observation"],
-        "qualification_transition.final_observation",
-        "qualification-final-state",
-    )
-    if transition["final_writes_state"] != "disabled":
-        raise EvidenceValidationError("qualification target was not restored to disabled")
+        for stage in ("seed", "purge", "reclamation"):
+            validate_segment_transition(
+                cohort[f"{stage}_transition"],
+                f"cohorts[{index}].{stage}_transition",
+                f"cohort-{hours}h-{stage}",
+            )
 
 
 def _validate_c4(results: Mapping[str, Any]) -> None:

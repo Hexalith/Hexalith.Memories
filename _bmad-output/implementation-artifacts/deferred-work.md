@@ -1625,7 +1625,9 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of 1-3-content-extraction-via-kreuzberg (2026-03-28)"), 2026-09-01
 location: n/a
 reason: - **DataContract/DataMember attributes missing on V1 contracts** — Systematic gap across all V1 contracts (ExtractionInput, ExtractionResult, MemoryUnit, GraphEdge, etc.). None use DataContract/DataMember/JsonPropertyOrder/JsonConstructor attributes per project-context.md rules. Should be addressed as a batch across all V1 types.
-status: open
+status: done 2026-09-06
+resolution: closed by human decision: Document System.Text.Json as authoritative.
+decision: 2026-09-06 Retain System.Text.Json — Document System.Text.Json as authoritative.
 
 ### DW-217: No transient/permanent exception classification for Kreuzberg errors
 
@@ -1671,6 +1673,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of 1-4-embeddin
 location: n/a
 reason: - **Story transition rationale is comment-only and not machine-readable** — The sprint tracking update relies on a free-form YAML comment for rationale, so tooling cannot query or validate why a story moved between workflow states.
 status: open
+decision: 2026-09-06 Add evidence field — Add and validate a machine-readable transition-rationale field.
 
 ### DW-223: Story status requires manual dual-write across tracking files
 
@@ -1715,6 +1718,7 @@ origin: migrated from legacy ledger ("Deferred from: adversarial code review of 
 location: n/a
 reason: - **indexedAt set to ingestedAt in GraphQueryBuilder** — `BuildMergeMemoryUnitNode` sets the FalkorDB `indexedAt` property to the workflow's `ingestedAt` timestamp. These are semantically different (when ingestion started vs when the graph write happened). Fixing requires adding a separate `indexedAt` parameter to `IndexInput`, which is a cross-story contract change (Story 1.5).
 status: open
+decision: 2026-09-06 Add distinct timestamp — Persist and expose indexedAt with migration-safe tests.
 
 ### DW-229: CaseId not validated for special characters
 
@@ -2119,7 +2123,9 @@ resolution: already resolved: src/Hexalith.Memories.Server/Endpoints/SearchEndpo
 origin: migrated from legacy ledger ("Deferred from: code review of 9-2-dual-embedding-and-causal-chain-indexing (2026-04-24)"), 2026-09-01
 location: n/a
 reason: - **Workflow-version metadata threading for replay-safety startup gate (AC #11 / Task 5.9).** `Dapr.Workflow.WorkflowState` (SDK 1.17.6) does not expose a code-version field per active instance, so `ShouldCountWorkflow` falls back to "any in-flight IngestionWorkflow." Clean same-version redeploys wait for the drain window (up to 5 min). Follow-up: (a) investigate SDK surface across Dapr 1.18+ for a workflow-version metadata hook, (b) if unavailable, thread a `"workflowCodeVersion"` tag through `IngestionInput` and persist to workflow state so the gate can compare against `Assembly.GetEntryAssembly().GetName().Version`. AC #11 updated 2026-04-24 to document the relaxation.
-status: open
+status: done 2026-09-06
+resolution: closed by human decision: Keep the any-active-workflow gate.
+decision: 2026-09-06 Retain current guard — Keep the any-active-workflow gate.
 
 ### DW-284: Risk-mapped guard tests that depend on integration topology
 
@@ -3238,6 +3244,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-ev
 location: n/a
 reason: - **2.7-CR9. `source.CaseId` copied verbatim from upstream with no scope-consistency check** (decision-needed). Rationale: needs design call between trust-upstream / overwrite / skip / throw.
 status: open
+decision: 2026-09-06 Reject mismatch — Validate CaseId consistency and return a stable fail-closed error.
 
 ### DW-432: 2.7-CR10. CLI does not emit `EvidencePacket` on error responses
 
@@ -3340,7 +3347,9 @@ status: open
 origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-evidence-packet-contract-mapping (2026-05-20)"), 2026-09-01
 location: n/a
 reason: - **2.7-CR22. `ExpansionHandle.CaseId` JSON-ignored when null, `TenantId` always present (asymmetry).** Rationale: borderline scope-shape oracle; minor.
-status: open
+status: done 2026-09-06
+resolution: closed by human decision: Keep TenantId required and omit CaseId when null.
+decision: 2026-09-06 Retain current shape — Keep TenantId required and omit CaseId when null.
 
 ### DW-445: 2.7-CR23. `HybridSearchResult.Results` not null-guarded in mapper.
 
@@ -3808,6 +3817,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-2.7-ev
 location: src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:61
 reason: - **`HasIndexedMemoryUnits` captured but never consulted** [src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:61] — true-empty (no index for the tenant) is not distinguished from query-empty; both yield `state: empty` + `broadenScope`, which is misleading for an unindexed tenant. Needs a recovery/state design choice (e.g. an "ingest first" recovery when `HasIndexedMemoryUnits==false`).
 status: open
+decision: 2026-09-06 Build ingest-first proof — Create an unindexed tenant through ingestion and prove its first index.
 
 ### DW-509: `state: empty` emitted when `returnedCount==0` but `totalCount>0` and nothing omitted
 
@@ -4035,6 +4045,7 @@ origin: migrated from legacy ledger ("Deferred from: bmad-dev-auto follow-up rev
 location: _bmad-output/implementation-artifacts/spec-25-7-evidence-cockpit-ux-conformance.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-7-evidence-cockpit-ux-conformance.md` summary: The trust strip still renders the packet's confidence (evidence strength) and freshness for an unauthorized or unknown-isolation packet, even though the source-count badge is now fail-closed to "sources unavailable"; the residual confidence/freshness badges leak a coarse "strong evidence exists" inference past the authorization wall. evidence: `MemoriesTrustStrip.razor` gates the source-count badge on `Packet.State == Unauthorized || IsRestrictiveScope(Packet.Scope.IsolationStatus)` but gates `ConfidenceLabel`, `FreshnessText`, and `TokenBudgetText` only on `ShowPacketValues` (Packet mode), so a restrictive packet carrying real `EvidenceStrength`/`Freshness` still shows "Confidence: Strong" and the actual freshness while the count is suppressed. The exposure is pre-existing — the trust strip has always rendered confidence/freshness in Packet mode — and was surfaced incidentally because Story 25.7 hardened only the source-count badge. The intent scopes fail-closed suppression to source/axis/graph detail and explicitly forbids introducing new trust semantics, so tightening the trust-summary badges is out of scope for this story and needs a focused fail-closed trust-surface decision.
 status: open
+decision: 2026-09-06 Suppress all metadata — Suppress all trust metadata for unauthorized callers.
 
 ### DW-540: Release preflight does not recognize semantic-release's alternate first-release version message when no prior tag exists.
 
@@ -4064,6 +4075,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of spec-25-4-co
 location: _bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-25-4-contract-persistence-separation-and-route-versioning.md` summary: NonDisposingRateLimiter has no disposed-state guard; a host-shutdown ordering race can call a disposed inner limiter and throw ObjectDisposedException on an in-flight request. evidence: `src/Hexalith.Memories.Server/RateLimiting/NonDisposingRateLimiter.cs:24` delegates `AcquireAsyncCore`/`AttemptAcquireCore` blindly to `_inner`; `InboundRequestRateLimiter.DisposeAsync` (`src/Hexalith.Memories.Server/RateLimiting/InboundRequestRateLimiter.cs:56`) disposes every shared inner `FixedWindowRateLimiter` while the ASP.NET partitioned limiter may still hold the `NonDisposingRateLimiter` wrappers. Low-impact (shutdown only) and the fix (disposed-state guard or shutdown-ordering) is a design choice, so deferred rather than patched. The wrapper correctly solves the framework idle-eviction disposal it was written for; only the shutdown corner is unguarded.
 status: open
+decision: 2026-09-06 Add lifecycle guard — Add a shutdown-state guard and concurrency tests.
 
 ### DW-544: The array element values of `deletedBackends`/`compensatedBackends` changed vocabulary (RediSearch→syntactic, RedisVector→semantic, FalkorDB→graph, RedisDataKeys→state); the JSON keys are pinned but no test pins the workflow-emitted values.
 
@@ -4157,6 +4169,7 @@ origin: migrated from legacy ledger ("Deferred from: code review of story-26.2 (
 location: _bmad-output/implementation-artifacts/26-2-backup-and-restore.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/26-2-backup-and-restore.md` summary: [LOW] No operation-level idempotency token — concurrent/duplicate import POSTs run duplicate full re-embeds. evidence: `ImportEndpoints.HandleImportAsync` (`:147,164`) mints a fresh GUID instance id per request and unconditionally schedules a new `RestoreWorkflow`. End state converges (HSET overwrite + graph MERGE) so AC5's idempotency clause holds; the impact is doubled embedding-provider cost/load and interleaved writes on a retry/double-submit. Re-open trigger: an operator restore-cost incident, or a decision to reject a second in-flight restore per tenant.
 status: open
+decision: 2026-09-06 Build idempotency — Add tenant-scoped idempotency and in-flight suppression.
 
 ### DW-557: [LOW] Re-index treats a missing syntactic hash as success; `RestoredMemoryUnits` counts the data-plane total.
 
@@ -5383,6 +5396,7 @@ origin: migrated from legacy ledger (""), 2026-09-01
 location: _bmad-output/implementation-artifacts/27-3-production-adapter-and-deployment-profile.md:39; _bmad-output/planning-artifacts/epics.md
 reason: Commit `8a5fa3c6` (2026-08-08, landed under `spec-gh-29804293613-fix-production-deployment-verification`, outside Story 27.3) redesigned the lane to stage a real disposable OpenBao before scale-up; qualifying run `33400812038` (job `99516369413`, artifact `9761351293`) reports `secret-store-substitution.json` with `substitutionPerformed: false` and `substitutionVerified: true`, both Components still typed `secretstores.hashicorp.vault`, and a confirmed `200` health packet showing `dapr-statestore: Healthy`. This demonstrates the real OpenBao secret-resolution path that AC6 still calls unproven while making AC6's literal "the patch, the post-patch readback" clause structurally unreachable under the improved design; the 2026-09-01 review closed checkpoint C2 on this evidence, but the binding text still needs human-approved correction in both governed copies. Source story: 27-3-production-adapter-and-deployment-profile. Re-open trigger: an approved `correct-course` proposal rewrites AC6's patch/post-patch-readback clause and OpenBao-path disclosure in both governed copies.
 status: open
+decision: 2026-09-06 Correct the criterion — Run a focused correct-course update and reconcile evidence anchors.
 
 ### DW-722: The REST /api/v1/ingest DuplicateInFlight branch — the loser receiving the winner's instance id instead of scheduling a second workflow — has no test at any level.
 origin: spec-deferred 5cecf9383b7b

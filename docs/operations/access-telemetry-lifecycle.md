@@ -189,10 +189,13 @@ binds its sequence, predecessor hash, fixed command ID, aggregate result hash, a
 UTC time. A concurrent producer or any rewritten, truncated, or reordered history
 fails closed. This journal preserves attributable progress for the multi-day 1-hour,
 24-hour, and 168-hour run; it is supporting recovery state, never passing evidence
-by itself.
+by itself. During each horizon wait the qualification gate is closed and the host
+runner polls the fixed PostgreSQL aggregate, so expiry is observed without requiring
+an operator to resume inside the component TTL-cleanup interval.
 
 Create separately identifiable 1-hour, 24-hour, and 168-hour cohorts plus later
-records that must survive the older cohort's purge. Bind every cohort to database,
+records that must survive the older cohort's purge. Seed a final 125-record 24-hour
+control immediately before observing the 168-hour cohort. Bind every cohort to database,
 schema, table, tuple count, configuration epoch, actor epoch, profile/workload hash,
 and executed command identifiers.
 
@@ -214,7 +217,7 @@ Logical proof ends after Dapr Delete, strong Get absence, and expiry-index remov
 The adapter then runs its separately authorized physical collector. Record the same
 cohort/database/schema/table identity, the executed reclamation command, allocator
 bytes before and after, and elapsed seconds from active purge. Pass only when the
-cohort is attributable, allocator bytes decrease, and age is at most 86,400 seconds.
+cohort is attributable, reusable allocator free space increases, and age is at most 86,400 seconds.
 The suspended qualification reporter Job is enabled only for this observation. It
 uses the reviewed deployed lifecycle image and adapter Dapr identity, carries no
 Kubernetes service-account token or RBAC, and submits only the fixed aggregate C3

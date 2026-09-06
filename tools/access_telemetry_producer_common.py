@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -61,6 +61,33 @@ _C2_IDEMPOTENCE_CONFLICT_TESTS = (
     "PersistAsync_SameIdHashAndExpiry_IsIdempotent",
     "PersistAsync_SameIdWithDifferentEnvelopeOrExpiry_ReturnsConflict",
 )
+_C4_MECHANISM_PROOF_TESTS: Mapping[str, tuple[str, str, tuple[str, ...]]] = {
+    "etag-failure": (
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+        ("WriteRecordAndIndexAsync_ConcurrentCatalogWriteBetweenReadAndCommit_ThrowsAndCommitsNoPartialState",),
+    ),
+    "ttl-failure": (
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+        ("WriteRecordAndIndexAsync_TtlReapedRecordWithLingeringBucketEntry_ReturnsConflictWithoutResurrection",),
+    ),
+    "transaction-failure": (
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
+        "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+        ("DeleteAndVerifyAsync_SecondOperationFails_CommitsNoPartialDelete",),
+    ),
+    "queue-byte-exhaustion": (
+        "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj",
+        "tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll",
+        ("Queue_DropsNewestAtExactRecordAndByteBounds",),
+    ),
+    "queue-record-exhaustion": (
+        "tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj",
+        "tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll",
+        ("Queue_DropsNewestAtExactRecordAndByteBounds",),
+    ),
+}
 _MAX_TRANSCRIPT_BYTES = 1_048_576
 
 
@@ -222,10 +249,10 @@ def _fixed_operation_commands(
             }
         )
         return [
+            (*prefix, "get", "lease", _LEASE_NAME, "-o", "json"),
             (*prefix, "patch", "configmap", _GATE_NAME, "--type=merge", "--patch", gate_patch),
             (*prefix, "scale", "deployment/memories-access-telemetry", "--replicas=0"),
             (*prefix, "scale", "deployment/memories-access-telemetry-clock", "--replicas=0"),
-            (*prefix, "get", "lease", _LEASE_NAME, "-o", "json"),
             (*prefix, "patch", "lease", _LEASE_NAME, "--type=json", "--patch", "__LEASE_RELEASE_PATCH__"),
         ]
     if command_id == "qualification-final-state":
@@ -235,21 +262,41 @@ def _fixed_operation_commands(
             (*prefix, "get", "deployment", "memories-access-telemetry", "-o", "json"),
             (*prefix, "get", "deployment", "memories-access-telemetry-clock", "-o", "json"),
         ]
-    if command_id in {"writer-1", "writer-2"}:
-        ordinal = int(command_id[-1]) - 1
+    if command_id == "idempotence-conflict-proof":
+        return _fixed_test_commands(
+            "tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj",
+            "tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll",
+            _C2_IDEMPOTENCE_CONFLICT_TESTS,
+        )
+    if command_id == "c3-empty-preflight":
+        return [
+            (*prefix, "exec", "statefulset/access-telemetry-postgresql", "-c", "postgresql", "--",
+             "psql", "--no-psqlrc", "--tuples-only", "--no-align",
+             "--dbname=memories_access_telemetry", "--command",
+             "SELECT json_build_object('stage','preflight','record_count',count(*),"
+             "'index_candidate_count',count(*) FILTER (WHERE expiredate IS NOT NULL)) "
+             "FROM access_telemetry.lifecycle_state WHERE key LIKE 'memories-access-telemetry||records/%';"),
+        ]
+    if command_id == "newer-control-seed":
+        control_sql = (
+            "WITH records AS (SELECT key,convert_from(value,'UTF8')::jsonb AS doc,expiredate "
+            "FROM access_telemetry.lifecycle_state WHERE key LIKE 'memories-access-telemetry||records/%'), "
+            "control AS (SELECT key,row_number() OVER (ORDER BY key) AS ordinal FROM records "
+            "WHERE expiredate>clock_timestamp() AND "
+            "(doc->>'expiresAtUtc')::timestamptz-(doc->>'emittedAtUtc')::timestamptz="
+            "make_interval(hours=>24)) "
+            "SELECT json_build_object('stage','control','record_count',count(*),"
+            "'newer_record_names',coalesce((SELECT json_agg(format('newer-control-%s',"
+            "lpad(ordinal::text,3,'0')) ORDER BY ordinal) FROM (SELECT ordinal FROM control "
+            "ORDER BY ordinal LIMIT 16) bounded),'[]'::json)) FROM control;"
+        )
         return [
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
-            (
-                *prefix,
-                "exec",
-                f"pod/__SERVER_POD_{ordinal}__",
-                "-c",
-                "memories",
-                "--",
-                "/bin/sh",
-                "-ec",
-                f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}',
-            ),
+            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
+             f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}'),
+            (*prefix, "exec", "statefulset/access-telemetry-postgresql", "-c", "postgresql", "--",
+             "psql", "--no-psqlrc", "--tuples-only", "--no-align",
+             "--dbname=memories_access_telemetry", "--command", control_sql),
         ]
     if command_id.startswith("cohort-"):
         hours = int(command_id.split("-", 2)[1][:-1])
@@ -259,29 +306,39 @@ def _fixed_operation_commands(
         # aggregate JSON object; identifiers and horizons are closed here, not
         # supplied by an operator.
         cohort = (
-            "WITH records AS (SELECT key,value::jsonb AS doc,expiredate "
-            "FROM access_telemetry.lifecycle_state WHERE key LIKE 'records/%'), "
-            f"cohort AS (SELECT * FROM records WHERE round(extract(epoch FROM "
-            "((doc->>'expiresAtUtc')::timestamptz-(doc->>'acceptedAtUtc')::timestamptz))/3600)::int="
-            f"{hours}), newer AS (SELECT key FROM records WHERE expiredate>clock_timestamp()) "
-        )
-        wait_for_expiry = (
-            "SELECT pg_sleep(GREATEST(0,COALESCE((SELECT extract(epoch FROM "
-            "min((value::jsonb->>'expiresAtUtc')::timestamptz)-clock_timestamp()) "
-            "FROM access_telemetry.lifecycle_state WHERE key LIKE 'records/%' AND "
-            "round(extract(epoch FROM (((value::jsonb->>'expiresAtUtc')::timestamptz-"
-            "(value::jsonb->>'acceptedAtUtc')::timestamptz))/3600)::int=" + str(hours) +
-            "),0))));"
+            "WITH records AS (SELECT key,convert_from(value,'UTF8')::jsonb AS doc,expiredate "
+            "FROM access_telemetry.lifecycle_state WHERE key LIKE 'memories-access-telemetry||records/%'), "
+            "cohort AS (SELECT * FROM records WHERE "
+            "(doc->>'expiresAtUtc')::timestamptz-(doc->>'emittedAtUtc')::timestamptz="
+            f"make_interval(hours=>{hours})), newer AS (SELECT key,row_number() OVER (ORDER BY key) AS ordinal "
+            "FROM records WHERE expiredate>clock_timestamp()) "
         )
         sql = {
+            "seed": (
+                cohort + "SELECT json_build_object('stage','seed','retention_hours'," + str(hours) +
+                ",'cohort_id','retention-" + str(hours) + "h','database',current_database(),"
+                "'schema','access_telemetry','table','lifecycle_state',"
+                "'accepted_utc_ms',(extract(epoch FROM min((doc->>'acceptedAtUtc')::timestamptz))*1000)::bigint,"
+                "'emitted_utc_ms',(extract(epoch FROM min((doc->>'emittedAtUtc')::timestamptz))*1000)::bigint,"
+                "'expires_utc_ms',(extract(epoch FROM min((doc->>'expiresAtUtc')::timestamptz))*1000)::bigint,"
+                "'pre_tuple_count',count(*)) FROM cohort;"
+            ),
+            "wait": (
+                cohort + "SELECT json_build_object('stage','wait','retention_hours'," + str(hours) +
+                ",'cohort_id','retention-" + str(hours) + "h','ready',"
+                "count(*)=0 OR coalesce(min(expiredate)<=clock_timestamp(),false),'cohort_missing',count(*)=0,"
+                "'candidate_count',"
+                "count(*) FILTER (WHERE expiredate<=clock_timestamp())) FROM cohort;"
+            ),
             "expiry": (
-                wait_for_expiry + cohort + "SELECT json_build_object('stage','expiry','retention_hours'," + str(hours) +
+                cohort + "SELECT json_build_object('stage','expiry','retention_hours'," + str(hours) +
                 ",'cohort_id','retention-" + str(hours) + "h','database',current_database()," 
                 "'schema','access_telemetry','table','lifecycle_state'," 
                 "'accepted_utc_ms',(extract(epoch FROM min((doc->>'acceptedAtUtc')::timestamptz))*1000)::bigint," 
+                "'emitted_utc_ms',(extract(epoch FROM min((doc->>'emittedAtUtc')::timestamptz))*1000)::bigint,"
                 "'expires_utc_ms',(extract(epoch FROM min((doc->>'expiresAtUtc')::timestamptz))*1000)::bigint," 
                 "'pre_tuple_count',count(*),'candidate_count',count(*) FILTER (WHERE expiredate<=clock_timestamp())," 
-                "'newer_record_names',coalesce((SELECT json_agg(replace(key,'/','-') ORDER BY key) FROM (SELECT key FROM newer ORDER BY key LIMIT 16) n),'[]'::json)," 
+                "'newer_record_names',coalesce((SELECT json_agg(format('newer-control-%s',lpad(ordinal::text,3,'0')) ORDER BY ordinal) FROM (SELECT ordinal FROM newer ORDER BY ordinal LIMIT 16) n),'[]'::json),"
                 "'newer_records_preserved',(SELECT count(*)>0 FROM newer)) FROM cohort;"
             ),
             "purge": (
@@ -291,8 +348,8 @@ def _fixed_operation_commands(
             ),
             "reclamation": (
                 "SELECT json_build_object('stage','reclamation','reclaimed_utc_ms'," 
-                "(extract(epoch FROM clock_timestamp())*1000)::bigint,'allocator_bytes'," 
-                "pg_total_relation_size('access_telemetry.lifecycle_state'));"
+                "(extract(epoch FROM clock_timestamp())*1000)::bigint,'allocator_free_bytes',"
+                "(SELECT free_space FROM pgstattuple('access_telemetry.lifecycle_state')));"
             ),
         }[stage]
         sql_command = (
@@ -310,6 +367,33 @@ def _fixed_operation_commands(
             "--command",
             sql,
         )
+        if stage == "wait":
+            # Keep the qualification gate closed while the host process waits.
+            # Polling here lets the runner capture the first due observation
+            # instead of asking an operator to resume inside Dapr's TTL cleanup
+            # interval. Only the final aggregate is written to the transcript.
+            wait_deadline_seconds = hours * 3_600 + 900
+            wait_script = (
+                f"deadline=$(( $(date +%s) + {wait_deadline_seconds} )); "
+                "while :; do "
+                "result=$(psql --no-psqlrc --tuples-only --no-align "
+                f"--dbname=memories_access_telemetry --command \"{sql}\"); "
+                "if printf '%s' \"$result\" | grep -Eq '\"ready\"[[:space:]]*:[[:space:]]*true'; then "
+                "printf '%s\\n' \"$result\"; exit 0; fi; "
+                "if [ \"$(date +%s)\" -ge \"$deadline\" ]; then "
+                "printf '%s\\n' \"$result\"; exit 1; fi; sleep 5; done"
+            )
+            sql_command = (
+                *prefix,
+                "exec",
+                "statefulset/access-telemetry-postgresql",
+                "-c",
+                "postgresql",
+                "--",
+                "/bin/sh",
+                "-ec",
+                wait_script,
+            )
         index_sql_command = (
             *prefix,
             "exec",
@@ -327,27 +411,49 @@ def _fixed_operation_commands(
             "'index_name',(SELECT indexname FROM pg_indexes WHERE schemaname='access_telemetry' "
             "AND tablename='lifecycle_state' AND indexdef ILIKE '%expiredate%' ORDER BY indexname LIMIT 1),"
             "'post_index_candidate_count',(SELECT count(*) FROM access_telemetry.lifecycle_state "
-            "WHERE expiredate<=clock_timestamp()));",
+            "WHERE expiredate<=clock_timestamp() AND "
+            "(convert_from(value,'UTF8')::jsonb->>'expiresAtUtc')::timestamptz-"
+            "(convert_from(value,'UTF8')::jsonb->>'emittedAtUtc')::timestamptz="
+            "make_interval(hours=>" + str(hours) + "));",
         )
         commands = [
             sql_command
         ]
-        if stage == "expiry":
+        if stage == "seed":
             commands = [
-                (*prefix, "exec", "statefulset/redis-stack", "-c", "redis", "--", "/bin/sh", "-ec",
+                ("__FAULT_ACTION__", *prefix, "exec", "statefulset/redis-stack", "-c", "redis", "--", "/bin/sh", "-ec",
                  f'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning SET retentionSeconds {hours * 3600} | grep -qx OK'),
-                (*prefix, "exec", "statefulset/redis-stack", "-c", "redis", "--", "/bin/sh", "-ec", "sleep 15"),
+                ("__FAULT_ACTION__", *prefix, "rollout", "restart", "deployment/memories"),
+                ("__FAULT_ACTION__", *prefix, "rollout", "status", "deployment/memories", "--timeout=300s"),
                 (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
                 (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
                  f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}'),
                 sql_command,
+                ("__FAULT_RESTORE__", *prefix, "exec", "statefulset/redis-stack", "-c", "redis", "--", "/bin/sh", "-ec",
+                 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning SET retentionSeconds 86400 | grep -qx OK'),
+                ("__FAULT_RESTORE__", *prefix, "rollout", "restart", "deployment/memories"),
+                ("__FAULT_RESTORE__", *prefix, "rollout", "status", "deployment/memories", "--timeout=300s"),
+                ("__FAULT_RESTORE__", *prefix, "exec", "statefulset/redis-stack", "-c", "redis", "--", "/bin/sh", "-ec",
+                 'test "$(redis-cli -a "$REDIS_PASSWORD" --no-auth-warning GET retentionSeconds)" = 86400'),
             ]
         if stage == "purge":
+            cohort_remaining_sql = (
+                "SELECT count(*) FROM access_telemetry.lifecycle_state WHERE key LIKE "
+                "'memories-access-telemetry||records/%' AND "
+                "(convert_from(value,'UTF8')::jsonb->>'expiresAtUtc')::timestamptz-"
+                "(convert_from(value,'UTF8')::jsonb->>'emittedAtUtc')::timestamptz="
+                "make_interval(hours=>" + str(hours) + ");"
+            )
             commands = [
                 (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories-access-telemetry", "-o", "json"),
                 (*prefix, "delete", "pod", "__SELECTED_POD__", "--wait=true", "--timeout=300s"),
                 (*prefix, "wait", "pod", "-l", "app.kubernetes.io/name=memories-access-telemetry", "--for=condition=Ready", "--timeout=300s"),
                 (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories-access-telemetry", "-o", "json"),
+                (*prefix, "exec", "statefulset/access-telemetry-postgresql", "-c", "postgresql", "--",
+                 "/bin/sh", "-ec", "for attempt in $(seq 1 180); do "
+                 "remaining=$(psql --no-psqlrc --tuples-only --no-align "
+                 "--dbname=memories_access_telemetry --command \"" + cohort_remaining_sql + "\"); "
+                 "[ \"$remaining\" = 0 ] && exit 0; sleep 5; done; exit 1"),
                 sql_command,
                 index_sql_command,
             ]
@@ -377,6 +483,7 @@ def _fixed_operation_commands(
             if hours == 168:
                 commands.extend(
                     [
+                        (*prefix, "get", "job", "access-telemetry-physical-evidence-reporter", "-o", "json"),
                         (*prefix, "patch", "configmap", "access-telemetry-physical-evidence-report", "--type=merge",
                          "--patch", "__PHYSICAL_EVIDENCE_PATCH__"),
                         (*prefix, "patch", "job", "access-telemetry-physical-evidence-reporter", "--type=merge",
@@ -486,7 +593,11 @@ def _fixed_operation_commands(
             return (
                 target["namespace"],
                 targets[selector_name],
-                [("kubectl", *prefix[1:], "scale", resource, "--replicas=0")],
+                [
+                    ("kubectl", *prefix[1:], "scale", resource, "--replicas=0"),
+                    ("kubectl", *prefix[1:], "wait", "pod", "-l", targets[selector_name],
+                     "--for=delete", "--timeout=300s"),
+                ],
                 [
                     ("kubectl", *prefix[1:], "scale", resource, f"--replicas={replicas}"),
                     ("kubectl", *prefix[1:], "rollout", "status", resource, "--timeout=300s"),
@@ -497,7 +608,11 @@ def _fixed_operation_commands(
             return (
                 target["namespace"],
                 targets[selector_name],
-                [("kubectl", *prefix[1:], "set", "env", resource, setting)],
+                [
+                    ("kubectl", *prefix[1:], "set", "env", resource, setting),
+                    ("kubectl", *prefix[1:], "delete", "pod", "-l", targets[selector_name],
+                     "--wait=true", "--timeout=300s"),
+                ],
                 [
                     ("kubectl", *prefix[1:], "rollout", "undo", resource),
                     ("kubectl", *prefix[1:], "rollout", "status", resource, "--timeout=300s"),
@@ -521,7 +636,8 @@ def _fixed_operation_commands(
             "dapr-outage": (
                 target["namespace"], targets["lifecycle"],
                 [(*prefix, "exec", "pod/__SELECTED_POD__", "-c", "lifecycle", "--", "/bin/sh", "-ec",
-                  'wget -qO- --header="dapr-api-token: ${DAPR_API_TOKEN}" --post-data="" http://127.0.0.1:3500/v1.0/shutdown')],
+                  'wget -qO- --header="dapr-api-token: ${DAPR_API_TOKEN}" --post-data="" http://127.0.0.1:3500/v1.0/shutdown'),
+                 (*prefix, "wait", "--for=condition=Ready=false", "pod/__SELECTED_POD__", "--timeout=300s")],
                 [(*prefix, "wait", "pod", "-l", targets["lifecycle"], "--for=condition=Ready", "--timeout=300s")],
             ),
             "actor-failover": delete_lifecycle,
@@ -530,17 +646,51 @@ def _fixed_operation_commands(
             "bad-key": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__AttestationVerificationKey=invalid"),
             "capacity-pressure": (
                 target["namespace"], targets["state"],
-                [(*prefix, "set", "resources", state, "--requests=memory=1Mi", "--limits=memory=1Mi")],
+                [(*prefix, "set", "resources", state, "--requests=memory=1Mi", "--limits=memory=1Mi"),
+                 (*prefix, "wait", "--for=delete", "pod/__SELECTED_POD__", "--timeout=300s")],
                 [(*prefix, "rollout", "undo", state), (*prefix, "rollout", "status", state, "--timeout=300s")],
             ),
             "degraded-rollback": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__Enabled=false"),
             "etag-failure": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__StateStoreName=qualification-etag-failure"),
             "profile-drift": environment_plan(lifecycle, "lifecycle", f"AccessTelemetryLifecycle__ComponentProfileHash={'0' * 64}"),
-            "queue-byte-exhaustion": environment_plan(server, "server", "AccessTelemetryLifecycle__QueueByteLimit=1"),
-            "queue-record-exhaustion": environment_plan(server, "server", "AccessTelemetryLifecycle__QueueRecordLimit=1"),
-            "reconnect": delete_state,
-            "reminder-delay": scale_plan(clock, 1, "clock"),
-            "retry-exhaustion": environment_plan(server, "server", "AccessTelemetryLifecycle__RetryMaximumDelay=00:00:00.001"),
+            "queue-byte-exhaustion": (
+                target["namespace"], targets["server"],
+                [(*prefix, "set", "env", server, "AccessTelemetryLifecycle__QueueByteLimit=1024"),
+                 (*prefix, "rollout", "status", server, "--timeout=300s")],
+                [(*prefix, "rollout", "undo", server),
+                 (*prefix, "rollout", "status", server, "--timeout=300s")],
+            ),
+            "queue-record-exhaustion": (
+                target["namespace"], targets["server"],
+                [(*prefix, "set", "env", server, "AccessTelemetryLifecycle__QueueRecordLimit=1"),
+                 (*prefix, "rollout", "status", server, "--timeout=300s")],
+                [(*prefix, "rollout", "undo", server),
+                 (*prefix, "rollout", "status", server, "--timeout=300s")],
+            ),
+            "reconnect": (
+                target["namespace"], targets["lifecycle"],
+                [(*prefix, "rollout", "restart", lifecycle),
+                 (*prefix, "rollout", "status", lifecycle, "--timeout=300s")],
+                [(*prefix, "rollout", "status", lifecycle, "--timeout=300s")],
+            ),
+            "reminder-delay": (
+                "dapr-system", "app=dapr-scheduler-server",
+                [(*_kubectl_prefix(target, "dapr-system"), "scale", "statefulset/dapr-scheduler-server", "--replicas=0"),
+                 (*_kubectl_prefix(target, "dapr-system"), "wait", "pod", "-l", "app=dapr-scheduler-server", "--for=delete", "--timeout=300s")],
+                [(*_kubectl_prefix(target, "dapr-system"), "scale", "statefulset/dapr-scheduler-server", "--replicas=3"),
+                 (*_kubectl_prefix(target, "dapr-system"), "rollout", "status", "statefulset/dapr-scheduler-server", "--timeout=300s")],
+            ),
+            "retry-exhaustion": (
+                target["namespace"], targets["lifecycle"],
+                [(*prefix, "set", "env", server, "AccessTelemetryLifecycle__RetryMaximumDelay=00:00:00.100"),
+                 (*prefix, "rollout", "status", server, "--timeout=300s"),
+                 (*prefix, "scale", lifecycle, "--replicas=0"),
+                 (*prefix, "wait", "pod", "-l", targets["lifecycle"], "--for=delete", "--timeout=300s")],
+                [(*prefix, "scale", lifecycle, "--replicas=2"),
+                 (*prefix, "rollout", "status", lifecycle, "--timeout=300s"),
+                 (*prefix, "rollout", "undo", server),
+                 (*prefix, "rollout", "status", server, "--timeout=300s")],
+            ),
             "shutdown": (
                 target["namespace"], targets["server"],
                 [(*prefix, "delete", "pod", "__SELECTED_POD__", "--wait=true", "--timeout=300s")],
@@ -551,14 +701,17 @@ def _fixed_operation_commands(
                 [*scale_plan(clock, 1, "clock")[2], (*prefix, "exec", "deployment/memories", "-c", "memories", "--", "/bin/sh", "-ec", "sleep 35")],
                 scale_plan(clock, 1, "clock")[3],
             ),
-            "ttl-failure": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__StateStoreName=qualification-ttl-failure"),
-            "transaction-failure": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__StateStoreName=qualification-transaction-failure"),
+            "ttl-failure": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__SchemaVersion=2"),
+            "transaction-failure": environment_plan(lifecycle, "lifecycle", "AccessTelemetryLifecycle__ConfigurationStoreName=qualification-transaction-failure"),
         }
         if scenario not in plans:
             raise EvidenceValidationError(f"failure {scenario} is not in the closed target registry")
         fault_namespace, selector, actions, restorations = plans[scenario]
         fault_prefix = _kubectl_prefix(target, fault_namespace)
+        proof = _C4_MECHANISM_PROOF_TESTS.get(scenario)
+        proof_commands = _fixed_test_commands(*proof) if proof is not None else []
         return [
+            *proof_commands,
             (*prefix, "get", "pods", "-l", "app.kubernetes.io/name=memories", "-o", "json"),
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
              "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
@@ -573,7 +726,7 @@ def _fixed_operation_commands(
             (*fault_prefix, "get", "pods", "-l", selector, "-o", "json"),
             (*prefix, "exec", "deployment/memories-access-telemetry", "-c", "lifecycle", "--", "/bin/sh", "-ec",
              "wget -qO- --header=\"dapr-api-token: $APP_API_TOKEN\" http://127.0.0.1:8080/v1/access-telemetry/inspect"),
-            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "daprd", "--", "/bin/sh", "-ec",
+            (*prefix, "exec", "pod/__SERVER_POD_0__", "-c", "memories", "--", "/bin/sh", "-ec",
              "wget -qO- http://127.0.0.1:9090/metrics"),
             (*prefix, "logs", "deployment/memories", "-c", "memories", "--tail=100"),
         ]
@@ -622,6 +775,19 @@ def _select_named_pod(payload: Mapping[str, Any], command_id: str) -> str:
         if isinstance(item, Mapping)
         and isinstance(item.get("metadata"), Mapping)
         and isinstance(item["metadata"].get("name"), str)
+        and isinstance(item.get("status"), Mapping)
+        and item["status"].get("phase") == "Running"
+        and any(
+            isinstance(condition, Mapping)
+            and condition.get("type") == "Ready"
+            and condition.get("status") == "True"
+            for condition in (
+                item["status"].get("conditions")
+                if isinstance(item["status"].get("conditions"), list)
+                else []
+            )
+        )
+        and item["metadata"].get("deletionTimestamp") is None
     )
     if not names:
         raise EvidenceValidationError(f"command {command_id} found no eligible pod")
@@ -1005,22 +1171,35 @@ def _run_writer_segments(
                     raise EvidenceValidationError(f"command {command_id} could not restore its writer ordinal")
                 time.sleep(1)
                 continue
-        code, stdout, stderr = _run_bounded_process(
-            (
-                *prefix,
-                "exec",
-                f"pod/{selected_pod}",
-                "-c",
-                "memories",
-                "--",
-                "/bin/sh",
-                "-ec",
-                f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}',
-            ),
-            cwd=Path.cwd(),
-            timeout_seconds=120,
-            environment=environment,
-        )
+        try:
+            code, stdout, stderr = _run_bounded_process(
+                (
+                    *prefix,
+                    "exec",
+                    f"pod/{selected_pod}",
+                    "-c",
+                    "memories",
+                    "--",
+                    "/bin/sh",
+                    "-ec",
+                    f'wget -qO- --header="dapr-api-token: $APP_API_TOKEN" --post-data="" {_FIXED_WORKLOAD_ROUTE}',
+                ),
+                cwd=Path.cwd(),
+                timeout_seconds=120,
+                environment=environment,
+            )
+        except EvidenceValidationError as exc:
+            # Replacement can terminate the in-flight pod before kubectl
+            # returns an exit status. Discard that unmeasured segment and
+            # rediscover a Ready replacement; never infer its accounting.
+            error_hashes.append(hashlib.sha256(str(exc).encode("utf-8")).hexdigest())
+            failed_segments += 1
+            selected_pod = None
+            if failed_segments > 300:
+                raise EvidenceValidationError(
+                    f"command {command_id} exceeded its killed-segment retry bound"
+                ) from exc
+            continue
         output_hashes.append(hashlib.sha256(stdout).hexdigest())
         error_hashes.append(hashlib.sha256(stderr).hexdigest())
         if code != 0:
@@ -1079,6 +1258,8 @@ def _run_operation(
 ) -> tuple[Mapping[str, Any], dict[str, Any]]:
     if command_id in {"writer-1", "writer-2"}:
         return _run_writer_segments(target, checkpoint, command_id)
+    if command_id == "qualification-disable" and isinstance(target, dict):
+        target.pop("_disable_lease_authorized", None)
     arguments = {
         "kube_context": target["kube_context"],
         "namespace": target["namespace"],
@@ -1093,6 +1274,7 @@ def _run_operation(
     selected_pod: str | None = None
     server_pods: Mapping[str, Any] | None = None
     physical_evidence: Mapping[str, Any] | None = None
+    reclamation_observation: Mapping[str, Any] | None = None
     lease_observation: Mapping[str, Any] | None = None
     environment = {
         **os.environ,
@@ -1107,22 +1289,43 @@ def _run_operation(
         nonlocal fault_active
         if not fault_active:
             return
+        failures: list[str] = []
         for restoration in pending_restorations:
             try:
-                _run_bounded_process(
+                return_code, _, stderr = _run_bounded_process(
                     restoration,
                     cwd=Path.cwd(),
                     timeout_seconds=300,
                     environment=environment,
                 )
-            except (EvidenceValidationError, OSError, ValueError):
-                pass
+                if return_code != 0:
+                    failures.append(
+                        f"exit={return_code},stderr_sha256={hashlib.sha256(stderr).hexdigest()}"
+                    )
+            except (EvidenceValidationError, OSError, ValueError) as exc:
+                failures.append(type(exc).__name__)
         fault_active = False
+        if failures:
+            raise EvidenceValidationError(
+                "fault restoration failed after all fixed attempts: " + ",".join(failures)
+            )
 
     for step, command in enumerate(operation_commands):
+        if (
+            command_id == "qualification-disable"
+            and step > 0
+            and target.get("_disable_lease_authorized") is not True
+        ):
+            raise EvidenceValidationError("qualification cleanup lost Lease authority before mutation")
         marker = command[0] if command else ""
         if marker == "__FAULT_ACTION__":
             fault_active = True
+            if selected_pod is None and isinstance(last_payload, Mapping):
+                try:
+                    selected_pod = _select_named_pod(last_payload, command_id)
+                except EvidenceValidationError:
+                    restore_fault()
+                    raise
             command = command[1:]
         elif marker == "__FAULT_RESTORE__":
             command = command[1:]
@@ -1156,8 +1359,8 @@ def _run_operation(
                 for value in command
             )
         if "__LEASE_RELEASE_PATCH__" in command:
-            metadata = last_payload.get("metadata") if isinstance(last_payload, Mapping) else None
-            lease_spec = last_payload.get("spec") if isinstance(last_payload, Mapping) else None
+            metadata = lease_observation.get("metadata") if isinstance(lease_observation, Mapping) else None
+            lease_spec = lease_observation.get("spec") if isinstance(lease_observation, Mapping) else None
             resource_version = metadata.get("resourceVersion") if isinstance(metadata, Mapping) else None
             holder = lease_spec.get("holderIdentity") if isinstance(lease_spec, Mapping) else None
             expected_holder = target["_lease_holder"]
@@ -1193,14 +1396,17 @@ def _run_operation(
             )
             command = tuple(release_patch if value == "__LEASE_RELEASE_PATCH__" else value for value in command)
         if "__PHYSICAL_EVIDENCE_PATCH__" in command:
-            if last_payload is None or type(last_payload.get("allocator_bytes")) is not int:
+            if (
+                reclamation_observation is None
+                or type(reclamation_observation.get("allocator_free_bytes")) is not int
+            ):
                 raise EvidenceValidationError("physical evidence requires the measured post-VACUUM aggregate")
             evidence = {
                 "evidenceId": "story-27-4-c3",
                 "componentProfileHash": STORY_27_4_PROFILE_SHA256,
-                "artifactSha256": _sha256(_canonical_json(last_payload)),
+                "artifactSha256": _sha256(_canonical_json(reclamation_observation)),
                 "observedAtUnixMilliseconds": _require_integer(
-                    last_payload.get("reclaimed_utc_ms"),
+                    reclamation_observation.get("reclaimed_utc_ms"),
                     "physical evidence reclaimed_utc_ms",
                     minimum=1,
                 ),
@@ -1215,9 +1421,14 @@ def _run_operation(
             )
         if any("__SERVER_POD_" in value for value in command):
             if server_pods is None:
+                restore_fault()
                 raise EvidenceValidationError(f"command {command_id} has no Server pod observation")
             server_ordinal = next(int(value.split("__SERVER_POD_", 1)[1].split("__", 1)[0]) for value in command if "__SERVER_POD_" in value)
-            server_name = _select_named_pod(server_pods, f"writer-{server_ordinal + 1}")
+            try:
+                server_name = _select_named_pod(server_pods, f"writer-{server_ordinal + 1}")
+            except EvidenceValidationError:
+                restore_fault()
+                raise
             if command_id.startswith("writer-"):
                 selected_pod = server_name
             command = tuple(
@@ -1227,8 +1438,13 @@ def _run_operation(
         if any(value == "__SELECTED_POD__" or value == "pod/__SELECTED_POD__" for value in command):
             if selected_pod is None:
                 if last_payload is None:
+                    restore_fault()
                     raise EvidenceValidationError(f"command {command_id} has no pod-selection observation")
-                selected_pod = _select_named_pod(last_payload, command_id)
+                try:
+                    selected_pod = _select_named_pod(last_payload, command_id)
+                except EvidenceValidationError:
+                    restore_fault()
+                    raise
             command = tuple(
                 f"pod/{selected_pod}" if value == "pod/__SELECTED_POD__" else
                 selected_pod if value == "__SELECTED_POD__" else value
@@ -1237,27 +1453,16 @@ def _run_operation(
         timeout_seconds = 300
         if any(_FIXED_WORKLOAD_ROUTE in value for value in command):
             timeout_seconds = 2_400
-        elif any("pg_sleep" in value for value in command) and command_id.startswith("cohort-"):
-            timeout_seconds = int(command_id.split("-", 2)[1][:-1]) * 3_600 + 600
+        if command_id.startswith("cohort-") and command_id.endswith("-wait"):
+            retention_hours = int(command_id.split("-", 2)[1][:-1])
+            timeout_seconds = retention_hours * 3_600 + 1_200
         try:
             process_arguments = {
                 "cwd": Path.cwd(),
                 "timeout_seconds": timeout_seconds,
                 "environment": {**environment, "HEXALITH_STORY_27_4_STEP": str(step)},
             }
-            if checkpoint == "c3-retention-reclamation" and any("pg_sleep" in value for value in command):
-                with ThreadPoolExecutor(max_workers=1, thread_name_prefix="story-27-4-c3") as executor:
-                    future = executor.submit(_run_bounded_process, command, **process_arguments)
-                    while True:
-                        try:
-                            return_code, stdout, stderr = future.result(timeout=20 * 60)
-                            break
-                        except FuturesTimeoutError:
-                            renewal, _ = _run_operation(target, checkpoint, "qualification-renew")
-                            if renewal.get("state") != "enabled":
-                                raise EvidenceValidationError("qualification Lease/gate renewal did not remain enabled")
-            else:
-                return_code, stdout, stderr = _run_bounded_process(command, **process_arguments)
+            return_code, stdout, stderr = _run_bounded_process(command, **process_arguments)
         except (EvidenceValidationError, OSError, ValueError):
             restore_fault()
             raise
@@ -1271,6 +1476,17 @@ def _run_operation(
             raise EvidenceValidationError(
                 f"command {command_id} exited {return_code}; stderr_sha256={hashlib.sha256(stderr).hexdigest()}"
             )
+        if (
+            command_id == "qualification-enable"
+            and "patch" in command
+            and "lease" in command
+            and _LEASE_NAME in command
+            and isinstance(target, dict)
+        ):
+            # Ownership begins at the successful atomic Lease patch, not after
+            # later gate/scaling output happens to parse. Cleanup must run if
+            # any subsequent enable step fails.
+            target["_lease_acquired"] = True
         try:
             decoded = stdout.decode("utf-8", errors="strict")
             parsed = _json_without_duplicates(decoded, command_id)
@@ -1281,6 +1497,8 @@ def _run_operation(
                 raise EvidenceValidationError(f"command {command_id} returned malformed JSON") from exc
             last_payload = None
         parsed_payloads.append(last_payload)
+        if last_payload is not None and last_payload.get("stage") == "reclamation":
+            reclamation_observation = last_payload
         if (
             last_payload is not None
             and "get" in command
@@ -1288,6 +1506,32 @@ def _run_operation(
             and _LEASE_NAME in command
         ):
             lease_observation = last_payload
+            if command_id == "qualification-disable" and isinstance(target, dict):
+                lease_spec = last_payload.get("spec")
+                holder = lease_spec.get("holderIdentity") if isinstance(lease_spec, Mapping) else None
+                duration = lease_spec.get("leaseDurationSeconds") if isinstance(lease_spec, Mapping) else None
+                lease_time = (
+                    lease_spec.get("renewTime") or lease_spec.get("acquireTime")
+                    if isinstance(lease_spec, Mapping)
+                    else None
+                )
+                try:
+                    lease_time_ms = int(
+                        datetime.fromisoformat(str(lease_time).replace("Z", "+00:00")).timestamp() * 1000
+                    )
+                except (TypeError, ValueError):
+                    lease_time_ms = 0
+                expired_story_holder = (
+                    isinstance(holder, str)
+                    and holder.startswith("story-27-4/")
+                    and type(duration) is int
+                    and duration > 0
+                    and lease_time_ms > 0
+                    and lease_time_ms + duration * 1000 < _utc_now_milliseconds()
+                )
+                target["_disable_lease_authorized"] = (
+                    holder in {"", target["_lease_holder"]} or expired_story_holder
+                )
         if (
             last_payload is not None
             and "get" in command
@@ -1335,6 +1579,29 @@ def _run_operation(
         )
         lease_spec = lease_payload.get("spec") if isinstance(lease_payload, Mapping) else None
         lease_metadata = lease_payload.get("metadata") if isinstance(lease_payload, Mapping) else None
+        holder = lease_spec.get("holderIdentity") if isinstance(lease_spec, Mapping) else None
+        lease_time = (
+            lease_spec.get("renewTime") or lease_spec.get("acquireTime")
+            if isinstance(lease_spec, Mapping)
+            else None
+        )
+        duration = lease_spec.get("leaseDurationSeconds") if isinstance(lease_spec, Mapping) else None
+        try:
+            lease_time_ms = int(
+                datetime.fromisoformat(str(lease_time).replace("Z", "+00:00")).timestamp() * 1000
+            )
+        except (TypeError, ValueError):
+            lease_time_ms = 0
+        expired_story_lease = (
+            isinstance(holder, str)
+            and holder.startswith("story-27-4/")
+            and type(duration) is int
+            and duration > 0
+            and lease_time_ms > 0
+            and lease_time_ms + duration * 1000 < _utc_now_milliseconds()
+        )
+        if expired_story_lease and isinstance(target, dict):
+            target["_cleanup_expired_lease"] = True
         if (
             namespace_name != target["namespace"]
             or gate.get("state") != "disabled"
@@ -1452,35 +1719,16 @@ def _run_operation(
             "state": "disabled",
             "result_count": len(stdout_parts),
         }
-    elif command_id.startswith("writer-"):
-        workload = parsed_payloads[-1]
-        if not isinstance(workload, Mapping):
-            raise EvidenceValidationError(f"command {command_id} did not return workload accounting")
-        attempted = _require_nonzero_integer(_camel_value(workload, "attempted"), f"{command_id}.attempted")
-        acknowledged = _require_nonzero_integer(_camel_value(workload, "acknowledged"), f"{command_id}.acknowledged")
-        persisted = _require_nonzero_integer(_camel_value(workload, "persisted"), f"{command_id}.persisted")
-        conflicted = _require_integer(_camel_value(workload, "conflicted"), f"{command_id}.conflicted")
-        transaction_acks = _require_nonzero_integer(
-            _camel_value(workload, "transaction_acknowledgements"),
-            f"{command_id}.transaction_acknowledgements",
+    elif command_id == "idempotence-conflict-proof":
+        executed = set(
+            _executed_test_inventory(
+                stdout_parts[1], _C2_IDEMPOTENCE_CONFLICT_TESTS, command_id
+            )
         )
-        dropped = _require_integer(_camel_value(workload, "dropped"), f"{command_id}.dropped")
-        rejected = _require_integer(_camel_value(workload, "rejected"), f"{command_id}.rejected")
-        observed_writer = _require_nonempty_string(_camel_value(workload, "writer"), f"{command_id}.writer")
-        if selected_pod is None or observed_writer != selected_pod:
-            raise EvidenceValidationError(f"command {command_id} response is not attributable to its named Server pod")
         result = {
-            "writer": f"server-writer-{command_id[-1]}",
-            "attempted": attempted,
-            "acknowledged": acknowledged,
-            "persisted": persisted,
-            "conflicted": conflicted,
-            "transaction_acknowledgements": transaction_acks,
-            "dropped": dropped,
-            "rejected": rejected,
-            "result_count": _require_nonzero_integer(
-                _camel_value(workload, "result_count"), f"{command_id}.result_count"
-            ),
+            "idempotent_retry": _C2_IDEMPOTENCE_CONFLICT_TESTS[0] in executed,
+            "conflict_rejected": _C2_IDEMPOTENCE_CONFLICT_TESTS[1] in executed,
+            "result_count": len(stdout_parts),
         }
     elif command_id.startswith("replace-") or command_id == "approved-adapter-fault":
         pod_lists = [payload for payload in parsed_payloads if isinstance(payload, Mapping) and isinstance(payload.get("items"), list)]
@@ -1519,12 +1767,112 @@ def _run_operation(
                 raise EvidenceValidationError("approved adapter fault did not capture component identity")
             result.pop("continuity_observed")
             result["profile_unchanged"] = _canonical_json(components[0]) == _canonical_json(components[1])
+    elif command_id == "c3-empty-preflight":
+        preflight = next(
+            (payload for payload in parsed_payloads if isinstance(payload, Mapping) and payload.get("stage") == "preflight"),
+            None,
+        )
+        if (
+            not isinstance(preflight, Mapping)
+            or preflight.get("record_count") != 0
+            or preflight.get("index_candidate_count") != 0
+        ):
+            raise EvidenceValidationError(
+                "C3 requires an empty lifecycle record table/index before the first journal seed"
+            )
+        result = {"empty": True, "result_count": len(stdout_parts)}
+    elif command_id == "newer-control-seed":
+        workload = next(
+            (
+                payload
+                for payload in parsed_payloads
+                if isinstance(payload, Mapping) and _camel_value(payload, "attempted") is not None
+            ),
+            None,
+        )
+        control = next(
+            (
+                payload
+                for payload in parsed_payloads
+                if isinstance(payload, Mapping) and payload.get("stage") == "control"
+            ),
+            None,
+        )
+        expected_seed = {
+            "attempted": 125,
+            "acknowledged": 125,
+            "persisted": 125,
+            "conflicted": 0,
+            "transaction_acknowledgements": 125,
+            "dropped": 0,
+            "rejected": 0,
+        }
+        if not isinstance(workload, Mapping) or not isinstance(control, Mapping):
+            raise EvidenceValidationError("newer-record control returned incomplete accounting")
+        if any(
+            _require_integer(_camel_value(workload, field), f"{command_id}.{field}") != expected
+            for field, expected in expected_seed.items()
+        ):
+            raise EvidenceValidationError("newer-record control accounting is not exact")
+        names = control.get("newer_record_names")
+        if control.get("record_count") != 125 or not isinstance(names, list) or not names:
+            raise EvidenceValidationError("newer-record control did not isolate its 125 persisted rows")
+        if any(re.fullmatch(r"newer-control-[0-9]{3}", str(name)) is None for name in names):
+            raise EvidenceValidationError("newer-record control aliases are not bounded")
+        result = {
+            "record_count": 125,
+            "newer_record_names": names,
+            "result_count": len(stdout_parts),
+        }
     elif command_id.startswith("cohort-"):
         stage = command_id.rsplit("-", 1)[-1]
         mappings = [payload for payload in parsed_payloads if isinstance(payload, Mapping) and payload.get("stage") == stage]
         if not mappings:
             raise EvidenceValidationError(f"command {command_id} returned no PostgreSQL aggregate")
         result = dict(mappings[-1])
+        if stage == "seed":
+            workload = next(
+                (
+                    payload
+                    for payload in parsed_payloads
+                    if isinstance(payload, Mapping) and _camel_value(payload, "attempted") is not None
+                ),
+                None,
+            )
+            if not isinstance(workload, Mapping):
+                raise EvidenceValidationError(f"command {command_id} returned no seed accounting")
+            expected_seed = {
+                "attempted": 125,
+                "acknowledged": 125,
+                "persisted": 125,
+                "conflicted": 0,
+                "transaction_acknowledgements": 125,
+                "dropped": 0,
+                "rejected": 0,
+            }
+            if any(
+                _require_integer(_camel_value(workload, field), f"{command_id}.{field}") != expected
+                for field, expected in expected_seed.items()
+            ):
+                raise EvidenceValidationError(f"command {command_id} seed accounting is not exact")
+            if result.get("pre_tuple_count") != 125:
+                raise EvidenceValidationError(f"command {command_id} did not isolate its 125-row cohort")
+        if stage == "wait":
+            if result.get("ready") is not True:
+                raise EvidenceValidationError(f"command {command_id} did not reach its bounded expiry")
+            if _require_integer(result.get("candidate_count"), f"{command_id}.candidate_count") <= 0:
+                raise EvidenceValidationError(
+                    f"command {command_id} cohort disappeared before the due observation"
+                )
+        if stage == "expiry":
+            pre_count = _require_nonzero_integer(
+                result.get("pre_tuple_count"), f"{command_id}.pre_tuple_count"
+            )
+            candidates = _require_nonzero_integer(
+                result.get("candidate_count"), f"{command_id}.candidate_count"
+            )
+            if candidates != pre_count:
+                raise EvidenceValidationError(f"command {command_id} cohort expiry is incomplete")
         if stage == "purge":
             pod_lists = [payload for payload in parsed_payloads if isinstance(payload, Mapping) and isinstance(payload.get("items"), list)]
             if len(pod_lists) != 2 or selected_pod is None:
@@ -1554,15 +1902,55 @@ def _run_operation(
         if stage == "reclamation":
             if len(mappings) != 2:
                 raise EvidenceValidationError(f"command {command_id} did not measure allocator bytes before and after VACUUM")
-            result["allocator_bytes_before"] = _require_nonzero_integer(
-                mappings[0].get("allocator_bytes"), f"{command_id}.allocator_bytes_before"
+            result["allocator_free_bytes_before"] = _require_integer(
+                mappings[0].get("allocator_free_bytes"), f"{command_id}.allocator_free_bytes_before"
             )
-            result["allocator_bytes_after"] = _require_integer(
-                mappings[1].get("allocator_bytes"), f"{command_id}.allocator_bytes_after"
+            result["allocator_free_bytes_after"] = _require_nonzero_integer(
+                mappings[1].get("allocator_free_bytes"), f"{command_id}.allocator_free_bytes_after"
             )
-            result.pop("allocator_bytes", None)
+            result.pop("allocator_free_bytes", None)
+            if result["allocator_free_bytes_after"] <= result["allocator_free_bytes_before"]:
+                raise EvidenceValidationError(
+                    f"command {command_id} did not increase PostgreSQL reusable free space"
+                )
             result["os_disk_shrink_claimed"] = False
             if command_id == "cohort-168h-reclamation":
+                reporter_job = next(
+                    (
+                        payload
+                        for payload in parsed_payloads
+                        if isinstance(payload, Mapping) and payload.get("kind") == "Job"
+                    ),
+                    None,
+                )
+                reporter_spec = reporter_job.get("spec") if isinstance(reporter_job, Mapping) else None
+                reporter_status = reporter_job.get("status") if isinstance(reporter_job, Mapping) else None
+                template = reporter_spec.get("template") if isinstance(reporter_spec, Mapping) else None
+                pod_spec = template.get("spec") if isinstance(template, Mapping) else None
+                containers = pod_spec.get("containers") if isinstance(pod_spec, Mapping) else None
+                reporter_image = (
+                    containers[0].get("image")
+                    if isinstance(containers, list)
+                    and len(containers) == 1
+                    and isinstance(containers[0], Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(reporter_spec, Mapping)
+                    or reporter_spec.get("suspend") is not True
+                    or not isinstance(reporter_status, Mapping)
+                    or reporter_status.get("succeeded", 0) != 0
+                    or reporter_status.get("failed", 0) != 0
+                    or reporter_status.get("active", 0) != 0
+                    or reporter_status.get("completionTime") is not None
+                    or not isinstance(reporter_image, str)
+                    or "@sha256:" not in reporter_image
+                    or ":0.0.0" in reporter_image
+                ):
+                    raise EvidenceValidationError(
+                        "physical evidence reporter is not a fresh suspended C1-reviewed digest; "
+                        "reapply the reviewed Job and resume with the same journal"
+                    )
                 receipt = parsed_payloads[-1]
                 if physical_evidence is None or not isinstance(receipt, Mapping):
                     raise EvidenceValidationError("physical evidence reporter returned no authenticated receipt")
@@ -1597,6 +1985,17 @@ def _run_operation(
             "result_count": len(stdout_parts),
         }
     elif command_id.startswith("failure-"):
+        scenario = command_id.removeprefix("failure-")
+        proof = _C4_MECHANISM_PROOF_TESTS.get(scenario)
+        proof_executed = True
+        if proof is not None:
+            proof_output = next(
+                (part for part in stdout_parts if b"=== TEST EXECUTION SUMMARY ===" in part),
+                None,
+            )
+            if proof_output is None:
+                raise EvidenceValidationError(f"command {command_id} returned no mechanism proof")
+            proof_executed = bool(_executed_test_inventory(proof_output, proof[2], command_id))
         pod_lists = [payload for payload in parsed_payloads if isinstance(payload, Mapping) and isinstance(payload.get("items"), list)]
         workload = next(
             (payload for payload in parsed_payloads if isinstance(payload, Mapping) and _camel_value(payload, "attempted") is not None),
@@ -1608,7 +2007,7 @@ def _run_operation(
         )
         if len(pod_lists) < 3 or not isinstance(workload, Mapping) or not isinstance(health_payload, Mapping):
             raise EvidenceValidationError(f"command {command_id} lacks fault/readiness/accounting observations")
-        before = _pod_snapshot(_require_mapping(parsed_payloads[2], f"{command_id} before pods"), command_id)
+        before = _pod_snapshot(pod_lists[1], command_id)
         after = _pod_snapshot(pod_lists[-1], command_id)
         if selected_pod is None:
             raise EvidenceValidationError(f"command {command_id} has no selected fault target")
@@ -1630,7 +2029,7 @@ def _run_operation(
         audit_continuity = any(line.lstrip().startswith("{") for line in logs.splitlines())
         prometheus_samples = _prometheus_sample_count(stdout_parts[-2], command_id)
         result = {
-            "exercised": exercised and recovered,
+            "exercised": exercised and recovered and proof_executed,
             "lifecycle_fail_closed": rejected + dropped > 0,
             "business_readiness_available": health_payload.get("status") == "Healthy",
             "business_requests": 1,
@@ -1832,6 +2231,10 @@ def _execute_qualification(
 
     results: dict[str, Mapping[str, Any]] = {}
     commands: list[dict[str, Any]] = []
+    acquired_ownership = False
+    if isinstance(target, dict):
+        target.pop("_lease_acquired", None)
+        target.pop("_cleanup_expired_lease", None)
     try:
         identity, identity_command = _run_operation(
             target,
@@ -1859,6 +2262,7 @@ def _execute_qualification(
         commands.append(enable_command)
         if enable.get("state") != "enabled":
             raise EvidenceValidationError("qualification target did not enter the enabled state")
+        acquired_ownership = True
         remaining_command_ids = list(command_ids)
         body_results: dict[str, Mapping[str, Any]] = {}
         body_commands: list[dict[str, Any]] = []
@@ -1904,14 +2308,15 @@ def _execute_qualification(
         # The confirmation is attempted even if the disable command itself fails. The
         # outer verifier performs one further fail-safe disable attempt when this
         # producer exits nonzero, but producer-owned cleanup does not depend on it.
-        try:
-            disable, disable_command = _run_operation(target, checkpoint, "qualification-disable")
-            results["qualification-disable"] = {**disable, "_command": disable_command}
-            commands.append(disable_command)
-        finally:
-            final, final_command = _run_operation(target, checkpoint, "qualification-final-state")
-            results["qualification-final-state"] = {**final, "_command": final_command}
-            commands.append(final_command)
+        if acquired_ownership or target.get("_lease_acquired") is True or target.get("_cleanup_expired_lease") is True:
+            try:
+                disable, disable_command = _run_operation(target, checkpoint, "qualification-disable")
+                results["qualification-disable"] = {**disable, "_command": disable_command}
+                commands.append(disable_command)
+            finally:
+                final, final_command = _run_operation(target, checkpoint, "qualification-final-state")
+                results["qualification-final-state"] = {**final, "_command": final_command}
+                commands.append(final_command)
     return results, commands
 
 
@@ -1922,6 +2327,7 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
         *[f"replace-{name}" for name in REQUIRED_REPLACEMENTS],
         "approved-adapter-fault",
         "continuity",
+        "idempotence-conflict-proof",
     ]
     results, commands = _execute_qualification(target, "c2-production-replacement", command_ids)
     writers = []
@@ -1942,6 +2348,7 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
     adapter.pop("_command", None)
     adapter["observation"] = _result_observation(results["approved-adapter-fault"]["_command"])
     continuity = results["continuity"]
+    conflict_proof = results["idempotence-conflict-proof"]
     attempted = sum(results[f"writer-{index}"]["attempted"] for index in (1, 2))
     acknowledged = sum(results[f"writer-{index}"]["acknowledged"] for index in (1, 2))
     persisted = sum(results[f"writer-{index}"]["persisted"] for index in (1, 2))
@@ -1970,8 +2377,9 @@ def _c2(target: Mapping[str, str]) -> tuple[dict[str, Any], list[dict[str, Any]]
             "writer_results": writers,
             "acknowledged_loss": acknowledged_loss,
             "actor_serialized": attempted == acknowledged + conflicted,
-            "idempotent_retry": persisted == acknowledged,
-            "conflict_rejected": conflicted > 0,
+            "idempotent_retry": conflict_proof.get("idempotent_retry"),
+            "conflict_rejected": conflict_proof.get("conflict_rejected"),
+            "idempotence_conflict_observation": _result_observation(conflict_proof["_command"]),
             "transaction_acknowledged": transaction_acks == acknowledged,
             "reconstructed": replacements_recovered,
             "reconnected": replacements_recovered,
@@ -1991,9 +2399,16 @@ def _c3(
     target: Mapping[str, str],
     journal_path: Path,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    command_ids = ["retention-controls"]
+    command_ids = ["retention-controls", "c3-empty-preflight"]
     for hours in (1, 24, 168):
-        command_ids.extend((f"cohort-{hours}h-expiry", f"cohort-{hours}h-purge", f"cohort-{hours}h-reclamation"))
+        command_ids.append(f"cohort-{hours}h-seed")
+    for hours in (1, 24, 168):
+        command_ids.append(f"cohort-{hours}h-wait")
+        if hours == 168:
+            command_ids.append("newer-control-seed")
+        command_ids.extend(
+            (f"cohort-{hours}h-expiry", f"cohort-{hours}h-purge", f"cohort-{hours}h-reclamation")
+        )
     with _C3Journal(journal_path) as journal:
         resume_results = journal.resume_results
         resumed_ids = list(resume_results)
@@ -2001,26 +2416,94 @@ def _c3(
             raise EvidenceValidationError(
                 "C3 journal must contain an exact completed prefix with no skips or reordering"
             )
-        results, commands = _execute_qualification(
-            target,
-            "c3-retention-reclamation",
-            command_ids,
-            journal.append,
-            resume_results,
-        )
+        results: dict[str, Mapping[str, Any]] = {}
+        commands: list[dict[str, Any]] = []
+
+        def run_plain(command_id: str) -> None:
+            if command_id in resume_results:
+                resumed = dict(resume_results[command_id])
+                results[command_id] = resumed
+                commands.append(dict(_require_mapping(resumed["_command"], f"{command_id} command")))
+                return
+            result, command = _run_operation(target, "c3-retention-reclamation", command_id)
+            stored = {**result, "_command": command}
+            journal.append(command_id, stored)
+            results[command_id] = stored
+            commands.append(command)
+
+        def run_qualified(command_id: str) -> None:
+            if command_id in resume_results:
+                resumed = dict(resume_results[command_id])
+                session_commands = _require_sequence(
+                    resumed.get("_session_commands"), f"{command_id} session commands"
+                )
+                results[command_id] = resumed
+                commands.extend(dict(_require_mapping(item, f"{command_id} session command")) for item in session_commands)
+                return
+            session_results, session_commands = _execute_qualification(
+                target, "c3-retention-reclamation", [command_id]
+            )
+            renamed_commands: list[dict[str, Any]] = []
+            renamed_by_original: dict[str, dict[str, Any]] = {}
+            for command in session_commands:
+                renamed = dict(command)
+                original_id = str(renamed["command_id"])
+                if original_id != command_id:
+                    renamed["command_id"] = f"{command_id}:{original_id}"
+                renamed_commands.append(renamed)
+                renamed_by_original[original_id] = renamed
+            for transition_id in (
+                "qualification-target-identity",
+                "qualification-enable",
+                "qualification-disable",
+                "qualification-final-state",
+            ):
+                transition_result = dict(session_results[transition_id])
+                transition_result["_command"] = renamed_by_original[transition_id]
+                session_results[transition_id] = transition_result
+            body = dict(session_results[command_id])
+            body["_command"] = renamed_by_original[command_id]
+            body["_session_transition"] = _transition(
+                session_results["qualification-target-identity"],
+                session_results["qualification-enable"],
+                session_results["qualification-disable"],
+                session_results["qualification-final-state"],
+                target,
+            )
+            body["_session_commands"] = renamed_commands
+            journal.append(command_id, body)
+            results[command_id] = body
+            commands.extend(renamed_commands)
+
+        run_qualified("retention-controls")
+        run_plain("c3-empty-preflight")
+        for hours in (1, 24, 168):
+            run_qualified(f"cohort-{hours}h-seed")
+        for hours in (1, 24, 168):
+            run_plain(f"cohort-{hours}h-wait")
+            if hours == 168:
+                run_qualified("newer-control-seed")
+            run_plain(f"cohort-{hours}h-expiry")
+            run_qualified(f"cohort-{hours}h-purge")
+            run_qualified(f"cohort-{hours}h-reclamation")
     cohorts = []
     for hours in (1, 24, 168):
         merged: dict[str, Any] = {}
-        for stage in ("expiry", "purge", "reclamation"):
+        for stage in ("seed", "expiry", "purge", "reclamation"):
             command_id = f"cohort-{hours}h-{stage}"
             partial = _without_result_count(results[command_id])
-            partial.pop("_command", None)
-            partial.pop("stage", None)
+            for private in ("_command", "_session_commands", "_session_transition", "stage"):
+                partial.pop(private, None)
             for key, value in partial.items():
                 if key in merged and merged[key] != value:
                     raise EvidenceValidationError(f"cohort {hours}h returned inconsistent {key}")
                 merged[key] = value
             merged[f"{stage}_observation"] = _result_observation(results[command_id]["_command"])
+            if stage in {"seed", "purge", "reclamation"}:
+                merged[f"{stage}_transition"] = results[command_id]["_session_transition"]
+        merged["wait_observation"] = _result_observation(
+            results[f"cohort-{hours}h-wait"]["_command"]
+        )
         pre_count = _require_nonzero_integer(merged.get("pre_tuple_count"), f"cohort-{hours}h.pre_tuple_count")
         post_count = _require_integer(merged.get("post_tuple_count"), f"cohort-{hours}h.post_tuple_count")
         candidate_count = _require_nonzero_integer(merged.get("candidate_count"), f"cohort-{hours}h.candidate_count")
@@ -2036,17 +2519,21 @@ def _c3(
             raise EvidenceValidationError(f"cohort {hours}h expiry index count increased after purge")
         merged["index_removal_count"] = candidate_count - post_index_count
         cohorts.append(merged)
-    identity = results["qualification-target-identity"]
-    enable = results["qualification-enable"]
-    disable = results["qualification-disable"]
-    final = results["qualification-final-state"]
     retention = _without_result_count(results["retention-controls"])
-    retention.pop("_command", None)
+    for private in ("_command", "_session_commands", "_session_transition"):
+        retention.pop(private, None)
     return {
         "retention": retention,
         "retention_observation": _result_observation(results["retention-controls"]["_command"]),
+        "retention_transition": results["retention-controls"]["_session_transition"],
+        "empty_preflight_observation": _result_observation(results["c3-empty-preflight"]["_command"]),
+        "final_newer_control": {
+            "record_count": results["newer-control-seed"]["record_count"],
+            "newer_record_names": results["newer-control-seed"]["newer_record_names"],
+            "observation": _result_observation(results["newer-control-seed"]["_command"]),
+            "transition": results["newer-control-seed"]["_session_transition"],
+        },
         "cohorts": cohorts,
-        "qualification_transition": _transition(identity, enable, disable, final, target),
     }, commands
 
 
@@ -2096,6 +2583,11 @@ def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
         target["_platform_operations_reviewer"] = reviewer
         target["_lease_holder"] = f"story-27-4/{reviewer}/{os.getpid()}-{_utc_now_milliseconds()}"
         if args.disable_only:
+            try:
+                _run_operation(target, checkpoint, "qualification-target-identity")
+            except EvidenceValidationError:
+                if target.get("_cleanup_expired_lease") is not True:
+                    raise
             disable: Mapping[str, Any] | None = None
             final: Mapping[str, Any] | None = None
             try:
