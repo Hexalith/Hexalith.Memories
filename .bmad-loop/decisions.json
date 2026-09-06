@@ -53,6 +53,15 @@
     "label": "Add evidence field",
     "resolution": ""
   },
+  "DW-228": {
+    "answered_at": "2026-09-06",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Persist and expose indexedAt with migration-safe tests.",
+    "key": "distinct",
+    "label": "Add distinct timestamp",
+    "resolution": ""
+  },
   "DW-230": {
     "answered_at": "2026-09-01",
     "bundle_name": "",

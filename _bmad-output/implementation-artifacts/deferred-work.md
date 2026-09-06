@@ -1720,6 +1720,7 @@ location: n/a
 reason: - **indexedAt set to ingestedAt in GraphQueryBuilder** — `BuildMergeMemoryUnitNode` sets the FalkorDB `indexedAt` property to the workflow's `ingestedAt` timestamp. These are semantically different (when ingestion started vs when the graph write happened). Fixing requires adding a separate `indexedAt` parameter to `IndexInput`, which is a cross-story contract change (Story 1.5).
 status: open
 decision: 2026-09-06 Add distinct timestamp — Persist and expose indexedAt with migration-safe tests.
+decision: 2026-09-06 Add distinct timestamp — Persist and expose indexedAt with migration-safe tests.
 
 ### DW-229: CaseId not validated for special characters
 
