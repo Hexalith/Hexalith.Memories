@@ -80,6 +80,15 @@
     "label": "Versioned length-prefixed handle",
     "resolution": ""
   },
+  "DW-431": {
+    "answered_at": "2026-09-06",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Validate CaseId consistency and return a stable fail-closed error.",
+    "key": "reject",
+    "label": "Reject mismatch",
+    "resolution": ""
+  },
   "DW-438": {
     "answered_at": "2026-09-01",
     "bundle_name": "",

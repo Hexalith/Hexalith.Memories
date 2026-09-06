@@ -3247,6 +3247,7 @@ location: n/a
 reason: - **2.7-CR9. `source.CaseId` copied verbatim from upstream with no scope-consistency check** (decision-needed). Rationale: needs design call between trust-upstream / overwrite / skip / throw.
 status: open
 decision: 2026-09-06 Reject mismatch — Validate CaseId consistency and return a stable fail-closed error.
+decision: 2026-09-06 Reject mismatch — Validate CaseId consistency and return a stable fail-closed error.
 
 ### DW-432: 2.7-CR10. CLI does not emit `EvidencePacket` on error responses
 
