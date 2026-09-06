@@ -74,6 +74,8 @@ public sealed class AccessTelemetryOperationsContractTests
         string rollout = NormalizeWhitespace(document.GetSection("Rollout and enablement"));
         rollout.ShouldContain("`qualification-target-identity`", Case.Sensitive);
         rollout.ShouldContain("exact non-Production namespace, approved profile hash, and disabled write state", Case.Sensitive);
+        rollout.ShouldContain("at most 15 minutes", Case.Sensitive);
+        rollout.ShouldNotContain("at most 45 minutes");
 
         string closeOut = document.GetSection("A41 close-out chain");
         closeOut.ShouldContain("--checkpoint a41-inventory", Case.Sensitive);

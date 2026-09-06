@@ -78,7 +78,8 @@ records only unless an independently approved accelerated-purge operation exists
    host-side producer must first prove the disabled gate and empty namespace Lease,
    verify its namespace and shared `dapr-system` RBAC, acquire that Lease under the
    named approval, scale only the qualification workloads, and open the exact-profile
-   gate for at most 45 minutes. Re-read running images, Dapr component and
+   gate for at most 15 minutes, and renew the Lease and gate before expiry
+   for the remaining C2/C3/C4 bound. Re-read running images, Dapr component and
    configuration, workload identity, profile hash, and key generation before the
    first write. Any mismatch is `configuration_invalid`, not a retry condition.
    Production stays disabled. An expired gate or stale Lease is rejected and

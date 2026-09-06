@@ -59,6 +59,8 @@ public sealed class OpenBaoPlatformDocumentationTests
         "4. Security reviewer evaluation (Task 6, checkpoint C7)";
     private const string SmokeTestRerunHeading =
         "3.1 Re-run under the CA-only volume projection (dev-story, 2026-07-28)";
+    private const string BoundedRemeasureHeading = "8. Bounded live re-measure (2026-09-06)";
+    private const string OpenObligationsHeading = "6.4 Obligations this review opened";
     private const string SealLimitationKey = "Static file-based seal";
     private const string IngressLimitationKey = "Namespace-wide port 8200 ingress";
 
@@ -414,6 +416,17 @@ public sealed class OpenBaoPlatformDocumentationTests
             ShouldBeSubstantiveRow(row, DivergencesHeading);
         }
 
+        IReadOnlyList<string> helmDivergence = divergences.Single(
+            static row => row[0].Contains("has not been re-applied", StringComparison.OrdinalIgnoreCase));
+        string.Join('\n', helmDivergence).ShouldNotContain(
+            "done gate",
+            Case.Insensitive,
+            "The 2026-07-28 scope ratifications carved helm reproduce-release out of Story 31.1; the named-divergence row must not call it a Story 31.1 done gate.");
+        helmDivergence[3].ShouldContain(
+            "helm diff",
+            Case.Insensitive,
+            "The reopen trigger remains an empty Platform Operations helm diff.");
+
         document.GetTableHeader(UntrackedStateHeading).ShouldBe(
             ["Artifact", "Kind", "Owner", "Disposition and reopen trigger"]);
         IReadOnlyList<IReadOnlyList<string>> untracked = document.GetTableRows(UntrackedStateHeading);
@@ -578,6 +591,19 @@ public sealed class OpenBaoPlatformDocumentationTests
         rerun.ShouldContain("\"ha_enabled\": true", Case.Sensitive, "C3 requires the observed status fields of the current-manifest run.");
         rerun.ShouldContain("\"storage_type\": \"raft\"", Case.Sensitive, "C3 requires the observed status fields of the current-manifest run.");
         rerun.ShouldContain("ca.crt", Case.Sensitive, "The re-run must record that it executed under the CA-only projection.");
+
+        string remeasure = NormalizeWhitespace(evidenceStructure.GetSection(BoundedRemeasureHeading));
+        remeasure.ShouldContain("2026-09-06T21:55:01Z", Case.Sensitive, "The bounded re-measure must record its UTC timestamp.");
+        remeasure.ShouldContain("jpiquot@local", Case.Sensitive, "The bounded re-measure must name context jpiquot@local.");
+        remeasure.ShouldContain("unchanged", Case.Insensitive, "A matching re-measure must record unchanged against the 2026-07-28 table.");
+
+        IReadOnlyList<IReadOnlyList<string>> openObligations = evidenceStructure.GetTableRows(OpenObligationsHeading);
+        IReadOnlyList<string> helmObligation = openObligations.Single(
+            static row => row[0].Contains("helm diff", StringComparison.OrdinalIgnoreCase));
+        helmObligation[0].ShouldNotContain(
+            "done gate",
+            Case.Insensitive,
+            "Evidence §6.4 must not call the helm empty-diff a Story 31.1 done gate.");
 
         // C7 is read structurally from its own section, and every permitted outcome passes.
         //

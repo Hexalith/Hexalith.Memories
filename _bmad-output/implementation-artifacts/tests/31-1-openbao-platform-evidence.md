@@ -616,7 +616,7 @@ matching the documented text). Both failures are the intended behaviour of the s
 | Obligation | Owner | Reopen trigger |
 | :--------- | :---- | :------------- |
 | **Discharged 2026-07-28 — see section 3.1.** Re-run the smoke test under the new CA-only volume projection. The recorded result in section 3 was produced before `items: [ca.crt]` was added to `deploy/openbao/smoke-test.yaml`; the apply and wait commands are unchanged, and the reaped Job means no live object diverges, but the executed evidence predates the manifest that now describes it | Hexalith Platform Operations (`jpiquot`) | Discharged: re-executed 2026-07-28T13:24:43Z under the current manifest, Job `condition met`, projection confirmed on the admitted Job and Pod objects. Reopens if `deploy/openbao/smoke-test.yaml` changes again without a re-run recorded in section 3.1 |
-| `helm diff` / `helm upgrade --dry-run` proving the reconciled `values.yaml` reproduces release `hexalith-keys`. `helm` is absent from the authoring environment, so this cannot be discharged here. Made an explicit `done` gate by this review | Hexalith Platform Operations (`jpiquot`) | An empty-diff run recorded in this artifact |
+| `helm diff` / `helm upgrade --dry-run` proving the reconciled `values.yaml` reproduces release `hexalith-keys`. `helm` is absent from the authoring environment, so this cannot be discharged here. Carved out of Story 31.1 by the 2026-07-28 scope ratifications: Platform Operations owns the reopen; it is not a Story 31.1 checkpoint | Hexalith Platform Operations (`jpiquot`) | An empty-diff run recorded in this artifact |
 | Narrow the `cert-manager` NetworkPolicy ingress source, sequenced live-policy-first then manifest, document and assertions together. Repo-side preparation is done: no test pins the source any more, and document/manifest agreement is asserted instead | Hexalith Platform Operations (`jpiquot`) | The live policy no longer admits namespace `cert-manager` on 8200 |
 | Identify or revoke the `system:auth-delegator` grant, including the untracked `hexalith-keys-tokenreview` duplicate | Hexalith Platform Operations (`jpiquot`) with `murat-tea-for-jpiquot` | A named consumer is documented, or both bindings are removed |
 | Establish an off-cluster copy of the Raft snapshots and rehearse a restore | Hexalith Platform Operations (`jpiquot`) | Snapshot output survives loss of `node1` and a restore has been rehearsed |
@@ -685,3 +685,148 @@ Recorded so the next reader does not infer more than was proven:
   recorded in section 4, and checkpoints C4 and C5 remain `pending` / `not complete` as the approved
   Sprint Change Proposal 2026-07-28 requires.
 - No Secret contents were read at any point in this phase.
+
+## 8. Bounded live re-measure (2026-09-06)
+
+Session path from spec `spec-31-1-openbao-platform-hardening-and-documentation.md`: repeat the story's
+existing read-only probes for nodes, replicas, HA, NetworkPolicy, automount, and secret names/types
+against context `jpiquot@local`. No `helm` command. No live NetworkPolicy or auth-delegator write. No
+Secret `.data` read. Smoke-test Job was not re-applied.
+
+**UTC timestamp:** `2026-09-06T21:55:01Z`
+**Context:** `jpiquot@local`
+**Bound comparison vs the 2026-07-28 table:** **unchanged**
+
+C4b, C5b, and C7 are untouched by this section. No security evaluation was performed and none is claimed.
+The C7 waiver remains in date through 2026-10-26.
+
+### 8.1 Nodes
+
+```text
+$ kubectl config current-context
+jpiquot@local
+
+$ kubectl get nodes -o wide
+NAME    STATUS   ROLES                  AGE   VERSION   INTERNAL-IP    OS-IMAGE             CONTAINER-RUNTIME
+node1   Ready    control-plane,worker   52d   v1.34.9   192.168.1.30   Ubuntu 24.04.3 LTS   containerd://2.3.3
+```
+
+One node, `node1`, roles `control-plane,worker`, `v1.34.9`. Matches the 2026-07-28 table. AGE elapsed
+from 11d to 52d; that is clock time, not topology drift.
+
+### 8.2 Replicas and scheduling
+
+```text
+$ kubectl -n openbao get statefulset hexalith-keys -o jsonpath='{.spec.replicas}'
+3
+
+$ kubectl -n openbao get pods -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,STATUS:.status.phase
+NAME                                   NODE    STATUS
+hexalith-keys-0                        node1   Running
+hexalith-keys-1                        node1   Running
+hexalith-keys-2                        node1   Running
+openbao-raft-snapshot-29809350-zwzrc   node1   Succeeded
+openbao-raft-snapshot-29810790-mvqmp   node1   Succeeded
+```
+
+StatefulSet `.spec.replicas = 3`. Pods `hexalith-keys-0/1/2` are Running on `node1`. Snapshot Job names
+rotated, as a daily CronJob must. Matches the 2026-07-28 replica and node rows.
+
+Services `hexalith-keys`, `hexalith-keys-internal`, `hexalith-keys-active`, and `hexalith-keys-standby`
+remain `ClusterIP`. Six `Bound` 10Gi data/audit PVCs plus `Bound` 2Gi `openbao-snapshots` remain. Volume
+object names are omitted here because they are UUID-shaped; names and bind state only.
+
+### 8.3 HA
+
+```text
+$ kubectl -n openbao exec hexalith-keys-0 -- env BAO_CACERT=/openbao/userconfig/openbao-server-tls/ca.crt bao status -format=json | jq '{initialized,sealed,storage_type,ha_enabled,leader_address,version}'
+{
+  "initialized": true,
+  "sealed": false,
+  "storage_type": "raft",
+  "ha_enabled": true,
+  "leader_address": "https://10.233.102.187:8200",
+  "version": "2.6.0"
+}
+```
+
+`ha_enabled: true` matches the 2026-07-28 table. `leader_address` moved from `10.233.102.188` to
+`10.233.102.187`, which is process-level leader movement among the three voters, not an HA-mode change.
+`MeasuredHaMode` stays `ha_enabled: true`.
+
+### 8.4 NetworkPolicy `hexalith-keys`
+
+```text
+$ kubectl -n openbao get networkpolicy hexalith-keys -o jsonpath='{.spec}' | jq .
+ingress[0].from = [ namespaceSelector kubernetes.io/metadata.name=hexalith-memories,
+                    namespaceSelector kubernetes.io/metadata.name=cert-manager ]
+ingress[0].ports = [ 8200/TCP ]
+ingress[1].from = [ podSelector app.kubernetes.io/instance=hexalith-keys,
+                                app.kubernetes.io/name=openbao ]
+ingress[1].ports = [ 8200/TCP, 8201/TCP ]
+podSelector = app.kubernetes.io/instance=hexalith-keys, app.kubernetes.io/name=openbao
+policyTypes = [ Ingress ]
+```
+
+Matches the 2026-07-28 table: still the third source `cert-manager` on 8200 plus self on 8200/8201.
+No live NetworkPolicy write was performed.
+
+### 8.5 Automount
+
+```text
+$ kubectl -n openbao get sa hexalith-keys -o jsonpath='{.automountServiceAccountToken}'
+false
+
+$ kubectl -n openbao get pod hexalith-keys-0 -o jsonpath='{.spec.automountServiceAccountToken}|{.spec.serviceAccountName}|{.status.containerStatuses[0].imageID}'
+true|hexalith-keys|quay.io/openbao/openbao@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653
+```
+
+ServiceAccount default remains `false`; pod-level automount remains `true`. Image digest
+`sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653` is unchanged.
+
+### 8.6 Secret names and types only
+
+```text
+$ kubectl -n openbao get secret --no-headers -o custom-columns=NAME:.metadata.name,TYPE:.type
+deployment-seal-runner-token          kubernetes.io/service-account-token
+hexalith-keys-pki                     Opaque
+openbao-operator-credentials          Opaque
+openbao-seal                          Opaque
+openbao-server-tls                    kubernetes.io/tls
+sh.helm.release.v1.hexalith-keys.v1   helm.sh/release.v1
+sh.helm.release.v1.hexalith-keys.v2   helm.sh/release.v1
+sh.helm.release.v1.hexalith-keys.v3   helm.sh/release.v1
+sh.helm.release.v1.hexalith-keys.v4   helm.sh/release.v1
+sh.helm.release.v1.hexalith-keys.v5   helm.sh/release.v1
+sh.helm.release.v1.hexalith-keys.v6   helm.sh/release.v1
+sh.helm.release.v1.hexalith-keys.v7   helm.sh/release.v1
+sh.helm.release.v1.hexalith-keys.v8   helm.sh/release.v1
+sh.helm.release.v1.hexalith-keys.v9   helm.sh/release.v1
+```
+
+The 2026-07-28 inventory is still present: `hexalith-keys-pki`, the three bootstrap Secrets, and Helm
+release Secrets `v1` through `v9`. No Secret `.data` was read. Nine Helm revisions is unchanged.
+
+### 8.7 Bound-trio decision
+
+Because nodes, replica count, HA mode, the `hexalith-keys` NetworkPolicy, and automount match the
+2026-07-28 table, `docs/operations/openbao.md`, `deploy/openbao/values.yaml`, and the `Measured*`
+constants are left as they are. This continuation is wording-only plus this transcript.
+
+`helm` remains absent (`helm: command not found`). Section 6.4's helm row is still open, owned by
+Platform Operations, and is no longer described as a Story 31.1 `done` gate.
+
+### 8.8 Additional objects seen, outside the bound comparison
+
+The namespace listing also showed three objects that the 2026-07-28 table did not name. They are
+recorded here so the transcript is complete. They are not replica, HA-mode, node, `hexalith-keys`
+NetworkPolicy, or automount drift, so they do not update the bound trio.
+
+| Object | Kind / type | Notes |
+| :----- | :---------- | :---- |
+| `deployment-seal-transit` | Service, `NodePort`, port `8200:30820/TCP` | Not one of the four `hexalith-keys*` ClusterIP Services |
+| `deployment-seal-external` | NetworkPolicy | Separate from `hexalith-keys`; that policy's spec is unchanged |
+| `deployment-seal-runner-token` | Secret, type `kubernetes.io/service-account-token` | Name and type only |
+
+No owner, limitation, or reopen trigger is invented here. Promoting any of these to a named divergence
+or a third accepted limitation would need its own approved change.
