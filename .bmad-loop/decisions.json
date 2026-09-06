@@ -277,5 +277,14 @@
     "key": "2",
     "label": "Prove retry behavior",
     "resolution": ""
+  },
+  "DW-721": {
+    "answered_at": "2026-09-06",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Run a focused correct-course update and reconcile evidence anchors.",
+    "key": "correct",
+    "label": "Correct the criterion",
+    "resolution": ""
   }
 }
