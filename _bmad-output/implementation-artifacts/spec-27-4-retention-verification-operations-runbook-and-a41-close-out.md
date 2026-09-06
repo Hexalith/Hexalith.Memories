@@ -2,7 +2,7 @@
 title: 'Story 27.4 retention verification, operations runbook, and A41 close-out'
 type: 'feature'
 created: '2026-09-02'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: 'e9653980cf8b55e17afde30a5a8587cb30405e78'
 baseline_commit: 'e9653980cf8b55e17afde30a5a8587cb30405e78'
 review_loop_iteration: 5
