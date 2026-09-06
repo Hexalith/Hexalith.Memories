@@ -678,7 +678,9 @@ Recorded so the next reader does not infer more than was proven:
 
 - No `helm diff` or `helm upgrade --dry-run` was run. `helm` remains absent from this environment
   (`which helm` returns nothing), so the reconciled `values.yaml` still has **not** been proven to
-  reproduce the deployed release. That remains the explicit `done` gate set by code review.
+  reproduce the deployed release. This 2026-07-28 record treated that gap as the explicit `done` gate
+  set by code review; the 2026-09-06 continuation carved it out in section 6.4 as a Platform Operations
+  reopen, not a Story 31.1 checkpoint.
 - No change was applied to the running platform. The smoke-test Job is the only object this phase created,
   and it is self-reaping under `ttlSecondsAfterFinished: 300`.
 - No security evaluation was performed. Checkpoint C7 remains closed by the approved time-bounded waiver
@@ -695,7 +697,7 @@ Secret `.data` read. Smoke-test Job was not re-applied.
 
 **UTC timestamp:** `2026-09-06T21:55:01Z`
 **Context:** `jpiquot@local`
-**Bound comparison vs the 2026-07-28 table:** **unchanged**
+**Bound comparison vs the 2026-07-28 table:** nodes, replicas, HA, hexalith-keys NetworkPolicy, and automount matched; secret inventory is not unchanged.
 
 C4b, C5b, and C7 are untouched by this section. No security evaluation was performed and none is claimed.
 The C7 waiver remains in date through 2026-10-26.
@@ -805,7 +807,8 @@ sh.helm.release.v1.hexalith-keys.v9   helm.sh/release.v1
 ```
 
 The 2026-07-28 inventory is still present: `hexalith-keys-pki`, the three bootstrap Secrets, and Helm
-release Secrets `v1` through `v9`. No Secret `.data` was read. Nine Helm revisions is unchanged.
+release Secrets `v1` through `v9`. The secret inventory is not unchanged: it grew by
+`deployment-seal-runner-token`. No Secret `.data` was read. Nine Helm revisions remain `v1` through `v9`.
 
 ### 8.7 Bound-trio decision
 

@@ -2,7 +2,7 @@
 title: 'OpenBao Platform Hardening and Documentation'
 type: 'feature'
 created: '2026-09-06'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '115e2839d8902a3b20b866913a70fb8474b94f83'
@@ -84,12 +84,31 @@ context:
 
 2026-09-06T21:55:01Z bounded re-measure against `jpiquot@local` matched the 2026-07-28 table for nodes, replicas, HA mode, `hexalith-keys` NetworkPolicy, and automount. Measured literals left in place. Helm `has not been re-applied` rows reworded to a Platform Operations empty-`helm diff` reopen. C4b/C5b remain `not complete`; C7 remains waived until 2026-10-26. Additional namespace objects (`deployment-seal-transit`, `deployment-seal-external`, `deployment-seal-runner-token`) recorded in evidence §8.8 only. Matrix coverage: matching re-measure and helm wording are pinned in `OpenBaoPlatformDocumentationTests`; trio-bind covers the unused drift branch; the kubectl-unreachable branch was not taken (probes succeeded).
 
+Review patch pass: helm-row guards strip markdown and require `not a Story 31.1 checkpoint`; §8 pins the bound-comparison sentence and records that secret inventory is not unchanged; ops-doc health ClusterIP claim is scoped to `hexalith-keys*`; evidence §7.4 dates the old done-gate sentence.
+
 ## Spec Change Log
 
 - 2026-09-06: Executed the bounded live re-measure path. Execution checkboxes marked complete. Story status left `in-progress`.
 
 
 ## Review Triage Log
+
+- **medium** BH8/EC1/VG1 — `ShouldNotContain("done gate")` on the ops-doc helm row and on evidence §6.4 column 0 does not match the pre-carve-out markdown `` `done` gate `` / “does not reach `` `done` `` until”, so restoring those cells stays green. Verified at `OpenBaoPlatformDocumentationTests.cs:419-428` and `:600-606`; `TrySplitTableRow` keeps backticks.
+- **medium** EC2/VG1-col — evidence helm check is first cell only; owner/reopen can still say done-gate. Same methods.
+- **medium** EC3/EC4/VG2 — `ShouldContain("unchanged")` over all of §8 is satisfied by image-digest, Helm-revision, and extra-policy sentences if the bound-comparison line is deleted or flipped to drifted. Verified at `:595-598` against evidence `:785`, `:808`, `:828`.
+- **medium** BH7 — §8 stamps **unchanged** while §8.6/§8.8 show a new Secret name `deployment-seal-runner-token` versus the 2026-07-28 inventory. Bound fields match; the stamp overclaims the full probe set. Evidence `:698` vs `:791-809`.
+- **medium** BH4-health — `docs/operations/openbao.md:408` still requires “every Service must remain `ClusterIP`” after §8.8 recorded `deployment-seal-transit` NodePort `8200:30820`. The four `hexalith-keys*` ClusterIP rows stay true; the universal sentence does not.
+- **low** BH1/VG-other — evidence §7.4 still says the unproven render “remains the explicit `` `done` gate `` set by code review” (`:681`) after §6.4 was reworded in the same file. Historical 2026-07-28 transcript, current-tense leftover.
+- **low** BH12 — ops doc deployed-profile still dated only 2026-07-28 with no pointer to evidence §8.
+- **low** BH2 — story Review resolutions still record “Unproven reconciliation — Kept in Story 31.1 and made an explicit `done` gate.” Historical table; 2026-09-06 notes already supersede. Everyday operators read `openbao.md` and §6.4, not that table. Reject: fix is rewriting a historical resolution row, more than a live-contract correction.
+- **false** BH3 — `epics.md` Story 31.1 Status still mentions helm `done`. Intent named `docs/operations/openbao.md` and evidence §6.4, not the epics Status hunk. Pre-existing planning line this slice did not edit.
+- **false** BH4-promote — parking `deployment-seal-*` in §8.8 without a named divergence matches the frozen decision not to invent an owner or a third limitation.
+- **low** BH5 — §8.4 paraphrases NetworkPolicy JSON; extra policy has no `.spec`. Reject: evidence completeness, not an everyday operator path; adding JSON is extra surface.
+- **low** BH6 — §8.2 asserts ClusterIP/PVC without kubectl. Reject: those commands were outside the bounded probe list this slice ran.
+- **low** BH9 — 2026-09-06 Change Log has no method-set SHA / matched N/N. Reject: Verification section specified focused class+method runs; filling the full ledger is extra process, not the live contract.
+- **false** BH10 — spec task checkbox vs test-file edit. Reject: finding asks to edit this build’s spec.
+- **false** BH11 — spec Never forbids `helm diff`. Reject: finding asks to edit this build’s spec.
+
 
 ## Design Notes
 

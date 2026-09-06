@@ -1,5 +1,5 @@
 # generated: 2026-07-05T17:40:39+02:00
-# last_updated: 2026-07-30
+# last_updated: 2026-09-06
 # project: memories
 # project_key: NOKEY
 # tracking_system: file-system
@@ -518,7 +518,7 @@ development_status:
   # security countersignature, owner unassigned, reopen trigger 2026-10-26. No status value was
   # changed by that proposal; Story 31.2 is developable at ready-for-dev.
   epic-31: in-progress
-  31-1-openbao-platform-hardening-and-documentation: in-progress
+  31-1-openbao-platform-hardening-and-documentation: review
   31-2-runtime-dapr-secret-store-migration: ready-for-dev
   epic-31-retrospective: optional
 

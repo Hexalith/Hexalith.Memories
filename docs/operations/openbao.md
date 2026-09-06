@@ -10,6 +10,7 @@ authority and the manifests were reconciled to it. No claim in this document is 
 earlier revision unless it is listed in [Named divergences](#named-divergences) with an owner and a
 reopen trigger. The full probe transcript is
 [`31-1-openbao-platform-evidence.md`](../../_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md).
+The bound profile was re-confirmed 2026-09-06 in evidence §8.
 
 No secret value appears in this document. The unseal key material, recovery shares, operator
 credentials, TLS private key, and Dapr tokens exist only in Kubernetes Secrets and are never copied into
@@ -405,7 +406,7 @@ kubectl -n hexalith-memories get component secretstore access-telemetry-secrets 
 
 Expected status on **every** voter is `initialized: true`, `sealed: false`, `storage_type: "raft"`,
 `ha_enabled: true`, and OpenBao `2.6.0`. The StatefulSet must be `3/3` Ready, all six data and audit PVCs
-must be `Bound`, and every Service must remain `ClusterIP`.
+must be `Bound`, and the four `hexalith-keys*` Services must remain `ClusterIP`.
 
 After any Helm install or upgrade, re-apply the ServiceAccount hardening **and** re-check the pod-level
 override it depends on:

@@ -418,10 +418,7 @@ public sealed class OpenBaoPlatformDocumentationTests
 
         IReadOnlyList<string> helmDivergence = divergences.Single(
             static row => row[0].Contains("has not been re-applied", StringComparison.OrdinalIgnoreCase));
-        string.Join('\n', helmDivergence).ShouldNotContain(
-            "done gate",
-            Case.Insensitive,
-            "The 2026-07-28 scope ratifications carved helm reproduce-release out of Story 31.1; the named-divergence row must not call it a Story 31.1 done gate.");
+        HelmRowMustRecordTheCarveOut(helmDivergence, "The named-divergence helm row");
         helmDivergence[3].ShouldContain(
             "helm diff",
             Case.Insensitive,
@@ -592,18 +589,34 @@ public sealed class OpenBaoPlatformDocumentationTests
         rerun.ShouldContain("\"storage_type\": \"raft\"", Case.Sensitive, "C3 requires the observed status fields of the current-manifest run.");
         rerun.ShouldContain("ca.crt", Case.Sensitive, "The re-run must record that it executed under the CA-only projection.");
 
-        string remeasure = NormalizeWhitespace(evidenceStructure.GetSection(BoundedRemeasureHeading));
-        remeasure.ShouldContain("2026-09-06T21:55:01Z", Case.Sensitive, "The bounded re-measure must record its UTC timestamp.");
-        remeasure.ShouldContain("jpiquot@local", Case.Sensitive, "The bounded re-measure must name context jpiquot@local.");
-        remeasure.ShouldContain("unchanged", Case.Insensitive, "A matching re-measure must record unchanged against the 2026-07-28 table.");
+        string remeasure = evidenceStructure.GetSection(BoundedRemeasureHeading);
+        string remeasureNormalized = NormalizeWhitespace(remeasure);
+        remeasureNormalized.ShouldContain("2026-09-06T21:55:01Z", Case.Sensitive, "The bounded re-measure must record its UTC timestamp.");
+        remeasureNormalized.ShouldContain("jpiquot@local", Case.Sensitive, "The bounded re-measure must name context jpiquot@local.");
+
+        // Pin the bound-comparison line itself. A whole-section "unchanged" match is satisfied by
+        // unrelated §8 sentences (image digest, NetworkPolicy spec, Helm revision count).
+        IReadOnlyList<string> boundComparisonLines = [.. remeasure
+            .Split('\n')
+            .Select(static line => line.Trim())
+            .Where(static line => line.Contains("Bound comparison vs the 2026-07-28 table", StringComparison.Ordinal))];
+        boundComparisonLines.Count.ShouldBe(
+            1,
+            "The bounded re-measure must pin exactly one 'Bound comparison vs the 2026-07-28 table' line.");
+        string boundComparison = StripMarkdownPunctuation(boundComparisonLines[0]);
+        boundComparison.ShouldContain(
+            "nodes, replicas, HA, hexalith-keys NetworkPolicy, and automount matched",
+            Case.Insensitive,
+            "The bound-comparison line must record the bound fields as matched.");
+        boundComparison.ShouldContain(
+            "secret inventory is not unchanged",
+            Case.Insensitive,
+            "The bound-comparison line must say the secret inventory is not unchanged.");
 
         IReadOnlyList<IReadOnlyList<string>> openObligations = evidenceStructure.GetTableRows(OpenObligationsHeading);
         IReadOnlyList<string> helmObligation = openObligations.Single(
             static row => row[0].Contains("helm diff", StringComparison.OrdinalIgnoreCase));
-        helmObligation[0].ShouldNotContain(
-            "done gate",
-            Case.Insensitive,
-            "Evidence §6.4 must not call the helm empty-diff a Story 31.1 done gate.");
+        HelmRowMustRecordTheCarveOut(helmObligation, "Evidence §6.4 helm row");
 
         // C7 is read structurally from its own section, and every permitted outcome passes.
         //
@@ -865,6 +878,27 @@ public sealed class OpenBaoPlatformDocumentationTests
             ShouldBeSubstantiveCell(cell, row[0], heading);
         }
     }
+
+    /// <summary>The 2026-07-28 carve-out: helm empty-diff is Platform Operations work, not a Story 31.1
+    /// checkpoint. Read every cell, and strip Markdown punctuation first, so a backtick-split
+    /// <c>`done` gate</c> still counts as calling it a done gate.</summary>
+    private static void HelmRowMustRecordTheCarveOut(IReadOnlyList<string> row, string location)
+    {
+        string text = StripMarkdownPunctuation(string.Join('\n', row));
+        text.ShouldContain(
+            "not a Story 31.1 checkpoint",
+            Case.Sensitive,
+            $"{location} must record the 2026-07-28 carve-out on the row (all cells).");
+        text.ShouldNotContain(
+            "done gate",
+            Case.Insensitive,
+            $"{location} must not call helm empty-diff a Story 31.1 done gate.");
+    }
+
+    /// <summary>Removes Markdown emphasis and fence punctuation so <c>`done` gate</c> and
+    /// <c>**done** gate</c> collapse to the same readable phrase as <c>done gate</c>.</summary>
+    private static string StripMarkdownPunctuation(string text)
+        => Regex.Replace(text, @"[`*_~\[\]#]", string.Empty, RegexOptions.None, TimeSpan.FromSeconds(5));
 
     private static void ShouldBeSubstantiveCell(string cell, string rowKey, string heading)
     {
