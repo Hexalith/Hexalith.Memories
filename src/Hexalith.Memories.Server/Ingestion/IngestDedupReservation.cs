@@ -45,6 +45,7 @@ internal readonly record struct IngestReservationResult(IngestReservationOutcome
 internal sealed partial class IngestDedupReservation
 {
     private const string ReservationKeyPrefix = "ingest-reserve:";
+    private const string ReleaseIfOwnedScript = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<IngestDedupReservation> _logger;
@@ -72,19 +73,32 @@ internal sealed partial class IngestDedupReservation
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         string reservationKey = BuildReservationKey(tenantId, caseId, sourceUri, idempotencyToken);
+        cancellationToken.ThrowIfCancellationRequested();
 
         try
         {
             IDatabase db = _redis.GetDatabase();
-            bool acquired = await db
-                .StringSetAsync(reservationKey, instanceId, ttl, when: When.NotExists)
-                .ConfigureAwait(false);
+            Task<bool> setTask = db.StringSetAsync(reservationKey, instanceId, ttl, when: When.NotExists);
+            bool acquired;
+            try
+            {
+                acquired = await setTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                _ = ObserveLateSetAndCleanupAsync(db, setTask, reservationKey, instanceId);
+                throw;
+            }
+
             if (acquired)
             {
                 return new IngestReservationResult(IngestReservationOutcome.Reserved, instanceId);
             }
 
-            RedisValue existing = await db.StringGetAsync(reservationKey).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            RedisValue existing = await db.StringGetAsync(reservationKey)
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
             if (existing.HasValue)
             {
                 return new IngestReservationResult(IngestReservationOutcome.DuplicateInFlight, existing.ToString());
@@ -116,10 +130,14 @@ internal sealed partial class IngestDedupReservation
         CancellationToken cancellationToken)
     {
         string reservationKey = BuildReservationKey(tenantId, caseId, sourceUri, idempotencyToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
             IDatabase db = _redis.GetDatabase();
-            _ = await db.KeyDeleteAsync(reservationKey).ConfigureAwait(false);
+            _ = await db.KeyDeleteAsync(reservationKey)
+                .WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (RedisException ex)
         {
@@ -134,6 +152,30 @@ internal sealed partial class IngestDedupReservation
     private static string BuildReservationKey(string tenantId, string caseId, string sourceUri, string? idempotencyToken)
         => ReservationKeyPrefix + DedupKeyBuilder.BuildIdentityKey(tenantId, caseId, sourceUri, idempotencyToken);
 
+    private async Task ObserveLateSetAndCleanupAsync(
+        IDatabase db,
+        Task<bool> setTask,
+        string reservationKey,
+        string instanceId)
+    {
+        try
+        {
+            if (!await setTask.ConfigureAwait(false))
+            {
+                return;
+            }
+
+            _ = await db.ScriptEvaluateAsync(
+                ReleaseIfOwnedScript,
+                [(RedisKey)reservationKey],
+                [(RedisValue)instanceId]).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogLateSetCleanupFailed(_logger, reservationKey, ex.GetType().Name);
+        }
+    }
+
     [LoggerMessage(
         EventId = 9131,
         Level = LogLevel.Warning,
@@ -145,4 +187,10 @@ internal sealed partial class IngestDedupReservation
         Level = LogLevel.Warning,
         Message = "REST ingest preflight reservation release failed for key {ReservationKey} ({ExceptionType}); reservation will expire naturally.")]
     private static partial void LogReleaseFailed(ILogger logger, string reservationKey, string exceptionType);
+
+    [LoggerMessage(
+        EventId = 9133,
+        Level = LogLevel.Warning,
+        Message = "REST ingest canceled reservation cleanup failed for key {ReservationKey} ({ExceptionType}); reservation will expire naturally.")]
+    private static partial void LogLateSetCleanupFailed(ILogger logger, string reservationKey, string exceptionType);
 }

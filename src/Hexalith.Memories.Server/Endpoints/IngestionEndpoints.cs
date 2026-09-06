@@ -122,7 +122,7 @@ internal static class IngestionEndpoints
                         input.IdempotencyToken,
                         candidateInstanceId,
                         routing.PreflightDedupTtl,
-                        CancellationToken.None);
+                        httpContext.RequestAborted);
 
                     if (reservation.Outcome == IngestReservationOutcome.DuplicateInFlight)
                     {

@@ -26,6 +26,8 @@ using NSubstitute;
 
 using Shouldly;
 
+using StackExchange.Redis;
+
 /// <summary>Story 23.8 API-level coverage for file ingestion scheduling through the deterministic scheduler seam.</summary>
 public sealed class IngestionEndpointE2ETests : IDisposable
 {
@@ -82,6 +84,96 @@ public sealed class IngestionEndpointE2ETests : IDisposable
                 input.CausationId == request.CausationId &&
                 input.CorrelationId == request.CorrelationId),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PostIngest_DuplicateInFlight_ReturnsWinnerWithoutScheduling()
+    {
+        const string winnerInstanceId = "wf-winner";
+        _factory.ConfigurationOverrides["EventStoreIntegration:Routing:PreflightDedupEnabled"] = "true";
+        StubTenantActive();
+        _factory.RedisDatabase.StringSetAsync(
+                Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(), Arg.Any<When>())
+            .Returns(false);
+        _factory.RedisDatabase.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .Returns((RedisValue)winnerInstanceId);
+        IngestionInput request = IngestionInputFactory.Create(
+            tenantId: TenantId,
+            caseId: CaseId,
+            sourceUri: "file:///evidence/duplicate-in-flight.txt",
+            contentBytes: Encoding.UTF8.GetBytes("duplicate in-flight evidence"),
+            ingestedBy: "qa@example.com");
+        using HttpClient client = CreateAuthorizedClient();
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/v1/ingest",
+            request,
+            MemoriesJsonContext.Options,
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        (await ReadInstanceIdAsync(response)).ShouldBe(winnerInstanceId);
+        response.Headers.Location.ShouldNotBeNull();
+        response.Headers.Location!.ToString().ShouldBe($"/api/v1/ingest/{winnerInstanceId}");
+        await _scheduler.DidNotReceive().ScheduleAsync(
+            Arg.Any<string>(),
+            Arg.Any<IngestionInput>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PostIngest_CanceledWhileReservationPending_CancelsWithoutSchedulingAndCleansLateSuccess()
+    {
+        _factory.ConfigurationOverrides["EventStoreIntegration:Routing:PreflightDedupEnabled"] = "true";
+        StubTenantActive();
+        TaskCompletionSource<bool> pendingSet = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource reservationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource cleanupDispatched = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _factory.RedisDatabase.StringSetAsync(
+                Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(), Arg.Any<When>())
+            .Returns(_ =>
+            {
+                reservationStarted.TrySetResult();
+                return pendingSet.Task;
+            });
+        _factory.RedisDatabase.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(_ =>
+            {
+                cleanupDispatched.TrySetResult();
+                return Task.FromResult(RedisResult.Create((RedisValue)1L));
+            });
+        IngestionInput request = IngestionInputFactory.Create(
+            tenantId: TenantId,
+            caseId: CaseId,
+            sourceUri: "file:///evidence/canceled-reservation.txt",
+            contentBytes: Encoding.UTF8.GetBytes("canceled reservation evidence"),
+            ingestedBy: "qa@example.com");
+        using HttpClient client = CreateAuthorizedClient();
+        using CancellationTokenSource requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+
+        Task<HttpResponseMessage> response = client.PostAsJsonAsync(
+            "/api/v1/ingest",
+            request,
+            MemoriesJsonContext.Options,
+            requestCancellation.Token);
+        await reservationStarted.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        requestCancellation.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => response);
+        pendingSet.SetResult(true);
+        await cleanupDispatched.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        await _scheduler.DidNotReceive().ScheduleAsync(
+            Arg.Any<string>(),
+            Arg.Any<IngestionInput>(),
+            Arg.Any<CancellationToken>());
+        var setCall = _factory.RedisDatabase.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == nameof(IDatabase.StringSetAsync));
+        var cleanupCall = _factory.RedisDatabase.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync));
+        ((RedisValue[])cleanupCall.GetArguments()[2]!)[0].ShouldBe((RedisValue)setCall.GetArguments()[1]!);
     }
 
     [Fact]

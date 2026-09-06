@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.Ingestion;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Ingestion;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
@@ -39,6 +40,153 @@ public class IngestDedupReservationTests
 
         result.Outcome.ShouldBe(IngestReservationOutcome.Reserved);
         result.ExistingInstanceId.ShouldBe("wf-winner");
+    }
+
+    [Fact]
+    public async Task TryReserveAsync_CanceledBeforeDispatch_ThrowsWithoutCallingRedis()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(() => reservation.TryReserveAsync(
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-candidate", Ttl, cancellation.Token));
+
+        redis.DidNotReceive().GetDatabase(Arg.Any<int>(), Arg.Any<object>());
+        db.ReceivedCalls().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task TryReserveAsync_CanceledPendingSet_LateSuccessUsesAtomicOwnerCheckedCleanup()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        TaskCompletionSource<bool> pendingSet = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource cleanupDispatched = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        db.StringSetAsync(
+                Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(),
+                Arg.Any<When>())
+            .Returns(_ => pendingSet.Task);
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(_ =>
+            {
+                cleanupDispatched.TrySetResult();
+                return Task.FromResult(RedisResult.Create((RedisValue)1L));
+            });
+        IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
+        using CancellationTokenSource cancellation = new();
+
+        Task<IngestReservationResult> attempt = reservation.TryReserveAsync(
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-candidate", Ttl, cancellation.Token);
+        attempt.IsCompleted.ShouldBeFalse();
+
+        cancellation.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => attempt);
+
+        pendingSet.SetResult(true);
+        await cleanupDispatched.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        string expectedKey = "ingest-reserve:" + DedupKeyBuilder.BuildKey("tenant-1", "case-1", "file:///doc.pdf");
+        var cleanupCall = db.ReceivedCalls().Single(call => call.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync));
+        object?[] cleanupArguments = cleanupCall.GetArguments();
+        ((string)cleanupArguments[0]!).ShouldBe(
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end");
+        RedisKey[] cleanupKeys = (RedisKey[])cleanupArguments[1]!;
+        cleanupKeys.Length.ShouldBe(1);
+        cleanupKeys[0].ShouldBe((RedisKey)expectedKey);
+        RedisValue[] cleanupValues = (RedisValue[])cleanupArguments[2]!;
+        cleanupValues.Length.ShouldBe(1);
+        cleanupValues[0].ShouldBe((RedisValue)"wf-candidate");
+        await db.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task TryReserveAsync_CanceledPendingSet_WhenSuccessorOwnsKey_DoesNotDeleteDirectly()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        TaskCompletionSource<bool> pendingSet = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource cleanupDispatched = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        db.StringSetAsync(
+                Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(),
+                Arg.Any<When>())
+            .Returns(_ => pendingSet.Task);
+
+        // Redis returns zero from the value-checked script when the key has expired and a successor owns it.
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(_ =>
+            {
+                cleanupDispatched.TrySetResult();
+                return Task.FromResult(RedisResult.Create((RedisValue)0L));
+            });
+        IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
+        using CancellationTokenSource cancellation = new();
+
+        Task<IngestReservationResult> attempt = reservation.TryReserveAsync(
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-candidate", Ttl, cancellation.Token);
+
+        cancellation.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => attempt);
+        pendingSet.SetResult(true);
+        await cleanupDispatched.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        await db.DidNotReceive().KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>());
+        RedisValue[] cleanupValues = (RedisValue[])db.ReceivedCalls()
+            .Single(call => call.GetMethodInfo().Name == nameof(IDatabase.ScriptEvaluateAsync))
+            .GetArguments()[2]!;
+        cleanupValues.ShouldBe([(RedisValue)"wf-candidate"]);
+    }
+
+    [Fact]
+    public async Task TryReserveAsync_CanceledPendingSet_WhenAtomicCleanupFails_ObservesAndLogsFailure()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        TaskCompletionSource<bool> pendingSet = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        db.StringSetAsync(
+                Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(),
+                Arg.Any<When>())
+            .Returns(_ => pendingSet.Task);
+        db.ScriptEvaluateAsync(
+                Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(_ => Task.FromException<RedisResult>(
+                new RedisConnectionException(ConnectionFailureType.UnableToConnect, CommandFlags.None, "down")));
+        ILogger<IngestDedupReservation> logger = Substitute.For<ILogger<IngestDedupReservation>>();
+        logger.IsEnabled(LogLevel.Warning).Returns(true);
+        IngestDedupReservation reservation = new(redis, logger);
+        using CancellationTokenSource cancellation = new();
+
+        Task<IngestReservationResult> attempt = reservation.TryReserveAsync(
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-candidate", Ttl, cancellation.Token);
+
+        cancellation.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => attempt);
+        pendingSet.SetResult(true);
+        await WaitForLogEventAsync(logger, eventId: 9133);
+
+        var logCall = logger.ReceivedCalls().Single(call =>
+            call.GetMethodInfo().Name == nameof(ILogger.Log)
+            && ((EventId)call.GetArguments()[1]!).Id == 9133);
+        logCall.GetArguments()[0].ShouldBe(LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task TryReserveAsync_CanceledPendingWinnerLookup_ThrowsPromptly()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        SetNxReturns(db, false);
+        TaskCompletionSource<RedisValue> pendingGet = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(_ => pendingGet.Task);
+        IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
+        using CancellationTokenSource cancellation = new();
+
+        Task<IngestReservationResult> attempt = reservation.TryReserveAsync(
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-loser", Ttl, cancellation.Token);
+        attempt.IsCompleted.ShouldBeFalse();
+
+        cancellation.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => attempt);
+        pendingGet.SetResult(RedisValue.Null);
     }
 
     [Fact]
@@ -179,6 +327,22 @@ public class IngestDedupReservationTests
     }
 
     [Fact]
+    public async Task TryReserveAsync_WinnerLookupRedisFailure_FailsOpen()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        SetNxReturns(db, false);
+        db.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
+            .ThrowsAsync(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "down"));
+        IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
+
+        IngestReservationResult result = await reservation.TryReserveAsync(
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, "wf-1", Ttl, CancellationToken.None);
+
+        result.Outcome.ShouldBe(IngestReservationOutcome.FailOpen);
+        result.ExistingInstanceId.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ReleaseAsync_DeletesTheReservationKey()
     {
         (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
@@ -188,6 +352,24 @@ public class IngestDedupReservationTests
 
         string expectedKey = "ingest-reserve:" + DedupKeyBuilder.BuildKey("tenant-1", "case-1", "file:///doc.pdf");
         await db.Received(1).KeyDeleteAsync(expectedKey, Arg.Any<CommandFlags>());
+    }
+
+    [Fact]
+    public async Task ReleaseAsync_CanceledPendingDelete_ThrowsPromptly()
+    {
+        (IDatabase db, IConnectionMultiplexer redis) = CreateRedis();
+        TaskCompletionSource<bool> pendingDelete = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        db.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(_ => pendingDelete.Task);
+        IngestDedupReservation reservation = new(redis, NullLogger<IngestDedupReservation>.Instance);
+        using CancellationTokenSource cancellation = new();
+
+        Task release = reservation.ReleaseAsync(
+            "tenant-1", "case-1", "file:///doc.pdf", idempotencyToken: null, cancellation.Token);
+        release.IsCompleted.ShouldBeFalse();
+
+        cancellation.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => release);
+        pendingDelete.SetResult(true);
     }
 
     [Fact]
@@ -216,5 +398,16 @@ public class IngestDedupReservationTests
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return (db, redis);
+    }
+
+    private static async Task WaitForLogEventAsync(ILogger logger, int eventId)
+    {
+        while (!logger.ReceivedCalls().Any(call =>
+            call.GetMethodInfo().Name == nameof(ILogger.Log)
+            && ((EventId)call.GetArguments()[1]!).Id == eventId))
+        {
+            TestContext.Current.CancellationToken.ThrowIfCancellationRequested();
+            await Task.Yield();
+        }
     }
 }
