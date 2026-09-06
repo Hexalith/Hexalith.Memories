@@ -116,6 +116,15 @@
     "label": "Add forward references",
     "resolution": ""
   },
+  "DW-539": {
+    "answered_at": "2026-09-06",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Suppress all trust metadata for unauthorized callers.",
+    "key": "suppress",
+    "label": "Suppress all metadata",
+    "resolution": ""
+  },
   "DW-565": {
     "answered_at": "2026-09-01",
     "bundle_name": "",
