@@ -44,6 +44,15 @@
     "label": "Await operator auth model",
     "resolution": ""
   },
+  "DW-222": {
+    "answered_at": "2026-09-06",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add and validate a machine-readable transition-rationale field.",
+    "key": "add-field",
+    "label": "Add evidence field",
+    "resolution": ""
+  },
   "DW-230": {
     "answered_at": "2026-09-01",
     "bundle_name": "",

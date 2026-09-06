@@ -1674,6 +1674,7 @@ location: n/a
 reason: - **Story transition rationale is comment-only and not machine-readable** — The sprint tracking update relies on a free-form YAML comment for rationale, so tooling cannot query or validate why a story moved between workflow states.
 status: open
 decision: 2026-09-06 Add evidence field — Add and validate a machine-readable transition-rationale field.
+decision: 2026-09-06 Add evidence field — Add and validate a machine-readable transition-rationale field.
 
 ### DW-223: Story status requires manual dual-write across tracking files
 
