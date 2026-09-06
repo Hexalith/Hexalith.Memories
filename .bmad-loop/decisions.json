@@ -125,6 +125,15 @@
     "label": "Suppress all metadata",
     "resolution": ""
   },
+  "DW-543": {
+    "answered_at": "2026-09-06",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Add a shutdown-state guard and concurrency tests.",
+    "key": "guard",
+    "label": "Add lifecycle guard",
+    "resolution": ""
+  },
   "DW-565": {
     "answered_at": "2026-09-01",
     "bundle_name": "",
