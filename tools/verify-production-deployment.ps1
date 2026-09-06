@@ -17,7 +17,7 @@ param(
 
     [string]$ClusterName = "hexalith-memories-verification",
 
-    [string]$DaprRuntimeVersion = "1.18.1",
+    [string]$DaprRuntimeVersion = "1.18.2",
 
     [string]$KindNodeImage = "kindest/node:v1.35.0",
 
