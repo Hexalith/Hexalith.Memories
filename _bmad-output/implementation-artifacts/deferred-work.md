@@ -3821,6 +3821,7 @@ location: src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:61
 reason: - **`HasIndexedMemoryUnits` captured but never consulted** [src/Hexalith.Memories.Contracts/V1/EvidencePacketMapper.cs:61] — true-empty (no index for the tenant) is not distinguished from query-empty; both yield `state: empty` + `broadenScope`, which is misleading for an unindexed tenant. Needs a recovery/state design choice (e.g. an "ingest first" recovery when `HasIndexedMemoryUnits==false`).
 status: open
 decision: 2026-09-06 Build ingest-first proof — Create an unindexed tenant through ingestion and prove its first index.
+decision: 2026-09-06 Build ingest-first proof — Create an unindexed tenant through ingestion and prove its first index.
 
 ### DW-509: `state: empty` emitted when `returnedCount==0` but `totalCount>0` and nothing omitted
 

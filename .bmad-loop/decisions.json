@@ -98,6 +98,15 @@
     "label": "Emit additive recoveries",
     "resolution": ""
   },
+  "DW-508": {
+    "answered_at": "2026-09-06",
+    "bundle_name": "",
+    "effect": "build",
+    "intent": "Create an unindexed tenant through ingestion and prove its first index.",
+    "key": "ingest-first",
+    "label": "Build ingest-first proof",
+    "resolution": ""
+  },
   "DW-520": {
     "answered_at": "2026-09-01",
     "bundle_name": "",
