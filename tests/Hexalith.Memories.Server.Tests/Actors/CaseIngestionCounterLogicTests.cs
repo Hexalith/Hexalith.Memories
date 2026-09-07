@@ -144,6 +144,93 @@ public class CaseIngestionCounterLogicTests
     }
 
     [Fact]
+    public void Transition_RestoredRefreshedWorkflowAtLedgerLimitSurvivesEviction()
+    {
+        CaseIngestionCounterLogic logic = new();
+        CaseIngestionCounterState state = Empty();
+        for (int index = 1; index <= 256; index++)
+        {
+            state = logic.Transition(state, "none", "queued", $"workflow-{index}:1");
+        }
+
+        state = logic.Transition(state, "queued", "extracting", "workflow-1:2");
+        string json = JsonSerializer.Serialize(state, JsonSerializerOptions.Web);
+        CaseIngestionCounterState restored = JsonSerializer
+            .Deserialize<CaseIngestionCounterState>(json, JsonSerializerOptions.Web)
+            .ShouldNotBeNull();
+
+        restored.AppliedTransitionSequences.ShouldNotBeNull().Count.ShouldBe(256);
+        restored.AppliedTransitionWorkflowOrder.ShouldBe(
+            Enumerable.Range(2, 255)
+                .Select(index => $"workflow-{index}")
+                .Append("workflow-1"));
+        state = logic.Transition(restored, "none", "queued", "workflow-257:1");
+
+        state.AppliedTransitionSequences.ShouldNotBeNull();
+        state.AppliedTransitionSequences.Count.ShouldBe(256);
+        state.AppliedTransitionSequences["workflow-1"].ShouldBe(2);
+        state.AppliedTransitionSequences.ShouldNotContainKey("workflow-2");
+        state.AppliedTransitionSequences["workflow-257"].ShouldBe(1);
+        state.AppliedTransitionWorkflowOrder.ShouldBe(
+            Enumerable.Range(3, 254)
+                .Select(index => $"workflow-{index}")
+                .Append("workflow-1")
+                .Append("workflow-257"));
+        logic.ToCounts(state).ShouldBe(new CaseIngestionCounts(256, 1, 0, 0));
+
+        CaseIngestionCounterState replayed = logic.Transition(state, "none", "queued", "workflow-1:1");
+
+        ReferenceEquals(state, replayed).ShouldBeTrue();
+        logic.ToCounts(replayed).ShouldBe(new CaseIngestionCounts(256, 1, 0, 0));
+    }
+
+    [Fact]
+    public void Transition_PredecessorStateAtLedgerLimitRestoresRecencyBeforeEviction()
+    {
+        Dictionary<string, int> appliedTransitionSequences = Enumerable.Range(1, 256)
+            .ToDictionary(
+                index => $"workflow-{index}",
+                index => index == 1 ? 2 : 1,
+                StringComparer.Ordinal);
+        string json = JsonSerializer.Serialize(
+            new
+            {
+                Queued = 255,
+                Extracting = 1,
+                Embedding = 0,
+                Indexing = 0,
+                LastTransitionId = "workflow-1:2",
+                AppliedTransitionSequences = appliedTransitionSequences,
+            },
+            JsonSerializerOptions.Web);
+        CaseIngestionCounterState restored = JsonSerializer
+            .Deserialize<CaseIngestionCounterState>(json, JsonSerializerOptions.Web)
+            .ShouldNotBeNull();
+        CaseIngestionCounterLogic logic = new();
+
+        restored.AppliedTransitionSequences.ShouldNotBeNull().Count.ShouldBe(256);
+        restored.AppliedTransitionWorkflowOrder.ShouldBeNull();
+        CaseIngestionCounterState state = logic.Transition(restored, "none", "queued", "workflow-257:1");
+
+        state.AppliedTransitionSequences.ShouldNotBeNull();
+        state.AppliedTransitionSequences.Count.ShouldBe(256);
+        state.AppliedTransitionSequences["workflow-1"].ShouldBe(2);
+        state.AppliedTransitionSequences.ShouldNotContainKey("workflow-2");
+        state.AppliedTransitionSequences["workflow-257"].ShouldBe(1);
+        state.AppliedTransitionWorkflowOrder.ShouldBe(
+            Enumerable.Range(3, 254)
+                .Select(index => $"workflow-{index}")
+                .Append("workflow-1")
+                .Append("workflow-257"));
+        logic.ToCounts(state).ShouldBe(new CaseIngestionCounts(256, 1, 0, 0));
+
+        CaseIngestionCounterState replayed = logic.Transition(state, "none", "queued", "workflow-1:1");
+
+        ReferenceEquals(state, replayed).ShouldBeTrue();
+        logic.ToCounts(replayed).ShouldBe(new CaseIngestionCounts(256, 1, 0, 0));
+    }
+
+    [Fact]
     public void Transition_LedgerIsBoundedAcrossWorkflows()
     {
         CaseIngestionCounterLogic logic = new();
