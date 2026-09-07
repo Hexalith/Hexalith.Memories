@@ -243,9 +243,10 @@ failures, business readiness available, lifecycle health fail-closed, and contin
 JSON-console/configured-OTLP audit emission. Authenticated business and privacy
 probes read the short-lived qualification JWT only from the absolute, non-symlink,
 owner-only file named by `HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE`. The producer
-streams that token only over stdin to the fixed in-pod request command. The token
-never appears in argv, environment, logs, journals, or packets, and it authorizes
-only tenant `story-27-4-qualification`. Missing, over-permissive, stale, malformed,
+writes that stdin token to a `0600` curl config (`header = "Authorization: Bearer ..."`)
+and the in-pod client is `curl --config` with no JWT on argv. The token never
+appears in argv, environment, logs, journals, or packets, and it authorizes only
+tenant `story-27-4-qualification`. Missing, over-permissive, stale, malformed,
 or leaked credentials fail before the qualification gate opens. `Unhealthy` takes
 precedence over `Degraded`; `NoData` is valid only when the provider is enabled,
 every lifecycle gate is otherwise healthy, and neither accepted nor rejected

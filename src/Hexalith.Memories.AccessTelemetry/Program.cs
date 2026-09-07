@@ -138,21 +138,31 @@ app.MapPost("/v1/access-telemetry/physical-reclamation-evidence", async (
     AccessTelemetryPhysicalReclamationEvidence evidence,
     IActorProxyFactory proxyFactory) =>
 {
-    IAccessTelemetryLifecycleActor actor = proxyFactory.CreateActorProxy<IAccessTelemetryLifecycleActor>(
-        new ActorId("global"),
-        nameof(AccessTelemetryLifecycleActor));
-    await actor.RecordPhysicalReclamationEvidenceAsync(evidence).ConfigureAwait(false);
-    return Results.Json(
-        new AccessTelemetryPhysicalReclamationEvidenceReceipt
-        {
-            Status = "accepted",
-            EvidenceId = evidence.EvidenceId,
-            ComponentProfileHash = evidence.ComponentProfileHash,
-            ArtifactSha256 = evidence.ArtifactSha256,
-            ReporterImageDigest = evidence.ReporterImageDigest,
-            ObservedAtUnixMilliseconds = evidence.ObservedAtUnixMilliseconds,
-        },
-        statusCode: StatusCodes.Status202Accepted);
+    try
+    {
+        IAccessTelemetryLifecycleActor actor = proxyFactory.CreateActorProxy<IAccessTelemetryLifecycleActor>(
+            new ActorId("global"),
+            nameof(AccessTelemetryLifecycleActor));
+        await actor.RecordPhysicalReclamationEvidenceAsync(evidence).ConfigureAwait(false);
+        return Results.Json(
+            new AccessTelemetryPhysicalReclamationEvidenceReceipt
+            {
+                Status = "accepted",
+                EvidenceId = evidence.EvidenceId,
+                ComponentProfileHash = evidence.ComponentProfileHash,
+                ArtifactSha256 = evidence.ArtifactSha256,
+                ReporterImageDigest = evidence.ReporterImageDigest,
+                ObservedAtUnixMilliseconds = evidence.ObservedAtUnixMilliseconds,
+            },
+            statusCode: StatusCodes.Status202Accepted);
+    }
+    catch (AccessTelemetryContractException exception)
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Physical reclamation evidence was not accepted.",
+            detail: exception.Message);
+    }
 }).AllowAnonymous();
 
 app.Run();

@@ -58,4 +58,6 @@
     <PackageReference Include="StackExchange.Redis" />
   </ItemGroup>
 
+  <Import Project="Hexalith.Memories.Server.QualificationCurl.targets" />
+
 </Project>

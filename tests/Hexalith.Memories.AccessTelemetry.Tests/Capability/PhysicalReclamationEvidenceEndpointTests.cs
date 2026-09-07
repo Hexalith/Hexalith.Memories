@@ -116,6 +116,51 @@ public sealed class PhysicalReclamationEvidenceEndpointTests
     }
 
     [Fact]
+    public async Task PhysicalEvidence_ContractConflict_ReturnsBounded409Problem()
+    {
+        IAccessTelemetryLifecycleActor actor = Substitute.For<IAccessTelemetryLifecycleActor>();
+        actor.RecordPhysicalReclamationEvidenceAsync(Arg.Any<AccessTelemetryPhysicalReclamationEvidence>())
+            .Returns(Task.FromException(new AccessTelemetryContractException("physical_evidence_conflict")));
+        IActorProxyFactory proxies = Substitute.For<IActorProxyFactory>();
+        proxies.CreateActorProxy<IAccessTelemetryLifecycleActor>(
+                Arg.Any<ActorId>(),
+                Arg.Any<string>())
+            .Returns(actor);
+        string? previous = Environment.GetEnvironmentVariable(
+            DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable);
+        Environment.SetEnvironmentVariable(
+            DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable,
+            AppToken);
+        try
+        {
+            await using var factory = new AccessTelemetryWebAppFactory(proxies);
+            using HttpClient client = factory.CreateClient();
+            client.DefaultRequestHeaders.Add(DaprApplicationTokenMiddleware.DaprApiTokenHeader, AppToken);
+
+            using HttpResponseMessage response = await client.PostAsJsonAsync(
+                "/v1/access-telemetry/physical-reclamation-evidence",
+                Evidence(),
+                TestContext.Current.CancellationToken);
+
+            response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+            using JsonDocument problem = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken),
+                cancellationToken: TestContext.Current.CancellationToken);
+            JsonElement root = problem.RootElement;
+            root.GetProperty("status").GetInt32().ShouldBe(409);
+            root.GetProperty("title").GetString().ShouldBe("Physical reclamation evidence was not accepted.");
+            root.GetProperty("detail").GetString().ShouldBe("physical_evidence_conflict");
+            await actor.Received(1).RecordPhysicalReclamationEvidenceAsync(Arg.Any<AccessTelemetryPhysicalReclamationEvidence>());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable,
+                previous);
+        }
+    }
+
+    [Fact]
     public void DaprPolicy_GrantsPhysicalEvidenceOnlyToAdapterIdentity()
     {
         string repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));

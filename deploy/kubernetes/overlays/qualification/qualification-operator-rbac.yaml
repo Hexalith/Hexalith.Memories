@@ -65,6 +65,17 @@ rules:
     resources: ["leases"]
     resourceNames: ["access-telemetry-qualification"]
     verbs: ["get", "patch", "update"]
+  # Identity packets bind these exact service accounts. resourceNames is the
+  # Kubernetes-supported get/list restriction; the producer issues named gets.
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    resourceNames:
+      - memories
+      - memories-access-telemetry
+      - memories-access-telemetry-clock
+      - access-telemetry-postgresql
+      - access-telemetry-adapter
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -102,6 +113,22 @@ rules:
       - dapr-placement-server
       - dapr-scheduler-server
     verbs: ["get", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames:
+      - dapr-operator
+      - dapr-sentry
+      - dapr-sidecar-injector
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    resourceNames:
+      - dapr-operator
+      - dapr-placement
+      - dapr-scheduler
+      - dapr-sentry
+      - dapr-injector
+    verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

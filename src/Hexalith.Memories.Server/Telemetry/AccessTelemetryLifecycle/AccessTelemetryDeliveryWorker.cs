@@ -89,7 +89,12 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
             if (response.Rejected == 0 && response.Accepted == batch.Count && response.Reason == AccessTelemetryReason.None)
             {
                 _failureCount = 0;
-                _status.Publish(AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None);
+                AccessTelemetryLifecycleStatusSnapshot current = _status.Current;
+                if (current.Health != AccessTelemetryHealthState.Unhealthy ||
+                    current.Reason != AccessTelemetryReason.RecordIdConflict)
+                {
+                    _status.Publish(AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None);
+                }
             }
             else if (response.Reason is AccessTelemetryReason.ConfigurationInvalid or AccessTelemetryReason.RecordIdConflict)
             {
@@ -104,14 +109,21 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
                     response.Rejected,
                     AccessTelemetryRecordState.Rejected,
                     response.Reason);
-                _terminal = true;
                 _status.RecordActivity(now);
-                _status.PublishTerminal(response.Reason);
+                if (response.Reason == AccessTelemetryReason.ConfigurationInvalid)
+                {
+                    _terminal = true;
+                    _status.PublishTerminal(response.Reason);
+                }
+                else
+                {
+                    _failureCount = 0;
+                    _status.Publish(AccessTelemetryHealthState.Unhealthy, AccessTelemetryReason.RecordIdConflict);
+                }
             }
             else if (response.Reason is
                 AccessTelemetryReason.SchemaMismatch or
-                AccessTelemetryReason.Expired or
-                AccessTelemetryReason.ClockUntrusted)
+                AccessTelemetryReason.Expired)
             {
                 if (response.Rejected > 0)
                 {

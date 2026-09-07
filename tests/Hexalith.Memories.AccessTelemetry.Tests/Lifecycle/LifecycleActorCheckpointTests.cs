@@ -207,6 +207,39 @@ public sealed class LifecycleActorCheckpointTests
         conflict.Message.ShouldBe("physical_evidence_conflict");
     }
 
+    [Fact]
+    public void PhysicalEvidence_MatchingReplayFillsAMissingReporterDigest()
+    {
+        var evidence = new AccessTelemetryPhysicalReclamationEvidence
+        {
+            EvidenceId = "story-27-4-c3",
+            ComponentProfileHash = new string('a', 64),
+            ArtifactSha256 = new string('b', 64),
+            ReporterImageDigest = new string('c', 64),
+            ObservedAtUnixMilliseconds = Now.ToUnixTimeMilliseconds(),
+        };
+        AccessTelemetryLifecycleActorState stored = new()
+        {
+            PhysicalReclamationEvidenceId = evidence.EvidenceId,
+            PhysicalReclamationEvidenceUnixMilliseconds = evidence.ObservedAtUnixMilliseconds,
+            PhysicalReclamationArtifactSha256 = evidence.ArtifactSha256,
+            PhysicalReclamationReporterImageDigest = null,
+        };
+
+        AccessTelemetryLifecycleActorState filled = AccessTelemetryLifecycleActor.ApplyPhysicalReclamationEvidence(
+            stored,
+            evidence,
+            evidence.EvidenceId,
+            evidence.ComponentProfileHash,
+            evidence.ReporterImageDigest,
+            Now);
+
+        filled.PhysicalReclamationReporterImageDigest.ShouldBe(evidence.ReporterImageDigest);
+        filled.PhysicalReclamationArtifactSha256.ShouldBe(evidence.ArtifactSha256);
+        filled.PhysicalReclamationEvidenceId.ShouldBe(evidence.EvidenceId);
+        filled.PhysicalReclamationEvidenceUnixMilliseconds.ShouldBe(evidence.ObservedAtUnixMilliseconds);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

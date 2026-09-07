@@ -18,6 +18,7 @@ internal sealed class AccessTelemetryQualificationGate(
 
     private const string DefaultGatePath = "/var/run/hexalith/access-telemetry-qualification/gate.json";
     private static readonly TimeSpan MaximumGateLifetime = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan GateExpirySkew = TimeSpan.FromSeconds(5);
 
     /// <summary>Validates the current gate without caching a past authorization.</summary>
     /// <param name="reason">A bounded reason when the gate is closed.</param>
@@ -30,8 +31,24 @@ internal sealed class AccessTelemetryQualificationGate(
             return false;
         }
 
-        string gatePath = configuration["AccessTelemetryQualification:GatePath"] ?? DefaultGatePath;
-        FileInfo? file = ResolveMountedGate(gatePath);
+        string? configuredPath = configuration["AccessTelemetryQualification:GatePath"];
+        if (configuredPath is not null && string.IsNullOrWhiteSpace(configuredPath))
+        {
+            reason = "qualification_gate_unavailable";
+            return false;
+        }
+
+        FileInfo? file;
+        try
+        {
+            file = ResolveMountedGate(configuredPath ?? DefaultGatePath);
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException)
+        {
+            reason = "qualification_gate_unavailable";
+            return false;
+        }
+
         if (file is null || file.Length is <= 0 or > 4096)
         {
             reason = "qualification_gate_unavailable";
@@ -41,6 +58,12 @@ internal sealed class AccessTelemetryQualificationGate(
         try
         {
             using FileStream stream = file.Open(FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (stream.Length is <= 0 or > 4096)
+            {
+                reason = "qualification_gate_unavailable";
+                return false;
+            }
+
             using JsonDocument document = JsonDocument.Parse(stream, new JsonDocumentOptions
             {
                 AllowTrailingCommas = false,
@@ -54,7 +77,7 @@ internal sealed class AccessTelemetryQualificationGate(
                 !root.TryGetProperty("profileSha256", out JsonElement profile) || profile.GetString() != ApprovedProfileSha256 ||
                 !root.TryGetProperty("expiresUtcMs", out JsonElement expires) || !expires.TryGetInt64(out long expiresUtcMs) ||
                 expiresUtcMs <= timeProvider.GetUtcNow().ToUnixTimeMilliseconds() ||
-                expiresUtcMs > timeProvider.GetUtcNow().Add(MaximumGateLifetime).ToUnixTimeMilliseconds())
+                expiresUtcMs > timeProvider.GetUtcNow().Add(MaximumGateLifetime).Add(GateExpirySkew).ToUnixTimeMilliseconds())
             {
                 reason = "qualification_gate_invalid_or_expired";
                 return false;

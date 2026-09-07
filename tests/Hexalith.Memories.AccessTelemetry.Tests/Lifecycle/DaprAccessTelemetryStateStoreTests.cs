@@ -5,11 +5,15 @@
 
 namespace Hexalith.Memories.AccessTelemetry.Tests.Lifecycle;
 
+using System.Diagnostics.Metrics;
+
 using Dapr;
 using Dapr.Client;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Lifecycle;
+using Hexalith.Memories.AccessTelemetry.Observability;
+using Hexalith.Memories.AccessTelemetry.Tests.Observability;
 
 using Microsoft.Extensions.Time.Testing;
 
@@ -22,6 +26,7 @@ using Shouldly;
 /// transactional path plus every failure status the purge loop and the ADR atomicity contract
 /// depend on.
 /// </summary>
+[Collection(AccessTelemetryLifecycleMetricsTestCollection.Name)]
 public sealed class DaprAccessTelemetryStateStoreTests
 {
     private static readonly DateTimeOffset Expiry = AccessTelemetryStateStoreTestRecords.Expiry;
@@ -55,6 +60,32 @@ public sealed class DaprAccessTelemetryStateStoreTests
         transaction.ShouldAllBe(static operation => operation.Options!.Consistency == ConsistencyMode.Strong);
         state.Get<AccessTelemetryExpiryBucket>(transaction[1].Key).Entries.ShouldHaveSingleItem().ShouldBe(entry);
         state.Get<AccessTelemetryExpiryCatalog>("expiry-catalog").ActiveMinutes.ShouldBe([entry.ExpiryMinute]);
+    }
+
+    [Fact]
+    public async Task WriteRecordAndIndexAsync_RecordsStateOperationsOnThePostgreSQLAdapterPath()
+    {
+        var measurements = new List<long>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, current) =>
+        {
+            if (instrument.Meter.Name == AccessTelemetryLifecycleMetrics.MeterName &&
+                instrument.Name == AccessTelemetryMetricContract.StateOperations)
+            {
+                current.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, _, _) => measurements.Add(value));
+        listener.Start();
+
+        var state = new TransactionalDaprState();
+        var store = CreateStore(state);
+        AccessTelemetryRecord record = CreateRecord("01K0A000000000000000000001");
+        AccessTelemetryExpiryEntry entry = CreateEntry(record);
+
+        _ = await store.WriteRecordAndIndexAsync(record, entry, 3600, CancellationToken.None);
+
+        measurements.ShouldBe([1L, 3L]);
     }
 
     [Fact]

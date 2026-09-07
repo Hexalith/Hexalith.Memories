@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from copy import deepcopy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -39,6 +40,7 @@ from verify_access_telemetry_lifecycle import (  # noqa: E402
     _read_bounded_json,
     _require_evidence_path,
     _run_bounded_process,
+    _run_inline_kubectl,
     _sha256,
     _validated_evidence_root,
     _validate_mutation_manifest,
@@ -49,9 +51,18 @@ from verify_access_telemetry_lifecycle import (  # noqa: E402
     validate_story_27_4_checkpoint,
 )
 from access_telemetry_producer_common import (  # noqa: E402
+    CROCKFORD_GOLDEN_IDENTITY,
+    CROCKFORD_GOLDEN_ORDINAL,
+    CROCKFORD_GOLDEN_RECORD_ID,
+    CROCKFORD_GOLDEN_RUN_ID,
+    CROCKFORD_GOLDEN_RUN_SEGMENT_RECORD_ID,
+    CROCKFORD_GOLDEN_SEGMENT_ID,
     _C3Journal,
     _TERMINATION_REQUESTED,
+    _business_probe_command,
     _execute_qualification,
+    _fixed_operation_commands,
+    _fixed_workload_shell,
     _load_business_bearer,
     _qualification_record_ids,
     _run_operation,
@@ -424,7 +435,10 @@ def c4_payload() -> dict[str, object]:
             "reminder-delay", "shutdown", "state-outage",
         )},
         **{name: "dropped" for name in (
-            "queue-byte-exhaustion", "queue-record-exhaustion", "retry-exhaustion",
+            "retry-exhaustion",
+        )},
+        **{name: "mixed" for name in (
+            "queue-byte-exhaustion", "queue-record-exhaustion",
         )},
         **{name: "rejected" for name in (
             "bad-configuration", "bad-key", "degraded-rollback", "etag-failure",
@@ -441,9 +455,20 @@ def c4_payload() -> dict[str, object]:
                 "business_failures": 0,
                 "audit_continuity": True,
                 "lifecycle_attempts": 2,
-                "lifecycle_persisted": 2 if expected[name] == "persisted" else 0,
-                "lifecycle_rejected": 2 if expected[name] == "rejected" else 0,
-                "lifecycle_dropped": 2 if expected[name] == "dropped" else 0,
+                "lifecycle_persisted": (
+                    2 if expected[name] == "persisted" else
+                    0
+                ),
+                "lifecycle_rejected": (
+                    1 if expected[name] == "mixed" else
+                    2 if expected[name] == "rejected" else
+                    0
+                ),
+                "lifecycle_dropped": (
+                    1 if expected[name] == "mixed" else
+                    2 if expected[name] == "dropped" else
+                    0
+                ),
                 "observation": observation(f"failure-{name}"),
             }
             for name in REQUIRED_FAILURE_SCENARIOS
@@ -562,6 +587,7 @@ class RetentionVerificationTests(unittest.TestCase):
         clock = [0.0]
         sleeps: list[float] = []
         attempts: dict[str, int] = {}
+        phases: list[bool] = []
 
         def monotonic() -> float:
             return clock[0]
@@ -582,6 +608,7 @@ class RetentionVerificationTests(unittest.TestCase):
             segment_id = re.search(r"X-Hexalith-Qualification-Segment: ([a-z0-9-]+)", text).group(1)
             run_id = re.search(r"X-Hexalith-Qualification-Run: ([a-z0-9-]+)", text).group(1)
             attempts[segment_id] = attempts.get(segment_id, 0) + 1
+            phases.append("X-Hexalith-Qualification-Phase: emit" in text)
             if segment_id.endswith("0002") and attempts[segment_id] == 1:
                 return 9, b"", b"pod replaced after durable commit"
             ordinal = int(segment_id.rsplit("-", 1)[-1])
@@ -591,6 +618,8 @@ class RetentionVerificationTests(unittest.TestCase):
                 "recordIds": _qualification_record_ids(run_id, segment_id),
                 "startedUtcMs": 1_700_000_000_000 + ((ordinal - 1) * 1000),
                 "finishedUtcMs": 1_700_000_001_000 + ((ordinal - 1) * 1000),
+                "emitFinishedUtcMs": 1_700_000_001_000 + ((ordinal - 1) * 1000),
+                "acknowledgedUtcMs": 1_700_000_002_000 + ((ordinal - 1) * 1000),
                 "attempted": 125, "enqueued": 125, "acknowledged": 125 - conflicted,
                 "persisted": 125 - conflicted, "conflicted": conflicted,
                 "transactionAcknowledgements": 125 - conflicted,
@@ -612,6 +641,8 @@ class RetentionVerificationTests(unittest.TestCase):
         self.assertEqual(1, result["replayed_segment_count"])
         self.assertEqual(375, result["acknowledged"] + result["conflicted"])
         self.assertEqual(0, result["dispatch_lag_max_milliseconds"])
+        self.assertIn(True, phases)
+        self.assertIn(False, phases)
 
     def test_c2_session_renews_owned_lease_during_writer_window(self) -> None:
         original_writer = producer_common._run_writer_segments
@@ -684,15 +715,37 @@ class RetentionVerificationTests(unittest.TestCase):
         server_container = next(item for item in server_spec["containers"] if item["name"] == "memories")
         gate_mount = next(item for item in server_container["volumeMounts"] if item["name"] == "access-telemetry-qualification-gate")
         self.assertTrue(gate_mount["readOnly"])
+        self.assertEqual("/var/run/hexalith/access-telemetry-qualification", gate_mount["mountPath"])
+        server_env = {item["name"]: item for item in server_container["env"]}
+        self.assertEqual("Qualification", server_env["DOTNET_ENVIRONMENT"]["value"])
+        self.assertEqual(
+            "/var/run/hexalith/access-telemetry-qualification/gate.json",
+            server_env["AccessTelemetryQualification__GatePath"]["value"],
+        )
+        self.assertEqual(
+            "metadata.name",
+            server_env["HEXALITH_QUALIFICATION_WRITER"]["valueFrom"]["fieldRef"]["fieldPath"],
+        )
+        lifecycle = next(
+            item
+            for item in one("Deployment", "memories-access-telemetry")["spec"]["template"]["spec"]["containers"]
+            if item["name"] == "lifecycle"
+        )
+        lifecycle_env = {item["name"]: item.get("value") for item in lifecycle["env"]}
+        self.assertEqual("Qualification", lifecycle_env["DOTNET_ENVIRONMENT"])
+        self.assertIn("AccessTelemetryLifecycle__PhysicalReclamationReporterImageDigest", lifecycle_env)
 
         reporter = one("Job", "access-telemetry-physical-evidence-reporter")
         reporter_spec = reporter["spec"]["template"]["spec"]
         self.assertFalse(reporter_spec["automountServiceAccountToken"])
         self.assertTrue(reporter["spec"]["suspend"])
+        self.assertGreaterEqual(int(reporter["spec"]["backoffLimit"]), 2)
+        self.assertNotIn("ttlSecondsAfterFinished", reporter["spec"])
         container = reporter_spec["containers"][0]
-        self.assertEqual(["/bin/sh", "-ec"], container["command"])
-        self.assertEqual(1, len(container["args"]))
-        self.assertIn("physical-reclamation-evidence", container["args"][0])
+        self.assertEqual(producer_common._REPORTER_COMMAND, container["command"])
+        self.assertEqual(producer_common._REPORTER_ARGUMENTS, container["args"])
+        self.assertEqual(producer_common._REPORTER_ENV, container["env"])
+        self.assertEqual(producer_common._REPORTER_VOLUME_MOUNTS, container["volumeMounts"])
 
         qualification_role = one("Role", "access-telemetry-qualification-operator")
         lease_rule = next(
@@ -707,6 +760,18 @@ class RetentionVerificationTests(unittest.TestCase):
             {"memories", "memories-access-telemetry", "memories-access-telemetry-clock"},
             set(deployment_write["resourceNames"]),
         )
+        self.assertFalse(any(
+            "namespaces" in (rule.get("resources") or [])
+            for rule in qualification_role["rules"]
+        ))
+        service_accounts = next(
+            rule for rule in qualification_role["rules"] if rule["resources"] == ["serviceaccounts"]
+        )
+        self.assertEqual(
+            set(producer_common._QUALIFICATION_SERVICE_ACCOUNTS),
+            set(service_accounts["resourceNames"]),
+        )
+        self.assertEqual({"get", "list"}, set(service_accounts["verbs"]))
         dapr_role = one(
             "Role", "access-telemetry-qualification-dapr-control-plane", "dapr-system"
         )
@@ -717,11 +782,406 @@ class RetentionVerificationTests(unittest.TestCase):
             {"dapr-placement-server", "dapr-scheduler-server"},
             set(dapr_statefulsets["resourceNames"]),
         )
+        dapr_deployments = next(
+            rule for rule in dapr_role["rules"] if rule["resources"] == ["deployments"]
+        )
+        self.assertEqual(
+            set(producer_common._DAPR_CONTROL_PLANE_DEPLOYMENTS),
+            set(dapr_deployments["resourceNames"]),
+        )
+        self.assertEqual({"get", "list", "watch"}, set(dapr_deployments["verbs"]))
+        dapr_service_accounts = next(
+            rule for rule in dapr_role["rules"] if rule["resources"] == ["serviceaccounts"]
+        )
+        self.assertEqual(
+            set(producer_common._DAPR_CONTROL_PLANE_SERVICE_ACCOUNTS),
+            set(dapr_service_accounts["resourceNames"]),
+        )
+        self.assertEqual({"get", "list"}, set(dapr_service_accounts["verbs"]))
         self.assertFalse(any(
             item.get("kind") in {"ClusterRole", "ClusterRoleBinding"}
             and "qualification" in item.get("metadata", {}).get("name", "")
             for item in resources
         ))
+
+    def test_crockford_qualification_ids_match_the_shared_csharp_golden_vector(self) -> None:
+        alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+        digest = bytearray(hashlib.sha256(CROCKFORD_GOLDEN_IDENTITY.encode("utf-8")).digest())
+        digest[0] &= 0x7F
+        value = int.from_bytes(digest[:16], "big")
+        encoded = ["0"] * 26
+        for index in range(25, -1, -1):
+            value, remainder = divmod(value, 32)
+            encoded[index] = alphabet[remainder]
+        self.assertEqual(CROCKFORD_GOLDEN_RECORD_ID, "".join(encoded))
+        self.assertEqual(
+            CROCKFORD_GOLDEN_RUN_SEGMENT_RECORD_ID,
+            _qualification_record_ids(CROCKFORD_GOLDEN_RUN_ID, CROCKFORD_GOLDEN_SEGMENT_ID)[
+                CROCKFORD_GOLDEN_ORDINAL
+            ],
+        )
+
+    def test_identity_binds_namespace_without_cluster_scoped_get(self) -> None:
+        target = {
+            "kube_context": "operator@local",
+            "namespace": "memories-qualification",
+            "_platform_operations_reviewer": "reviewer",
+            "_lease_holder": "story-27-4/reviewer/test",
+        }
+        commands = _fixed_operation_commands(
+            target, "qualification", "qualification-target-identity"
+        )
+        self.assertFalse(
+            any(
+                "get" in command and command[command.index("get") + 1] == "namespace"
+                for command in commands
+            )
+        )
+        self.assertFalse(
+            any(
+                command[command.index("get") + 1] in {"serviceaccounts", "deployments", "statefulsets"}
+                and "--namespace" in command
+                and command[command.index("--namespace") + 1] == "dapr-system"
+                for command in commands
+                if "get" in command
+            )
+        )
+        self.assertFalse(any("serviceaccounts" in command for command in commands))
+        for name in producer_common._QUALIFICATION_SERVICE_ACCOUNTS:
+            self.assertTrue(
+                any(
+                    "get" in command
+                    and command[command.index("get") + 1] == "serviceaccount"
+                    and name in command
+                    and command[-2:] == ("-o", "json")
+                    for command in commands
+                ),
+                name,
+            )
+        for name in producer_common._DAPR_CONTROL_PLANE_DEPLOYMENTS:
+            self.assertTrue(
+                any(
+                    "get" in command
+                    and command[command.index("get") + 1] == "deployment"
+                    and name in command
+                    and command[command.index("--namespace") + 1] == "dapr-system"
+                    for command in commands
+                ),
+                name,
+            )
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            with patch.dict(os.environ, qualification_test_env(fake_bin)):
+                result, _ = _run_operation(
+                    target, "c2-production-replacement", "qualification-target-identity"
+                )
+            self.assertEqual("memories-qualification", result["namespace"])
+            self.assertEqual("disabled", result["writes_state"])
+
+    def test_business_and_privacy_canaries_use_curl_config_and_tenant_routes(self) -> None:
+        target = {
+            "kube_context": "operator@local",
+            "namespace": "memories-qualification",
+        }
+        business = _business_probe_command(target, "failure-dapr-outage")
+        privacy = _business_probe_command(target, "privacy-denial", privacy=True)
+        self.assertEqual("__BUSINESS_BEARER_STDIN__", business[0])
+        self.assertIn("--config", business[-1])
+        self.assertNotIn("--header-file", business[-1])
+        self.assertNotIn('--header="Authorization: Bearer', business[-1])
+        self.assertNotIn("Bearer $bearer", business[-1])
+        self.assertIn("/api/v1/tenants/story-27-4-qualification", business[-1])
+        self.assertNotIn("/api/v1/handlers", business[-1])
+        self.assertNotIn("/configuration", business[-1].split("story-27-4-qualification")[-1][:20])
+        self.assertIn("/api/v1/tenants/story-27-4-qualification/configuration", privacy[-1])
+        self.assertIn("/api/v1/tenants/story-27-4-denied/configuration", privacy[-1])
+        self.assertIn("dapr_http_client_completed_count", privacy[-1])
+        self.assertIn("--config", privacy[-1])
+        self.assertNotIn("--header-file", privacy[-1])
+        self.assertNotIn("Bearer $bearer", privacy[-1])
+
+    def test_server_image_stages_pinned_musl_curl(self) -> None:
+        stager = (TOOLS_DIR / "stage-qualification-curl.py").read_text(encoding="utf-8")
+        targets = (
+            REPO_ROOT / "src/Hexalith.Memories.Server/Hexalith.Memories.Server.QualificationCurl.targets"
+        ).read_text(encoding="utf-8")
+        self.assertIn("curl-linux-x86_64-musl-8.20.0.tar.xz", stager)
+        self.assertIn("58c6fab6e3f62d39d23224d752de1302cb717d997288d0f23d6fa7e79c393c1f", stager)
+        self.assertIn("curl-linux-aarch64-musl-8.20.0.tar.xz", stager)
+        self.assertIn("32799692a41e88f9f2be85348c2230baf5a0a29ded2d6c086e49e5cbab22b3f4", stager)
+        self.assertIn('AfterTargets="Publish"', targets)
+        self.assertIn("linux-musl-x64", targets)
+        self.assertIn("linux-musl-arm64", targets)
+        self.assertIn("ContainerRuntimeIdentifiers", targets)
+        self.assertIn("MAXIMUM_ARCHIVE_BYTES", stager)
+        self.assertIn(
+            "/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            targets,
+        )
+        self.assertNotIn("apk add", targets)
+
+    def test_stage_qualification_curl_rejects_garbage_download_without_network(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "stage_qualification_curl",
+            TOOLS_DIR / "stage-qualification-curl.py",
+        )
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        def write_garbage(url: str, destination: Path) -> None:
+            self.assertTrue(url.startswith(module.RELEASE_BASE))
+            destination.write_bytes(b"garbage")
+
+        def fail_network(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("network must not be used")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "curl"
+            cache = root / "cache"
+            with patch.object(module.urllib.request, "urlopen", side_effect=fail_network):
+                with patch.object(module, "_download", side_effect=write_garbage):
+                    with self.assertRaises(module.StagingError):
+                        module.stage("linux-musl-x64", output, cache)
+
+            leftover_curl = [
+                path
+                for path in root.rglob("*")
+                if path.is_file() and path.name in {"curl", "curl.staging"} and os.access(path, os.X_OK)
+            ]
+            self.assertFalse(output.exists())
+            self.assertEqual([], leftover_curl)
+            self.assertFalse((cache / "curl-linux-x86_64-musl-8.20.0.tar.xz").exists())
+
+    def test_fixed_workload_emitted_utc_ms_is_a_placeholder_until_exec(self) -> None:
+        target = {
+            "kube_context": "operator@local",
+            "namespace": "memories-qualification",
+            "_lease_holder": "story-27-4/reviewer/test",
+        }
+        shell = _fixed_workload_shell(target, "idempotence-conflict-proof")
+        self.assertIn("__EMITTED_UTC_MS__", shell)
+        self.assertNotRegex(shell, r"Emitted-Utc-Ms: [0-9]+")
+
+    def test_c2_interval_counters_use_before_and_after_samples(self) -> None:
+        original_writer = producer_common._run_writer_segments
+
+        def one_segment_writer(
+            target: object,
+            checkpoint: str,
+            command_id: str,
+            **kwargs: object,
+        ) -> tuple[object, dict[str, object]]:
+            kwargs.setdefault("_segment_count", 1)
+            return original_writer(target, checkpoint, command_id, **kwargs)
+
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            target = {
+                "kube_context": "operator@local",
+                "namespace": "memories-qualification",
+                "_platform_operations_reviewer": "reviewer",
+                "_lease_holder": f"story-27-4/reviewer/{os.getpid()}-{now_ms()}",
+            }
+            with patch.dict(os.environ, qualification_test_env(fake_bin)):
+                with patch.object(producer_common, "_run_writer_segments", one_segment_writer):
+                    try:
+                        results, _commands = _execute_qualification(
+                            target,
+                            "c2-production-replacement",
+                            ["writer-1", "writer-2"],
+                        )
+                    finally:
+                        _TERMINATION_REQUESTED.clear()
+
+        counter = results["component-throughput"]
+        self.assertEqual(900_000, counter["operation_delta"])
+        self.assertEqual(1_800_000, counter["window_milliseconds"])
+        self.assertEqual(
+            "memories_access_telemetry_lifecycle_state_operations_total",
+            counter["counter_name"],
+        )
+
+    def test_idempotence_conflict_proof_is_two_target_side_workload_posts(self) -> None:
+        target = {
+            "kube_context": "operator@local",
+            "namespace": "memories-qualification",
+            "_platform_operations_reviewer": "reviewer",
+            "_lease_holder": "story-27-4/reviewer/1700000000000",
+        }
+        commands = _fixed_operation_commands(
+            target, "c2-production-replacement", "idempotence-conflict-proof"
+        )
+        workload_posts = [
+            command for command in commands
+            if any("fixed-workload" in value for value in command)
+        ]
+        self.assertEqual(2, len(workload_posts))
+        self.assertFalse(any("dotnet" in command for command in commands))
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            with patch.dict(os.environ, qualification_test_env(fake_bin)):
+                result, _ = _run_operation(
+                    target, "c2-production-replacement", "idempotence-conflict-proof"
+                )
+        self.assertTrue(result["idempotent_retry"])
+        self.assertTrue(result["conflict_rejected"])
+
+    def test_c4_restores_zero_loss_lanes_before_measuring_and_allows_mixed_queues(self) -> None:
+        target = {
+            "kube_context": "operator@local",
+            "namespace": "memories-qualification",
+            "_platform_operations_reviewer": "reviewer",
+            "_lease_holder": "story-27-4/reviewer/1700000000000",
+        }
+        persisted = _fixed_operation_commands(
+            target, "c4-failure-privacy-observability", "failure-dapr-outage"
+        )
+        restore_at = next(
+            index for index, command in enumerate(persisted) if command and command[0] == "__FAULT_RESTORE__"
+        )
+        measure_at = next(
+            index for index, command in enumerate(persisted)
+            if any("fixed-workload" in value for value in command)
+        )
+        self.assertLess(restore_at, measure_at)
+        mixed = _fixed_operation_commands(
+            target, "c4-failure-privacy-observability", "failure-queue-byte-exhaustion"
+        )
+        mixed_restore = next(
+            index for index, command in enumerate(mixed) if command and command[0] == "__FAULT_RESTORE__"
+        )
+        mixed_measure = next(
+            index for index, command in enumerate(mixed)
+            if any("fixed-workload" in value for value in command)
+        )
+        self.assertLess(mixed_measure, mixed_restore)
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            bearer = Path(directory) / "bearer.jwt"
+            write_business_bearer(bearer)
+            target["_business_bearer"] = bearer.read_bytes() + b"\n"
+            with patch.dict(os.environ, qualification_test_env(fake_bin)):
+                result, _ = _run_operation(
+                    target, "c4-failure-privacy-observability", "failure-queue-byte-exhaustion"
+                )
+        self.assertEqual("mixed", result["expected_disposition"])
+        self.assertEqual(2, result["lifecycle_attempts"])
+        self.assertEqual(1, result["lifecycle_rejected"])
+        self.assertEqual(1, result["lifecycle_dropped"])
+        self.assertTrue(result["exercised"])
+
+    def test_c3_purge_and_c4_continuity_renew_before_the_next_bound(self) -> None:
+        target = {
+            "kube_context": "operator@local",
+            "namespace": "memories-qualification",
+            "_platform_operations_reviewer": "reviewer",
+            "_lease_holder": "story-27-4/reviewer/test",
+            "_c3_cohort_record_ids": {
+                1: _qualification_record_ids("run-test", "cohort-1h-seed-segment-0001"),
+            },
+        }
+        purge = _fixed_operation_commands(target, "c3-retention-reclamation", "cohort-1h-purge")
+        renew = _fixed_operation_commands(target, "qualification", "qualification-renew")
+        self.assertEqual(renew, purge[: len(renew)])
+        for command_id in ("continuity", "observability", "privacy-denial"):
+            commands = _fixed_operation_commands(
+                target, "c4-failure-privacy-observability", command_id
+            )
+            self.assertEqual(renew, commands[: len(renew)])
+
+    def test_c3_seed_reuses_store_bound_identities_instead_of_emitting_again(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            target = {
+                "kube_context": "operator@local",
+                "namespace": "memories-qualification",
+                "_platform_operations_reviewer": "reviewer",
+                "_lease_holder": "story-27-4/reviewer/1700000000000",
+            }
+            with patch.dict(os.environ, qualification_test_env(
+                fake_bin,
+                QUALIFICATION_REUSE_SEED="1",
+            )):
+                result, _ = _run_operation(
+                    target, "c3-retention-reclamation", "cohort-1h-seed"
+                )
+            expected = _qualification_record_ids(
+                f"run-{_sha256(target['_lease_holder'])[:24]}",
+                "cohort-1h-seed-segment-0001",
+            )
+            self.assertEqual(sorted(expected), sorted(result["record_ids"]))
+            self.assertEqual(125, result["pre_tuple_count"])
+
+    def test_c3_journal_prefix_hash_covers_complete_jsonl_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "c3.jsonl"
+            timestamp = now_ms()
+            arguments = {"operation": "cohort-1h-expiry"}
+            payload = {
+                "result_count": 1,
+                "_command": {
+                    "command_id": "cohort-1h-expiry",
+                    "arguments": arguments,
+                    "arguments_sha256": _sha256(_canonical_json(arguments)),
+                    "started_utc_ms": timestamp,
+                    "finished_utc_ms": timestamp,
+                    "exit_code": 0,
+                    "stdout_sha256": SHA,
+                    "stderr_sha256": SHA,
+                    "result_count": 1,
+                },
+            }
+            with _C3Journal(path) as journal:
+                journal.append("cohort-1h-expiry", payload)
+                self.assertEqual(
+                    hashlib.sha256(path.read_bytes()).hexdigest(),
+                    journal.authenticated_prefix_sha256,
+                )
+
+    def test_inline_kubectl_requires_the_unittest_flag_and_refuses_live_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_bin = Path(directory) / "bin"
+            fake_bin.mkdir()
+            install_fake_kubectl(fake_bin)
+            script = str(fake_bin / "kubectl")
+            self.assertIsNone(_run_inline_kubectl(
+                ["kubectl", "get", "pods"],
+                environment={"HEXALITH_STORY_27_4_INLINE_KUBECTL": script},
+                stdin_bytes=None,
+            ))
+            with self.assertRaisesRegex(ValueError, "kubeconfig"):
+                _run_inline_kubectl(
+                    ["kubectl", "get", "pods"],
+                    environment={
+                        "HEXALITH_STORY_27_4_INLINE_KUBECTL": script,
+                        "HEXALITH_STORY_27_4_INLINE_KUBECTL_UNITTEST": "1",
+                        "KUBECONFIG": str(Path(directory) / "kubeconfig"),
+                    },
+                    stdin_bytes=None,
+                )
+            with self.assertRaisesRegex(ValueError, "live evidence root"):
+                _run_inline_kubectl(
+                    ["kubectl", "get", "pods"],
+                    environment={
+                        "HEXALITH_STORY_27_4_INLINE_KUBECTL": script,
+                        "HEXALITH_STORY_27_4_INLINE_KUBECTL_UNITTEST": "1",
+                        "HEXALITH_STORY_27_4_EVIDENCE_ROOT": str(REPO_ROOT),
+                    },
+                    stdin_bytes=None,
+                )
 
     def test_complete_c2_c3_and_c4_packets_validate(self) -> None:
         for checkpoint, payload in (
@@ -1544,7 +2004,9 @@ def qualification_test_env(fake_bin: Path, **extra: str) -> dict[str, str]:
         "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
         "HEXALITH_STORY_27_4_HOST_CADENCE_QUANTUM": "0",
         "HEXALITH_STORY_27_4_INLINE_KUBECTL": str(fake_bin / "kubectl"),
+        "HEXALITH_STORY_27_4_INLINE_KUBECTL_UNITTEST": "1",
     }
+    env.pop("KUBECONFIG", None)
     env.update(extra)
     return env
 
@@ -1583,16 +2045,12 @@ if '--' in args and args[-1] in {'--version', '--build-info'} and args[-2] in {'
     print('1.18.1' if args[-1] == '--version' else 'Version: 1.18.1\\nGit Commit: qualification-test')
     raise SystemExit(0)
 op = os.environ.get('HEXALITH_STORY_27_4_COMMAND_ID') or sys.argv[-1].rsplit('/', 1)[-1]
-proof_scenarios = {'failure-etag-failure', 'failure-ttl-failure', 'failure-transaction-failure',
-    'failure-queue-byte-exhaustion', 'failure-queue-record-exhaustion'}
 if op.endswith('-purge'):
-    changed_at = 3
+    changed_at = 6
 elif op == 'approved-adapter-fault':
     changed_at = 8
 elif op.startswith('replace-'):
     changed_at = 7
-elif op in proof_scenarios:
-    changed_at = 12
 elif op.startswith('failure-'):
     changed_at = 10
 else:
@@ -1625,11 +2083,12 @@ if 'get' in args and args[-1] == 'json':
     if resource == 'configmap':
         name = args[args.index('get') + 2]
         if name == 'access-telemetry-qualification-gate':
-            enabled = op in {'qualification-enable', 'qualification-renew'} or op.startswith(('replace-', 'failure-')) or op == 'approved-adapter-fault'
+            enabled = op not in {'qualification-target-identity', 'qualification-final-state'}
             gate = {'schemaVersion': 1, 'state': 'enabled' if enabled else 'disabled',
                 'profileSha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
                 'expiresUtcMs': int(time.time() * 1000) + 900000 if enabled else 0}
-            print(json.dumps({'data': {'gate.json': json.dumps(gate, separators=(',', ':'))}}, separators=(',', ':')))
+            print(json.dumps({'metadata': {'name': name, 'namespace': namespace},
+                'data': {'gate.json': json.dumps(gate, separators=(',', ':'))}}, separators=(',', ':')))
             raise SystemExit(0)
         if op == 'cohort-168h-report' and os.environ.get('QUALIFICATION_COMPLETED_REPORTER') == '1':
             evidence = {'evidenceId': 'story-27-4-c3',
@@ -1643,7 +2102,7 @@ if 'get' in args and args[-1] == 'json':
         print(json.dumps({'metadata': {'name': name}, 'data': {'retentionSeconds': '604800'}}, separators=(',', ':')))
         raise SystemExit(0)
     if resource == 'lease':
-        enabled = op in {'qualification-enable', 'qualification-renew'} or op.startswith(('replace-', 'failure-')) or op == 'approved-adapter-fault'
+        enabled = op not in {'qualification-target-identity', 'qualification-final-state'}
         stale = os.environ.get('QUALIFICATION_STALE_LEASE') == '1' and op in {'qualification-target-identity', 'qualification-disable'}
         active_foreign = os.environ.get('QUALIFICATION_ACTIVE_FOREIGN_LEASE') == '1' and op == 'qualification-target-identity'
         renew_foreign = os.environ.get('QUALIFICATION_RENEW_FOREIGN') == '1' and op == 'qualification-renew'
@@ -1667,11 +2126,58 @@ if 'get' in args and args[-1] == 'json':
             ], 'volumes': [{'name': 'evidence', 'configMap': {'name': 'access-telemetry-physical-evidence-report'}}]}}},
             'status': ({'succeeded': 1, 'completionTime': '2026-09-06T12:00:00Z'} if completed_reporter else {})}, separators=(',', ':')))
         raise SystemExit(0)
+    digest = {'memories': 'b' * 64, 'lifecycle': 'a' * 64, 'clock': 'c' * 64,
+        'daprd': 'd' * 64, 'operator': 'e' * 64, 'placement': 'f' * 64,
+        'scheduler': '1' * 64, 'sentry': '2' * 64, 'injector': '3' * 64}
     if resource == 'deployment':
         name = args[args.index('get') + 2]
+        if namespace == 'dapr-system':
+            images = {'dapr-operator': digest['operator'], 'dapr-sentry': digest['sentry'],
+                'dapr-sidecar-injector': digest['injector']}
+            accounts = {'dapr-operator': 'dapr-operator', 'dapr-sentry': 'dapr-sentry',
+                'dapr-sidecar-injector': 'dapr-injector'}
+            if name not in images:
+                print('Error from server (Forbidden): deployments.apps is forbidden', file=sys.stderr)
+                raise SystemExit(1)
+            print(json.dumps({'metadata': {'name': name}, 'spec': {'template': {'spec': {
+                'serviceAccountName': accounts[name],
+                'containers': [{'image': 'registry/' + name.split('-')[-1] + '@sha256:' + images[name]}]}}}},
+                separators=(',', ':')))
+            raise SystemExit(0)
         replicas = (1 if name.endswith('-clock') else 2) if op == 'qualification-enable' else 0
         print(json.dumps({'metadata': {'name': name}, 'spec': {'replicas': replicas}}, separators=(',', ':')))
         raise SystemExit(0)
+    if resource == 'deployments' and namespace == 'dapr-system':
+        print('Error from server (Forbidden): deployments.apps is forbidden', file=sys.stderr)
+        raise SystemExit(1)
+    if resource == 'statefulset' and namespace == 'dapr-system':
+        name = args[args.index('get') + 2]
+        images = {'dapr-placement-server': digest['placement'], 'dapr-scheduler-server': digest['scheduler']}
+        accounts = {'dapr-placement-server': 'dapr-placement', 'dapr-scheduler-server': 'dapr-scheduler'}
+        if name not in images:
+            print('Error from server (Forbidden): statefulsets.apps is forbidden', file=sys.stderr)
+            raise SystemExit(1)
+        print(json.dumps({'metadata': {'name': name}, 'spec': {'template': {'spec': {
+            'serviceAccountName': accounts[name],
+            'containers': [{'image': 'registry/' + name.split('-')[1] + '@sha256:' + images[name]}]}}}},
+            separators=(',', ':')))
+        raise SystemExit(0)
+    if resource == 'statefulsets' and namespace == 'dapr-system':
+        print('Error from server (Forbidden): statefulsets.apps is forbidden', file=sys.stderr)
+        raise SystemExit(1)
+    if resource == 'serviceaccount':
+        name = args[args.index('get') + 2]
+        allowed = (['dapr-operator', 'dapr-placement', 'dapr-scheduler', 'dapr-sentry', 'dapr-injector']
+            if namespace == 'dapr-system' else ['memories', 'memories-access-telemetry',
+            'memories-access-telemetry-clock', 'access-telemetry-postgresql', 'access-telemetry-adapter'])
+        if name not in allowed:
+            print('Error from server (Forbidden): serviceaccounts is forbidden', file=sys.stderr)
+            raise SystemExit(1)
+        print(json.dumps({'metadata': {'name': name}}, separators=(',', ':')))
+        raise SystemExit(0)
+    if resource == 'serviceaccounts':
+        print('Error from server (Forbidden): serviceaccounts is forbidden', file=sys.stderr)
+        raise SystemExit(1)
     if resource in {'component', 'components.dapr.io'} and 'access-telemetry-store' in args:
         print(json.dumps({'apiVersion': 'dapr.io/v1alpha1', 'kind': 'Component',
             'metadata': {'name': 'access-telemetry-store'},
@@ -1683,15 +2189,6 @@ if 'get' in args and args[-1] == 'json':
             'spec': {'accessControl': {'defaultAction': 'deny', 'policies': []}}}, separators=(',', ':')))
         raise SystemExit(0)
     postgres_image = 'docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a'
-    digest = {'memories': 'b' * 64, 'lifecycle': 'a' * 64, 'clock': 'c' * 64,
-        'daprd': 'd' * 64, 'operator': 'e' * 64, 'placement': 'f' * 64,
-        'scheduler': '1' * 64, 'sentry': '2' * 64, 'injector': '3' * 64}
-    if resource == 'serviceaccounts':
-        names = (['dapr-operator', 'dapr-placement', 'dapr-scheduler', 'dapr-sentry', 'dapr-injector']
-            if namespace == 'dapr-system' else ['memories', 'memories-access-telemetry',
-            'memories-access-telemetry-clock', 'access-telemetry-postgresql', 'access-telemetry-adapter'])
-        print(json.dumps({'items': [{'metadata': {'name': name}} for name in names]}, separators=(',', ':')))
-        raise SystemExit(0)
     if namespace == 'dapr-system':
         system_items = {
             'deployments': [
@@ -1814,8 +2311,9 @@ if '/operations/access-telemetry/qualification/fixed-workload' in command_text:
         segment = int(segment_id.rsplit('-', 1)[-1])
         segment_start = int(os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].rsplit('-', 1)[-1]) + ((segment - 1) * 1000)
         value = {'runId': run_id, 'segmentId': segment_id, 'writer': f'memories-{index}',
-            'startedUtcMs': segment_start, 'finishedUtcMs': segment_start + 1000, 'attempted': 125,
-            'enqueued': 125, 'acknowledged': 125, 'persisted': 125, 'conflicted': 0,
+            'startedUtcMs': segment_start, 'finishedUtcMs': segment_start + 1000,
+            'emitFinishedUtcMs': segment_start + 1000, 'acknowledgedUtcMs': segment_start + 2000,
+            'attempted': 125, 'enqueued': 125, 'acknowledged': 125, 'persisted': 125, 'conflicted': 0,
             'transactionAcknowledgements': 125, 'dropped': 0, 'rejected': 0,
             'recordIds': qualification_ids(run_id, segment_id), 'resultCount': 125}
     elif op.endswith('-seed'):
@@ -1828,17 +2326,27 @@ if '/operations/access-telemetry/qualification/fixed-workload' in command_text:
             'failure-approved-adapter-fault', 'failure-capacity-pressure', 'failure-clock-outage',
             'failure-dapr-outage', 'failure-reconnect', 'failure-reminder-delay',
             'failure-shutdown', 'failure-state-outage'}
-        dropped_scenarios = {'failure-queue-byte-exhaustion',
-            'failure-queue-record-exhaustion', 'failure-retry-exhaustion'}
-        disposition = ('persisted' if op in persisted_scenarios else
-            'dropped' if op in dropped_scenarios else 'rejected')
-        value = {'runId': run_id, 'segmentId': segment_id, 'writer': 'memories-1',
-            'attempted': 2, 'enqueued': 2, 'acknowledged': 2 if disposition == 'persisted' else 0,
-            'persisted': 2 if disposition == 'persisted' else 0, 'conflicted': 0,
-            'transactionAcknowledgements': 2 if disposition == 'persisted' else 0,
-            'dropped': 2 if disposition == 'dropped' else 0,
-            'rejected': 2 if disposition == 'rejected' else 0,
-            'resultCount': 2}
+        dropped_scenarios = {'failure-retry-exhaustion'}
+        mixed_scenarios = {'failure-queue-byte-exhaustion', 'failure-queue-record-exhaustion'}
+        if op == 'idempotence-conflict-proof':
+            persist = 125 if step == 1 else 0
+            conflict = 0 if step == 1 else 125
+            value = {'runId': run_id, 'segmentId': segment_id, 'writer': 'memories-1',
+                'attempted': 125, 'enqueued': 125, 'acknowledged': persist,
+                'persisted': persist, 'conflicted': conflict,
+                'transactionAcknowledgements': persist, 'dropped': 0, 'rejected': 0,
+                'recordIds': qualification_ids(run_id, segment_id), 'resultCount': 125}
+        else:
+            disposition = ('persisted' if op in persisted_scenarios else
+                'dropped' if op in dropped_scenarios else
+                'mixed' if op in mixed_scenarios else 'rejected')
+            value = {'runId': run_id, 'segmentId': segment_id, 'writer': 'memories-1',
+                'attempted': 2, 'enqueued': 2, 'acknowledged': 2 if disposition == 'persisted' else 0,
+                'persisted': 2 if disposition == 'persisted' else 0, 'conflicted': 0,
+                'transactionAcknowledgements': 2 if disposition == 'persisted' else 0,
+                'dropped': 1 if disposition == 'mixed' else (2 if disposition == 'dropped' else 0),
+                'rejected': 1 if disposition == 'mixed' else (2 if disposition == 'rejected' else 0),
+                'resultCount': 2}
     print(json.dumps(value, separators=(',', ':')))
     raise SystemExit(0)
 if 'cat /var/run/hexalith/access-telemetry-qualification/gate.json' in command_text:
@@ -1846,12 +2354,18 @@ if 'cat /var/run/hexalith/access-telemetry-qualification/gate.json' in command_t
         'profileSha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
         'expiresUtcMs': 0}, separators=(',', ':')))
     raise SystemExit(0)
-if '/api/v1/handlers' in command_text:
-    print(json.dumps({'business_status': 200}, separators=(',', ':')))
-    raise SystemExit(0)
-if '/api/v1/tenants/story-27-4-qualification' in command_text:
+if '--header="Authorization: Bearer' in command_text or 'Bearer $bearer' in command_text:
+    raise SystemExit(3)
+if '/api/v1/tenants/story-27-4-qualification/configuration' in command_text or '/api/v1/tenants/story-27-4-denied/configuration' in command_text:
+    if '--header-file' in command_text or '--config' not in command_text:
+        raise SystemExit(3)
     print(json.dumps({'allowed_status': 200, 'denied_status': 403,
         'denied_dependency_calls': 0}, separators=(',', ':')))
+    raise SystemExit(0)
+if '/api/v1/tenants/story-27-4-qualification' in command_text:
+    if '--header-file' in command_text or '--config' not in command_text:
+        raise SystemExit(3)
+    print(json.dumps({'business_status': 200}, separators=(',', ':')))
     raise SystemExit(0)
 if 'consistency=strong' in command_text and 'records%2F' in command_text:
     print(json.dumps({'stage': 'strong-absence', 'strong_absent_read_count': 125}, separators=(',', ':')))
@@ -1860,11 +2374,20 @@ if '/v1/access-telemetry/inspect' in command_text:
     print(json.dumps({'health': 'Healthy', 'reason': 'None', 'retainedRecordCount': 100,
         'configurationEpoch': 'qualification', 'physicalReclamationEvidencePending': False}, separators=(',', ':')))
     raise SystemExit(0)
-if 'memories_access_telemetry_lifecycle_state_operations_total' in command_text:
-    print(json.dumps({'status': 'success', 'data': {'result': [
-        {'value': [int(time.time()), '900000']}
-    ]}}, separators=(',', ':')))
+if 'http://127.0.0.1:8080/metrics' in command_text:
+    holder = os.environ.get('HEXALITH_STORY_27_4_LEASE_HOLDER', '')
+    state_path = os.path.join(
+        os.environ.get('TMPDIR', '/tmp'),
+        'hexalith-state-ops-' + hashlib.sha256(holder.encode()).hexdigest()[:16])
+    if os.path.exists(state_path):
+        value = 901000
+    else:
+        open(state_path, 'w').close()
+        value = 1000
+    print('memories_access_telemetry_lifecycle_state_operations_total %s' % value)
     raise SystemExit(0)
+if 'memories_access_telemetry_lifecycle_state_operations_total' in command_text:
+    raise SystemExit(4)
 if 'prometheus-operated.monitoring.svc.cluster.local' in command_text:
     states = ['accepted','dropped','enqueued','expired','failed','persisted','purged','rejected','retried']
     for state in states:
@@ -1919,6 +2442,13 @@ if 'psql' in command_text and op.startswith('cohort-'):
     accepted = emitted + 25; expires = emitted + hours * 3600000; purged = expires + 60000
     if "'stage','index'" in command_text:
         value = {'stage': 'index', 'index_name': 'idx_lifecycle_expiredate', 'post_index_candidate_count': 0}
+    elif "'stage','lookup'" in command_text:
+        run_id = 'run-' + hashlib.sha256(os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].encode()).hexdigest()[:24]
+        ids = qualification_ids(run_id, f'{op}-segment-0001')
+        if os.environ.get('QUALIFICATION_REUSE_SEED') == '1':
+            value = {'stage': 'lookup', 'record_count': 125, 'record_ids': ids}
+        else:
+            value = {'stage': 'lookup', 'record_count': 0, 'record_ids': []}
     elif stage == 'seed':
         run_id = 'run-' + hashlib.sha256(os.environ['HEXALITH_STORY_27_4_LEASE_HOLDER'].encode()).hexdigest()[:24]
         value = {'stage': stage, 'retention_hours': hours, 'cohort_id': f'retention-{hours}h',

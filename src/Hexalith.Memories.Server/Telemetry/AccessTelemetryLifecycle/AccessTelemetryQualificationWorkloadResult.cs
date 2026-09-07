@@ -9,8 +9,10 @@ namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 /// <param name="RunId">The verifier-generated bounded qualification run identifier.</param>
 /// <param name="SegmentId">The verifier-generated canonical one-second segment identifier.</param>
 /// <param name="Writer">The bounded Server-writer identity derived from the pod annotation.</param>
-/// <param name="StartedUtcMs">The target-observed segment start in UTC milliseconds.</param>
-/// <param name="FinishedUtcMs">The target-observed segment finish in UTC milliseconds.</param>
+/// <param name="StartedUtcMs">The target-observed emit start in UTC milliseconds.</param>
+/// <param name="FinishedUtcMs">The target-observed emit finish in UTC milliseconds; equals <paramref name="EmitFinishedUtcMs"/>.</param>
+/// <param name="EmitFinishedUtcMs">The target-observed emit finish taken before the acknowledgement wait.</param>
+/// <param name="AcknowledgedUtcMs">The target-observed acknowledgement finish in UTC milliseconds; zero when emit-only.</param>
 /// <param name="Attempted">The attempted fixed-workload record count.</param>
 /// <param name="Enqueued">The records observed entering the bounded delivery queue.</param>
 /// <param name="Acknowledged">The lifecycle-service acknowledged record count.</param>
@@ -27,6 +29,8 @@ internal sealed record AccessTelemetryQualificationWorkloadResult(
     string Writer,
     long StartedUtcMs,
     long FinishedUtcMs,
+    long EmitFinishedUtcMs,
+    long AcknowledgedUtcMs,
     long Attempted,
     long Enqueued,
     long Acknowledged,

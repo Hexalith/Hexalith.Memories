@@ -25,6 +25,11 @@ internal sealed class AccessTelemetryLifecycleStatus
     public AccessTelemetryLifecycleStatusSnapshot Current => Volatile.Read(ref _current);
 
     /// <summary>Publishes a bounded status without backend or identity details.</summary>
+    /// <remarks>
+    /// Non-terminal <see cref="AccessTelemetryHealthState.Unhealthy"/>
+    /// <see cref="AccessTelemetryReason.RecordIdConflict"/> is Unhealthy-first: later Healthy or
+    /// Degraded publishes do not overwrite it. Same-rank Unhealthy remains last-writer-wins.
+    /// </remarks>
     public void Publish(AccessTelemetryHealthState health, AccessTelemetryReason reason)
     {
         if (Volatile.Read(ref _terminal) != 0)
@@ -33,6 +38,13 @@ internal sealed class AccessTelemetryLifecycleStatus
         }
 
         AccessTelemetryLifecycleStatusSnapshot current = Current;
+        if (current.Health == AccessTelemetryHealthState.Unhealthy &&
+            current.Reason == AccessTelemetryReason.RecordIdConflict &&
+            health != AccessTelemetryHealthState.Unhealthy)
+        {
+            return;
+        }
+
         Volatile.Write(ref _current, new AccessTelemetryLifecycleStatusSnapshot(health, reason, current.LastAcceptedOrRejectedUtc));
     }
 

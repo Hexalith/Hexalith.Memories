@@ -372,10 +372,17 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         {
             if (string.Equals(state.PhysicalReclamationEvidenceId, evidence.EvidenceId, StringComparison.Ordinal) &&
                 state.PhysicalReclamationEvidenceUnixMilliseconds == evidence.ObservedAtUnixMilliseconds &&
-                string.Equals(state.PhysicalReclamationArtifactSha256, evidence.ArtifactSha256, StringComparison.Ordinal) &&
-                string.Equals(state.PhysicalReclamationReporterImageDigest, evidence.ReporterImageDigest, StringComparison.Ordinal))
+                string.Equals(state.PhysicalReclamationArtifactSha256, evidence.ArtifactSha256, StringComparison.Ordinal))
             {
-                return state;
+                if (string.Equals(state.PhysicalReclamationReporterImageDigest, evidence.ReporterImageDigest, StringComparison.Ordinal))
+                {
+                    return state;
+                }
+
+                if (state.PhysicalReclamationReporterImageDigest is null)
+                {
+                    return state with { PhysicalReclamationReporterImageDigest = evidence.ReporterImageDigest };
+                }
             }
 
             throw new AccessTelemetryContractException("physical_evidence_conflict");

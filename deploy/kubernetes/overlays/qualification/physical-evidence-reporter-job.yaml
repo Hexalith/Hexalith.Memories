@@ -21,8 +21,7 @@ metadata:
     app.kubernetes.io/component: physical-evidence-reporter
 spec:
   suspend: true
-  backoffLimit: 0
-  ttlSecondsAfterFinished: 600
+  backoffLimit: 2
   template:
     metadata:
       labels:

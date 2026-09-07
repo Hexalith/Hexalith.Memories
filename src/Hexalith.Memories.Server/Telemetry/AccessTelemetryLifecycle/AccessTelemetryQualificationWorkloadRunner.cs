@@ -25,6 +25,24 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
     /// <summary>The exact duration emitted by one resumable host-controlled segment.</summary>
     public const int SegmentSeconds = 1;
 
+    /// <summary>The shared Crockford golden identity consumed by C# and Python qualification IDs.</summary>
+    public const string CrockfordGoldenIdentity = "qualification-0123456789abcdef0123456789abcdef-000";
+
+    /// <summary>The shared Crockford golden record ID for <see cref="CrockfordGoldenIdentity"/>.</summary>
+    public const string CrockfordGoldenRecordId = "21HGE3EHP37C6JQJJ8CHZFQ8FC";
+
+    /// <summary>The shared golden run identity used with <see cref="CrockfordGoldenSegmentId"/>.</summary>
+    public const string CrockfordGoldenRunId = "run-golden";
+
+    /// <summary>The shared golden segment identity used with <see cref="CrockfordGoldenRunId"/>.</summary>
+    public const string CrockfordGoldenSegmentId = "writer-1-segment-0001";
+
+    /// <summary>The shared golden ordinal used with the run/segment identity pair.</summary>
+    public const int CrockfordGoldenOrdinal = 0;
+
+    /// <summary>The shared Crockford record ID for the golden run/segment/ordinal triple.</summary>
+    public const string CrockfordGoldenRunSegmentRecordId = "1RDFHWEWT5XK6766PQXEJT35XC";
+
     private const int MaximumCachedSegments = 4096;
     private static readonly Regex BoundedIdentity = new(
         "\\A[a-z0-9][a-z0-9-]{0,63}\\z",
@@ -35,9 +53,8 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
     private readonly int _recordsPerSecond;
     private readonly int _steadyStateSeconds;
     private readonly TimeProvider _timeProvider;
-    private readonly ConcurrentDictionary<string, Lazy<Task<AccessTelemetryQualificationWorkloadResult>>> _segments =
+    private readonly ConcurrentDictionary<string, SegmentWork> _segments =
         new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, long> _segmentEmissionTimes = new(StringComparer.Ordinal);
     private readonly object _segmentGate = new();
 
     /// <summary>Initializes the exact Production-shaped fixed workload.</summary>
@@ -76,10 +93,22 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
     /// <summary>Runs one fixed one-second segment and waits for its bounded lifecycle accounting.</summary>
     /// <param name="cancellationToken">Stops the request without weakening gate expiry.</param>
     /// <returns>Privacy-safe process-local aggregate accounting.</returns>
+    public Task<AccessTelemetryQualificationWorkloadResult> RunAsync(
+        string runId,
+        string segmentId,
+        long emittedUtcMs,
+        CancellationToken cancellationToken)
+        => RunAsync(runId, segmentId, emittedUtcMs, waitForAcknowledgement: true, cancellationToken);
+
+    /// <summary>Runs one fixed one-second segment, optionally returning after emit and before acknowledgement.</summary>
+    /// <param name="waitForAcknowledgement">When <see langword="false"/>, return emit timestamps without waiting for acknowledgement.</param>
+    /// <param name="cancellationToken">Stops the request without weakening gate expiry.</param>
+    /// <returns>Privacy-safe process-local aggregate accounting.</returns>
     public async Task<AccessTelemetryQualificationWorkloadResult> RunAsync(
         string runId,
         string segmentId,
         long emittedUtcMs,
+        bool waitForAcknowledgement,
         CancellationToken cancellationToken)
     {
         ValidateIdentity(runId, nameof(runId));
@@ -90,128 +119,240 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         }
 
         string key = $"{runId}/{segmentId}";
-        Lazy<Task<AccessTelemetryQualificationWorkloadResult>> segment;
-        lock (_segmentGate)
+        SegmentWork work = GetOrAdd(key, runId, segmentId, emittedUtcMs);
+        _ = work.Complete.Value;
+        try
         {
-            if (!_segments.TryGetValue(key, out segment!))
+            if (!waitForAcknowledgement)
             {
-                if (_segments.Count >= MaximumCachedSegments)
+                AccessTelemetryQualificationWorkloadResult emitted = await work.Emit
+                    .Task
+                    .WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                if (work.Complete.Value.IsCompletedSuccessfully)
                 {
-                    throw new InvalidOperationException("qualification_segment_capacity_exhausted");
+                    return await work.Complete.Value.ConfigureAwait(false);
                 }
 
-                ValidateEmissionTime(emittedUtcMs);
-                _segmentEmissionTimes[key] = emittedUtcMs;
-                segment = new Lazy<Task<AccessTelemetryQualificationWorkloadResult>>(
-                    () => RunSegmentAsync(runId, segmentId, emittedUtcMs),
-                    LazyThreadSafetyMode.ExecutionAndPublication);
-                if (!_segments.TryAdd(key, segment))
+                return emitted;
+            }
+
+            return await work.Complete.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            EvictIfUnsuccessful(key, work);
+        }
+    }
+
+    private SegmentWork GetOrAdd(string key, string runId, string segmentId, long emittedUtcMs)
+    {
+        lock (_segmentGate)
+        {
+            if (_segments.TryGetValue(key, out SegmentWork? existing))
+            {
+                if (existing.Complete.IsValueCreated)
                 {
-                    segment = _segments[key];
+                    Task<AccessTelemetryQualificationWorkloadResult> cached = existing.Complete.Value;
+                    if (cached.IsFaulted || cached.IsCanceled)
+                    {
+                        _ = _segments.TryRemove(key, out _);
+                    }
+                    else if (existing.EmittedUtcMs != emittedUtcMs)
+                    {
+                        throw new InvalidOperationException("qualification_segment_timestamp_conflict");
+                    }
+                    else
+                    {
+                        return existing;
+                    }
+                }
+                else if (existing.EmittedUtcMs != emittedUtcMs)
+                {
+                    throw new InvalidOperationException("qualification_segment_timestamp_conflict");
+                }
+                else
+                {
+                    return existing;
                 }
             }
-            else if (!_segmentEmissionTimes.TryGetValue(key, out long priorEmissionTime) ||
-                priorEmissionTime != emittedUtcMs)
+
+            if (_segments.Count >= MaximumCachedSegments)
+            {
+                throw new InvalidOperationException("qualification_segment_capacity_exhausted");
+            }
+
+            ValidateEmissionTime(emittedUtcMs);
+            var created = new SegmentWork(
+                emittedUtcMs,
+                work => RunSegmentAsync(runId, segmentId, emittedUtcMs, work));
+            if (_segments.TryAdd(key, created))
+            {
+                return created;
+            }
+
+            SegmentWork concurrent = _segments[key];
+            if (concurrent.EmittedUtcMs != emittedUtcMs)
             {
                 throw new InvalidOperationException("qualification_segment_timestamp_conflict");
             }
+
+            return concurrent;
+        }
+    }
+
+    private void EvictIfUnsuccessful(string key, SegmentWork work)
+    {
+        Task<AccessTelemetryQualificationWorkloadResult> task = work.Complete.Value;
+        if (!task.IsFaulted && !task.IsCanceled)
+        {
+            return;
         }
 
-        return await segment.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+        lock (_segmentGate)
+        {
+            if (_segments.TryGetValue(key, out SegmentWork? current) && ReferenceEquals(current, work))
+            {
+                _ = _segments.TryRemove(key, out _);
+            }
+        }
     }
 
     private async Task<AccessTelemetryQualificationWorkloadResult> RunSegmentAsync(
         string runId,
         string segmentId,
-        long emittedUtcMs)
+        long emittedUtcMs,
+        SegmentWork work)
     {
-        if (!_gate.TryValidate(out string reason))
+        try
         {
-            throw new InvalidOperationException(reason);
-        }
-
-        long startedUtcMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
-        long expected = checked((long)_recordsPerSecond * _steadyStateSeconds);
-        string correlation = Convert.ToHexStringLower(
-            SHA256.HashData(Encoding.UTF8.GetBytes($"{runId}/{segmentId}")))[..32];
-        AccessTelemetryQualificationAccountingSnapshot before = _accounting.ForCorrelation($"qualification-{correlation}");
-        int eventOrdinal = 0;
-        List<string> recordIds = new(checked(_recordsPerSecond * _steadyStateSeconds));
-        for (int second = 0; second < _steadyStateSeconds; second++)
-        {
-            if (!_gate.TryValidate(out reason))
+            if (!_gate.TryValidate(out string reason))
             {
                 throw new InvalidOperationException(reason);
             }
 
-            DateTimeOffset intervalStart = _timeProvider.GetUtcNow();
-            for (int record = 0; record < _recordsPerSecond; record++)
+            long startedUtcMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+            long expected = checked((long)_recordsPerSecond * _steadyStateSeconds);
+            string correlation = QualificationCorrelation(runId, segmentId);
+            AccessTelemetryQualificationAccountingSnapshot before = _accounting.ForCorrelation($"qualification-{correlation}");
+            int eventOrdinal = 0;
+            List<string> recordIds = new(checked(_recordsPerSecond * _steadyStateSeconds));
+            for (int second = 0; second < _steadyStateSeconds; second++)
             {
-                string qualificationIdentity = $"qualification-{correlation}-{eventOrdinal:000}";
-                recordIds.Add(AccessTelemetrySanitizer.CreateQualificationRecordId(qualificationIdentity));
-                IReadOnlyDictionary<string, object?> queryParameters =
-                    new Dictionary<string, object?>(StringComparer.Ordinal)
-                    {
-                        ["operation"] = "tenant-create",
-                        ["state"] = "completed",
-                        ["workflowInstanceIdPrefix"] = qualificationIdentity,
-                    };
-                AccessTelemetryEvent auditEvent = AccessTelemetryLog.CreateEvent(
-                    7506,
-                    "qualification-tenant",
-                    AccessTelemetryLog.OperationTenantLifecycle,
-                    caseId: null,
-                    user: "qualification-runner",
-                    queryParameters,
-                    resultCount: null,
-                    durationMs: 0,
-                    AccessTelemetryLog.OutcomeOk,
-                    errorCode: null,
-                    currentActivity: null) with
+                if (!_gate.TryValidate(out reason))
                 {
-                    Timestamp = DateTimeOffset.FromUnixTimeMilliseconds(emittedUtcMs + eventOrdinal)
-                        .UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
-                };
-                AccessTelemetryLog.LogTenantLifecycleAccess(_logger, auditEvent);
-                eventOrdinal++;
+                    throw new InvalidOperationException(reason);
+                }
+
+                DateTimeOffset intervalStart = _timeProvider.GetUtcNow();
+                for (int record = 0; record < _recordsPerSecond; record++)
+                {
+                    string qualificationIdentity = QualificationIdentity(runId, segmentId, eventOrdinal);
+                    recordIds.Add(AccessTelemetrySanitizer.CreateQualificationRecordId(qualificationIdentity));
+                    IReadOnlyDictionary<string, object?> queryParameters =
+                        new Dictionary<string, object?>(StringComparer.Ordinal)
+                        {
+                            ["operation"] = "tenant-create",
+                            ["state"] = "completed",
+                            ["workflowInstanceIdPrefix"] = qualificationIdentity,
+                        };
+                    AccessTelemetryEvent auditEvent = AccessTelemetryLog.CreateEvent(
+                        7506,
+                        "qualification-tenant",
+                        AccessTelemetryLog.OperationTenantLifecycle,
+                        caseId: null,
+                        user: "qualification-runner",
+                        queryParameters,
+                        resultCount: null,
+                        durationMs: 0,
+                        AccessTelemetryLog.OutcomeOk,
+                        errorCode: null,
+                        currentActivity: null) with
+                    {
+                        Timestamp = DateTimeOffset.FromUnixTimeMilliseconds(emittedUtcMs + eventOrdinal)
+                            .UtcDateTime.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                    };
+                    AccessTelemetryLog.LogTenantLifecycleAccess(_logger, auditEvent);
+                    eventOrdinal++;
+                }
+
+                DateTimeOffset nextInterval = intervalStart.AddSeconds(1);
+                TimeSpan remaining = nextInterval - _timeProvider.GetUtcNow();
+                if (remaining > TimeSpan.Zero)
+                {
+                    await Task.Delay(remaining, _timeProvider, CancellationToken.None).ConfigureAwait(false);
+                }
             }
 
-            DateTimeOffset nextInterval = intervalStart.AddSeconds(1);
-            TimeSpan remaining = nextInterval - _timeProvider.GetUtcNow();
-            if (remaining > TimeSpan.Zero)
+            long emitFinishedUtcMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+            string writer = Environment.GetEnvironmentVariable("HEXALITH_QUALIFICATION_WRITER") ?? "unassigned";
+            AccessTelemetryQualificationAccountingSnapshot emitDelta = _accounting.ForCorrelation($"qualification-{correlation}").Since(before);
+            AccessTelemetryQualificationWorkloadResult emitted = CreateResult(
+                runId,
+                segmentId,
+                writer,
+                startedUtcMs,
+                emitFinishedUtcMs,
+                acknowledgedUtcMs: 0,
+                emitDelta,
+                recordIds);
+            _ = work.Emit.TrySetResult(emitted);
+
+            DateTimeOffset acknowledgementDeadline = _timeProvider.GetUtcNow().AddMinutes(5);
+            AccessTelemetryQualificationAccountingSnapshot delta;
+            do
             {
-                await Task.Delay(remaining, _timeProvider, CancellationToken.None).ConfigureAwait(false);
-            }
-        }
+                delta = _accounting.ForCorrelation($"qualification-{correlation}").Since(before);
+                if (delta.Persisted + delta.Rejected + delta.Dropped >= expected)
+                {
+                    break;
+                }
 
-        DateTimeOffset acknowledgementDeadline = _timeProvider.GetUtcNow().AddMinutes(5);
-        AccessTelemetryQualificationAccountingSnapshot delta;
-        do
-        {
+                if (!_gate.TryValidate(out reason))
+                {
+                    throw new InvalidOperationException(reason);
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(100), _timeProvider, CancellationToken.None).ConfigureAwait(false);
+            }
+            while (_timeProvider.GetUtcNow() < acknowledgementDeadline);
+
             delta = _accounting.ForCorrelation($"qualification-{correlation}").Since(before);
-            if (delta.Persisted + delta.Rejected + delta.Dropped >= expected)
-            {
-                break;
-            }
+            long acknowledgedUtcMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
+            return CreateResult(
+                runId,
+                segmentId,
+                writer,
+                startedUtcMs,
+                emitFinishedUtcMs,
+                acknowledgedUtcMs,
+                delta,
+                recordIds);
+        }
+        catch (Exception exception)
+        {
+            _ = work.Emit.TrySetException(exception);
+            throw;
+        }
+    }
 
-            if (!_gate.TryValidate(out reason))
-            {
-                throw new InvalidOperationException(reason);
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(100), _timeProvider, CancellationToken.None).ConfigureAwait(false);
-            }
-        while (_timeProvider.GetUtcNow() < acknowledgementDeadline);
-
-        delta = _accounting.ForCorrelation($"qualification-{correlation}").Since(before);
-        long finishedUtcMs = _timeProvider.GetUtcNow().ToUnixTimeMilliseconds();
-        string writer = Environment.GetEnvironmentVariable("HEXALITH_QUALIFICATION_WRITER") ?? "unassigned";
-        return new AccessTelemetryQualificationWorkloadResult(
+    private static AccessTelemetryQualificationWorkloadResult CreateResult(
+        string runId,
+        string segmentId,
+        string writer,
+        long startedUtcMs,
+        long emitFinishedUtcMs,
+        long acknowledgedUtcMs,
+        AccessTelemetryQualificationAccountingSnapshot delta,
+        IReadOnlyList<string> recordIds)
+        => new(
             runId,
             segmentId,
             writer,
             startedUtcMs,
-            finishedUtcMs,
+            emitFinishedUtcMs,
+            emitFinishedUtcMs,
+            acknowledgedUtcMs,
             delta.Attempted,
             delta.Enqueued,
             delta.Persisted,
@@ -222,7 +363,23 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
             Math.Max(0, delta.Rejected - delta.Conflicted),
             recordIds,
             Math.Max(1, delta.Attempted + delta.Enqueued + delta.Persisted + delta.Rejected + delta.Dropped));
-    }
+
+    /// <summary>Derives the bounded SHA-256 correlation shared with the Python producer.</summary>
+    /// <param name="runId">The host-assigned qualification run identity.</param>
+    /// <param name="segmentId">The host-assigned one-second segment identity.</param>
+    /// <returns>The lowercase 32-character hex correlation prefix.</returns>
+    internal static string QualificationCorrelation(string runId, string segmentId)
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{runId}/{segmentId}")))[..32];
+
+    /// <summary>Derives the exact qualification identity for one record ordinal.</summary>
+    /// <param name="runId">The host-assigned qualification run identity.</param>
+    /// <param name="segmentId">The host-assigned one-second segment identity.</param>
+    /// <param name="ordinal">The zero-based record ordinal inside the segment.</param>
+    /// <returns>The 50-character qualification identity hashed into a Crockford record ID.</returns>
+    internal static string QualificationIdentity(string runId, string segmentId, int ordinal)
+        => string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"qualification-{QualificationCorrelation(runId, segmentId)}-{ordinal:000}");
 
     private static void ValidateIdentity(string value, string name)
     {
@@ -249,5 +406,25 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         {
             throw new InvalidOperationException("qualification_segment_timestamp_invalid");
         }
+    }
+
+    private sealed class SegmentWork
+    {
+        public SegmentWork(
+            long emittedUtcMs,
+            Func<SegmentWork, Task<AccessTelemetryQualificationWorkloadResult>> factory)
+        {
+            EmittedUtcMs = emittedUtcMs;
+            Complete = new Lazy<Task<AccessTelemetryQualificationWorkloadResult>>(
+                () => factory(this),
+                LazyThreadSafetyMode.ExecutionAndPublication);
+        }
+
+        public long EmittedUtcMs { get; }
+
+        public TaskCompletionSource<AccessTelemetryQualificationWorkloadResult> Emit { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Lazy<Task<AccessTelemetryQualificationWorkloadResult>> Complete { get; }
     }
 }

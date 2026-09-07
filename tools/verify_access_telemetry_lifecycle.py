@@ -3324,7 +3324,10 @@ def _validate_c4(results: Mapping[str, Any]) -> None:
                 "reminder-delay", "shutdown", "state-outage",
             )},
             **{scenario: "dropped" for scenario in (
-                "queue-byte-exhaustion", "queue-record-exhaustion", "retry-exhaustion",
+                "retry-exhaustion",
+            )},
+            **{scenario: "mixed" for scenario in (
+                "queue-byte-exhaustion", "queue-record-exhaustion",
             )},
             **{scenario: "rejected" for scenario in (
                 "bad-configuration", "bad-key", "degraded-rollback", "etag-failure",
@@ -3338,7 +3341,10 @@ def _validate_c4(results: Mapping[str, Any]) -> None:
             "rejected": _require_integer(result["lifecycle_rejected"], "lifecycle_rejected"),
             "dropped": _require_integer(result["lifecycle_dropped"], "lifecycle_dropped"),
         }
-        if observed[expected_disposition] != attempts or sum(
+        if expected_disposition == "mixed":
+            if any(count == attempts for count in observed.values()):
+                raise EvidenceValidationError(f"C4 failure {name} did not match its exact disposition")
+        elif observed[expected_disposition] != attempts or sum(
             count for disposition, count in observed.items() if disposition != expected_disposition
         ) != 0:
             raise EvidenceValidationError(f"C4 failure {name} did not match its exact disposition")
@@ -3690,8 +3696,21 @@ def _run_inline_kubectl(
 
     env = dict(environment or os.environ)
     script = env.get("HEXALITH_STORY_27_4_INLINE_KUBECTL", "")
-    if not script or not command or Path(str(command[0])).name != "kubectl":
+    unittest_flag = env.get("HEXALITH_STORY_27_4_INLINE_KUBECTL_UNITTEST", "")
+    if not script or unittest_flag != "1" or not command or Path(str(command[0])).name != "kubectl":
         return None
+    if env.get("KUBECONFIG"):
+        raise EvidenceValidationError("inline kubectl is refused when a live kubeconfig is present")
+    evidence_root = env.get("HEXALITH_STORY_27_4_EVIDENCE_ROOT", "")
+    if evidence_root:
+        evidence_path = Path(evidence_root)
+        temporary_root = Path(tempfile.gettempdir()).resolve()
+        try:
+            resolved_evidence = evidence_path.resolve()
+        except OSError as exc:
+            raise EvidenceValidationError("inline kubectl evidence root is not resolvable") from exc
+        if temporary_root != resolved_evidence and temporary_root not in resolved_evidence.parents:
+            raise EvidenceValidationError("inline kubectl is refused for a live evidence root")
     path = Path(script)
     if not path.is_file():
         raise EvidenceValidationError("inline kubectl fake is missing")

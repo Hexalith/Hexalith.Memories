@@ -1,0 +1,22 @@
+<Project>
+  <!-- Qualification C4 canaries exec curl from a config file inside the reviewed Server image.
+       SDK Alpine containers cannot install packages at image build, so musl-static curl is staged at publish. -->
+  <ItemGroup Condition="'$(EnableContainer)' == 'true'">
+    <ContainerEnvironmentVariable Include="PATH" Value="/app:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" />
+  </ItemGroup>
+
+  <Target Name="StageQualificationCurl"
+          AfterTargets="Publish"
+          BeforeTargets="PublishContainer"
+          Condition="'$(EnableContainer)' == 'true' and ('$(RuntimeIdentifier)' == 'linux-musl-x64' or '$(RuntimeIdentifier)' == 'linux-musl-arm64' or '$(ContainerRuntimeIdentifier)' == 'linux-musl-x64' or '$(ContainerRuntimeIdentifier)' == 'linux-musl-arm64' or $(ContainerRuntimeIdentifiers.Contains('linux-musl-x64')) or $(ContainerRuntimeIdentifiers.Contains('linux-musl-arm64')))">
+    <PropertyGroup>
+      <_QualificationCurlRid Condition="'$(RuntimeIdentifier)' == 'linux-musl-x64' or '$(RuntimeIdentifier)' == 'linux-musl-arm64'">$(RuntimeIdentifier)</_QualificationCurlRid>
+      <_QualificationCurlRid Condition="'$(_QualificationCurlRid)' == '' and ('$(ContainerRuntimeIdentifier)' == 'linux-musl-x64' or '$(ContainerRuntimeIdentifier)' == 'linux-musl-arm64')">$(ContainerRuntimeIdentifier)</_QualificationCurlRid>
+      <_QualificationCurlRid Condition="'$(_QualificationCurlRid)' == '' and $(ContainerRuntimeIdentifiers.Contains('linux-musl-x64'))">linux-musl-x64</_QualificationCurlRid>
+      <_QualificationCurlRid Condition="'$(_QualificationCurlRid)' == '' and $(ContainerRuntimeIdentifiers.Contains('linux-musl-arm64'))">linux-musl-arm64</_QualificationCurlRid>
+      <_QualificationCurlPython Condition="'$(_QualificationCurlPython)' == ''">python3</_QualificationCurlPython>
+    </PropertyGroup>
+    <Exec Command="$(_QualificationCurlPython) &quot;$(MSBuildThisFileDirectory)../../../tools/stage-qualification-curl.py&quot; --runtime-identifier $(_QualificationCurlRid) --output &quot;$(PublishDir)curl&quot; --cache-dir &quot;$(IntermediateOutputPath)qualification-curl&quot;"
+          StandardOutputImportance="High" />
+  </Target>
+</Project>

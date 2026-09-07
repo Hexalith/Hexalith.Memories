@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 
 /// <summary>Maps the single no-input qualification workload surface.</summary>
 internal static class AccessTelemetryQualificationEndpointExtensions
@@ -21,6 +22,12 @@ internal static class AccessTelemetryQualificationEndpointExtensions
 
     /// <summary>The verifier-owned retry-stable segment emission timestamp header.</summary>
     public const string EmittedUtcMsHeader = "X-Hexalith-Qualification-Emitted-Utc-Ms";
+
+    /// <summary>The verifier-owned emit-versus-acknowledgement phase header.</summary>
+    public const string PhaseHeader = "X-Hexalith-Qualification-Phase";
+
+    /// <summary>Returns after emit timestamps and does not wait for acknowledgement.</summary>
+    public const string EmitPhase = "emit";
 
     /// <summary>Maps the route only when the process is explicitly running as Qualification.</summary>
     /// <param name="app">The Server application.</param>
@@ -50,13 +57,24 @@ internal static class AccessTelemetryQualificationEndpointExtensions
                             throw new InvalidOperationException("qualification_segment_timestamp_invalid");
                         }
 
+                        bool waitForAcknowledgement = !string.Equals(
+                            context.Request.Headers[PhaseHeader].ToString(),
+                            EmitPhase,
+                            StringComparison.Ordinal);
                         AccessTelemetryQualificationWorkloadResult result = await runner
-                            .RunAsync(runId, segmentId, emittedUtcMs, cancellationToken)
+                            .RunAsync(runId, segmentId, emittedUtcMs, waitForAcknowledgement, cancellationToken)
                             .ConfigureAwait(false);
                         // HTTP success means the closed observation was returned. The
                         // host-side verifier, which owns the fault scenario, decides
                         // whether its exact accounting is a checkpoint pass or fail.
                         return Results.Ok(result);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return Results.Problem(
+                            statusCode: StatusCodes.Status499ClientClosedRequest,
+                            title: "Qualification workload request was cancelled.",
+                            detail: "qualification_request_cancelled");
                     }
                     catch (InvalidOperationException exception)
                     {

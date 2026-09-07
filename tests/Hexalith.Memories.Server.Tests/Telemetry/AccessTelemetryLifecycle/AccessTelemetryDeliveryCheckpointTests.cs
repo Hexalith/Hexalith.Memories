@@ -500,7 +500,7 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
 
         IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
         client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
-            .Returns(new AccessTelemetryWriteBatchResponse { Accepted = 0, Rejected = 2, Reason = AccessTelemetryReason.RecordIdConflict });
+            .Returns(new AccessTelemetryWriteBatchResponse { Accepted = 0, Rejected = 2, Reason = AccessTelemetryReason.ConfigurationInvalid });
         var worker = new AccessTelemetryDeliveryWorker(
             queue,
             client,
@@ -522,10 +522,73 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(1));
     }
 
+    [Fact]
+    public async Task Worker_RecordIdConflictDoesNotTerminalizeTheWorker()
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        foreach (int index in Enumerable.Range(0, 3))
+        {
+            _ = index;
+            queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        }
+
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        int sendCount = 0;
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                IReadOnlyList<AccessTelemetryRecord> batch = callInfo.Arg<IReadOnlyList<AccessTelemetryRecord>>();
+                sendCount++;
+                if (sendCount <= 2)
+                {
+                    return new AccessTelemetryWriteBatchResponse
+                    {
+                        Accepted = 0,
+                        Rejected = batch.Count,
+                        Reason = AccessTelemetryReason.RecordIdConflict,
+                    };
+                }
+
+                return new AccessTelemetryWriteBatchResponse
+                {
+                    Accepted = batch.Count,
+                    Rejected = 0,
+                    Reason = AccessTelemetryReason.None,
+                };
+            });
+        var status = new AccessTelemetryLifecycleStatus(enabled: true);
+        var worker = new AccessTelemetryDeliveryWorker(
+            queue,
+            client,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions { BatchRecordLimit = 2, BatchByteLimit = 8192 },
+            status);
+
+        await worker.DrainOnceAsync(CancellationToken.None);
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        await client.Received(2).SendAsync(
+            Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(),
+            Arg.Any<CancellationToken>());
+        queue.Count.ShouldBe(0);
+        status.Current.Health.ShouldBe(AccessTelemetryHealthState.Unhealthy);
+        status.Current.Reason.ShouldBe(AccessTelemetryReason.RecordIdConflict);
+
+        queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        await client.Received(3).SendAsync(
+            Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(),
+            Arg.Any<CancellationToken>());
+        queue.Count.ShouldBe(0);
+        status.Current.Health.ShouldBe(AccessTelemetryHealthState.Unhealthy);
+        status.Current.Reason.ShouldBe(AccessTelemetryReason.RecordIdConflict);
+    }
+
     [Theory]
     [InlineData(AccessTelemetryReason.SchemaMismatch)]
     [InlineData(AccessTelemetryReason.Expired)]
-    [InlineData(AccessTelemetryReason.ClockUntrusted)]
     [InlineData(AccessTelemetryReason.ConfigurationInvalid)]
     [InlineData(AccessTelemetryReason.RecordIdConflict)]
     public async Task Worker_TerminalRejectionAcknowledgesTheExactRejectedPrefix(
@@ -556,6 +619,52 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
         queue.Count.ShouldBe(0);
         accounting.Current.Rejected.ShouldBe(3);
         accounting.Current.Conflicted.ShouldBe(reason == AccessTelemetryReason.RecordIdConflict ? 3 : 0);
+    }
+
+    [Fact]
+    public async Task Worker_ClockUntrustedLeavesRecordsQueuedForRetry()
+    {
+        var queue = new BoundedAccessTelemetryQueue(8, 8192);
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new AccessTelemetryWriteBatchResponse
+                {
+                    Accepted = 0,
+                    Rejected = 1,
+                    Reason = AccessTelemetryReason.ClockUntrusted,
+                },
+                new AccessTelemetryWriteBatchResponse
+                {
+                    Accepted = 1,
+                    Rejected = 0,
+                    Reason = AccessTelemetryReason.None,
+                });
+        var accounting = new AccessTelemetryQualificationAccounting();
+        var status = new AccessTelemetryLifecycleStatus(enabled: true);
+        var worker = new AccessTelemetryDeliveryWorker(
+            queue,
+            client,
+            new FakeTimeProvider(Now),
+            new AccessTelemetryOptions(),
+            status,
+            accounting);
+
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        queue.Count.ShouldBe(1);
+        accounting.Current.Rejected.ShouldBe(0);
+        accounting.Current.Persisted.ShouldBe(0);
+        status.Current.Health.ShouldBe(AccessTelemetryHealthState.Degraded);
+        status.Current.Reason.ShouldBe(AccessTelemetryReason.ClockUntrusted);
+
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        queue.Count.ShouldBe(0);
+        accounting.Current.Persisted.ShouldBe(1);
+        accounting.Current.Rejected.ShouldBe(0);
     }
 
     [Fact]

@@ -113,8 +113,7 @@ internal sealed class AccessTelemetrySanitizer
                 : null;
             AccessTelemetryRecord candidate = new()
             {
-                AcceptedAtUtc = FormatTimestamp(
-                    qualificationIdentity is null ? _timeProvider.GetUtcNow() : emittedAt),
+                AcceptedAtUtc = FormatTimestamp(_timeProvider.GetUtcNow()),
                 CaseMarker = caseMarker,
                 DurationMs = source.DurationMs,
                 EmittedAtUtc = FormatTimestamp(emittedAt),

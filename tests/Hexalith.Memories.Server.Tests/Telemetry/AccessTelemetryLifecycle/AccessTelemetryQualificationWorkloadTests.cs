@@ -9,6 +9,11 @@ using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 
+using Dapr.Client;
+
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
+
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Telemetry;
@@ -66,6 +71,22 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             reason.ShouldBe("none");
 
             CreateGate(path, Environments.Production).TryValidate(out _).ShouldBeFalse();
+            foreach (string? emptyPath in new[] { string.Empty, " ", "\t" })
+            {
+                IHostEnvironment qualification = Substitute.For<IHostEnvironment>();
+                qualification.EnvironmentName.Returns("Qualification");
+                IConfiguration empty = new ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["AccessTelemetryQualification:GatePath"] = emptyPath,
+                    })
+                    .Build();
+                new AccessTelemetryQualificationGate(qualification, empty, new FakeTimeProvider(Now))
+                    .TryValidate(out string unavailable)
+                    .ShouldBeFalse();
+                unavailable.ShouldBe("qualification_gate_unavailable");
+            }
+
             File.WriteAllText(
                 path,
                 "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
@@ -81,7 +102,46 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
                 AccessTelemetryQualificationGate.ApprovedProfileSha256 +
                 "\",\"expiresUtcMs\":" +
+                Now.AddMinutes(15).AddSeconds(4).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
+                "}");
+            gate.TryValidate(out reason).ShouldBeTrue(reason);
+
+            File.WriteAllText(
+                path,
+                "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
+                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                "\",\"expiresUtcMs\":" +
+                Now.AddMinutes(15).AddSeconds(6).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
+                "}");
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            File.WriteAllText(
+                path,
+                "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
+                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                "\",\"expiresUtcMs\":" +
                 Now.AddMinutes(16).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
+                "}");
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            File.WriteAllText(
+                path,
+                "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
+                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                "\",\"expiresUtcMs\":" +
+                Now.AddMinutes(1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
+                ",\"extra\":true}");
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            File.WriteAllText(
+                path,
+                "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
+                new string('f', 64) +
+                "\",\"expiresUtcMs\":" +
+                Now.AddMinutes(1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
                 "}");
             gate.TryValidate(out reason).ShouldBeFalse();
             reason.ShouldBe("qualification_gate_invalid_or_expired");
@@ -218,8 +278,9 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 new AccessTelemetryOptions(),
                 new AccessTelemetryLifecycleStatus(enabled: true),
                 accounting);
-            await worker.DrainOnceAsync(CancellationToken.None);
             time.Advance(TimeSpan.FromSeconds(1));
+            await worker.DrainOnceAsync(CancellationToken.None);
+            time.Advance(TimeSpan.FromMilliseconds(100));
 
             AccessTelemetryQualificationWorkloadResult result = await pending;
             (await concurrent).ShouldBe(result);
@@ -233,6 +294,9 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             result.Rejected.ShouldBe(0);
             result.RecordIds.Count.ShouldBe(1);
             result.RecordIds[0].ShouldMatch("^[0-9A-HJKMNP-TV-Z]{26}$");
+            result.EmitFinishedUtcMs.ShouldBe(result.StartedUtcMs + 1000);
+            result.FinishedUtcMs.ShouldBe(result.EmitFinishedUtcMs);
+            result.AcknowledgedUtcMs.ShouldBeGreaterThan(result.EmitFinishedUtcMs);
             AccessTelemetryQualificationWorkloadResult retry = await runner.RunAsync(
                 "run-001",
                 "writer-1-segment-0001",
@@ -414,6 +478,276 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         }
     }
 
+    [Fact]
+    public void CrockfordQualificationIds_MatchTheSharedPythonGoldenVector()
+    {
+        AccessTelemetrySanitizer.CreateQualificationRecordId(
+            AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenIdentity)
+            .ShouldBe(AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenRecordId);
+        AccessTelemetrySanitizer.CreateQualificationRecordId(
+            AccessTelemetryQualificationWorkloadRunner.QualificationIdentity(
+                AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenRunId,
+                AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenSegmentId,
+                AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenOrdinal))
+            .ShouldBe(AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenRunSegmentRecordId);
+    }
+
+    [Fact]
+    public async Task HostedQualificationBootstrap_PublishesCrockfordIdentitiesMatchingTheRunner()
+    {
+        var time = new FakeTimeProvider(Now);
+        var accessor = new AccessTelemetrySanitizerAccessor();
+        var status = new AccessTelemetryLifecycleStatus(enabled: true);
+        IHostEnvironment environment = Substitute.For<IHostEnvironment>();
+        environment.EnvironmentName.Returns("Qualification");
+        byte[] markerKey = RandomNumberGenerator.GetBytes(32);
+        AccessTelemetryOptions options = new()
+        {
+            Enabled = true,
+            Retention = TimeSpan.FromHours(24),
+            RetentionSource = RetentionConfigurationSource.DevelopmentDefault,
+            DeploymentId = "development",
+            ComponentProfileHash = new string('a', 64),
+            ConfigurationEpoch = "01HM5Q9WXGK6T8Q4Z5Y6V7W8X9",
+            MarkerKeyReference = "access-telemetry-marker",
+            MarkerKeyGeneration = "mk-2026a",
+            AttestationVerificationKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
+            CapacityEvidenceId = "development-capacity",
+            PhysicalReclamationEvidenceId = "pending-story-27-3",
+            PhysicalReclamationReporterImageDigest = new string('d', 64),
+        };
+        DaprClient dapr = Substitute.For<DaprClient>();
+        dapr.GetSecretAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<IReadOnlyDictionary<string, string>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new Dictionary<string, string>
+            {
+                ["access-telemetry-marker"] = Convert.ToBase64String(markerKey),
+            }));
+        dapr.CreateInvokeMethodRequest(
+                Arg.Any<HttpMethod>(),
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<IReadOnlyCollection<KeyValuePair<string, string>>>(),
+                Arg.Any<AccessTelemetryRuntimeValidationRequest>())
+            .Returns(new HttpRequestMessage(HttpMethod.Post, "http://127.0.0.1/v1/access-telemetry/validate"));
+#pragma warning disable CS0618 // DaprClient 1.18 typed service invocation is obsolete without a native typed helper.
+        dapr.InvokeMethodAsync<AccessTelemetryRuntimeValidationResponse>(
+                Arg.Any<HttpRequestMessage>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new AccessTelemetryRuntimeValidationResponse(true, AccessTelemetryReason.None));
+#pragma warning restore CS0618
+        var bootstrap = new AccessTelemetryLifecycleBootstrapService(
+            dapr,
+            options,
+            accessor,
+            status,
+            time,
+            new MonotonicRecordIdGenerator(),
+            environment);
+
+        await bootstrap.StartAsync(CancellationToken.None);
+        try
+        {
+            for (int attempt = 0; attempt < 50 && accessor.Current is null; attempt++)
+            {
+                await Task.Delay(20);
+            }
+
+            AccessTelemetrySanitizer sanitizer = accessor.Current.ShouldNotBeNull();
+            AccessTelemetryEvent source = AccessTelemetryLog.CreateEvent(
+                7506,
+                "qualification-tenant",
+                AccessTelemetryLog.OperationTenantLifecycle,
+                caseId: null,
+                user: "qualification-runner",
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["operation"] = "tenant-create",
+                    ["state"] = "completed",
+                    ["workflowInstanceIdPrefix"] = AccessTelemetryQualificationWorkloadRunner.QualificationIdentity(
+                        AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenRunId,
+                        AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenSegmentId,
+                        AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenOrdinal),
+                },
+                resultCount: null,
+                durationMs: 0,
+                AccessTelemetryLog.OutcomeOk,
+                errorCode: null,
+                currentActivity: null) with
+            {
+                Timestamp = Now.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+            };
+            sanitizer.TrySanitize(
+                LogLevel.Information,
+                new EventId(7506),
+                source,
+                out AccessTelemetryRecord? record,
+                out AccessTelemetryReason reason).ShouldBeTrue();
+            reason.ShouldBe(AccessTelemetryReason.None);
+            record.ShouldNotBeNull();
+            record.RecordId.ShouldBe(AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenRunSegmentRecordId);
+        }
+        finally
+        {
+            await bootstrap.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public void Sanitizer_UsesStorePersistTimeForQualificationAcceptedAtUtc()
+    {
+        var time = new FakeTimeProvider(Now);
+        var sanitizer = new AccessTelemetrySanitizer(
+            RandomNumberGenerator.GetBytes(32),
+            "mk-qualification",
+            time,
+            new MonotonicRecordIdGenerator(),
+            TimeSpan.FromHours(24),
+            qualificationMode: true);
+        AccessTelemetryEvent source = AccessTelemetryLog.CreateEvent(
+            7506,
+            "qualification-tenant",
+            AccessTelemetryLog.OperationTenantLifecycle,
+            caseId: null,
+            user: "qualification-runner",
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["operation"] = "tenant-create",
+                ["state"] = "completed",
+                ["workflowInstanceIdPrefix"] = AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenIdentity,
+            },
+            resultCount: null,
+            durationMs: 0,
+            AccessTelemetryLog.OutcomeOk,
+            errorCode: null,
+            currentActivity: null) with
+        {
+            Timestamp = Now.AddSeconds(-12).UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+        };
+
+        sanitizer.TrySanitize(
+            LogLevel.Information,
+            new EventId(7506),
+            source,
+            out AccessTelemetryRecord? record,
+            out AccessTelemetryReason reason).ShouldBeTrue();
+        reason.ShouldBe(AccessTelemetryReason.None);
+        record.ShouldNotBeNull();
+        record.AcceptedAtUtc.ShouldBe("2026-09-05T12:00:00.000Z");
+        record.EmittedAtUtc.ShouldBe("2026-09-05T11:59:48.000Z");
+        record.RecordId.ShouldBe(AccessTelemetryQualificationWorkloadRunner.CrockfordGoldenRecordId);
+    }
+
+    [Fact]
+    public async Task Runner_EvictsAFaultedSegmentLazySoTheIdentityCanRetry()
+    {
+        var time = new FakeTimeProvider(Now);
+        var accounting = new AccessTelemetryQualificationAccounting();
+        var logger = new ThrowOnceLogger();
+        string gatePath = WriteGate(Now.AddMinutes(5));
+        try
+        {
+            var runner = new AccessTelemetryQualificationWorkloadRunner(
+                logger,
+                accounting,
+                CreateGate(gatePath, "Qualification"),
+                time,
+                recordsPerSecond: 1,
+                steadyStateSeconds: 1);
+            InvalidOperationException first = await Should.ThrowAsync<InvalidOperationException>(() => runner.RunAsync(
+                "run-retry",
+                "writer-1-segment-0001",
+                Now.ToUnixTimeMilliseconds(),
+                CancellationToken.None));
+            first.Message.ShouldBe("first_fault");
+
+            Task<AccessTelemetryQualificationWorkloadResult> retry = runner.RunAsync(
+                "run-retry",
+                "writer-1-segment-0001",
+                Now.ToUnixTimeMilliseconds(),
+                waitForAcknowledgement: false,
+                CancellationToken.None);
+            for (int attempt = 0; attempt < 50 && !retry.IsCompleted; attempt++)
+            {
+                time.Advance(TimeSpan.FromSeconds(1));
+                await Task.Delay(10);
+            }
+
+            AccessTelemetryQualificationWorkloadResult result = await retry.WaitAsync(TimeSpan.FromSeconds(5));
+            result.EmitFinishedUtcMs.ShouldBeGreaterThan(0);
+            result.FinishedUtcMs.ShouldBe(result.EmitFinishedUtcMs);
+        }
+        finally
+        {
+            File.Delete(gatePath);
+        }
+    }
+
+    [Fact]
+    public async Task Endpoint_MapsCancelledWaitAsyncToABoundedNon500()
+    {
+        const string AppToken = "qualification-cancel-token";
+        string? originalToken = Environment.GetEnvironmentVariable(
+            DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable);
+        string gatePath = WriteGate(Now.AddMinutes(5));
+        var time = new FakeTimeProvider(Now);
+        var accounting = new AccessTelemetryQualificationAccounting();
+        try
+        {
+            Environment.SetEnvironmentVariable(
+                DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable,
+                AppToken);
+            WebApplicationBuilder builder = WebApplication.CreateBuilder(
+                new WebApplicationOptions { EnvironmentName = "Qualification" });
+            builder.WebHost.UseTestServer();
+            builder.Services.AddSingleton(new AccessTelemetryQualificationWorkloadRunner(
+                Substitute.For<ILogger<AccessTelemetryCategory>>(),
+                accounting,
+                CreateGate(gatePath, "Qualification"),
+                time,
+                recordsPerSecond: 1,
+                steadyStateSeconds: 1));
+            WebApplication app = builder.Build();
+            app.UseMiddleware<DaprApplicationTokenMiddleware>();
+            app.MapAccessTelemetryQualificationEndpoint();
+            await app.StartAsync();
+            try
+            {
+                using var cancelled = new CancellationTokenSource();
+                cancelled.Cancel();
+                HttpContext context = await app.GetTestServer().SendAsync(http =>
+                {
+                    http.Request.Method = HttpMethods.Post;
+                    http.Request.Path = AccessTelemetryQualificationEndpointExtensions.Route;
+                    http.Request.Headers[DaprApplicationTokenMiddleware.DaprApiTokenHeader] = AppToken;
+                    http.Request.Headers[AccessTelemetryQualificationEndpointExtensions.RunHeader] = "run-001";
+                    http.Request.Headers[AccessTelemetryQualificationEndpointExtensions.SegmentHeader] =
+                        "writer-1-segment-0001";
+                    http.Request.Headers[AccessTelemetryQualificationEndpointExtensions.EmittedUtcMsHeader] =
+                        Now.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture);
+                    http.Features.Set<IHttpRequestLifetimeFeature>(new CancelledRequestLifetime(cancelled.Token));
+                });
+                context.Response.StatusCode.ShouldBe(StatusCodes.Status499ClientClosedRequest);
+                time.Advance(TimeSpan.FromMinutes(6));
+            }
+            finally
+            {
+                await app.StopAsync();
+                await app.DisposeAsync();
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable,
+                originalToken);
+            File.Delete(gatePath);
+        }
+    }
+
     private static AccessTelemetryQualificationGate CreateGate(string path, string environmentName)
     {
         IHostEnvironment environment = Substitute.For<IHostEnvironment>();
@@ -462,5 +796,38 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             expires.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
             "}");
         return path;
+    }
+
+    private sealed class ThrowOnceLogger : ILogger<AccessTelemetryCategory>
+    {
+        private int _calls;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull
+            => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                throw new InvalidOperationException("first_fault");
+            }
+        }
+    }
+
+    private sealed class CancelledRequestLifetime(CancellationToken token) : IHttpRequestLifetimeFeature
+    {
+        public CancellationToken RequestAborted { get; set; } = token;
+
+        public void Abort()
+        {
+        }
     }
 }
