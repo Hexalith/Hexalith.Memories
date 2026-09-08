@@ -30,7 +30,7 @@ workflowType: 'prd'
 
 **Author:** Jerome
 **Date:** 2026-03-22
-**Updated:** 2026-09-08 — second validation Update: thesis-gate protocol with concrete numbers and the N=8 run demoted to diagnostic; dated release decision record with real no-go outcomes; FR46–FR52 confirmed MVP as shipped graph mechanics; Phase 1 CLI surface table with delivery status; FR/NFR delivery status registers; NFR8/NFR16/NFR21 restated; NFR36 added; one ingestion-state vocabulary. Prior (2026-09-05): dual ship-contract split, August 2026 change control, EventStore contract split. Mechanism/topology detail lives in `addendum.md`. Active work breakdown lives in `epics.md` and `sprint-status.yaml`.
+**Updated:** 2026-09-08 — second validation Update: thesis-gate protocol with concrete numbers and the N=8 run demoted to diagnostic; dated release decision record with real no-go outcomes; FR46–FR52 confirmed MVP as shipped graph mechanics; Phase 1 CLI surface table with delivery status; FR/NFR delivery status registers; NFR8/NFR16/NFR21 restated; NFR36 added; one ingestion-state vocabulary; licence conflict (Apache 2.0 decision vs MIT repository) opened as phase-blocking Open Question 4. Prior (2026-09-05): dual ship-contract split, August 2026 change control, EventStore contract split. Mechanism/topology detail lives in `addendum.md`. Active work breakdown lives in `epics.md` and `sprint-status.yaml`.
 
 ## 0. Document Purpose
 
