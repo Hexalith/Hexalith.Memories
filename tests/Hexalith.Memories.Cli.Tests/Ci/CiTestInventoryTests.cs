@@ -286,11 +286,11 @@ public sealed partial class CiTestInventoryTests
 
         Dictionary<string, string> expectedDirectDependencies = new(StringComparer.Ordinal)
         {
-            ["@commitlint/cli"] = "^21.1.0",
-            ["@commitlint/config-conventional"] = "^21.1.0",
+            ["@commitlint/cli"] = "^21.2.2",
+            ["@commitlint/config-conventional"] = "^21.2.2",
             ["@semantic-release/commit-analyzer"] = "^13.0.1",
             ["@semantic-release/exec"] = "^7.1.0",
-            ["@semantic-release/github"] = "^12.0.8",
+            ["@semantic-release/github"] = "^12.0.9",
             ["@semantic-release/release-notes-generator"] = "^14.1.1",
             ["cosmiconfig"] = "9.0.2",
             ["semantic-release"] = "25.0.8",
@@ -328,11 +328,11 @@ public sealed partial class CiTestInventoryTests
 
         Dictionary<string, string> expectedLockedVersions = new(StringComparer.Ordinal)
         {
-            ["node_modules/@commitlint/cli"] = "21.1.0",
-            ["node_modules/@commitlint/config-conventional"] = "21.1.0",
+            ["node_modules/@commitlint/cli"] = "21.2.2",
+            ["node_modules/@commitlint/config-conventional"] = "21.2.2",
             ["node_modules/@semantic-release/commit-analyzer"] = "13.0.1",
             ["node_modules/@semantic-release/exec"] = "7.1.0",
-            ["node_modules/@semantic-release/github"] = "12.0.8",
+            ["node_modules/@semantic-release/github"] = "12.0.9",
             ["node_modules/@semantic-release/release-notes-generator"] = "14.1.1",
             ["node_modules/cosmiconfig"] = "9.0.2",
             ["node_modules/fast-uri"] = "3.1.7",
