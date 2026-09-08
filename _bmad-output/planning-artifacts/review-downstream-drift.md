@@ -2,167 +2,223 @@
 
 ## Verdict
 
-The PRD is no longer a trustworthy source-extract for UX, architecture, or stories. FR1–FR74 and NFR1–NFR31 identifiers still match across the three planning spines, and several 2026-05/06 change-control patches did land (Google-only MVP embeddings, sidecar event intake, OpenBao NFR9, RRF in NFR24, FR71 Phase 2 tag). After that, change control moved the product — EventStore as domain source of truth, JWT ingress, DAPR Workflow ingestion, C# 14, physical-isolation ACL target, Dapr Agents, 31 epics of brownfield work — while two approved 2026-08-03 Major SCPs that explicitly required PRD amendments were never applied. Extracting from the PRD today reconstitutes a March 2026 greenfield thesis with a few later footnotes, not the contract implementers actually follow.
+The 2026-09-05 PRD Update did apply the August Major SCP product amendments. Today's `prd.md` is a trustworthy **source-extract for product outcomes** — dual ship contracts, FR1–FR74 with a phase register, NFR1–NFR35, the three EventStore meanings, identity/provenance, DAPR Workflow ingestion, RRF, isolation *outcome*, and two onboarding clocks. It is not a wholesale ingest of architecture or epics, and it must not be used that way. The live drift risk has reversed: architecture Requirements Overview / Coverage / PRD Deviations, and the epics Requirements Inventory, still describe the pre-Update PRD. Extracting UX, architecture, or stories from those stale copies reconstitutes the 2026-09-05 failure mode even though the PRD itself no longer does.
 
 ## Method
 
-Read in full: `prd.md` (2026-03-22 frontmatter; last readiness snapshot dated the file 2026-07-19), architecture Requirements Overview through PRD Deviations, Gate-Blocking, Decision Registry, Requirements Coverage, and sampled later D23–D31 / OpenBao / EventStore sections; epics Overview, Requirements Inventory, FR Coverage Map, Selected Implementation Scope, Implementation Readiness Boundary, and epic/story headers through Epic 31 (no story-by-story inventory). Skimmed UX `Platform Strategy` / effortless-search claims only where they contradict a PRD journey or interface sentence. Listed all 97 `sprint-change-proposal-*.md` filenames and titles/summaries; deep-read only scope-moving proposals. Optionally read `implementation-readiness-report-2026-08-04.md` PRD Analysis (it still names the same PRD contradictions).
+Read in full: `prd.md` (frontmatter `updated: 2026-09-05`) and `addendum.md` (same date). Source-extracted — not ingested wholesale — against architecture Requirements Overview, Technical Constraints, Cross-Cutting Concerns (isolation, fusion, consistency), Interface Philosophy, Evidence Packet, Security Architecture, Deployment Topology, PRD Deviations, Gate-Blocking, Decision Registry (D1–D10, D29), Requirements Coverage; and against epics Overview, Requirements Inventory, Additional Requirements, FR Coverage Map, Implementation Readiness Boundary, and epic headers 0–10, 20, 21, 27, 28. Deep-read both 2026-08-03 Major SCPs (PRD-n lists), `sprint-change-proposal-2026-09-06-story-27-4-live-producer-contract.md`, and skimmed `implementation-readiness-report-2026-08-04.md` PRD Analysis plus the 2026-09-05 `review-downstream-drift.md` (the document this file replaces).
 
-**SCPs deep-read:**
+**SCPs dated after 2026-08-03 (memories `_bmad-output/planning-artifacts/` only):**
 
-- `sprint-change-proposal-2026-03-28.md` — Kreuzberg replaces Tika
-- `sprint-change-proposal-2026-04-26.md` — Post-MVP transition / roadmap exhaustion
-- `sprint-change-proposal-2026-04-29.md` — Ollama as embedding default (later superseded for MVP wording)
-- `sprint-change-proposal-2026-05-18.md` — MVP embedding provider scope (Google-only; **PRD was patched**)
-- `sprint-change-proposal-2026-06-24.md` — Dapr sidecar event intake (**PRD Phase 1.5 row was patched**)
-- `sprint-change-proposal-2026-07-04.md` — Architecture audit remediation (Epics 20–26; auth/consistency)
-- `sprint-change-proposal-2026-07-16-epic-26-benchmark-closure.md` — fusion calibration; PRD 80% line frozen
-- `sprint-change-proposal-2026-07-16-tenant-provisioning-workflow-ownership.md` — provisioning owner (PRD already matched)
-- `sprint-change-proposal-2026-07-17-eventstore-runtime-adoption.md` — Epic 28 identity
-- `sprint-change-proposal-2026-07-17-infrastructure-dependency-abstraction.md` — D30 direct Redis vs Dapr state
-- `sprint-change-proposal-2026-08-01-eventstore-source-and-3-89-package-identities.md` — EventStore source vs 3.89.0 packages
-- `sprint-change-proposal-2026-08-03-implementation-readiness-remediation-batch.md` — **Major; PRD-1…PRD-7 required**
-- `sprint-change-proposal-2026-08-03-implementation-readiness-rerun.md` — **Major; PRD-1…PRD-6 required**
-- `sprint-change-proposal-2026-08-04-story-24-3-verifier-residual-backlog-decisions.md` — isolation verifier (no PRD edit proposed)
-- `sprint-change-proposal-2026-08-31-story-28-1-eventstore-identity-toolchain-mismatch.md` — SDK 10.0.400 vs sealed 10.0.302 hashes
+| File | Product-level PRD rewrite? | Action |
+|---|---|---|
+| `sprint-change-proposal-2026-08-03-implementation-readiness-remediation-batch.md` | Yes — PRD-1…PRD-7 | Deep-read |
+| `sprint-change-proposal-2026-08-03-implementation-readiness-rerun.md` | Yes — PRD-1…PRD-6 | Deep-read |
+| `sprint-change-proposal-2026-08-03.md` | No — Epic 27 C1 ownership | Title/scope only |
+| `sprint-change-proposal-2026-08-04-story-24-3-verifier-residual-backlog-decisions.md` | No — verifier backlog; FR40/NFR8 unchanged | Title/scope only |
+| `sprint-change-proposal-2026-08-14-story-own-commit-file-list-scoping.md` | No — story-gate process | Skipped |
+| `sprint-change-proposal-2026-08-31-story-28-1-eventstore-identity-toolchain-mismatch.md` | No — Epic 28 package-hash AC; “`PRD.md` … need no changes” | Skimmed |
+| `sprint-change-proposal-2026-09-06-story-27-4-live-producer-contract.md` | No — “PRD: no change” | Deep-read (only post-Update SCP) |
 
-Skipped as process/CI/story-split unless they rewrote a PRD-level requirement (story-gate hooks, slice guards, commit file-list, most Epic 27 checkpoint splits, CI alignment, historical-slice guards).
+Skipped as process/CI/story-split unless they rewrote a product requirement (story-gate hooks, commit file-list, most Epic 27 checkpoint splits). EventStore-repo SCPs under `references/` are out of scope.
 
-**Already patched in the PRD (do not re-litigate):** Google-only MVP embeddings (2026-05-18), Memories Server sidecar as Hexalith-module CloudEvent subscriber (2026-06-24), OpenBao-backed DAPR Secrets (NFR9), weighted RRF in NFR24 / domain score table, FR71 Phase 2 unless pulled, Evidence Packet as cross-surface envelope, `TenantProvisioningWorkflow` sequencing.
+**Already true in today's PRD (do not re-litigate as missing amendments):** brownfield classification; dual Phase 1 / 1.5 go/no-go; Journey 9 as thesis path and Journey 1 as Phase 1.5; RRF not magnitude-blend; EventStore domain-SoT vs product integration vs runtime pin; C# 14; NFR11 MVP; identity `sub` / `system:*`; workflow ingestion + projection state machine; package inventory via `tools/release-packages.json`; NFR32–NFR35 with the NFR33 collision recorded in Assumptions Index.
 
-**Reverse drift (architecture fossil, not a PRD defect):** architecture `PRD Deviations` still quotes “All major [embedding] providers supported from MVP,” which the 2026-05-18 PRD patch removed. Syncing the PRD *to* that deviation table would reintroduce a lie.
+## August 2026 SCP PRD amendments
+
+Reconciliation note: the two same-day Major SCPs used overlapping `PRD-n` numbers for different edits, and both used **NFR33** for different requirements. The Update split them (Assumptions Index): NFR33 = Evidence Packet freshness (rerun); NFR35 = future-web interaction performance (remediation-batch). SDK `10.0.302` was **not** copied into the PRD; addendum + `global.json` own the pin (intentional — later 2026-08-31 toolchain is `10.0.400`).
+
+### Remediation-batch (`…-remediation-batch.md` §5.1)
+
+| Item | Required edit | Status |
+|---|---|---|
+| **PRD-1** | Canonical FR phase register (MVP / 1.5 / Phase 2 FR71; FR53 per-phase; `NotImplementedCommand` is not coverage) | **Landed in PRD** — Functional Requirements preamble + FR53/FR71 tags + CLI matrix |
+| **PRD-2** | `.NET 10 / C# 14`; record SDK `10.0.302` | **Landed in PRD** (language). **Landed in addendum** (SDK pin / `global.json`). Not missing as a product FR |
+| **PRD-3** | Tenant claims authorize; case membership is metadata; provenance binds to `sub`; allowlisted `system:*` only through an authenticated service boundary | **Landed in PRD** — AI Reliability “Memory unit provenance” + Service Communication identity row |
+| **PRD-4** | EventStore ack = durable commit; search/vector/graph = rebuildable projections; observable state machine; no distributed transaction | **Landed in PRD** — Async Ingestion Pipeline + FR6 + FR13 |
+| **PRD-5** | NFR11 is current MVP invariant; anonymous only named health/DAPR routes | **Landed in PRD** — NFR11 phase **MVP** |
+| **PRD-6** | NFR32 WCAG/web a11y; NFR33 web interaction performance | **Landed in PRD** — NFR32 as specified; web performance **as NFR35** (id collision) |
+| **PRD-7** | NFR34 access-telemetry lifecycle; not a compliance audit trail; Epic 27 C1 governs Production | **Landed in PRD** — NFR34 |
+
+### Rerun (`…-rerun.md` §4.1)
+
+| Item | Required edit | Status |
+|---|---|---|
+| **PRD-1** | C# 14; SDK `10.0.302` + `rollForward=latestFeature` | **Landed in PRD** (C# 14). **Landed in addendum** (SDK / `global.json` authority) |
+| **PRD-2** | Delete the “defer cases and tenant isolation” minimum-scope escape | **Landed in PRD** — Resource Risks + Non-Goals last bullet |
+| **PRD-3** | `tools/release-packages.json` sole published inventory; enumerate non-packable hosts; no unexplained “+3” | **Landed in PRD** — Package Distribution tables (Server, AppHost) |
+| **PRD-4** | DAPR state API vs Aspire-injected Redis/FalkorDB clients; no “sidecar as generic proxy” | **Landed in PRD** — Service Communication split rows |
+| **PRD-5** | NFR11 MVP; unauthenticated product ingress is not a P1.5 allowance | **Landed in PRD** — same NFR11 text as remediation PRD-5 |
+| **PRD-6** | Bind FR1–FR74 to the phase register; NFR32 web a11y; NFR33 freshness semantics | **Landed in PRD** — phase register + NFR32 + NFR33 freshness |
+
+Nothing from either required PRD-n list is still missing as a product-outcome sentence. The 2026-08-04 readiness report’s PRD Analysis is **historical**; it describes the 2026-07-19 PRD, not today’s file.
+
+## Post-2026-09-05 drift
+
+One memories SCP exists after the Update:
+
+- **`sprint-change-proposal-2026-09-06-story-27-4-live-producer-contract.md`** (Administrator-approved). Amends Story 27.4’s Trusted Evidence Contract and two sequencing sentences in `epics.md` / `architecture.md` so repository producers may proceed as `awaiting-operator` while C1 successor files are unproven. Explicitly: no Production enablement, A41 stays open, **“PRD: no change.”**
+
+That is **not** a product-level requirement the PRD failed to absorb. NFR34 already defers Production qualification to Epic 27 C1 evidence and store choice to architecture. New 27.4 sentences (live producers, 15-minute runbook cap, `awaiting-operator`) are mechanism/sequencing. Promoting them into a new PRD FR would be the wrong extract.
+
+No other `sprint-change-proposal-2026-09-*.md` exists under memories planning artifacts. Architecture/epic body text that advanced after 2026-09-05 on this slice is the 27.4 sequencing correction only.
+
+## Remaining forks
+
+These are meaning/phase forks that survive the Update. Mechanism detail the addendum assigned to architecture is **not** listed as a PRD defect.
+
+### EventStore meanings
+
+| Spine | Domain SoT (Case / MemoryUnit / Tenant) | Product integration (FR59–FR62) | Runtime pin |
+|---|---|---|---|
+| **PRD + addendum** | Current MVP consistency contract; Glossary terms; FR13 | Phase 1.5; Non-Goal for thesis MVP; Epic 9 | Architecture / Epic 28; not a product FR |
+| **Architecture body** | Driver #3, Concern #9, D3, Gate 1 — aligned | Phase Compatibility: “MVP … no EventStore integration” = product integration, not domain SoT | Additional Decisions / Epic 28 |
+| **Architecture fossils** | PRD Deviations still quotes the deleted “Atomic write across all three backends” as if it were current PRD | — | — |
+| **Epics** | Epic 21 / Story 21.1 ratifies domain SoT | Epic 9 title still “Zero-Code Memory” and “validating the ‘zero-code’ promise” — PRD forbids that slogan | Epic 28; 2026-08-31 SDK hash exception |
+| **Epics Additional Requirements** | Still “Eventual consistency + DAPR Workflow saga/compensation (D3)” — **wrong D3** vs architecture’s EventStore-SoT D3 | — | — |
+
+Extract from the PRD: three contracts stay split. Extract from Epic 9’s title or epics D3: they collapse again.
+
+### Isolation boundary
+
+| Spine | Outcome | Mechanism |
+|---|---|---|
+| **PRD** | NFR8, FR38, FR40 — zero leaks; tenant-scoped principals **and** indexes; mechanism architecture-owned | Does not name ACL users |
+| **Addendum / architecture** | Same outcomes | Per-tenant Redis ACL users + tenant-scoped resolver; prefixes/hash tags/logical DBs are placement only (Story 24.3) |
+| **Epics inventory + Epic 0/5 headers** | FR38 still “physically separate indexes”; Epic 5 “physically separate indexes across all three backends” | Does not restate ACL-as-boundary |
+
+Outcome-aligned. An extract of **epics FR38** still sells index names as the security boundary.
+
+### Identity
+
+| Spine | Contract |
+|---|---|
+| **PRD** | Tenant claims authorize; case membership is metadata; provenance = authenticated `sub` / allowlisted `system:*`; NFR11 **MVP** |
+| **Architecture Security / D8** | JWT `/api/**`, `TenantAuthorizationMiddleware`, Story 20.2 claims — aligned with PRD |
+| **Architecture Coverage + Gate-Blocking** | NFR11 still “Phase 1.5 fast-follow”; `TenantAuthorizationMiddleware` still “Not gate-blocking \| Phase 1.5” — **stale vs D8 and vs PRD** |
+| **Epics inventory** | NFR11 still `[P1.5]` |
+| **Epic 20** | Implements NFR11 as post-MVP *audit remediation* (delivery track), while reinforcing NFR11 |
+
+Product text in the PRD is current. Scheduling labels in architecture coverage and epics inventory are not.
+
+### Ingestion owner
+
+| Spine | Orchestrator | NFR17 proof | State names |
+|---|---|---|---|
+| **PRD** | `IngestionWorkflow`; rate-limiter actor = budget only | Durable Task / workflow history | `pending`, `projecting`, `indexed`, `partially failed/retrying`, `failed`/`dead-lettered`, `repaired` |
+| **Architecture drivers / D23** | Workflow — aligned | Workflow — aligned | Field inventory still `queued`, `extracting`, `embedding`, `indexing`, `indexed`, `failed` |
+| **Architecture fossils** | Scale & Complexity “per-tenant pipeline actors”; Silent Failure “Pipeline Actor”; Requirements Overview NFR17 “DAPR actors” | Overview still “DAPR actors” | — |
+| **Epics** | Additional Requirements D23/D24 correct | Inventory NFR17 still “DAPR actor state” | FR10 still “queued, embedding, indexed, failed” |
+| **UX-DR22** | — | — | Union: pending, queued, extracting, embedding, indexing, indexed, failed, retried, re-ingested |
+
+Owner decision is in the PRD. Vocabulary is still three-way forked.
+
+### Fusion
+
+| Spine | Algorithm | Numbers |
+|---|---|---|
+| **PRD** | Weighted RRF (NFR24); magnitude-blend rejected | Explicitly architecture-owned |
+| **Architecture** | Story 22.4 RRF; Epic 26 `k=10`, weights `0.30/0.35/0.35` | Architecture-owned — correct |
+| **Epics** | NFR24 matches PRD | Does not copy `k`/weights into inventory |
+
+No product-level fusion fork remains. Do not copy calibration numbers into the PRD.
+
+### Onboarding clocks
+
+| Spine | Phase 1 clock | Phase 1.5 clock | Boot command |
+|---|---|---|---|
+| **PRD** | NFR31: README/AppHost → first CLI search on file/URL, &lt;30 min | Separate launch gate: `dotnet add package` + DAPR subscription → first event search | `dotnet run --project Hexalith.Memories.AppHost` |
+| **Addendum** | Same | Same | AppHost; not a second product |
+| **Journey 1 (Phase 1.5)** | — | Narrative still `docker compose up` for Redis + FalkorDB | Compose, not AppHost |
+| **Architecture Gate-Blocking** | Gate 3 “Docker Compose single-command boot” | — | Compose |
+| **Architecture topology** | — | — | AppHost boots all containers including Python `ai-agent` |
+| **Epics NFR31** | Single “working quickstart … &lt;30 minutes” — **no second clock** | Missing | Epic 7 README path |
+| **Epic 7 header** | Thesis CLI + README | `status` / `explore` / `handlers` / `quickstart` as Phase 1.5 polish | — |
+
+Two clocks are in the PRD. Epics NFR31 and Journey 1 / Gate 3 boot path have not been re-extracted.
+
+### Other phase/inventory forks
+
+- **FR53 / `status`:** PRD thesis CLI includes `status` (FR10 is MVP). Architecture Interface Philosophy and Epic 7 still park `status` in Phase 1.5 polish.
+- **Architecture Coverage** lists FR1–FR53 as “Active MVP” (entire FR53) and **31 NFRs**, omitting NFR32–NFR35; NFR11 still P1.5.
+- **Epics inventory** still uses pre-Update FR6/FR13/FR38/FR53/FR71 wording (FR71 phase clause exists in FR Coverage Map but not in the inventory bullet).
+- **`--explain` vs UX-DR7:** PRD Open Question 3 names the fork; it does not pick. Architecture still “does not settle which fields are mandatory.” Unresolved on purpose — not silent anymore.
 
 ## Findings
 
-### critical Approved August 2026 PRD amendments never landed
+### high Architecture overview still extracts the pre-2026-09-05 PRD
 
-- **PRD:** `prd.md` Language matrix still `.NET 10 / C# 13`; NFR11 still tagged **P1.5**; NFR inventory still ends at NFR31; Risk Mitigation still allows deferring cases and tenant isolation; indexing stage still says “Atomic write across all three backends”; Service Communication still says “Per-user identity: Not in MVP.”
-- **Downstream:** `sprint-change-proposal-2026-08-03-implementation-readiness-remediation-batch.md` §5.1 (approved Major) required PRD-1 phase register, PRD-2 C# 14, PRD-3 identity/provenance, PRD-4 EventStore commit + projection state machine, PRD-5 NFR11 as current MVP invariant, PRD-6 NFR32/NFR33 web gates, PRD-7 NFR34 telemetry lifecycle. The same-day rerun SCP (`…-rerun.md` §4.1, Administrator-approved 2026-08-04) independently required C# 14, deletion of the minimum-scope escape, unambiguous package/host counts, DAPR-state vs direct-backend split, NFR11 MVP, and a canonical FR phase register. `implementation-readiness-report-2026-08-04.md` §PRD Completeness Assessment still lists those exact defects and records the PRD as last modified 2026-07-19.
-- **Note:** This is not a disagreement among later artifacts about what the PRD *should* say. Change control already chose the PRD edits and they were not written. Until they land, every later extract (UX, architecture, stories) is guessing which of two approved, slightly different August patch sets is canonical (remediation-batch NFR33 is web performance; rerun NFR33 is evidence freshness).
-- **Fix:** Apply a single reconciled PRD amendment covering both August patch sets (C# 14 with `global.json` as pin authority; kill the 13–18-story isolation escape; phase register; EventStore-commit state machine; NFR11 current; identity/provenance; NFR32–NFR34 with one NFR33 definition). Do not treat either SCP as already done.
+- **Location:** `architecture.md` — Requirements Overview (NFR count 31; NFR17 “DAPR actors”; “per-tenant pipeline actors”); Technical Constraints “.NET 10 / C# 13”; Requirements Coverage (NFR11 Phase 1.5; 31/31 NFRs; FR53 wholly MVP); PRD Deviations rows that still quote “Atomic write across all three backends” and “All major [embedding] providers supported from MVP”; Gate-Blocking `TenantAuthorizationMiddleware` Phase 1.5 vs D8.
+- **Trigger:** Those sections were not re-extracted after the PRD Update. Body sections (Concern #9, Security Architecture, Current Verified Versions C# 14, D3/D8/D29) already match the new PRD.
+- **Consequence:** An architecture or story extract that starts at Requirements Overview / Coverage reconstitutes C# 13, 31 NFRs, P1.5 auth, actor-pipeline, and deleted PRD sentences — the exact 2026-09-05 failure mode.
+- **Fix:** Re-extract those overview tables from today's PRD + addendum. Rewrite PRD Deviations to cite *historical* PRD text, or delete rows whose PRD source no longer exists. Move NFR11 and NFR32–NFR35 in Coverage. Do not edit the PRD to match the fossils.
 
-### critical EventStore is domain truth in architecture, a Phase 1.5 integration in the PRD
+### high Epics Requirements Inventory is a stale second PRD
 
-- **PRD:** Scoping Phase 1.5: “EventStore / Hexalith Module Event Integration (DAPR pub/sub through the Memories Server sidecar…)”. Pipeline indexing: “Atomic write across all three backends.” NFR17 verification: “DAPR actor state persistence verified.” FR59–FR62 remain the only EventStore FRs and are untagged in the FR list (phase lives only in the Phase 1.5 table).
-- **Downstream:** Architecture Requirements Overview driver #3 and Cross-Cutting Concern #9: “Story 21.1 ratifies the EventStore aggregate model as the consistency target for `Case`, `MemoryUnit`, and `Tenant`: domain state is sourced from Hexalith.EventStore events, while RediSearch… Redis Vector… FalkorDB… are rebuildable projections.” Gate-Blocking: “EventStore source of truth + projection compensation | Gate 1 | MVP.” `PRD Deviations` explicitly overrides the atomic-write sentence. Epic 21 Story 21.1 exists to ratify that model. Epic 28 then adopts a pinned EventStore *runtime identity* (source SHA / 3.89.0 packages) — a third EventStore meaning the PRD never names.
-- **Note:** Three different “EventStore” contracts are now in play: (1) zero-code CloudEvent ingestion (PRD Phase 1.5 / Epic 9 / FR59–62), (2) aggregate source of truth for Memories domain writes (architecture D3 / Epic 21 / Gate 1), (3) consumer pin of Hexalith.EventStore bits (Epic 28). The PRD only knows (1), and still describes (2) as an atomic Redis triple-write owned by a pipeline actor.
-- **Fix:** PRD must split the three contracts. Keep FR59–62 as Phase 1.5 product integration. Add a consistency/provenance requirement (or rewrite FR13/NFR17) that EventStore acknowledgement is the durable commit and search/graph writes are rebuildable projections. SDK/package identity stays architecture/Epic 28; PRD should defer version pins.
+- **Location:** `epics.md` — Requirements Inventory FR6, FR10, FR13, FR38, FR53, FR71; NFR6 (degradation clause dropped); NFR11 `[P1.5]`; NFR17 “DAPR actor state”; NFR31 single clock; NFR32–NFR35 absent; Additional Requirements D3 “Eventual consistency”.
+- **Trigger:** Inventory was a lossless copy of the March/July PRD and was not updated when `prd.md` absorbed August change control.
+- **Consequence:** Sprint/story authors who treat the inventory as the FR/NFR source-extract will schedule auth as P1.5, rebuild an actor pipeline, treat indexes as the isolation boundary, and miss NFR32–NFR35 and the dual onboarding clocks.
+- **Fix:** Replace inventory bullets with pointers to the PRD, or refresh them to current PRD wording (including phase tags and NFR32–NFR35). Correct D3 to architecture’s EventStore-SoT text. Keep FR Coverage Map’s FR71 Phase 2 / Epic 26 backup split.
 
-### high Greenfield living contract vs months of brownfield delivery
+### medium CLI `status` and FR53 phase still disagree across spines
 
-- **PRD:** Frontmatter `projectContext: 'Greenfield'`; Project Classification “Project Context: Greenfield”; Resource Requirements “Solo developer. Estimated 22-32 stories across 7 features.”
-- **Downstream:** `epics.md` Overview + Epic List: foundation Epic 0 through operational Epic 31, with Phase 1.5, post-MVP operations, and audit-remediation tracks. `sprint-change-proposal-2026-04-26.md`: “Epic 11 is the last epic defined… The MVP roadmap is now exhausted at the planning level.” Architecture and epics continue to accrete D23–D31, OpenBao, PostgreSQL telemetry adapter profiles, and EventStore identity work through 2026-08.
-- **Note:** Greenfield classification is not a harmless label. It still licenses a 22–32 story plan, a “restarted implementation sequence,” and a resource-tight escape that drops tenant isolation — all false as a *current* contract. The PRD date (2026-03-22) and unchanged classification tell extractors they are reading the product-as-imagined, not the product-as-governed.
-- **Fix:** Reclassify as brownfield / change-controlled. Replace the story-count estimate with a pointer to `epics.md` + `sprint-status.yaml`. Keep the original MVP thesis as historical context, explicitly not as the active work-breakdown.
+- **Location:** PRD MVP Feature Set + CLI Specification (`status` is a thesis essential; FR10 MVP). Architecture Interface Philosophy and Epic 7 header (`status` is Phase 1.5 polish; MVP list omits it). Architecture Coverage: all of FR53 = Active MVP.
+- **Trigger:** August PRD-1/PRD-6 made FR53 phase-split and counted real commands (including status telemetry). Architecture/Epic 7 were not re-extracted.
+- **Consequence:** A story extract from Epic 7 will defer the FR10 surface; an extract from architecture Coverage will pull remaining FR53 slices into thesis MVP.
+- **Fix:** Pick one: either PRD drops `status` from the thesis essential list (FR10 still requires *a* status surface), or architecture/Epic 7 move `status` into MVP essentials and keep `explore`/`handlers`/`quickstart` in Phase 1.5. Coverage must say FR53 is split, not wholly MVP.
 
-### high External auth and identity: PRD still Phase 1.5 / tenant-only; Epic 20 already shipped JWT
+### medium Onboarding boot path and second clock are not shared
 
-- **PRD:** NFR11 “External access authenticated at ingress layer — no unauthenticated access to REST API endpoints” | Phase **P1.5**. Service Communication: “Per-user identity | Not in MVP — tenant-level isolation sufficient.” Tenant context “Passed as parameter in payloads, validated by server.”
-- **Downstream:** `sprint-change-proposal-2026-07-04.md` Epic 20: “No authentication or authorization exists on any of the 46 HTTP endpoints… directly undercuts FR44, NFR8, and FR67” — remediation, not a new product idea. Architecture Security Architecture: “Story 20.1 added the Server fallback `RequireAuthenticatedUser` policy for `/api/**`; only health probes and Dapr infrastructure routes are explicitly anonymous.” Story 20.2 maps principal claims to tenant sets. Both 2026-08-03 SCPs require NFR11 to be a current MVP invariant and define `sub` / `system:*` provenance. Architecture Requirements Coverage nevertheless still lists NFR11 under “Phase 1.5 fast-follow” — so architecture’s *coverage table* is as stale as the PRD, while its Security Architecture section is not.
-- **Note:** Extracting NFR11 from the PRD (or from architecture’s coverage table) would schedule authentication as fast-follow work that change control already treated as a production-exposure blocker and that Epic 20 implemented.
-- **Fix:** Move NFR11 to MVP/current; name the anonymous health/Dapr exceptions; replace “per-user identity not in MVP” with the 08-03 identity contract (tenant claims authorize; case membership is metadata; external provenance is server-derived `sub`). Architecture coverage table must move with the PRD so the two spines do not keep a stale-together P1.5 tag.
+- **Location:** PRD NFR31 + Getting Started + addendum (AppHost; two clocks). Journey 1 Rising Action still `docker compose up`. Architecture Gate-Blocking Gate 3 “Docker Compose single-command boot” vs topology “`dotnet run --project Hexalith.Memories.AppHost`”. Epics NFR31: one &lt;30 min quickstart, no Phase 1.5 event clock.
+- **Trigger:** The Update split clocks and named AppHost in product text; Journey 1 narrative and Gate 3 row were left as March compose-first copy. Epic 7 still treats `quickstart` as Phase 1.5 polish while NFR31 is the README/AppHost path.
+- **Consequence:** UX/onboarding extracts can ship two incompatible “30-minute” gates or teach Compose as the thesis boot when AppHost (and the optional Python sidecar) is the living path.
+- **Fix:** Relabel Journey 1 boot to AppHost (Compose may remain an operator alternative). Change Gate 3 to AppHost. Add the Phase 1.5 event clock to epics NFR31. Keep the two clocks only in the PRD if downstream copies the split.
 
-### high Ingestion is a DAPR Workflow in architecture, a pipeline actor in the PRD
+### medium Ingestion state vocabulary is still three-way
 
-- **PRD:** Async Ingestion Pipeline: “Ingestion uses a **per-tenant pipeline actor** managing a bounded queue. The pipeline actor owns throttling… ordering, and progress tracking.” Indexing is an actor responsibility. NFR17: “DAPR actor state persistence verified.” Complexity bullet still cites “DAPR actor model” as a primary driver.
-- **Downstream:** Architecture: “Forces DAPR Workflow for pipeline orchestration” (driver #4); `IngestionWorkflow` with extract/embed/index activities and compensation; actors reserved for `EmbeddingRateLimiterActor` and `CorpusStatisticsActor`. Epics Additional Requirements copy D23 workflows vs D24 singleton actors. Story 6.4 / NFR17 reinforcement is workflow durability, not a document-queue actor.
-- **Note:** The PRD’s actor-queue story is the pre-D23 design. Leaving it in place makes FR8/FR9/FR13/NFR17 extract as “build a pipeline actor,” which architecture forbids for orchestration.
-- **Fix:** Rewrite the pipeline section: workflow owns stages, retry, and compensation; a per-tenant actor (if any) owns only rate-limit budget. Change NFR17 verification to workflow history / Durable Task persistence. Architecture owns the workflow/actor split; the PRD must stop specifying the discarded actor-queue.
+- **Location:** PRD observable state machine (`pending` / `projecting` / `indexed` / …). Architecture Memory Unit Field Inventory `Status` enum (`queued` / `extracting` / `embedding` / `indexing` / …). Epics FR10 (`queued, embedding, indexed, failed`). UX-DR22 union of both plus `retried` / `re-ingested`.
+- **Trigger:** PRD-4 replaced “atomic write” with a projection state machine; field inventory and UX-DR22 were not remapped.
+- **Consequence:** Status CLI, Evidence Packet `state`, and operator UX can emit different enums for the same unit; FR10/FR31 extracts will not match NFR17/FR13 completion language.
+- **Fix:** Architecture owns the stored enum; PRD owns observable operator states. Publish one mapping table (or collapse to one vocabulary) and refresh epics FR10/FR31 and UX-DR22 from that table. Do not invent a fourth list in the PRD.
 
-### high Fusion spike text still describes magnitude blending; NFR24 and architecture settled on RRF
+### low Epic 9 still markets “zero-code” against the PRD glossary
 
-- **PRD:** Implementation Sequencing: “The fusion algorithm (BM25 normalization + cosine + graph proximity weighting) is research-grade R&D.” That sentence sits in the same document as NFR24: “Hybrid fusion uses deterministic weighted reciprocal-rank fusion with per-axis rank contributions in 0.0-1.0” and the domain score table that already documents RRF.
-- **Downstream:** Architecture Fusion concern: “Story 22.4 selected a corpus-invariant, rank-based implementation: weighted reciprocal-rank fusion. Raw BM25, cosine, and graph-proximity magnitudes are not averaged in hybrid scoring.” Epic 26 SCP (`…-epic-26-benchmark-closure.md`) calibrated live weights / RRF `k=10` and **explicitly froze** the PRD 80% NDCG@10 hard line. Architecture Epic 26 calibration paragraph records `0.30/0.35/0.35`, `k=10`.
-- **Note:** Identifier-level NFR24 matches. The living *design* paragraph in Scoping does not. An extractor using the MVP Strategy section would spike a different algorithm than the one Gate 1 already governs.
-- **Fix:** Replace the BM25/cosine/proximity-weighting spike with RRF + explain-of-rank-contributions; keep 80%/NDCG@10/reproducibility as PRD gates. Numeric `k` and default weights: architecture owns these; PRD should defer.
+- **Location:** Epic 9 header and story intro: “Zero-Code Memory”, “validating the ‘zero-code’ promise.” PRD Executive Summary / Innovation / FR59: conventions + subscription; schema evolution needs handler registration; not “zero configuration.”
+- **Trigger:** Epic title predates the Update’s anti-slogan.
+- **Consequence:** A Phase 1.5 story extract from the epic header reintroduces the claim the PRD killed.
+- **Fix:** Rename/reword Epic 9 to “EventStore product integration” (or “conventions + subscription”). Keep FR59–FR62 scope.
 
-### high MCP/CLI “every feature” vs capability alignment and Phase 1.5 MCP
+### low `--explain` vs UX-DR7 remains an open product pick
 
-- **PRD:** Executive Summary: “Every feature is accessible through both MCP (for LLM agents) and CLI (for developers). The MVP validates the three-axis thesis via CLI; MCP ships as a fast-follow within 4 weeks of thesis validation.” FR53: “Developer can interact with all retrieval and ingestion capabilities via CLI” (no phase tag). Journey 2 scope note: handlers/replay “must be explicitly included in MVP Feature #3 (EventStore Integration)” — but MVP Feature #3 is Three-Axis Search; EventStore is Phase 1.5 Feature #1.
-- **Downstream:** Architecture Interface Philosophy: “Capability alignment, not feature parity.” MVP CLI essentials listed; MCP is search/ingest/traverse/case-info only; tenant/verify/status/handlers are CLI-only. Epics Epic 7 repeats that split; Epic 10 holds FR23/FR54/FR58 as Phase 1.5. 2026-08-03 remediation: FR53 is phased; several CLI verbs are still stubs; a help line backed by `NotImplementedCommand` is not coverage. UX Platform Strategy: CLI/MCP/web are “all first-class surfaces” on the full horizon, then immediately “MVP implementation is CLI-first… MCP/EventStore follow in Phase 1.5.”
-- **Note:** MCP *timing* (Phase 1.5, 4-week fast-follow, pull-into-MVP if slipping) is still aligned across PRD/architecture/epics. The exec-summary parity claim and unphased FR53 are not. Journey 2’s “MVP Feature #3 = EventStore” error is still in the PRD (flagged again in the 2026-08-04 readiness report).
-- **Fix:** Strike “every feature / both interfaces.” Point FR53/FR54 at the existing parity matrix and a phase register. Move Journey 2’s handlers/replay note to Phase 1.5 Epic 9/10. UX may keep full-horizon first-class language if it continues to disclaim MVP.
+- **Location:** PRD FR19 + interface matrix (`--explain` opt-in) vs Open Question 3 vs UX-DR7 (every search starts the full trust loop). Architecture Evidence Packet “does not settle which fields are mandatory.”
+- **Trigger:** The Update named the fork; it did not decide it.
+- **Consequence:** Epic 17 / CLI JSON extracts will guess whether compact trust fields are mandatory. This is no longer silent, but it is still unresolved.
+- **Fix:** Answer Open Question 3 in the PRD (compact trust on every search + `--explain` expands math, **or** UX-DR7 is opt-in). Architecture then marks mandatory Evidence Packet fields. Do not leave Epic 17 to reconcile FR19 with UX-DR7.
 
-### medium C# 13 / package-count / backend-access wording still contradict repository and architecture facts
+### low NFR11 is a current product invariant scheduled as post-MVP remediation
 
-- **PRD:** “Server runtime | .NET 10 / C# 13.” “9 published NuGet packages + 3 non-packable service/orchestration projects” while the table names nine package rows and two explicitly non-packable hosts (`Server`, `AppHost`). “Internal (Server ↔ Redis/FalkorDB) | DAPR state / direct connection via DAPR sidecar.”
-- **Downstream:** Architecture Constraints table still says `.NET 10 / C# 13`, but Current Verified Versions says “Runtime — C# 14.” Scale & Complexity: “7 published NuGet packages plus 3 non-packable…” vs PRD’s nine. D30 / `sprint-change-proposal-2026-07-17-infrastructure-dependency-abstraction.md`: Dapr state API and direct Redis/FalkorDB clients are different paths; search/graph use Aspire-injected clients in a boundary project, not “via DAPR sidecar” as a generic proxy. 2026-08-03 rerun SCP PRD-1/PRD-3/PRD-4 required exactly these PRD fixes. 2026-08-31 EventStore identity SCP then records Memories’ mandated SDK as **10.0.400**, so even the August “record 10.0.302” PRD patch would already be stale as a pin.
-- **Note:** Inventory IDs (74/31) match; these are meaning mismatches in the implementation matrix. Architecture is internally split on C# 13 vs 14 and on 7 vs 9 packages — the PRD cannot be the resolver until it stops asserting C# 13 and the unexplained “3 non-packable.”
-- **Fix:** PRD language baseline `.NET 10 / C# 14`; SDK pin deferred to `global.json`. Package inventory: `tools/release-packages.json` is the only count; list non-packable hosts in a separate table. Split Dapr state vs direct backend clients. Architecture should own SDK and package math; PRD should stop duplicating them incorrectly.
+- **Location:** PRD NFR11 **MVP**. Epic 20 lifecycle “Operational Readiness / Security Hardening” (post-MVP audit track) while reinforcing NFR11. Architecture Coverage still P1.5.
+- **Trigger:** Delivery taxonomy (Epic 20 as 2026-07-04 remediation) was never reconciled with the August “NFR11 is current” product rule.
+- **Consequence:** Readiness accounting can treat authentication as non-MVP while the PRD forbids unauthenticated product ingress. Not a missing PRD sentence — a spine classification fork.
+- **Fix:** Keep NFR11 as current in the PRD. Tag Epic 20 as “implements a current MVP invariant; track is remediation, not phase deferral.” Move architecture Coverage NFR11 to Active MVP.
 
-### medium Physical isolation: PRD still “separate indexes”; architecture moved the security boundary to ACL users
+### low Post-Update 27.4 live-producer contract must stay out of the PRD
 
-- **PRD:** FR38 “Operator can create a tenant with physically separate indexes.” Exec summary: “Physically separate indexes per tenant enforce enterprise-grade isolation.” NFR8 graph fixture (identical structures, colliding edge IDs) is still the leakage test.
-- **Downstream:** Architecture Tenant Isolation concern and Story 24.3 decision: “Redis physical isolation target is per-tenant ACL users combined with tenant-scoped backend resolution… Key prefixes, Redis hash tags, and logical Redis databases are placement and routing tools only; they are not the primary security boundary.” Epic 24 / 2026-08-04 verifier SCP: FR40 and NFR8 remain sufficient *as product requirements*; enforcement, ACL lifecycle, cutover, and NFR8’s colliding-ID fixture are still follow-up. 2026-08-03 remediation: isolation described more strongly than owned enforcement.
-- **Note:** The PRD requirement (zero leaks, tenant-scoped indexes, automated verify) is not obsolete. The *mechanism* the PRD implies (index names = isolation) is what architecture later demoted. Extracting FR38 as “indexes are the security boundary” under-builds Gate 2.
-- **Fix:** Keep NFR8/FR38/FR40 outcomes. Add one sentence that physical isolation *target* is tenant-scoped backend principals (ACL users + resolver); indexes/databases remain lifecycle resources. Mechanism details: architecture owns this; PRD should defer.
-
-### medium Dapr Agents / polyglot runtime never entered the PRD
-
-- **PRD:** Language Future column: “.NET only (DAPR handles polyglot).” No Dapr Agents service, no Python sidecar, no `ai-agent` app-id. Journey 1 boot path: “`docker compose up` for Redis + FalkorDB.” FR7 requires AI-inferred metadata but does not name a runtime.
-- **Downstream:** Architecture revisionNote (2026-03-25): “Dapr Agents Python sidecar (D27), Polyglot architecture (D28).” Deployment topology includes AI Agent Service (Python, `ai-agent`). D27: “Dapr Agents SDK is Python-only (GA 1.0.0). Run as a polyglot sidecar… MVP (optional enrichment), Phase 1.5 (full AI features).” Epics Additional Requirements copy D27/D28. Single-command boot: `dotnet run --project Hexalith.Memories.AppHost` “boots all containers (including Python AI Agent).”
-- **Note:** This is a settled architecture decision the PRD never stated. It changes onboarding topology, license/ops surface, and how FR7 enrichment is produced. Silence reads as “C# only.”
-- **Fix:** Architecture owns Dapr Agents. PRD should either defer (“AI enrichment runtime is an architecture decision; not a second product”) or add one NFR/constraint: optional Python `ai-agent` sidecar via DAPR invocation, not in-process C# agents.
-
-### medium FR71 / export: PRD Phase 2 tag vs “already shipped” vs Epic 26 backup slice
-
-- **PRD:** FR71 “Developer can export all memory units, metadata, and graph edges… **Phase:** Phase 2 unless a later sprint change explicitly pulls export into MVP.”
-- **Downstream:** Epics Requirements Inventory copies FR71 **without** the phase clause. FR Coverage Map: “FR71: Epic 26 — Portable export reinforced through backup/restore… broader application-facing export remains Phase 2.” Architecture Requirements Coverage: “Deferred (Phase 2) | FR71 (export).” Story Key Policy: Story 8.3 `reserved-non-mvp` for FR71. 2026-08-03 remediation §1.1: “Story 8.3 is `done`; export services, REST endpoints, client methods, and CLI commands exist… Planning and sprint registration are stale.” That SCP told epics/sprint to register 8.3 as completed non-MVP and told the PRD to record “completed early but non-MVP.”
-- **Note:** The PRD phase tag is still the right *MVP gate* (export is not a thesis gate). The living contract is wrong as a delivery record: it cannot tell an extractor that export already exists and must not be rescheduled as new Phase 2 work, nor that Epic 26 backup/restore is a different slice than application export.
-- **Fix:** Keep FR71 out of MVP acceptance. Add “completed non-MVP (Story 8.3); Epic 26 covers operational backup/restore only.” Restore the phase clause in the epics inventory so PRD and epics match.
-
-### medium Rate limiting: deferred to ingress in one PRD table, a product FR in the next
-
-- **PRD:** Service Communication: “Rate limiting | Deferred to infrastructure (ingress, DAPR middleware).” FR8 per-tenant ingestion load; FR69 per-tenant embedding ceilings; pipeline actor “enforces per-tenant throttle ceilings.”
-- **Downstream:** Architecture: `EmbeddingRateLimiterActor` is MVP-critical. Story 20.5 added ASP.NET inbound quotas partitioned by authenticated tenant, separate from embedding throttling. Epic 6 owns FR8.
-- **Note:** Internal PRD contradiction. Downstream consistently made rate limiting a product concern. The communication table is the stale sentence.
-- **Fix:** Delete “Deferred to infrastructure.” Distinguish embedding-provider throttle (FR69, actor) from inbound request quotas (Epic 20) from ingress. Architecture owns the split; PRD should name both as in-scope.
-
-### medium Journey 1 / samples still sell EventStore zero-code as day-one onboarding
-
-- **PRD:** Journey 1 is the EventStore auto-integration path (`dotnet add package Hexalith.Memories.Client`, DAPR subscription, test event). MVP Feature Set then says Journey 1 is “partial: CLI-only, no EventStore zero-code flow.” Samples table maps `samples/01-quickstart/` to Journey 1 and `samples/02-eventstore-integration/` to the zero-code promise.
-- **Downstream:** Architecture Phase Compatibility: “MVP architecture (Phase 1: CLI-only, no MCP, no EventStore integration).” Epics: Epic 9 is Phase 1.5. Hard onboarding gate NFR31 is README quickstart, not EventStore.
-- **Note:** The PRD almost corrects itself (“partial”), then lets Journey 1 and the samples table keep the zero-code story as the primary success path. Extracting journeys into UX without the scoping table would pull Epic 9 into MVP.
-- **Fix:** Relabel Journey 1 as Phase 1.5 success path; make Journey 9 (CLI first case) the MVP success path in the summary table. Keep the zero-code narrative, with an explicit phase.
-
-### low NFR6 / FR71 inventory wording drifted in epics, not in architecture’s count
-
-- **PRD:** NFR6 includes “degradation documented when embedding provider is rate-limited.” FR71 includes the Phase 2 sentence.
-- **Downstream:** Epics NFR6: “Event indexing freshness <5s from DAPR pub/sub publication to searchable [P1.5]” — degradation clause dropped. Epics FR71: phase sentence dropped (see FR71 finding). Architecture Requirements Overview does not restate individual FR/NFR text; it counts 74/31 and phase-filters in Requirements Coverage.
-- **Note:** ID inventory is intact. Epics “Requirements Inventory” is no longer a lossless copy of the PRD, so it cannot be used as the PRD extract.
-- **Fix:** Restore omitted clauses in epics inventory, or mark the inventory as a pointer to the PRD rather than a second full copy.
-
-### low Epics Additional Requirements still freeze architecture D3 as “eventual consistency”
-
-- **PRD:** Never stated D3. FR13 still “rollback or retry to achieve consistency across all axes.”
-- **Downstream:** Epics Additional Requirements: “Eventual consistency + DAPR Workflow saga/compensation (D3).” Architecture Complete Decision Registry D3: “EventStore aggregate source of truth + rebuildable projections + DAPR Workflow projection compensation.”
-- **Note:** This is epics lagging architecture, which makes a PRD→epics extract even less safe. It is not an independent PRD claim, but it shows the inventory section is not a current architecture extract either.
-- **Fix:** Update epics D3 bullet to match architecture. PRD FR13 should use the EventStore-commit language from the August SCP (see critical finding).
-
-### low UX makes explain mandatory on every search; PRD keeps `--explain` opt-in
-
-- **PRD:** Interface matrix: “Search with explain | `memories search --explain`.” FR19 is “Developer can view per-axis score breakdown… (explain mode).”
-- **Downstream:** UX Effortless Interactions: “After a search, Memories should automatically perform source lookup, evidence strength scoring, explain breakdown, and relevant graph traversal. The user should not need separate commands…” 2026-08-04 readiness report finding #1 records this exact conflict. Architecture defines the Evidence Packet envelope but “does not settle which fields are mandatory for every search versus populated only in explain mode.”
-- **Note:** This is the one UX contradiction in scope. It is unresolved among all three spines, so the PRD is not uniquely stale — it is uniquely silent on the decision UX already made.
-- **Fix:** PRD should pick: either every core search returns compact trust fields and `--explain` expands math, or UX-DR7 is opt-in. Do not leave extractors to reconcile FR19 with UX-DR7.
-
-### low Access-telemetry PostgreSQL / OpenBao platform are operational, not a Redis-only product pivot
-
-- **PRD:** “starts on Redis (RediSearch + Vector Search + FalkorDB), with architecture designed to support backend portability.” NFR15 Redis → Qdrant. NFR9 already requires OpenBao. FR67 is “logs search and access events per tenant,” not a store choice.
-- **Downstream:** Epic 27 PG-ONPREM-1 / PostgreSQL 18.4 is the access-telemetry adapter, explicitly “not tamper-evident… audit retention.” Epics 29/31 OpenBao platform. Search backends remain Redis + FalkorDB.
-- **Note:** No approved SCP replaced Redis search with another product backend. Claiming “PRD is Redis-only vs other backends” as a search-stack lie would be wrong. The miss is that the PRD never says telemetry may leave Redis, so an extractor could treat PG as scope creep.
-- **Fix:** Architecture owns telemetry substrate. PRD FR67/NFR34 should defer store choice and repeat that access telemetry is not a compliance audit trail.
+- **Location:** `sprint-change-proposal-2026-09-06-story-27-4-live-producer-contract.md`; `architecture.md` Security Architecture ownership paragraph; `epics.md` Epic 27 sequencing gate (2026-09-06 correction). PRD NFR34.
+- **Trigger:** Approved Moderate SCP after the Update; PRD correctly unchanged.
+- **Consequence:** A zealous “sync the PRD” pass could promote `awaiting-operator` / live-producer / 15-minute runbook rules into product NFRs the SCP forbade.
+- **Fix:** Leave NFR34 as the product outcome. Architecture/epics own producer sequencing. Next PRD extract should cite the SCP only as deferred mechanism.
 
 ## Inventory check (IDs vs meaning)
 
 | Spine | FR IDs | NFR IDs | Phase tags |
 |---|---|---|---|
-| PRD | FR1–FR74 present | NFR1–NFR31 present; NFR32+ absent | Sparse: FR71 has a phase sentence; NFR table is tagged; most FRs untagged |
-| Architecture Requirements Overview | Count 74, not a verbatim list | Count 31, summarized | Requirements Coverage phase-filters FR/NFR; NFR11 still P1.5 there |
-| Epics Requirements Inventory | FR1–FR74 verbatim except FR71 phase clause dropped | NFR1–NFR31; NFR6 shortened | Tags copied; D3/D4 bullets stale vs architecture body |
+| PRD (2026-09-05) | FR1–FR74; phase register present | NFR1–NFR35; NFR33 = freshness, NFR35 = web perf | FRs tagged where phase-split; NFR table tagged; NFR11 MVP |
+| Architecture Requirements Overview / Coverage | Count 74; Coverage still treats FR53 as wholly MVP | Count **31**; NFR32–NFR35 absent; NFR11 still P1.5 | Coverage phase-filters pre-Update |
+| Epics Requirements Inventory | FR1–FR74; several bullets pre-Update wording | NFR1–NFR31; NFR6 shortened; NFR32–NFR35 absent; NFR11 P1.5 | Tags copied from old PRD; D3 bullet stale |
 
-No missing or extra FR/NFR *numbers* between PRD and epics. The drift is meaning, phase, and decisions the PRD never absorbed.
+No missing or extra FR *numbers* between PRD and epics. New NFR numbers exist only in the PRD. Remaining drift is stale downstream copies, phase/boot/`status` forks, and one named open question — not unapplied August PRD amendments.
 
 ## Brownfield harm
 
-Yes, leaving “Greenfield” in the PRD harms it as a current contract. A new UX/architecture/story extract would still see a 7-feature, 22–32 story, actor-pipeline, C# 13, unauthenticated, atomic-Redis, EventStore-in-fast-follow product. The repository is a change-controlled brownfield system with 31 epics, shipped JWT, OpenBao, EventStore-backed domain writes, and an operational PostgreSQL telemetry path. The PRD can remain the thesis and outcome register only if it stops pretending the work has not started and if the August 2026 PRD patches are actually written.
+The PRD no longer licenses a 22–32 story greenfield restart or an isolation escape. Classification, Resource Requirements, and Non-Goals now point at `epics.md` / `sprint-status.yaml`. Leaving **architecture Coverage** and **epics inventory** on the old contract *does* still harm extracts: those sections are what most story workflows copy first. Refresh them from the PRD; do not roll the PRD back to match them.

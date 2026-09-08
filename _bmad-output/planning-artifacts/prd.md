@@ -2,10 +2,11 @@
 title: Hexalith.Memories
 status: draft
 created: 2026-03-22
-updated: 2026-09-05
+updated: 2026-09-08
 stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-02b-vision', 'step-02c-executive-summary', 'step-03-success', 'step-04-journeys', 'step-05-domain', 'step-06-innovation', 'step-07-project-type', 'step-08-scoping', 'step-09-functional', 'step-10-nonfunctional', 'step-11-polish', 'step-12-complete']
 inputDocuments:
   - '_bmad-output/planning-artifacts/product-brief-Hexalith.Memories-2026-03-22.md'
+  - '_bmad-output/planning-artifacts/validation-report.md'
   - '_bmad-output/planning-artifacts/review-rubric.md'
   - '_bmad-output/planning-artifacts/review-adversarial-general.md'
   - '_bmad-output/planning-artifacts/review-product-brief.md'
@@ -29,11 +30,11 @@ workflowType: 'prd'
 
 **Author:** Jerome
 **Date:** 2026-03-22
-**Updated:** 2026-09-05 — validation Update: dual ship-contract split, unapplied August 2026 change control, EventStore contract split. Mechanism/topology detail lives in `addendum.md`. Active work breakdown lives in `epics.md` and `sprint-status.yaml`, not in the original 22–32 story estimate.
+**Updated:** 2026-09-08 — second validation Update: thesis-gate protocol with concrete numbers and the N=8 run demoted to diagnostic; dated release decision record with real no-go outcomes; FR46–FR52 confirmed MVP as shipped graph mechanics; Phase 1 CLI surface table with delivery status; FR/NFR delivery status registers; NFR8/NFR16/NFR21 restated; NFR36 added; one ingestion-state vocabulary. Prior (2026-09-05): dual ship-contract split, August 2026 change control, EventStore contract split. Mechanism/topology detail lives in `addendum.md`. Active work breakdown lives in `epics.md` and `sprint-status.yaml`.
 
 ## 0. Document Purpose
 
-This PRD is the product-outcome contract for Hexalith.Memories: thesis, ship gates, capabilities (FR1–FR74), and cross-cutting quality (NFR1–NFR35). It is written for the maintainer, downstream UX/architecture/story owners, and reviewers of change control.
+This PRD is the product-outcome contract for Hexalith.Memories: thesis, ship gates, capabilities (FR1–FR74), and cross-cutting quality (NFR1–NFR36). It is written for the maintainer, downstream UX/architecture/story owners, and reviewers of change control.
 
 It is a **brownfield / change-controlled** document. Implementation, epics, and architecture have been running since March 2026. This file does not re-estimate the backlog. Where a later approved sprint-change proposal required a PRD amendment, that amendment belongs here; SDK pins, package counts, fusion weights, and host topology belong in architecture or `addendum.md`.
 
@@ -41,17 +42,15 @@ Glossary-anchored nouns are used in FRs, journeys, and success metrics. Assumpti
 
 ## Executive Summary
 
-Your LLM agent forgets everything between sessions. Your team's knowledge is scattered across cloud drives, chat logs, and event stores. When someone asks "why did this happen?" — no search tool can answer. The relationships between documents, events, and decisions are invisible.
+**The product this PRD ships first (Phase 1, thesis):** Hexalith.Memories is an open-source, DAPR-native memory server for teams and their LLM agents. A developer ingests files and URLs into team-scoped **cases** inside an isolated **tenant**, then runs one search that fuses syntactic (BM25), semantic (embedding), and graph retrieval and explains every score. Tenant isolation is a hard gate, not a feature flag.
 
-Hexalith.Memories is an open-source relational memory server that answers "why did this happen?" and "how are these connected?" — questions every team asks and no existing tool can answer. It organizes knowledge in team-scoped case containers, then searches across content, meaning, and connections in a single query. An LLM agent asks: *"What led to the API redesign?"* — and gets back a sourced narrative walking the causal chain from the original incident, through the team discussion, to the architecture decision record. Not just documents — the *story* of how they connect.
+The three-axis fusion is the core thesis and it is falsifiable: if hybrid retrieval does not beat BM25+semantic on 80% of topics under the thesis-gate protocol in Measurable Outcomes, the named kill-switch actions execute. Weighted RRF is the fusion decision (NFR24); numeric weights live in architecture. In Phase 1 the graph axis runs on the edges file/URL ingest can create — `contains`, `references`, `annotates`, and `caused_by`/`correlated_with` only where ingested metadata already carries CausationId/CorrelationId (FR46). Phase 1 does not claim causal completeness.
 
-The system combines three retrieval axes — syntactic search (BM25), semantic search (vector embeddings), and graph traversal — into a unified hybrid query. This three-axis approach is the core thesis: if hybrid retrieval doesn't outperform BM25+semantic on 80%+ of the benchmark protocol in Measurable Outcomes, execute the named kill-switch actions. Weighted RRF is the fusion decision (NFR24); numeric weights live in architecture.
+**Phase 1 (thesis) onboarding:** under 30 minutes from a clean machine with Docker to first CLI search result on file/URL ingest (NFR31). **Phase 1.5 (launch) onboarding:** under 30 minutes from `dotnet add package Hexalith.Memories.EventStore` plus DAPR subscription to first search on auto-indexed events. Those are two clocks; they are not interchangeable.
 
-**Phase 1 (thesis) onboarding:** under 30 minutes from a clean machine with Docker to first CLI search result on file/URL ingest (NFR31). **Phase 1.5 (launch) onboarding:** under 30 minutes from `dotnet add package` plus DAPR subscription to first search on auto-indexed events. Those are two clocks; they are not interchangeable.
+**Phase 1.5 abstract (launch, not thesis):** for developers on Hexalith.EventStore, the sequenced bet is queryable causality. Add the package, subscribe to DAPR topics, and events are indexed with causal chains (CausationId/CorrelationId as graph edges) and dual embeddings (payload + natural-language description). An agent asks *"What led to the API redesign?"* and gets a sourced, gap-aware causal chain rather than a pile of documents. That answer is what the launch gates L1–L3 test; it is not what the thesis gate tests. Schema evolution requires handler registration; that is not "zero configuration." Non-EventStore DAPR publishers are a later adapter path, not the EventStore-equivalent beachhead. `[ASSUMPTION: generic Marten/Wolverine/Axon zero-code remains an experiment until a named Phase 1.5/2 spike passes the DAPR-generic kill switch.]`
 
-For developers already on Hexalith.EventStore, Phase 1.5 integration follows documented conventions: add the package, subscribe to DAPR topics, and events are indexed with causal chains (CausationId/CorrelationId as graph edges) and dual embeddings (payload + natural language description). Schema evolution requires handler registration; that is not "zero configuration." Non-EventStore DAPR publishers are a later adapter path, not the EventStore-equivalent beachhead. `[ASSUMPTION: generic Marten/Wolverine/Axon zero-code remains an experiment until a named Phase 1.5/2 spike passes the DAPR-generic kill switch.]`
-
-Teams organize knowledge in case/folder memory containers where documents, discussions, and events accumulate into shared, searchable knowledge. Every memory unit tracks whether its metadata was set by a human or inferred by AI, with a confidence score. Tenant isolation is an MVP hard gate (NFR8): tenant-scoped backend principals plus tenant-scoped indexes, with zero cross-tenant leaks. The isolation *mechanism* (ACL users, resolvers, index names) is architecture-owned; this PRD owns the outcome.
+Teams organize knowledge in case/folder memory containers where documents and, from Phase 1.5, events accumulate into shared, searchable knowledge (discussions are Phase 2). Every memory unit tracks whether its metadata was set by a human or inferred by AI, with a confidence score. Tenant isolation is an MVP hard gate (NFR8): tenant-scoped backend principals plus tenant-scoped indexes, with zero cross-tenant leaks. The isolation *mechanism* (ACL users, resolvers, index names) is architecture-owned; this PRD owns the outcome.
 
 The system runs on DAPR, starts on Redis (RediSearch + Vector Search + FalkorDB), with architecture designed to support backend portability (concrete implementation first, extraction points identified for future migration). Topology, Aspire, OpenBao, and package inventory are recorded in `addendum.md` and architecture — they are not additional product surfaces.
 
@@ -59,7 +58,7 @@ CLI is the operational superset. MCP is the agent subset (search, ingest, traver
 
 ### What Makes This Special
 
-**Phase 1 proves hybrid retrieval plus non-retrofittable isolation.** The sequenced bet — queryable causality from EventStore conventions — is Phase 1.5, not the thesis gate. Event-sourced systems already capture *why* things happen; Memories makes CausationId/CorrelationId queryable once the EventStore product integration ships: *"What happened because of this deployment?"* walks the graph. Happy path is subscription plus conventions, not zero mapping and zero configuration.
+**Phase 1 proves hybrid retrieval plus non-retrofittable isolation.** The graph mechanics — typed edges, traversal, gap markers, chronological ordering (FR46–FR52) — ship in Phase 1 because they are the graph axis; what Phase 1 cannot promise is that the graph *contains* causal edges for a folder of files. The sequenced bet — queryable causality from EventStore conventions — is Phase 1.5, not the thesis gate. Event-sourced systems already capture *why* things happen; Memories makes CausationId/CorrelationId queryable once the EventStore product integration ships: *"What happened because of this deployment?"* walks the graph. Happy path is subscription plus conventions, not zero mapping and zero configuration.
 
 EventStore CloudEvent auto-index is the first *product* proof point for causal intelligence. Separately, Hexalith.EventStore is already the **domain source of truth** for Case / MemoryUnit / Tenant writes (current MVP consistency contract). Package/runtime pins for EventStore bits are architecture-owned (Epic 28). Those three "EventStore" meanings must not be collapsed.
 
@@ -74,7 +73,7 @@ Two additional differentiators compound later:
 - **Domain:** AI Infrastructure / Knowledge Management
 - **Complexity:** Medium-High — driven by three-axis query fusion, DAPR workflow ingestion, multi-tenancy with tenant-scoped isolation, and EventStore domain + product integration
 - **Project Context:** Brownfield / change-controlled (greenfield thesis recorded March 2026; implementation and epics are the living work breakdown)
-- **License:** Apache 2.0 (decision, not a recommendation). Public README commitment: the project will not switch to a restrictive license.
+- **License:** **Unresolved conflict (Open Question 4, phase-blocking).** The March 2026 decision recorded here is Apache 2.0 with a public no-relicense pledge; the repository and every published package are MIT (`LICENSE`, file headers, `PackageLicenseExpression`). One of the two must change before the Phase 1.5 launch decision. The no-relicense pledge (no switch to a restrictive licence) holds under either outcome.
 
 ## Glossary
 
@@ -89,8 +88,10 @@ Downstream workflows and readers must use these terms exactly.
 - **Relevance confidence** — Composite/RRF score of query-result relevance. Not factual accuracy.
 - **Metadata confidence** — Per-field origin (`human-declared` vs `ai-inferred`) score on a memory unit.
 - **Edge confidence** — Default or promoted strength of a typed graph edge (`caused_by`, `correlated_with`, `references`, `contains`, `annotates`).
-- **Access telemetry** — Per-tenant search/access logs (FR67, NFR34). Not a tamper-evident audit trail.
-- **Member** — Tenant-scoped case membership metadata (FR28–FR29). Does not grant authorization in the current phase.
+- **Access telemetry** — Per-tenant search/access logs (FR67, NFR34). Not a tamper-evident audit trail. The word "audit" is not used for this capability anywhere in this PRD.
+- **Member** — Tenant-scoped case membership metadata (FR28–FR29). Does not grant authorization in the current phase. Its Phase 1 outcome is attribution: members appear in case listings and the case activity feed (FR36), and membership is the seed for per-unit ACLs in Phase 3.
+- **Ingestion state** — Exactly one of `pending`, `extracting`, `embedding`, `projecting`, `indexed`, `failed` (Async Ingestion Pipeline). Retry, dead-letter, and repair are detail fields, not states. Shipped `Contracts.V1.MemoryUnitStatus` spells these `Queued`, `Extracting`, `Embedding`, `Indexing`, `Indexed`, `Failed` (`pending`≙`Queued`, `projecting`≙`Indexing`); renaming the enum is a contract change tracked in Open Questions, not a third vocabulary.
+- **Thesis gate / diagnostic run** — The *thesis gate* is G1 under the protocol in Measurable Outcomes (N ≥ 50, BM25+semantic control, ΔNDCG@10 ≥ 0.02, κ ≥ 0.6). A *diagnostic run* is any benchmark execution that does not meet that protocol (including the shipped N=8 suite); it may inform, it cannot pass the gate.
 - **EventStore (domain truth)** — Hexalith.EventStore as durable commit for Case / MemoryUnit / Tenant aggregates. Current MVP consistency contract.
 - **EventStore (product integration)** — CloudEvent auto-index, dual embedding, CausationId/CorrelationId edges without mapping code (FR59–FR62). Phase 1.5.
 - **EventStore (runtime pin)** — Which EventStore packages/SHA the repo consumes. Architecture/Epic 28; not a product FR.
@@ -110,19 +111,19 @@ Downstream workflows and readers must use these terms exactly.
 
 ### User Success
 
-| Persona | Success Criterion | Measurement | Target |
-|---|---|---|---|
-| **Alex (Developer)** | Onboards without hand-holding (thesis) | Time from README/AppHost quickstart to first CLI search on file/URL ingest | <30 minutes — Phase 1 hard gate (NFR31) |
-| **Alex (Developer)** | EventStore happy path (launch) | Time from `dotnet add package` + DAPR subscription to first search on auto-indexed events | <30 minutes — Phase 1.5 hard gate |
-| **Alex (Developer)** | Ships AI features using Memories | Projects integrating Hexalith.Memories client | Tracked via NuGet dependency graph |
-| **Alex (Developer)** | Trusts the system enough to ship | Deploys an application using Memories to production | Within 60 days of first use |
-| **LLM Agent** | Gets better answers than single-axis retrieval | Retrieval relevance score (NDCG@10) on benchmark queries | Three-axis outperforms single-axis on 80%+ of benchmarks |
-| **LLM Agent** | Respects token budget | Response size stays within caller-specified limits | 100% compliance on budget-constrained queries |
-| **LLM Agent** | Low latency | Search-to-response time at 10 concurrent queries/tenant | NFR1–NFR3 (no separate cached/cold budget; NFR7 is process boot, not cache warmth). **Phase:** 1.5 for agent surface |
-| **Marcus (Team Lead)** | Instant case context | New member asks "brief me on this case" and gets accurate, sourced answer | Phase 2 — narrative only until briefing ships; not a Phase 1 success metric |
-| **Marcus (Team Lead)** | Knowledge is visible | Cases with active memory (>10 units, accessed within 30 days) | Growing month-over-month |
-| **Kenji (Operator)** | Friction-free operations | Tenant provisioning time | Single CLI command, <5 min |
-| **Kenji (Operator)** | No surprises | Cross-tenant data leaks | Zero — verified by automated security suite |
+| Persona | Success Criterion | Measurement | Target | Phase |
+|---|---|---|---|---|
+| **Alex (Developer)** | Onboards without hand-holding (thesis) | Time from README/AppHost quickstart to first CLI search on file/URL ingest | <30 minutes — gate G3 (NFR31) | 1 |
+| **Alex (Developer)** | EventStore happy path (launch) | Launch stopwatch (Measurable Outcomes, L2) | <30 minutes — gate L2 | 1.5 |
+| **Alex (Developer)** | Ships AI features using Memories | Projects referencing `Hexalith.Memories.Client.Rest` or `Hexalith.Memories.EventStore` | Tracked via NuGet dependency graph | 1.5+ |
+| **Alex (Developer)** | Trusts the system enough to ship | Deploys an application using Memories to production | Within 60 days of first use | 1.5+ |
+| **Developer / agent query** | Hybrid beats the realistic alternative | Thesis-gate protocol: hybrid vs BM25+semantic, NDCG@10 per topic | ≥80% of topics win by ΔNDCG@10 ≥ 0.02 — gate G1 | 1 |
+| **LLM Agent** | Respects token budget | Response size stays within caller-specified limits | 100% compliance on budget-constrained queries — gate L1 | 1.5 |
+| **LLM Agent** | Low latency | Search-to-response time at 10 concurrent queries/tenant | NFR1–NFR3 (no separate cached/cold budget; NFR7 is process boot, not cache warmth) | 1 (CLI), 1.5 (agent surface) |
+| **Marcus (Team Lead)** | Instant case context | New member asks "brief me on this case" and gets accurate, sourced answer | Narrative only until briefing ships; not a Phase 1 or 1.5 metric | 2 |
+| **Marcus (Team Lead)** | Knowledge is visible | Cases with active memory (>10 units, accessed within 30 days) | Growing month-over-month once external teams adopt | 2 (post-launch) |
+| **Kenji (Operator)** | Friction-free operations | Tenant provisioning time | Single CLI command, <5 min | 1 |
+| **Kenji (Operator)** | No surprises | Cross-tenant data leaks | Zero — verified by automated isolation suite — gate G2 | 1 |
 
 ### Business Success
 
@@ -145,53 +146,72 @@ Both signals must be present. Community without production usage means it's inte
 
 ### Technical Success
 
-Detailed performance targets, verification methods, and phase tags are defined in the **Non-Functional Requirements** section (NFR1–NFR35). Key hard gates: search latency NFR1–NFR3, zero cross-tenant leaks (NFR8), zero data loss on restart (NFR16).
+Detailed performance targets, verification methods, and phase tags are defined in the **Non-Functional Requirements** section (NFR1–NFR36). Key hard gates: search latency NFR1–NFR3, zero cross-tenant leaks (NFR8), no loss of EventStore-committed units across a Redis restart (NFR16).
 
 ### Measurable Outcomes
 
 **The Three-Axis Kill Switch (thesis gate):**
-Hybrid retrieval must beat the named controls on a frozen corpus. 80% is the hard line, not a stretch goal.
+Hybrid retrieval must beat BM25+semantic on a frozen, labelled corpus under the protocol below. 80% of topics is the hard line, not a stretch goal. The numbers in this protocol are the contract; the benchmark README restates them, it does not own them.
 
-**Scoring protocol:**
-- **Population:** A representative mix of developer/agent tasks on the Phase 1 corpus (files/URLs/cases). Do **not** filter the suite to "queries that require all three axes." Thesis-stress queries may exist as a diagnostic slice, not the only slice. `[ASSUMPTION: N remains 5–10 topics until Epic 26 (or successor) expands N; the protocol is honest about statistical weakness at that N.]`
-- **Controls:** Primary comparison is hybrid vs BM25+semantic (the realistic alternative). Single-axis runs are diagnostics.
-- **Ground truth:** Graded labels collected *after* queries exist. Jerome + 2 independent reviewers. Inter-rater agreement ≥80% (name the statistic in the benchmark README).
-- **Automated scoring:** NDCG@10. "Measurably better" requires a pre-registered minimum ΔNDCG@10 in the benchmark README (architecture may own the number; the PRD requires that it exist).
-- **Dispute resolution:** Human review where automated score and reviewer judgment diverge.
+**Thesis-gate protocol (not yet run at this specification):**
+- **Population:** N ≥ 50 topics. A representative mix of developer/agent tasks on the Phase 1 corpus (files/URLs/cases with real, not synthetic, content). Do **not** filter the suite to "queries that require all three axes." Thesis-stress queries are a labelled diagnostic slice inside N, not the whole suite.
+- **Control:** The unit of the 80% is a topic. A topic counts as a hybrid win when hybrid NDCG@10 exceeds the **BM25+semantic (two-axis RRF)** control by at least the pre-registered **ΔNDCG@10 ≥ 0.02**. Single-axis runs are diagnostics only. The two-axis control is not implemented in the shipped suite; it is a prerequisite of G1 (FR25, status partial).
+- **Graph seeding (decision 2026-09-08):** G1 runs hybrid exactly as a developer gets it from `search query` — no start node supplied. Therefore FR17 hybrid without an explicit start node seeds the graph axis from the union of the top-5 syntactic and top-5 semantic candidates and traverses from them (depth ≤ 2); an explicit `--from <unit>` start node is optional and, when given, replaces auto-seeding. The shipped `HybridSearchService` skips the graph axis when no start node is supplied — that is a gap the G1 date depends on (FR17, status partial), not a protocol allowance.
+- **Ground truth:** Graded labels collected *after* queries exist and **frozen before any scoring run**, by Jerome plus 2 independent reviewers. Agreement statistic is **Cohen's κ ≥ 0.6** (pairwise, reported per reviewer pair). Below that, relabel and re-freeze before the first scoring run.
+- **Automated scoring:** NDCG@10 per topic, reproducible under NFR26.
+- **Dispute resolution:** After scoring, labels are immutable for that run. A reviewer may annotate a disagreement; if the annotations justify relabelling, the run is discarded, the label set is re-frozen, and a *new* run is recorded with the reason. A run's pass/fail is never changed by editing labels after the fact.
 - **Fallback:** If independent reviewers are unavailable, automated scoring may still run but **does not** satisfy the thesis hard gate — it is a documented downgrade of gate confidence, not a substitute.
 
-**If the threshold is not met, the kill switch names sunk-cost actions:** stop fusion R&D as default hybrid; remove graph from default `axes=hybrid`; freeze FalkorDB for causal traversal or cut it from general search; change README positioning *before* Phase 1.5 MCP/EventStore product expansion; re-scope and re-estimate. "Reposition and keep building the same system" is not a pass.
+**Evidence to date (diagnostic, not the gate):** The Epic 2 / Epic 26 benchmark (`tests/Hexalith.Memories.Benchmarks`, last run 2026-07-16) reports 8/8 hybrid wins. It does not satisfy the protocol above: N=8, every query is tagged as requiring all three axes, the corpus and labels are synthetic, the control is the best *single* axis rather than BM25+semantic, and the win rule is any positive ΔNDCG@10. It is a reproducibility and regression check (NFR26), and the PRD records it as such.
+
+**If the threshold is not met, the kill switch executes these actions, in order, with no "or":** (1) stop fusion R&D as default hybrid; (2) remove graph from default `axes=hybrid` — hybrid becomes BM25+semantic, and graph stays available only as an explicit axis and through `traverse` (FR47); (3) FalkorDB is retained for explicit traversal and is cut from general search scoring; (4) README and executive summary reposition to "BM25+semantic search with an explicit graph" *before* any other decision; (5) the Phase 1.5 launch gates L1–L3 are **not evaluated** — the launch decision date is cancelled and a sprint-change proposal must re-scope the product before a new date is set; (6) re-scope and re-estimate. "Reposition and keep building the same system" is not a pass.
 
 **Causal Chain Completeness:**
-For 95%+ of EventStore events with known CausationId/CorrelationId chains, graph traversal returns the complete causal path. Validated by automated tests against known event chains. **Phase 1.5 launch gate**, not a Phase 1 thesis gate.
+For 95%+ of EventStore events with known CausationId/CorrelationId chains, graph traversal returns the complete causal path. Validated by automated tests against a named set of known event chains. **Fixture of record:** the Epic 9 event-ingestion integration fixture (`tests/Hexalith.Memories.IntegrationTests/EventStoreIntegration/EventIngestionPipelineIntegrationTests.cs` and the graph gap/edge-type fixtures under `tests/Hexalith.Memories.IntegrationTests/Graph/`), extended with a labelled chain set of at least 20 chains before L3 is evaluated. The `samples/02-eventstore-integration/` walkthrough named in Developer Experience is a Phase 1.5 deliverable that does not exist yet and is not the L3 fixture. **Phase 1.5 launch gate**, not a Phase 1 thesis gate.
 
 **Phase 1 thesis go/no-go (CLI proof of hybrid + isolation):**
 
-| Gate Type | Criterion | Requirement |
+| # | Criterion | Requirement |
 |---|---|---|
-| **Hard gate** | Hybrid vs BM25+semantic passes the 80% NDCG@10 protocol above | Must pass |
-| **Hard gate** | Zero cross-tenant data leaks (NFR8) | Must pass |
-| **Hard gate** | Phase 1 onboarding <30 minutes (NFR31: README/AppHost → first CLI search) | Must pass |
-| Soft gate | Case ownership/isolation tests (FR32/FR33/NFR8): a memory unit is searchable only in its case and tenant | Must pass — this replaces the adjective "case model correctly scopes memory" |
-| Soft gate | Fusion explain is deterministic (NFR24–NFR26) | Must pass |
+| G1 | Hybrid vs BM25+semantic passes the thesis-gate protocol above (N ≥ 50, ΔNDCG@10 ≥ 0.02, κ ≥ 0.6) | Must pass |
+| G2 | Zero cross-tenant data leaks (NFR8) | Must pass |
+| G3 | Phase 1 onboarding <30 minutes (NFR31: README/AppHost → first CLI search) | Must pass |
+| G4 | Case ownership/isolation tests (FR32/FR33/NFR8): a memory unit is searchable only in its case and tenant | Must pass |
+| G5 | Fusion explain is deterministic (NFR24–NFR26) | Must pass |
 
-All 3 hard gates must pass. Both soft gates must pass. Phase 1 does **not** require MCP, EventStore CloudEvent auto-index, or causal-chain completeness.
+All five gates are hard gates; there is no soft tier. Phase 1 does **not** require MCP, EventStore CloudEvent auto-index, or causal-chain completeness.
 
 **Phase 1.5 launch go/no-go (agent + EventStore product integration):**
 
-| Gate Type | Criterion | Requirement |
+| # | Criterion | Requirement |
 |---|---|---|
-| **Hard gate** | MCP end-to-end: agent task on held-out queries within token budget (FR23/FR54/FR58) | Must pass |
-| **Hard gate** | EventStore product integration: `dotnet add package` + subscription → first event search <30 minutes | Must pass |
-| **Hard gate** | Causal chain completeness ≥95% on known CausationId/CorrelationId chains | Must pass |
+| L1 | MCP end-to-end: agent task on a held-out query set (topics not used in G1 labelling, ≥10) within token budget (FR23/FR54/FR58) | Must pass |
+| L2 | EventStore product integration: launch stopwatch below completes in <30 minutes on a clean machine | Must pass |
+| L3 | Causal chain completeness ≥95% on the named known-chain fixture | Must pass |
 
-Phase 1.5 slip **delays those surfaces**. It does not pull MCP into the thesis MVP and does not re-open isolation or fusion as optional.
+**Launch stopwatch (L2), timed as one numbered script, clock starts at step 1:**
+1. `dotnet add package Hexalith.Memories.EventStore` in an existing EventStore-based service.
+2. Add the DAPR pub/sub subscription (topic + `/events/ingest` route) per the getting-started guide.
+3. Provide the embedding-provider secret through the DAPR Secrets API (OpenBao dev instance in the sample AppHost).
+4. Boot the sample stack (`samples/02-eventstore-integration/`, `dotnet run --project <sample AppHost>`; until that sample exists the stopwatch cannot be run and L2 is not evaluable).
+5. Publish one domain event; run `memories search query --tenant <t> --query "<term>"`; a result attributed to that event stops the clock.
+
+**Release decision record (2026-09-08):**
+
+| Decision | State | Owner | Decision date | If it fails |
+|---|---|---|---|---|
+| Thesis increment (Epics 0–8) | Epics 0–8 are `done` in `sprint-status.yaml` (2026-07-16), **but the Phase 1 CLI surface is incomplete**: seven Phase 1 verbs are stubs, the two-axis control (FR25) and graph auto-seeding (FR17) do not exist. The increment is *closed in tracking*, not *complete against this PRD* | Jerome | — | n/a — delivery is not validation |
+| G1 prerequisites (stub verbs, two-axis control, graph seeding, N ≥ 50 labelled corpus) | **No owning story exists** in `epics.md` / `sprint-status.yaml` as of 2026-09-08 | Jerome (sprint planning) | Stories sprint-selected by 2026-09-30, or the G1 date below is declared unreachable and re-set by sprint change with the reason recorded | Without stories the G1 date is a wish; the "not run" outcome below applies |
+| Thesis gate G1–G5 | G2/G4/G5 have automated suites (Epics 5, 3, 26); G3 blocked on stub verbs (NFR31); G1 **not yet run** (only the diagnostic above exists) | Jerome | 2026-10-31 `[ASSUMPTION: date set in this Update pending Administrator confirmation]` | **Fail:** execute kill-switch actions (1)–(6); the launch date below is cancelled. **Not run by the date:** treated as *no verdict, no launch* — Phase 1.5 launch cannot be decided; one re-set of the G1 date is permitted by sprint change; a second miss is treated as a fail |
+| Phase 1.5 launch L1–L3 | Epics 9–10 code delivered; gates not evaluated; L2 path has recorded gaps (deferred-work DW-713: no full-stack EventStore-originated publish proof; DW-728: `eventstore` resource cannot start under SDK 10.0.400-only environments); `samples/` does not exist | Jerome | 2026-11-30 `[ASSUMPTION: date set in this Update pending Administrator confirmation; rule: G1 date + 4 weeks]` | **No launch.** MCP and EventStore packages stay marked preview and are not announced; the date is not moved without a sprint-change proposal |
+
+A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the thesis MVP and does not re-open isolation or fusion as optional.
 
 ## Project Scoping & Phased Development
 
 ### MVP Strategy & Philosophy
 
-**MVP Approach:** Proof of Thesis — validate three-axis retrieval before building integration surfaces. Ship the smallest thing that proves hybrid retrieval outperforms single-axis, with cases and multi-tenancy from day one (architectural decisions that can't be retrofitted).
+**MVP Approach:** Proof of Thesis — validate three-axis retrieval before launching integration surfaces. Ship the smallest thing that proves hybrid retrieval outperforms BM25+semantic under the thesis-gate protocol, with cases and multi-tenancy from day one (architectural decisions that can't be retrofitted).
 
 **Resource Requirements:** Brownfield / change-controlled. Story counts and remaining work live in `epics.md` and `sprint-status.yaml`. The March 2026 "solo developer, 22–32 stories" figure is historical context, not the active work-breakdown.
 
@@ -215,24 +235,24 @@ Phase 1.5 slip **delays those surfaces**. It does not pull MCP into the thesis M
 | 3 | Hybrid Search (syntactic, semantic, graph — independently available, then RRF) | Core hypothesis |
 | 4 | Case/Folder Model (create/delete, strict ownership, case-scoped graph) | Collaborative memory structure |
 | 5 | Tenant Isolation (tenant-scoped principals + indexes, NFR8) | Zero-leak hard gate |
-| 6 | CLI — thesis essentials: `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, `status` (FR10–FR11) | Thesis validation tooling |
-| 7 | Benchmark Suite (representative mix, NDCG@10 vs BM25+semantic) | Thesis validation |
+| 6 | CLI — every row tagged Phase 1 in the **Phase 1 CLI surface** table (CLI Specification); that table, not this row, is the verb list | Thesis validation tooling |
+| 7 | Benchmark Suite (thesis-gate protocol: N ≥ 50, BM25+semantic control, ΔNDCG@10 ≥ 0.02) | Thesis validation (G1) |
 
-Phase 1 graph inventory `[ASSUMPTION]`: file ingest creates `contains` (case membership) and optional explicit `references`. Typed causal edges `caused_by` / `correlated_with` populate from EventStore product integration (Phase 1.5) or explicit annotation. Hybrid fuses *available* axes; do not claim causal three-axis on a folder tree.
+**Phase 1 graph inventory (decision, 2026-09-08):** the graph *mechanics* — typed edge taxonomy, traversal with depth and edge-type filters, gap markers, chronological ordering, confidence promotion (FR46–FR52) — are MVP and shipped by Epics 1 and 4. The graph *population* in Phase 1 is what file/URL ingest can create: `contains` (case membership), `references` (explicit link or AI-inferred similarity), `annotates` (FR37), and `caused_by`/`correlated_with` only when ingested metadata already carries CausationId/CorrelationId. Automatic causal population from an event stream is Phase 1.5 (FR59–FR62). Hybrid fuses *available* axes; the PRD does not claim causal completeness on a folder tree, and the thesis-gate corpus must reflect the Phase 1 population, not a synthetic causal graph.
 
-**Note:** DAPR infrastructure is scaffolding built as part of features 1–5, not a separate work item. README ships with MVP as the NFR31 vehicle. A help entry backed by `NotImplementedCommand` is not coverage.
+**Note:** DAPR infrastructure is scaffolding built as part of features 1–5, not a separate work item. README ships with MVP as the NFR31 vehicle. A help entry backed by `NotImplementedCommand` is not coverage — see the delivery status in CLI Specification for which verbs are still stubs.
 
-### Phase 1.5 — Fast-Follow (committed: within 4 weeks of thesis validation)
+### Phase 1.5 — Fast-Follow (launch decision date = thesis-gate date + 4 weeks; re-derived, by sprint change, if the G1 date moves)
 
 | # | Feature | Validates |
 |---|---|---|
-| 1 | EventStore product integration (DAPR pub/sub through the Memories Server sidecar, auto-discovery, dual embedding, causal chains) | Phase 1.5 launch onboarding + causal completeness |
-| 2 | MCP Server (search, ingest, traverse, case-info with token-budget awareness) | LLM agent integration |
-| 3 | CLI expansion: `explore`, `handlers`, `quickstart`, remaining FR53 slices | Full developer experience |
+| 1 | EventStore product integration package `Hexalith.Memories.EventStore` (DAPR pub/sub through the Memories Server sidecar, auto-discovery, dual embedding, causal chains) | Launch gates L2 + L3 |
+| 2 | MCP Server `Hexalith.Memories.Mcp` (search, ingest, traverse, case-info with token-budget awareness) | Launch gate L1 |
+| 3 | CLI expansion: `explore`, `handlers`, EventStore diagnostics (the Phase 1.5 rows of the Phase 1 CLI surface table) | Full developer experience |
 
 The Memories Server is the sidecar-managed event subscriber. Hexalith modules publish CloudEvents to the configured DAPR pub/sub topic; the server sidecar delivers them to `/events/ingest`, where source-prefix routing maps events to tenant/case memory. Modules should not bypass this path with direct REST pushes for domain event streams.
 
-**Hard commitment:** Phase 1.5 remains the launch path for MCP and EventStore *product* integration. If the timeline slips, those surfaces delay — they are **not** pulled into the thesis MVP and isolation/fusion are **not** reopened.
+**Hard commitment:** Phase 1.5 remains the launch path for MCP and EventStore *product* integration. Its go/no-go is dated in the Release decision record; a failed gate is a no-go for those surfaces, not a slip. They are **not** pulled into the thesis MVP and isolation/fusion are **not** reopened.
 
 ### Phase 2 (Growth)
 
@@ -262,7 +282,7 @@ The Memories Server is the sidecar-managed event subscriber. Hexalith modules pu
 - Magnitude-blend / three-normalization fusion is a rejected alternative; do not re-open it as a spike.
 
 **Market Risks:**
-- Thesis-only increment is not the marketed EventStore/MCP product. Mitigation: keep exec summary, README, and samples honest about phase; do not accordion MCP into thesis MVP if Phase 1.5 slips.
+- Thesis-only increment is not the marketed EventStore/MCP product. Mitigation: keep exec summary, README, and samples honest about phase; a failed Phase 1.5 gate is a no-go for those surfaces, not a reason to accordion MCP into the thesis MVP.
 - Independent reviewer availability for benchmark scoring. Mitigation: automated scoring may run but does not satisfy the thesis hard gate without independent labels.
 
 **Resource Risks:**
@@ -281,11 +301,11 @@ Alex has been building a claims processing platform on Hexalith.EventStore for e
 
 **Opening Scene:** Alex finds Hexalith.Memories linked from the EventStore documentation. The README shows a 30-second demo: three commands, events appear searchable. Alex thinks "that can't be right" and opens the getting started guide.
 
-**Rising Action:** `dotnet add package Hexalith.Memories.Client` — familiar. DAPR subscription config — two lines in `appsettings.json`. `docker compose up` for Redis + FalkorDB — the stack boots in under a minute. Alex publishes a test event to the DAPR topic.
+**Rising Action:** `dotnet add package Hexalith.Memories.EventStore` — familiar. DAPR subscription config — two lines in `appsettings.json`. The embedding key goes into the sample AppHost's OpenBao dev store, and `dotnet run --project Hexalith.Memories.AppHost` boots Redis + FalkorDB + the server in under a minute. Alex publishes a test event to the DAPR topic. This is the launch stopwatch (L2), steps 1–5.
 
-**Climax:** `memories search "claim denied"`. Results come back. Actual results. With the CausationId chain showing which command triggered the denial. It's been 14 minutes. Alex stares at the terminal. The three-day duct-tape project just became a 14-minute setup. *That can't be right* — but it is.
+**Climax:** `memories search query --tenant claims --query "claim denied"`. Results come back. Actual results. With the CausationId chain showing which command triggered the denial. It's been 14 minutes — inside the 30-minute L2 clock. Alex stares at the terminal. The three-day duct-tape project just became a 14-minute setup. *That can't be right* — but it is.
 
-**Trust Deepening:** Alex runs `memories search "claim denied" --explain`. The output breaks down the result: syntactic match on "denied" (BM25 score 0.82), semantic match on "claim rejection" (cosine 0.91), and a graph edge from the DenyClaim command through to the original SubmitClaim event. Three axes, one query. Alex understands *why* each result appeared, not just *that* it appeared.
+**Trust Deepening:** Alex runs the same search with `--explain`. The output breaks down the result: a syntactic rank contribution for "denied", a semantic rank contribution for "claim rejection", and a graph edge from the DenyClaim command through to the original SubmitClaim event. Three axes, one query, RRF contributions rather than raw magnitudes. Alex understands *why* each result appeared, not just *that* it appeared.
 
 **Resolution:** By end of day, Alex commits the integration code. The duct-tape Qdrant solution gets deleted. Alex goes home on time.
 
@@ -297,13 +317,13 @@ Alex has been building a claims processing platform on Hexalith.EventStore for e
 
 Two weeks after shipping, Alex gets a Slack message: "The AI assistant says there's no information about the Henderson claim, but I filed it yesterday."
 
-**Opening Scene:** Alex opens a terminal. `memories search "Henderson" --case claims-q1` returns zero results. Not good.
+**Opening Scene:** Alex opens a terminal. `memories search query --tenant claims --case claims-q1 --query "Henderson"` returns zero results. Not good.
 
-**Rising Action:** `memories status --case claims-q1` shows 12,847 memory units, last ingested 3 hours ago. The Henderson claim was filed 18 hours ago — it should be there. `memories search "Henderson" --case claims-q1 --explain` shows: "No syntactic or semantic matches. No graph nodes matching 'Henderson'." The event was never ingested.
+**Rising Action:** `memories status --tenant claims --case claims-q1` shows 12,847 memory units, last ingested 3 hours ago. The Henderson claim was filed 18 hours ago — it should be there. The same search with `--explain` shows: "No syntactic or semantic matches. No graph nodes matching 'Henderson'." The event was never ingested.
 
 Alex checks the DAPR subscription logs. The ClaimSubmitted event for Henderson was published but the Memories handler threw a serialization error — a new field added last sprint broke the auto-discovery mapping. The error message in the CLI is clear: `Event type 'ClaimSubmittedV2' not found in registered handlers. Run 'memories handlers --list' to see registered types.`
 
-**Climax:** Alex registers the V2 handler, triggers a replay of the missed events, and within seconds `memories search "Henderson"` returns the full claim with causal chain intact.
+**Climax:** Alex registers the V2 handler, triggers a replay of the missed events, and within seconds the Henderson search returns the full claim with causal chain intact.
 
 **Resolution:** Alex adds a monitoring alert on handler registration mismatches. The debug-first DX — clear error messages, `--explain`, `status`, `handlers --list` — turned a potential hours-long investigation into a 15-minute fix.
 
@@ -335,7 +355,7 @@ Alex has the memory server running and CLI working. Now the product owner wants 
 
 Marcus leads a team of seven working across three active cases. Sarah, a senior developer, left last month. Her replacement, Tomás, starts Monday. Marcus has spent every previous onboarding doing four hours of tribal knowledge transfer, walking through Confluence pages that are six months out of date.
 
-**Opening Scene:** Friday afternoon, Marcus creates Tomás's access to the three cases: `memories case add-member --case project-alpha --user tomas`. He does the same for project-beta and the incident-response case.
+**Opening Scene:** Friday afternoon, Marcus creates Tomás's access to the three cases: `memories case add-member --tenant acme --case project-alpha --user tomas` (membership is attribution metadata; Tomás's *access* comes from his tenant claims). He does the same for project-beta and the incident-response case.
 
 **Rising Action:** Monday morning, Tomás opens the AI assistant and types: "Brief me on project-alpha." The assistant calls `search_memory(query="project overview and recent activity", case="project-alpha")` and composes a narrative: the project started eight months ago as a payment processing rewrite, hit a critical incident in February when the gateway provider changed their API, pivoted to a dual-provider architecture, and is currently in testing. Key decisions, who made them, and why — all sourced from events, documents, and team discussions in the case memory.
 
@@ -357,7 +377,7 @@ Kenji manages the DAPR infrastructure for three business units. The compliance t
 
 **Rising Action:** Kenji runs the tenant isolation verification: `memories tenant verify --id bu-compliance`. Automated checks confirm: search from bu-compliance context returns zero results from other tenants, ingestion into bu-compliance is not visible from other tenant contexts. All green.
 
-**Failure beat:** Next month, a new intern accidentally runs `memories search "test" --tenant bu-operations` from the bu-compliance service context. The CLI returns a tenant-mismatch error naming the authenticated tenant. The isolation holds. Kenji sees the rejected request in access telemetry (not a tamper-evident audit trail) with who, when, and what was attempted.
+**Failure beat:** Next month, a new intern accidentally runs `memories search query --tenant bu-operations --query "test"` with a token whose tenant claim is bu-compliance. `--tenant` is an MVP search flag that names the *requested* tenant; authorization comes from the token's tenant claims (NFR11). The CLI returns a tenant-mismatch error naming the authenticated tenant. The isolation holds. Kenji sees the rejected request in access telemetry (not a tamper-evident audit trail) with who, when, and what was attempted.
 
 **Resolution:** Kenji's Thursday deadline was met in under 10 minutes. The monitoring dashboard shows all four tenants healthy, isolated, with clear resource consumption per tenant.
 
@@ -365,7 +385,7 @@ Kenji manages the DAPR infrastructure for three business units. The compliance t
 
 ---
 
-### Journey 6: Kenji — "Time to Scale" (Growth / Phase 3)
+### Journey 6: Kenji — "Time to Scale" (Phase 3)
 
 Six months after the compliance tenant launch, bu-compliance has grown to 2 million memory units. Redis memory is climbing past the comfort zone.
 
@@ -402,7 +422,7 @@ This journey maps the system interaction pattern rather than a human narrative.
 - **Token budget exceeded:** Server truncates results by relevance rank, includes "X additional results omitted" count, names omitted detail groups, and provides deterministic expansion handles
 - **No results:** Response includes suggested alternative queries and case status
 - **Ambiguous case:** Server returns case disambiguation options
-- **Stale context:** Confidence scores flag memory units not updated in >90 days
+- **Stale context:** The Evidence Packet freshness state (NFR33: `current` / `aging` / `stale` / `unknown`) marks the unit; the agent caveats accordingly. Relevance confidence never encodes age.
 - **Memory server unreachable:** Agent receives timeout error with retry-after header. Agent should fall back to informing the user that organizational memory is temporarily unavailable rather than hallucinating context
 - **Redis degraded (partial results):** Response includes `"degraded": true` flag and which axes were unavailable, so the agent can caveat its answer: "Based on text and semantic search only — graph traversal temporarily unavailable"
 
@@ -422,7 +442,7 @@ Priya is a claims adjuster at an insurance company. She handles 40 cases per wee
 
 Priya asks: "Why was partial coverage approved instead of full?" The causal chain returns: the independent assessment distinguished $9.5K new damage from $2.5K pre-existing damage, the policy exclusion applied only to pre-existing, and the senior adjuster's approval note referenced the independent assessment as the deciding factor.
 
-**Verification beat:** Before the call, Priya clicks "show sources." Each claim in the narrative links to the actual document or event: the contractor's assessment PDF, the policy exclusion clause, the senior adjuster's approval with timestamp and signature. Confidence scores show 0.95 for the causal chain. Priya reads the approval note herself — it matches the narrative. She's not trusting the AI blindly; she's trusting it because she can verify every link.
+**Verification beat:** Before the call, Priya clicks "show sources." Each claim in the narrative links to the actual document or event: the contractor's assessment PDF, the policy exclusion clause, the senior adjuster's approval with timestamp and signature. Relevance confidence shows 0.95 for the causal chain — the UI labels it "relevance, not verified fact" (Glossary). Priya reads the approval note herself — it matches the narrative. She's not trusting the AI blindly, and 0.95 is not why she relaxes; she trusts it because she can verify every link.
 
 **Climax:** Priya calls the claimant with complete context. She can explain exactly what was covered, why, and cite the specific evidence. The claimant asks a follow-up about the contractor selection — Priya checks the sources in real time and has the answer in seconds.
 
@@ -436,13 +456,13 @@ Priya asks: "Why was partial coverage approved instead of full?" The causal chai
 
 Alex has the stack running. Redis is up, FalkorDB is up, the DAPR service is healthy. But there's nothing in it yet.
 
-**Opening Scene:** `memories search "anything"` returns: `No results. This tenant has no memory units yet. Get started: 'memories ingest <file>' to add your first document, or configure a DAPR subscription to auto-index events. Follow the README quickstart for a guided setup. If the Phase 1.5 quickstart command is installed, run 'memories quickstart'.`
+**Opening Scene:** `memories search query --tenant pilot --query "anything"` returns: `No results. This tenant has no memory units yet. Get started: 'memories ingest <file>' to add your first document, or run 'memories quickstart' for a guided setup. Follow the README quickstart for the manual path.` (Event auto-indexing is not offered in this hint until Phase 1.5 ships.)
 
-**Rising Action:** Alex creates the first case: `memories case create --id claims-pilot --display-name "Claims Pilot"`. The CLI responds: `Case 'claims-pilot' created. 0 memory units. Start building knowledge: ingest documents, subscribe to event topics, or add files from a directory.` Not an error, not a blank screen — a clear next step.
+**Rising Action:** Alex creates the first case: `memories case create --id claims-pilot --display-name "Claims Pilot"`. The CLI responds: `Case 'claims-pilot' created. 0 memory units. Start building knowledge: 'memories ingest <file|url|directory> --tenant pilot --case claims-pilot'.` Not an error, not a blank screen — a clear next step.
 
-Alex runs `memories ingest ./sample-claims/ --case claims-pilot`. The CLI shows a progress indicator: 47 documents ingested, 47 memory units created, embedding in progress. Then: `Done. 47 memory units indexed. Try: 'memories search "claim" --case claims-pilot'`
+Alex runs `memories ingest ./sample-claims/ --tenant pilot --case claims-pilot`. The CLI shows a progress indicator: 47 documents ingested, 47 memory units created, embedding in progress. Then: `Done. 47 memory units indexed. Try: 'memories search query --tenant pilot --case claims-pilot --query "claim"'`
 
-**Climax:** First search on real data: `memories search "water damage" --case claims-pilot`. Three results, ranked by hybrid (RRF) score. The system works. The empty state is gone, and Alex never felt lost getting here. Event publish to a DAPR topic is Journey 1 / Phase 1.5, not this climax.
+**Climax:** First search on real data: `memories search query --tenant pilot --case claims-pilot --query "water damage"`. Three results, ranked by hybrid (RRF) score. The system works. The empty state is gone, and Alex never felt lost getting here. Event publish to a DAPR topic is Journey 1 / Phase 1.5, not this climax.
 
 **Resolution:** Alex shares the README quickstart experience in the team channel. Two other developers set up their own cases by end of day.
 
@@ -452,7 +472,7 @@ Alex runs `memories ingest ./sample-claims/ --case claims-pilot`. The CLI shows 
 
 ### Journey 10: The Contributor — "From Bug Report to First PR"
 
-Dani is a .NET developer at a fintech startup. They adopted Hexalith.Memories three months ago for their transaction monitoring system. It's been working well, but Dani hit a rough edge: the CLI's `memories search --explain` output doesn't show which embedding model was used for the semantic match, making it hard to debug relevance issues when testing different providers.
+Dani is a .NET developer at a fintech startup. They adopted Hexalith.Memories three months ago for their transaction monitoring system. It's been working well, but Dani hit a rough edge: the CLI's `memories search query --explain` output doesn't show which embedding model was used for the semantic match, making it hard to debug relevance issues when testing different providers.
 
 **Opening Scene:** Dani opens a GitHub issue: "Feature request: show embedding model name in --explain output." They include a concrete use case and a mock of what the output should look like.
 
@@ -510,7 +530,7 @@ Hexalith.Memories is **interpretive infrastructure** — it occupies a middle gr
 Memories provides the primitives that *enable* compliance:
 
 - **Tenant deletion** (`memories tenant delete`) removes all indexes, graph data, and memory units for that tenant — enabling applications to fulfill erasure requests. **Limitation:** Cross-references to that tenant's data in *other* tenants' memory units are the application's responsibility to handle. The compliance guide must document this explicitly.
-- **Physical tenant isolation** ensures no cross-tenant data leakage, a prerequisite for downstream compliance
+- **Tenant isolation** (tenant-scoped backend principals and indexes, NFR8) ensures no cross-tenant data leakage, a prerequisite for downstream compliance. It is a shared-cluster isolation tier, not separate processes or volumes per tenant (see `addendum.md`).
 - **Access telemetry** of queries, ingestion, and mutations is provided as infrastructure telemetry. This is *not* a tamper-evident audit trail — it does not guarantee append-only storage, integrity verification, or retention compliance. Applications requiring certified audit trails must implement their own on top of this telemetry.
 
 **Compliance enablement documentation** must include:
@@ -528,9 +548,9 @@ Confidence scores must have clear, documented meaning. Each memory unit's search
 |---|---|---|---|
 | Syntactic score | BM25 relevance to query terms for single-axis search; rank contribution for hybrid search | 0.0–1.0 | Single-axis explain uses BM25 saturation; hybrid explain exposes weighted reciprocal-rank contribution so raw BM25 magnitude is not fused directly. |
 | Semantic score | Cosine similarity for single-axis search; rank contribution for hybrid search | 0.0–1.0 | Single-axis explain uses cosine clamp; hybrid explain exposes weighted reciprocal-rank contribution. |
-| NL score | Natural-language-description vector similarity for single-axis `axis=nl`; rank contribution for hybrid search when `nl` is enabled | 0.0–1.0 | Single-axis explain uses cosine clamp with syntactic-hash attribution backfill; hybrid explain exposes weighted reciprocal-rank contribution. |
-| Graph score | Proximity in the relationship graph (hop distance, edge weight) | 0.0–1.0 | Inverse hop distance with decay function |
-| Composite score | Weighted reciprocal-rank fusion of available axes | 0.0–1.0 | Weighted RRF over available axis rankings, normalized against the best possible rank contribution |
+| NL score (**Phase 1.5**, event units only) | Natural-language-description vector similarity for single-axis `axis=nl`; rank contribution for hybrid search when `nl` is enabled | 0.0–1.0 | Single-axis explain uses cosine clamp with syntactic-hash attribution backfill; hybrid explain exposes weighted reciprocal-rank contribution. Not a Phase 1 retrieval axis: file/URL units have no NL description embedding (FR60). |
+| Graph score | Proximity in the relationship graph (hop distance, edge weight) for single-axis search; rank contribution for hybrid search | 0.0–1.0 | Single-axis explain uses inverse hop distance with decay; hybrid explain exposes weighted reciprocal-rank contribution. Proximity magnitude is never fused directly. |
+| Composite score (**Relevance confidence**) | Weighted reciprocal-rank fusion of available axes | 0.0–1.0 | Weighted RRF over available axis rankings, normalized against the best possible rank contribution |
 
 Single-axis scores keep their axis-specific meaning. Hybrid per-axis scores are rank-contribution scores, not raw BM25, cosine, or graph-proximity magnitudes. The fusion weights and algorithm are documented and deterministic. `--explain` exposes the score semantics and fusion weights applied.
 
@@ -555,29 +575,29 @@ Memories is responsible for delivering **unambiguous causal chain structure**, n
 - Edge confidence reflecting relationship strength
 - **Gap detection:** If a causal chain has missing intermediate nodes (e.g., A's CausationId points to B, B's points to C, but B isn't indexed), the chain must flag the gap explicitly: `A → [MISSING: event-id-B] → C`. Never silently skip missing nodes. This is a data accuracy responsibility of the Interpretation layer.
 
-**Edge Type Taxonomy (MVP minimum):**
+**Edge Type Taxonomy (MVP; the "Source" column says which phase can populate each type):**
 
 | Edge Type | Source | Default Confidence | Semantics |
 |---|---|---|---|
-| `caused_by` | Explicit CausationId from EventStore | 1.0 | Direct causal link: Event B was directly caused by Event A |
-| `correlated_with` | CorrelationId from EventStore | 0.8 | Same correlation context: Events B, C, D all occurred in the same workflow as Event A, but did not necessarily cause each other |
-| `references` | Explicit link or AI-inferred content similarity | 0.5–1.0 | Document A references or relates to Document B. 1.0 for explicit links, 0.5 for AI-inferred |
-| `contains` | Case/folder structure | 1.0 | Structural: case contains memory unit |
-| `annotates` | User correction or commentary | 1.0 | Memory unit B is an annotation/correction on memory unit A |
+| `caused_by` | Explicit CausationId — Phase 1: only when ingested metadata carries it (FR46); Phase 1.5: from the EventStore event stream (FR61) | 1.0 | Direct causal link: Event B was directly caused by Event A |
+| `correlated_with` | CorrelationId — same phase rule as `caused_by` | 0.8 | Same correlation context: Events B, C, D all occurred in the same workflow as Event A, but did not necessarily cause each other |
+| `references` | Explicit link or AI-inferred content similarity — Phase 1 | 0.5–1.0 | Document A references or relates to Document B. 1.0 for explicit links, 0.5 for AI-inferred |
+| `contains` | Case/folder structure — Phase 1 | 1.0 | Structural: case contains memory unit |
+| `annotates` | User correction or commentary (FR37) — Phase 1 | 1.0 | Memory unit B is an annotation/correction on memory unit A |
 
 The distinction between `caused_by` and `correlated_with` is critical. Collapsing CorrelationId into causation makes every event in a correlation group appear to cause every other event — exactly the misrepresentation the structured data model exists to prevent.
 
 Users can promote AI-inferred edge confidence (e.g., from 0.5 to 1.0) when they verify a relationship. The system never auto-promotes.
 
-**Confidence calibration (Growth phase):** Periodic review of *edge* confidence tiers against reviewer judgments of relationship correctness — separate from relevance confidence. Do not read 0.8 relevance as "~80% factual accuracy."
+**Confidence calibration (Phase 2):** Periodic review of *edge* confidence tiers against reviewer judgments of relationship correctness — separate from relevance confidence. Do not read 0.8 relevance as "~80% factual accuracy."
 
 **Responsibility boundary:** Memories owns data accuracy (correct ordering, complete chains, accurate edge types, gap detection). The LLM owns narrative quality (prose composition, summarization). If the structured data has wrong ordering, missing links, or silent gaps, that's a Memories bug. If the prose misrepresents correct structured data, that's an LLM problem.
 
 ### Open-Source Licensing
 
-**Hexalith.Memories license: Apache 2.0** (decision)
+**Hexalith.Memories license: decision conflict — see Open Question 4.** The PRD's recorded decision (March 2026) is Apache 2.0; the shipped reality (2026-09-08) is MIT in `LICENSE`, source headers, and `PackageLicenseExpression`. Both are permissive and both satisfy the intent below; the PRD does not pick between them in this Update because published packages already carry MIT and relicensing is the owner's call.
 
-Apache 2.0 signals long-term trust for enterprise adoption. The README must include a public commitment: *"Hexalith.Memories is committed to the Apache 2.0 license. We will not change to a restrictive license."* This preempts BSL-switch concerns that have eroded trust in other AI infrastructure projects.
+Whichever licence is confirmed, the README must include a public commitment: *"Hexalith.Memories is committed to the <licence> license. We will not change to a restrictive license."* This preempts BSL-switch concerns that have eroded trust in other AI infrastructure projects. The statement must name the licence the packages actually ship under.
 
 **Dependency chain licensing:**
 
@@ -591,7 +611,7 @@ Apache 2.0 signals long-term trust for enterprise adoption. The README must incl
 **Licensing de-risk strategy:**
 
 1. **LICENSE-DEPENDENCIES.md** — Document the architectural boundary between Memories and FalkorDB explicitly. State that Memories communicates with FalkorDB over the network as an external service, not via direct embedding. Give enterprise legal teams something concrete to evaluate.
-2. **FalkorDB version pinning** — Pin to a specific AGPL-licensed version in the default docker-compose.yml. If FalkorDB relicenses, users can stay on the pinned version while alternatives are built. Version pinning is the cheapest first defense against relicensing risk.
+2. **FalkorDB version pinning** — Pin to a specific AGPL-licensed image version in the AppHost resource definition and the production deployment artifacts (Epic 26). If FalkorDB relicenses, users can stay on the pinned version while alternatives are built. Version pinning is the cheapest first defense against relicensing risk.
 3. **IMemoryGraph AND IMemoryIndex extraction points identified in Phase 2** — Not premature abstraction, but licensing insurance. If FalkorDB's AGPL becomes an enterprise blocker, extracting the interface enables swapping to Neo4j (GPL with commercial license) or graph-on-Redis. If Redis Stack goes proprietary, IMemoryIndex enables migration to Dragonfly/KeyDB (BSD) or Qdrant. Low extraction cost, high insurance value. Recovery time with pre-identified extraction points: 2–4 weeks. Without: 2–4 months.
 4. **SSPL constraint in README deployment section** — "Offering Hexalith.Memories as a hosted/managed service requires compliance with Redis Stack's SSPL terms. Self-hosted deployments are unaffected."
 
@@ -599,14 +619,14 @@ Apache 2.0 signals long-term trust for enterprise adoption. The README must incl
 
 ### Detected Innovation Areas
 
-**1. Three-Axis Retrieval Fusion (Core Innovation)**
-The product bet is documented deterministic RRF across syntactic, semantic, and graph on a DAPR/EventStore causal graph, with `--explain`. Hybrid BM25+vector is widely available (Elasticsearch, Azure AI Search, Weaviate, Vespa). Novelty is the EventStore/DAPR causal graph in that fusion, not "no system fuses three axes."
+**1. Three-Axis Retrieval Fusion (Core Innovation — Phase 1 tests the fusion, Phase 1.5 supplies the causal graph)**
+The Phase 1 bet is documented deterministic RRF across syntactic, semantic, and a case-scoped graph, with `--explain`, beating BM25+semantic under the thesis-gate protocol. Hybrid BM25+vector is widely available (Elasticsearch, Azure AI Search, Weaviate, Vespa). The novelty this PRD *markets* — the EventStore/DAPR causal graph inside that fusion — arrives with Phase 1.5 population; it is not "no system fuses three axes," and it is not what G1 proves.
 
 **2. Event Memory via DAPR Pub/Sub (Platform Innovation)**
 EventStore happy path: subscribe, follow conventions, index dual embeddings and CausationId/CorrelationId as graph edges. Schema changes require handler registration. Generic DAPR publishers (Marten, Wolverine, Axon) are an experiment — if integration needs custom code beyond subscription config, keep EventStore conventions as the beachhead.
 
-**3. Causal Intelligence as a Query Interface (Domain Innovation)**
-Event-sourced systems already capture *why* things happen — but that causal data is locked inside infrastructure, queryable only by developers who know the event store schema. Memories makes causal chains queryable via natural language: "What led to this decision?" walks the CausationId graph and returns structured, ordered, gap-aware results. This transforms event sourcing from a persistence pattern into a knowledge management pattern.
+**3. Causal Intelligence as a Query Interface (Domain Innovation — Phase 1.5 outcome)**
+Event-sourced systems already capture *why* things happen — but that causal data is locked inside infrastructure, queryable only by developers who know the event store schema. Once Phase 1.5 populates the graph from the event stream, Memories makes causal chains queryable via natural language: "What led to this decision?" walks the CausationId graph and returns structured, ordered, gap-aware results (the FR46–FR52 mechanics shipped in Phase 1). This transforms event sourcing from a persistence pattern into a knowledge management pattern. Gate: L3.
 
 **4. Interpretive Infrastructure (Positioning Innovation)**
 The three-tier responsibility model — Storage → Interpretation → Application — is a novel positioning for AI infrastructure. Memories is not "just a database" (it interprets content) and not "an AI application" (it doesn't make decisions). This framing creates a defensible product category and a clear responsibility boundary.
@@ -631,9 +651,9 @@ Falsifiable claim: Hexalith.Memories ships documented deterministic RRF across s
 
 | Innovation | Validation Method | Kill Switch |
 |---|---|---|
-| Three-axis fusion | Benchmark suite per Measurable Outcomes (hybrid vs BM25+semantic, NDCG@10) | Execute named kill-switch actions if 80% misses |
-| EventStore product integration | Timed Phase 1.5 onboarding: `dotnet add package` + subscription to first event search | If onboarding exceeds 30 minutes, the conventions promise is broken |
-| Causal intelligence | Causal chain completeness test: 95%+ of known CausationId chains fully traversable | Phase 1.5 launch gate |
+| Three-axis fusion | Thesis-gate protocol per Measurable Outcomes (G1: N ≥ 50, hybrid vs BM25+semantic, ΔNDCG@10 ≥ 0.02, κ ≥ 0.6) — not yet run; the 2026-07-16 N=8 run is diagnostic | Execute named kill-switch actions if 80% misses |
+| EventStore product integration | Launch stopwatch L2: `dotnet add package Hexalith.Memories.EventStore` + subscription + secret + boot + first event search | If the stopwatch exceeds 30 minutes, the conventions promise is broken — no launch |
+| Causal intelligence | L3: 95%+ of the named known-chain fixture fully traversable | No launch |
 | DAPR-generic pattern | Test with non-EventStore event source (e.g., Marten publishing to DAPR) | If integration requires custom code beyond DAPR subscription config, the pattern isn't generic — keep EventStore conventions as the beachhead |
 
 ### Risk Mitigation
@@ -788,25 +808,26 @@ Ingestion is a **DAPR Workflow** (`IngestionWorkflow`): extract, embed, and proj
 
 **Consistency (replaces "atomic write across three backends"):** EventStore acknowledgement is the durable source-of-truth commit. Search/vector/graph writes are idempotent rebuildable projections coordinated by the durable workflow. No distributed transaction is claimed.
 
-**Observable state machine:** `pending`, `projecting`, `indexed`, `partially failed/retrying`, `failed/dead-lettered`, `repaired`. `indexed` is emitted only after every required active projection acknowledges the same source version.
+**Observable ingestion states (the one vocabulary; Glossary "Ingestion state"):** `pending` → `extracting` → `embedding` → `projecting` → `indexed`, with `failed` as the terminal failure. Retry attempts, dead-letter, and repair are *detail on* `projecting`/`failed` (attempt count, last error, `repaired_at`), not additional states. `indexed` is emitted only after all three projections — search, vector, graph — acknowledge the same EventStore source version. In MVP "required projections" means all three; a degraded projection set is not an MVP configuration.
 
 **Pipeline Stages:**
 
-| Stage | What happens | Owner |
+| State | What happens | Owner |
 |---|---|---|
 | `pending` | Content accepted; EventStore commit durable | Workflow |
 | `extracting` | Text extraction from content (PDF, URL, file) | Workflow activity |
 | `embedding` | Call embedding provider API, get vector | Throttled by per-tenant rate-limiter actor |
-| `projecting` | Write RediSearch, Redis Vector, FalkorDB as rebuildable projections | Workflow + compensation |
-| `indexed` | All required projections ack the same source version | Terminal success |
-| `failed` / `dead-lettered` | Error at any stage, max retries exceeded | Visible via CLI; not silently dropped |
+| `projecting` | Write RediSearch, Redis Vector, FalkorDB as rebuildable projections; retries with backoff stay in this state | Workflow + compensation |
+| `indexed` | All three projections ack the same source version | Terminal success |
+| `failed` | Error at any stage after max retries; error, stage, and attempt count preserved (dead-letter detail) | Visible via CLI; not silently dropped |
 
 **Failure handling:**
-- Failed units retry with exponential backoff (configurable max retries)
-- After max retries, units move to `failed`/`dead-lettered` with error details preserved
-- `memories status --case X` shows counts per observable state
+- Failed units retry with exponential backoff (configurable max retries) while remaining `projecting` (or the failing stage)
+- After max retries, units move to `failed` with error details preserved
+- `memories status --case X` shows counts per state
 - `memories status --failed` shows failed units with error details and stage
-- FR13: no silent two-of-three searchable unit. A unit is not `indexed` (not searchable as complete) until all required projections ack, or it stays `partially failed/retrying` / `failed`.
+- FR13: no silent two-of-three searchable unit. A unit is not `indexed` (not searchable as complete) until all three projections ack; until then it is `projecting` or `failed`.
+- **File/URL freshness (NFR36):** under normal conditions a ≤10 KB file unit reaches `indexed` within 60 seconds of `pending`; degradation is reported, not silent.
 
 **Runtime split:**
 - **IngestionWorkflow:** stages, retry, compensation, Durable Task persistence (NFR17).
@@ -816,21 +837,24 @@ Ingestion is a **DAPR Workflow** (`IngestionWorkflow`): extract, embed, and proj
 
 Not all capabilities map to all interfaces. **Capability alignment, not feature parity.** CLI is the operational superset. MCP exposes what LLM agents need (search, ingest, traverse, case info). Tenant management, diagnostics, and interactive features are CLI-only.
 
-Implementation is split by phase: Phase 1 CLI essentials are `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, `status`, and benchmark support; Phase 1.5 expands with `explore`, `handlers`, `quickstart`, remaining FR53 slices, and EventStore diagnostics.
+The single source of truth for which CLI verbs are Phase 1 versus Phase 1.5, and which are shipped, is the **Phase 1 CLI surface** table in CLI Specification. This matrix only maps capabilities to interfaces.
 
-| Capability | CLI | MCP | DAPR Service Invocation |
+| Capability | CLI | MCP (Phase 1.5) | DAPR Service Invocation |
 |---|---|---|---|
-| Search (syntactic, semantic, graph, hybrid) | `memories search` | `search_memory` | `SearchAsync` |
-| Search with explain | `memories search --explain` | `search_memory` (explain field) | `SearchAsync` (explain option) |
+| Search (syntactic, semantic, graph, hybrid) | `memories search query` | `search_memory` | `SearchAsync` |
+| Search with explain | `memories search query --explain` | `search_memory` (explain field) | `SearchAsync` (explain option) |
+| Result / unit inspection | `memories search inspect`, `memories search lookup` | -- | -- |
 | Content ingestion | `memories ingest` | `ingest_content` | `IngestAsync` |
 | Graph traversal | `memories traverse` | `traverse_relations` | `TraverseAsync` |
-| Case management (create, delete, members) | `memories case` | `get_case_info` | `CaseAsync` methods |
+| Case management (create, delete, members, activity) | `memories case` | `get_case_info` | `CaseAsync` methods |
 | Tenant management | `memories tenant` | -- | `TenantAsync` methods |
 | Tenant isolation verification | `memories tenant verify` | -- | -- |
 | Ingestion status & failed units | `memories status` | -- | -- |
+| Index/graph consistency | `memories consistency verify/inspect/repair` | -- | -- |
+| Portable export (FR71) | `memories export case/tenant` | -- | -- |
 | Interactive exploration | `memories explore` | -- | -- |
 | Handler management | `memories handlers` | -- | -- |
-| Guided quickstart | README quickstart in MVP; `memories quickstart` in Phase 1.5 | -- | -- |
+| Guided quickstart | `memories quickstart` (shipped; the README quickstart is the NFR31 vehicle, the command is its scripted form) | -- | -- |
 | Batch directory ingestion | `memories ingest <dir>` | -- | -- |
 
 **Design rationale:** MCP exposes agent work. CLI exposes ops. DAPR service invocation is the internal programmatic API. FR53 is satisfied per active phase; a help entry backed by `NotImplementedCommand` is not coverage.
@@ -839,23 +863,32 @@ Implementation is split by phase: Phase 1 CLI essentials are `ingest`, `search -
 
 **Distribution:** .NET global tool (`dotnet tool install -g Hexalith.Memories.Cli`)
 
-**MVP command scope:** `ingest`, `search --explain`, `case create/delete`, `tenant create/delete/verify`, `status`, and benchmark support.
+**Global options (all commands):** `--endpoint`, `--token`, `--format`, `--verbose`, `--telemetry`. Tenant scope is passed as `--tenant <id>` on tenant-scoped commands; it names the requested tenant, and the token's tenant claims authorize it (NFR11). There is no `tenant switch` — ambient tenant state was removed from the contract on 2026-09-08.
 
-**Phase 1.5 expansion scope:** `explore`, `handlers`, `quickstart`, remaining FR53 slices, EventStore diagnostics.
+**Phase 1 CLI surface (thesis; this table is the FR53 source of truth):**
 
-**Command Structure:**
+| Command | Phase | Delivery status (2026-09-08, `RootCommandFactory`) | Acceptance output |
+|---|---|---|---|
+| `memories search query --tenant --query [--case] [--axis] [--max-results] [--explain]` | 1 | Shipped (Story 7.2) | Ranked results with Evidence Packet fields; `--explain` shows per-axis rank contributions and weights |
+| `memories search inspect` / `search lookup` | 1 | Shipped (7.2 / 18.5) | Single-unit Evidence Packet / keyed lookup |
+| `memories traverse --tenant --from [--depth] [--edge-type]` | 1 | **Not started** — `NotImplementedCommand` stub | Ordered nodes with typed edges, timestamps, `[MISSING: id]` gap markers (FR47–FR49, FR52) |
+| `memories ingest <file|url|dir> --tenant --case` | 1 | **Not started** — stub; **blocks G3**. Ingestion is reachable today via `POST /api/v1/ingest` and `quickstart` | Progress, unit count, per-unit ingestion state (FR1–FR3, FR10) |
+| `memories case create/delete/list` | 1 | **Not started** — stub; **`create` blocks G3**. Case bootstrap exists server-side (Epic 0/3) | Case id, unit count, next-step hint (FR26–FR27, FR30) |
+| `memories case add-member/remove-member/activity` | 1 | **Not started** — stub | Member list (metadata only, no authorization); activity feed attributing ingest/search/membership events (FR28–FR29, FR36) |
+| `memories tenant create/delete/verify` | 1 | **Not started** — only `tenant list` is wired; **`create` blocks G3**. Provisioning exists as `TenantProvisioningWorkflow` (Epic 0/5) | Provisioned resources summary; verify prints the NFR8 isolation checks with pass/fail (FR38–FR40) |
+| `memories tenant list` | 1 | Shipped (7.1) | Tenant table |
+| `memories status telemetry --tenant` | 1 | Shipped (7.5) | Telemetry summary, indexes, queue depth |
+| `memories status --case/--failed` | 1 | **Not started** — only `telemetry` subcommand wired | Counts per ingestion state; failed units with stage + error (FR10–FR11) |
+| `memories consistency verify/inspect/repair --tenant` | 1 | Shipped (8.2) | Divergence report; dry-run-then-apply repair receipt (FR73–FR74) |
+| `memories quickstart` | 1 | Shipped (7.4) | Prerequisite check → boot hint → health → sample tenant → sample ingest → validation search |
+| `memories config show` | 1 | Shipped (7.1) | Effective configuration with sources |
+| `memories export case/tenant --tenant` | 2 (delivered early) | Shipped (8.3) | Portable JSON (FR71) |
+| `memories handlers list/mismatches` | 1.5 | Shipped (9.3) | Registered handlers; mismatch diagnostics (FR62) |
+| `memories explore` | 1.5 | Not started — stub | Interactive exploration |
 
-| Command Group | Commands |
-|---|---|
-| `memories ingest` | `<file>`, `<url>`, `<directory>`, `--case` |
-| `memories search` | `<query>`, `--case`, `--explain`, `--axes`, `--format` |
-| `memories explore` | `--case`, `--from`, `--depth` |
-| `memories traverse` | `--from`, `--depth`, `--edge-type` |
-| `memories case` | `create`, `delete`, `add-member`, `activity`, `list` |
-| `memories tenant` | `create`, `delete`, `verify`, `switch`, `list` |
-| `memories status` | `--case`, `--tenant`, `--failed`, `--ingestion` |
-| `memories handlers` | `--list`, `--register` |
-| `memories quickstart` | Guided interactive setup (Phase 1.5 unless explicitly pulled forward) |
+**Shipped without a CLI verb (REST `/api/v1` + `Hexalith.Memories.Client.Rest` are the Phase 1 surface; no CLI verb is planned for Phase 1):** FR12 re-ingest (`POST …/memory-units/{id}/re-ingest`, `POST …/failed-units/re-ingest`), FR21–FR22 metadata filter and pagination (`GET /api/v1/search` parameters), FR35 delete unit (`DELETE …/memory-units/{id}`), FR37 annotate (`POST …/memory-units/{id}/annotations`), FR42/FR43/FR45 tenant configuration (`PATCH /api/v1/tenants/{id}`, `GET/PUT …/embedding-config`), FR51 promote edge confidence (`PATCH /api/v1/tenants/{id}/edges/confidence`). Route constants are `Contracts.V1.MemoriesRoutes`. A future CLI verb for any of these is a sprint-selected FR53 slice, not an MVP gap.
+
+Stubbed Phase 1 verbs are the remaining FR53 MVP slices. They are tracked in `epics.md` / `sprint-status.yaml`; this PRD only records that the thesis surface is not complete until they are real.
 
 **Output Formats:**
 
@@ -879,13 +912,13 @@ Sensitive values are not resolved through configuration fallback. Product servic
 
 **In-Repo Examples (`samples/` folder):**
 
-| Example | Maps to | Demonstrates |
-|---|---|---|
-| `samples/01-quickstart/` | Journey 9 (Phase 1 thesis path) | `dotnet run --project AppHost` boots full stack, ingest + search via CLI |
-| `samples/02-eventstore-integration/` | Journey 1 (Phase 1.5) | Aspire AppHost with EventStore + Memories, DAPR subscription wired |
-| `samples/03-mcp-agent/` | Journey 3 (Phase 1.5) | MCP server launched by Aspire, agent configuration |
+| Example | Maps to | Demonstrates | Status (2026-09-08) |
+|---|---|---|---|
+| `samples/01-quickstart/` | Journey 9 (Phase 1 thesis path) | `dotnet run --project AppHost` boots full stack, ingest + search via CLI | Not started — `memories quickstart` and the README carry NFR31 today; the folder does not exist |
+| `samples/02-eventstore-integration/` | Journey 1 (Phase 1.5) | Aspire AppHost with EventStore + Memories, DAPR subscription wired; the L2 stopwatch runs against it | Not started — required before L2 can be timed |
+| `samples/03-mcp-agent/` | Journey 3 (Phase 1.5) | MCP server launched by Aspire, agent configuration | Not started — required before L1 can be run |
 
-Numbered naming signals the learning path and mirrors user journey progression.
+Numbered naming signals the learning path and mirrors user journey progression. No `samples/` folder exists in the repository yet; the Phase 1.5 samples are launch prerequisites, not documentation polish.
 
 **Documentation Strategy:**
 
@@ -924,15 +957,26 @@ Non-.NET external consumers can integrate today via ingress REST API (JSON paylo
 
 ## Functional Requirements
 
-FR1–FR74 are the product-horizon inventory, not a claim that every FR is active thesis-MVP scope.
+FR1–FR74 are the product-horizon inventory, not a claim that every FR is active thesis-MVP scope. Every FR carries a phase from the register and a delivery status from the status register below; the two are independent (an FR can be MVP and not started, or Phase 2 and shipped early).
 
-**Canonical phase register** (August 2026 change control):
+**Canonical phase register** (August 2026 change control; confirmed 2026-09-08 — this register is the only increment source of truth; FR46–FR52 stay MVP as shipped graph mechanics, see MVP Feature Set):
 
-- **MVP (thesis + foundation):** FR1–FR22, FR24–FR52, FR55–FR57, FR63–FR70, FR72–FR74, plus the already-delivered portion of FR53.
-- **Phase 1.5:** FR23, FR54, FR58–FR62, and remaining FR53 command slices.
+- **MVP (thesis + foundation):** FR1–FR22, FR24–FR52, FR55–FR57, FR63–FR70, FR72–FR74, plus the Phase 1 CLI surface of FR53.
+- **Phase 1.5:** FR23, FR54, FR58–FR62, and the Phase 1.5 CLI slices of FR53 (`explore`, EventStore diagnostics).
 - **Phase 2:** FR71 (completed early as non-MVP Story 8.3; Epic 26 covers operational backup/restore only — do not reschedule application export as new Phase 2 work).
 
 A capability completed before its planned phase is recorded as completed non-MVP and does not silently change thesis-MVP acceptance.
+
+**Delivery status register (2026-09-08, derived from `epics.md` FR Coverage Map and `sprint-status.yaml`; Epics 0–23, 25, 26 done; 24, 27–29, 31 in progress; 30 backlog). On conflict, `sprint-status.yaml` is authoritative; this register is refreshed at each PRD Update and is not edited between Updates:**
+
+| Status | FRs | Notes |
+|---|---|---|
+| **Shipped** | FR4–FR9, FR12–FR16, FR18–FR24, FR31–FR35, FR37, FR41–FR43, FR45–FR46, FR48–FR52, FR54–FR70, FR72–FR74 | Capability, its developer surface, and tests exist in a done epic. "Shipped" is delivery, not thesis validation (see Release decision record). |
+| **Partial (protocol prerequisite missing)** | FR17, FR25 | FR17: shipped hybrid skips the graph axis without an explicit start node; the auto-seeding rule (Measurable Outcomes) is not implemented. FR25: shipped benchmark compares against best single axis; the BM25+semantic control does not exist. Both gate G1. |
+| **Shipped, hardening in progress** | FR44 | Epic 0/5/20 delivered; Epic 24 (tenant-scoped principals as the isolation boundary) is in progress. NFR8 evidence must be re-run when Epic 24 closes. |
+| **Partial (server shipped, Phase 1 CLI verb is a stub)** | FR1–FR3, FR10–FR11, FR26–FR30, FR36, FR38–FR40, FR47, FR53 | Server-side behaviour and tests shipped (Epics 0, 1, 3, 4, 5, 6); reachable via `POST /api/v1/...` and `quickstart`. The CLI verbs that expose them (`ingest`, `status --case/--failed`, `case create/delete/list/add-member/remove-member/activity`, `tenant create/delete/verify`, `traverse`) are `NotImplementedCommand` stubs. FR38/FR40 additionally wait on Epic 24 hardening. See Phase 1 CLI surface. |
+| **Shipped early (non-MVP)** | FR71 | Story 8.3 operational export/restore; application-facing export stays Phase 2. |
+| **Not started** | — | No FR is wholly unstarted; the gaps are the CLI slices above. |
 
 ### Knowledge Ingestion
 
@@ -941,21 +985,21 @@ A capability completed before its planned phase is recorded as completed non-MVP
 - **FR3:** Developer can batch-ingest content from a directory into a specified case
 - **FR4:** System can extract text from ingested content (plain text, PDF, markdown)
 - **FR5:** System can generate embeddings for ingested content via a configurable embedding provider
-- **FR6:** System ensures a memory unit is `indexed` (searchable across all *required active* projections/axes) only after every required projection acknowledges the same EventStore source version
+- **FR6:** System ensures a memory unit is `indexed` (searchable on all three axes) only after the search, vector, and graph projections each acknowledge the same EventStore source version
 - **FR7:** Developer can attach metadata to ingested content, with each field tracking its origin (human-declared vs AI-inferred) and metadata confidence score
 - **FR8:** System manages ingestion load per tenant independently
 - **FR9:** System retries failed ingestion automatically with configurable limits
-- **FR10:** Developer can view ingestion status per case (pending, projecting, indexed, failed counts)
+- **FR10:** Developer can view ingestion status per case as counts per ingestion state (`pending`, `extracting`, `embedding`, `projecting`, `indexed`, `failed`)
 - **FR11:** Developer can view failed ingestion units with error details and failure stage
 - **FR12:** Developer can manually trigger re-ingestion of failed or previously ingested content, individually or in bulk
-- **FR13:** Partial projection failure never yields a silently searchable two-of-three unit. EventStore acknowledgement is the durable commit; search/vector/graph writes retry/compensate until `indexed` or `failed`/`dead-lettered`. No distributed transaction. Rollback of the EventStore commit is not the recovery model.
+- **FR13:** Partial projection failure never yields a silently searchable two-of-three unit. EventStore acknowledgement is the durable commit; search/vector/graph writes retry/compensate until `indexed` or `failed`. No distributed transaction. Rollback of the EventStore commit is not the recovery model.
 
 ### Knowledge Retrieval
 
 - **FR14:** Developer can search memory units by syntactic matching within a tenant
 - **FR15:** Developer can search memory units by semantic similarity within a tenant
 - **FR16:** Developer can search memory units by graph traversal within a tenant
-- **FR17:** Developer can search memory units by hybrid fusion combining all available axes
+- **FR17:** Developer can search memory units by hybrid fusion combining all available axes; when no graph start node is supplied, the graph axis is auto-seeded from the top syntactic and semantic candidates (Measurable Outcomes › Graph seeding), so hybrid never silently degrades to two axes on a populated graph. **Status:** partial (auto-seeding not implemented)
 - **FR18:** Developer can control which axes are included in a search query
 - **FR19:** Developer can view per-axis score breakdown for each search result, including normalization method applied (explain mode)
 - **FR20:** Developer can filter search results by case
@@ -963,16 +1007,16 @@ A capability completed before its planned phase is recorded as completed non-MVP
 - **FR22:** Developer can paginate search results
 - **FR23:** LLM Agent can constrain search response size by token budget. **Phase:** 1.5
 - **FR24:** System returns the origin identifier (file path, URL, or event ID) and origin type for each search result
-- **FR25:** Developer can run automated benchmark comparisons of hybrid vs single-axis search results with scored output
+- **FR25:** Developer can run automated benchmark comparisons of hybrid vs the BM25+semantic control (with single-axis diagnostics) and get per-topic NDCG@10 output in the thesis-gate protocol's terms. **Status:** partial (two-axis control not implemented)
 
 ### Memory Organization
 
 - **FR26:** Developer can create a case within a tenant
 - **FR27:** Developer can delete a case and all its memory units
-- **FR28:** Developer can add members to a case
+- **FR28:** Developer can add members to a case. Membership is attribution metadata (listings, activity feed); it does not authorize access in the current phase
 - **FR29:** Developer can remove members from a case
 - **FR30:** Developer can list cases within a tenant
-- **FR31:** Developer can view case status including memory unit count, last activity timestamp, and latest ingestion state (`indexed` / `projecting` / `failed`)
+- **FR31:** Developer can view case status including memory unit count, last activity timestamp, and the ingestion state of the most recent unit (one of the Glossary ingestion states)
 - **FR32:** System enforces strict single-case ownership per memory unit — reassignment requires deletion and re-ingestion
 - **FR33:** System maintains case-scoped graph edges between memory units within a case
 - **FR34:** Developer can search across all cases within a tenant by keyword, returning results with case attribution
@@ -991,10 +1035,12 @@ A capability completed before its planned phase is recorded as completed non-MVP
 - **FR44:** System enforces tenant context at all access layers, rejecting cross-tenant requests with clear error messages
 - **FR45:** Operator can view current configuration of a tenant (embedding provider, rate limits, index status)
 
-### Causal Intelligence
+### Graph & Causal Intelligence
 
-- **FR46:** System can index CausationId and CorrelationId from events as typed, directional graph edges
-- **FR47:** Developer can traverse causal chains from a starting node with configurable depth
+These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`/`correlated_with` is phase-dependent: ingested metadata in Phase 1, the EventStore event stream in Phase 1.5 (FR59–FR62).
+
+- **FR46:** System can index CausationId and CorrelationId carried by ingested content metadata as typed, directional graph edges
+- **FR47:** Developer can traverse the graph from a starting node with configurable depth, including causal chains where causal edges exist
 - **FR48:** Developer can filter graph traversal by edge type
 - **FR49:** When an intermediate node in a causal chain is not indexed, the traversal result includes a gap marker with the missing node identifier
 - **FR50:** System supports edge types: `caused_by`, `correlated_with`, `references`, `contains`, `annotates` — each with default confidence
@@ -1003,10 +1049,10 @@ A capability completed before its planned phase is recorded as completed non-MVP
 
 ### Developer Interfaces
 
-- **FR53:** Developer can interact with retrieval and ingestion capabilities via CLI **per the active phase register**. Current real commands count; `NotImplementedCommand` does not. **Phase:** split (MVP vs 1.5 slices)
+- **FR53:** Developer can interact with retrieval and ingestion capabilities via CLI **per the Phase 1 CLI surface table** (CLI Specification). Real commands count; `NotImplementedCommand` does not. **Phase:** split (MVP surface vs 1.5 slices). **Status:** partial
 - **FR54:** Developer can interact with search, ingestion, traversal, and case-info capabilities via MCP tools. **Phase:** 1.5
 - **FR55:** CLI supports multiple output formats: human-readable (default), JSON, and table
-- **FR56:** CLI provides actionable error messages with recovery suggestions for common failure modes
+- **FR56:** CLI provides actionable error messages with recovery suggestions for, at minimum: server unreachable (name the boot command); authentication or tenant-claim mismatch (name the authenticated tenant); unknown tenant or case id; empty tenant or case (name the next verb); unit `failed` (name the stage and error); backend degraded (name the excluded axes); provider rate-limited (name the retry window). The CLI exit-code map (`CliExitCodes`) is the machine-readable side of this list
 - **FR57:** Developer can discover available *implemented* actions from empty states and error conditions (empty-state copy + `--help` examples). Does not require a universal command catalog of unbuilt verbs.
 - **FR58:** MCP tools include typed parameter schemas with descriptions for LLM agent consumption. **Phase:** 1.5
 
@@ -1019,11 +1065,11 @@ A capability completed before its planned phase is recorded as completed non-MVP
 
 ### Trust & Transparency
 
-- **FR63:** System returns composite confidence scores (0.0-1.0) with per-axis breakdowns for each search result
-- **FR64:** System tracks metadata origin (human-declared vs AI-inferred) and confidence per metadata field on every memory unit
+- **FR63:** System returns a relevance confidence (0.0–1.0) with per-axis breakdowns for each search result
+- **FR64:** System tracks metadata origin (human-declared vs AI-inferred) and metadata confidence per metadata field on every memory unit
 - **FR65:** System records `ingested_by` (user or system identity) as a mandatory field on every memory unit
 - **FR66:** When one or more search backends are unavailable, system returns partial results with an indication of which axes were excluded
-- **FR67:** System logs search and access events per tenant for audit purposes
+- **FR67:** System records search and access events per tenant as access telemetry (Glossary) — infrastructure telemetry that applications may build access records on; not a tamper-evident audit trail
 
 ### Embedding Provider Management
 
@@ -1042,6 +1088,17 @@ A capability completed before its planned phase is recorded as completed non-MVP
 
 *NFRs are tagged by validation phase: **[MVP]** = thesis/foundation, **[P1.5]** = EventStore product integration + MCP, **[Ongoing]** = as infrastructure matures, **[Future web]** = Epic 17+.*
 
+**NFR delivery status (2026-09-08):** *verified* = an automated suite or recorded run in a done epic exercises the stated verification; *implemented* = the mechanism exists but the stated verification has no recorded run; *not started* = neither. Same conflict rule as the FR register: `sprint-status.yaml` wins; refreshed only at PRD Updates.
+
+| Status | NFRs |
+|---|---|
+| Verified | NFR9–NFR11 (Epics 14, 20, 29), NFR17–NFR19 (Epics 21, 26.7), NFR20 (Epic 10 conformance tests), NFR22, NFR24–NFR26 (Epics 2, 26.8), NFR27–NFR28, NFR30 (CLI help completeness test) |
+| Verified against the *previous* wording; re-verification owed | NFR8 (Epics 5/20 suites were id-driven; the principal-driven suite and the post-Epic-24 re-run are owed), NFR16 (Epic 26.7 proved zero loss on controlled restart; the `consistency verify/repair` recovery path and 5-minute bound stated today have no recorded run), NFR21 (Epic 9 tests exercise EventStore envelopes; the negative non-conforming-envelope test is owed) |
+| Implemented, verification run not recorded in PRD evidence | NFR1–NFR4 (latency at 10 concurrent / 10K units — Epic 26 benchmark lane measures fusion, not this load profile), NFR5, NFR7, NFR12–NFR14, NFR23, NFR29, NFR31 (Story 7.4 walkthrough, no timed clean-machine record), NFR33–NFR34 (Epic 27 in progress) |
+| Not started | NFR6 (event freshness measurement), NFR15 (extraction-point review), NFR32 and NFR35 (future web, Epic 17 delivered components but gates activate with the web surface), NFR36 (new 2026-09-08) |
+
+`[ASSUMPTION: the "implemented" row reflects the absence of recorded evidence in planning artifacts, not proof of absence in CI; the architecture owner should move rows up when a run is linked.]`
+
 ### Performance
 
 | NFR | Metric | Target | Conditions | Phase |
@@ -1058,7 +1115,7 @@ A capability completed before its planned phase is recorded as completed non-MVP
 
 | NFR | Requirement | Verification | Phase |
 |---|---|---|---|
-| **NFR8** | Zero cross-tenant data leakage — no search, ingestion, or graph traversal returns data from another tenant | Automated test suite: search, ingest, graph across all axes with malformed/empty/swapped tenant IDs. Graph-specific test: create identical graph structures in tenant A and B, traverse from tenant A, verify zero nodes from tenant B appear even if edge IDs collide | MVP |
+| **NFR8** | Zero cross-tenant data leakage — a principal whose tenant claims name tenant A cannot read, search, traverse, or ingest into tenant B's data, whatever tenant id the request carries | Automated suite driven by *principals*, not ids: authenticate as tenant A, then search, ingest, and traverse with `--tenant B`, with B's index names, and with malformed/empty ids; every call is rejected or returns only A's data. Graph-specific test: identical graph structures in A and B, traverse as A, zero B nodes even if edge ids collide. Re-run when Epic 24 (tenant-scoped principals) closes | MVP |
 | **NFR9** | Product services retrieve embedding-provider and other application runtime secrets exclusively through the DAPR Secrets API, backed by OpenBao in Aspire and deployed environments. Secret values are never stored in application configuration or ordinary environment variables. Kubernetes Secrets are restricted to documented, unavoidable OpenBao bootstrap credentials or direct pod inputs outside the DAPR secret-store boundary. | Structural dependency tests, secret scanning, AppHost topology tests, and integration tests proving DAPR reads from OpenBao without secret disclosure | Ongoing |
 | **NFR10** | All inter-service communication authenticated via DAPR API tokens | DAPR configuration validation | Ongoing |
 | **NFR11** | External product REST/CLI ingress is authenticated for the active MVP HTTP surface. Health probes and required DAPR infrastructure routes are the only deliberate anonymous exceptions and are named and tested. Additional identity-provider hardening may remain operational-readiness work; unauthenticated product ingress is not a Phase 1.5 allowance. | Integration test with unauthenticated product requests plus named anonymous exceptions | MVP |
@@ -1076,7 +1133,7 @@ A capability completed before its planned phase is recorded as completed non-MVP
 
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
-| **NFR16** | Zero memory unit loss during Redis restart | AOF persistence enabled and verified | MVP |
+| **NFR16** | No loss of EventStore-committed memory units across a Redis restart: every unit that reached `pending` or later is searchable again after restart — either because the projections survived (Redis AOF) or because they were rebuilt from the EventStore commit. AOF is an optimisation, not the durability contract (FR13). Zero units missing is the requirement; time-to-searchable is bounded separately for the two paths | Controlled-restart test (Epic 26.7): commit N units, restart Redis, run `memories consistency verify --tenant <t>`, then `consistency repair --yes` if divergence is reported. **AOF-intact path:** all N `indexed` within 5 minutes for 10K units/tenant. **Rebuild path** (projections lost; vectors must be re-embedded because the commit does not store them): progress observable via `status`, completion at no worse than NFR5 throughput (10K units ≈ 100 minutes at the ≤10 KB rate), zero units missing at completion | MVP |
 | **NFR17** | Ingestion pipeline state survives process restarts — pending and in-progress units resume without data loss | DAPR Workflow / Durable Task history verified | MVP |
 | **NFR18** | Partial backend failure (one of three backends down) results in degraded service, not total failure — available axes continue serving results | Chaos test: kill each backend individually, verify partial results returned | Ongoing |
 | **NFR19** | Failed ingestion units are never silently dropped — all failures visible via CLI status with error details and failure stage | End-to-end test with intentional failures at each pipeline stage | Ongoing |
@@ -1086,7 +1143,7 @@ A capability completed before its planned phase is recorded as completed non-MVP
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
 | **NFR20** | MCP tool responses conform to MCP protocol specification — valid tool schemas, typed parameters, structured error responses | MCP protocol conformance test suite | P1.5 |
-| **NFR21** | DAPR pub/sub integration handles CloudEvents envelope format — events from any DAPR-compatible publisher are processable | Integration test with standard CloudEvents payloads | P1.5 |
+| **NFR21** | DAPR pub/sub integration accepts the CloudEvents envelope as published by Hexalith.EventStore conventions (envelope attributes, CausationId/CorrelationId extension attributes, source-prefix routing). Envelopes from other DAPR publishers are accepted only for the fields the EventStore convention defines; processing them without custom code is the DAPR-generic *experiment* (Innovation #2), not a requirement | Integration test with EventStore-convention CloudEvents payloads; a documented negative test showing what a non-conforming envelope does | P1.5 |
 | **NFR22** | Embedding provider integration handles rate limiting gracefully — 429 responses trigger backoff without pipeline crash or data loss | Rate limit simulation test per provider | Ongoing |
 | **NFR23** | CLI connects to the memory server via configurable endpoint — supports local dev (localhost), container (docker service name), and remote (ingress URL) environments | Configuration layering test across all three environments | Ongoing |
 
@@ -1111,7 +1168,7 @@ A capability completed before its planned phase is recorded as completed non-MVP
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
 | **NFR30** | Every CLI command includes --help with at least one usage example | CLI help completeness test: parse all commands, verify example presence | MVP |
-| **NFR31** | README includes working Phase 1 quickstart that completes in <30 minutes on a clean machine with Docker installed (AppHost → first CLI search). Phase 1.5 EventStore 30-minute clock is a separate launch gate. | Timed walkthrough on clean environment | MVP |
+| **NFR31** | README includes a working Phase 1 quickstart that completes in <30 minutes on a clean machine with Docker installed. **G3 is timed on the README manual path** — AppHost boot → `tenant create` → `case create` → `ingest` → `search query` — using real CLI verbs; `memories quickstart` is the scripted convenience and may be used *in addition*, not instead. While `tenant create`, `case create`, and `ingest` are stubs, G3 cannot be run: those three rows block G3 and sit on the 2026-10-31 critical path. Phase 1.5 EventStore 30-minute clock is a separate launch gate (L2). | Timed walkthrough on clean environment, recorded with date and machine spec | MVP |
 
 ### Future web, freshness, and telemetry
 
@@ -1122,20 +1179,30 @@ A capability completed before its planned phase is recorded as completed non-MVP
 | **NFR34** | Access telemetry has an explicit Platform Operations owner, configured TTL, observable purge progress, tenant-erasure mapping, bounded recovery behavior, and a dated accepted-debt decision for any unsupported retention profile. It remains infrastructure telemetry, not a tamper-evident compliance audit trail. Store choice is architecture-owned (may leave Redis). Epic 27 C1 evidence governs Production qualification. | Ops runbook + tests | Ongoing |
 | **NFR35** | When a web capability is activated, on representative Evidence Packet and graph fixtures the surface targets an initial usable trust packet within 2.5 seconds, p95 local interaction response within 200 ms, cumulative layout shift no greater than 0.1, and initial route payload no greater than 256 KiB. Architecture review may revise these budgets before activation but must replace them with explicit measured values rather than removing the gate. | Measured lab evidence | Future web (Epic 17+) |
 
+### File/URL ingest freshness
+
+| NFR | Requirement | Target | Phase |
+|---|---|---|---|
+| **NFR36** | File/URL ingest freshness: under normal conditions (embedding provider not rate-limiting, all three projections healthy) a ≤10 KB unit moves from `pending` to `indexed` within 60 seconds; a ≤1 MB unit within 5 minutes. When the provider throttles, the unit stays `embedding` and `memories status` reports the delay; freshness degradation is never silent. `[ASSUMPTION: the 60 s / 5 min budgets were set in this Update from NFR5 throughput; architecture may tighten them, not remove them.]` | Timed ingest test in the Aspire integration lane, p95 over 100 units | MVP |
+
 ## Open Questions
 
-1. `[NOTE FOR PM]` Expand benchmark N beyond 5–10 topics (Epic 26 follow-up) — owner and date?
-2. `[NOTE FOR PM]` Pre-register ΔNDCG@10 in the benchmark README — architecture owns the number; PRD requires it exists.
-3. Does `--explain` stay opt-in (FR19) while UX-DR7 wants compact trust fields on every search? Pick one before Epic 17.
-4. Confirm Apache 2.0 no-relicense README sentence with Jerome if it has not been published yet.
-5. Restore brief R3 (lightweight cross-case references) as Phase 2 or keep FR32 absolute?
-6. Ingest-from-anywhere (cloud/git/image/video): name a phase owner or keep as explicit deferral.
-7. Optional Python `ai-agent` sidecar (architecture D27): product constraint or architecture-only? See addendum.
+1. `[NOTE FOR PM]` Confirm or replace the two release-decision dates set in this Update (thesis gate 2026-10-31, Phase 1.5 launch 2026-11-30). Owner: Jerome. Revisit: before the next sprint-planning run.
+2. `[NOTE FOR PM]` Thesis-gate corpus and labelling: who recruits the two independent reviewers and which real (non-synthetic) Phase 1 corpus is frozen for G1? Owner: Jerome. Revisit: 2026-09-30, before benchmark expansion work is sprint-selected.
+3. Does `--explain` stay opt-in (FR19) while UX-DR7 (`ux-design-specification.md`) wants compact trust fields on every search? Pick one before Epic 17 web activation. Owner: UX. Revisit: Epic 17 activation SCP.
+4. **Phase-blocking.** Licence: the PRD decision is Apache 2.0, the repository and published packages are MIT. Decide which is the contract; then either rewrite this PRD's licence sections to MIT, or relicense `LICENSE`, file headers, and `PackageLicenseExpression` to Apache 2.0 before any further package publish. Publish the matching no-relicense README sentence. Owner: Jerome. Decide by: 2026-09-30 (before G1-prerequisite sprint selection); blocks the Phase 1.5 launch decision.
+5. FR32 stays absolute (single-case ownership) for MVP and Phase 1.5; brief R3 (lightweight cross-case references) may be restored only as a Phase 2 FR via sprint change. Owner: Jerome. Revisit: Phase 2 planning.
+6. Closed 2026-09-08: ingest-from-anywhere (cloud/git/image/video) is an explicit deferral — see Non-Goals. Re-open only by sprint change.
+7. Optional Python `ai-agent` sidecar (architecture decision D27 in `architecture.md`): product constraint or architecture-only? Owner: architecture. Revisit: Epic 17 activation / next architecture anchor re-verification. See addendum.
+8. Rename `Contracts.V1.MemoryUnitStatus` (`Queued`/`Indexing`) to the PRD ingestion-state names, or keep the mapping in the Glossary permanently? Contract change; Owner: architecture. Revisit: next `Contracts.V1` breaking-change window (the Epic 25 `api/v1` rename pattern).
 
 ## Assumptions Index
 
 - `[ASSUMPTION]` Generic Marten/Wolverine/Axon zero-code remains an experiment until a named spike passes the DAPR-generic kill switch. (§ Executive Summary)
 - `[ASSUMPTION]` Cloud-drive, git, image, and video ingest stay deferred until an owner names a phase. (§ Non-Goals)
-- `[ASSUMPTION]` N remains 5–10 topics until Epic 26 (or successor) expands N. (§ Measurable Outcomes)
-- `[ASSUMPTION]` Phase 1 graph axis may run on `contains` / case-scoped edges; `caused_by`/`correlated_with` populate from EventStore P1.5 or explicit annotation. (§ MVP Feature Set)
-- `[ASSUMPTION]` NFR33 is Evidence Packet freshness (rerun SCP) and NFR35 is future-web interaction performance (remediation-batch SCP) — the two August 2026 patch sets used the same NFR33 id for different requirements.
+- `[ASSUMPTION]` Release-decision dates (thesis gate 2026-10-31, Phase 1.5 launch 2026-11-30) were set in this Update pending Administrator confirmation. (§ Measurable Outcomes › Release decision record; Open Question 1)
+- `[ASSUMPTION]` NFR36 file/URL freshness budgets (60 s for ≤10 KB, 5 min for ≤1 MB) are derived from NFR5 throughput; architecture may tighten, not remove. (§ NFR36)
+- `[ASSUMPTION]` The NFR "implemented" status row reflects absence of recorded evidence in planning artifacts, not proof of absence in CI. (§ Non-Functional Requirements › NFR delivery status)
+- `[ASSUMPTION]` NFR33 is Evidence Packet freshness (rerun SCP) and NFR35 is future-web interaction performance (remediation-batch SCP) — the two August 2026 patch sets used the same NFR33 id for different requirements. (§ NFR33 / NFR35; index-only by design — the collision is history, not a live requirement)
+
+Resolved in this Update (no longer assumptions): benchmark N (now a protocol number, G1); Phase 1 graph population (now a decision in MVP Feature Set).
