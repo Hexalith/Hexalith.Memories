@@ -2,7 +2,7 @@
 title: 'OpenBao Platform Hardening and Documentation'
 type: 'feature'
 created: '2026-09-08'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '9bdaa30fbfa6d002d8753aa7eb63d1fc507937ac'
@@ -67,10 +67,10 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `docs/operations/openbao.md` -- qualify ClusterIP/"no ingress" to the four `hexalith-keys*` Services; add untracked-state rows for `deployment-seal-transit`, `deployment-seal-external`, and `deployment-seal-runner-token` with owner Platform Operations (`jpiquot`) and reopen triggers; keep CRLF
-- [ ] `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs` -- bind ClusterIP qualification in `OperationalSections_StayBoundToTheirRecordedRemediations`; pin the three untracked keys in `NamedDivergencesAndUntrackedState_CarryOwnerAndReopenTriggerPerRow`; harden `HelmRowMustRecordTheCarveOut` so `does not reach done until` fails after markdown strip
-- [ ] `_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md` -- restate C2 review state to the measured-gap half (helm is not a 31.1 `done` gate); append a 2026-09-08 completion-note correction; add a Change Log row with `-list methods` discovery and File List `matched N/N`; check off the five patches
-- [ ] `_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md` -- mark §8.2 ClusterIP/PVC as unprobed; point §8.8 at the untracked-state rows; keep DW-729 for the uncaptured `.spec`
+- [x] `docs/operations/openbao.md` -- qualify ClusterIP/"no ingress" to the four `hexalith-keys*` Services; add untracked-state rows for `deployment-seal-transit`, `deployment-seal-external`, and `deployment-seal-runner-token` with owner Platform Operations (`jpiquot`) and reopen triggers; keep CRLF
+- [x] `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs` -- bind ClusterIP qualification in `OperationalSections_StayBoundToTheirRecordedRemediations`; pin the three untracked keys in `NamedDivergencesAndUntrackedState_CarryOwnerAndReopenTriggerPerRow`; harden `HelmRowMustRecordTheCarveOut` so `does not reach done until` fails after markdown strip
+- [x] `_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md` -- restate C2 review state to the measured-gap half (helm is not a 31.1 `done` gate); append a 2026-09-08 completion-note correction; add a Change Log row with `-list methods` discovery and File List `matched N/N`; check off the five patches
+- [x] `_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md` -- mark §8.2 ClusterIP/PVC as unprobed; point §8.8 at the untracked-state rows; keep DW-729 for the uncaptured `.spec`
 
 **Acceptance Criteria:**
 - Given `docs/operations/openbao.md`, when Health, the `server.service.type: ClusterIP` bind cell, and the seal compensating-control cell are read, then ClusterIP/"no ingress" is scoped to `hexalith-keys*` and does not deny `deployment-seal-transit`.
@@ -82,9 +82,29 @@ context:
 
 ## Implementation Notes
 
+2026-09-08 review-patch close-out. ClusterIP/"no ingress" scoped to `hexalith-keys*`. Three untracked-state rows added. C2 review state restated so helm empty-diff is not a Story 31.1 `done` gate. Evidence §8.2 ClusterIP/PVC marked unprobed. C4b/C5b remain `not complete`; C7 remains waived until 2026-10-26.
+
 ## Spec Change Log
 
+- 2026-09-08: Executed the review-patch close-out path. Execution checkboxes marked complete. Story status left `in-progress`.
+
 ## Review Triage Log
+
+- **medium** BH2/EC3 — `ClusterIpClaimMustStayScopedToHexalithKeysServices` already requires `hexalith-keys*` in the cell, then only checks that a `no ingress` sentence also contains `hexalith-keys`. Restoring `the four hexalith-keys* Services are ClusterIP; no ingress exists` stays green. Verified at `OpenBaoPlatformDocumentationTests.cs:1008-1025`.
+- **medium** BH3 — Health expected results still require the four `hexalith-keys*` Services to remain ClusterIP and never name `deployment-seal-transit` NodePort `8200:30820`, so `kubectl get service` showing a NodePort looks like a health failure. Verified at `docs/operations/openbao.md:410-412`.
+- **medium** BH5 — `ShouldContain("matched N/N")` is satisfied by the 2026-09-08 completion-note sentence; deleting Change Log `Matched **5/5** this-phase paths` stays green. Historical 2026-07-28 rows already contain other `Matched **N/N**` spellings. Verified at `OpenBaoPlatformDocumentationTests.cs` story assertions vs story Change Log 2026-09-08.
+- **medium** BH15 — §8.8 notes for `deployment-seal-external` still say "that policy's spec is unchanged", which reads as if the extra NetworkPolicy were measured, while `.spec` is DW-729 / uncaptured. Verified at `31-1-openbao-platform-evidence.md:833`.
+- **low** BH1 — 2026-09-08 Change Log `matched 5/5` names three planning exclusions while the worktree also has concurrent CI/Dapr/PRD/FrontComposer changes. Ledger readers can mis-attribute that tree to this slice. Direct named-exclusion sentence.
+- **false** BH4 — selector/endpoints for `deployment-seal-transit` were never in the 2026-09-06 transcript; frozen intent forbids extra kubectl, so this close-out cannot invent them.
+- **false** BH14-epic — `epic-31-context.md` restart-recovery/live-vault sentences came from compile-epic-context at workflow start, not from this spec's File List or tasks. Story 31.2 already owns the migration proof.
+- **defer** BH6/EC4/VG1 — sibling WebAppFactory hosts omit `ApplicationTokenOverride`. Concurrent Dapr-token overlay work in this worktree, not Story 31.1. Settled by adding the EventStore/HealthCheck overlay to Telemetry/Consistency/MCP factories.
+- **defer** BH7/EC1 — empty `ApplicationTokenOverride` skips token checks including Production. Concurrent middleware change; not this spec.
+- **defer** BH8 — `DaprTokenEnvironmentCollection` comment vs double `UseSetting`. Concurrent Dapr test-host work.
+- **defer** BH9/EC2 — `init-dapr-runtime.sh` does not wait for placement/scheduler ports. Concurrent CI work.
+- **defer** BH10 — addendum release-date contradiction vs later PRD handoff. Concurrent planning review.
+- **defer** BH11 — README missing MIT pledge required by `prd.md`. Concurrent PRD close-out.
+- **defer** BH12 — G1 protocol has no owning story. Concurrent PRD rewrite.
+- **defer** BH13 — Aspire fixture post-reconnect does not call OpenBao sidecar matrix wait. Concurrent integration-test work.
 
 ## Design Notes
 

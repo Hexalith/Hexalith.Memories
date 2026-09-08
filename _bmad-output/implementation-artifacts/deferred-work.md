@@ -5474,3 +5474,35 @@ source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-h
 severity: medium (unverified)
 reason: Evidence §8.8 names NetworkPolicy `deployment-seal-external` with no `.spec`. The `hexalith-keys` policy was captured and matched the 2026-07-28 table; this extra policy was not, so a second ingress source on 8200 would be invisible while the bound NetworkPolicy probe still reads as unchanged. Pre-existing relative to this continuation’s frozen probe list (nodes, replicas, HA, `hexalith-keys` NetworkPolicy, automount, secret names/types). - ID: 31.1-CR-NP-SPEC - Status: open - Source story: 31-1-openbao-platform-hardening-and-documentation - Target artifact: `_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md` - Re-open trigger: `kubectl -n openbao get networkpolicy deployment-seal-external -o jsonpath='{.spec}'` against `jpiquot@local` shows whether the policy admits extra 8200 sources.
 status: open
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+  summary: Telemetry, consistency, and MCP WebAppFactory hosts omit `Hexalith:Dapr:ApplicationTokenOverride`, so leaked `APP_API_TOKEN` can 401 those in-memory hosts.
+  evidence: Concurrent Dapr-token overlay in this worktree, not Story 31.1. Settled by applying the EventStore/HealthCheck empty overlay to `TelemetryWebAppFactory`, `ConsistencyEndpointFactory`, and both `McpWebAppFactory` classes.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+  summary: Empty `Hexalith:Dapr:ApplicationTokenOverride` skips Dapr app-token checks in every environment, including Production.
+  evidence: Concurrent `DaprApplicationTokenMiddleware` change. Restrict the bypass to test/Development, or document and test missing-overlay vs env fallback.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+  summary: `DaprTokenEnvironmentCollection` comment and duplicate `UseSetting` paths disagree with the overlay design.
+  evidence: Concurrent Dapr test-host work. Align the comment, use the collection name constant, and keep a single configuration path.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+  summary: `tools/init-dapr-runtime.sh` starts placement/scheduler without waiting for ports 50005/50006.
+  evidence: Concurrent CI work. Wait for the ports (or container health) before integration tests, and do not `dapr uninstall --all` on a slim-init failure.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+  summary: `addendum.md` still treats launch/release dates as assistant assumptions after Jerome confirmed 2027-01-01 / 2026-12-01.
+  evidence: Concurrent planning review. Rewrite the Release decision paragraph so it does not contradict the PRD it must not override.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+  summary: `prd.md` now requires a README MIT-license pledge that `README.md` does not contain.
+  evidence: Concurrent PRD close-out. Add the required README sentence or drop the PRD requirement.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+  summary: G1 is rewritten as a hard protocol with no owning story while FR17/FR25 remain partial.
+  evidence: Concurrent PRD rewrite. Add backlog stories or an SCP that G1 is unreachable.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
+  summary: After Dapr reconnect, `AspireIngestionPipelineFixture` waits for HTTP listen and does not call the OpenBao sidecar matrix wait.
+  evidence: Concurrent integration-test work. Reuse `WaitForOpenBaoSidecarMatrixReadinessAsync` on that path.

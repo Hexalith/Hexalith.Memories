@@ -40,7 +40,7 @@ documentation, evidence, or source control.
 | Persistent volumes | six retained 10Gi PVCs (`data-hexalith-keys-0..2`, `audit-hexalith-keys-0..2`), all `Bound`, StorageClass `openebs-hostpath-retain` |
 | Audit | persistent JSON file device at `/openbao/audit/openbao-audit.json`, mode `0600` |
 | Endpoint | `https://hexalith-keys.openbao.svc.cluster.local:8200` |
-| Services | `hexalith-keys`, `hexalith-keys-internal` (headless), `hexalith-keys-active`, `hexalith-keys-standby` — all `ClusterIP`, no ingress |
+| Services | `hexalith-keys`, `hexalith-keys-internal` (headless), `hexalith-keys-active`, `hexalith-keys-standby` — those four `hexalith-keys*` Services are `ClusterIP` with no ingress on those four |
 | TLS | on: `tls_disable = 0`, `tls_min_version = "tls12"`, cert and key from Secret `openbao-server-tls` |
 | Service registration | `service_registration "kubernetes" {}`, backed by Role `hexalith-keys-discovery-role` (pods: `get`, `watch`, `list`, `update`, `patch`) |
 | ServiceAccount token | ServiceAccount default is `false`, but pod spec sets `automountServiceAccountToken: true`, which wins — the server does receive and use a Kubernetes API token |
@@ -131,7 +131,7 @@ one of those settings.
 | `server.ha.apiAddr: null`, `server.ha.clusterAddr: null` | left unset so the chart emits per-pod container env `BAO_API_ADDR=https://$(POD_IP):8200` and `BAO_CLUSTER_ADDR=https://$(HOSTNAME).hexalith-keys-internal:8201`; pinning either would give all three voters one address |
 | `server.ha.raft.enabled: true` | `storage "raft"` with `retry_join`, `storage_type: raft` |
 | `server.ha.raft.setNodeId: true` | container env `BAO_RAFT_NODE_ID` from `metadata.name` |
-| `server.service.type: ClusterIP` | all four Services are `ClusterIP`; no ingress exists |
+| `server.service.type: ClusterIP` | the four `hexalith-keys*` Services are `ClusterIP`; no ingress exists on those Services |
 | `server.service.active.enabled: true` | Service `hexalith-keys-active` |
 | `server.service.standby.enabled: true` | Service `hexalith-keys-standby` |
 | `server.serviceAccount.serviceDiscovery.enabled: true` | Role `hexalith-keys-discovery-role` and its RoleBinding, required by `service_registration "kubernetes"` |
@@ -265,6 +265,9 @@ disposition Story 31.1 chose; adopting any row into the repository is a separate
 | `hexalith-keys-tokenreview` | ClusterRoleBinding to `system:auth-delegator`, applied with `kubectl`, not Helm-managed | Hexalith Platform Operations (`jpiquot`) | Out-of-repo platform state that duplicates the chart-rendered `hexalith-keys-server-binding`. Reopen when the duplicate is removed or adopted |
 | `hexalith-keys-pki` | Secret, type `Opaque` | Hexalith Platform Operations (`jpiquot`) | Purpose not established by read-only probe and its contents are not read. Reopen when its purpose is documented or it is deleted |
 | `openbao-seal`, `openbao-operator-credentials`, `openbao-server-tls` | Secrets holding seal key, recovery shares and operator identity, and server TLS | Hexalith Platform Operations (`jpiquot`) | Deliberately out of repository. These must never be checked in |
+| `deployment-seal-transit` | Service, `NodePort`, port `8200:30820/TCP` | Hexalith Platform Operations (`jpiquot`) | Extra namespace Service observed 2026-09-06; not one of the four `hexalith-keys*` ClusterIP Services. Reopen when the NodePort is removed, adopted into a tracked manifest, or confirmed as a required seal-transit endpoint |
+| `deployment-seal-external` | NetworkPolicy | Hexalith Platform Operations (`jpiquot`) | Extra namespace NetworkPolicy observed 2026-09-06; `.spec` is uncaptured (DW-729). Reopen when `kubectl -n openbao get networkpolicy deployment-seal-external -o jsonpath='{.spec}'` captures whether it widens port 8200 |
+| `deployment-seal-runner-token` | Secret, type `kubernetes.io/service-account-token` | Hexalith Platform Operations (`jpiquot`) | Extra ServiceAccount token Secret observed 2026-09-06; name and type only, contents not read. Reopen when the minting ServiceAccount or controller is documented, or the Secret is deleted |
 
 ## Named divergences
 
@@ -301,7 +304,7 @@ today, and a trigger that reopens it.
 
 | Limitation | Owner | Consequence | Compensating controls | Reopen trigger |
 | :--------- | :---- | :---------- | :-------------------- | :------------- |
-| Static file-based seal | Hexalith Platform Operations (`jpiquot`) with security reviewer `murat-tea-for-jpiquot` | The seal key is a file in Secret `openbao-seal`, in namespace `openbao`, beside the `data-hexalith-keys-0..2` PVCs it decrypts. One namespace-level read yields both the ciphertext and the key, so the storage encryption stops any attacker who cannot read the namespace and stops no attacker who can | Restricted Pod Security enforced on the namespace; RBAC scoped to the platform ServiceAccounts; all four Services `ClusterIP` with no ingress and no LoadBalancer; persistent JSON audit device recording every access. Deliberately **not** counted as compensating, because neither survives the consequence stated in this row: the port 8200 NetworkPolicy, which the adjacent limitation records as admitting every pod in two namespaces and contributing no defence in depth; and the `shamir` 2-of-3 recovery threshold, whose shares live in Secret `openbao-operator-credentials` in this same namespace and are not yet exported to escrow, so they sit inside the blast radius rather than outside it | Migrating `seal "static"` to an external KMS or HSM-backed seal, so the key stops living beside the data |
+| Static file-based seal | Hexalith Platform Operations (`jpiquot`) with security reviewer `murat-tea-for-jpiquot` | The seal key is a file in Secret `openbao-seal`, in namespace `openbao`, beside the `data-hexalith-keys-0..2` PVCs it decrypts. One namespace-level read yields both the ciphertext and the key, so the storage encryption stops any attacker who cannot read the namespace and stops no attacker who can | Restricted Pod Security enforced on the namespace; RBAC scoped to the platform ServiceAccounts; the four `hexalith-keys*` Services `ClusterIP` with no ingress and no LoadBalancer on those Services; persistent JSON audit device recording every access. Deliberately **not** counted as compensating, because neither survives the consequence stated in this row: the port 8200 NetworkPolicy, which the adjacent limitation records as admitting every pod in two namespaces and contributing no defence in depth; and the `shamir` 2-of-3 recovery threshold, whose shares live in Secret `openbao-operator-credentials` in this same namespace and are not yet exported to escrow, so they sit inside the blast radius rather than outside it | Migrating `seal "static"` to an external KMS or HSM-backed seal, so the key stops living beside the data |
 | Namespace-wide port 8200 ingress | Hexalith Platform Operations (`jpiquot`) with security reviewer `murat-tea-for-jpiquot` | The NetworkPolicy uses a `namespaceSelector` with no `podSelector`, so every pod in `hexalith-memories` and every pod in `cert-manager` may reach 8200 — 10 pods at measurement, including `redis-stack-0`, `falkordb-0`, `access-telemetry-postgresql-0`, and both `memories-mcp` pods, which architecture D31 scopes to receive neither secret component | Dapr token authentication in front of every secret read; per-component OpenBao policies (`hexalith-memories-runtime` and `hexalith-memories-access-telemetry`, both read-only) scoping what a reachable caller may fetch; mandatory TLS verification with `skipVerify: "false"`; persistent audit device recording every request | Narrowing the selector to a `podSelector` covering only the pods that actually consume a Dapr secret component |
 
 ### Static file-based seal
@@ -407,6 +410,7 @@ kubectl -n hexalith-memories get component secretstore access-telemetry-secrets 
 Expected status on **every** voter is `initialized: true`, `sealed: false`, `storage_type: "raft"`,
 `ha_enabled: true`, and OpenBao `2.6.0`. The StatefulSet must be `3/3` Ready, all six data and audit PVCs
 must be `Bound`, and the four `hexalith-keys*` Services must remain `ClusterIP`.
+The extra Service `deployment-seal-transit` is NodePort `8200:30820` and is recorded under Deployed platform state not tracked.
 
 After any Helm install or upgrade, re-apply the ServiceAccount hardening **and** re-check the pod-level
 override it depends on:

@@ -734,9 +734,11 @@ openbao-raft-snapshot-29810790-mvqmp   node1   Succeeded
 StatefulSet `.spec.replicas = 3`. Pods `hexalith-keys-0/1/2` are Running on `node1`. Snapshot Job names
 rotated, as a daily CronJob must. Matches the 2026-07-28 replica and node rows.
 
-Services `hexalith-keys`, `hexalith-keys-internal`, `hexalith-keys-active`, and `hexalith-keys-standby`
-remain `ClusterIP`. Six `Bound` 10Gi data/audit PVCs plus `Bound` 2Gi `openbao-snapshots` remain. Volume
-object names are omitted here because they are UUID-shaped; names and bind state only.
+The four `hexalith-keys*` Services remaining `ClusterIP`, and the six data/audit PVCs plus
+`openbao-snapshots` remaining `Bound`, are **unprobed** against the 2026-09-06 bound list. This section's
+executed kubectl output covers StatefulSet replicas and pod name/node/status only. No `kubectl get
+svc` or `kubectl get pvc` output is recorded here, so those ClusterIP and PVC sentences are not
+kubectl-proven. Volume object names are omitted because they are UUID-shaped.
 
 ### 8.3 HA
 
@@ -828,8 +830,10 @@ NetworkPolicy, or automount drift, so they do not update the bound trio.
 | Object | Kind / type | Notes |
 | :----- | :---------- | :---- |
 | `deployment-seal-transit` | Service, `NodePort`, port `8200:30820/TCP` | Not one of the four `hexalith-keys*` ClusterIP Services |
-| `deployment-seal-external` | NetworkPolicy | Separate from `hexalith-keys`; that policy's spec is unchanged |
+| `deployment-seal-external` | NetworkPolicy | The `hexalith-keys` policy spec matched 2026-07-28; `deployment-seal-external` `.spec` was not dumped (DW-729) |
 | `deployment-seal-runner-token` | Secret, type `kubernetes.io/service-account-token` | Name and type only |
 
-No owner, limitation, or reopen trigger is invented here. Promoting any of these to a named divergence
-or a third accepted limitation would need its own approved change.
+These three objects are named in `docs/operations/openbao.md` under `Deployed platform state not tracked
+in this repository`, each with owner Hexalith Platform Operations (`jpiquot`) and a reopen trigger.
+They are not a third accepted limitation. NetworkPolicy `deployment-seal-external` `.spec` remains
+uncaptured (DW-729); this slice does not add that JSON.

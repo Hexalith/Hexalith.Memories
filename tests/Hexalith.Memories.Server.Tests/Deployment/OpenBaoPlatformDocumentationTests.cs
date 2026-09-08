@@ -60,6 +60,12 @@ public sealed class OpenBaoPlatformDocumentationTests
     private const string SmokeTestRerunHeading =
         "3.1 Re-run under the CA-only volume projection (dev-story, 2026-07-28)";
     private const string BoundedRemeasureHeading = "8. Bounded live re-measure (2026-09-06)";
+    private const string ReplicasSchedulingHeading = "8.2 Replicas and scheduling";
+    private const string ExtraObjectsHeading =
+        "8.8 Additional objects seen, outside the bound comparison";
+    private const string StoryRelativePath =
+        "_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md";
+    private const string CheckpointsHeading = "Implementation Checkpoints";
     private const string OpenObligationsHeading = "6.4 Obligations this review opened";
     private const string SealLimitationKey = "Static file-based seal";
     private const string IngressLimitationKey = "Namespace-wide port 8200 ingress";
@@ -427,11 +433,44 @@ public sealed class OpenBaoPlatformDocumentationTests
         document.GetTableHeader(UntrackedStateHeading).ShouldBe(
             ["Artifact", "Kind", "Owner", "Disposition and reopen trigger"]);
         IReadOnlyList<IReadOnlyList<string>> untracked = document.GetTableRows(UntrackedStateHeading);
-        untracked.Count.ShouldBeGreaterThanOrEqualTo(6, "Every deployed-but-untracked artifact stays named with an owner.");
+        untracked.Count.ShouldBeGreaterThanOrEqualTo(9, "Every deployed-but-untracked artifact stays named with an owner.");
         foreach (IReadOnlyList<string> row in untracked)
         {
             ShouldBeSubstantiveRow(row, UntrackedStateHeading);
         }
+
+        // 2026-09-08: §8.8 extra objects join this table, not accepted limitations. Pin by key so
+        // dropping a row while keeping the count with a dummy still fails.
+        string[] requiredUntrackedKeys =
+        [
+            "deployment-seal-transit",
+            "deployment-seal-external",
+            "deployment-seal-runner-token",
+        ];
+        foreach (string requiredKey in requiredUntrackedKeys)
+        {
+            IReadOnlyList<string> row = untracked.Single(
+                candidate => candidate[0].Contains(requiredKey, StringComparison.OrdinalIgnoreCase));
+            row[2].ShouldContain(
+                "Platform Operations",
+                Case.Sensitive,
+                $"Untracked row '{requiredKey}' must keep owner Platform Operations.");
+            row[2].ShouldContain(
+                "jpiquot",
+                Case.Sensitive,
+                $"Untracked row '{requiredKey}' must keep owner jpiquot.");
+            row[3].ShouldContain(
+                "Reopen",
+                Case.Insensitive,
+                $"Untracked row '{requiredKey}' must carry a reopen trigger.");
+        }
+
+        untracked.Single(
+            static row => row[0].Contains("deployment-seal-external", StringComparison.OrdinalIgnoreCase))[3]
+            .ShouldContain(
+                "DW-729",
+                Case.Sensitive,
+                "deployment-seal-external reopen may name DW-729 until its .spec is captured.");
     }
 
     [Fact]
@@ -496,6 +535,28 @@ public sealed class OpenBaoPlatformDocumentationTests
         health.ShouldContain("hexalith-keys-1", Case.Sensitive, "The health block must cover every voter, not only hexalith-keys-0.");
         health.ShouldContain("hexalith-keys-2", Case.Sensitive, "The health block must cover every voter, not only hexalith-keys-0.");
         health.ShouldContain("endpoints", Case.Insensitive, "The endpoint staleness re-check must stay documented.");
+
+        // 2026-09-08: ClusterIP / "no ingress" must stay scoped to hexalith-keys* so restoring
+        // "every Service must remain ClusterIP" or an unqualified "no ingress" fails. Health,
+        // the values bind cell, and the seal compensating-control cell are the live contract.
+        ClusterIpClaimMustStayScopedToHexalithKeysServices(
+            health,
+            "Health and access checks");
+        health.ShouldContain(
+            "deployment-seal-transit",
+            Case.Sensitive,
+            "Health expected results must name the extra NodePort Service so it is not a health failure.");
+        const string valuesHeading = "`deploy/openbao/values.yaml`";
+        ClusterIpClaimMustStayScopedToHexalithKeysServices(
+            ReadManifestRow(document, valuesHeading, "`server.service.type: ClusterIP`")[1],
+            "The server.service.type: ClusterIP bind cell");
+        ClusterIpClaimMustStayScopedToHexalithKeysServices(
+            document.GetTableRows(LimitationsHeading)
+                .Single(static row => string.Equals(row[0], SealLimitationKey, StringComparison.Ordinal))[3],
+            "The seal compensating-controls cell");
+        ClusterIpClaimMustStayScopedToHexalithKeysServices(
+            ReadProfileRow(document, "Services")[1],
+            "The deployed-profile Services row");
 
         string probes = NormalizeWhitespace(document.GetSection("TLS posture of the probes"));
         probes.ShouldContain("tls-skip-verify", Case.Sensitive, "The deployed readiness probe's skip-verify flag must stay disclosed (AC1 exact deployed configuration).");
@@ -612,6 +673,52 @@ public sealed class OpenBaoPlatformDocumentationTests
             "secret inventory is not unchanged",
             Case.Insensitive,
             "The bound-comparison line must say the secret inventory is not unchanged.");
+
+        string replicas = NormalizeWhitespace(evidenceStructure.GetSection(ReplicasSchedulingHeading));
+        replicas.ShouldContain(
+            "unprobed",
+            Case.Insensitive,
+            "§8.2 ClusterIP/PVC sentences must be marked unprobed against the 2026-09-06 bound list.");
+        replicas.ShouldContain(
+            "not kubectl-proven",
+            Case.Insensitive,
+            "§8.2 must not present ClusterIP/PVC as kubectl-proven.");
+
+        string extraObjects = NormalizeWhitespace(evidenceStructure.GetSection(ExtraObjectsHeading));
+        extraObjects.ShouldContain(
+            UntrackedStateHeading,
+            Case.Sensitive,
+            "§8.8 must point at the untracked-state table.");
+        extraObjects.ShouldContain(
+            "DW-729",
+            Case.Sensitive,
+            "§8.8 must keep DW-729 for the uncaptured deployment-seal-external .spec.");
+
+        var storyDocument = new MarkdownContractDocument(ReadRepoFile(StoryRelativePath));
+        string storyText = ReadRepoFile(StoryRelativePath);
+        storyText.ShouldContain(
+            "Correction to the 2026-09-06 completion notes",
+            Case.Sensitive,
+            "A later dated note must record the edits the 2026-09-06 notes omitted.");
+        storyText.ShouldContain(
+            "Matched **5/5** this-phase paths",
+            Case.Sensitive,
+            "The 2026-09-08 Change Log row must record File List matched 5/5 this-phase paths.");
+        IReadOnlyList<string> c2Row = storyDocument.GetTableRows(CheckpointsHeading)
+            .Single(static row => row[0].StartsWith("C2 -", StringComparison.Ordinal));
+        string c2Review = StripMarkdownPunctuation(c2Row[3]);
+        c2Review.ShouldContain(
+            "not a Story 31.1 done gate",
+            Case.Insensitive,
+            "C2 review state must record helm empty-diff is not a Story 31.1 done gate.");
+        c2Review.ShouldNotContain(
+            "explicit done gate",
+            Case.Insensitive,
+            "C2 must not restore the pre-carve-out explicit done-gate phrasing.");
+        c2Review.ShouldNotContain(
+            "does not reach done until",
+            Case.Insensitive,
+            "C2 must not restore 'does not reach done until'.");
 
         IReadOnlyList<IReadOnlyList<string>> openObligations = evidenceStructure.GetTableRows(OpenObligationsHeading);
         IReadOnlyList<string> helmObligation = openObligations.Single(
@@ -893,6 +1000,37 @@ public sealed class OpenBaoPlatformDocumentationTests
             "done gate",
             Case.Insensitive,
             $"{location} must not call helm empty-diff a Story 31.1 done gate.");
+        text.ShouldNotContain(
+            "does not reach done until",
+            Case.Insensitive,
+            $"{location} must not restore the pre-carve-out 'does not reach done until' phrasing after markdown strip.");
+    }
+
+    /// <summary>ClusterIP and "no ingress" describe the four <c>hexalith-keys*</c> Services, not every
+    /// Service in the namespace. <c>deployment-seal-transit</c> is a NodePort extra and must not be
+    /// denied by an unqualified claim.</summary>
+    private static void ClusterIpClaimMustStayScopedToHexalithKeysServices(string claim, string location)
+    {
+        claim.ShouldContain(
+            "hexalith-keys*",
+            Case.Sensitive,
+            $"{location} must scope ClusterIP to hexalith-keys* Services.");
+        string text = StripMarkdownPunctuation(NormalizeWhitespace(claim));
+        text.ShouldNotContain(
+            "every Service",
+            Case.Insensitive,
+            $"{location} must not claim every Service in the namespace is ClusterIP.");
+        text.ShouldNotContain(
+            "all Services",
+            Case.Insensitive,
+            $"{location} must not claim all Services in the namespace are ClusterIP.");
+        if (text.Contains("no ingress", StringComparison.OrdinalIgnoreCase))
+        {
+            bool hasQualifier = text.Contains("on those Services", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("on those four", StringComparison.OrdinalIgnoreCase);
+            hasQualifier.ShouldBeTrue(
+                $"{location} must qualify 'no ingress' with 'on those Services' or 'on those four'.");
+        }
     }
 
     /// <summary>Removes Markdown emphasis and fence punctuation so <c>`done` gate</c> and
