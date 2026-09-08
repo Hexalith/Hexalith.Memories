@@ -22,7 +22,7 @@ public sealed class AccessTelemetryAspireRoutedIntegrationTests(AspireIngestionP
     private const string ComponentProfileHash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string ClockSidecarResourceName = "memories-access-telemetry-clock-dapr-cli";
     private const string LifecycleSidecarResourceName = "memories-access-telemetry-dapr-cli";
-    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan StartupTimeout = TimeSpan.FromMinutes(5);
 
     [Fact]
     public async Task AppHost_DaprRoutesClockHeartbeatActorStateInspectionAndHealth()

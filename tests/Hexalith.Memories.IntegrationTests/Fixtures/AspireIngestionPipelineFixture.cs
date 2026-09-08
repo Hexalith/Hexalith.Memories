@@ -531,8 +531,8 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
     /// <summary>
     /// Waits for the auxiliary access-telemetry sidecars and their permitted OpenBao reads used by
-    /// the full sidecar access matrix. These resources are intentionally not part of shared fixture
-    /// startup because no other fixture consumer requires them.
+    /// the full sidecar access matrix. Shared fixture startup already waits for those sidecars'
+    /// HTTP endpoints; this method additionally proves the exact secret allow/deny matrix.
     /// </summary>
     /// <param name="cancellationToken">Cooperative cancellation.</param>
     /// <returns>A task that completes when both exact auxiliary probes succeed.</returns>
@@ -2005,6 +2005,23 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             EndpointPollInterval,
             cancellationToken).ConfigureAwait(false);
         ReconnectPrimaryDaprClients(daprSidecarHttpEndpoint);
+
+        // Clock and lifecycle sidecars WaitFor(openBao) and can start minutes after the Server
+        // sidecar. Later tests that probe them must not race a post-restart HTTP listen.
+        string[] auxiliarySidecarResourceNames =
+        [
+            "memories-access-telemetry-clock-dapr-cli",
+            "memories-access-telemetry-dapr-cli",
+        ];
+        foreach (string sidecarResourceName in auxiliarySidecarResourceNames)
+        {
+            _ = await WaitForDaprSidecarHttpEndpointAsync(
+                sidecarResourceName,
+                () => _logProvider.GetEntriesSince(logStartIndex),
+                EndpointReadyTimeout,
+                EndpointPollInterval,
+                cancellationToken).ConfigureAwait(false);
+        }
 
         Uri redisEndpoint = _app.GetEndpoint("memories-vectors", "redis");
         Uri falkorEndpoint = _app.GetEndpoint("memories-graphs", "falkordb");

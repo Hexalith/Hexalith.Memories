@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.HealthChecks;
 using Dapr.Client;
 
 using Hexalith.Memories.Server.Tests.Infrastructure;
+using Hexalith.Memories.ServiceDefaults.Security;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -48,6 +49,7 @@ internal sealed class HealthCheckWebAppFactory : WebApplicationFactory<Program>
 
         builder.UseSetting("ConnectionStrings:redis", "localhost:0,abortConnect=false,connectTimeout=1");
         builder.UseSetting("ConnectionStrings:falkordb", "localhost:0,abortConnect=false,connectTimeout=1");
+        builder.UseSetting(DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey, string.Empty);
 
         builder.ConfigureTestServices(services =>
         {

@@ -12,6 +12,7 @@ using Hexalith.Memories.Server.EventStoreIntegration;
 using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Tests.Infrastructure;
 using Hexalith.Memories.Server.Tests.Telemetry.Infrastructure;
+using Hexalith.Memories.ServiceDefaults.Security;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -87,6 +88,7 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
         // the ConfigureTestServices override replaces the registrations.
         builder.UseSetting("ConnectionStrings:redis", "localhost:0,abortConnect=false,connectTimeout=1");
         builder.UseSetting("ConnectionStrings:falkordb", "localhost:0,abortConnect=false,connectTimeout=1");
+        builder.UseSetting(DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey, string.Empty);
         builder.ConfigureAppConfiguration((context, configuration) =>
         {
             Dictionary<string, string?> settings = new(StringComparer.OrdinalIgnoreCase)
@@ -95,6 +97,8 @@ internal sealed class EventStoreWebAppFactory : WebApplicationFactory<Program>
                 ["Authentication:JwtBearer:Audience"] = "hexalith-memories-server",
                 ["Authentication:JwtBearer:SigningKey"] = "hexalith-memories-test-signing-key-32b",
                 ["Authentication:JwtBearer:RequireHttpsMetadata"] = "false",
+                // Dedicated override (not APP_API_TOKEN): host configuration already binds that env var.
+                [DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey] = string.Empty,
             };
 
             _ = configuration.AddInMemoryCollection(settings);

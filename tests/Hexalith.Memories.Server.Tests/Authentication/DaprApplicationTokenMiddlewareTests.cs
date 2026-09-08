@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Tests.Authentication;
 using Hexalith.Memories.ServiceDefaults.Security;
 
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 
 using Shouldly;
 
@@ -15,6 +16,8 @@ using Shouldly;
 [Collection("DaprTokenEnvironment")]
 public sealed class DaprApplicationTokenMiddlewareTests
 {
+    private static readonly IConfiguration EmptyHostConfiguration = new ConfigurationBuilder().Build();
+
     [Theory]
     [InlineData("/health")]
     [InlineData("/alive")]
@@ -23,11 +26,13 @@ public sealed class DaprApplicationTokenMiddlewareTests
     {
         using EnvironmentScope _ = new("expected-app-token");
         bool reached = false;
-        var middleware = new DaprApplicationTokenMiddleware(_ =>
-        {
-            reached = true;
-            return Task.CompletedTask;
-        });
+        var middleware = new DaprApplicationTokenMiddleware(
+            _ =>
+            {
+                reached = true;
+                return Task.CompletedTask;
+            },
+            EmptyHostConfiguration);
         var context = new DefaultHttpContext();
         context.Request.Path = path;
 
@@ -41,11 +46,13 @@ public sealed class DaprApplicationTokenMiddlewareTests
     {
         using EnvironmentScope _ = new("expected-app-token");
         bool reached = false;
-        var middleware = new DaprApplicationTokenMiddleware(_ =>
-        {
-            reached = true;
-            return Task.CompletedTask;
-        });
+        var middleware = new DaprApplicationTokenMiddleware(
+            _ =>
+            {
+                reached = true;
+                return Task.CompletedTask;
+            },
+            EmptyHostConfiguration);
         var context = new DefaultHttpContext();
         context.Request.Path = "/api/v1/health";
         context.Response.Body = new MemoryStream();
@@ -62,11 +69,13 @@ public sealed class DaprApplicationTokenMiddlewareTests
         const string Token = "expected-app-token";
         using EnvironmentScope _ = new(Token);
         bool reached = false;
-        var middleware = new DaprApplicationTokenMiddleware(_ =>
-        {
-            reached = true;
-            return Task.CompletedTask;
-        });
+        var middleware = new DaprApplicationTokenMiddleware(
+            _ =>
+            {
+                reached = true;
+                return Task.CompletedTask;
+            },
+            EmptyHostConfiguration);
         var context = new DefaultHttpContext();
         context.Request.Path = "/api/v1/search";
         context.Request.Headers[DaprApplicationTokenMiddleware.DaprApiTokenHeader] = Token;
@@ -74,6 +83,33 @@ public sealed class DaprApplicationTokenMiddlewareTests
         await middleware.InvokeAsync(context);
 
         reached.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task HostConfiguration_EmptyAppApiToken_IgnoresProcessEnvironment()
+    {
+        using EnvironmentScope _ = new("leaked-process-token");
+        bool reached = false;
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [DaprApplicationTokenMiddleware.AppApiTokenOverrideConfigurationKey] = string.Empty,
+            })
+            .Build();
+        var middleware = new DaprApplicationTokenMiddleware(
+            _ =>
+            {
+                reached = true;
+                return Task.CompletedTask;
+            },
+            configuration);
+        DefaultHttpContext context = new();
+        context.Request.Path = "/dapr/subscribe";
+
+        await middleware.InvokeAsync(context);
+
+        reached.ShouldBeTrue();
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
     }
 
     private sealed class EnvironmentScope : IDisposable

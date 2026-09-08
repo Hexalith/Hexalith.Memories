@@ -814,7 +814,7 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         )
         self.assertRegex(
             sprint_status,
-            r"(?m)^  27-4-retention-verification-operations-runbook-and-a41-close-out: backlog$",
+            r"(?m)^  27-4-retention-verification-operations-runbook-and-a41-close-out: (?:backlog|in-progress)$",
         )
 
         slice_proof_match = re.search(

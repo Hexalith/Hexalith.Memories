@@ -14,12 +14,12 @@ using Shouldly;
 
 /// <summary>
 /// Drift guards for the approved 2026-06-26 AppHost security-service correction
-/// and EventStore 3.102.0 owner-approved published catalog/restore consumption
+/// and EventStore 3.103.0 owner-approved published catalog/restore consumption
 /// (nuget.org; supersedes Story 28.1 proof-identity pin).
 /// </summary>
 public sealed class AppHostSecurityConfigurationTests
 {
-    private const string EventStoreCatalogVersion = "3.102.0";
+    private const string EventStoreCatalogVersion = "3.103.0";
     private const string EventStorePackagePrefix = "Hexalith.EventStore.";
 
     [Fact]
@@ -187,7 +187,7 @@ public sealed class AppHostSecurityConfigurationTests
     [Fact]
     public void ProjectAssets_RestoreEventStorePackagesAtCatalogVersion()
     {
-        // Owner-approved EventStore 3.102.0 is published on nuget.org; restore via the tracked
+        // Owner-approved EventStore 3.103.0 is published on nuget.org; restore via the tracked
         // NuGet.config (plain `dotnet restore`) must resolve Hexalith.EventStore.* at this catalog
         // version and populate obj/project.assets.json with the matching library keys.
         string serverAssets = ReadRepoFile(
