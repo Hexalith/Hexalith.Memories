@@ -119,6 +119,15 @@ Brief claims deliberately **not** carried into the PRD (2026-09-08 product-brief
 
 The 2026-09-08 validation found `architecture.md` (Requirements Overview / Coverage / PRD Deviations: C# 13, 31 NFRs, P1.5 auth, actor pipeline, atomic-write sentences) and `epics.md` (Requirements Inventory: auth `[P1.5]`, actor pipeline, indexes as isolation boundary, NFR32–NFR35 missing, single onboarding clock; Epic 9 "zero-code") still describe the pre-2026-09-05 PRD. The PRD was not edited to match them. Re-extract those sections from `prd.md` + this addendum via `bmad-correct-course`; the Story 27.4 live-producer contract stays out of the PRD.
 
+Further handoff items recorded on 2026-09-08 (afternoon adversarial pass), none applied to code or downstream documents by this Update:
+
+- `tests/Hexalith.Memories.Benchmarks`: rename `ThesisValidation_HybridOutperforms80Percent` (and the `ThesisValidated` flag) to a diagnostic/regression name; add the two-axis BM25+semantic control, the per-topic aggregate guards, the edge-source census, and the cached-embedding hash. A passing run of the current test is not G1 evidence.
+- `README.md` line 84 says "per-tenant audit events (FR67)"; the PRD glossary bans "audit" for access telemetry. Reword downstream.
+- `README.md` line 7 quotes NFR31 as "approximate"; NFR31 now defines the clean machine and the recorded-run requirement. `docs/dev/quickstart-walkthrough-log.md` has no run.
+- Licence: `LICENSE`, source headers, and `PackageLicenseExpression` are MIT; the PRD decision on record is Apache 2.0. Open Question 4 owns the resolution; do not publish a README licence pledge until it closes.
+- `HybridSearchService` skips the graph axis without a start node; the PRD now requires auto-seeding from top-5 syntactic + top-5 semantic (FR17). No owning story exists yet.
+- MCP parameter naming (`axis` vs `axes`) is declared once in the CLI surface table (`--axis`); the MCP tool schema should be checked against it when Epic 10 hardening is next touched.
+
 ## August 2026 SCP apply log
 
 Applied into `prd.md` on 2026-09-05 from:

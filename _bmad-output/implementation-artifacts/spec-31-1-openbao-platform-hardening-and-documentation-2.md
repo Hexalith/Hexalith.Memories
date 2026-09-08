@@ -2,7 +2,7 @@
 title: 'OpenBao Platform Hardening and Documentation'
 type: 'feature'
 created: '2026-09-08'
-status: 'draft'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '9bdaa30fbfa6d002d8753aa7eb63d1fc507937ac'
@@ -24,6 +24,8 @@ context:
 - Session path is **review-patch close-out**, not another live re-measure. No extra kubectl. Qualify evidence §8.2 ClusterIP/PVC sentences as unprobed against the 2026-09-06 bound list.
 - Independent countersignature stays **leave open**. Do not name a reviewer, impersonate `murat-tea-for-jpiquot`, or replace the C7 waiver.
 - `deployment-seal-external` `.spec` stays **DW-729**; this slice does not capture it.
+- Extra §8.8 objects are **option A**: add three rows to `Deployed platform state not tracked in this repository` with owner Platform Operations (`jpiquot`) and reopen triggers; pin those keys in `NamedDivergencesAndUntrackedState_CarryOwnerAndReopenTriggerPerRow`. Not a third accepted limitation.
+- **Keep full spec** — accept the 1,600-token risk; the five patches stay one close-out.
 
 ## Boundaries & Constraints
 
@@ -48,13 +50,9 @@ context:
 | Helm carve-out | C2 review text or helm row says done-gate | C2 review state matches the 2026-07-28 carve-out; `HelmRowMustRecordTheCarveOut` rejects `done gate` and `does not reach done until` after markdown strip | Do not weaken the positive "not a Story 31.1 checkpoint" pin |
 | 2026-09-06 notes | Notes deny later doc/sprint-status edits | Append a dated correction; do not rewrite the 2026-09-06 note or Change Log row | New Change Log row carries discovery and `matched N/N` |
 | §8.2 claims | ClusterIP/PVC asserted with no kubectl | Mark unprobed; do not invent kubectl output | Do not synthesize cluster facts |
-| Extra objects | §8.8 NodePort / extra NP / token Secret | Per Open Question 1 | Do not invent a third limitation |
+| Extra objects | §8.8 NodePort / extra NP / token Secret | Three untracked-state rows plus test key pins; §8.8 may still name them | Do not invent a third limitation |
 
 </frozen-after-approval>
-
-## Open Questions
-
-- Extra objects from evidence §8.8 (`deployment-seal-transit` NodePort, `deployment-seal-external` NetworkPolicy, `deployment-seal-runner-token`) — options: **A** add three rows to `Deployed platform state not tracked in this repository` with owner Platform Operations (`jpiquot`) and reopen triggers, and pin those keys in `NamedDivergencesAndUntrackedState_CarryOwnerAndReopenTriggerPerRow` (ops doc becomes the owner of record; DW-729 still covers the uncaptured `.spec`) / **B** pin §8.8 object names in `OpenBaoPlatformDocumentationTests` only; leave the untracked table unchanged (evidence stays the only list; deleting §8.8 still fails tests) / **C** leave them parked in §8.8 with no owner, as 2026-09-06 decided; only qualify ClusterIP/"no ingress" language (the 2026-09-07 finding's extra-object half stays open).
 
 ## Code Map
 
@@ -69,17 +67,17 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `docs/operations/openbao.md` -- qualify ClusterIP/"no ingress" to the four `hexalith-keys*` Services; keep `openbao.md` CRLF -- the NodePort must not be denied by operator-facing sentences
-- [ ] `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs` -- bind that qualification in `OperationalSections_StayBoundToTheirRecordedRemediations` (or the ClusterIP bind cell); harden `HelmRowMustRecordTheCarveOut` so `does not reach done until` fails after markdown strip
-- [ ] `_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md` -- restated C2 review state to the measured-gap half (helm is not a 31.1 `done` gate); append a 2026-09-08 completion-note correction; add a Change Log row with `-list methods` discovery and File List `matched N/N`; check off the five patches
-- [ ] `_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md` -- mark §8.2 ClusterIP/PVC as unprobed; apply Open Question 1 to §8.8
-- [ ] Extra-object files from Open Question 1 -- untracked table and/or test pins, or neither if C
+- [ ] `docs/operations/openbao.md` -- qualify ClusterIP/"no ingress" to the four `hexalith-keys*` Services; add untracked-state rows for `deployment-seal-transit`, `deployment-seal-external`, and `deployment-seal-runner-token` with owner Platform Operations (`jpiquot`) and reopen triggers; keep CRLF
+- [ ] `tests/Hexalith.Memories.Server.Tests/Deployment/OpenBaoPlatformDocumentationTests.cs` -- bind ClusterIP qualification in `OperationalSections_StayBoundToTheirRecordedRemediations`; pin the three untracked keys in `NamedDivergencesAndUntrackedState_CarryOwnerAndReopenTriggerPerRow`; harden `HelmRowMustRecordTheCarveOut` so `does not reach done until` fails after markdown strip
+- [ ] `_bmad-output/implementation-artifacts/31-1-openbao-platform-hardening-and-documentation.md` -- restate C2 review state to the measured-gap half (helm is not a 31.1 `done` gate); append a 2026-09-08 completion-note correction; add a Change Log row with `-list methods` discovery and File List `matched N/N`; check off the five patches
+- [ ] `_bmad-output/implementation-artifacts/tests/31-1-openbao-platform-evidence.md` -- mark §8.2 ClusterIP/PVC as unprobed; point §8.8 at the untracked-state rows; keep DW-729 for the uncaptured `.spec`
 
 **Acceptance Criteria:**
 - Given `docs/operations/openbao.md`, when Health, the `server.service.type: ClusterIP` bind cell, and the seal compensating-control cell are read, then ClusterIP/"no ingress" is scoped to `hexalith-keys*` and does not deny `deployment-seal-transit`.
 - Given C2 and helm rows, when review state and `HelmRowMustRecordTheCarveOut` run, then helm empty-diff is not a Story 31.1 `done` gate, including the phrase `does not reach done until` after markdown strip.
 - Given the 2026-09-06 completion notes, when the story file is read, then a later dated note records the doc/health/sprint-status edits those notes omitted, and a new Change Log row has discovery plus `matched N/N`.
 - Given evidence §8.2, when it is read, then ClusterIP/PVC are not presented as kubectl-proven.
+- Given the untracked-state table, when it is read with the guard, then it names `deployment-seal-transit`, `deployment-seal-external`, and `deployment-seal-runner-token` with owner and reopen trigger, and is not a third accepted limitation.
 - Given C4b, C5b, and C7, when this slice finishes, then those states are unchanged and sprint-status is not `done`.
 
 ## Implementation Notes
@@ -90,7 +88,7 @@ context:
 
 ## Design Notes
 
-Keep `ShouldBindManifest(..., "ClusterIP")` — it still binds the chart's Service type. Qualify the **prose** that overclaims every Service in the namespace. Append-only for 2026-09-06 notes and Change Log; do not backfill that row. Extra-object promotion is not a third accepted limitation.
+Keep `ShouldBindManifest(..., "ClusterIP")` — it still binds the chart's Service type. Qualify the **prose** that overclaims every Service in the namespace. Append-only for 2026-09-06 notes and Change Log; do not backfill that row. Extra objects join the untracked-state table, not accepted limitations. `deployment-seal-external` reopen may name DW-729 until `.spec` is captured.
 
 ## Verification
 
