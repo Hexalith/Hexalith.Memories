@@ -30,7 +30,7 @@ workflowType: 'prd'
 
 **Author:** Jerome
 **Date:** 2026-03-22
-**Updated:** 2026-09-08 — second validation Update: thesis-gate protocol with concrete numbers and the N=8 run demoted to diagnostic; dated release decision record with real no-go outcomes; FR46–FR52 confirmed MVP as shipped graph mechanics; Phase 1 CLI surface table with delivery status; FR/NFR delivery status registers; NFR8/NFR16/NFR21 restated; NFR36 added; one ingestion-state vocabulary; licence conflict (Apache 2.0 decision vs MIT repository) opened as phase-blocking Open Question 4. Prior (2026-09-05): dual ship-contract split, August 2026 change control, EventStore contract split. Mechanism/topology detail lives in `addendum.md`. Active work breakdown lives in `epics.md` and `sprint-status.yaml`.
+**Updated:** 2026-09-08 — second validation Update: thesis-gate protocol with concrete numbers and the N=8 run demoted to diagnostic; dated release decision record with real no-go outcomes; FR46–FR52 confirmed MVP as shipped graph mechanics; Phase 1 CLI surface table with delivery status; FR/NFR delivery status registers; NFR8/NFR16/NFR21 restated; NFR36 added; one ingestion-state vocabulary; licence confirmed MIT (supersedes Apache 2.0); Phase 1.5 launch decision date confirmed 2027-01-01. Prior (2026-09-05): dual ship-contract split, August 2026 change control, EventStore contract split. Mechanism/topology detail lives in `addendum.md`. Active work breakdown lives in `epics.md` and `sprint-status.yaml`.
 
 ## 0. Document Purpose
 
@@ -73,7 +73,7 @@ Two additional differentiators compound later:
 - **Domain:** AI Infrastructure / Knowledge Management
 - **Complexity:** Medium-High — driven by three-axis query fusion, DAPR workflow ingestion, multi-tenancy with tenant-scoped isolation, and EventStore domain + product integration
 - **Project Context:** Brownfield / change-controlled (greenfield thesis recorded March 2026; implementation and epics are the living work breakdown)
-- **License:** **Unresolved conflict (Open Question 4, phase-blocking).** The March 2026 decision recorded here is Apache 2.0 with a public no-relicense pledge; the repository and every published package are MIT (`LICENSE`, file headers, `PackageLicenseExpression`). One of the two must change before the Phase 1.5 launch decision. The no-relicense pledge (no switch to a restrictive licence) holds under either outcome.
+- **License:** MIT (decision, Jerome, 2026-09-08 — supersedes the March 2026 Apache 2.0 decision; matches `LICENSE`, file headers, and `PackageLicenseExpression`). Public README commitment: the project will not switch to a restrictive license.
 
 ## Glossary
 
@@ -204,9 +204,9 @@ All five gates are hard gates; there is no soft tier. Phase 1 does **not** requi
 | Decision | State | Owner | Decision date | If it fails |
 |---|---|---|---|---|
 | Thesis increment (Epics 0–8) | Epics 0–8 are `done` in `sprint-status.yaml` (2026-07-16), **but the Phase 1 CLI surface is incomplete**: seven Phase 1 verbs are stubs, the two-axis control (FR25) and graph auto-seeding (FR17) do not exist. The increment is *closed in tracking*, not *complete against this PRD* | Jerome | — | n/a — delivery is not validation |
-| G1 prerequisites (stub verbs, two-axis control, graph seeding, N ≥ 50 labelled corpus) | **No owning story exists** in `epics.md` / `sprint-status.yaml` as of 2026-09-08 | Jerome (sprint planning) | Stories sprint-selected by 2026-09-30, or the G1 date below is declared unreachable and re-set by sprint change with the reason recorded | Without stories the G1 date is a wish; the "not run" outcome below applies |
-| Thesis gate G1–G5 | G2: suite exists (Epics 5/20); re-run against the restated NFR8 owed after Epic 24. G3: procedure exists (Story 7.4 walkthrough), **no timed run recorded** (`docs/dev/quickstart-walkthrough-log.md` is empty) and blocked on stub verbs (NFR31). G4/G5: automated suites (Epics 3, 26). G1 **not yet run** (only the diagnostic above exists) | Jerome | 2026-10-31 `[ASSUMPTION: date set in this Update pending Jerome's confirmation; the 2026-09-30 → 2026-10-31 window for reviewers, corpus freeze, ≥50 labelled topics, the two-axis control and the seeding rule is itself a schedule assumption]` | **Fail:** execute kill-switch actions (1)–(6); the launch date below is cancelled. **Not run by the date:** treated as *no verdict, no launch* — Phase 1.5 launch cannot be decided; one re-set of the G1 date is permitted by sprint change; a second miss is treated as a fail |
-| Phase 1.5 launch L1–L3 | Epics 9–10 code delivered; gates not evaluated; L2 path has recorded gaps (deferred-work DW-713: no full-stack EventStore-originated publish proof; DW-728: `eventstore` resource cannot start under SDK 10.0.400-only environments); `samples/` does not exist | Jerome | 2026-11-30 `[ASSUMPTION: date set in this Update pending Jerome's confirmation; rule: G1 date + 4 weeks]` | **No launch.** MCP and EventStore packages stay marked preview and are not announced; the date is not moved without a sprint-change proposal |
+| G1 prerequisites (stub verbs, two-axis control, graph seeding, N ≥ 50 labelled corpus) | **No owning story exists** in `epics.md` / `sprint-status.yaml` as of 2026-09-08 | Jerome (sprint planning) | Stories sprint-selected by 2026-10-31 `[DERIVED]`, or the G1 date below is declared unreachable and re-set by sprint change with the reason recorded | Without stories the G1 date is a wish; the "not run" outcome below applies |
+| Thesis gate G1–G5 | G2: suite exists (Epics 5/20); re-run against the restated NFR8 owed after Epic 24. G3: procedure exists (Story 7.4 walkthrough), **no timed run recorded** (`docs/dev/quickstart-walkthrough-log.md` is empty) and blocked on stub verbs (NFR31). G4/G5: automated suites (Epics 3, 26). G1 **not yet run** (only the diagnostic above exists) | Jerome | **2026-12-01** (rule confirmed by Jerome, 2026-09-08: thesis-gate/release decision = launch date − 1 month) `[ASSUMPTION: the window to 2026-12-01 for reviewers, corpus freeze, ≥50 labelled topics, the two-axis control and the seeding rule is a schedule assumption]` | **Fail:** execute kill-switch actions (1)–(6); the launch date below is cancelled. **Not run by the date:** treated as *no verdict, no launch* — Phase 1.5 launch cannot be decided; one re-set of the G1 date is permitted by sprint change; a second miss is treated as a fail |
+| Phase 1.5 launch L1–L3 | Epics 9–10 code delivered; gates not evaluated; L2 path has recorded gaps (deferred-work DW-713: no full-stack EventStore-originated publish proof; DW-728: `eventstore` resource cannot start under SDK 10.0.400-only environments); `samples/` does not exist | Jerome | **2027-01-01** (confirmed by Jerome, 2026-09-08) | **No launch.** MCP and EventStore packages stay marked preview and are not announced; the date is not moved without a sprint-change proposal |
 
 A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the thesis MVP and does not re-open isolation or fusion as optional.
 
@@ -245,7 +245,7 @@ A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the
 
 **Note:** DAPR infrastructure is scaffolding built as part of features 1–5, not a separate work item. README ships with MVP as the NFR31 vehicle. A help entry backed by `NotImplementedCommand` is not coverage — see the delivery status in CLI Specification for which verbs are still stubs.
 
-### Phase 1.5 — Fast-Follow (launch decision date = thesis-gate date + 4 weeks; re-derived, by sprint change, if the G1 date moves)
+### Phase 1.5 — Fast-Follow (launch decision date = thesis-gate/release decision date + 1 month; if either date moves, the other is re-derived by sprint change)
 
 | # | Feature | Validates |
 |---|---|---|
@@ -600,9 +600,7 @@ Users can promote AI-inferred edge confidence (e.g., from 0.5 to 1.0) when they 
 
 ### Open-Source Licensing
 
-**Hexalith.Memories license: decision conflict — see Open Question 4.** The PRD's recorded decision (March 2026) is Apache 2.0; the shipped reality (2026-09-08) is MIT in `LICENSE`, source headers, and `PackageLicenseExpression`. Both are permissive and both satisfy the intent below; the PRD does not pick between them in this Update because published packages already carry MIT and relicensing is the owner's call.
-
-Whichever licence is confirmed, the README must include a public commitment: *"Hexalith.Memories is committed to the <licence> license. We will not change to a restrictive license."* This preempts BSL-switch concerns that have eroded trust in other AI infrastructure projects. The statement must name the licence the packages actually ship under.
+**Hexalith.Memories license: MIT** (decision, Jerome, 2026-09-08). The March 2026 PRD recorded Apache 2.0; the repository and every published package shipped MIT, and the owner confirmed MIT as the contract. No relicensing work is owed. MIT is permissive and signals long-term trust for enterprise adoption. The README must include a public commitment: *"Hexalith.Memories is committed to the MIT license. We will not change to a restrictive license."* This preempts BSL-switch concerns that have eroded trust in other AI infrastructure projects.
 
 **Dependency chain licensing:**
 
@@ -1179,7 +1177,7 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 | NFR | Requirement | Target | Phase |
 |---|---|---|---|
 | **NFR30** | Every CLI command includes --help with at least one usage example | CLI help completeness test: parse all commands, verify example presence | MVP |
-| **NFR31** | README includes a working Phase 1 quickstart that completes in <30 minutes on a clean machine with Docker installed. **G3 is timed on the README manual path** — AppHost boot → `tenant create` → `case create` → `ingest` → `search query` — using real CLI verbs; `memories quickstart` is the scripted convenience and may be used *in addition*, not instead. While `tenant create`, `case create`, and `ingest` are stubs, G3 cannot be run: those three rows block G3 and sit on the 2026-10-31 critical path. **Clean machine (definition shared with L2):** a fresh OS user profile on Windows 11, macOS, or Ubuntu LTS with only Docker (or Docker Desktop) and the .NET SDK pinned in `global.json` preinstalled; the Aspire CLI/workload is installed on the clock; broadband network assumed; Docker image pulls are on the clock (unlike NFR7); the embedding-provider API key is **off** the clock (obtained beforehand and pasted at the prompt). Phase 1.5 EventStore 30-minute clock is a separate launch gate (L2) using the same machine definition. | Timed walkthrough on the clean machine above, recorded in `docs/dev/quickstart-walkthrough-log.md` with date, OS, and machine spec; **no run recorded as of 2026-09-08** | MVP |
+| **NFR31** | README includes a working Phase 1 quickstart that completes in <30 minutes on a clean machine with Docker installed. **G3 is timed on the README manual path** — AppHost boot → `tenant create` → `case create` → `ingest` → `search query` — using real CLI verbs; `memories quickstart` is the scripted convenience and may be used *in addition*, not instead. While `tenant create`, `case create`, and `ingest` are stubs, G3 cannot be run: those three rows block G3 and sit on the 2026-12-01 critical path. **Clean machine (definition shared with L2):** a fresh OS user profile on Windows 11, macOS, or Ubuntu LTS with only Docker (or Docker Desktop) and the .NET SDK pinned in `global.json` preinstalled; the Aspire CLI/workload is installed on the clock; broadband network assumed; Docker image pulls are on the clock (unlike NFR7); the embedding-provider API key is **off** the clock (obtained beforehand and pasted at the prompt). Phase 1.5 EventStore 30-minute clock is a separate launch gate (L2) using the same machine definition. | Timed walkthrough on the clean machine above, recorded in `docs/dev/quickstart-walkthrough-log.md` with date, OS, and machine spec; **no run recorded as of 2026-09-08** | MVP |
 
 ### Future web, freshness, and telemetry
 
@@ -1198,10 +1196,10 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 ## Open Questions
 
-1. `[NOTE FOR PM]` Confirm or replace the two release-decision dates set in this Update (thesis gate 2026-10-31, Phase 1.5 launch 2026-11-30). Owner: Jerome. Revisit: before the next sprint-planning run.
-2. `[NOTE FOR PM]` Thesis-gate corpus and labelling: who recruits the two independent reviewers and which real (non-synthetic) Phase 1 corpus is frozen for G1? Owner: Jerome. Revisit: 2026-09-30, before benchmark expansion work is sprint-selected.
+1. **Closed 2026-09-08.** Jerome confirmed the Phase 1.5 launch decision date 2027-01-01 and the rule *release (thesis gate G1–G5) decision = launch − 1 month*, giving 2026-12-01. The G1-prerequisite sprint-selection date 2026-10-31 is `[DERIVED]` (one month before the gate) until confirmed at the next sprint planning.
+2. `[NOTE FOR PM]` Thesis-gate corpus and labelling: who recruits the two independent reviewers and which real (non-synthetic) Phase 1 corpus is frozen for G1? Owner: Jerome. Revisit: 2026-10-31, before benchmark expansion work is sprint-selected.
 3. Does `--explain` stay opt-in (FR19) while UX-DR7 (`ux-design-specification.md`) wants compact trust fields on every search? Pick one before Epic 17 web activation. Owner: UX. Revisit: Epic 17 activation SCP.
-4. **Phase-blocking.** Licence: the PRD decision is Apache 2.0, the repository and published packages are MIT. Decide which is the contract; then either rewrite this PRD's licence sections to MIT, or relicense `LICENSE`, file headers, and `PackageLicenseExpression` to Apache 2.0 before any further package publish. Publish the matching no-relicense README sentence. Owner: Jerome. Decide by: 2026-09-30 (before G1-prerequisite sprint selection); blocks the Phase 1.5 launch decision.
+4. **Closed 2026-09-08.** Licence is MIT (Jerome). The PRD's Apache 2.0 text was replaced; the repository already complies. Remaining action: publish the MIT no-relicense sentence in the README (handoff, `addendum.md`).
 5. FR32 stays absolute (single-case ownership) for MVP and Phase 1.5; brief R3 (lightweight cross-case references) may be restored only as a Phase 2 FR via sprint change. Owner: Jerome. Revisit: Phase 2 planning.
 6. Closed 2026-09-08: ingest-from-anywhere (cloud/git/image/video) is an explicit deferral — see Non-Goals. Re-open only by sprint change.
 7. Optional Python `ai-agent` sidecar (architecture decision D27 in `architecture.md`): product constraint or architecture-only? Owner: architecture. Revisit: Epic 17 activation / next architecture anchor re-verification. See addendum.
@@ -1211,7 +1209,7 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 
 - `[ASSUMPTION]` Generic Marten/Wolverine/Axon zero-code remains an experiment until a named spike passes the DAPR-generic kill switch. (§ Executive Summary)
 - `[ASSUMPTION]` Cloud-drive, git, image, and video ingest stay deferred until an owner names a phase. (§ Non-Goals)
-- `[ASSUMPTION]` Release-decision dates (thesis gate 2026-10-31, Phase 1.5 launch 2026-11-30) were set in this Update pending Jerome's confirmation; the G1 preparation window is a schedule assumption. (§ Measurable Outcomes › Release decision record; Open Question 1)
+- `[DERIVED]` G1-prerequisite sprint-selection date 2026-10-31 (one month before the confirmed 2026-12-01 release decision, which is itself one month before the confirmed 2027-01-01 launch decision). (§ Measurable Outcomes › Release decision record; Open Question 1)
 - `[ASSUMPTION]` Thesis-stress slice ≤ 20% of N; explicit + metadata-carried edges ≥ 30% of non-`contains` edges for the run to count as a three-axis (not similarity-graph) test. (§ Measurable Outcomes › Thesis-gate protocol)
 - `[ASSUMPTION]` NFR36 file/URL freshness budgets (60 s for ≤10 KB, 5 min for ≤1 MB) are derived from NFR5 throughput; architecture may tighten, not remove. (§ NFR36)
 - `[ASSUMPTION]` The NFR "implemented" status row reflects absence of recorded evidence in planning artifacts, not proof of absence in CI. (§ Non-Functional Requirements › NFR delivery status)

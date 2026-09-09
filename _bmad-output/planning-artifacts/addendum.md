@@ -124,7 +124,8 @@ Further handoff items recorded on 2026-09-08 (afternoon adversarial pass), none 
 - `tests/Hexalith.Memories.Benchmarks`: rename `ThesisValidation_HybridOutperforms80Percent` (and the `ThesisValidated` flag) to a diagnostic/regression name; add the two-axis BM25+semantic control, the per-topic aggregate guards, the edge-source census, and the cached-embedding hash. A passing run of the current test is not G1 evidence.
 - `README.md` line 84 says "per-tenant audit events (FR67)"; the PRD glossary bans "audit" for access telemetry. Reword downstream.
 - `README.md` line 7 quotes NFR31 as "approximate"; NFR31 now defines the clean machine and the recorded-run requirement. `docs/dev/quickstart-walkthrough-log.md` has no run.
-- Licence: `LICENSE`, source headers, and `PackageLicenseExpression` are MIT; the PRD decision on record is Apache 2.0. Open Question 4 owns the resolution; do not publish a README licence pledge until it closes.
+- Licence: confirmed MIT by Jerome on 2026-09-08 (Open Question 4 closed); the repository already complies. Remaining downstream action: add the README sentence "Hexalith.Memories is committed to the MIT license. We will not change to a restrictive license." Any older Apache 2.0 wording in `architecture.md`/`epics.md` is drift to remove.
+- Dates: Phase 1.5 launch decision 2027-01-01 and the rule "release (thesis-gate) decision = launch − 1 month" (→ 2026-12-01) are confirmed by Jerome; the prerequisite sprint-selection date 2026-10-31 is derived and should be confirmed at the next sprint planning.
 - `HybridSearchService` skips the graph axis without a start node; the PRD now requires auto-seeding from top-5 syntactic + top-5 semantic (FR17). No owning story exists yet.
 - MCP parameter naming (`axis` vs `axes`) is declared once in the CLI surface table (`--axis`); the MCP tool schema should be checked against it when Epic 10 hardening is next touched.
 
