@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UX Design Validation: Hexalith.Memories</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  section summary { padding: 14px 20px; cursor: pointer; user-select: none; list-style: none; display: flex; align-items: center; gap: 12px; }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before { content: "▸"; display: inline-block; color: var(--muted); transition: transform 0.15s ease; }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 { display: inline; margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.005em; flex: 1; }
+  .verdict-pill { font-size: 11px; padding: 3px 10px; border-radius: 999px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: white; }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+  .findings-list { padding: 0 20px 4px; }
+  article.finding { padding: 14px 0; border-top: 1px solid var(--border); }
+  article.finding:first-child { border-top: none; }
+  article.finding header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .badge { font-size: 10.5px; padding: 3px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.4; }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+  .reviewer-source { font-size: 12px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .mechanical { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-top: 24px; font-size: 14px; }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+  footer.report-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="report-header">
+    <div class="title">
+      <h1>Hexalith.Memories — UX Design Validation Report</h1>
+      <div class="subtitle">_bmad-output/planning-artifacts/ux-design-specification.md + ux-design-directions.html</div>
+    </div>
+  </header>
+
+  <div class="synthesis">
+    <p><strong>Broken as a downstream UX contract.</strong> The legacy package preserves a strong trust-centered direction and unusually thoughtful accessibility intent, but it is not a DESIGN.md / EXPERIENCE.md spine pair, covers only part of the current PRD journey set, and has drifted from current phase, command, authorization, scoring, and lifecycle contracts.</p>
+    <p>The most urgent correction is security semantics: cross-tenant or tenant-claim-mismatched requests must fail closed, never become confirmable scope expansion. Web implementation should remain activation-gated until exact FrontComposer/Fluent ownership and accessibility evidence contracts are written; the active CLI needs an accessible terminal-output contract now.</p>
+    <p>Consolidated after deduplication: <strong>3 critical · 17 high · 9 medium · 3 low</strong>. Raw reviewer totals: rubric 4/15/9/2; source drift 1/10/3/1; Fluent 0/2/2/1; accessibility 0/4/4/1.</p>
+  </div>
+
+  <div class="dimension-summary">
+    <div class="dim-card"><div class="dim-name">Flow coverage</div><div class="dim-verdict" style="color: var(--verdict-broken)">broken</div></div>
+    <div class="dim-card"><div class="dim-name">Token completeness</div><div class="dim-verdict" style="color: var(--verdict-broken)">broken</div></div>
+    <div class="dim-card"><div class="dim-name">Component coverage</div><div class="dim-verdict" style="color: var(--verdict-thin)">thin</div></div>
+    <div class="dim-card"><div class="dim-name">State coverage</div><div class="dim-verdict" style="color: var(--verdict-broken)">broken</div></div>
+    <div class="dim-card"><div class="dim-name">Visual reference coverage</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div>
+    <div class="dim-card"><div class="dim-name">Bloat &amp; overspecification</div><div class="dim-verdict" style="color: var(--verdict-thin)">thin</div></div>
+    <div class="dim-card"><div class="dim-name">Inheritance discipline</div><div class="dim-verdict" style="color: var(--verdict-broken)">broken</div></div>
+    <div class="dim-card"><div class="dim-name">Shape fit</div><div class="dim-verdict" style="color: var(--verdict-broken)">broken</div></div>
+  </div>
+
+  <section class="dimension"><details open><summary><h2>1. Flow coverage</h2><span class="verdict-pill verdict-broken">broken</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p>The PRD's ten named journeys are only partially represented by five Mermaid flows; source names, phase boundaries, numbered steps, and explicit climax beats are not extractable.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-critical">critical</span><h3 class="finding-title">Current PRD journeys are not traceably covered</h3><span class="finding-location">prd.md:297-519 · UX:614-770</span></header><div class="finding-note">J6, J8, and J10 are absent; J1/J9 and J3/J7 are blended; J2 and J5 lose material failure paths.</div><div class="finding-fix"><strong>Fix:</strong> Mirror source identifiers and names, use numbered steps and an explicit climax, phase-tag every flow, and justify any infrastructure-only exclusion.</div></article>
+    </div>
+  </details></section>
+
+  <section class="dimension"><details open><summary><h2>2. Token completeness</h2><span class="verdict-pill verdict-broken">broken</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p>No DESIGN.md token tree exists. The historical HTML is the only renderable visual reference and cannot serve as the machine-readable visual contract.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-critical">critical</span><h3 class="finding-title">No peer spine pair or machine-readable visual contract</h3><span class="finding-location">UX:16,438,804</span></header><div class="finding-note">Visual identity, behavior, source narrative, journeys, and implementation guidance are mixed in one legacy file; there are no typed tokens or token references.</div><div class="finding-fix"><strong>Fix:</strong> Distill peer DESIGN.md and EXPERIENCE.md files and record only justified Fluent/FrontComposer visual deltas as typed tokens.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">HTML showcase creates an unsafe parallel theme vocabulary</h3><span class="finding-location">HTML:7-45,470-478,784-800</span></header><div class="finding-note">The visual uses hard-coded colors, raw controls, custom JavaScript, and legacy-shaped --neutral-* variables despite the Fluent 2 and reuse-first contract.</div><div class="finding-fix"><strong>Fix:</strong> Mark the artifact non-normative before its first control and map retained visual decisions to Fluent 2 roles in DESIGN.md.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Load-bearing contrast and theme decisions are not bound</h3><span class="finding-location">UX:440-492,1104-1133 · HTML:8-29</span></header><div class="finding-note">WCAG AA and forced-colors intent lacks named foreground/background, focus, border, selected, graph, and status combinations; the mock is light-only.</div><div class="finding-fix"><strong>Fix:</strong> Map states to Fluent 2 roles, name required evidence across supported themes/forced colors, and state the dark-mode decision.</div></article>
+    </div>
+  </details></section>
+
+  <section class="dimension"><details open><summary><h2>3. Component coverage</h2><span class="verdict-pill verdict-thin">thin</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p>The custom component dossiers are useful, but visual and behavioral rules are co-mingled and several roadmap concepts remain names rather than contracts.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Visual and behavioral component contracts are co-mingled</h3><span class="finding-location">UX:804-923</span></header><div class="finding-note">No component has identically named DESIGN.md.Components and EXPERIENCE.md.Component Patterns entries.</div><div class="finding-fix"><strong>Fix:</strong> Split every retained component into peer visual and behavioral entries with real rules.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Roadmap components are names without usable contracts</h3><span class="finding-location">UX:927-948</span></header><div class="finding-note">Ingestion Lifecycle Tracker, Operator Health Matrix, and Benchmark Result Comparator lack anatomy, states, interactions, and ownership.</div><div class="finding-fix"><strong>Fix:</strong> Define complete two-spine rows or mark them future/inherited and remove them from the implementation-ready inventory.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Canonical component names and aliases drift</h3><span class="finding-location">UX:545,567,818-889,1043-1050</span></header><div class="finding-note">Scope strip/Trust Strip, Recovery footer/Recovery Action Panel, and evidence state/evidence health are used inconsistently.</div><div class="finding-fix"><strong>Fix:</strong> Choose one canonical name per component and field across both spines, flows, states, and sources.</div></article>
+    </div>
+  </details></section>
+
+  <section class="dimension"><details open><summary><h2>4. State coverage</h2><span class="verdict-pill verdict-broken">broken</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p>State ideas are rich but scattered. They are not closed against a canonical surface inventory and have drifted from current ingestion and freshness contracts.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">No IA or surface-state closure proof exists</h3><span class="finding-location">UX:496-525,569-574,816-916,985-1005</span></header><div class="finding-note">Views and components lack an authoritative surface table tying entry, purpose, phase, journey, requirement, component, state, and recovery together.</div><div class="finding-fix"><strong>Fix:</strong> Add IA and per-surface state matrices covering every applicable cold-load, empty, focus, error, degradation, permission, long-running, and recovery state.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Async progress and timing semantics are stale</h3><span class="finding-location">UX:620-640,996-1005 · PRD:85-97,1141-1148,1191-1195</span></header><div class="finding-note">The UX omits projecting/failed, treats retry as a state, and does not carry NFR36 timing and throttling disclosure.</div><div class="finding-fix"><strong>Fix:</strong> Import the canonical state/timing vocabulary and define acknowledgement, stage, last update, expected duration, delay cause, completion/failure, retry safety, and recovery across surfaces.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Freshness labels lack thresholds and versioned ownership</h3><span class="finding-location">UX:558-563,1043-1050 · PRD:1182-1195</span></header><div class="finding-note">Current, aging, stale, and unknown are presented as stable without source-owned thresholds, transitions, or recovery rules.</div><div class="finding-fix"><strong>Fix:</strong> Reference the versioned freshness contract and keep evidence age separate from ingestion latency and relevance.</div></article>
+    </div>
+  </details></section>
+
+  <section class="dimension"><details><summary><h2>5. Visual reference coverage</h2><span class="verdict-pill verdict-adequate">adequate</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p>The sole HTML artifact is linked and contains eight explorations, but it is not promoted, locally cross-referenced, or explicitly subordinate to the textual contract.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Artifact placement, linkage, and precedence are incomplete</h3><span class="finding-location">UX:496-513 · HTML:780</span></header><div class="finding-note">There are no imports, mockups, or wireframes folders; the root-level showcase is linked once and no spines-win-on-conflict rule exists.</div><div class="finding-fix"><strong>Fix:</strong> Classify the artifact, link it inline with precise illustration notes, state precedence once, and list unmocked surfaces as spine-only.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">No promoted key screen shows the chosen blended direction</h3><span class="finding-location">UX:496-525 · HTML:470</span></header><div class="finding-note">The HTML remains eight explorations rather than a final Evidence Cockpit/activity/agent/operator composition.</div><div class="finding-fix"><strong>Fix:</strong> Render the minimum chosen key screens after source and spine reconciliation.</div></article>
+    </div>
+  </details></section>
+
+  <section class="dimension"><details open><summary><h2>6. Bloat &amp; overspecification</h2><span class="verdict-pill verdict-thin">thin</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p>The document repeats upstream product content and its own invariants, preserving stale May decisions and making extraction noisy.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Source narrative and core rules are duplicated</h3><span class="finding-location">UX:25-187,366,539-602,950-1068</span></header><div class="finding-note">Product vision, personas, trust rules, state, recovery, and Core User Experience recur rather than being inherited and specialized.</div><div class="finding-fix"><strong>Fix:</strong> Retain source identifiers and UX consequences only; establish each invariant once and use tables/references for deltas.</div></article>
+    </div>
+  </details></section>
+
+  <section class="dimension"><details open><summary><h2>7. Inheritance discipline</h2><span class="verdict-pill verdict-broken">broken</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p>Current source precedence, authorization, product phases, command/schema names, explain behavior, and retrieval semantics do not reliably resolve from the legacy UX.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-critical">critical</span><h3 class="finding-title">Tenant-boundary failures are modeled as confirmable warnings</h3><span class="finding-location">UX:133,426,565,656-660,1035-1037 · PRD:1123-1130</span></header><div class="finding-note">A consumer could expose cross-tenant existence or imply confirmation grants authority, violating the zero-leak gate.</div><div class="finding-fix"><strong>Fix:</strong> Fail closed before retrieval for tenant mismatch, missing authenticated scope, unauthorized source, and cross-tenant access; require a newly authorized identity/session to change tenant.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Source provenance is stale and partially broken</h3><span class="finding-location">UX:1-13 · PRD:1-5 · memlog:26-38</span></header><div class="finding-note">The missing Commons path and absent precedence rules can revive superseded brief decisions.</div><div class="finding-fix"><strong>Fix:</strong> Add a resolvable, revision-aware sources manifest and explicit override order.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Product phases and UX component phases collide</h3><span class="finding-location">UX:99-113,927-948 · PRD:709-720</span></header><div class="finding-note">Unqualified component Phase 1/2/3 headings can activate web work or defer shared trust semantics incorrectly.</div><div class="finding-fix"><strong>Fix:</strong> Rename web composition waves and mirror canonical product phase/surface/delivery status separately.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">CLI examples use obsolete grammar</h3><span class="finding-location">UX:422-424 · HTML:647-655 · PRD:871-900</span></header><div class="finding-note">Examples omit the search query subcommand and required tenant/query options and preserve an eliminated tenant-switch model.</div><div class="finding-fix"><strong>Fix:</strong> Use the canonical CLI table verbatim and remove tenant-switch recovery.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">MCP wire names are invented instead of version-bound</h3><span class="finding-location">UX:422-424,684-703,895-904 · HTML:709-740</span></header><div class="finding-note">Request and response examples are not mapped to active MCP and Contracts.V1 schemas.</div><div class="finding-fix"><strong>Fix:</strong> Reference the owning schema/version and map tool, request, response, error, budget, and expansion fields.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Default explain behavior is unresolved and UX-DR7 is undefined</h3><span class="finding-location">UX:83-125,851-860 · PRD:1197-1205</span></header><div class="finding-note">Automatic explain and optional --explain are simultaneously specified without a resolvable UX decision ID.</div><div class="finding-fix"><strong>Fix:</strong> Close the decision through change control and separate always-present trust fields from opt-in detail.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">RRF, graph seeding, and confidence semantics have drifted</h3><span class="finding-location">UX:418,422-430,539-563,851-877 · PRD:78-94,158-166,547-597</span></header><div class="finding-note">Magnitude-like score bars and generic confidence conflict with weighted RRF, graph auto-seeding, and separate relevance/metadata/edge confidence.</div><div class="finding-fix"><strong>Fix:</strong> Import canonical terms and show ranks, contributions, weights, start provenance, and excluded axes without presenting relevance as factual certainty.</div></article>
+    </div>
+  </details></section>
+
+  <section class="dimension"><details open><summary><h2>8. Shape fit</h2><span class="verdict-pill verdict-broken">broken</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p>The candidate material lacks both canonical spines: DESIGN visual sections/frontmatter and EXPERIENCE Foundation, IA, Voice and Tone, Component Patterns, State Patterns, Interaction Primitives, Accessibility Floor, and Key Flows. The missing-pair defect is recorded under Token completeness.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">Legacy frontmatter is workflow metadata, not a current UX contract</h3><span class="finding-location">UX:1-16</span></header><div class="finding-note">It records completed workflow steps but no current name, status, sources, or updated fields for either spine.</div><div class="finding-fix"><strong>Fix:</strong> Give both future spines complete current frontmatter and retain legacy metadata only as migration provenance.</div></article>
+    </div>
+  </details></section>
+
+  <section class="reviewer-section"><details><summary><h2>Source-drift review</h2><span class="reviewer-source">review-source-drift.md</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p><strong>Broken as a current downstream contract.</strong> Recoverable trust, visible scope, degradation, and deferred web remain aligned, but September decisions have overtaken the May artifact.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Evidence Packet overpromises universal synthesis and actions</h3><span class="finding-location">UX:83-95,422-436,565-602 · PRD:43-57,845-869</span></header><div class="finding-note">CLI, MCP, application UI, and operator diagnostics have different phase and capability bounds.</div><div class="finding-fix"><strong>Fix:</strong> Define phase-qualified projection profiles that share semantics but expose only supported actions.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Activity language implies audit and permission guarantees</h3><span class="finding-location">UX:252-258,714-743,906-915 · PRD:78-93,535-545</span></header><div class="finding-note">Audit-friendly, audit context, and permission changed exceed the current access-telemetry and membership-metadata contracts.</div><div class="finding-fix"><strong>Fix:</strong> Use access-telemetry terminology, expose integrity/retention limitations, and name actual membership or claim events.</div></article>
+    </div>
+  </details></section>
+
+  <section class="reviewer-section"><details><summary><h2>Fluent UI V5 / FrontComposer review</h2><span class="reviewer-source">review-fluent-conformance.md</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p><strong>Revise before binding web implementation.</strong> The architectural intent is correct, but exact component ownership and the mandatory accordion rule are missing. The HTML is a historical visual study, not product-code evidence.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Exact FrontComposer and Fluent V5 ownership is undefined</h3><span class="finding-location">UX:320,810,954,1020-1025</span></header><div class="finding-note">Generic component nouns can be mistaken for nonexistent pinned V5 controls, while FrontComposerShell ownership is omitted.</div><div class="finding-fix"><strong>Fix:</strong> Add a binding shell/domain/component ownership table using exact current components and justified-gap rules.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Mandatory page-section accordion rule is absent</h3><span class="finding-location">UX:545-554,818-915,1031-1033</span></header><div class="finding-note">Multiple sibling titled Evidence Packet regions can be implemented as unrelated custom disclosures.</div><div class="finding-fix"><strong>Fix:</strong> Require one FluentAccordion with one FluentAccordionItem per sibling titled section, with the primary item expanded; keep page chrome and sole primary content outside.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Historical mock disclaimer is too late</h3><span class="finding-location">HTML:470-478,780-800</span></header><div class="finding-note">Interactive-looking, nonconformant markup appears before the artifact says it is a static approximation.</div><div class="finding-fix"><strong>Fix:</strong> Put a no-copy/no-evidence warning before the first control and beside the UX link.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">Referenced project context names a stale Fluent RC</h3><span class="finding-location">project-context.md:30 · Directory.Packages.props:226</span></header><div class="finding-note">The context says RC3 while the central catalogue and FrontComposer select RC5.</div><div class="finding-fix"><strong>Fix:</strong> Refresh the context or make the central package catalogue the explicit version authority.</div></article>
+    </div>
+  </details></section>
+
+  <section class="reviewer-section"><details><summary><h2>Accessibility review</h2><span class="reviewer-source">review-accessibility.md</span></summary>
+    <div class="dim-body"><div class="dim-judgment"><p><strong>Revise before binding active CLI accessibility or activating web.</strong> WCAG intent, keyboard flow, non-color state, focus return, graph alternatives, live-region restraint, forced colors, reduced motion, and structured MCP recovery are strong; the enforceable contracts are incomplete.</p></div></div>
+    <div class="findings-list">
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Active CLI lacks an accessible terminal-output contract</h3><span class="finding-location">UX:99-113,422-436,790-802 · PRD:1059-1066</span></header><div class="finding-note">Reading order, wrapping, non-color/non-glyph meaning, spinner behavior, narrow terminals, redirected output, and table alternatives are undefined.</div><div class="finding-fix"><strong>Fix:</strong> Define stable linear order, text state labels, bounded/wrappable output, deterministic piping, durable progress lines, and semantically equivalent output formats.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">FrontComposer shell accessibility inheritance is implicit</h3><span class="finding-location">UX:336-350,952-960,1108-1116</span></header><div class="finding-note">Skip targets, route focus, status primitives, and the FC-A11Y contract are not named.</div><div class="finding-fix"><strong>Fix:</strong> Explicitly inherit FrontComposerShell/FC-A11Y and specify only domain-page focus, tab-order, update, and focus-return deltas.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Future-web evidence plan cannot prove NFR32</h3><span class="finding-location">UX:1082-1142 · PRD:1182-1189</span></header><div class="finding-note">It omits text resize, 320-CSS-pixel reflow, focus-not-obscured, and route/state evidence coverage.</div><div class="finding-fix"><strong>Fix:</strong> Create a fail-closed evidence matrix across surface/state, viewport, zoom, theme, input, browser, AT, expected semantics, artifact, owner, and disposition.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Pointer target sizing is advisory and incomplete</h3><span class="finding-location">UX:1070-1078,1154-1157</span></header><div class="finding-note">Only primary actions get a 44px recommendation “where practical”; dense secondary controls and graph interactions are unspecified.</div><div class="finding-fix"><strong>Fix:</strong> Make WCAG 2.2 SC 2.5.8 the binding floor, keep 44×44 CSS pixels as the preferred high-risk target, and test documented exceptions.</div></article>
+      <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Table, graph, and diagram alternatives are not interaction-complete</h3><span class="finding-location">UX:614-770,851-915,1056-1058,1093-1114</span></header><div class="finding-note">The contract omits grid captions/names, header/sort association, target-qualified row actions, compact parity, and synchronized graph/list selection.</div><div class="finding-fix"><strong>Fix:</strong> Define full grid/graph keyboard and semantic models and pair every Mermaid journey with equivalent numbered text.</div></article>
+    </div>
+  </details></section>
+
+  <div class="mechanical">
+    <h3>Mechanical notes</h3>
+    <ul>
+      <li>No DESIGN.md, EXPERIENCE.md, imports, mockups, or wireframes artifacts exist for this legacy contract.</li>
+      <li>The Commons project-context source path does not resolve; the other six legacy input paths do.</li>
+      <li>Five Mermaid flowchart blocks have balanced fences and no obvious syntax defect.</li>
+      <li>No {path.to.token} references exist; UX-DR1 through UX-DR40 are downstream-only and unresolved in the UX source.</li>
+      <li>The source UX and visual HTML were not modified by validation.</li>
+    </ul>
+  </div>
+
+  <footer class="report-footer">
+    <div class="meta">
+      <span>Rubric: .agents/skills/bmad-ux/references/validate.md</span>
+      <span>Generated: 2026-09-09T09:30:35+02:00</span>
+      <span>Markdown twin: validation-report.md</span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

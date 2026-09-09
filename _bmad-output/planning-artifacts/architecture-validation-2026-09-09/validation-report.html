@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hexalith.Memories Architecture Validation — FAIL</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #526078;
+      --paper: #ffffff;
+      --canvas: #f3f5f8;
+      --line: #d7dce5;
+      --critical: #9f1239;
+      --critical-bg: #fff1f2;
+      --high: #9a3412;
+      --high-bg: #fff7ed;
+      --medium: #854d0e;
+      --medium-bg: #fefce8;
+      --low: #1e3a8a;
+      --low-bg: #eff6ff;
+      --ok: #166534;
+      --shadow: 0 10px 28px rgba(23, 32, 51, .08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 16px/1.58 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    a { color: #174ea6; text-underline-offset: .16em; }
+    a:hover { color: #0d3474; }
+    code { padding: .08rem .3rem; border: 1px solid #dfe3ea; border-radius: .3rem; background: #f7f8fa; font: .9em ui-monospace, SFMono-Regular, Consolas, monospace; }
+    header { background: linear-gradient(135deg, #24152d 0%, #56152b 55%, #8e1739 100%); color: #fff; }
+    .wrap { width: min(1160px, calc(100% - 2rem)); margin-inline: auto; }
+    .hero { padding: 3.4rem 0 2.8rem; }
+    .eyebrow { margin: 0 0 .7rem; font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #fecdd3; }
+    h1 { margin: 0; max-width: 900px; font-size: clamp(2rem, 5vw, 4rem); line-height: 1.05; letter-spacing: -.035em; }
+    .verdict { max-width: 900px; margin: 1.2rem 0 0; font-size: clamp(1.08rem, 2vw, 1.34rem); color: #ffe4e6; }
+    .meta { display: flex; flex-wrap: wrap; gap: .6rem 1.4rem; margin-top: 1.5rem; color: #fff1f2; font-size: .92rem; }
+    nav { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.96); backdrop-filter: blur(10px); }
+    nav .wrap { display: flex; gap: 1rem; overflow-x: auto; padding-block: .75rem; }
+    nav a { flex: none; color: var(--ink); font-size: .9rem; font-weight: 700; text-decoration: none; }
+    main { padding: 2rem 0 4rem; }
+    section { scroll-margin-top: 4rem; margin-bottom: 2rem; }
+    h2 { margin: 0 0 1rem; font-size: clamp(1.45rem, 3vw, 2rem); letter-spacing: -.02em; }
+    h3 { margin: 0; font-size: 1.08rem; line-height: 1.35; }
+    .summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+    .metric, .panel, .finding { border: 1px solid var(--line); border-radius: .8rem; background: var(--paper); box-shadow: var(--shadow); }
+    .metric { padding: 1rem; }
+    .metric strong { display: block; font-size: 1.65rem; line-height: 1.15; }
+    .metric span { color: var(--muted); font-size: .9rem; }
+    .metric.fail strong { color: var(--critical); }
+    .panel { padding: 1.2rem 1.35rem; }
+    .lead { margin: 0; font-size: 1.05rem; }
+    .finding { margin: .85rem 0; overflow: hidden; }
+    .finding-head { display: flex; align-items: flex-start; gap: .8rem; padding: 1rem 1.1rem .85rem; }
+    .finding-body { padding: 0 1.1rem 1.05rem; }
+    .finding-body p { margin: .55rem 0; }
+    .badge { flex: none; display: inline-block; min-width: 4.5rem; padding: .22rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 850; letter-spacing: .045em; text-align: center; text-transform: uppercase; }
+    .critical { border-left: .42rem solid var(--critical); }
+    .critical .badge { color: #fff; background: var(--critical); }
+    .high { border-left: .42rem solid var(--high); }
+    .high .badge { color: #fff; background: var(--high); }
+    .action { border-radius: .45rem; padding: .65rem .8rem; background: #f7f8fa; }
+    .critical .action { background: var(--critical-bg); }
+    .high .action { background: var(--high-bg); }
+    .action strong { text-transform: uppercase; font-size: .78rem; letter-spacing: .05em; }
+    table { width: 100%; border-collapse: collapse; background: var(--paper); }
+    th, td { padding: .75rem; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #e9edf3; font-size: .82rem; letter-spacing: .035em; text-transform: uppercase; }
+    .table-scroll { overflow-x: auto; border-radius: .7rem; box-shadow: var(--shadow); }
+    .sources, .reviews { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
+    .link-card { padding: .9rem 1rem; border: 1px solid var(--line); border-radius: .65rem; background: var(--paper); }
+    .link-card a { font-weight: 750; }
+    .small { color: var(--muted); font-size: .9rem; }
+    .callout { border: 1px solid #fda4af; border-radius: .8rem; padding: 1.1rem 1.25rem; background: var(--critical-bg); }
+    footer { padding: 1.4rem 0 2.5rem; color: var(--muted); font-size: .88rem; }
+    @media (max-width: 800px) {
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .sources, .reviews { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .wrap { width: min(100% - 1rem, 1160px); }
+      .hero { padding: 2.3rem 0 2rem; }
+      .summary { grid-template-columns: 1fr; }
+      .finding-head { flex-direction: column; }
+    }
+    @media print {
+      nav { display: none; }
+      body { background: #fff; }
+      .metric, .panel, .finding, .table-scroll { box-shadow: none; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap hero">
+      <p class="eyebrow">Architecture reviewer gate · 2026-09-09</p>
+      <h1>FAIL — unsafe as the current implementation architecture</h1>
+      <p class="verdict"><code>architecture.md</code> cannot currently make independently built units converge. Its load-bearing rules conflict with each other, the brownfield code, and the product contract updated on 2026-09-08.</p>
+      <div class="meta"><span>Mode: read-only validation</span><span>Target unchanged</span><span>Recommended next action: Update</span></div>
+    </div>
+  </header>
+
+  <nav aria-label="Report sections">
+    <div class="wrap">
+      <a href="#result">Result</a><a href="#critical">Critical</a><a href="#high">High</a><a href="#tail">Remaining</a><a href="#method">Method</a><a href="#sources">Sources</a><a href="#action">Gate action</a>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <section id="result" aria-labelledby="result-title">
+      <h2 id="result-title">Gate result</h2>
+      <div class="summary">
+        <div class="metric fail"><strong>FAIL</strong><span>Overall gate</span></div>
+        <div class="metric"><strong>17</strong><span>Consolidated findings</span></div>
+        <div class="metric"><strong>6 + 6</strong><span>Critical + high</span></div>
+        <div class="metric"><strong>44</strong><span>Raw observations represented</span></div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <p class="lead">Do not use this artifact for implementation handoff. It preserves valuable intent—EventStore-acknowledged domain truth, Dapr Workflow orchestration, rebuildable projections, Redis-native deduplication, and isolation testing—but current implementation already demonstrates incompatible interpretations.</p>
+      </div>
+    </section>
+
+    <section id="critical" aria-labelledby="critical-title">
+      <h2 id="critical-title">Critical findings</h2>
+
+      <article class="finding critical" id="val-c01">
+        <div class="finding-head"><span class="badge">Critical</span><h3>VAL-C01 · MemoryUnit commit, projection completion, and rebuild do not form one integrity contract</h3></div>
+        <div class="finding-body"><p>The document requires EventStore acceptance and rebuildable projections, but ordinary file/URL ingest schedules the workflow directly with no authoritative MemoryUnit create event or source version. Verification records presence booleans; a missing projection becomes a warning before an unconditional <code>Indexed</code> return. Repair enumerates derived stores, treats syntactic Redis as authority, and cannot recover an all-three-absent unit.</p><p class="small">Evidence: <code>architecture.md:45, 98, 292, 582, 1598–1620</code>; <code>IngestionEndpoints.cs:108–142, 303–320</code>; <code>IngestionWorkflow.cs:433–465, 608–623</code>; index-rebuild runbook.</p><p class="action"><strong>Discuss, then update code and spine together.</strong> Bind the authoritative event, identity, retained payload/reference, source version, durable scheduling handoff, projection receipts, sole indexed transition, replay enumerator, and end-to-end failure tests.</p></div>
+      </article>
+
+      <article class="finding critical" id="val-c02">
+        <div class="finding-head"><span class="badge">Critical</span><h3>VAL-C02 · Tenant-principal isolation conflicts with process-wide backend credentials</h3></div>
+        <div class="finding-body"><p>The selected per-tenant Redis ACL and routing boundary conflicts with singleton, process-wide Redis/FalkorDB connections used by current search and indexing. Tenant deletion also leaves dedup reservations that can affect a recreated tenant. Existing collision tests verify key shaping, not the claimed principal boundary.</p><p class="small">Evidence: <code>architecture.md:71, 76, 280–284, 603–648</code>; <code>ServiceDefaults/Extensions.cs:76–100</code>; <code>DeleteTenantDataKeysActivity.cs:50–79</code>.</p><p class="action"><strong>Discuss.</strong> Choose one enforceable credential/connection owner and bind provisioning, cache, rotation, revocation, deletion/recreation, workflow fencing, and negative evidence across both Redis and FalkorDB.</p></div>
+      </article>
+
+      <article class="finding critical" id="val-c03">
+        <div class="finding-head"><span class="badge">Critical</span><h3>VAL-C03 · Current security and thesis-gate contracts are missing</h3></div>
+        <div class="finding-body"><p>The target certifies C# 13 and 31 NFRs, classifies authentication as Phase 1.5, and retains a small explicit-seed benchmark. The current PRD binds C# 14, NFR1–NFR36, MVP ingress security, at least 50 representative topics, a BM25+semantic control, frozen labels, aggregate guards, and deterministic graph auto-seeding. Current search skips graph when no start node is supplied.</p><p class="action"><strong>Discuss, then update.</strong> Re-extract current security, phase, graph-entry, and benchmark rules from the PRD/addendum; keep implementation gaps visible.</p></div>
+      </article>
+
+      <article class="finding critical" id="val-c04">
+        <div class="finding-head"><span class="badge">Critical</span><h3>VAL-C04 · Mandatory decisions contradict one another and lack enforceable form</h3></div>
+        <div class="finding-body"><p>D15 requires actor IDs shaped as <code>{actorType}-{tenantId}</code>; D24 and the actor table require tenant ID alone, while current counters use another composite. D30 assigns direct data APIs to boundary projects although Server consumes them. The legacy D1–D31 registry has no named paradigm, precedence, or explicit <code>Binds / Prevents / Rule</code> contracts.</p><p class="action"><strong>Discuss, then replace/distil.</strong> Resolve actor identity and infrastructure-boundary meaning, then express only durable choices as stable AD contracts with automated enforcement.</p></div>
+      </article>
+
+      <article class="finding critical" id="val-c05">
+        <div class="finding-head"><span class="badge">Critical</span><h3>VAL-C05 · Licence facts are wrong and the boundary mitigation is unsupported</h3></div>
+        <div class="finding-body"><p>The artifact calls the FalkorDB server AGPL and the repository Apache-2.0. The deployed FalkorDB line is SSPLv1, while the root repository and current PRD are MIT. A Dapr network/process boundary does not by itself alter licence obligations, and the Apache-2.0 NFalkorDB client is a separate artefact.</p><p class="action"><strong>Discuss.</strong> Correct client/server facts, remove the unsupported mitigation, and record an accountable product/legal decision.</p></div>
+      </article>
+
+      <article class="finding critical" id="val-c06">
+        <div class="finding-head"><span class="badge">Critical</span><h3>VAL-C06 · OpenBao and PostgreSQL pins trail security-fix patch releases</h3></div>
+        <div class="finding-body"><p>OpenBao 2.6.0 and PostgreSQL 18.4 remain pinned while later patch releases contain security fixes. The spine names these products without a single image-pin authority, patch cadence, or exposure-review trigger. The review does not claim every CVE is reachable.</p><p class="action"><strong>Open.</strong> Assess exposure and upgrade compatibility, update digests or record time-bounded exceptions, and make manifests the authority.</p></div>
+      </article>
+    </section>
+
+    <section id="high" aria-labelledby="high-title">
+      <h2 id="high-title">High findings</h2>
+
+      <article class="finding high" id="val-h01"><div class="finding-head"><span class="badge">High</span><h3>VAL-H01 · AI enrichment has two owners; mandatory Python Dapr Agents is absent and not officially GA</h3></div><div class="finding-body"><p>D27/D28 require a Python <code>ai-agent</code>, while another normative path performs enrichment in C#. The repository implements only C# and has no versioned cross-language wire contract. Dapr officially labels Agents “In development.”</p><p class="action"><strong>Discuss.</strong> Ratify one owner; if Python survives, bind a generated/versioned contract, maturity gate, deployment proof, supported runtime, idempotency, and retry ownership.</p></div></article>
+
+      <article class="finding high" id="val-h02"><div class="finding-head"><span class="badge">High</span><h3>VAL-H02 · The March dependency inventory can regress current repo pins</h3></div><div class="finding-body"><p>The document binds Aspire 13.1.3, Dapr 1.17.6 and several older clients/test packages; current authorities use SDK 10.0.400/C# 14, Aspire 13.5.3, Dapr SDK 1.18.5/runtime 1.18.2, NRedisStack 1.7.4, StackExchange.Redis 3.1.31, NFalkorDB 1.2.0, xunit.v3 4.0.0, and NSubstitute 6.2.0.</p><p class="action"><strong>Autofix in Update.</strong> Make <code>global.json</code>, central package management, CI, and manifests authoritative; retain only dated compatibility constraints and preview-graduation triggers.</p></div></article>
+
+      <article class="finding high" id="val-h03"><div class="finding-head"><span class="badge">High</span><h3>VAL-H03 · The committed Google embedding model is retired</h3></div><div class="finding-body"><p><code>text-embedding-004</code> was shut down on 2026-01-14. Current code supports <code>gemini-embedding-001</code> and Ollama <code>qwen3-embedding:4b</code>, contradicting the Google-only MVP rule.</p><p class="action"><strong>Autofix in Update.</strong> Record the implemented provider/model/dimension matrix and retain a reindex rule for breaking changes.</p></div></article>
+
+      <article class="finding high" id="val-h04"><div class="finding-head"><span class="badge">High</span><h3>VAL-H04 · Case/Tenant mutation ownership and accepted-command handoff are incomplete</h3></div><div class="finding-body"><p>Case membership and tenant display-name/removal paths do not consistently pass through EventStore, and command acceptance plus workflow scheduling have no specified crash-recovery handoff.</p><p class="action"><strong>Discuss.</strong> Publish a mutation matrix covering authority, event, aggregate, projection, idempotency, terminal state, and post-accept recovery.</p></div></article>
+
+      <article class="finding high" id="val-h05"><div class="finding-head"><span class="badge">High</span><h3>VAL-H05 · Topology, environment, operations, and component inventory are false or fragmented</h3></div><div class="finding-body"><p>The artifact alternates between AppHost and nonexistent root Compose, includes a nonexistent Python service, and omits current EventStore, MCP, access telemetry/clock, PostgreSQL, OpenBao, RBAC, and qualification overlays. Implemented REST/export and migration choices remain deferred while local and production image policies diverge.</p><p class="action"><strong>Autofix in Update.</strong> Point inventory to live solution/release manifests and bind a concise environment, operations, and image-policy matrix.</p></div></article>
+
+      <article class="finding high" id="val-h06"><div class="finding-head"><span class="badge">High</span><h3>VAL-H06 · The mandated MediatR/FluentValidation pipeline is not used by Server</h3></div><div class="finding-body"><p>The pattern section makes both libraries mandatory, but Server neither references nor uses them. Central catalogue availability is not adoption.</p><p class="action"><strong>Discuss.</strong> Ratify the compiled endpoint/domain-validation design or authorize and fund the pipeline, then align enforcement.</p></div></article>
+    </section>
+
+    <section id="tail" aria-labelledby="tail-title">
+      <h2 id="tail-title">Medium, low, and informational tail</h2>
+      <div class="table-scroll"><table>
+        <thead><tr><th>ID</th><th>Severity</th><th>Finding</th><th>Disposition</th></tr></thead>
+        <tbody>
+          <tr><td>VAL-M01</td><td>Medium</td><td>Idempotency identity, order, and TTL cleanup vary by ingress; fail-open reservation and pre-check side effects are not bound.</td><td>Discuss one identity/replay contract per ingress.</td></tr>
+          <tr><td>VAL-M02</td><td>Medium</td><td>Stored <code>Queued/Indexing</code> and operator <code>pending/projecting</code> vocabularies lack one translation boundary.</td><td>Autofix without renaming V1 silently.</td></tr>
+          <tr><td>VAL-M03</td><td>Medium</td><td>Dapr Conversation provider components are Alpha and require provider-specific metadata/secrets; YAML equivalence is overstated.</td><td>Defer with maturity and integration-evidence trigger.</td></tr>
+          <tr><td>VAL-L01</td><td>Low</td><td>Legacy metadata is duplicated; six linter hits are intentional <code>{tenant}</code>/<code>{model-version}</code> runtime patterns.</td><td>Ignore false positives; replacement removes residue.</td></tr>
+          <tr><td>VAL-I01</td><td>Informational</td><td>The current platform technologies broadly exist and fit; defects are stale prose, maturity omissions, and old patch pins.</td><td>Retain as positive evidence.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="small">The exhaustive evidence and a crosswalk showing all 44 raw observations are represented are in the <a href="validation-report.md">Markdown report</a>.</p>
+    </section>
+
+    <section id="method" aria-labelledby="method-title">
+      <h2 id="method-title">Scope and method</h2>
+      <div class="panel"><p>This read-only validation merged five independent outputs. Duplicate symptoms were grouped by underlying decision failure; each merged finding inherits the highest justified severity. Static evidence does not imply that skipped or environment-dependent test suites ran.</p>
+        <p><strong>Mechanical compatibility:</strong> the current linter returned six low hits, all false positives from intentional key patterns. Because the legacy document uses D1–D31/ADR forms rather than <code>AD-n</code> blocks, it cannot mechanically enforce required <code>Binds / Prevents / Rule</code> fields.</p></div>
+      <div class="reviews" style="margin-top:1rem">
+        <div class="link-card"><a href="reviews/review-mechanical.md">Mechanical review</a><div class="small">Deterministic contract checks</div></div>
+        <div class="link-card"><a href="reviews/review-rubric.md">Rubric review</a><div class="small">Good-spine checklist and brownfield fit</div></div>
+        <div class="link-card"><a href="reviews/review-technology-currentness.md">Technology currentness</a><div class="small">Repo pins and official upstream sources</div></div>
+        <div class="link-card"><a href="reviews/review-adversarial-divergence.md">Adversarial divergence</a><div class="small">Compliant-but-incompatible unit pairs</div></div>
+        <div class="link-card"><a href="reviews/review-data-integrity.md">Data integrity</a><div class="small">State ownership, replay, deletion, and gate drift</div></div>
+        <div class="link-card"><a href="validation-report.md">Full Markdown report</a><div class="small">Exact evidence, source crosswalk, and all official links</div></div>
+      </div>
+    </section>
+
+    <section id="sources" aria-labelledby="sources-title">
+      <h2 id="sources-title">Selected official currentness sources</h2>
+      <div class="sources">
+        <div class="link-card"><a href="https://docs.dapr.io/developing-applications/sdks/">Dapr SDK/framework status</a><div class="small">Agents maturity and SDK status</div></div>
+        <div class="link-card"><a href="https://github.com/dapr/dotnet-sdk/releases">Dapr .NET SDK releases</a><div class="small">Current version evidence</div></div>
+        <div class="link-card"><a href="https://ai.google.dev/gemini-api/docs/deprecations">Gemini deprecations</a><div class="small">Retirement of text-embedding-004</div></div>
+        <div class="link-card"><a href="https://ai.google.dev/gemini-api/docs/models/gemini-embedding-001">Gemini embedding model</a><div class="small">Current model contract</div></div>
+        <div class="link-card"><a href="https://github.com/FalkorDB/FalkorDB/blob/v4.12.0/LICENSE.txt">FalkorDB v4.12.0 licence</a><div class="small">Server licence evidence</div></div>
+        <div class="link-card"><a href="https://redis.io/legal/licenses/">Redis licence matrix</a><div class="small">Product/licence distinctions</div></div>
+        <div class="link-card"><a href="https://openbao.org/community/release-notes/2-6-0/">OpenBao 2.6 release notes</a><div class="small">Patch/security evidence</div></div>
+        <div class="link-card"><a href="https://www.postgresql.org/docs/release/18.6/">PostgreSQL 18.6 notes</a><div class="small">Patch/CVE evidence</div></div>
+      </div>
+      <p class="small">All official URLs and package registries, accessed 2026-09-09, are listed in the <a href="validation-report.md#official-technology-sources">Markdown source appendix</a>.</p>
+    </section>
+
+    <section id="action" aria-labelledby="action-title">
+      <h2 id="action-title">Gate action</h2>
+      <div class="callout"><p class="lead"><strong>Next action: Update.</strong> Do not approve the legacy artifact. Resolve the six critical decisions, distil a short current spine from brownfield authorities, make remaining gaps explicit with owners and revisit conditions, then rerun all five lenses.</p><p>The legacy architecture can remain historical input only. Validation created this report set; <code>_bmad-output/planning-artifacts/architecture.md</code> was not changed.</p></div>
+    </section>
+  </main>
+
+  <footer><div class="wrap">Hexalith.Memories · BMad Architecture Reviewer Gate · Read-only validation</div></footer>
+</body>
+</html>

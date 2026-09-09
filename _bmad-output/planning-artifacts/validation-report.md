@@ -1,188 +1,276 @@
 # Validation Report — Hexalith.Memories
 
-- **PRD:** `_bmad-output/planning-artifacts/prd.md`
-- **Rubric:** `.agents/skills/bmad-prd/assets/prd-validation-checklist.md`
-- **Run at:** 2026-09-08T12:22:44+02:00
+- **PRD:** /home/administrator/projects/hexalith/memories/_bmad-output/planning-artifacts/prd.md
+- **Rubric:** /home/administrator/projects/hexalith/memories/.agents/skills/bmad-prd/assets/prd-validation-checklist.md
+- **Run at:** 2026-09-09T09:10:51+02:00
 - **Grade:** Poor
 
 ## Overall verdict
 
-The 2026-09-05 Update did the work the last Poor pass demanded: Phase 1 and Phase 1.5 are two clocks, weighted RRF is the fusion decision, isolation is not a resource fallback, a Glossary and Non-Goals section exist, and open tensions are no longer edited into silence. What is still unsafe for chain-top extract is increment *inside* the thesis: the canonical FR phase register parks Causal Intelligence (FR46–FR52) and NFR4 traversal in MVP, the CLI thesis surface does not, NFR16 still treats Redis AOF as the durability contract after FR13 made EventStore the durable commit, and the Phase 1.5 onboarding gate names a NuGet ID that is not in the published inventory.
+This is a strategically strong, unusually candid change-controlled PRD: it states a falsifiable thesis, separates thesis and launch contracts, names hard no-go outcomes, and exposes delivery gaps rather than presenting shipped code as validated product. Its main risk is downstream extraction: several phase, parameter, and decision-state contradictions remain across the PRD and addendum, while a small set of cross-cutting requirements still describe the need for a bound rather than supplying the bound. The document is decision-ready in its strategic framing, but those inconsistencies should be reconciled before another UX, architecture, or story pass treats every sentence as canonical.
 
-Adversarial review refuses to sign: the thesis kill switch still cannot fail (N=5–10, ΔNDCG an open question), causal FRs are MVP and Phase 1.5 at once, and there is no product no-go — only delay, draft, and gates that cannot fail. Product-brief reconciliation says the dual split is real in the gate tables, but identity and FR placement still leak the brief’s v1 causal/agent hero into thesis language. Downstream drift reversed: the August SCP PRD amendments landed; architecture overview/coverage and the epics inventory still describe the pre-Update PRD.
+The adversarial and source-fidelity passes materially lower the gate result. Two critical contradictions make deletion guarantees and launch gate L1 impossible to prove as written; eight additional adversarial high findings leave the thesis gate, authorization, recovery, public compatibility, onboarding, degraded reads, telemetry, and launch qualification open to incompatible implementations. The source review adds three high-fidelity defects in backend access, CLI ownership, and export status. The PRD should not serve as the acceptance contract for deletion, public API compatibility, or Phase 1.5 launch until the critical findings and phase-blocking high findings are resolved.
 
 ## Dimension verdicts
-- Decision-readiness — adequate
+
+- Decision-readiness — strong
 - Substance over theater — adequate
-- Strategic coherence — adequate
-- Done-ness clarity — thin
-- Scope honesty — adequate
+- Strategic coherence — strong
+- Done-ness clarity — adequate
+- Scope honesty — strong
 - Downstream usability — thin
 - Shape fit — adequate
 
 ## Findings by severity
 
-### Critical (3)
+### Critical (2)
 
-**[Adversarial]** — The thesis kill switch is still unfalsifiable after the protocol rewrite (§ Measurable Outcomes; Open Questions 1–2; FR25)
+**[Adversarial ADV-C1] — “Delete all data” can be undone by the durability contract (§ Compliance Boundary; FR27; FR39; FR13; NFR16; NFR34; addendum § EventStore — three contracts)**
 
-Wording changed; the defect remains. 80% is a hard line at N=5–10, ΔNDCG and the inter-rater statistic live in Open Questions / a future README, humans may override NDCG, and User Success / FR25 still score vs single-axis.
+Deletion is presented as erasure, while EventStore remains the durable source of truth and lost projections must be rebuilt from it. Without purge, redaction, crypto-shredding, permanent replay suppression, backup expiry, and telemetry rules, deleted tenant data can reappear after replay.
 
-Fix: Put N (order of 50+ topics), ΔNDCG@10, the agreement statistic, and the unit of the 80% in this PRD. Make User Success, MVP philosophy, and FR25 say hybrid vs BM25+semantic. Until then, retitle 80% as diagnostic, not a ship gate.
+Fix: Define a deletion contract per data class, including authoritative events, extracted content, projections, embeddings, graph edges, workflow history, telemetry, and backups; specify mechanism, replay suppression, SLA, failure recovery, and verification evidence. Bound the current erasure claim until this exists.
 
-**[Adversarial]** — Causal intelligence is MVP in the register and forbidden until Phase 1.5 everywhere else (§ Canonical phase register vs § Non-Goals vs FR46–FR52 vs FR59–FR62)
+**[Adversarial ADV-C2] — Launch gate L1 requires labels that do not exist (§ Measurable Outcomes › Phase 1.5 launch go/no-go, L1)**
 
-The register is `FR1–FR22, FR24–FR52`. That includes CausationId indexing and typed causal edges. Non-Goals and the graph assumption forbid claiming causal three-axis on a folder tree. Rubric and product-brief name the same fork.
+L1 requires at least ten topics excluded from G1 labelling but names frozen G1 labels as the scorer, so the held-out topics have no labels. The threshold also says 8/10 while permitting more than ten topics.
 
-Fix: Move FR46–FR52 (or FR46–FR49 and EventStore-sourced FR50 rows) to the Phase 1.5 register. Closed Phase 1 edge list: `contains` plus optional explicit `references` only.
+Fix: Define a separately frozen and independently graded L1 set excluded from G1 scoring and tuning, with a named relevance scale and adjudication method. Use exactly ten topics or a percentage for N ≥ 10, and identify the corpus hash, owner, scorer, reference-agent configuration, and evidence artifact.
 
-**[Adversarial]** — There is no product no-go — only delay, draft, and gates that cannot fail (front matter `status: draft`; both go/no-go tables; Phase 1.5 slip)
+### High (11)
 
-Soft gates also say must-pass. Thesis failure edits the README then the four-week 1.5 clock still starts. Launch failure is delay. MCP and EventStore package IDs already exist. YAML stays `draft` after `step-12-complete`.
+**[Adversarial ADV-H1] — The G1 thesis gate lacks a scoreable ground-truth contract (§ Measurable Outcomes › Thesis-gate protocol; Release decision record; Open Question 2)**
 
-Fix: Pick one release decision and date it. Delete “soft” or delete “both soft gates must pass.” Define held-out queries and known chains. Set `status` to the contract you want signed.
+The PRD does not define the relevance scale, reviewer-grade aggregation, agreement interpretation, tie and abstention handling, or a reproducible sampling frame for the “representative mix.” Teams can produce incompatible but facially compliant suites.
 
-### High (12)
+Fix: Make the protocol a gate prerequisite with the query population, sampling rule, relevance scale, reviewer workflow, agreement and adjudication rules, frozen hashes, accountable owner, and owning story.
 
-**[Decision-readiness]** — Generic DAPR is both an experiment and a P1.5 NFR (§ Executive Summary vs NFR21)
+**[Adversarial ADV-H2] — Privileged product actions have no authorization policy (Glossary › Member; FR28–FR29; FR38–FR45; FR51; FR67; FR71; FR74; NFR8; Journey 5)**
 
-Exec summary: non-EventStore DAPR publishers are a later adapter path. NFR21: events from any DAPR-compatible publisher are processable.
+Tenant isolation is defined, but no role or permission model governs deletion, configuration, export, repair, telemetry, membership, or confidence promotion. NFR8 also allows silent tenant retargeting where FR44 and Journey 5 require rejection.
 
-Fix: Rewrite NFR21 as EventStore-convention envelope conformance; keep generic publishers behind the named spike.
+Fix: Add a capability-by-role authorization matrix for platform operator, tenant operator, contributor, reader, and service identities. Make every tenant-claim/request mismatch fail closed with one specified error.
 
-**[Done-ness]** — CLI thesis surface does not implement the MVP FRs and NFR4 (§ CLI Specification vs FR28–FR29, FR36, FR47, NFR4)
+**[Adversarial ADV-H3] — Rebuild is promised without durable rebuild inputs (FR6; FR13; FR70; § Async Ingestion Pipeline; NFR16)**
 
-Phase 1 essentials omit `traverse`, `add-member`, and `activity` while those FRs and NFR4 are MVP.
+The durable commit is not required to retain immutable content, source hashes, extraction and chunking versions, metadata, or embedding-model identity. Mutable or vanished sources and retired models can make rebuild non-equivalent or impossible.
 
-Fix: Add the verbs to the Phase 1 command list with acceptance output, or move those FRs/NFR4 to Phase 1.5.
+Fix: Define the minimum durable recovery payload, versioning, model-unavailability fallback, equivalence criteria, and proof that committed units can be recovered without refetching mutable sources.
 
-**[Done-ness]** — Restart durability is two products (§ FR13 vs NFR16)
+**[Adversarial ADV-H4] — Access telemetry can launch before its privacy and retention contract exists (Glossary › Access telemetry; Journey 5; § Compliance Boundary; FR67; NFR34)**
 
-FR13: EventStore ack is durable commit; projections rebuild. NFR16: zero loss during Redis restart via AOF.
+The PRD does not define recorded fields, redaction, read/export permissions, deletion interaction, or a required TTL default/range, allowing telemetry to become a less-protected sensitive-data store.
 
-Fix: After Redis restart, every EventStore-committed unit is searchable again via rebuild or verified AOF; name the recovery command and time bound.
+Fix: Add a telemetry data dictionary, minimization and redaction rules, access roles, tenant scoping, encryption expectations, default and maximum TTL, erasure behavior, purge evidence, and an accountable owner. Gate launch on the evidence or disable telemetry by default.
 
-**[Downstream usability]** — Launch onboarding package ID does not exist in the published inventory (§ Journey 1 vs Package Distribution)
+**[Adversarial ADV-H5] — Public API versioning stories conflict (§ Service Communication Model; § Versioning Strategy; CLI Specification; § Evidence Packet; published packages)**
 
-Journey 1: `dotnet add package Hexalith.Memories.Client`. Published IDs: `Client.Rest`, `EventStore`. Adversarial repeats this as a launch-clock defect.
+The PRD says there are no versioned endpoints while shipped routes and contracts are explicitly V1. Stability, preview status, allowed changes, and deprecation windows are undefined across REST, DAPR, NuGet, MCP, and CLI JSON.
 
-Fix: Name an ID from `tools/release-packages.json` in the Phase 1.5 gate and Journey 1. Write the launch stopwatch as a numbered script including secrets/embedder.
+Fix: Establish one compatibility policy covering maturity, version identifiers, additive changes, enum and required-field rules, breaking-change vehicles, deprecation/support windows, and preview versus stable surfaces.
 
-**[Adversarial]** — The opening contract still sells the Phase 1.5 product as the product (§ Executive Summary; Journey 1 climax)
+**[Adversarial ADV-H6] — Onboarding stopwatches lack reproducible starting states (L2; NFR31; § Developer Experience & Documentation; Release decision record)**
 
-“No existing tool can answer why” and the causal-chain hero remain the lead; discussions are a Non-Goal; causal completeness is a 1.5 gate. Product-brief flags the same leak plus Innovation #1.
+Checkout, CLI installation, restore, caches, samples, image pulls, secret-store seeding, and external setup are inconsistently inside or outside the timed procedure, so the same target can be passed under incomparable conditions.
 
-Fix: Lead with file/URL hybrid search plus isolation. Move the causal narrative and Journey 1 14-minute miracle to a Phase 1.5 abstract.
+Fix: Publish an exact T0 fixture manifest for G3 and L2: source/sample commit, cache state, CLI state, secret-store state, allowed credentials, network rules, commands, stop event, supported OS matrix, and evidence template.
 
-**[Adversarial]** — Brownfield was declared; shipped vs remaining was not (§ Functional Requirements preamble)
+**[Adversarial ADV-H7] — Degraded reads and partial ingestion lack one eligibility rule (FR6; FR13; FR66; § Async Ingestion Pipeline; NFR18; Evidence Packet)**
 
-FR1–FR74 remain an unstatused horizon inventory. Only FR71 notes early completion.
+The PRD requires all three projections before searchability but also requires results when one backend fails. It does not distinguish previously complete units from newly partial or version-skewed units.
 
-Fix: Status every FR/NFR this PRD will be sued over (`shipped` / `partial` / `not started`), or cut the horizon list to the active ship contract.
+Fix: Define degraded query eligibility, prior indexed-state requirements, source-version agreement, stale-version behavior, per-result degradation/freshness fields, and recovery semantics.
 
-**[Adversarial]** — Isolation is principals in the journey, IDs in the gate, and “physical” in compliance (§ Compliance Boundary vs NFR8 vs Journey 5)
+**[Adversarial ADV-H8] — Launch gates omit known unmet security and reliability requirements (§ Phase 1.5 launch go/no-go; NFR status; NFR6; NFR11; NFR16; NFR21; NFR34)**
 
-Compliance still says physical tenant isolation. NFR8 tests swapped tenant IDs. Journey 5 uses `--tenant`, which is not an MVP search flag.
+L1–L3 omit known unmet freshness, negative-envelope, recovery, and telemetry-retention requirements, so the product can formally launch while those obligations remain unverified.
 
-Fix: Strike “Physical”; rewrite NFR8 to principal A cannot read tenant B. Remove `--tenant` / `tenant switch` or add them to MVP CLI and NFR11.
+Fix: Add a production-qualification row naming required NFR evidence or dated debt acceptance and its authority. If Phase 1.5 is preview-only, state that and define the deferred GA requirements.
 
-**[Adversarial]** — Phase 1 still gates “three-axis” hybrid on a graph the PRD forbids you to call three-axis (§ Executive Summary thesis vs graph assumption)
+**[Source fidelity SF-H1] — Backend access is both direct-client and DAPR-sidecar mediated (PRD §§ Open-Source Licensing, Deployment Topology, Service Communication Model)**
 
-Available-axis fusion lets a folder-tree graph pass a three-axis kill switch.
+The approved change says DAPR state uses the sidecar while direct Redis/FalkorDB search and graph access uses approved clients. The licensing and topology sections still claim that DAPR is the FalkorDB client or route.
 
-Fix: Put typed non-hierarchy edges in Phase 1, or drop graph from the thesis comparison and retitle Phase 1 “BM25+semantic plus isolation.”
+Fix: Align those sections with the Service Communication Model and keep detailed client topology architecture-owned.
 
-**[Downstream-drift]** — Architecture overview still extracts the pre-2026-09-05 PRD (`architecture.md` Requirements Overview / Coverage / PRD Deviations)
+**[Source fidelity SF-H2] — Unowned Phase 1 CLI gaps are incorrectly called tracked (§ CLI Specification; Release decision record)**
 
-C# 13, 31 NFRs, P1.5 auth, actor-pipeline, and deleted atomic-write sentences still sit in the overview tables.
+The release record says the stubbed G1 prerequisites have no owning story, while the CLI section says every stub is tracked in epics and sprint status. A planner can therefore omit the required story-registration transaction.
 
-Fix: Re-extract those tables from today’s PRD + addendum. Do not edit the PRD to match the fossils.
+Fix: State that the stubs are identified but unowned and unregistered as of 2026-09-08, with Jerome responsible for creating and sprint-selecting bounded owners by the recorded date.
 
-**[Downstream-drift]** — Epics Requirements Inventory is a stale second PRD (`epics.md` inventory)
+**[Source fidelity SF-H3] — FR71’s status row reverses portable export and operational restore (§ FR delivery register; FR71; CLI export)**
 
-Auth still `[P1.5]`, actor pipeline, indexes as isolation boundary, NFR32–NFR35 missing, single onboarding clock.
+The approved source and canonical FR say portable case/tenant export shipped while operational re-import/restore remains Epic 26 work. The delivery register states the reverse.
 
-Fix: Replace inventory bullets with pointers to the PRD, or refresh them to current wording.
+Fix: Correct the register to record shipped portable export and separately owned re-import/restore, and retain the non-MVP Phase 2 status without duplicating work.
 
-**[Done-ness]** — The thesis kill switch is missing its own Δ (§ Measurable Outcomes vs Open Questions › 2)
+### Medium (18)
 
-Folded with the critical kill-switch finding; listed here as the rubric’s independent high on the same hole.
+**[Rubric: Substance over theater] — Future and non-product narratives dilute active journeys (§ User Journeys 4, 6, 8, and 10)**
 
-Fix: Put the minimum Δ (or an explicit “any positive ΔNDCG@10 counts” decision) in this PRD.
+Full narratives for Phase 2, Phase 3, application UI, and contributor operations make the active Phase 1/1.5 contract look broader and more settled than it is.
 
-**[Downstream usability]** — The phase register cannot be extracted alone (§ Canonical phase register)
+Fix: Keep full narratives for load-bearing Phase 1/1.5 paths and reduce later-phase or contributor material to future-scenario notes or addendum content.
 
-Same defect as the critical causal-register finding; rubric high on extract safety.
+**[Rubric: Done-ness clarity] — Cross-cutting requirements defer acceptance bounds (§ NFR13, NFR15, NFR33, NFR34)**
 
-Fix: Make the register the only increment SoT; every FR in FR46–FR52 and every thesis CLI verb must match it.
+The requirements name desirable properties but omit maximum interference, migration extraction tests, freshness transitions, TTLs, and recovery bounds.
 
-### Medium (17)
+Fix: Supply explicit numbers, state transitions, and verification fixtures for active surfaces; give future items an owner and activation condition.
 
-**[Decision-readiness]** — FR32 is still reversible (§ Open Questions › 5 vs FR32)
+**[Rubric: Done-ness clarity] — Cross-tenant mismatch has two observable outcomes (§ NFR8; FR44; Journey 5)**
 
-**[Substance]** — Success Criteria still perform late-phase people as current users (§ User Success vs Journeys 4, 6, 8, 10)
+NFR8 permits rejection or claims-based retargeting, while FR44 and Journey 5 promise rejection.
 
-**[Strategic coherence]** — The hero paragraph is still the launch product (§ Executive Summary)
+Fix: Require rejection for explicit tenant conflicts and define claims-based scoping only for requests that omit tenant identity, if omission is allowed.
 
-**[Done-ness]** — Ingestion “done” uses three state vocabularies (§ Async Ingestion Pipeline vs FR10 vs FR31)
+**[Rubric: Downstream usability] — Journey 8 has conflicting phase ownership (§ Non-Goals; Journey 8; Journey Requirements Summary)**
 
-**[Done-ness]** — `axis=nl` reads as a Phase 1 retrieval axis (§ score table vs Glossary vs FR60)
+The heading says Phase 1 while the explicit non-goal and summary assign the application-facing REST UI to Phase 2.
 
-**[Scope honesty]** — Causal edges are scoped in an assumption and a Non-Goal, not on the FRs that ship them
+Fix: Retag Journey 8 and all references as Phase 2.
 
-**[Downstream usability]** — CLI and audit nouns still collide (§ Journey 5 vs CLI vs FR67 vs Glossary)
+**[Rubric: Downstream usability] — MCP search parameter drifts between axis and axes (Journeys 3 and 7; FR58 support text)**
 
-**[Shape fit]** — User-journey density is still consumer-product shaped (§ User Journeys)
+The public schema is ambiguous because setup promises axes while examples use axis.
 
-**[Adversarial]** — “Soft” is a waiver costume on gates that already say must-pass
+Fix: Choose the actual MCP field everywhere and distinguish it from CLI --axis if needed.
 
-**[Adversarial]** — NFR21 already declares the DAPR-generic experiment won
+**[Rubric: Downstream usability] — Addendum release-date state is stale (addendum § Release decision)**
 
-**[Adversarial]** — FR67 still sells audit; the glossary forbids that word
+The addendum says dates remain assumed until confirmation while the PRD and later addendum handoff say Jerome confirmed them.
 
-**[Adversarial]** — Case members are MVP capabilities that must not authorize, with no other outcome
+Fix: Preserve the history but state that the launch and release dates are confirmed and only the derived sprint-selection date remains unconfirmed.
 
-**[Adversarial]** — The score table still documents a magnitude graph axis the fusion decision rejected
+**[Adversarial ADV-M1] — Journey 8 schedules the same web experience in Phase 1 and Phase 2 (Journey 8; Non-Goals; Journey Requirements Summary; Language & Platform Matrix)**
 
-**[Adversarial]** — File ingest has no freshness outcome; “required active” projections are an accordion
+UX and epic authors can legitimately schedule the same narrative UI in either phase.
 
-**[Adversarial]** — The CLI contract is two lists; only one is cut to MVP
+Fix: Retag the heading and capability beats as Phase 2 and separate existing transport/client capability from the future application experience.
 
-**[Downstream-drift]** — CLI `status` / FR53 phase still disagree across spines
+**[Adversarial ADV-M2] — One ingestion vocabulary remains two public vocabularies (Glossary; FR10; § Async Ingestion Pipeline; Open Question 8)**
 
-**[Downstream-drift]** — Onboarding boot path and second clock are not shared (AppHost vs `docker compose`; epics NFR31 has one clock)
+The PRD mandates pending/projecting while shipped contracts expose Queued/Indexing, and the temporary mapping can remain open indefinitely.
 
-**[Downstream-drift]** — Ingestion state vocabulary is still three-way (PRD vs architecture field inventory vs epics FR10 vs UX-DR22)
+Fix: Choose canonical wire values before the next stable release or explicitly make the shipped enum canonical with a presentation mapping and version policy.
 
-**[Product-brief]** — Silent drops: custom extraction phrases; 6-month second embedding provider; “all DAPR state stores”; 5x productivity; Why Now / 12–18 month window; Priya’s search-success metric; motivating benchmark scene; cross-case insight discovery
+**[Adversarial ADV-M3] — FR71 is marked shipped for a different capability than it states (§ FR delivery status; FR71; CLI export)**
 
-**[Product-brief]** — Expansions still sitting in `prd.md` that addendum said must leave the contract: Aspire-mandatory topology, OpenBao as NFR, package inventory tables, interpretive-compliance program
+The status note credits operational export/restore while FR71 promises portable developer-facing export.
 
-### Low (6)
+Fix: Split the capabilities and statuses or mark FR71 partial until its public format, completeness, versioning, and CLI behavior meet the requirement.
 
-**[Adversarial]** — Journey 8 still trains readers to treat 0.95 as a reason to relax
+**[Adversarial ADV-M4] — Freshness states have no product semantics (Journey 7; Evidence Packet; NFR33)**
 
-**[Adversarial]** — Front matter calls the PRD complete and draft in the same breath
+Current, aging, stale, and unknown lack thresholds, clock source, source policy, and recovery behavior, so surfaces can classify the same unit differently.
 
-**[Downstream-drift]** — Epic 9 still markets “zero-code” against the PRD glossary
+Fix: Define source-specific thresholds, timestamp selection, clock-skew tolerance, transitions, disclosures, and recovery behavior.
 
-**[Downstream-drift]** — `--explain` vs UX-DR7 remains an open product pick (Open Question 3)
+**[Adversarial ADV-M5] — CLI bearer-token handling is unsafe and unspecified (§ CLI Specification; Configuration Layering; NFR9; NFR11)**
 
-**[Downstream-drift]** — NFR11 is a current product invariant scheduled as post-MVP remediation (Epic 20)
+The explicit command-line token can leak through shell history and process inspection, while acquisition, refresh, storage, redaction, and CI behavior are undefined.
 
-**[Downstream-drift]** — Post-Update 27.4 live-producer contract must stay out of the PRD
+Fix: Define secure credential sources and precedence, redaction and persistence prohibitions, expiry/refresh, and CI injection behavior; retain the command-line option only with explicit risk treatment.
+
+**[Adversarial ADV-M6] — Licensing conclusions lack a decision authority (§ Open-Source Licensing; addendum § Topology)**
+
+The PRD states categorical legal conclusions without a named legal reviewer, version-specific assessment, jurisdiction, or accepted-risk owner.
+
+Fix: Recast them as licensing risks and required legal decisions, naming artifacts/versions, owner, review date, allowed modes, and approved public wording.
+
+**[Adversarial ADV-M7] — PRD/addendum change-control boundary is unusable (§ Document Purpose; Technical Architecture; Deployment Topology; Async Ingestion; addendum § Why this file exists)**
+
+The PRD assigns mechanisms to architecture/addendum but also mandates exact products and mechanics, while source precedence remains ambiguous.
+
+Fix: Classify immutable product constraints, observable acceptance behavior, replaceable reference implementation, and architecture-owned current choices, including which changes require product change control.
+
+**[Adversarial ADV-M8] — Availability and disaster recovery stop at component examples (NFR7; NFR16–NFR19; Health and Observability; Release decision record)**
+
+There is no service availability objective, EventStore/Workflow/FalkorDB recovery target, maximum degradation period, backup cadence, or escalation boundary.
+
+Fix: Define launch-level availability, RPO, and RTO envelopes or explicitly make Phase 1.5 a non-production preview.
+
+**[Source fidelity SF-M1] — Journey 8 keeps Phase 1 after the approved Phase 2 correction (Journey 8; Non-Goals; Journey summary)**
+
+This heading-level drift can pull future UI and narrative composition into the thesis MVP.
+
+Fix: Retitle Journey 8 as Phase 2 and add the explicit phase banner used by other future journeys.
+
+**[Source fidelity SF-M2] — NFR32 omits approved accessibility modes (NFR32; approved 2026-08-03 rerun amendment)**
+
+Reduced motion, forced colors, zoom/reflow, and responsive access to trust fundamentals were approved but are no longer explicit, making them easy to omit from downstream test matrices.
+
+Fix: Restore all four dimensions and require the Epic 17 evidence matrix to exercise them.
+
+**[Source fidelity SF-M3] — Tenant-deletion isolation lacks acceptance evidence (§ Compliance Boundary; FR39; NFR8)**
+
+The product brief required deleting tenant A and proving all indexes and graph data were removed without affecting tenant B; the capability remains, but the verification scenario does not.
+
+Fix: Add an FR39/NFR8 integration check covering all data classes and the authoritative delete/tombstone contract, or name the exact alternate owner.
+
+**[Source fidelity SF-M4] — Addendum still calls confirmed release dates assumptions (addendum § Release decision)**
+
+The memlog and PRD confirm 2026-12-01 and 2027-01-01, while the addendum both disputes and confirms them.
+
+Fix: Distinguish confirmed decision dates from the derived 2026-10-31 sprint-selection date and retain the sprint-change rule for moving them.
+
+### Low (7)
+
+**[Rubric: Decision-readiness] — Open Questions is not a clean pending-decision queue (§ Open Questions)**
+
+Closed and settled items force decision-makers to retriage the list.
+
+Fix: Move resolved items to a decision log and retain only active decisions.
+
+**[Rubric: Done-ness clarity] — The primary empty-state command is not executable (Journey 9)**
+
+The hint omits required tenant and case options.
+
+Fix: Show complete syntax or clearly label the command as shorthand.
+
+**[Rubric: Downstream usability] — Assumptions Index does not round-trip (§ Release decision record; Assumptions Index)**
+
+The 2026-12-01 work-window assumption is missing from the index, while the NFR33/NFR35 collision is index-only.
+
+Fix: Index the schedule assumption and move the historical collision to decision history, or add a matching inline tag.
+
+**[Rubric: Downstream usability] — Journey 7 is a floating technical actor (Journey 7)**
+
+LLM Agent is an interaction pattern, not a named protagonist with context.
+
+Fix: Relabel it as an Integration Flow or give the agent a named application and context.
+
+**[Rubric: Shape fit] — Outcome/mechanism boundary exceptions are undeclared (§ Document Purpose; Package Distribution; Deployment Topology; addendum)**
+
+Package inventory and topology remain in the PRD despite its rule assigning them to architecture/addendum.
+
+Fix: Move them or state precisely which facts remain contractual and which are architecture-owned.
+
+**[Source fidelity SF-L1] — Future roadmap phase advances lack a traceable decision (product brief roadmap; PRD Phase 2/3)**
+
+Embedding migration and enterprise/UI capabilities were pulled into earlier numbered phases without a memlog decision or explicit set-aside.
+
+Fix: Log the deliberate compression with rationale or restore the source phase assignments; prefer named outcomes over unstable phase numbers.
+
+**[Source fidelity SF-L2] — Deferred journey-density decision lacks artifact disposition (.memlog.md; User Journeys; addendum handoff)**
+
+The memlog assigns Jerome and the Phase 1.5 launch decision as the revisit point, but neither visible artifact records it.
+
+Fix: Add an addendum handoff entry with owner, revisit condition, and no-current-change status.
 
 ## Mechanical notes
-- Glossary, addendum, and Assumptions Index exist; the 2026-09-05 “no Glossary / no addendum” note does not hold.
-- Assumptions Index roundtrip: four of five `[ASSUMPTION]` tags appear inline. The NFR33/NFR35 collision entry is index-only.
-- FR1–FR74 and NFR1–NFR35 are unique and contiguous.
-- Soft gates in both go/no-go tables are labeled **Soft gate** and **Must pass** — naming drift, not a second ship contract.
-- `memories tenant switch` remains in the Command Structure table and not in MVP command scope.
-- FR63 still says “composite confidence scores”; Glossary term is **Relevance confidence**.
-- Evidence Packet concrete shape remains architecture-owned; that is now an intentional SoT split.
+
+- FR1–FR74, NFR1–NFR36, and Journey 1–10 definitions are contiguous and unique.
+- Journey 8 phase drifts between Phase 1 and Phase 2.
+- MCP parameter naming drifts between axis and axes.
+- The Assumptions Index misses the schedule-window assumption and contains an index-only historical collision entry.
+- Open Questions includes three closed items and one settled MVP constraint.
+- Journey 7 lacks a named protagonist and fits an integration-flow shape better.
+- Addendum release-date rationale is stale relative to confirmed decisions.
 
 ## Reviewer files
-- `review-rubric.md`
-- `review-adversarial-general.md`
-- `review-product-brief.md`
-- `review-downstream-drift.md`
+
+- review-rubric.md
+- review-adversarial-general.md
+- review-source-fidelity.md

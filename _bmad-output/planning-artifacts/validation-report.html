@@ -10,17 +10,14 @@
     --border: #e7e5e4;
     --text: #1c1917;
     --muted: #78716c;
-
     --verdict-strong: #16a34a;
     --verdict-adequate: #65a30d;
     --verdict-thin: #d97706;
     --verdict-broken: #dc2626;
-
     --sev-low: #64748b;
     --sev-medium: #ca8a04;
     --sev-high: #ea580c;
     --sev-critical: #dc2626;
-
     --grade-exc: #16a34a;
     --grade-good: #65a30d;
     --grade-fair: #d97706;
@@ -36,7 +33,6 @@
     font-size: 15px;
   }
   .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
-
   header.report-header {
     display: flex;
     align-items: flex-start;
@@ -60,7 +56,6 @@
   .grade-good { background: var(--grade-good); }
   .grade-fair { background: var(--grade-fair); }
   .grade-poor { background: var(--grade-poor); }
-
   .synthesis {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -72,7 +67,6 @@
   }
   .synthesis p { margin: 0 0 10px; }
   .synthesis p:last-child { margin-bottom: 0; }
-
   .dimension-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -87,7 +81,6 @@
   }
   .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
-
   section.dimension, section.reviewer-section { margin-bottom: 14px; }
   section.dimension details, section.reviewer-section details {
     background: var(--surface);
@@ -133,11 +126,9 @@
   .verdict-adequate { background: var(--verdict-adequate); }
   .verdict-thin { background: var(--verdict-thin); }
   .verdict-broken { background: var(--verdict-broken); }
-
   .dim-body { padding: 4px 20px 18px; }
   .dim-judgment { color: var(--text); font-size: 14.5px; }
   .dim-judgment p { margin: 0 0 10px; }
-
   .findings-list { padding: 0 20px 4px; }
   article.finding {
     padding: 14px 0;
@@ -168,13 +159,11 @@
   .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
   .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
   .finding-fix strong { color: var(--muted); font-weight: 500; }
-
   .reviewer-source {
     font-size: 12px;
     color: var(--muted);
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
   }
-
   .mechanical {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -186,7 +175,6 @@
   .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
   .mechanical ul { margin: 0; padding-left: 20px; }
   .mechanical li { margin-bottom: 4px; color: var(--text); }
-
   footer.report-footer {
     margin-top: 40px;
     padding-top: 16px;
@@ -200,665 +188,333 @@
 </head>
 <body>
   <div class="container">
-
     <header class="report-header">
       <div class="title">
         <h1>Hexalith.Memories — Validation Report</h1>
-        <div class="subtitle">_bmad-output/planning-artifacts/prd.md</div>
+        <div class="subtitle">/home/administrator/projects/hexalith/memories/_bmad-output/planning-artifacts/prd.md</div>
       </div>
       <div class="grade grade-poor">Poor</div>
     </header>
 
     <div class="synthesis">
-      <p>The 2026-09-05 Update did the work the last Poor pass demanded: Phase 1 and Phase 1.5 are two clocks, weighted RRF is the fusion decision, isolation is not a resource fallback, a Glossary and Non-Goals section exist, and open tensions are no longer edited into silence. What is still unsafe for chain-top extract is increment inside the thesis: the canonical FR phase register parks Causal Intelligence (FR46–FR52) and NFR4 traversal in MVP, the CLI thesis surface does not, NFR16 still treats Redis AOF as the durability contract after FR13 made EventStore the durable commit, and the Phase 1.5 onboarding gate names a NuGet ID that is not in the published inventory.</p>
-      <p>Adversarial review refuses to sign: the thesis kill switch still cannot fail (N=5–10, ΔNDCG an open question), causal FRs are MVP and Phase 1.5 at once, and there is no product no-go — only delay, draft, and gates that cannot fail. Product-brief reconciliation says the dual split is real in the gate tables, but identity and FR placement still leak the brief’s v1 causal/agent hero into thesis language. Downstream drift reversed: the August SCP PRD amendments landed; architecture overview/coverage and the epics inventory still describe the pre-Update PRD.</p>
+      <p>This is a strategically strong, unusually candid change-controlled PRD: it states a falsifiable thesis, separates thesis and launch contracts, names hard no-go outcomes, and exposes delivery gaps rather than presenting shipped code as validated product. Its main risk is downstream extraction: several phase, parameter, and decision-state contradictions remain across the PRD and addendum, while a small set of cross-cutting requirements still describe the need for a bound rather than supplying the bound. The document is decision-ready in its strategic framing, but those inconsistencies should be reconciled before another UX, architecture, or story pass treats every sentence as canonical.</p>
+      <p>The adversarial and source-fidelity passes materially lower the gate result. Two critical contradictions make deletion guarantees and launch gate L1 impossible to prove as written; eight additional adversarial high findings leave the thesis gate, authorization, recovery, public compatibility, onboarding, degraded reads, telemetry, and launch qualification open to incompatible implementations. The source review adds three high-fidelity defects in backend access, CLI ownership, and export status. The PRD should not serve as the acceptance contract for deletion, public API compatibility, or Phase 1.5 launch until the critical findings and phase-blocking high findings are resolved.</p>
     </div>
 
     <div class="dimension-summary">
-      <div class="dim-card">
-        <div class="dim-name">Decision-readiness</div>
-        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
-      </div>
-      <div class="dim-card">
-        <div class="dim-name">Substance over theater</div>
-        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
-      </div>
-      <div class="dim-card">
-        <div class="dim-name">Strategic coherence</div>
-        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
-      </div>
-      <div class="dim-card">
-        <div class="dim-name">Done-ness clarity</div>
-        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
-      </div>
-      <div class="dim-card">
-        <div class="dim-name">Scope honesty</div>
-        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
-      </div>
-      <div class="dim-card">
-        <div class="dim-name">Downstream usability</div>
-        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
-      </div>
-      <div class="dim-card">
-        <div class="dim-name">Shape fit</div>
-        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
-      </div>
+      <div class="dim-card"><div class="dim-name">Decision-readiness</div><div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div></div>
+      <div class="dim-card"><div class="dim-name">Substance over theater</div><div class="dim-verdict" style="color: var(--verdict-adequate)">Adequate</div></div>
+      <div class="dim-card"><div class="dim-name">Strategic coherence</div><div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div></div>
+      <div class="dim-card"><div class="dim-name">Done-ness clarity</div><div class="dim-verdict" style="color: var(--verdict-adequate)">Adequate</div></div>
+      <div class="dim-card"><div class="dim-name">Scope honesty</div><div class="dim-verdict" style="color: var(--verdict-strong)">Strong</div></div>
+      <div class="dim-card"><div class="dim-name">Downstream usability</div><div class="dim-verdict" style="color: var(--verdict-thin)">Thin</div></div>
+      <div class="dim-card"><div class="dim-name">Shape fit</div><div class="dim-verdict" style="color: var(--verdict-adequate)">Adequate</div></div>
     </div>
 
     <section class="dimension">
       <details>
-        <summary>
-          <h2>Decision-readiness</h2>
-          <span class="verdict-pill verdict-adequate">adequate</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>A ship review can now act. Measurable Outcomes splits Phase 1 thesis go/no-go (hybrid vs BM25+semantic, NFR8, NFR31 CLI clock) from Phase 1.5 launch go/no-go (MCP, EventStore product integration, 95% causal completeness). What Makes This Special states the sequenced bet: Phase 1 proves hybrid retrieval plus non-retrofittable isolation; queryable causality is Phase 1.5.</p>
-            <p>What a decision-maker still cannot resolve from the PRD alone is whether Phase 1.5 product integration is EventStore-conventions-only or a generic CloudEvent bus. NFR21 states the opposite product bar from the executive-summary experiment. Open Question 5 leaves FR32 reversible without saying which reading stories must implement now.</p>
-          </div>
-        </div>
+        <summary><h2>Decision-readiness</h2><span class="verdict-pill verdict-strong">Strong</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p>The core choices are explicit and consequential. The Executive Summary separates Phase 1 thesis from Phase 1.5 launch, the thesis protocol states its control and numeric win rule, and the graph-failure path removes graph from the default hybrid and cancels the launch decision. The release record names owners, dates, evidence, and real no-go outcomes.</p>
+          <p>Weighted RRF, the EventStore beachhead, and non-negotiable isolation/case bootstrap are recorded as decisions rather than neutral considerations.</p>
+        </div></div>
         <div class="findings-list">
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Generic DAPR is both an experiment and a P1.5 NFR</h3>
-              <span class="finding-location">§ Executive Summary vs NFR21 vs § Validation Approach</span>
-            </header>
-            <div class="finding-note">Exec summary: Non-EventStore DAPR publishers are a later adapter path, not the EventStore-equivalent beachhead. NFR21: events from any DAPR-compatible publisher are processable.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Rewrite NFR21 as envelope/schema conformance on the EventStore happy path; keep generic publishers behind the named spike.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">FR32 is still reversible</h3>
-              <span class="finding-location">§ Open Questions › 5 vs FR32</span>
-            </header>
-            <div class="finding-note">Restore brief R3 as Phase 2 or keep FR32 absolute sits next to an MVP requirement that reassignment requires deletion and re-ingestion.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Decide now (absolute for thesis; R3 as a dated Phase 2 amendment) or tag FR32 [NOTE FOR PM] inline.</div>
+            <header><span class="badge badge-sev-low">Low</span><h3 class="finding-title">Open Questions is not a clean pending-decision queue</h3><span class="finding-location">§ Open Questions</span></header>
+            <div class="finding-note">Closed and settled items force decision-makers to retriage the list.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Move resolved items to a decision log and retain only active decisions.</div>
           </article>
         </div>
       </details>
     </section>
+
     <section class="dimension">
       <details>
-        <summary>
-          <h2>Substance over theater</h2>
-          <span class="verdict-pill verdict-adequate">adequate</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>The earned core is still the NFR tables, the caused_by vs correlated_with failure mode, compliance limits, and licensing that names SSPL/AGPL. The Innovation section now falsifies its own uniqueness: novelty is the EventStore/DAPR causal graph in that fusion, not &#x27;no system fuses three axes.&#x27;</p>
-            <p>The leftover furniture is the launch-facing Success table and four fully written journeys that the same document tells the reader not to use as gates.</p>
-          </div>
-        </div>
+        <summary><h2>Substance over theater</h2><span class="verdict-pill verdict-adequate">Adequate</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p>The product, differentiated claim, and NFRs are specific and mostly earned. The weakest portion is the ten-journey portfolio, which gives full narrative weight to later-phase, backend-migration, application-UI, and contributor scenarios outside the active ship contract.</p>
+        </div></div>
         <div class="findings-list">
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Success Criteria still perform late-phase people as current users</h3>
-              <span class="finding-location">§ User Success vs Journeys 4, 6, 8, 10</span>
-            </header>
-            <div class="finding-note">Marcus remains in the User Success table with Instant case context / Brief me on this case even though Measurement says not a Phase 1 success metric. Alex still has a 60-day production row with no phase.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Keep Alex / Kenji / LLM Agent rows that bind to NFR/gate IDs; move Marcus, Priya, Dani, and the 60-day production row to a vision appendix.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">Future and non-product narratives dilute active journeys</h3><span class="finding-location">Journeys 4, 6, 8, 10</span></header>
+            <div class="finding-note">The volume makes Phase 1 and Phase 1.5 look broader and more settled than the active contract.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Keep full narratives for load-bearing current paths; reduce later-phase and contributor material to future-scenario notes or addendum content.</div>
           </article>
         </div>
       </details>
     </section>
+
     <section class="dimension">
       <details>
-        <summary>
-          <h2>Strategic coherence</h2>
-          <span class="verdict-pill verdict-adequate">adequate</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>There is a thesis and it is the same bet in the kill switch, MVP feature table, and Phase 1 hard gates: hybrid vs BM25+semantic on a representative file/URL corpus, plus non-retrofittable isolation. Counter-metrics exist. The September 5 protocol fix holds: do not filter the suite to queries that require all three axes.</p>
-            <p>The arc still opens as the Phase 1.5 product. A reader of the first screen will prioritize the wrong proof unless they reach What Makes This Special and the go/no-go tables.</p>
-          </div>
-        </div>
+        <summary><h2>Strategic coherence</h2><span class="verdict-pill verdict-strong">Strong</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p>The PRD has a clear, falsifiable thesis: three-axis RRF must outperform the BM25 plus semantic control while tenant isolation remains non-negotiable. Phase 1 supports G1–G5, Phase 1.5 supports L1–L3, and the graph kill switch changes the default proposition if the graph axis fails.</p>
+          <p>Success measures validate retrieval quality, isolation, onboarding, and explanation determinism, while adoption measures remain explicitly subordinate signals.</p>
+        </div></div>
+      </details>
+    </section>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Done-ness clarity</h2><span class="verdict-pill verdict-adequate">Adequate</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p>G1–G5 and L1–L3 are unusually concrete, and the CLI and delivery registers expose implementation and verification state. Clarity becomes uneven in cross-cutting requirements that require a bound without supplying it and in inconsistent tenant-mismatch behavior.</p>
+        </div></div>
         <div class="findings-list">
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">The hero paragraph is still the launch product</h3>
-              <span class="finding-location">§ Executive Summary</span>
-            </header>
-            <div class="finding-note">An LLM agent asks what led to the API redesign and gets a sourced narrative walking the causal chain through the team discussion. Discussions are a Non-Goal for MVP. Causal completeness is a Phase 1.5 hard gate.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Lead with file/URL hybrid search plus isolation as the thing Phase 1 proves; keep the causal narrative as the Phase 1.5 promise in the same paragraph that names the second clock.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">Cross-cutting requirements defer acceptance bounds</h3><span class="finding-location">NFR13, NFR15, NFR33, NFR34</span></header>
+            <div class="finding-note">Maximum interference, migration extraction tests, freshness transitions, TTLs, and recovery bounds remain undefined.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Supply numbers, state transitions, and fixtures for active surfaces; assign owners and activation conditions to future bounds.</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">Cross-tenant mismatch has two observable outcomes</h3><span class="finding-location">NFR8; FR44; Journey 5</span></header>
+            <div class="finding-note">NFR8 permits rejection or claims-based retargeting, while FR44 and Journey 5 require rejection.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Require rejection for explicit tenant conflicts and define scoping only for omitted tenant identifiers, if omission is allowed.</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-low">Low</span><h3 class="finding-title">The primary empty-state command is not executable</h3><span class="finding-location">Journey 9</span></header>
+            <div class="finding-note">The hint omits required tenant and case options.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Show complete syntax or clearly label the command as shorthand.</div>
           </article>
         </div>
       </details>
     </section>
+
+    <section class="dimension">
+      <details>
+        <summary><h2>Scope honesty</h2><span class="verdict-pill verdict-strong">Strong</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p>Non-goals, phase boundaries, delivery registers, assumptions, and no-go outcomes expose omissions and sequencing rather than hiding them. The PRD identifies the unrun G1 protocol, CLI stubs, missing samples, and launch consequence of a failed gate.</p>
+        </div></div>
+      </details>
+    </section>
+
     <section class="dimension">
       <details open>
-        <summary>
-          <h2>Done-ness clarity</h2>
-          <span class="verdict-pill verdict-thin">thin</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>NFR1–NFR3, NFR8, FR13, FR32/FR33, the edge taxonomy, and --explain score semantics are now testable. That is a real lift from the last review.</p>
-            <p>An engineer still cannot take the canonical phase register plus the CLI thesis list and know what Phase 1 done means for graph, members, or durability. Downstream story creation will over-build EventStore causality and traverse in the thesis increment, or under-build them and fail NFR4 / FR47.</p>
-          </div>
-        </div>
+        <summary><h2>Downstream usability</h2><span class="verdict-pill verdict-thin">Thin</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p>FR1–FR74, NFR1–NFR36, Journeys 1–10, the glossary, and phase/status registers provide strong extraction machinery. For a chain-top document, however, live contradictions in phase, public parameter naming, and decision state force downstream consumers to choose a source of truth.</p>
+        </div></div>
         <div class="findings-list">
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Causal Intelligence is thesis-MVP in the register and Phase 1.5 everywhere else</h3>
-              <span class="finding-location">§ Canonical phase register vs § Non-Goals vs FR59–FR62</span>
-            </header>
-            <div class="finding-note">MVP inventory is FR1–FR22, FR24–FR52, which includes FR46–FR52. Non-Goals: EventStore CloudEvent auto-index is a Non-Goal for MVP. Graph assumption: typed causal edges populate from Phase 1.5 or explicit annotation.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Tag FR46–FR49 / FR52 as Phase 1.5, or write the Phase 1 consequence in one sentence: folder contains / explicit references only; CausationId indexing is FR61.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">Journey 8 has conflicting phase ownership</h3><span class="finding-location">Non-Goals; Journey 8; Journey summary</span></header>
+            <div class="finding-note">The heading says Phase 1 while the non-goal and summary assign the application-facing REST UI to Phase 2.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Retag Journey 8 and all references as Phase 2.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">CLI thesis surface does not implement the MVP FRs and NFR4</h3>
-              <span class="finding-location">§ CLI Specification vs FR28–FR29, FR36, FR47, NFR4</span>
-            </header>
-            <div class="finding-note">Phase 1 essentials are ingest, search --explain, case create/delete, tenant create/delete/verify, status. NFR4 is an MVP p95 for graph traversal. memories traverse exists only in the unphased command table.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Either add traverse (and the member/activity verbs you actually want) to the Phase 1 command list, or move those FRs/NFR4 to Phase 1.5.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">MCP search parameter drifts between axis and axes</h3><span class="finding-location">Journeys 3 and 7</span></header>
+            <div class="finding-note">The setup and examples define incompatible public schema fields.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Choose the actual MCP field everywhere and distinguish it from CLI --axis if needed.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Restart durability is two products</h3>
-              <span class="finding-location">§ FR13 / pipeline vs NFR16 vs Technical Success</span>
-            </header>
-            <div class="finding-note">FR13: EventStore acknowledgement is the durable commit. NFR16: Zero memory unit loss during Redis restart | AOF persistence enabled and verified | MVP.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Make NFR16: after Redis restart, every EventStore-committed unit is searchable again via rebuild or verified AOF; name the recovery command and the time bound.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">Addendum release-date state is stale</h3><span class="finding-location">addendum § Release decision</span></header>
+            <div class="finding-note">The addendum says dates remain assumed while the PRD and later handoff say Jerome confirmed them.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Preserve the history but distinguish confirmed dates from the derived sprint-selection date.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">The thesis kill switch is missing its own Δ</h3>
-              <span class="finding-location">§ Measurable Outcomes vs Open Questions › 2</span>
-            </header>
-            <div class="finding-note">Measurably better requires a pre-registered minimum ΔNDCG@10 in the benchmark README. Open Question 2 repeats that the number does not exist yet. Combined with N remains 5–10, 80% can pass on epsilon wins.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Put the minimum Δ (or an explicit any-positive-Δ decision) in this PRD, not only in a future README.</div>
+            <header><span class="badge badge-sev-low">Low</span><h3 class="finding-title">Assumptions Index does not round-trip</h3><span class="finding-location">Release record; Assumptions Index</span></header>
+            <div class="finding-note">The schedule-window assumption is missing while a historical collision note is index-only.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Index the live assumption and move historical material to decision history or add a matching inline tag.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Ingestion done uses three state vocabularies</h3>
-              <span class="finding-location">§ Async Ingestion Pipeline vs FR10 vs FR31</span>
-            </header>
-            <div class="finding-note">Observable machine: pending, projecting, indexed, partially failed/retrying, failed/dead-lettered, repaired. Stages table adds extracting and embedding. FR31 uses indexed / projecting / failed.</div>
-            <div class="finding-fix"><strong>Fix:</strong> One observable enum in FR10/FR31; fold extract/embed into pending or list them as activities, not extra states.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">axis=nl reads as a Phase 1 retrieval axis</h3>
-              <span class="finding-location">§ AI Reliability score table vs Glossary vs FR60</span>
-            </header>
-            <div class="finding-note">The score table specifies single-axis axis=nl. Glossary says nl is not a fourth marketing axis. FR60 is Phase 1.5.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Phase-tag nl / dual embedding; Phase 1 explain lists BM25, cosine, and graph only unless a thesis FR says otherwise.</div>
-          </article>
-        </div>
-      </details>
-    </section>
-    <section class="dimension">
-      <details>
-        <summary>
-          <h2>Scope honesty</h2>
-          <span class="verdict-pill verdict-adequate">adequate</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>Omissions now do real work. Non-Goals names MCP, EventStore CloudEvent auto-index, REST search UI, briefings/discussions/diffing, per-unit ACLs, cloud/git/media ingest, and a personal-memory SKU. Assumptions are tagged and indexed.</p>
-            <p>What is still silent is the Causal Intelligence cluster: EventStore auto-index is a Non-Goal; FR46–FR52 are not.</p>
-          </div>
-        </div>
-        <div class="findings-list">
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Causal edges are scoped in an assumption and a Non-Goal, not on the FRs that ship them</h3>
-              <span class="finding-location">§ Non-Goals vs FR46–FR52 vs § MVP Feature Set assumption</span>
-            </header>
-            <div class="finding-note">A story writer who starts at Non-Goals will defer FR59–FR62 and still implement FR46–FR52 as thesis MVP.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Non-Goal on CausationId auto-edges and causal traversal, or an inline phase tag on each of FR46–FR52 that matches the graph assumption.</div>
-          </article>
-        </div>
-      </details>
-    </section>
-    <section class="dimension">
-      <details open>
-        <summary>
-          <h2>Downstream usability</h2>
-          <span class="verdict-pill verdict-thin">thin</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>This is chain-top. Glossary, addendum, contiguous FR1–FR74 / NFR1–NFR35, and named protagonists are now present. EventStore&#x27;s three meanings are pinned. That extract scaffolding did not exist on 2026-09-05.</p>
-            <p>It is still not safe to source-extract a section alone. The Canonical phase register is the increment SoT and disagrees with Non-Goals, the graph assumption, and the CLI thesis list. The Phase 1.5 hard onboarding path names a package that is not in tools/release-packages.json.</p>
-          </div>
-        </div>
-        <div class="findings-list">
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">The phase register cannot be extracted alone</h3>
-              <span class="finding-location">§ Functional Requirements › Canonical phase register</span>
-            </header>
-            <div class="finding-note">MVP (thesis + foundation): FR1–FR22, FR24–FR52 is the sentence story creation will copy. It contradicts Non-Goals, the Phase 1 graph assumption, FR59–FR62 phase tags, and the CLI essentials list.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Make the register the only increment SoT; every FR in FR46–FR52 and every thesis CLI verb must match it.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Launch onboarding package ID does not exist in the published inventory</h3>
-              <span class="finding-location">§ Journey 1 vs § Package Distribution vs tools/release-packages.json</span>
-            </header>
-            <div class="finding-note">Journey 1: dotnet add package Hexalith.Memories.Client. The published-package table lists Hexalith.Memories.Client.Rest and Hexalith.Memories.EventStore, not Client.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Name Hexalith.Memories.EventStore (or Client.Rest) in the gate and Journey 1, or add Client to the inventory.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">CLI and audit nouns still collide across sections</h3>
-              <span class="finding-location">§ Journey 5 vs § CLI Specification vs FR67 vs Glossary</span>
-            </header>
-            <div class="finding-note">Journey 5 uses memories search --tenant. Search flags are --case, --explain, --axes, --format. FR67 logs search and access events for audit purposes while Glossary Access telemetry is not a tamper-evident audit trail.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Delete --tenant from Journey 5 or add it as an explicit mismatch-test flag; phase-column the command table; say access telemetry in FR67.</div>
-          </article>
-        </div>
-      </details>
-    </section>
-    <section class="dimension">
-      <details>
-        <summary>
-          <h2>Shape fit</h2>
-          <span class="verdict-pill verdict-adequate">adequate</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>Developer Tool / API Backend is the right class. Classification is now Brownfield / change-controlled. The load-bearing shape is the capability spec, which matches a maintainer-operated OSS server.</p>
-            <p>The wrapper is still a ten-journey consumer template around a single-operator-plus-agent tool. Journeys 1, 2, 5, 7, and 9 are the normative set; 4, 6, 8, and 10 are illustrations the document already admits.</p>
-          </div>
-        </div>
-        <div class="findings-list">
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">User-journey density is still consumer-product shaped</h3>
-              <span class="finding-location">§ User Journeys</span>
-            </header>
-            <div class="finding-note">Ten journeys including Priya (never touches the API) and Dani (contributor infrastructure).</div>
-            <div class="finding-fix"><strong>Fix:</strong> Mark 1, 2, 5, 7, 9 as normative; move 4, 6, 8, 10 to addendum illustrations.</div>
+            <header><span class="badge badge-sev-low">Low</span><h3 class="finding-title">Journey 7 is a floating technical actor</h3><span class="finding-location">Journey 7</span></header>
+            <div class="finding-note">LLM Agent is an interaction pattern rather than a named protagonist with context.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Relabel it as an Integration Flow or give it a named application and context.</div>
           </article>
         </div>
       </details>
     </section>
 
+    <section class="dimension">
+      <details>
+        <summary><h2>Shape fit</h2><span class="verdict-pill verdict-adequate">Adequate</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p>The capability, contract, release-gate, CLI, and NFR shape broadly fits a brownfield developer tool/API backend. The PRD/addendum boundary is inconsistent because package inventory and topology remain in the PRD despite an opening rule assigning those mechanics elsewhere.</p>
+        </div></div>
+        <div class="findings-list">
+          <article class="finding">
+            <header><span class="badge badge-sev-low">Low</span><h3 class="finding-title">Outcome/mechanism boundary exceptions are undeclared</h3><span class="finding-location">Document Purpose; Package Distribution; Deployment Topology</span></header>
+            <div class="finding-note">The document retains inventory and topology without identifying them as contractual exceptions.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Move them or state which facts remain contractual and which are architecture-owned.</div>
+          </article>
+        </div>
+      </details>
+    </section>
 
     <section class="reviewer-section">
       <details>
-        <summary>
-          <h2>Adversarial review</h2>
-          <span class="reviewer-source">review-adversarial-general.md</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>Refuse to sign. The Update closed greenfield, isolation-as-budget-cut, FR13 opposite recovery, and the MCP accordion. It did not make the remaining words expensive: the thesis still cannot fail, causal FRs are MVP and Phase 1.5 at once, and every outcome is pre-authorized as pass, waive, delay, or keep shipping packages.</p>
-          </div>
-        </div>
+        <summary><h2>Adversarial review</h2><span class="reviewer-source">review-adversarial-general.md</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p><strong>Not decision-ready for architecture/epic sign-off or a Phase 1.5 launch decision.</strong> Two critical contradictions make promised behavior or gates impossible to prove as written; eight high-severity gaps leave the core thesis, authorization, recovery, and launch qualification open to materially different implementations.</p>
+        </div></div>
         <div class="findings-list">
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-critical">critical</span>
-              <h3 class="finding-title">The thesis kill switch is still unfalsifiable after the protocol rewrite</h3>
-              <span class="finding-location">§ Measurable Outcomes; Open Questions 1–2; FR25</span>
-            </header>
-            <div class="finding-note">80% is a hard line at N=5–10. ΔNDCG and the inter-rater statistic live in Open Questions / a future README. Humans may override NDCG. User Success and FR25 still score vs single-axis.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Put N, ΔNDCG@10, the agreement statistic, and the unit of the 80% in this PRD. Make User Success, MVP philosophy, and FR25 say hybrid vs BM25+semantic. Until then, retitle 80% as diagnostic, not a ship gate.</div>
+            <header><span class="badge badge-sev-critical">Critical</span><h3 class="finding-title">ADV-C1 — “Delete all data” can be undone by the durability contract</h3><span class="finding-location">Compliance; FR27; FR39; FR13; NFR16; NFR34</span></header>
+            <div class="finding-note">Deletion is presented as erasure while EventStore remains replayable truth. A rebuild can recreate deleted tenant data because purge, suppression, backup, and telemetry behavior are undefined.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Define deletion per data class, replay suppression, mechanism, SLA, backup expiry, recovery, and verification; bound the current claim meanwhile.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-critical">critical</span>
-              <h3 class="finding-title">Causal intelligence is MVP in the register and forbidden until Phase 1.5 everywhere else</h3>
-              <span class="finding-location">§ Canonical phase register vs FR46–FR52 vs FR59–FR62</span>
-            </header>
-            <div class="finding-note">The register includes FR46–FR52. Non-Goals and the graph assumption forbid claiming causal three-axis on a folder tree. The Edge Type Taxonomy (MVP minimum) still sources caused_by from EventStore CausationId.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Move FR46–FR52 (or FR46–FR49 and EventStore-sourced FR50 rows) to the Phase 1.5 register. Closed Phase 1 edge list: contains plus optional explicit references only.</div>
+            <header><span class="badge badge-sev-critical">Critical</span><h3 class="finding-title">ADV-C2 — Launch gate L1 requires labels that do not exist</h3><span class="finding-location">Measurable Outcomes › L1</span></header>
+            <div class="finding-note">Held-out topics excluded from G1 labelling cannot be scored with frozen G1 labels, and 8/10 is ambiguous when N can exceed ten.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Define a separately frozen, graded, independently adjudicated L1 set with fixed size or percentage, owner, hashes, scorer, configuration, and evidence.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-critical">critical</span>
-              <h3 class="finding-title">There is no product no-go — only delay, draft, and gates that cannot fail</h3>
-              <span class="finding-location">front matter status: draft; both go/no-go tables; Phase 1.5 slip</span>
-            </header>
-            <div class="finding-note">Soft gates also say must-pass. Thesis failure edits the README then the four-week 1.5 clock still starts. Launch failure is delay. MCP and EventStore package IDs already exist.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Pick one release decision and date it. Delete soft or delete both soft gates must pass. Define held-out queries and known chains. Set status to the contract you want signed.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">ADV-H1 — G1 lacks a scoreable ground-truth contract</h3><span class="finding-location">Thesis-gate protocol; Release record; OQ2</span></header>
+            <div class="finding-note">Relevance scale, aggregation, agreement, ties, abstentions, sampling, and ownership remain incomplete.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Promote the complete protocol and frozen evidence contract to a gate prerequisite with an owning story.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">The opening contract still sells the Phase 1.5 product as the product</h3>
-              <span class="finding-location">§ Executive Summary; Journey 1 climax</span>
-            </header>
-            <div class="finding-note">No existing tool can answer why and the causal-chain hero remain the lead. Discussions are a Non-Goal. Causal completeness is a 1.5 gate.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Rewrite the first two executive paragraphs to the Phase 1 contract. Move the causal narrative and Journey 1 14-minute miracle to a Phase 1.5 launch abstract.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">ADV-H2 — Privileged actions have no authorization policy</h3><span class="finding-location">FR28–29; FR38–45; FR51; FR67; FR71; FR74; NFR8</span></header>
+            <div class="finding-note">Isolation exists without a capability-by-role policy, and tenant mismatch can be rejected or silently retargeted.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add the role matrix and one fail-closed mismatch error.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Brownfield was declared; shipped vs remaining was not</h3>
-              <span class="finding-location">§ Functional Requirements preamble</span>
-            </header>
-            <div class="finding-note">FR1–FR74 remain an unstatused horizon inventory. Only FR71 notes early completion.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Status every FR/NFR this PRD will be sued over (shipped / partial / not started), or cut the horizon list to the active ship contract.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">ADV-H3 — Rebuild lacks durable rebuild inputs</h3><span class="finding-location">FR6; FR13; FR70; NFR16</span></header>
+            <div class="finding-note">Mutable sources and retired models can make EventStore-based projection recovery non-equivalent or impossible.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Specify immutable content/references, processing and model versions, fallback, equivalence, and recovery proof.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Isolation is principals in the journey, IDs in the gate, and physical in compliance</h3>
-              <span class="finding-location">§ Compliance Boundary vs NFR8 vs Journey 5</span>
-            </header>
-            <div class="finding-note">Compliance still says Physical tenant isolation. NFR8 tests swapped tenant IDs. Journey 5 uses --tenant, which is not an MVP search flag.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Strike Physical. Rewrite NFR8: authenticated principal A cannot search/ingest/traverse tenant B. Remove --tenant / tenant switch or add them to MVP CLI and NFR11.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">ADV-H4 — Telemetry privacy and retention are undefined</h3><span class="finding-location">Access telemetry; FR67; NFR34</span></header>
+            <div class="finding-note">Recorded fields, redaction, permissions, erasure, and TTL boundaries are missing despite shipped telemetry.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Define the data dictionary, minimization, access, encryption, retention, purge evidence, and owner; gate launch or disable by default.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">The launch 30-minute clock starts at a package the inventory does not publish</h3>
-              <span class="finding-location">§ Journey 1 vs § Published packages; NFR31</span>
-            </header>
-            <div class="finding-note">Journey 1: Hexalith.Memories.Client. Published IDs: Client.Rest, EventStore. Compose path is not the AppHost path NFR31 uses. 14-minute story omits Google key and OpenBao.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Name the exact package ID from tools/release-packages.json. Write the launch stopwatch as a numbered script including secrets and embedder.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">ADV-H5 — Public API versioning stories conflict</h3><span class="finding-location">Versioning; REST V1; Contracts.V1; MCP; CLI JSON</span></header>
+            <div class="finding-note">“No versioned endpoints” conflicts with shipped V1 routes and namespaces, while stability and deprecation rules are absent.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Establish one cross-surface compatibility, maturity, breaking-change, and support policy.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Phase 1 still gates three-axis hybrid on a graph the PRD forbids you to call three-axis</h3>
-              <span class="finding-location">§ Executive Summary thesis vs graph assumption</span>
-            </header>
-            <div class="finding-note">Three-axis is the core thesis. Phase 1 graph may run on contains / case-scoped edges. Do not claim causal three-axis on a folder tree.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Put typed non-hierarchy edges in Phase 1, or drop graph from the thesis comparison and retitle Phase 1 BM25+semantic plus isolation.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">ADV-H6 — Onboarding stopwatches lack reproducible T0 states</h3><span class="finding-location">L2; NFR31; Developer Experience</span></header>
+            <div class="finding-note">Checkout, restore, caches, samples, image pulls, secrets, and external setup can be counted differently.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Publish exact fixture manifests, cache/network rules, start and stop events, supported OSes, commands, and evidence templates.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Soft is a waiver costume on gates that already say must-pass</h3>
-              <span class="finding-location">§ Phase 1 thesis go/no-go table</span>
-            </header>
-            <div class="finding-note">Two rows labeled Soft gate with Requirement Must pass.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Promote those two rows to Hard gate, or give Soft a real meaning and stop saying must pass.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">ADV-H7 — Degraded reads lack a single eligibility rule</h3><span class="finding-location">FR6; FR13; FR66; NFR18</span></header>
+            <div class="finding-note">Three-projection searchability and single-backend degraded reads admit incompatible treatment of partial and version-skewed units.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Define prior-indexed eligibility, version agreement, staleness, disclosures, and recovery behavior.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">NFR21 already declares the DAPR-generic experiment won</h3>
-              <span class="finding-location">NFR21 vs § Executive Summary assumption</span>
-            </header>
-            <div class="finding-note">NFR21 (P1.5): events from any DAPR-compatible publisher are processable. Executive Summary: generic Marten/Wolverine/Axon zero-code remains an experiment.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Narrow NFR21 to EventStore-convention CloudEvents. Keep generic publishers in Open Questions / the named spike.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">ADV-H8 — Launch gates omit unmet security and reliability requirements</h3><span class="finding-location">L1–L3; NFR6; NFR11; NFR16; NFR21; NFR34</span></header>
+            <div class="finding-note">Freshness, negative-envelope, recovery, and retention can remain unverified at formal launch.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a production-qualification row with required evidence or accepted dated debt; otherwise label the phase preview-only.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">FR67 still sells audit; the glossary forbids that word</h3>
-              <span class="finding-location">FR67 vs Glossary Access telemetry vs NFR34</span>
-            </header>
-            <div class="finding-note">FR67: logs search and access events per tenant for audit purposes. Glossary: Not a tamper-evident audit trail.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Rewrite FR67 to the glossary noun: access telemetry for operator visibility, not audit.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">ADV-M1 — Journey 8 is both Phase 1 and Phase 2</h3><span class="finding-location">Journey 8; Non-Goals; Journey summary</span></header>
+            <div class="finding-note">The same web experience can be scheduled in either phase.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Retag it as Phase 2 and separate existing transport from future experience.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Case members are MVP capabilities that must not authorize, with no other outcome</h3>
-              <span class="finding-location">FR28–FR29, FR36; Glossary Member</span>
-            </header>
-            <div class="finding-note">Developer can add/remove members. Glossary: Does not grant authorization in the current phase. Testers cannot fail a story: any write succeeds.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Pull member FRs out of thesis MVP, or state membership is listed metadata only and every access check ignores it.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">ADV-M2 — One ingestion vocabulary remains two public vocabularies</h3><span class="finding-location">Glossary; FR10; Async Ingestion; OQ8</span></header>
+            <div class="finding-note">pending/projecting conflicts with shipped Queued/Indexing and the mapping can stay open indefinitely.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Choose canonical wire values or make the shipped enum canonical with an explicit presentation mapping and version policy.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">The score table still documents a magnitude graph axis the fusion decision rejected</h3>
-              <span class="finding-location">§ Confidence Score Semantics vs NFR24</span>
-            </header>
-            <div class="finding-note">Graph row: Inverse hop distance with decay function / range 0.0–1.0. Immediately below: Hybrid per-axis scores are rank-contribution scores. NFR24: weighted RRF.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Make the graph row match NFR24. Hop-distance may exist only as single-axis axis=graph explain.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">ADV-M3 — FR71 is shipped for a different capability</h3><span class="finding-location">FR status; FR71; CLI export</span></header>
+            <div class="finding-note">Operational export/restore is credited where the requirement states portable developer export.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Split the capabilities/statuses or mark FR71 partial pending its public contract.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">File ingest has no freshness outcome; required active projections are an accordion</h3>
-              <span class="finding-location">FR6, FR13; NFR6; NFR18</span>
-            </header>
-            <div class="finding-note">NFR6 freshness is P1.5 events only. No MVP T for file ingest → searchable on available axes. Required active is how FR6/FR13 become unfalsifiable.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Add an MVP freshness outcome for file/URL ingest. Define the Phase 1 required projection set as a closed list.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">ADV-M4 — Freshness states have no product semantics</h3><span class="finding-location">Journey 7; Evidence Packet; NFR33</span></header>
+            <div class="finding-note">current, aging, stale, and unknown lack thresholds, clock source, source policy, and recovery actions.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Define source-specific thresholds, timestamps, skew tolerance, transitions, disclosures, and recovery.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">The CLI contract is two lists; only one is cut to MVP</h3>
-              <span class="finding-location">§ CLI Specification MVP command scope vs Command Structure table</span>
-            </header>
-            <div class="finding-note">MVP command scope is a short list. The table below still lists explore, traverse, add-member, tenant switch with no phase column.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Split the command table into MVP vs 1.5 vs later, or delete non-MVP rows from this PRD.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">ADV-M5 — CLI bearer-token handling is unsafe and unspecified</h3><span class="finding-location">CLI; Configuration; NFR9; NFR11</span></header>
+            <div class="finding-note">The official command-line token can leak while acquisition, storage, refresh, redaction, and CI behavior are undefined.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Define safe credential sources and precedence, redaction, expiry/refresh, and automation behavior.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-low">low</span>
-              <h3 class="finding-title">Journey 8 still trains readers to treat 0.95 as a reason to relax</h3>
-              <span class="finding-location">Journey 8 verification beat</span>
-            </header>
-            <div class="finding-note">Confidence scores show 0.95 for the causal chain. Her stomach unknots. The chapter also says a score does not mean the data is complete or correct.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Tag Journey 8 Phase 2 on the heading. Make 0.95 explicitly relevance-to-query.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">ADV-M6 — Licensing conclusions lack decision authority</h3><span class="finding-location">Open-Source Licensing; addendum Topology</span></header>
+            <div class="finding-note">Categorical legal conclusions have no named reviewer, versioned assessment, jurisdiction, or accepted-risk owner.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Recast as risks and decisions with exact artifacts, owner, review date, allowed modes, and approved wording.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-low">low</span>
-              <h3 class="finding-title">Front matter calls the PRD complete and draft in the same breath</h3>
-              <span class="finding-location">YAML status: draft; stepsCompleted: step-12-complete</span>
-            </header>
-            <div class="finding-note">Workflow is marked complete; status remains draft; body claims this is the product-outcome contract.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Set status to the actual control state, or stop claiming step-12 complete.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">ADV-M7 — PRD/addendum change control is ambiguous</h3><span class="finding-location">Document Purpose; Architecture; Topology; Addendum</span></header>
+            <div class="finding-note">Mechanisms are assigned elsewhere but also mandated in the PRD without a classification rule.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Classify product constraints, outcomes, replaceable implementation, and architecture-owned choices.</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">ADV-M8 — Availability and disaster recovery stop at examples</h3><span class="finding-location">NFR7; NFR16–19; Health; Release record</span></header>
+            <div class="finding-note">Service availability, dependency recovery, degraded duration, backup cadence, and escalation are undefined.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Define availability/RPO/RTO envelopes or call Phase 1.5 a non-production preview.</div>
           </article>
         </div>
       </details>
     </section>
-
 
     <section class="reviewer-section">
       <details>
-        <summary>
-          <h2>Product-brief reconciliation</h2>
-          <span class="reviewer-source">review-product-brief.md</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>The dual thesis/launch split is real (two clocks, two go/no-go tables, explicit Non-Goals). Leftover leaks are identity and FR placement, not the gate tables. Qualitative residue the Update claimed to park is in the addendum; several brief ecosystem metrics vanished without a Non-Goal; some addendum-parked expansions still sit in prd.md.</p>
-          </div>
-        </div>
+        <summary><h2>Source-fidelity review</h2><span class="reviewer-source">review-source-fidelity.md</span></summary>
+        <div class="dim-body"><div class="dim-judgment">
+          <p><strong>Not yet source-safe for downstream extraction.</strong> Most high-order decisions are retained, but three high-severity partial applications of approved sources can cause incorrect implementation or duplicate planning: backend access is contradictory, Phase 1 CLI gaps are wrongly called tracked, and FR71 is misclassified.</p>
+        </div></div>
         <div class="findings-list">
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Causal Intelligence FRs still sit in the thesis-MVP register</h3>
-              <span class="finding-location">Brief Phase 1 Core Feature #3 vs PRD Canonical phase register</span>
-            </header>
-            <div class="finding-note">Brief v1 treated CausationId indexing as Phase 1. PRD register includes FR46 with no phase tag; FR59–FR61 are correctly Phase 1.5.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Phase-tag FR46–FR52 to match the graph assumption and FR59–FR61.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">SF-H1 — Backend access boundary contradicts the approved direct-client model</h3><span class="finding-location">Licensing; Deployment Topology; Service Communication</span></header>
+            <div class="finding-note">Two sections say DAPR mediates FalkorDB/Redis access while the approved model and service section require direct approved clients for search and graph.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Align the stale sections and keep detailed client topology architecture-owned.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Executive-summary hero still narrates Phase 1.5 + Phase 2 as the product</h3>
-              <span class="finding-location">Brief hero vs PRD opening + Innovation #1</span>
-            </header>
-            <div class="finding-note">Opening still walks a causal chain through a team discussion. Innovation #1 still names EventStore causal graph as the thesis novelty.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Lead with the thesis contract; keep brief Moat 2 as the Phase 1.5 novelty sentence.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">SF-H2 — Unowned Phase 1 CLI gaps are called tracked</h3><span class="finding-location">CLI Specification; Release record</span></header>
+            <div class="finding-note">The release record says the stubs have no owning story while the CLI section says all are tracked.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Record them as identified but unowned/unregistered and name the story-registration owner and date.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">LLM Agent token-budget success row is unphased</h3>
-              <span class="finding-location">§ User Success vs FR23</span>
-            </header>
-            <div class="finding-note">100% compliance on budget-constrained queries has no phase column. FR23 is Phase 1.5. Latency on the next row is tagged Phase 1.5.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Phase-tag the token-budget row to 1.5 or drop it from current success.</div>
+            <header><span class="badge badge-sev-high">High</span><h3 class="finding-title">SF-H3 — FR71 status reverses portable export and restore</h3><span class="finding-location">FR register; FR71; CLI export</span></header>
+            <div class="finding-note">Portable export shipped and restore remains Epic 26, but the register states the reverse.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Correct the register and preserve distinct ownership/status.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Journey 9 empty-state still sells EventStore subscription as a next step</h3>
-              <span class="finding-location">Journey 9 empty-state copy</span>
-            </header>
-            <div class="finding-note">Get started: memories ingest &lt;file&gt; or configure a DAPR subscription to auto-index events.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Keep only file ingest on the thesis empty-state string.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">SF-M1 — Journey 8 retains Phase 1 after its Phase 2 correction</h3><span class="finding-location">Journey 8; Non-Goals; Journey summary</span></header>
+            <div class="finding-note">Heading-level drift can pull future UI and narrative work into the thesis MVP.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Retitle it Phase 2 and add a clear phase banner.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Silent drops from the brief without a Non-Goal or phase tag</h3>
-              <span class="finding-location">Brief Ecosystem / Why Now / JTBD vs PRD</span>
-            </header>
-            <div class="finding-note">Custom extraction phrases; 6-month second embedding provider; all DAPR state stores; 5x productivity; Why Now / 12–18 month window; Priya search-success metric; motivating discussion/failure benchmark scene; cross-case insight discovery.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Non-Goal or phase-tag each, or restore the ones that are still product intent.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">SF-M2 — NFR32 omits approved accessibility modes</h3><span class="finding-location">NFR32; approved rerun amendment</span></header>
+            <div class="finding-note">Reduced motion, forced colors, zoom/reflow, and responsive trust access are no longer explicit.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Restore all four dimensions and test them in the Epic 17 evidence matrix.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Expansions still sitting in prd.md that addendum said must leave the contract</h3>
-              <span class="finding-location">prd.md vs addendum parking lot</span>
-            </header>
-            <div class="finding-note">Aspire-mandatory topology, OpenBao as NFR, package inventory tables, interpretive-compliance program remain in the PRD.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Move topology/secret-backend/package-ID tables to addendum; keep only product outcomes in the PRD.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">SF-M3 — Tenant deletion lacks its approved isolation evidence</h3><span class="finding-location">Compliance; FR39; NFR8</span></header>
+            <div class="finding-note">The source required deleting tenant A and proving its data gone without affecting tenant B; that scenario is absent.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add the integration proof across all data classes or name the exact alternate owner.</div>
           </article>
           <article class="finding">
-            <header>
-              <span class="badge badge-sev-low">low</span>
-              <h3 class="finding-title">Qualitative residue: story, MCP-first arrival, anywhere-ingest, zero-mapping magic</h3>
-              <span class="finding-location">Brief tone vs FR structure + addendum residue list</span>
-            </header>
-            <div class="finding-note">The composed story is not a product requirement except as Phase 2 journeys. MCP no longer arrives where agents already are. Zero-mapping aha was correctly withdrawn and not replaced.</div>
-            <div class="finding-fix"><strong>Fix:</strong> If those feelings still matter, give them a later-phase owner; do not leave them only in addendum residue.</div>
+            <header><span class="badge badge-sev-medium">Medium</span><h3 class="finding-title">SF-M4 — Addendum calls confirmed release dates assumptions</h3><span class="finding-location">addendum § Release decision</span></header>
+            <div class="finding-note">The memlog and PRD confirm 2026-12-01 and 2027-01-01, while the addendum disputes and confirms them.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Separate confirmed dates from the derived sprint-selection date.</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-low">Low</span><h3 class="finding-title">SF-L1 — Future roadmap advances lack a traceable decision</h3><span class="finding-location">Product brief roadmap; PRD Phase 2/3</span></header>
+            <div class="finding-note">Capabilities moved into earlier phases without a memlog decision or explicit set-aside.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Log the deliberate compression or restore the source phases; prefer named outcomes over unstable numbers.</div>
+          </article>
+          <article class="finding">
+            <header><span class="badge badge-sev-low">Low</span><h3 class="finding-title">SF-L2 — Deferred journey-density decision lacks artifact disposition</h3><span class="finding-location">.memlog.md; User Journeys; addendum handoff</span></header>
+            <div class="finding-note">The owner and Phase 1.5 revisit point exist only in the hidden run log.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add an addendum handoff entry with owner, revisit condition, and no-current-change status.</div>
           </article>
         </div>
       </details>
     </section>
-
-
-    <section class="reviewer-section">
-      <details>
-        <summary>
-          <h2>Downstream drift</h2>
-          <span class="reviewer-source">review-downstream-drift.md</span>
-        </summary>
-        <div class="dim-body">
-          <div class="dim-judgment">
-            <p>Today’s PRD is a trustworthy source-extract for product outcomes. The live drift risk has reversed: architecture Requirements Overview / Coverage / PRD Deviations, and the epics Requirements Inventory, still describe the pre-Update PRD. Extracting stories from those stale copies reconstitutes the 2026-09-05 failure mode even though the PRD itself no longer does.</p>
-          </div>
-        </div>
-        <div class="findings-list">
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Architecture overview still extracts the pre-2026-09-05 PRD</h3>
-              <span class="finding-location">architecture.md Requirements Overview / Coverage / PRD Deviations</span>
-            </header>
-            <div class="finding-note">C# 13, 31 NFRs, P1.5 auth, actor-pipeline, and deleted atomic-write sentences still sit in the overview tables. Body sections already match the new PRD.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Re-extract those tables from today&#x27;s PRD + addendum. Do not edit the PRD to match the fossils.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-high">high</span>
-              <h3 class="finding-title">Epics Requirements Inventory is a stale second PRD</h3>
-              <span class="finding-location">epics.md Requirements Inventory</span>
-            </header>
-            <div class="finding-note">Auth still [P1.5], actor pipeline, indexes as isolation boundary, NFR32–NFR35 missing, single onboarding clock, Additional Requirements D3 still eventual consistency.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Replace inventory bullets with pointers to the PRD, or refresh them to current wording.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">CLI status and FR53 phase still disagree across spines</h3>
-              <span class="finding-location">PRD MVP CLI vs architecture Interface Philosophy vs Epic 7</span>
-            </header>
-            <div class="finding-note">PRD thesis CLI includes status. Architecture and Epic 7 park status in Phase 1.5 polish. Coverage treats all of FR53 as Active MVP.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Pick one increment for status. Coverage must say FR53 is split.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Onboarding boot path and second clock are not shared</h3>
-              <span class="finding-location">NFR31 + addendum vs Journey 1 vs Gate 3 vs epics NFR31</span>
-            </header>
-            <div class="finding-note">PRD thesis clock is AppHost. Journey 1 still docker compose up. Architecture Gate 3 is Compose. Epics NFR31 has one clock.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Relabel Journey 1 boot to AppHost. Change Gate 3 to AppHost. Add the Phase 1.5 event clock to epics NFR31.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-medium">medium</span>
-              <h3 class="finding-title">Ingestion state vocabulary is still three-way</h3>
-              <span class="finding-location">PRD state machine vs architecture field inventory vs epics FR10 vs UX-DR22</span>
-            </header>
-            <div class="finding-note">PRD: pending / projecting / indexed. Architecture Status enum: queued / extracting / embedding / indexing. Epics FR10: queued, embedding, indexed, failed.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Architecture owns the stored enum; PRD owns observable operator states. Publish one mapping table.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-low">low</span>
-              <h3 class="finding-title">Epic 9 still markets zero-code against the PRD glossary</h3>
-              <span class="finding-location">Epic 9 header vs PRD FR59</span>
-            </header>
-            <div class="finding-note">Epic 9: Zero-Code Memory, validating the zero-code promise. PRD: conventions + subscription; schema evolution needs handler registration.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Rename Epic 9 to EventStore product integration.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-low">low</span>
-              <h3 class="finding-title">--explain vs UX-DR7 remains an open product pick</h3>
-              <span class="finding-location">Open Question 3 vs UX-DR7</span>
-            </header>
-            <div class="finding-note">The Update named the fork; it did not decide it.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Answer Open Question 3 in the PRD.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-low">low</span>
-              <h3 class="finding-title">NFR11 is a current product invariant scheduled as post-MVP remediation</h3>
-              <span class="finding-location">PRD NFR11 MVP vs Epic 20 vs architecture Coverage P1.5</span>
-            </header>
-            <div class="finding-note">Delivery taxonomy was never reconciled with the August NFR11 is current product rule.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Tag Epic 20 as implements a current MVP invariant. Move architecture Coverage NFR11 to Active MVP.</div>
-          </article>
-          <article class="finding">
-            <header>
-              <span class="badge badge-sev-low">low</span>
-              <h3 class="finding-title">Post-Update 27.4 live-producer contract must stay out of the PRD</h3>
-              <span class="finding-location">sprint-change-proposal-2026-09-06-story-27-4-live-producer-contract.md</span>
-            </header>
-            <div class="finding-note">Approved Moderate SCP after the Update; explicitly PRD: no change.</div>
-            <div class="finding-fix"><strong>Fix:</strong> Leave NFR34 as the product outcome. Architecture/epics own producer sequencing.</div>
-          </article>
-        </div>
-      </details>
-    </section>
-
 
     <div class="mechanical">
       <h3>Mechanical notes</h3>
       <ul>
-        <li>Glossary, addendum, and Assumptions Index exist; the 2026-09-05 “no Glossary / no addendum” note does not hold.</li>
-        <li>Assumptions Index roundtrip: four of five [ASSUMPTION] tags appear inline. The NFR33/NFR35 collision entry is index-only.</li>
-        <li>FR1–FR74 and NFR1–NFR35 are unique and contiguous.</li>
-        <li>Soft gates in both go/no-go tables are labeled Soft gate and Must pass — naming drift, not a second ship contract.</li>
-        <li>memories tenant switch remains in the Command Structure table and not in MVP command scope.</li>
-        <li>FR63 still says composite confidence scores; Glossary term is Relevance confidence.</li>
-        <li>Evidence Packet concrete shape remains architecture-owned; that is now an intentional SoT split.</li>
+        <li>FR1–FR74, NFR1–NFR36, and Journey 1–10 definitions are contiguous and unique.</li>
+        <li>Journey 8 phase drifts between Phase 1 and Phase 2.</li>
+        <li>MCP parameter naming drifts between axis and axes.</li>
+        <li>The Assumptions Index misses the schedule-window assumption and contains an index-only historical collision entry.</li>
+        <li>Open Questions includes three closed items and one settled MVP constraint.</li>
+        <li>Journey 7 lacks a named protagonist and fits an integration-flow shape better.</li>
+        <li>Addendum release-date rationale is stale relative to confirmed decisions.</li>
       </ul>
     </div>
 
     <footer class="report-footer">
       <div class="meta">
-        <span>Rubric: .agents/skills/bmad-prd/assets/prd-validation-checklist.md</span>
-        <span>Generated: 2026-09-08T12:22:44+02:00</span>
+        <span>Rubric: /home/administrator/projects/hexalith/memories/.agents/skills/bmad-prd/assets/prd-validation-checklist.md</span>
+        <span>Generated: 2026-09-09T09:10:51+02:00</span>
       </div>
     </footer>
   </div>
