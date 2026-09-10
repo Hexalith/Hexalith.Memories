@@ -71,6 +71,25 @@ public sealed partial class SubmoduleGuardTests
             "Missing-submodule failures should name the exact root-declared submodule path.");
     }
 
+    [Fact]
+    public void DirectoryBuildProps_CheckSubmodulesAcceptsResolvedEventStoreRepository()
+    {
+        XDocument props = XDocument.Load(Path.Combine(LocateRepoRoot(), "Directory.Build.props"));
+        XElement eventStore = props
+            .Descendants("RequiredRootSubmodule")
+            .Single(element => element.Attribute("Include")?.Value == "references/Hexalith.EventStore");
+        XElement error = props
+            .Descendants("Target")
+            .Single(element => element.Attribute("Name")?.Value == "CheckSubmodules")
+            .Element("Error")!;
+
+        eventStore.Element("ResolvedRoot")?.Value.ShouldBe("$(HexalithEventStoreRoot)");
+        error.Attribute("Condition")?.Value.ShouldContain(
+            "%(RequiredRootSubmodule.ResolvedRoot)/.git",
+            Case.Sensitive,
+            "The guard should accept the resolved enclosing or sibling EventStore repository when the nested submodule is absent.");
+    }
+
     [RunnableSkippedFact("Story 15.6 AC #7 behavioral guard — invokes `dotnet msbuild` against a workspace with a renamed submodule .git marker. Disabled by default because it mutates the shared worktree and depends on `dotnet` being on PATH; unskip manually or in the dedicated regression lane.")]
     public void CheckSubmodulesTarget_FailsBuildWhenSubmoduleGitMarkerIsMissing()
     {
@@ -179,8 +198,9 @@ public sealed partial class SubmoduleGuardTests
 
         while (current is not null)
         {
+            string gitMarker = Path.Combine(current.FullName, ".git");
             if (File.Exists(Path.Combine(current.FullName, ".gitmodules"))
-                && Directory.Exists(Path.Combine(current.FullName, ".git")))
+                && (File.Exists(gitMarker) || Directory.Exists(gitMarker)))
             {
                 return current.FullName;
             }

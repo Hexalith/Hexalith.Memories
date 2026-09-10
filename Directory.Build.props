@@ -67,6 +67,7 @@
     </RequiredRootSubmodule>
     <RequiredRootSubmodule Include="references/Hexalith.EventStore">
       <RootName>Hexalith.EventStore</RootName>
+      <ResolvedRoot>$(HexalithEventStoreRoot)</ResolvedRoot>
     </RequiredRootSubmodule>
     <RequiredRootSubmodule Include="references/Hexalith.AI.Tools">
       <RootName>Hexalith.AI.Tools</RootName>
@@ -87,7 +88,7 @@
 
   <Target Name="CheckSubmodules" BeforeTargets="Restore;Build" Condition="'$(UseHexalithProjectReferences)' == 'true'">
     <Error
-      Condition="!Exists('$(MSBuildThisFileDirectory)%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.RootName)/.git')"
+      Condition="!Exists('$(MSBuildThisFileDirectory)%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.Identity)/.git') and !Exists('$(MSBuildThisFileDirectory)../%(RequiredRootSubmodule.RootName)/.git') and ('%(RequiredRootSubmodule.ResolvedRoot)' == '' or !Exists('%(RequiredRootSubmodule.ResolvedRoot)/.git'))"
       Text="Git submodule '%(RequiredRootSubmodule.Identity)' is missing. Run: git submodule update --init %(RequiredRootSubmodule.Identity) from the repository root." />
   </Target>
 
