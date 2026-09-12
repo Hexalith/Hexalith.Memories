@@ -59,7 +59,7 @@ The system runs on DAPR, starts on Redis (RediSearch + Vector Search + FalkorDB)
 
 CLI is the operational superset (target state; today MCP exposes ingest while the CLI `ingest` group is a placeholder). MCP is the agent subset (search, ingest, traverse, case-info) and ships as Phase 1.5. Surfaces are capability-aligned, not 100% feature-parity. `[NON-GOAL for MVP]: MCP, EventStore CloudEvent auto-index, application-facing REST search UI, briefings, discussions, and memory diffing.`
 
-**Current release posture:** no-go. Retaining 2026-12-01 as the Phase 1 decision date for the expanded G1–G6 gate is an explicit assumption. Required evidence is absent, no successor stories own the missing work, and architecture must still resolve AD-14 phasing and extend its binding to FR75 and NFR37. The Release decision record and Open Questions 1, 2, 9, and 10 are authoritative.
+**Current release posture:** no-go. Retaining 2026-12-01 as the Phase 1 decision date for the expanded G1–G6 gate is an explicit assumption. Required evidence is absent, no successor stories own the missing work, and architecture resolved AD-14 phasing and extended its binding to FR75/NFR37/G6 on 2026-09-12 (Open Questions 9 and 10 closed), but its alignment ledger carries no evidence path or approved exception on any row. The Release decision record and Open Questions 1, 2, 9, and 10 are authoritative.
 
 ### What Makes This Special
 
@@ -796,7 +796,7 @@ MVP supports Google embedding generation at runtime. Configuration is per-tenant
 
 | Provider | Model (default) | Dimensions | Rate Limit (default) |
 |---|---|---|---|
-| Google | `text-embedding-004` | 768 | 1500 req/min |
+| Google | `gemini-embedding-001` | 768 | 1500 req/min |
 
 **Post-MVP provider expansion candidates:**
 
@@ -924,7 +924,7 @@ Unavailable Phase 1 CLI operations are the remaining FR53 MVP slices. They requi
 4. DAPR Secrets API backed by OpenBao for embedding, LLM, and application runtime secrets
 5. DAPR configuration for sidecar discovery, app-id, and non-secret component settings
 
-Sensitive values are not resolved through configuration fallback. Product services retrieve them through DAPR secret-store components. Aspire secret parameters or .NET User Secrets may supply protected local bootstrap or one-time seeding inputs, but product services must not read them as an alternative runtime secret provider. Kubernetes Secrets are permitted only where required for OpenBao bootstrap material or direct pod inputs that DAPR cannot provide.
+Sensitive values are not resolved through configuration fallback. Product services retrieve them through DAPR secret-store components. Aspire secret parameters or .NET User Secrets may supply protected local bootstrap or one-time seeding inputs, but product services must not read them as an alternative runtime secret provider. Kubernetes Secrets are permitted only where required for OpenBao bootstrap material. Direct Redis/FalkorDB credential injection is an alignment gap, not an approved second path (NFR9, architecture AD-15).
 
 ### Developer Experience & Documentation
 
@@ -1224,8 +1224,8 @@ These are the graph *mechanics* (MVP, Epics 1 and 4). What populates `caused_by`
 6. Closed 2026-09-08: ingest-from-anywhere (cloud/git/image/video) is an explicit deferral — see Non-Goals. Re-open only by sprint change.
 7. **Closed 2026-09-12.** The optional Python `ai-agent` sidecar remains architecture-only and deferred until a selected product feature requires it; no current FR/NFR promotes it.
 8. **Closed 2026-09-12.** Preserve the exact lowercase V1 wire values `queued`/`extracting`/`embedding`/`indexing`/`indexed`/`failed` until a versioned break; the Glossary maps product labels without changing the wire contract.
-9. `[PHASE-BLOCKER / G6]` Architecture AD-14 is unphased while the approved product contract places non-disruptive embedding/schema migration in Phase 2 and backend migration in Phase 3. Owner: Architecture + Jerome. Resolve by qualifying AD-14 or approving an MVP rebaseline before the 2026-10-31 prerequisite checkpoint.
-10. `[PHASE-BLOCKER / G6]` The final architecture spine binds only FR1–FR74/NFR1–NFR36; it must bind and trace FR75's epoch-aware durable-idempotency contract and active-CLI accessibility NFR37 before G6. Owner: Architecture. Revisit: 2026-10-31 prerequisite checkpoint.
+9. **Closed 2026-09-12.** AD-14 is phase-qualified and ratified by Jerome: MVP FR43 remains a tenant-scoped, explicitly acknowledged degraded rebuild that never claims zero downtime; Phase 2 owns non-disruptive embedding/schema migration; Phase 3 owns backend replacement. No MVP implementation is retroactively claimed to meet the Phase 2/3 contract. Recorded in the architecture spine's `ratifications` frontmatter and AD-14.
+10. **Closed 2026-09-12.** The architecture spine now binds FR1–FR75 / NFR1–NFR37 / G1–G6. FR75's epoch-aware durable-idempotency contract was already adopted in AD-3 and AD-4 and is now traced through their `Binds:` lines and a capability-map row; NFR37 gained normative text in AD-12 plus an Active CLI output contract convention; G6 gained AD-20 and a five-column gap ledger carrying disposition and criticality. Note: the spine has no FR→AD trace table — traceability is per-AD `Binds:` lines plus the capability map.
 
 ## Assumptions Index
 

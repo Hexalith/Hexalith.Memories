@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hexalith.Memories Architecture Spine Validation — FAIL</title>
+<style>
+  :root{
+    color-scheme: light;
+    --ink:#172033; --muted:#526078; --faint:#7b8798;
+    --paper:#fff; --canvas:#f3f5f8; --line:#d7dce5;
+    --critical:#9f1239; --critical-bg:#fff1f2;
+    --high:#9a3412; --high-bg:#fff7ed;
+    --medium:#854d0e; --medium-bg:#fefce8;
+    --low:#1e3a8a; --low-bg:#eff6ff;
+    --ok:#166534; --ok-bg:#f0fdf4;
+    --shadow:0 10px 28px rgba(23,32,51,.08);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--canvas);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+  a{color:#174ea6;text-underline-offset:.16em}
+  a:hover{color:#0d3474}
+  code{padding:.08rem .3rem;border:1px solid #dfe3ea;border-radius:.3rem;background:#f7f8fa;font:.88em ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
+  .wrap{width:min(1180px,calc(100% - 2rem));margin-inline:auto}
+  header{background:linear-gradient(135deg,#24152d 0%,#56152b 55%,#8e1739 100%);color:#fff}
+  .hero{padding-block:3.2rem 2.6rem}
+  .eyebrow{margin:0 0 .7rem;font-size:.76rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#fecdd3}
+  h1{margin:0;max-width:940px;font-size:clamp(1.9rem,4.6vw,3.5rem);line-height:1.06;letter-spacing:-.032em}
+  .verdict{max-width:920px;margin:1.15rem 0 0;font-size:clamp(1.02rem,1.9vw,1.28rem);color:#ffe4e6}
+  .meta{display:flex;flex-wrap:wrap;gap:.5rem 1.4rem;margin-top:1.5rem;color:#fff1f2;font-size:.88rem}
+  .meta code{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#fff}
+  nav{position:sticky;top:0;z-index:5;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96);backdrop-filter:blur(10px)}
+  nav .wrap{display:flex;gap:1.1rem;overflow-x:auto;padding-block:.75rem}
+  nav a{flex:none;color:var(--ink);font-size:.88rem;font-weight:700;text-decoration:none;white-space:nowrap}
+  nav a:hover{color:var(--critical)}
+  main{padding-block:2rem 4rem}
+  section{scroll-margin-top:4.2rem;margin-bottom:2.4rem}
+  h2{margin:0 0 1rem;font-size:clamp(1.4rem,2.9vw,2rem);letter-spacing:-.02em}
+  h3{margin:0;font-size:1.05rem;line-height:1.35}
+  .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem}
+  .metric,.panel,.finding{border:1px solid var(--line);border-radius:.8rem;background:var(--paper);box-shadow:var(--shadow)}
+  .metric{padding:1rem}
+  .metric strong{display:block;font-size:1.6rem;line-height:1.15}
+  .metric span{color:var(--muted);font-size:.86rem}
+  .metric.fail strong{color:var(--critical)}
+  .metric.good strong{color:var(--ok)}
+  .panel{padding:1.15rem 1.3rem;margin-bottom:1rem}
+  .panel.good{border-left:.4rem solid var(--ok);background:var(--ok-bg)}
+  .lead{margin:0 0 .8rem;font-size:1.04rem}
+  p{margin:.6rem 0}
+  ul,ol{margin:.6rem 0;padding-left:1.25rem}
+  li{margin:.35rem 0}
+  .finding{margin:.9rem 0;overflow:hidden}
+  .finding-head{display:flex;align-items:flex-start;gap:.8rem;padding:1rem 1.1rem .8rem;flex-wrap:wrap}
+  .finding-body{padding:0 1.1rem 1.05rem}
+  .badge{flex:none;display:inline-block;min-width:4.4rem;padding:.22rem .5rem;border-radius:999px;font-size:.68rem;font-weight:850;letter-spacing:.05em;text-align:center;text-transform:uppercase}
+  .critical{border-left:.4rem solid var(--critical)}
+  .critical .badge{color:#fff;background:var(--critical)}
+  .high{border-left:.4rem solid var(--high)}
+  .high .badge{color:#fff;background:var(--high)}
+  .src{margin-left:auto;font-size:.76rem;color:var(--faint);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+  .corr{display:inline-block;margin-left:.45rem;padding:.12rem .45rem;border-radius:999px;font-size:.64rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#5b21b6;background:#f5f3ff;border:1px solid #ddd6fe}
+  .fix{margin-top:.7rem;padding:.7rem .85rem;border-radius:.5rem;background:#f7f8fa;border:1px solid #e6e9ef;font-size:.94rem}
+  .fix b{color:var(--ok)}
+  table{width:100%;border-collapse:collapse;font-size:.88rem}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:.8rem;background:var(--paper);box-shadow:var(--shadow)}
+  th,td{padding:.6rem .75rem;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#fafbfd;font-size:.76rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  .v-fail{color:var(--critical);font-weight:800}
+  .v-pwf{color:var(--high);font-weight:750}
+  .v-pass{color:var(--ok);font-weight:800}
+  .tag{display:inline-block;padding:.1rem .42rem;border-radius:.3rem;font-size:.7rem;font-weight:800;letter-spacing:.03em}
+  .t-c{color:#fff;background:var(--critical)}
+  .t-h{color:#fff;background:var(--high)}
+  .t-ml{color:var(--medium);background:var(--medium-bg);border:1px solid #fde68a}
+  footer{padding-block:2rem;border-top:1px solid var(--line);color:var(--muted);font-size:.86rem}
+  @media (max-width:640px){ .src{margin-left:0;width:100%} }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap hero">
+    <p class="eyebrow">BMad Architecture · Reviewer Gate · Validate intent</p>
+    <h1>Architecture Spine Validation — FAIL</h1>
+    <p class="verdict"><strong>ARCHITECTURE-SPINE.md (<code>status: final</code>, 2026-09-09) cannot be cited as the current architecture authority without an Update pass.</strong> Its paradigm and all nineteen adopted decisions survive the gate intact. What fails is completeness, accuracy, and currency — not design.</p>
+    <div class="meta">
+      <span>Validated <strong>2026-09-12</strong></span>
+      <span>Target sha256 <code>e37070e3…</code></span>
+      <span>6 lenses · read-only</span>
+      <span>No file changed, no build run</span>
+    </div>
+  </div>
+</header>
+
+<nav><div class="wrap">
+  <a href="#result">Result</a>
+  <a href="#method">Method</a>
+  <a href="#notfound">What passed</a>
+  <a href="#critical">Critical (10)</a>
+  <a href="#high">High (17)</a>
+  <a href="#tail">Medium &amp; low</a>
+  <a href="#scp">SCP assertions</a>
+  <a href="#crosswalk">Crosswalk</a>
+  <a href="#disposition">Disposition</a>
+</div></nav>
+
+<main class="wrap">
+
+<section id="result">
+  <h2>Result</h2>
+  <div class="summary">
+    <div class="metric fail"><strong>FAIL</strong><span>Overall gate</span></div>
+    <div class="metric fail"><strong>10</strong><span>Critical findings</span></div>
+    <div class="metric"><strong>17</strong><span>High findings</span></div>
+    <div class="metric"><strong>85 → 68</strong><span>Raw → consolidated</span></div>
+    <div class="metric good"><strong>0</strong><span>Decisions needing reversal</span></div>
+    <div class="metric good"><strong>PASS</strong><span>Deterministic linter</span></div>
+  </div>
+
+  <div class="panel" style="margin-top:1rem">
+    <p class="lead">The spine remains a genuinely good build substrate. Every one of the 85 observations closes by adding or tightening a Rule sentence, correcting a stale fact, or recording a decision — <strong>not one reopens an adopted decision or challenges the paradigm.</strong> The adversarial lens discarded three candidate findings precisely because they required a unit to <em>violate</em> an AD rather than comply with it.</p>
+    <p>Four things produce the FAIL, none of which a <code>final</code> document may carry:</p>
+    <ol>
+      <li><strong>Three erasure holes and one tenant-isolation hole that a fully compliant implementation permits</strong> (C1, C2, C6), each defeating an MVP hard gate as written — NFR16/FR39 and NFR8/G2.</li>
+      <li><strong>One unresolved conflict with the approved product contract</strong> (C7, AD-14) that only a human ratification can close.</li>
+      <li><strong>A ratified hard gate the spine cannot see</strong> (C8, G6), plus a binding header stopping at FR74/NFR36/G5 while the 2026-09-12 contract runs to FR75/NFR37/G6.</li>
+      <li><strong>Statements of present fact that are wrong</strong> (C9, H14, H15, H17) — an enforcement mechanism that does not exist, a gap row describing a component that shipped two months earlier, and a pinned commit SHA that resolves to nothing.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="method">
+  <h2>Scope and method</h2>
+  <p>Six independent lenses ran as parallel subagents against the spine. Each wrote a full review and returned only a summary; this report merges those six files and adds no new research. Duplicates were merged by underlying decision failure, taking the highest justified severity.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Lens</th><th>Verdict</th><th>Raw</th><th>Review file</th></tr></thead>
+    <tbody>
+      <tr><td>Deterministic linter (<code>lint_spine.py</code>)</td><td class="v-pass">PASS</td><td>0</td><td>—</td></tr>
+      <tr><td>Rubric walker — good-spine checklist, 9 dimensions</td><td class="v-pwf">PASS-WITH-FINDINGS</td><td>14</td><td><a href="reviews/review-rubric.md">review-rubric.md</a></td></tr>
+      <tr><td>Technology / version reality <em>(configured floor)</em></td><td class="v-pwf">PASS-WITH-FINDINGS</td><td>9</td><td><a href="reviews/review-technology-currentness.md">review-technology-currentness.md</a></td></tr>
+      <tr><td>Adversarial divergence <em>(configured floor)</em></td><td class="v-pwf">PASS-WITH-FINDINGS</td><td>11</td><td><a href="reviews/review-adversarial-divergence.md">review-adversarial-divergence.md</a></td></tr>
+      <tr><td>Upstream source drift</td><td class="v-fail">FAIL</td><td>20</td><td><a href="reviews/review-upstream-drift.md">review-upstream-drift.md</a></td></tr>
+      <tr><td>Security, tenant isolation &amp; data integrity</td><td class="v-fail">FAIL</td><td>19</td><td><a href="reviews/review-security-isolation.md">review-security-isolation.md</a></td></tr>
+      <tr><td>Brownfield code reality</td><td class="v-pwf">PASS-WITH-FINDINGS</td><td>12</td><td><a href="reviews/review-code-reality.md">review-code-reality.md</a></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="panel" style="margin-top:1rem">
+    <h3>Two controlling facts</h3>
+    <p><strong>The code has not moved.</strong> <code>git diff --name-only 3644ef63..HEAD -- src/ tests/ deploy/ tools/</code> is empty — not one file under <code>src/</code>, <code>tests/</code>, <code>deploy/</code>, or <code>tools/</code> has changed since the commit that added the spine. No alignment-gap row can be "stale by drift": a row that does not match the code <strong>was wrong on arrival</strong>, falsifiable against the same tree the spine was written from. This raises the severity of the three misstated rows rather than excusing them.</p>
+    <p><strong>The product contract has moved.</strong> Commit <code>42dfa26b</code> (2026-09-12) reconciled the PRD, addendum, and UX specifications against this spine. The PRD now carries FR75, NFR37, and G6; <code>DESIGN.md</code> and <code>EXPERIENCE.md</code> are the current UX contract. The spine has not been touched since 2026-09-09.</p>
+    <p><strong>Cross-lens corroboration.</strong> Findings confirmed independently by more than one lens are marked <span class="corr">corroborated</span>. Three notable convergences: the stale EventStore gitlink (three separate derivations), the erasure-mapping ownership vacuum (two lenses from opposite directions), and the false "Web is a non-runnable RCL" gap row.</p>
+  </div>
+</section>
+
+<section id="notfound">
+  <h2>What the gate did not find</h2>
+  <div class="panel good">
+    <p class="lead">Recorded because a validation report that lists only failures misrepresents the artifact.</p>
+    <ul>
+      <li><strong>No reversed decisions.</strong> Zero of 19 ADs need withdrawing or replacing.</li>
+      <li><strong>Mechanically clean.</strong> No placeholders, no duplicate AD IDs, every AD carries Binds/Prevents/Rule, every Stack version pinned.</li>
+      <li><strong>The gap table's direction is sound.</strong> 12 of 15 rows are real obligations today, and <strong>none</strong> has been silently closed while remaining in the table.</li>
+      <li><strong>Prior gate findings stayed closed.</strong> All 24 findings closed at the 2026-09-09 finalize gate were re-tested and remain closed. The new adversarial pairs attack a different layer — what <em>feeds</em> the ranking function, not the function.</li>
+      <li><strong>The Stack pins are honest.</strong> Every pin verifies exactly against the <em>committed</em> <code>Hexalith.Builds</code> catalog <code>a32cb422</code>. Nothing in the caveat paragraph overstates risk.</li>
+      <li><strong>Verified-accurate claims an adversarial read could have broken:</strong> the EventStore <code>Domain/</code> purity claim; <code>Hexalith.Memories.Redis</code> as a facade; the V1 status wire contract down to integer-token rejection; <code>MemoriesRoutes</code> and the <code>/api/v1</code> boundary; AD-9 fusion, AD-3's tuple, and AD-4's idempotency matching <code>addendum.md</code> clause for clause; graph case-partitioning and the cross-case path prohibition; digest pinning on every production-path image.</li>
+      <li><strong><code>IngestionWorkflowDeterminismGuardTests</code></strong> is a genuinely strong AD-4 guard — it pins four exact workflow-start sites by file:line and forbids ambient trace capture in orchestration code.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="critical">
+  <h2>Critical findings</h2>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C1 — AD-16's erasure target set is under-enumerated; erased tenant content survives in four stores<span class="corr">corroborated</span></h3><span class="src">SEC-02 · SEC-03 · DRF-10</span></div><div class="finding-body">
+    <p>A fully compliant implementation leaves an erased tenant's content readable in at least four places AD-16 never names.</p>
+    <ul>
+      <li><strong>Workflow history and actor state.</strong> AD-4 excludes exactly one class of data from workflow history — <em>secrets</em>. An implementation that passes extracted text and embedding vectors as activity inputs/outputs (the natural shape) has the Durable Task runtime persist them by construction. Crypto-shredding never touched them: not a product projection, not an EventStore payload, never encrypted under the tenant key.</li>
+      <li><strong>Projection-store backups.</strong> The quarantine predicate is a property of the <em>payload</em> ("quarantine unreadable payloads"), true only of shredded EventStore records. A day-0 Redis/FalkorDB snapshot restored on day 30 is plaintext, so the rule never fires and the syntactic index, vector index, and graph rehydrate.</li>
+      <li><strong>FR71 export bundles.</strong> Plaintext by design, covered by no rule, re-importable under a <em>new</em> tenant ID — which non-reuse does not catch.</li>
+      <li><strong>Cross-tenant references.</strong> <code>prd.md:546</code> makes these an application responsibility documented as a limitation; AD-16 is silent and therefore over-claims "complete tenant erasure".</li>
+    </ul>
+    <p>NFR16 names this outcome explicitly and forbids it. An embedding is invertible toward its source text, so the vector index is content, not metadata.</p>
+    <div class="fix"><b>Fix.</b> Extend AD-16's first clause to enumerate every store that can hold tenant content or content-derived material; add export bundles and projection backups to its <em>Binds</em>; re-key the restore predicate from payload readability to the erased-tenant register (C2). Cheaper and structural: add to AD-4 that workflow history carries identifiers and references only, never content.</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C2 — The erasure record has two claimed owners, no store, and no durability posture<span class="corr">corroborated</span></h3><span class="src">ADV-02 · SEC-09 · SEC-11</span></div><div class="finding-body">
+    <p>AD-16 makes the erasure mapping a precondition of completion in the passive voice with no owner; AD-17 assigns "tenant-erasure mapping" to Platform Operations; AD-8 puts "mappings" in Dapr state. <strong>Three sentences, three owners.</strong></p>
+    <ul>
+      <li><strong>Two records, two stores, one required outcome</strong> — and no AD says which one FR39's operator-facing evidence is read from.</li>
+      <li><strong>Opposite blocking semantics, both compliant.</strong> AD-17 constrains only <em>sanitized product writes</em> to be non-blocking; an erasure handoff is not one. So blocking is compliant, and returning <code>202</code> and landing it later is also compliant. Two teams build a deletion that hangs when telemetry degrades, and a deletion that reports "erasure complete" for a handoff never received.</li>
+      <li><strong>The non-reuse tombstone can inherit a TTL.</strong> Realized inside the telemetry record, it sits in the one store whose defining property is a configured TTL. After expiry the erased tenant ID is reusable — an irreversible data-protection outcome silently undone by a retention policy.</li>
+      <li><strong>Self-shredding enforcement.</strong> A tombstone written to the tenant's own EventStore stream before the key is destroyed becomes unreadable; the non-reuse check finds nothing and permits re-creation, inheriting the erased tenant's key prefix, ACL principal name, and graph name.</li>
+      <li><strong>"Verification" is undefined.</strong> The term appears in no AD Rule — a 200 from the key-destruction API satisfies it. Meanwhile the only durable per-tenant evidence surface is access telemetry, which AD-17 forbids certifying as tamper-evident.</li>
+    </ul>
+    <div class="fix"><b>Fix.</b> Name a single durable erased-tenant register, held outside any tenant-scoped keyspace and not encrypted under a destroyed tenant key, as sole authority for replay rejection, ID non-reuse, and restore admission — retained indefinitely as content-free evidence with a stated durability and restore posture. Define verification as a recorded, reproducible per-target check.</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C3 — AD-3's six-field tuple has no ordering relation and no designated reported member<span class="corr">corroborated</span></h3><span class="src">ADV-01 · RUB-01 · SEC-18</span></div><div class="finding-body">
+    <p>Two units both comply with <code>:72</code> and build incompatibly. The ingestion coordinator keys one checkpoint per <code>(tenant, case, unit, schemaGeneration, epoch)</code> advancing monotonically in <code>sourceVersion</code>. The AD-14 migration backfill keys one record per <code>(tenant, case, unit)</code> holding the whole tuple ordered lexicographically with epoch most significant — and cites AD-14's "projection evidence carries the active configuration epoch" for why.</p>
+    <ul>
+      <li><strong>Permanent stall.</strong> During a backfill at epoch 2, a user ingests a new revision at epoch 1. Under the second reading that acknowledgement is lexicographically lower and rejected as stale — <em>forever</em>. Every retry produces the same verdict. Full compliance yields a unit stuck in <code>Indexing</code> for the whole backfill window.</li>
+      <li><strong>Two conflicting public statuses.</strong> Reporting the active-epoch tuple hides a reindex that silently failed for 40% of the corpus; reporting the highest tuple flips every unit in the tenant to <code>indexing</code> the instant a backfill starts, blowing NFR36's budget tenant-wide.</li>
+      <li><strong>Writes are never fenced.</strong> AD-3 makes <em>acknowledgements</em> monotonic; neither AD orders the projection <strong>write</strong>. Keyed by <code>MemoryUnitId</code>, a late write from an older attempt overwrites newer content; keyed by the full tuple, stale documents stay searchable. Both readings conform.</li>
+      <li><strong>No retirement owner</strong>, and <strong>the epoch itself has two candidate owners</strong> — an EventStore-committed lifecycle fact, or the "tenant configuration actor" the capability map names, which AD-4 then says is not truth.</li>
+    </ul>
+    <div class="fix"><b>Fix.</b> State the comparison relation: epoch and generation are the identity discriminator, <code>sourceVersion</code> the only monotonic dimension; an acknowledgement for a different generation or epoch is never stale; the reported public state is always the active tuple's; retire deletes retired records. Add write-side version fencing. Commit the epoch through AD-2 before any projection may cite it.</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C4 — The <code>system:*</code> allowlist and tenant grant have two possible writers and no governance<span class="corr">corroborated</span></h3><span class="src">ADV-03 · SEC-07</span></div><div class="finding-body">
+    <p>AD-5 requires "one operator-owned finite allowlist" mapping app ID to a <code>system:*</code> principal plus an "explicit tenant grant", and stops there.</p>
+    <ul>
+      <li><strong>Two compliant writers, opposite failure directions.</strong> The tenant lifecycle workflow owns it (a grant is a "backend identity" under AD-6) — a new tenant is ingestible the moment <code>tenant create</code> returns. Or it is a deployment artifact validated at startup (AD-5 says <em>operator</em>-owned; a table a workflow can append to is not finite by construction) — the same call fails closed and an operator must edit a file and redeploy. <strong>This is the L2 launch-stopwatch path</strong>, and whether that gate is passable depends on which reading wins.</li>
+      <li><strong>At delete</strong>, one reading revokes the grant as AD-16 completion work; the other leaves <code>system:*</code> granted on the erased tenant ID. Replay rejection lives on the domain-command path while the grant lives on the channel-authorization path, and <strong>no Rule conjoins them</strong>.</li>
+      <li><strong>Miss behavior unstated</strong> — a default principal is compliant, while NFR10 requires unknown apps to fail closed.</li>
+      <li><strong>Grant cardinality unstated</strong> — the projection coordinator, migrations, and repair legitimately span tenants, so nothing forbids a wildcard and "explicit tenant grant" degrades to <code>*</code>.</li>
+      <li><strong>Integrity unstated</strong> — the allowlist is authorization data, not a secret, so AD-15 does not cover it; anyone who can edit ordinary configuration can grant any app any tenant, unreviewed.</li>
+    </ul>
+    <div class="fix"><b>Fix.</b> Split ownership: the allowlist is a deployment-time artifact with exactly one writer (the operator), granting principal identity only, held in the operator secret scope, versioned, changed only through a reviewed observable procedure; the per-tenant grant is a tenant resource whose sole writer is AD-6's lifecycle workflow, created by verified provisioning and revoked as an AD-16 completion condition. Every internal call must satisfy allowlisted app ID <em>and</em> an explicit grant <em>and</em> an active tenant — any one absent fails closed.</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C5 — The graph axis's seeds, limits, and truncation state are unbound</h3><span class="src">ADV-04</span></div><div class="finding-body">
+    <p>The prior gate's four passes proved AD-9's merge order-deterministic <em>given a fixed candidate set</em>. Nothing in the spine fixes the candidate set.</p>
+    <ul>
+      <li><strong>The result limit's application point is unassigned, and it changes rank membership.</strong> The adapter applies AD-11's limit per traversal call (AD-7 makes the case partition the traversal boundary); the fusion coordinator applies it to the merged list (AD-9 produces "the graph axis" as one list). For six cases at a limit of 50, one feeds 300 candidates into the merge and the other 50. Membership differs → ranks differ → contributions differ → composite scores and ordering differ. <strong>NFR25 and G5 fail with no bug on either side.</strong></li>
+      <li><strong>There is no <code>truncated</code> axis state, so silent incompleteness is the compliant outcome.</strong> AD-9 offers exactly two states — null (unavailable) and empty (available, no hits). A partially-traversed fan-out is neither, so it reports healthy while entire cases are missing: verbatim the outcome AD-10 exists to prevent. And because <em>which</em> partitions complete depends on wall-clock, the result is not reproducible.</li>
+      <li><strong>"Top five hits" is ambiguous in the very sentence that defines ties</strong> — first five entries, or every entry with rank ≤ 5 (six or more under ties)? Raw provider list or canonicalized list?</li>
+    </ul>
+    <div class="fix"><b>Fix.</b> Take five <em>entries</em>, not five ranks, from the canonicalized lists; apply AD-11's result limit once to the merged graph list before rank allocation, never per partition; apply the time limit once to the whole fan-out; add a third axis state, <code>truncated</code> — available, carrying its hits, contributing denominator weight, named in the Evidence Packet with the count of uncompleted partitions.</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C6 — No issuance-time grammar for identifiers makes ordinal comparison inert outside .NET</h3><span class="src">SEC-01 · SEC-19</span></div><div class="finding-body">
+    <p>The spine constrains how an identifier is <em>compared</em> (<code>StringComparison.Ordinal</code>, no case folding, no post-issuance normalization) and never constrains what one may <em>contain</em>.</p>
+    <ul>
+      <li><strong>Redis ACL globs.</strong> AD-6 mandates a per-tenant Redis ACL principal. A tenant created with ID <code>a*</code> composes a key permission such as <code>~a*:*</code>; Redis evaluates ACL key patterns as globs, so that principal reads and writes <strong>every key of every tenant whose ID starts with <code>a</code></strong>. The boundary the addendum calls primary is bypassed with no rule broken. <strong>NFR8/G2 — "zero cross-tenant leaks", an MVP hard gate — fails.</strong></li>
+      <li><strong>Ambiguous composition.</strong> Tenant <code>a</code> + case <code>b:c</code> and tenant <code>a:b</code> + case <code>c</code> produce the same composed key — so one tenant's AD-3 projection checkpoint can be consumed by another tenant's acknowledgement.</li>
+      <li><strong>Non-.NET comparison.</strong> Kubernetes object names are DNS-1123 lowercase. Tenants <code>Acme</code> and <code>acme</code> are ordinal-distinct — two tenants to the spine — and collapse to one credential outside .NET.</li>
+      <li><strong>Enabling step:</strong> tenant-creation authority is itself unstated. AD-5's one primitive is a tenant claim, which cannot exist before the tenant does.</li>
+    </ul>
+    <div class="fix"><b>Fix.</b> Add an issuance rule to AD-5: one documented ASCII grammar with bounded length, excluding every metacharacter, delimiter, or wildcard in Redis ACL patterns, Redis/RediSearch/FalkorDB key and index names, Dapr key and component names, URL path segments, and Kubernetes object names; unambiguous composition for every composed key. Comparison stays ordinal — <em>issuance is what makes ordinal comparison sufficient.</em> State that lifecycle operations are authorized by an operator principal, never a tenant claim.</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C7 — AD-14 is unphased and rebaselines MVP by silence — <em>genuine conflict</em><span class="corr">corroborated</span></h3><span class="src">DRF-01 · RUB-08</span></div><div class="finding-body">
+    <p>AD-14 is the only capability-bearing AD with no phase qualifier — AD-11 phases graph population, AD-12 phases MCP and CloudEvent capabilities. It states one create-backfill-verify-switch-retire contract, while the PRD places embedding/schema migration in Phase 2, backend migration in Phase 3, and keeps MVP FR43 at an explicitly acknowledged <em>degraded</em> rebuild. Combined with the spine's own preamble ("the rule remains binding"), the literal reading is that staged non-destructive migration binds MVP today.</p>
+    <p>An MVP story therefore either over-builds migration infrastructure the product has not funded, or ships the degraded rebuild and is judged non-conformant — and a reviewer cannot tell which is correct from the spine. AD-14's <em>Prevents</em> clause is also unachievable in Phase 1 as shipped, so the rule is violated by design until it is phased.</p>
+    <p><strong>This is the one finding a document edit cannot close.</strong> The product side has already decided (<code>.memlog.md:77</code>), but <code>prd.md:1227</code> names two admissible resolutions and assigns the owner as "Architecture + Jerome". Only a recorded human ratification closes it.</p>
+    <div class="fix"><b>Decision required — Jerome + Architecture record exactly one:</b> <strong>(a)</strong> phase-qualify AD-14 as an MVP / Phase 2 / Phase 3 contract — the product-decided direction, with replacement Rule text already drafted in the drift review and SCP §5.1; or <strong>(b)</strong> approve an MVP rebaseline, expanding FR43, FR68-FR70, the delivery register, the release gates, and the epic breakdown.</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C8 — G6 is invisible to the spine, and the gap ledger cannot satisfy it</h3><span class="src">DRF-02</span></div><div class="finding-body">
+    <p>G6 is a ratified hard gate: every MVP requirement without current evidence, and every architecture-critical active-foundation gap, must carry evidence or an approved phase exception, each with a named owner and a <code>sprint-status.yaml</code> tracker entry. <code>prd.md:191</code> — "All six gates are hard gates; there is no soft tier."</p>
+    <p>The spine's gap table has exactly three columns — Gap / Violated rule / Required convergence — with no owner, no evidence path, no verdict, and no exception id anywhere. Line <code>:310</code> closes the section with "G1-G5"; G6 appears nowhere in the document. A reviewer cannot read the spine and determine, for any gap, who owns it, what would close it, or whether an exception was approved. <strong>The architecture side of a hard gate has no artifact.</strong></p>
+    <div class="fix"><b>Fix.</b> Change <code>:310</code> to G1-G6. Re-issue the gap table with two added columns — Disposition (owner / evidence path / resolved verdict / exception id) and Active-foundation critical (yes/no). <strong>The classification column must come first:</strong> <code>prd.md:189</code> scopes the owner obligation to <em>architecture-critical active-foundation</em> gaps, so without it the spine over-scopes G6. Then add a normative decision making gate evidence architecture-governed — the drift review drafts it as AD-20, "Treat release gates as evidence contracts".</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C9 — AD-8's enforcement mechanism does not exist, and two of its three statements are present-tense</h3><span class="src">COD-01</span></div><div class="finding-body">
+    <p>AD-8's Rule: provider SDK references "are confined to composition roots and named internal <code>Adapters.Redis</code> or <code>Adapters.FalkorDb</code> namespaces <strong>and enforced by architecture tests</strong>." The Consistency Conventions row restates it as settled practice.</p>
+    <p>Neither is true. <code>grep -rn "namespace .*Adapters" src/</code> and <code>find src -type d -name "Adapters*"</code> both return <strong>zero</strong>. There is no <code>NetArchTest</code> or <code>ArchUnitNET</code> dependency anywhere; every guard is hand-rolled and none forbids the provider SDKs. Meanwhile <strong>105 files</strong> under <code>src/Hexalith.Memories.Server/</code> reference <code>NRedisStack</code> / <code>StackExchange.Redis</code> / <code>NFalkorDB</code> / <code>IConnectionMultiplexer</code> — Activities 42, Endpoints 11, Search 7, Workflows 5, and more.</p>
+    <p>Only the Structural Seed hedges ("<strong>target</strong> internal Adapters.Redis/FalkorDb"). AD-8's Rule and the conventions table do not, and gap row 7 asks to "enforce both boundaries with architecture tests" as future work — <strong>three parts of one document disagreeing about whether the boundary is present, target, or pending.</strong></p>
+    <p>This is the clearest instance of a general problem the code lens quantified: <strong>of 17 invariants the spine leans on architecture tests to enforce, 6 do not exist, 1 is enforced backwards (H15), and 2 cover only a subset.</strong></p>
+    <div class="fix"><b>Fix.</b> Make AD-8's Rule and the conventions row future-tense and explicit that no such namespace exists today; add namespace creation to gap row 7's convergence; state the current spread ("105 files") so the size of the obligation is visible.</div>
+  </div></article>
+
+  <article class="finding critical"><div class="finding-head"><span class="badge">critical</span><h3>C10 — The .NET pin predates a same-week six-CVE security release, unflagged</h3><span class="src">VER-01</span></div><div class="finding-body">
+    <p><code>global.json:3</code> pins SDK <code>10.0.400</code> (runtime 10.0.11). On <strong>2026-09-08 — one day before the spine was finalized</strong> — Microsoft shipped 10.0.12 / SDK 10.0.401, flagged <code>"security": true</code>, fixing six CVEs (CVE-2026-69439, -71328, -69522, -69304, -58649, -69806). The committed Builds gitlink correspondingly pins the whole <code>Microsoft.AspNetCore.*</code> family at 10.0.11.</p>
+    <p>The Stack row carries no annotation, and the caveat paragraph — the spine's designated place for version risk — enumerates exactly three concerns (OpenBao, Redis Stack, FalkorDB) and asserts production is blocked on OpenBao. <strong>A reader is entitled to conclude OpenBao is the only security blocker. It is not.</strong></p>
+    <p>Mitigating but not exculpating: <code>rollForward: latestFeature</code> means a machine with 10.0.401 installed silently uses it — which makes the recorded pin misleading in the other direction. Container base images and the NuGet pins do <strong>not</strong> roll forward, so the exposure is real for the committed tree.</p>
+    <div class="fix"><b>Fix.</b> Add .NET to the caveat's security list. Bump <code>global.json</code> to <code>10.0.401</code> and land the 10.0.11 → 10.0.12 package bump, or record a time-bounded exception naming the six CVEs on the same footing as the OpenBao exception. State whether <code>rollForward</code> is the intended patch mechanism; if so, say the SDK floats within the 10.0.4xx band.</div>
+  </div></article>
+</section>
+
+<section id="high">
+  <h2>High findings</h2>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H1 — <code>/events/ingest</code> has no stated tenant-authority source</h3><span class="src">SEC-04</span></div><div class="finding-body"><p>The route appears only in the Conventions table. AD-5 enumerates REST/CLI, MCP, and "trusted internal calls" — not pub/sub delivery — while AD-4 tells an implementer to read a tenant off the CloudEvent <em>for identity</em>. Taking the envelope's tenant as authoritative violates no Rule while contradicting AD-5's <em>Prevents</em>; the Rule text wins. Any workload able to publish to that pubsub component can inject provenance-bearing content into any tenant's corpus — a cross-tenant <strong>write</strong>, whose downstream effect is worse than disclosure: an agent answers from injected content carrying the platform's own provenance markers. AD-12's L1-L3 gate does not close this; it gates product capability, not the endpoint's authorization model.</p><div class="fix"><b>Fix.</b> Bind the receiving component/topic to exactly one tenant, or require the publishing app ID's grant to contain the envelope's tenant; an envelope tenant the channel does not authorize is rejected, not ingested.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H2 — Access telemetry is a second per-tenant datastore with no authorization rule — and PostgreSQL is absent from the spine entirely<span class="corr">corroborated</span></h3><span class="src">SEC-05 · COD-04</span></div><div class="finding-body"><p>AD-17's Rule names TTL, purge, mapping, recovery, debt, activation, sanitization, and delivery bounds — and contains <strong>no authorization or tenant-scoping clause</strong>. The Capability map governs telemetry by AD-15/AD-17/AD-18 with <strong>AD-5 and AD-6 affirmatively absent</strong>. <code>memories status telemetry --tenant claims</code> is shipped; the Server is on the allowlist, the channel is authorized, and AD-17 asks the telemetry service for nothing further — so it answers for whatever tenant the request names, returning who searched tenant <code>claims</code>, when, and what was attempted. Being outside AD-6, the store has no per-tenant principal: one shared credential reads every tenant's records. Separately, <code>deploy/kubernetes/base/access-telemetry-postgresql.yaml:105</code> runs a PostgreSQL 18.4 StatefulSet in production that the spine mentions <strong>nowhere</strong> — not in the Stack table, not in the seed's <code>kubernetes/</code> gloss, not in the composition sentence.</p><div class="fix"><b>Fix.</b> Add AD-5 and AD-6 to the telemetry capability row; require telemetry to derive tenant authority independently of the calling workload's channel identity and to be a tenant-isolated resource under AD-6; add PostgreSQL to the Stack table and deployment narrative.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H3 — No rule derives case authority, while three ADs read as though one exists</h3><span class="src">SEC-08</span></div><div class="finding-body"><p>AD-5's <em>Prevents</em> lists "case membership" as something that may not authorize, and its Rule derives tenant and subject authority with case absent. AD-7 resolves which case owns a <em>unit</em>, not which caller may reach a <em>case</em>. AD-13 says "authorize before explaining evidence" without naming subject or granularity. The addendum resolves it ("Tenant claims authorize. Case membership is metadata") — but the addendum is not the architecture, and the spine's own headings point the other way. A principal confined to <code>general</code> issuing a tenant-wide search legitimately receives units from <code>hr-investigations</code> with full attribution and confidence. If any deployment treats cases as a confidentiality partition — and the PRD's team-scoped-case journeys encourage that — this is a disclosure the architecture neither prevents nor warns about. The reverse is equally live: adding per-case checks silently breaks FR34.</p><div class="fix"><b>Fix.</b> State the position once, either way. Silence does not close it.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H4 — The Kubernetes-secret gap is unbounded, and the gap table understates its NFR8 consequence<span class="corr">corroborated</span></h3><span class="src">SEC-10 · DRF-06</span></div><div class="finding-body"><p>AD-15 calls direct Kubernetes-secret injection "a temporary alignment gap" with <strong>no owner, no expiry, and no gate</strong> — while the OpenBao version gap two paragraphs away <em>does</em> block production qualification. Row <code>:298</code> is filed as ordinary convergence work. What it does not say is what is true while it stands: <strong>one</strong> shared Redis credential with access to every tenant's keyspace, so the addendum's stated primary boundary ("per-tenant Redis ACL users") does not exist and the actual boundary is application-layer key-prefix filtering — which the same addendum calls "a placement tool, not the primary security boundary". Row <code>:300</code> compounds it: five coordination paths reach Redis directly, outside the named adapters. G2/NFR8 is an MVP hard gate, and the architecture gates production on an OpenBao patch level but not on the absence of the isolation mechanism that gate names. Upstream half: <code>prd.md:927</code> still permits Kubernetes Secrets for "direct pod inputs that DAPR cannot provide", contradicting its own tightened NFR9 — <strong>the spine is right and the PRD must change</strong> (the 2026-09-12 reconciliation landed in NFR9 and the addendum but missed <code>:927</code>).</p><div class="fix"><b>Fix.</b> Bind the exception the way the OpenBao one is bound — named owner, dated expiry, production blocked until per-tenant principals replace it or a dated exception is approved.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H5 — "Retained opaque access telemetry" is an assertion AD-17 never obliges</h3><span class="src">SEC-06</span></div><div class="finding-body"><p>AD-16 carves retained telemetry out of erasure on the strength of the word <em>opaque</em>; AD-17 requires "sanitized product writes" and never defines <em>sanitized</em>. One implementation stores a hashed query fingerprint, another the raw query string; both are "sanitized" by their own definition. A search for <code>"Henderson settlement amount above 2.4M"</code> survives its tenant's erasure for the configured TTL — and the erasure mapping AD-16 requires guarantees it stays attributable to the erased tenant.</p><div class="fix"><b>Fix.</b> Define sanitized as content-free and enumerate the permitted fields; a record that cannot be written content-free is not written.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H6 — "Safely" is undefined, and it selects AD-9's normalization denominator</h3><span class="src">ADV-05</span></div><div class="finding-body"><p>AD-10 hangs the degradation contract on an undefined adjective used twice, and AD-9 then makes that judgment numerically load-bearing. With FalkorDB alive but slow: one adapter's doctrine nulls the graph axis (cannot prove completeness) for a denominator of 0.65; the other keeps it (the call returned) for 1.00. <strong>Every composite score differs by ~1.54× for the same query against the same data at the same instant</strong>, and ordering inverts wherever graph was the discriminator. FR63 makes that number product-visible as relevance confidence.</p><div class="fix"><b>Fix.</b> Define safe once, server-side, decided by the axis-selection step and not independently by each adapter — scope applied, within limits, no truncation, active generation/epoch. Staleness and emptiness are safe and disclosed; unverified scope and exhausted limits are not.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H7 — Per-axis candidate depth and pagination are unbound relative to rank allocation<span class="corr">corroborated</span></h3><span class="src">ADV-06 · RUB-02</span></div><div class="finding-body"><p>AD-9 fixes every step <em>after</em> candidates arrive and never fixes how many candidates each axis contributes; the only depth constant governs graph seeding. The spine contains no occurrence of "page", "offset", or "pagination" across all 324 lines, though FR21-FR22 pagination already ships on <code>GET /api/v1/search</code>. Fusing full lists and windowing the output is compliant; pushing the caller's offset into each axis (the standard way to hold a p95 budget) is equally compliant — and under the latter, competition ranks restart at 1 inside every page, so <strong>page 2's top entry normalizes to a composite of 1.0, identical to page 1's</strong>. One unit carries two different confidence values depending on which page fetched it. NFR25's golden vectors become unauthorable: page-shaped under one reading, page-independent under the other. <em>The prior gate's four determinism proofs all silently assumed unpaged axis lists.</em></p><div class="fix"><b>Fix.</b> Fix a server-owned per-axis candidate depth; apply limit and offset only to the fused output after rank allocation and normalization.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H8 — <code>nl</code> is simultaneously a weighted axis and a post-fusion rerank</h3><span class="src">ADV-07</span></div><div class="finding-body"><p>AD-9's <em>Binds</em> line calls it "natural-language reranking"; its Rule states "NL weight is <code>0.20</code>" in the same grammatical slot as the three axes. The PRD Glossary sides with the Binds line. Read as an axis: denominator 1.20, <code>nl</code> in Evidence Packet axis health, <code>--axis nl</code> valid, and <strong>a unit ranking only on the NL embedding enters the fused list</strong>. Read as a rerank: denominator 1.00, three axis entries, <code>--axis nl</code> an error, and that unit <strong>can never appear</strong>. The two surfaces return different <em>sets</em>, not different orderings — plus a 0.833 score factor and an undisclosed 0.20-weighted influence that FR19's per-axis breakdown then cannot explain. Default-off and Phase 1.5 gating keep it out of G1/G5, which is why it is high rather than critical.</p><div class="fix"><b>Fix.</b> Pick one and say so; the review drafts the axis reading.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H9 — Evidence Packet "equivalent null/omission meaning" is satisfied by two mutually unreadable encodings<span class="corr">corroborated</span></h3><span class="src">ADV-08 · DRF-08</span></div><div class="finding-body"><p>AD-12 constrains <em>meaning</em>, not <em>encoding</em>, and the two are separable. <code>DefaultIgnoreCondition = WhenWritingNull</code> (the conventional .NET posture) makes an unavailable axis <strong>absent</strong> and an empty axis <strong>present and empty</strong> — the AD-9 distinction fully preserved. An MCP tool schema emitting every declared property uses explicit <code>null</code> and <code>[]</code>; absence never occurs — also fully preserved. <strong>One deserializer cannot read both</strong>, so the promised cross-language clients must be written twice against one contract, and NFR25's golden-vector obligation has no compliant single answer. Under the omitting encoding, absence is additionally overloaded across an unrecognized axis, an unavailable axis, and an absent omitted-detail handle. Separately, the PRD fixes an eight-value packet state vocabulary the spine never mentions.</p><div class="fix"><b>Fix.</b> Make equivalence apply to the serialized document — every element always present, explicit <code>null</code> never omission, no null-omitting serialization for evidence-bearing types, one byte-comparable golden vector per case; name the versioned state vocabulary.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H10 — <code>Contracts.V1</code> has no owner, so two additive changes collide unresolvably</h3><span class="src">ADV-09</span></div><div class="finding-body"><p>Both a tenant-wide-attribution unit and an explain unit are <em>required</em> by AD-12's own element list to add to the same envelope, and both naturally add a property named <code>axes</code> — one a map of axis→health, one an array of contributions. Neither removes a field, neither renames a deliberate wire name; both are purely additive, the only evolution constraint AD-12 states. The second to merge either overwrites the first's shape or must rename — <strong>and AD-12 forbids the rename outside a versioned break</strong>, so the additive rule can trap the contract in a state whose only compliant exits are shipping a collision or opening V2. The addendum already records a live instance of the class (<code>axis</code> vs <code>axes</code>). The spine's central device is naming an owner — AD-6 for tenant resources, AD-8 for adapters, AD-17 for telemetry, AD-19 for packaging — and for the one artifact AD-12 exists to keep singular it supplies only a <em>location</em>.</p><div class="fix"><b>Fix.</b> Name an owning component with change-approval authority, and require a wire name, shape, and nullability to be reserved in a versioned name register before use.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H11 — The Direct Redis Exception Registry's amendment process permits two lock stores for one resource</h3><span class="src">ADV-10</span></div><div class="finding-body"><p>Gap row <code>:300</code> offers a genuine either/or ("move coordination to Dapr state <strong>or</strong> adopt an explicit <code>AD-n</code> exception"), so one epic can move the derived-store fence to Dapr state while another authors a registry row for import leases using <code>SET NX PX</code>. Both follow the process exactly. Neither primitive can observe the other: repair holds a Dapr fence, import holds a Redis lease, both proceed, and repair deletes index entries the import just wrote — both reporting success. Compounding: <strong>the registry's only precedent row is fail-open</strong>, so a new author's well-precedented choice for a <em>lease</em> admits two concurrent importers during a Redis blip; the spine never states that mutual-exclusion primitives must fail closed while admission optimizations may fail open, though that distinction is the entire reason the existing row is safe. And nothing owns the Redis key namespace, so two rows can claim one prefix.</p><div class="fix"><b>Fix.</b> Require a new row to name the single coordination store for the protected resource and migrate any existing guard; mutual-exclusion primitives fail closed; every row declares a reserved key prefix.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H12 — The binding header stops at FR74 / NFR36 / G5</h3><span class="src">DRF-03</span></div><div class="finding-body"><p>A whole-file grep returns <strong>zero</strong> occurrences of <code>FR75</code>, <code>NFR37</code>, or <code>G6</code>. For FR75 specifically the header is the <em>only</em> gap: AD-4 already states operation-scoped token identity, CloudEvent identity with ordinal comparison, and durable suppression, and AD-3 supplies the tuple — only the non-suppression of a legitimate <em>new-epoch</em> reprojection is implicit rather than stated. NFR37 and G6 are different (H13, C8): a header refresh alone would assert coverage that does not exist. Note the qualification the sprint-change proposal misses — <strong>there is no trace map to extend.</strong> The spine has no FR→AD or gate→AD table; traceability exists only as per-AD <code>Binds:</code> lines and the Capability map.</p><div class="fix"><b>Fix.</b> Update the header to FR1-FR75 / NFR1-NFR37 / G1-G6, add FR75 to the <code>Binds:</code> of AD-2, AD-3, AD-4, and add capability-map rows.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H13 — NFR37 has no architectural home anywhere in the spine</h3><span class="src">DRF-04</span></div><div class="finding-body"><p>Case-insensitive greps for <code>exit code</code>, <code>accessib</code>, <code>keyboard</code>, <code>WCAG</code>, <code>reading order</code>, and <code>color</code> return <strong>no matches</strong>. Unowned obligations include the stable reading order scope → result → sources → reasoning/state → recovery; a text label for every state, axis, score meaning, omission, progress stage, and recovery with colour/glyph/motion supplementary only; bounded wrappable output and a linear alternative for wide tables; deterministic redirected output free of terminal control sequences; durable progress/failure lines; explicit cancellation and timeout; no second "created" line on duplicate delivery (the surface half of FR75); keyboard-only operability; suppression of secrets <strong>and restricted identifiers</strong>; and semantic parity across human, table, JSON, stderr, and exit code — with <code>EXPERIENCE.md:71</code> pinning exit codes <code>0/1/2/4/130</code> and the <code>{schemaVersion, command, data|error}</code> envelope. <strong>An exit-code map, a JSON envelope shape, and a cross-format parity guarantee are public contract surface — exactly what AD-12 exists to own</strong> — yet AD-12's Rule reaches only Evidence Packet semantics.</p><div class="fix"><b>Fix.</b> Extend AD-12 with an operator-observable output contract sentence and add an "Active CLI output contract" Consistency Convention row.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H14 — The "Web is a non-runnable RCL" gap row is factually wrong<span class="corr">corroborated</span></h3><span class="src">DRF-05 · COD-02</span></div><div class="finding-body"><p>A runnable conformance host exists and is CI-gated: <code>tests/Hexalith.Memories.Web.SpecimenHost/…csproj:1</code> is <code>Microsoft.NET.Sdk.Web</code>, references the Web RCL, and <code>Program.cs:10-27</code> builds a real <code>WebApplication</code> with interactive server components and <code>app.Run()</code>, serving <code>/__memories/specimens/{SurfaceSlug}</code>. Playwright launches it on <code>:5177</code> across four spec files as CI job <code>web-e2e-specimen</code>. It landed <strong>2026-07-06 — two months before the spine was finalized</strong> — and <code>prd.md:724</code>, <code>EXPERIENCE.md:42</code>, and the 2026-09-12 reconciliation all call it implemented. Since <code>src/</code>, <code>tests/</code>, and CI are byte-identical to the spine commit, this was falsifiable on the day. <strong>The spine understates its own project's state, and a team reading this row would rebuild something that exists.</strong> The likely source is a stale comment at <code>src/Hexalith.Memories.Web/…csproj:4-6</code> — source-side debt that should not be re-cited as evidence.</p><div class="fix"><b>Fix.</b> Replace the row with what actually remains — the host lives under <code>tests/</code>, no product host consumes the RCL, product Web stays future.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H15 — Gap row 8 misstates fusion, and passing tests lock the anti-AD-9 behavior</h3><span class="src">COD-03</span></div><div class="finding-body"><p>Three of four sub-requirements are indeed violated, but <strong>competition ranks 1,1,3 ARE implemented</strong> (<code>FusionEngine.cs:144-150</code>) with the correct <code>1/(10+rank)</code>, so the row as phrased is imprecise. More importantly it treats this as a pure omission. It is not: <code>FusionEngine.cs:253</code> deliberately encodes <code>double.IsNaN(left) &amp;&amp; double.IsNaN(right)</code> as a <strong>tie</strong>, and <code>FusionEngineTests.cs:358-370</code> and <code>:373-385</code> are <strong>passing tests asserting that a NaN or Infinity input is retained and ranked #1</strong> — the exact opposite of AD-9. Converging therefore requires deleting or inverting green tests, materially different work from adding a missing preprocessing pass. <em>This is the one invariant in the repository enforced backwards.</em></p><div class="fix"><b>Fix.</b> Restate the row precisely and add "retire or invert <code>FusionEngineTests.Fuse_Bm25NaN_*</code> / <code>Fuse_Bm25Infinity_*</code>" to its convergence.</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H16 — The OpenBao remediation target was already stale at authoring</h3><span class="src">VER-02</span></div><div class="finding-body"><p>The substance verifies: OpenBao 2.6.0 is confirmed affected by GHSA-rh46-vc3j-w2w3 (Critical, CVSS 9.2, patched 2.6.2), and calling production blocked is proportionate. The <strong>chart</strong> half is not: the spine names "the <code>0.28.6</code> chart" as the assessment target, but 0.28.6 shipped 2026-07-22 and the 0.29 line opened 2026-08-10, with <strong>0.29.4 shipping 2026-09-03 — six days before the spine was finalized</strong>. The security <em>judgment</em> was researched; the <em>remediation target</em> was not re-checked, and re-pinning to 0.28.6 would land two minor lines behind on arrival. An open upstream tracker against the 2.6.x branch (GO-2026-5970) should be swept into the same requalification.</p><div class="fix"><b>Fix.</b> Restate as "upgrade to OpenBao ≥ 2.6.2 and assess the current chart line (0.29.x, presently 0.29.4)".</div></div></article>
+
+  <article class="finding high"><div class="finding-head"><span class="badge">high</span><h3>H17 — The EventStore source-lane gitlink resolves to nothing<span class="corr">corroborated</span></h3><span class="src">VER-03 · RUB-07 · COD-05</span></div><div class="finding-body"><p>The Stack table pins <code>b1c00a79d1d34aa7ba3f58046a7844e8b3d57fd6</code>. <code>git ls-tree HEAD references/Hexalith.EventStore</code> returns <code>6b0247ac…</code>; the worktree is at <code>a568af4e…</code>. <strong>Three distinct SHAs; the spine's value is neither.</strong> This cannot be explained by the dirty-worktree delta — the value appears nowhere in the traced history: <code>4e564e43</code> (09-09) moved it <em>to</em> <code>b1c00a79</code>, then <code>3644ef63</code> — <strong>the very commit that published the spine</strong> — moved it to <code>2dd7ebfb</code>, then <code>e18f51a9</code> (09-12) to <code>6b0247ac</code>. So the pin was superseded by its own publishing commit and is now two moves behind. A source-lane SHA whose entire purpose is byte-exact reproducibility is worthless if it does not resolve, and AD-19's two release lanes can be evidenced at different source revisions — the exact substitution AD-19's <em>Prevents</em> forbids.</p><div class="fix"><b>Fix.</b> Re-derive with <code>git ls-tree HEAD references/Hexalith.EventStore</code>, state which side is authoritative, and add gitlink/package-version correspondence to AD-19's lane evidence.</div></div></article>
+</section>
+
+<section id="tail">
+  <h2>Medium and low findings</h2>
+  <p>Forty-one findings are recorded in full in the six review files. Grouped by theme:</p>
+  <div class="panel">
+    <p><strong>Undefined terms that select behavior.</strong> "Safe" also drives readiness reporting, and AD-17's "approved delivery bound" exists in neither spine nor PRD (RUB-10); "normalized subject claims" in AD-13 names no claim, no normalization form, and no comparison rule — directly contradicting AD-5's no-normalization posture two rules earlier (RUB-03); "approved low-cardinality tenant representations" has no injectivity rule, so two tenants can share a metric label and an isolation incident becomes unattributable (SEC-17).</p>
+    <p><strong>Missing dimensions the altitude owns.</strong> Backup/restore of derived stores in normal operations has no rule at all, and restoring a snapshot behind the checkpoints leaves units permanently reported <code>Indexed</code> because AD-3's monotonicity prevents healing (RUB-05); the three-operation recovery taxonomy lives only in a gap-table cell, not a Rule; test tiers are never enumerated, dropping the PRD's no-Docker unit-test contract (RUB-04); no environment taxonomy or parity invariant beyond local AppHost and production (RUB-12); developer experience, the timed G3 quickstart path, <code>samples/</code>, and <code>docs/</code> have no home (RUB-13); cost and per-unit sizing appear nowhere despite AD-18 binding NFR14 (RUB-14); the error-code catalogue has no declared owner, uniqueness rule, or immutability guarantee across three mappings (RUB-09).</p>
+    <p><strong>Authorization and disclosure gaps.</strong> Mandatory "omitted-detail handles" are an unconstrained existence oracle (SEC-12); no rule requires not-found and not-authorized to be indistinguishable, so an "actionable suggestion" naming the owner case turns opaque IDs into a probe oracle (SEC-13); background, repair, replay, and migration work has no tenant-authority source and can write projections for an erased tenant (SEC-14); nothing obliges revocation of a superseded credential, nor bounds a connection's lifetime against its credential's (SEC-15); the L1-L3 MCP gate disables publication, not in-cluster reachability (SEC-16, softened by COD-08 — there is no ingress to disable; the real residue is <code>replicas: 2</code> ungated in base).</p>
+    <p><strong>Upstream drift not yet landed.</strong> AD-18 does not carry NFR13's admission and queue-cap semantics (DRF-07); freshness vocabulary and thresholds have no owner (DRF-09); the Stack table omits the embedding provider/model/dimension AD-14 explicitly binds (DRF-11); FR49/FR51/FR52 graph data-accuracy invariants have no AD home (DRF-12); NFR32/NFR35 sit inside the bound range with zero coverage (DRF-13); the spine still lists superseded <code>architecture.md</code> and a stale traceability companion as active sources (DRF-14); NFR11, NFR31/G3, NFR21, and the FalkorDB AGPL pin duty are uncovered (DRF-15…18); the spine exposes no requirement→AD surface, which is why <code>epics.md</code> contains zero <code>AD-n</code> citations (DRF-20).</p>
+    <p><strong>Accuracy and completeness of record.</strong> FalkorDB <code>4.12.0</code> vs upstream <code>v4.20.4</code> is eight minor lines on a stateful graph store, not "qualified-but-behind" (VER-04); a production-bound preview (CommunityToolkit Aspire Dapr — with <strong>no stable 13.5.x existing upstream at all</strong>) and an RC (Fluent UI, no GA) get no verdict (VER-05); the Dapr CI runtime is two patches behind, and 1.18.3 carries a CloudEvent trace-field fix directly relevant here (VER-06); four Stack rows are true of <code>HEAD</code> but false of the dirty working tree (VER-07); Redis Stack's EOL claim is if anything understated — terminal tag, unrebuilt since 2025-11-03, hard 2026-11-30 EOL (VER-08); two cross-reference contradictions — app tokens scoped to "local channels" against AD-5, and "only the final fusion tie-break" against AD-9's two intermediate orderings (RUB-06); the Deferred hosted-Web row hands authorization to a future host, which AD-5 forbids (RUB-11); the Structural Seed omits <code>tools/</code> projects — one of which <code>ProjectReference</code>s Server and takes a direct <code>StackExchange.Redis</code> dependency outside the release-inventory gate (COD-06); the routes convention names one exception where the code has three families (COD-07); gap row 5's convergence asks for separate Falkor graphs that already exist (COD-09); "tests state tier and boundary" is aspirational at 118 traited classes with no guard (COD-10); <code>Client*/</code> "Consumer ports" names an abstraction that does not exist (COD-11); <strong>gap row 2 omits the more dangerous half — status is never persisted and <code>CaseService.cs:995-997</code> defaults it to <code>Indexed</code>, so a <code>GET</code> reports <code>Indexed</code> from syntactic-hash presence alone</strong> (COD-12); AD-19's pinning obligation names two container-default surfaces without saying which owns the qualified version (ADV-11).</p>
+  </div>
+</section>
+
+<section id="scp">
+  <h2>The sprint-change proposal's three assertions</h2>
+  <p><code>sprint-change-proposal-2026-09-12.md</code> (untracked draft) makes three claims about this spine. Each was independently verified against the actual spine and PRD text.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>#</th><th>Assertion</th><th>Verdict</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>A1</td><td>AD-14 is unphased and conflicts with the approved MVP/Phase 2/Phase 3 migration boundary</td><td class="v-fail">CONFIRMED</td><td>See C7. Needs a human ratification, not an edit.</td></tr>
+      <tr><td>A2</td><td>The binding header and trace maps must extend through FR75/NFR37/G6</td><td class="v-pwf">CONFIRMED, qualified</td><td>Two qualifications the proposal misses: there is <strong>no trace map to extend</strong> (no FR→AD or gate→AD table exists — only per-AD <code>Binds:</code> lines and the capability map), and <strong>FR75's substance is already fully adopted</strong> in AD-4 + AD-3, so for FR75 the header is the only gap. NFR37 and G6 need new normative text, not an ID refresh.</td></tr>
+      <tr><td>A3</td><td>Every alignment gap must acquire an owner, evidence path, resolved verdict, or approved phase exception</td><td class="v-pwf">CONFIRMED, qualified</td><td>The table genuinely has none of those columns. But G6 scopes the duty to <em>architecture-critical active-foundation</em> gaps, not literally every row — the proposal's own EX-OP-01 concedes this — so a <strong>classification column must precede the owner column</strong> or the spine over-scopes G6.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="crosswalk">
+  <h2>Crosswalk — all 85 raw observations</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Consolidated</th><th>Sev</th><th>Raw observations merged</th></tr></thead>
+    <tbody>
+      <tr><td>C1 Erasure target set under-enumerated</td><td><span class="tag t-c">critical</span></td><td>SEC-02, SEC-03, DRF-10</td></tr>
+      <tr><td>C2 Erasure record ownership vacuum</td><td><span class="tag t-c">critical</span></td><td>ADV-02, SEC-09, SEC-11</td></tr>
+      <tr><td>C3 AD-3 tuple has no ordering relation</td><td><span class="tag t-c">critical</span></td><td>ADV-01, RUB-01, SEC-18</td></tr>
+      <tr><td>C4 Allowlist / tenant grant two writers</td><td><span class="tag t-c">critical</span></td><td>ADV-03, SEC-07</td></tr>
+      <tr><td>C5 Graph axis seeds/limits/truncation unbound</td><td><span class="tag t-c">critical</span></td><td>ADV-04</td></tr>
+      <tr><td>C6 No identifier issuance grammar</td><td><span class="tag t-c">critical</span></td><td>SEC-01, SEC-19</td></tr>
+      <tr><td>C7 AD-14 unphased — genuine conflict</td><td><span class="tag t-c">critical</span></td><td>DRF-01, RUB-08</td></tr>
+      <tr><td>C8 G6 invisible; ledger cannot satisfy it</td><td><span class="tag t-c">critical</span></td><td>DRF-02</td></tr>
+      <tr><td>C9 AD-8 enforcement does not exist</td><td><span class="tag t-c">critical</span></td><td>COD-01</td></tr>
+      <tr><td>C10 .NET pin predates security release</td><td><span class="tag t-c">critical</span></td><td>VER-01</td></tr>
+      <tr><td>H1 <code>/events/ingest</code> tenant authority</td><td><span class="tag t-h">high</span></td><td>SEC-04</td></tr>
+      <tr><td>H2 Access telemetry authz + PostgreSQL absent</td><td><span class="tag t-h">high</span></td><td>SEC-05, COD-04</td></tr>
+      <tr><td>H3 Case authority never derived</td><td><span class="tag t-h">high</span></td><td>SEC-08</td></tr>
+      <tr><td>H4 K8s-secret gap unbounded + PRD second path</td><td><span class="tag t-h">high</span></td><td>SEC-10, DRF-06</td></tr>
+      <tr><td>H5 "Opaque"/"sanitized" telemetry undefined</td><td><span class="tag t-h">high</span></td><td>SEC-06</td></tr>
+      <tr><td>H6 "Safely" undefined, selects denominator</td><td><span class="tag t-h">high</span></td><td>ADV-05</td></tr>
+      <tr><td>H7 Candidate depth &amp; pagination unbound</td><td><span class="tag t-h">high</span></td><td>ADV-06, RUB-02</td></tr>
+      <tr><td>H8 <code>nl</code> is both axis and rerank</td><td><span class="tag t-h">high</span></td><td>ADV-07</td></tr>
+      <tr><td>H9 Evidence Packet encoding equivalence</td><td><span class="tag t-h">high</span></td><td>ADV-08, DRF-08</td></tr>
+      <tr><td>H10 <code>Contracts.V1</code> has no owner</td><td><span class="tag t-h">high</span></td><td>ADV-09</td></tr>
+      <tr><td>H11 Registry permits two lock stores</td><td><span class="tag t-h">high</span></td><td>ADV-10</td></tr>
+      <tr><td>H12 Binding header stops at FR74/NFR36/G5</td><td><span class="tag t-h">high</span></td><td>DRF-03</td></tr>
+      <tr><td>H13 NFR37 has no architectural home</td><td><span class="tag t-h">high</span></td><td>DRF-04</td></tr>
+      <tr><td>H14 "Web is a non-runnable RCL" is false</td><td><span class="tag t-h">high</span></td><td>DRF-05, COD-02</td></tr>
+      <tr><td>H15 Fusion row misstated; tests lock anti-AD-9</td><td><span class="tag t-h">high</span></td><td>COD-03</td></tr>
+      <tr><td>H16 OpenBao chart target stale at authoring</td><td><span class="tag t-h">high</span></td><td>VER-02</td></tr>
+      <tr><td>H17 EventStore gitlink resolves to nothing</td><td><span class="tag t-h">high</span></td><td>VER-03, RUB-07, COD-05</td></tr>
+      <tr><td>Medium / low tier (41 findings, see review files)</td><td><span class="tag t-ml">medium / low</span></td><td>RUB-03…06, RUB-09…14 · VER-04…09 · ADV-11 · SEC-12…17 · DRF-07, DRF-09, DRF-11…20 · COD-06…12</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="disposition">
+  <h2>Recommended disposition</h2>
+  <div class="panel">
+    <p class="lead"><strong>One human decision blocks the rest: C7 (AD-14 phasing).</strong> Everything else is an authoring change.</p>
+    <ul>
+      <li><strong>Before any affected epic is sprint-selected.</strong> C3, C2, C4, C5 are ownership and ordering holes two independently staffed epics hit on contact — the projection coordinator, the erasure workflow, the internal-authorization path, and tenant-wide graph search. C1 and C6 defeat MVP hard gates as written and are AD text changes, not new decisions.</li>
+      <li><strong>Before the spine is cited as current authority.</strong> C7 (decision), C8 (G6 + ledger columns), H12/H13 (binding header and NFR37's home).</li>
+      <li><strong>Corrections of record, applicable immediately.</strong> C9, C10, H14, H15, H16, H17, plus the medium-tier Stack and Seed completeness items. Cheapest to fix, and they are what currently make a <code>final</code> document unsafe to quote.</li>
+      <li><strong>Independently blocking G5.</strong> H6, H7, H8, and C5(b) each defeat NFR25's cross-surface determinism regardless of implementation quality; H7 and C5(b) additionally make golden-vector authorship impossible, so G5's evidence cannot be produced until they are decided.</li>
+      <li><strong>Close alongside the contract work, not after it.</strong> H9 and H10 — H10's failure mode becomes unresolvable once both the FR34 and FR19 changes have shipped.</li>
+    </ul>
+    <p>Every proposed amendment is drafted as replacement Rule text in the six review files; the adversarial and security lenses supply quotable sentences for all of theirs.</p>
+    <p><strong>Next step:</strong> run <code>/bmad-architecture update</code> against <code>architecture-memories-2026-09-09</code>, resuming from its <code>.memlog.md</code>. Keep AD IDs stable — amend Rules in place, add <code>AD-20</code> for the gate-evidence contract, never renumber. Where an amendment overrides a source input (notably H4's <code>prd.md:927</code>), offer the upstream correction in the same pass so the PRD and spine do not diverge again.</p>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  Hexalith.Memories · Architecture Spine Validation · 2026-09-12 · read-only validation, no spine or source file changed ·
+  companion markdown: <a href="validation-report.md">validation-report.md</a>
+</div></footer>
+</main>
+</body>
+</html>
