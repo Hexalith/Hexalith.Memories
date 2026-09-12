@@ -11,8 +11,8 @@ Give operators one explicitly owned, deployable, and verifiable bounded lifecycl
 - Story 27.1: Access-Telemetry Retention Ownership Decision (Decision-First)
 - Story 27.2: Bounded Retention/TTL and Purge Implementation
 - Story 27.3: Production Adapter Manifest, Unit, and Deployment-Lane Qualification
-- Story 27.21: Runtime and Control-Plane Identity
 - Story 27.4: Retention Verification, Operations Runbook, and A41 Close-Out
+- Story 27.21: Runtime and Control-Plane Identity
 
 ## Requirements & Constraints
 
@@ -21,7 +21,7 @@ Give operators one explicitly owned, deployable, and verifiable bounded lifecycl
 - Lifecycle behavior must remain defined with two writers, restart or rescheduling, backpressure, and temporary sink failure. Delivery, recovery, loss, and degradation must be observable through low-cardinality health and metrics without secrets, raw content, or unbounded tenant labels.
 - Writes, expiry, purge, and operational inspection must preserve tenant and privacy boundaries and fail closed for rejected, unknown, malformed, empty, or mismatched tenant scope. Cross-tenant negative evidence must exercise every affected storage, routing, and inspection surface.
 - Production qualification must use executed, re-runnable evidence against an immutable deployment profile. Static manifests and in-process adapter tests establish only their own contracts; they cannot substitute for running-target behavior.
-- Capacity admission must cover the one-hour, configured 24-hour, and seven-day horizons, include physical amplification, durability, indexes, and reclamation workspace, and use checked arithmetic. The ratified envelope is 250 events per second cluster-wide, up to 151,200,000 records and 144.20 GiB of canonical payload at seven days.
+- Capacity admission must include measured physical amplification, durability, indexes, and reclamation workspace. The ratified envelope is 250 events per second cluster-wide, up to 151,200,000 records and 144.20 GiB of canonical payload at the seven-day maximum.
 - Operational material must cover ownership, configuration, defaults, storage impact, monitoring, alarms, purge verification, incidents, recovery, rollback, reclamation, decommissioning, and honest RPO/RTO and assurance limits.
 
 ## Technical Decisions
@@ -36,7 +36,7 @@ Give operators one explicitly owned, deployable, and verifiable bounded lifecycl
 ## Cross-Story Dependencies
 
 - Story 27.1 ratifies ownership, topology, failure, retention, purge, validation, and assurance boundaries before Stories 27.2 or 27.3 may claim a sink/store implementation.
-- Story 27.2 owns the portable lifecycle implementation and executed lifecycle-checkpoint evidence. Its open predecessor gaps `DW 27.3-CR42` through `DW 27.3-CR46` must be closed with actual executions before Story 27.3 can enter review.
-- Story 27.3 remains the evidence recipient for C0 and the independent C2/C3/C4 adapter qualification. C0 cannot close until the five Story 27.2 gaps have executed evidence and an independent reviewer re-reviews C0.
+- Story 27.2 owns the portable lifecycle implementation and executed lifecycle-checkpoint evidence. Its documented checkpoint gaps must be closed with actual executions before Story 27.3 can enter review.
+- Story 27.3 owns C0 and the independent C2/C3/C4 adapter qualification. C0 cannot close until Story 27.2's lifecycle checkpoint has complete executed evidence and an independent reviewer accepts it.
 - Story 27.3 owns no running-target C1 gate. Story 27.21 is the registered `in-progress` owner of C1.15 and supplies its literal producer, but C1.15 remains `pending` / `not complete` until the real running-target packet is independently reviewed. The remaining twenty-four C1 gates stay held without a registered owner. Producer existence and registration enable no Production lifecycle write and do not advance Story 27.4.
-- Story 27.4 owns deployment-shaped lifecycle proof, the operations runbook, and A41 close-out. Repository machinery may proceed as `awaiting-operator`. Story 27.4 completion and A41 close-out remain blocked until Story 27.3 and properly registered C1 successors are done, every C1 gate passes on the same immutable profile hash, and terminal validation and publication evidence are complete. A41 remains open until then. **Sequencing corrected 2026-09-06 by approved Sprint Change Proposal `sprint-change-proposal-2026-09-06-story-27-4-live-producer-contract.md`.**
+- Story 27.4 owns deployment-shaped lifecycle proof, the operations runbook, and A41 close-out. Repository machinery may proceed as `awaiting-operator`, but Story 27.4 completion and A41 close-out remain blocked until Story 27.3 and properly registered C1 successors are done, every C1 gate passes on the same immutable profile hash, and terminal validation and publication evidence are complete.
