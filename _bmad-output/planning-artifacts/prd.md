@@ -31,6 +31,9 @@ workflowType: 'prd'
 
 # Product Requirements Document - Hexalith.Memories
 
+**Approved McpCli course correction (2026-09-27):** `Hexalith.McpCli` is the target Hexalith-owned CLI/MCP presentation for eligible Memories operations. `Hexalith.Memories.Cli` and `.Mcp` are obsolete migration sources; they remain compatibility assets until search, ingest, traversal, tenant isolation, identity, output, and accessibility behavior passes approved replacement or withdrawal gates. Descriptions below of their direct HTTP/Dapr hosting and distribution are historical or migration requirements, not the target topology.
+
+
 **Author:** Jerome
 **Date:** 2026-03-22
 **Updated:** 2026-09-12 — incorporated product-observable changes from the final architecture and UX spines: current-revision projection completion, durable idempotency (FR75), internal tenant authorization, case-partitioned tenant-wide graph search, capability-aware degradation/readiness, verified tenant erasure, telemetry failure posture, workload fairness, active-CLI accessibility (NFR37), Evidence Packet/no-result semantics, and exact CLI delivery evidence. Architecture reconciliation remains partial until AD-14 is phased and the spine binds FR75/NFR37. Prior (2026-09-08): thesis/launch gates, status registers, ingestion vocabulary, MIT licence, and confirmed release dates. Mechanism/topology detail lives in `addendum.md`; presentation/composition detail lives in the UX spines. Active work breakdown lives in `epics.md` and `sprint-status.yaml`.
@@ -74,7 +77,7 @@ Two additional differentiators compound later:
 
 ## Project Classification
 
-- **Project Type:** Developer Tool / API Backend (NuGet packages + DAPR service + CLI + MCP server)
+- **Project Type:** Developer Tool / API Backend (NuGet packages + DAPR service; target Hexalith-owned CLI and MCP access through `Hexalith.McpCli`). The existing Memories CLI and MCP server are obsolete migration compatibility until their operation inventory and parity gates pass.
 - **Domain:** AI Infrastructure / Knowledge Management
 - **Complexity:** Medium-High — driven by three-axis query fusion, DAPR workflow ingestion, multi-tenancy with tenant-scoped isolation, and EventStore domain + product integration
 - **Project Context:** Brownfield / change-controlled (greenfield thesis recorded March 2026; implementation and epics are the living work breakdown)
@@ -183,7 +186,7 @@ For 95%+ of EventStore events with known CausationId/CorrelationId chains, graph
 |---|---|---|
 | G1 | Hybrid vs BM25+semantic passes the thesis-gate protocol above (N ≥ 50, ΔNDCG@10 ≥ 0.02, κ ≥ 0.6) | Must pass |
 | G2 | Zero cross-tenant data leaks (NFR8) | Must pass |
-| G3 | Phase 1 onboarding <30 minutes (NFR31: README/AppHost → first CLI search) | Must pass |
+| G3 | Phase 1 onboarding <30 minutes (NFR31: README/AppHost → first CLI search); target acceptance uses `Hexalith.McpCli` after Memories enrollment, while any old Memories CLI run is labeled compatibility evidence | Must pass; rebaseline timing when shared access is available |
 | G4 | Case ownership/isolation tests (FR32–FR34/NFR8): case-scoped queries never escape their case; tenant-wide hybrid fixtures span cases with mandatory attribution while every graph seed, node, edge, and path remains case-local | Must pass |
 | G5 | Fusion explain is deterministic (NFR24–NFR26) | Must pass |
 | G6 | MVP contract closure: every MVP requirement not marked **Verified against its current wording** — including not-started, partial, hardening, implemented-without-recorded-evidence, and re-verification rows — has current evidence or a phase-specific exception approved by product and architecture. Every architecture-critical active-foundation gap follows the same rule; every gap/exception has an owner and tracking entry in `sprint-status.yaml` | Must pass |
@@ -244,7 +247,7 @@ A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the
 | 3 | Hybrid Search (syntactic, semantic, graph — independently available, then RRF) | Core hypothesis |
 | 4 | Case/Folder Model (create/delete, strict ownership, case-scoped graph) | Collaborative memory structure |
 | 5 | Tenant Isolation (tenant-scoped principals + indexes, NFR8) | Zero-leak hard gate |
-| 6 | CLI — every row tagged Phase 1 in the **CLI surface** table (CLI Specification); that table, not this row, is the verb list | Thesis validation tooling |
+| 6 | `Hexalith.McpCli` target CLI for the approved Phase 1 operation inventory; the **CLI surface** table records legacy compatibility verbs and required output semantics | Thesis validation tooling; shared-surface qualification required |
 | 7 | Benchmark Suite (thesis-gate protocol: N ≥ 50, BM25+semantic control, ΔNDCG@10 ≥ 0.02) | Thesis validation (G1) |
 
 **Phase 1 graph inventory (decision, 2026-09-08):** the graph *mechanics* — typed edge taxonomy, traversal with depth and edge-type filters, gap markers, chronological ordering, confidence promotion (FR46–FR52) — are MVP and shipped by Epics 1 and 4. The graph *population* in Phase 1 is what file/URL ingest can create: `contains` (case membership), `references` (explicit link or AI-inferred similarity), `annotates` (FR37), and `caused_by`/`correlated_with` only when ingested metadata already carries CausationId/CorrelationId. Automatic causal population from an event stream is Phase 1.5 (FR59–FR62). Hybrid fuses *available* axes; the PRD does not claim causal completeness on a folder tree, and the thesis-gate corpus must reflect the Phase 1 population, not a synthetic causal graph.
@@ -256,8 +259,8 @@ A Phase 1.5 launch failure is a no-go, not a slip. It does not pull MCP into the
 | # | Feature | Validates |
 |---|---|---|
 | 1 | EventStore product integration package `Hexalith.Memories.EventStore` (DAPR pub/sub through the Memories Server sidecar, auto-discovery, dual embedding, causal chains) | Launch gates L2 + L3 |
-| 2 | MCP Server `Hexalith.Memories.Mcp` (search, ingest, traverse, case-info with token-budget awareness) | Launch gate L1 |
-| 3 | CLI expansion: `explore` and EventStore diagnostics (the Phase 1.5 rows of the CLI surface table; `handlers list/mismatches` already shipped in Story 9.3) | Full developer experience |
+| 2 | Search, ingest, traverse, and case-info with token-budget awareness through `Hexalith.McpCli`; `Hexalith.Memories.Mcp` is the obsolete compatibility server pending approved parity | Launch gate L1, re-baseline on shared-surface readiness |
+| 3 | `Hexalith.McpCli` generic diagnostic/migration contract for approved `explore` and EventStore diagnostics; the old Phase 1.5 CLI rows remain compatibility evidence | Full developer experience after shared-surface qualification |
 
 The Memories Server is the sidecar-managed event subscriber. Hexalith modules publish CloudEvents to the configured DAPR pub/sub topic; the server sidecar delivers them to `/events/ingest`, where source-prefix routing maps events to tenant/case memory. Modules should not bypass this path with direct REST pushes for domain event streams.
 
@@ -708,8 +711,8 @@ Hexalith.Memories is a hybrid Developer Tool + API Backend delivered as NuGet pa
 | `Hexalith.Memories.Contracts` | Domain types, memory unit model, envelopes |
 | `Hexalith.Memories.Client.Rest` | Typed HTTP client for external consumers via ingress REST |
 | `Hexalith.Memories.Redis` | Compatibility-only Redis/FalkorDB API retained for existing package consumers |
-| `Hexalith.Memories.Cli` | CLI tool (dotnet global tool) |
-| `Hexalith.Memories.Mcp` | MCP server |
+| `Hexalith.Memories.Cli` | Obsolete compatibility CLI; target is the `Hexalith.McpCli` tool |
+| `Hexalith.Memories.Mcp` | Obsolete compatibility MCP server; target is `Hexalith.McpCli` |
 | `Hexalith.Memories.Aspire` | Reusable Aspire resource-model integration |
 | `Hexalith.Memories.EventStore` | EventStore product-integration package (Phase 1.5 surface) |
 | `Hexalith.Memories.Telemetry` | Shared telemetry constants and collectors |

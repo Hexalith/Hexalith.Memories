@@ -14,6 +14,9 @@ changeControlContext:
 
 # Hexalith.Memories - Epic Breakdown
 
+**Approved McpCli course correction (2026-09-27).** Stories 7.1, 10.1, and 25.5–25.6 name obsolete Memories CLI/MCP compatibility assets. Remaining work maps search, ingest, traversal, tenant isolation, token budget, deterministic output, and accessibility to `Hexalith.McpCli` and proves identity and parity before retirement. Completed stories remain historical evidence. McpCli Epic 5 owns the cutover.
+
+
 ## Overview
 
 This document provides the complete epic and story breakdown for Hexalith.Memories, decomposing the requirements from the PRD, UX Design Specification, Architecture requirements, and approved sprint change proposals into implementable stories.

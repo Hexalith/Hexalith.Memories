@@ -56,6 +56,9 @@ companions:
 
 # Architecture Spine — Hexalith.Memories
 
+**Approved McpCli course correction (2026-09-27):** `Hexalith.McpCli` is the target Hexalith-owned CLI/MCP presentation for eligible Memories operations. `Hexalith.Memories.Cli` and `.Mcp` are obsolete migration sources; they remain compatibility assets until search, ingest, traversal, tenant isolation, identity, output, and accessibility behavior passes approved replacement or withdrawal gates. Descriptions below of their direct HTTP/Dapr hosting and distribution are historical or migration requirements, not the target topology.
+
+
 ## Design Paradigm
 
 Hexalith.Memories is a **technical platform module**, not a domain module. It uses event-sourced CQRS with ports-and-adapters: Hexalith.EventStore accepts domain mutations, Dapr workflows coordinate durable projection work, Redis and FalkorDB hold rebuildable query models, and public surfaces depend on versioned contracts and client packages. AppHost, ServiceDefaults, deployment manifests, and reusable hosting integrations are therefore intentional platform responsibilities.
@@ -290,8 +293,8 @@ src/
   Hexalith.Memories.Telemetry/       # Shared telemetry contracts/helpers
   Hexalith.Memories.AccessTelemetry*/
                                       # Independent contracts, service, and clock authority
-  Hexalith.Memories.Cli/             # Operator surface; incomplete commands fail explicitly
-  Hexalith.Memories.Mcp/             # Phase 1.5 agent subset; asset presence is not activation
+  Hexalith.Memories.Cli/             # Obsolete compatibility CLI; Hexalith.McpCli is target
+  Hexalith.Memories.Mcp/             # Obsolete compatibility MCP; Hexalith.McpCli is target
   Hexalith.Memories.Web/             # Non-packable RCL; runnable specimen hosted from tests/, not product UI
   Hexalith.Memories.Aspire/           # Reusable consumer hosting integration; owns qualified image digests
   Hexalith.Memories.AppHost/          # Local composition only; never a consumer dependency

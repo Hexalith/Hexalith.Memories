@@ -18,6 +18,9 @@ date: '2026-03-24'
 
 # Architecture Decision Document
 
+**Approved McpCli course correction (2026-09-27):** `Hexalith.McpCli` is the target Hexalith-owned CLI/MCP presentation for eligible Memories operations. `Hexalith.Memories.Cli` and `.Mcp` are obsolete migration sources; they remain compatibility assets until search, ingest, traversal, tenant isolation, identity, output, and accessibility behavior passes approved replacement or withdrawal gates. Descriptions below of their direct HTTP/Dapr hosting and distribution are historical or migration requirements, not the target topology.
+
+
 _This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
 
 > **Read This First:** If you're a contributor, start with the [Gate-Blocking vs Deferrable Summary](#gate-blocking-vs-deferrable-summary) — it tells you exactly what matters for MVP and what can wait.

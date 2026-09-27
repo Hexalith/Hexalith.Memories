@@ -21,6 +21,9 @@ implementation-evidence:
 
 # EXPERIENCE — Hexalith.Memories
 
+**Approved McpCli experience correction (2026-09-27):** New Hexalith-owned CLI/MCP setup targets the `hexalith` tool and `Hexalith.McpCli` stdio server. Memories CLI/MCP commands and outputs below are migration compatibility contracts: preserve search, ingest, traversal, tenant context, identity, token-budget results, error recovery, and accessibility in the approved shared-surface inventory before retiring the old packages.
+
+
 ## Foundation
 
 The experience promise is recoverable trust: establish authorized tenant and case scope before work; expose result, source/origin, relevance meaning, freshness and degradation, omission, and the safest recovery without forcing the user to infer system state. Relevance confidence, metadata confidence, edge confidence, freshness, evidence health, projection completion, and authorization are separate concepts.
