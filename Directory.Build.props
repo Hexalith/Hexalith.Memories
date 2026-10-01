@@ -60,7 +60,8 @@
     <HexalithMemoriesHostedInFrontComposerRepo Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\Hexalith.FrontComposer.slnx')">true</HexalithMemoriesHostedInFrontComposerRepo>
   </PropertyGroup>
 
-  <!-- Detect missing root-declared git submodules under references/. -->
+  <!-- Guard current source dependencies. The declared PolymorphicSerializations checkout is optional:
+       this module has no source or project dependency on it. -->
   <ItemGroup>
     <RequiredRootSubmodule Include="references/Hexalith.Commons">
       <RootName>Hexalith.Commons</RootName>
@@ -80,9 +81,6 @@
     </RequiredRootSubmodule>
     <RequiredRootSubmodule Include="references/Hexalith.Builds">
       <RootName>Hexalith.Builds</RootName>
-    </RequiredRootSubmodule>
-    <RequiredRootSubmodule Include="references/Hexalith.PolymorphicSerializations">
-      <RootName>Hexalith.PolymorphicSerializations</RootName>
     </RequiredRootSubmodule>
   </ItemGroup>
 

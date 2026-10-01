@@ -36,7 +36,7 @@ public sealed partial class SubmoduleGuardTests
     private const string BackupSuffix = ".15-6-test-backup";
 
     [Fact]
-    public void DirectoryBuildProps_CheckSubmodulesIncludesEveryGitmodulePath()
+    public void DirectoryBuildProps_CheckSubmodulesIncludesEveryRequiredGitmodulePath()
     {
         string repoRoot = LocateRepoRoot();
         string gitmodules = File.ReadAllText(Path.Combine(repoRoot, ".gitmodules"));
@@ -44,7 +44,8 @@ public sealed partial class SubmoduleGuardTests
 
         string[] modulePaths = [.. GitmodulePathRegex()
             .Matches(gitmodules)
-            .Select(match => match.Groups["path"].Value.Trim())];
+            .Select(match => match.Groups["path"].Value.Trim())
+            .Where(path => path != "references/Hexalith.PolymorphicSerializations")];
         string[] guardedModules = [.. props
             .Descendants("RequiredRootSubmodule")
             .Select(element => element.Attribute("Include")?.Value)
@@ -53,7 +54,7 @@ public sealed partial class SubmoduleGuardTests
         guardedModules.ShouldBe(
             modulePaths,
             ignoreOrder: true,
-            customMessage: "CheckSubmodules must guard every root-declared path in .gitmodules.");
+            customMessage: "CheckSubmodules must guard every required path; the unused PolymorphicSerializations checkout is optional.");
     }
 
     [Fact]
