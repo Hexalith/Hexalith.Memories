@@ -87,6 +87,49 @@ function Assert-SecretSafeMetadata {
     }
 }
 
+function Assert-UniqueMetadataJsonProperties {
+    param([Parameter(Mandatory)][System.Text.Json.JsonElement]$Element)
+
+    if ($Element.ValueKind -eq [System.Text.Json.JsonValueKind]::Object) {
+        $names = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach ($property in $Element.EnumerateObject()) {
+            $name = $property.Name
+            if ($null -eq $name -or -not $names.Add($name)) {
+                throw 'malformed-metadata-json'
+            }
+            Assert-UniqueMetadataJsonProperties -Element $property.Value
+        }
+    }
+    elseif ($Element.ValueKind -eq [System.Text.Json.JsonValueKind]::Array) {
+        foreach ($item in $Element.EnumerateArray()) {
+            Assert-UniqueMetadataJsonProperties -Element $item
+        }
+    }
+}
+
+function Assert-MetadataJsonShape {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Json)
+
+    $options = [System.Text.Json.JsonDocumentOptions]::new()
+    $options.MaxDepth = 30
+    try {
+        $document = [System.Text.Json.JsonDocument]::Parse($Json, $options)
+    }
+    catch {
+        throw 'malformed-metadata-json'
+    }
+    try {
+        if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) {
+            throw 'malformed-metadata-json'
+        }
+        # Inspect decoded names before ConvertFrom-Json can overwrite duplicates or unwrap arrays.
+        Assert-UniqueMetadataJsonProperties -Element $document.RootElement
+    }
+    finally {
+        $document.Dispose()
+    }
+}
+
 function Invoke-KubectlObservation {
     param(
         [Parameter(Mandatory)][string]$Purpose,
@@ -495,6 +538,7 @@ try {
             '-c', 'lifecycle',
             '--', '/bin/sh', '-ec', $metadataProbe
         ) -SkipSourceHash
+        Assert-MetadataJsonShape -Json $metadataJson
         try {
             $metadata = $metadataJson | ConvertFrom-Json -Depth 30
         }

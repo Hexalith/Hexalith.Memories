@@ -728,6 +728,99 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertRegex(packets[0]["blockers"][0], r"^kubectl-metadata:.*-output-too-large$")
         self.assertNotIn("x" * 1024, json.dumps(packets[0]))
 
+    def assert_metadata_json_rejected(self, raw_metadata: str, *secrets: str) -> None:
+        scenario = copy.deepcopy(self.base_scenario)
+        pod = next(iter(scenario["metadata"]))
+        scenario["metadataRaw"] = {pod: raw_metadata}
+        result, packets, calls, evidence = self.run_gate(scenario)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(1, len(packets))
+        packet = packets[0]
+        self.assertEqual(["malformed-metadata-json"], packet["blockers"])
+        self.assertEqual("blocked", packet["producerStatus"])
+        self.assertEqual("not-evaluated", packet["gateStatus"])
+        self.assertFalse(packet["productionGatePassed"])
+        self.assertEqual("not-evaluated", packet["productionLifecycleWrites"])
+        self.assertEqual([], packet["observations"]["pods"])
+        self.assertFalse(any("AccessTelemetryLifecycle__ComponentIsAlpha" in call[-1] for call in calls))
+        self.assertFalse(any("get" in call and "pods" in call for call in calls[2:]))
+        self.assertFalse(any(entry["source"].startswith("kubectl:metadata:") for entry in packet["sources"]))
+        captured = json.dumps(packet) + result.stdout + result.stderr + json.dumps(calls)
+        for secret in secrets:
+            self.assertNotIn(secret, captured)
+        if raw_metadata.strip():
+            self.assertNotIn(raw_metadata, result.stdout + result.stderr + json.dumps(calls))
+            self.assertNotIn(
+                hashlib.sha256(raw_metadata.encode("utf-8")).hexdigest(),
+                [entry["sha256"] for entry in packet["sources"]],
+            )
+        self.assertEqual(0, next(evidence.glob("*.json")).stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+
+    def test_duplicate_metadata_properties_block_before_conversion_can_overwrite_secrets(self) -> None:
+        pod = next(iter(self.base_scenario["metadata"]))
+        base = json.dumps(self.base_scenario["metadata"][pod])
+        encoded_canary = '"' + "".join(f"\\u{ord(character):04x}" for character in TOKEN_CANARY) + '"'
+        cases = {
+            "identity": '"id": "memories-access-telemetry"',
+            "diagnostic": '"diagnostic": 1, "diagnostic": 2',
+            "escaped-name": '"\\u0064iagnostic": 1, "diagnostic": 2',
+            "empty-name": '"diagnostic": {"": 1, "": 2}',
+            "nested-object": '"diagnostic": {"details": {"message": 1, "message": 2}}',
+            "nested-array": '"diagnostic": [null, [{"message": 1, "message": 2}]]',
+            "encoded-secret": '"diagnostic": ' + encoded_canary + ', "diagnostic": "harmless"',
+            "nested-encoded-secret": '"diagnostic": [{"message": ' + encoded_canary + ', "message": "harmless"}]',
+            "encoded-credential": '"diagnostic": {"\\u0061uthorization": "fixture-credential", "authorization": ""}',
+            "undecodable-high-surrogate": '"\\ud800": ' + encoded_canary + ', "\\ufffd": "harmless"',
+            "undecodable-low-surrogate": '"\\ufffd": ' + encoded_canary + ', "\\udc00": "harmless"',
+        }
+        for name, fragment in cases.items():
+            with self.subTest(name=name):
+                raw_metadata = base[:-1] + ", " + fragment + "}"
+                json.loads(raw_metadata)
+                self.assertNotIn(TOKEN_CANARY, raw_metadata)
+                self.assert_metadata_json_rejected(raw_metadata, TOKEN_CANARY, "fixture-credential")
+
+    def test_metadata_root_arrays_and_empty_responses_block_before_conversion(self) -> None:
+        pod = next(iter(self.base_scenario["metadata"]))
+        metadata = self.base_scenario["metadata"][pod]
+        cases = {
+            "singleton": json.dumps([metadata]),
+            "nested": json.dumps([[metadata]]),
+            "multiple": json.dumps([metadata, metadata]),
+            "empty-array": "[]",
+            "null-item": "[null]",
+            "empty-response": "",
+            "whitespace-response": " \t\n ",
+        }
+        for name, raw_metadata in cases.items():
+            with self.subTest(name=name):
+                self.assert_metadata_json_rejected(raw_metadata)
+
+    def test_repeated_names_in_separate_objects_and_escaped_names_preserve_observations(self) -> None:
+        baseline_result, baseline_packets, _, _ = self.run_gate(self.base_scenario)
+        self.assertEqual(0, baseline_result.returncode, baseline_result.stderr)
+        scenario = copy.deepcopy(self.base_scenario)
+        pod = next(iter(scenario["metadata"]))
+        scenario["metadata"][pod]["diagnostic"] = {
+            "first": {"message": "harmless", "value": None},
+            "second": {"message": "ordinary", "value": False},
+            "array": [{"message": 1}, {"message": 2}],
+        }
+        raw_metadata = json.dumps(scenario["metadata"][pod]).replace('"id":', '"\\u0069d":')
+        self.assertEqual(scenario["metadata"][pod], json.loads(raw_metadata))
+        scenario["metadataRaw"] = {pod: raw_metadata}
+
+        result, packets, _, _ = self.run_gate(scenario)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(1, len(packets))
+        self.assertEqual("observed", packets[0]["producerStatus"])
+        self.assertEqual([], packets[0]["blockers"])
+        self.assertEqual(baseline_packets[0]["observations"], packets[0]["observations"])
+        self.assertEqual(baseline_packets[0]["sources"], packets[0]["sources"])
+        self.assertEqual(baseline_packets[0]["commands"], packets[0]["commands"])
+
     def test_secret_shaped_metadata_blocks_without_copying_secret_to_packet(self) -> None:
         scenario = copy.deepcopy(self.base_scenario)
         pod = next(iter(scenario["metadata"]))
