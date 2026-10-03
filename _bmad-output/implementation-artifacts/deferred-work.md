@@ -5387,7 +5387,8 @@ status: open
 origin: migrated from legacy ledger (""), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-2.md
 reason: The pre-existing collector scans raw metadata text and the allowlisted projection, so a Unicode-escaped canary in an unallowlisted property can be decoded and discarded between those checks without blocking; the packet remains secret-safe, but the original secret-shaped-output fail-closed contract is not fully enforced.
-status: open
+status: done 2026-10-03
+resolution: 2026-10-03 — Implemented `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-4.md`: scan decoded metadata names and string values, including discarded nested objects/arrays, immediately after bounded parsing and before extraction, projection hashing, or the alpha probe. Reuse the unchanged secret predicate and constant `secret-shaped-output` blocker; only the allowlisted projection is hashed. `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p '*_test.py' -v` passed 24/24 methods, including encoded canaries/tokens/credential names, safe packets and ledgers, benign projection/hash equality, and bounded invalid metadata. Only DW-719 closes; DW-718 and DW-645 remain open, C1.15 remains `pending` / `not complete`, Story 27.21 remains `in-progress`, the original handoff remains `awaiting-operator`, and no Production gate, lifecycle write, Story 27.4, or A41 status advances.
 
 ### DW-720: Two new `deferred-work.md` entries under `spec-24-9` (the syntactic-isolation-wording and classification-gap items added earlier in this same file, immediately preceding this section) use only the legacy free-text `source_spec`/`summary`/`evidence` shape, missing the `ID`/`Status`/`Source story`/`Target artifact`/`Re-open trigger` fields the file's own reformatted schema requires (as used by, e.g., the neighboring `DW-716`-`DW-718` entries and the reformatted `24.7-*` items).
 
@@ -5506,3 +5507,14 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-31-1-openbao-platform-hardening-and-documentation-2.md`
   summary: After Dapr reconnect, `AspireIngestionPipelineFixture` waits for HTTP listen and does not call the OpenBao sidecar matrix wait.
   evidence: Concurrent integration-test work. Reuse `WaitForOpenBaoSidecarMatrixReadinessAsync` on that path.
+
+
+## Deferred from: DW-719 independent review (2026-10-03)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-4.md`
+  summary: Reject duplicate Dapr metadata JSON properties before overwritten decoded secrets can escape C1.15 validation.
+  evidence: Independent review and root fake-target verification reproduced earlier Unicode-escaped diagnostic canaries and credential properties overwritten by benign duplicates. Both the canonical pre-change collector at 42995692634af9ba35982ec0e1aedec4f5576e71 and the current collector return exit zero, producerStatus observed, and no blocker. This is a verified medium pre-existing parser defect; preserve every property during scanning or reject duplicates before conversion, with regression coverage. It does not reopen the completed DW-719 decoded-object walk or supply gate acceptance.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-21-runtime-control-plane-identity-4.md`
+  summary: Preserve Dapr metadata JSON root shape and reject a singleton array containing an otherwise valid object.
+  evidence: Independent review and root fake-target verification reproduced [valid_metadata] returning exit zero and producerStatus observed on both the canonical pre-change collector at 42995692634af9ba35982ec0e1aedec4f5576e71 and the current collector because ConvertFrom-Json unwraps the root array. This is a verified medium pre-existing parser defect requiring an object-root check and a focused regression; C1.15 and operator capture/review remain pending.

@@ -761,6 +761,181 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertEqual(["secret-shaped-output"], packets[0]["blockers"])
         self.assertNotIn("Bearer-sensitive-value", json.dumps(packets[0]) + result.stdout + result.stderr)
 
+    def assert_metadata_secret_rejected(self, scenario: dict, *secrets: str) -> None:
+        result, packets, calls, evidence = self.run_gate(scenario)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(1, len(packets))
+        packet = packets[0]
+        self.assertEqual(["secret-shaped-output"], packet["blockers"])
+        self.assertEqual("blocked", packet["producerStatus"])
+        self.assertEqual("not-evaluated", packet["gateStatus"])
+        self.assertFalse(packet["productionGatePassed"])
+        self.assertEqual("not-evaluated", packet["productionLifecycleWrites"])
+        self.assertEqual([], packet["observations"]["pods"])
+        self.assertFalse(any("alpha-opt-in:" in entry["purpose"] for entry in packet["commands"]))
+        self.assertFalse(any("AccessTelemetryLifecycle__ComponentIsAlpha" in call[-1] for call in calls))
+        self.assertFalse(any("get" in call and "pods" in call for call in calls[2:]))
+        self.assertFalse(any(entry["source"].startswith("kubectl:metadata:") for entry in packet["sources"]))
+        captured = json.dumps(packet) + result.stdout + result.stderr + json.dumps(calls)
+        for secret in secrets:
+            self.assertNotIn(secret, captured)
+        for raw_metadata in scenario.get("metadataRaw", {}).values():
+            self.assertNotIn(raw_metadata, captured)
+            self.assertNotIn(
+                hashlib.sha256(raw_metadata.encode("utf-8")).hexdigest(),
+                [entry["sha256"] for entry in packet["sources"]],
+            )
+        packet_path = next(evidence.glob("*.json"))
+        self.assertEqual(0, packet_path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+
+    def test_encoded_secrets_in_discarded_names_and_values_block_before_projection(self) -> None:
+        cases = {
+            "string-canary": (TOKEN_CANARY, TOKEN_CANARY),
+            "nested-object-canary": ({"details": {"message": TOKEN_CANARY}}, TOKEN_CANARY),
+            "nested-array-canary": ([None, 0, False, [], {}, [{"message": TOKEN_CANARY}]], TOKEN_CANARY),
+            "property-name-canary": ({TOKEN_CANARY: "harmless"}, TOKEN_CANARY),
+            "hvs-token": (["harmless", {"message": "hvs.discarded_token_7429"}], "hvs.discarded_token_7429"),
+            "hvb-token": ({"message": "hvb.discarded_token_7429"}, "hvb.discarded_token_7429"),
+            "hvr-token": ([["hvr.discarded_token_7429"]], "hvr.discarded_token_7429"),
+            "decoded-whitespace": (
+                {"message": "authorization\t:\tBearer-discarded-value"},
+                "authorization\t:\tBearer-discarded-value",
+            ),
+            "decoded-assignment": (
+                {"message": "dapr_api_token = discarded_credential"},
+                "dapr_api_token = discarded_credential",
+            ),
+            "decoded-quoted-property": (
+                '"authorization": "Bearer-discarded-value"',
+                '"authorization": "Bearer-discarded-value"',
+            ),
+        }
+        for name, (diagnostic, secret) in cases.items():
+            with self.subTest(name=name):
+                scenario = copy.deepcopy(self.base_scenario)
+                pod = next(iter(scenario["metadata"]))
+                scenario["metadata"][pod]["diagnostic"] = diagnostic
+                encoded_secret = '"' + "".join(f"\\u{ord(character):04x}" for character in secret) + '"'
+                raw_metadata = json.dumps(scenario["metadata"][pod]).replace(json.dumps(secret), encoded_secret)
+                self.assertEqual(scenario["metadata"][pod], json.loads(raw_metadata))
+                self.assertNotIn(secret, raw_metadata)
+                scenario["metadataRaw"] = {pod: raw_metadata}
+
+                self.assert_metadata_secret_rejected(scenario, secret, "Bearer-discarded-value", "discarded_credential")
+
+    def test_encoded_credential_property_names_block_in_discarded_nested_objects(self) -> None:
+        credential = "Bearer-sensitive-value"
+        for name in ("authorization", "dapr-api-token", "dapr_api_token", "DaPrApiToken"):
+            with self.subTest(name=name):
+                scenario = copy.deepcopy(self.base_scenario)
+                pod = next(iter(scenario["metadata"]))
+                scenario["metadata"][pod]["diagnostic"] = [None, {name: credential}]
+                encoded_name = '"' + "".join(f"\\u{ord(character):04x}" for character in name) + '"'
+                raw_metadata = json.dumps(scenario["metadata"][pod]).replace(json.dumps(name), encoded_name)
+                self.assertEqual(scenario["metadata"][pod], json.loads(raw_metadata))
+                self.assertNotIn(json.dumps(name), raw_metadata)
+                scenario["metadataRaw"] = {pod: raw_metadata}
+
+                self.assert_metadata_secret_rejected(scenario, credential)
+
+    def test_invalid_metadata_types_and_depth_block_without_later_probes(self) -> None:
+        excessive_depth: object = "harmless"
+        for _ in range(32):
+            excessive_depth = {"nested": excessive_depth}
+        cases = {
+            "null": None,
+            "string": "ordinary",
+            "number": 7,
+            "boolean": True,
+            "empty-array": [],
+            "mixed-array": [None, "harmless", 0, False, {}, []],
+            "missing-id": {"diagnostic": "harmless"},
+            "excessive-depth": excessive_depth,
+        }
+        for name, metadata in cases.items():
+            with self.subTest(name=name):
+                scenario = copy.deepcopy(self.base_scenario)
+                pod = next(iter(scenario["metadata"]))
+                scenario["metadataRaw"] = {pod: json.dumps(metadata)}
+
+                result, packets, calls, _ = self.run_gate(scenario)
+
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual(1, len(packets))
+                self.assertEqual("blocked", packets[0]["producerStatus"])
+                self.assertEqual("not-evaluated", packets[0]["gateStatus"])
+                self.assertFalse(packets[0]["productionGatePassed"])
+                self.assertEqual([], packets[0]["observations"]["pods"])
+                self.assertFalse(any("AccessTelemetryLifecycle__ComponentIsAlpha" in call[-1] for call in calls))
+                self.assertFalse(
+                    any(entry["source"].startswith("kubectl:metadata:") for entry in packets[0]["sources"])
+                )
+                if name == "excessive-depth":
+                    self.assertEqual(["malformed-metadata-json"], packets[0]["blockers"])
+
+        encoded_canary = TOKEN_CANARY.replace("_", r"\u005f")
+        raw_metadata = '{"diagnostic":"' + encoded_canary + '"}'
+        self.assertEqual({"diagnostic": TOKEN_CANARY}, json.loads(raw_metadata))
+        scenario = copy.deepcopy(self.base_scenario)
+        pod = next(iter(scenario["metadata"]))
+        scenario["metadataRaw"] = {pod: raw_metadata}
+        self.assert_metadata_secret_rejected(scenario, TOKEN_CANARY)
+
+    def test_benign_discarded_metadata_preserves_observations_and_allowlisted_hashes(self) -> None:
+        baseline_result, baseline_packets, _, _ = self.run_gate(self.base_scenario)
+        self.assertEqual(0, baseline_result.returncode, baseline_result.stderr)
+        scenario = copy.deepcopy(self.base_scenario)
+        pod = next(iter(scenario["metadata"]))
+        diagnostic = {
+            "message": "benign-discarded-diagnostic-7429",
+            "nested": [None, 0, 1.25, True, False, "", [], {}, ["ordinary", {"detail": "harmless"}]],
+            "credentials": {
+                "authorization": "",
+                "dapr-api-token": None,
+                "dapr_api_token": 0,
+                "DaprApiToken": False,
+            },
+        }
+        nested: object = {"message": "harmless"}
+        for _ in range(10):
+            nested = {"nested": [nested]}
+        diagnostic["deep"] = nested
+        scenario["metadata"][pod]["diagnostic"] = diagnostic
+        scenario["metadata"][pod]["actors"][0]["diagnostic"] = [None, {"message": "harmless"}]
+        raw_metadata = json.dumps(scenario["metadata"][pod])
+        scenario["metadataRaw"] = {pod: raw_metadata}
+
+        result, packets, calls, evidence = self.run_gate(scenario, repeat=2)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, len(packets))
+        for packet in packets:
+            self.assertEqual("observed", packet["producerStatus"])
+            self.assertEqual([], packet["blockers"])
+            self.assertEqual("not-evaluated", packet["gateStatus"])
+            self.assertFalse(packet["productionGatePassed"])
+            self.assertEqual(baseline_packets[0]["observations"], packet["observations"])
+            self.assertEqual(baseline_packets[0]["sources"], packet["sources"])
+            self.assertEqual(baseline_packets[0]["commands"], packet["commands"])
+            self.assertNotIn("benign-discarded-diagnostic-7429", json.dumps(packet) + result.stdout + result.stderr)
+            self.assertNotIn(
+                hashlib.sha256(raw_metadata.encode("utf-8")).hexdigest(),
+                [entry["sha256"] for entry in packet["sources"]],
+            )
+            metadata_sources = [
+                entry["source"]
+                for entry in packet["sources"]
+                if entry["source"].startswith("kubectl:metadata:")
+            ]
+            self.assertEqual([f"kubectl:metadata:{pod}:allowlisted"], metadata_sources)
+        self.assertEqual(2, sum("AccessTelemetryLifecycle__ComponentIsAlpha" in call[-1] for call in calls))
+        packet_paths = list(evidence.glob("*.json"))
+        self.assertEqual(2, len({path.name for path in packet_paths}))
+        self.assertTrue(
+            all(path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH) == 0 for path in packet_paths)
+        )
+
     def test_unavailable_production_target_and_operator_residual_remain_explicitly_open(self) -> None:
         base_kustomization = BASE_KUSTOMIZATION.read_text(encoding="utf-8")
         production_kustomization = PRODUCTION_KUSTOMIZATION.read_text(encoding="utf-8")

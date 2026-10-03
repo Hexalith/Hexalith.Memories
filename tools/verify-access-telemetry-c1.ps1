@@ -57,6 +57,36 @@ function Assert-SecretSafeOutput {
     }
 }
 
+function Assert-SecretSafeMetadata {
+    param([AllowNull()][AllowEmptyString()][AllowEmptyCollection()][object]$Value)
+
+    if ($null -eq $Value) {
+        return
+    }
+    if ($Value -is [string]) {
+        Assert-SecretSafeOutput $Value
+        return
+    }
+    if ($Value -is [System.Array]) {
+        foreach ($item in $Value) {
+            Assert-SecretSafeMetadata -Value $item
+        }
+        return
+    }
+    if ($Value -is [System.Management.Automation.PSCustomObject]) {
+        foreach ($property in $Value.PSObject.Properties) {
+            Assert-SecretSafeOutput $property.Name
+            if ($property.Value -is [string]) {
+                # Preserve the existing nonempty credential-property rule after names decode.
+                $stringProperty = [ordered]@{}
+                $stringProperty[$property.Name] = $property.Value
+                Assert-SecretSafeOutput (ConvertTo-Json -InputObject $stringProperty -Compress -Depth 2)
+            }
+            Assert-SecretSafeMetadata -Value $property.Value
+        }
+    }
+}
+
 function Invoke-KubectlObservation {
     param(
         [Parameter(Mandatory)][string]$Purpose,
@@ -471,6 +501,7 @@ try {
         catch {
             throw 'malformed-metadata-json'
         }
+        Assert-SecretSafeMetadata -Value $metadata
 
         $appId = [string](Get-RequiredProperty -Object $metadata -Names @('id') -FailureCode 'metadata-app-id-missing')
         if (-not [string]::Equals($appId, $expectedAppId, [StringComparison]::Ordinal)) {
