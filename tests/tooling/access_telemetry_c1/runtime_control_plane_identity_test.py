@@ -16,6 +16,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNNER = REPO_ROOT / "tools" / "verify-access-telemetry-c1.ps1"
 FIXTURE = Path(__file__).parent / "fixtures" / "c1_15_complete.json"
 STORY = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "27-21-runtime-and-control-plane-identity.md"
+EXECUTION_SPEC = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "spec-27-21-runtime-control-plane-identity-6.md"
+HISTORICAL_HANDOFF = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "spec-27-21-runtime-control-plane-identity.md"
 SPRINT_STATUS = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
 DEFERRED_WORK = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "deferred-work.md"
 EPIC_CONTEXT = REPO_ROOT / "_bmad-output" / "implementation-artifacts" / "epic-27-context.md"
@@ -27,6 +29,17 @@ PRODUCTION_DISABLED_PATCH = (
 )
 TOKEN_CANARY = "C1_SECRET_CANARY_DO_NOT_EMIT_7429"
 TARGET_SELECTOR = "app.kubernetes.io/name=memories-access-telemetry"
+POD_IDENTITY_OUTPUT = "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}"
+OBSERVED_PACKET_PATH = (
+    "artifacts/access-telemetry-c1/C1.15/"
+    "c1.15-runtime-control-plane-identity-20261004T104156676Z-af39ddb5939044f38e438e6e584c3268.json"
+)
+OBSERVED_PACKET_SHA256 = "17d7f350c3193ce6663364b0b4e6ef52d8f319f4ca4c0a25e9886a006ff0ed87"
+INDEPENDENT_REVIEW_PATH = (
+    "artifacts/access-telemetry-c1/C1.15/"
+    "c1.15-independent-framed-packet-review-20261004T104839838701Z-1b6be26b1d604a50bc53eefcc2203278.json"
+)
+INDEPENDENT_REVIEW_SHA256 = "8a70077297e68962f12da991d76c37a58a2faa86697ea0e2212f590941e62c73"
 LIFECYCLE_DEPLOYMENT_NAMES = (
     "memories-access-telemetry",
     "memories-access-telemetry-clock",
@@ -74,11 +87,24 @@ def write_fake_kubectl(directory: Path) -> None:
                     print("unexpected selector", file=sys.stderr)
                     raise SystemExit(98)
                 prior_pod_gets = [call for call in prior_calls if "get" in call and "pods" in call]
-                if prior_pod_gets and "podsAfterRaw" in scenario:
-                    print(scenario["podsAfterRaw"])
+                raw_key = "podsAfterRaw" if prior_pod_gets else "podsRaw"
+                if raw_key in scenario:
+                    print(scenario[raw_key])
                 else:
                     pods = scenario.get("podsAfter", scenario["pods"]) if prior_pod_gets else scenario["pods"]
-                    print(json.dumps(pods))
+                    output = args[args.index("-o") + 1] if "-o" in args else ""
+                    if output == "json":
+                        print(json.dumps(pods))
+                    elif output == "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}":
+                        if not isinstance(pods, dict) or not isinstance(pods.get("items"), list):
+                            print(json.dumps(pods))
+                        else:
+                            for pod in pods["items"]:
+                                frame = [pod[field] for field in ("metadata", "status") if field in pod]
+                                print(json.dumps(frame))
+                    else:
+                        print("unsupported pod output format", file=sys.stderr)
+                        raise SystemExit(93)
                 raise SystemExit(0)
 
             if "exec" not in args:
@@ -308,6 +334,139 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         selector_index = pod_gets[0].index("-l")
         self.assertEqual(TARGET_SELECTOR, pod_gets[0][selector_index + 1])
 
+    def test_pod_probe_templates_and_environments_are_excluded_before_scanning_and_hashing(self) -> None:
+        baseline_result, baseline_packets, _, _ = self.run_gate(self.base_scenario)
+        self.assertEqual(0, baseline_result.returncode, baseline_result.stderr)
+        scenario = copy.deepcopy(self.base_scenario)
+        scenario["pods"]["items"][0]["spec"] = {
+            "containers": [{
+                "name": "lifecycle",
+                "env": [{"name": "DAPR_API_TOKEN", "value": TOKEN_CANARY}],
+                "readinessProbe": {"exec": {"command": [
+                    "/bin/sh", "-ec",
+                    'wget -qO- --header="dapr-api-token: ${APP_API_TOKEN}" http://127.0.0.1:8080/ready >/dev/null',
+                ]}},
+            }],
+        }
+        scenario["podsAfter"] = copy.deepcopy(scenario["pods"])
+        scenario["podsAfter"]["items"][0]["spec"]["diagnostic"] = "authorization: Bearer-discarded-value"
+
+        result, packets, calls, _ = self.run_gate(scenario)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("observed", packets[0]["producerStatus"])
+        self.assertEqual(baseline_packets[0]["observations"], packets[0]["observations"])
+        self.assertEqual(baseline_packets[0]["sources"], packets[0]["sources"])
+        self.assertEqual(baseline_packets[0]["commands"], packets[0]["commands"])
+        pod_gets = [call for call in calls if "get" in call and "pods" in call]
+        self.assertEqual(2, len(pod_gets))
+        self.assertTrue(all(call[call.index("-o") + 1] == POD_IDENTITY_OUTPUT for call in pod_gets))
+        serialized = json.dumps(packets) + result.stdout + result.stderr + json.dumps(calls)
+        for discarded in (TOKEN_CANARY, "Bearer-discarded-value", "APP_API_TOKEN", "readinessProbe"):
+            self.assertNotIn(discarded, serialized)
+        full_pod_hashes = {
+            hashlib.sha256((json.dumps(scenario[key]) + "\n").encode("utf-8")).hexdigest()
+            for key in ("pods", "podsAfter")
+        }
+        self.assertTrue(full_pod_hashes.isdisjoint(entry["sha256"] for entry in packets[0]["sources"]))
+
+    def test_secrets_in_selected_pod_metadata_and_status_still_block_without_provenance(self) -> None:
+        for phase in ("initial", "recheck"):
+            for field in ("metadata", "status"):
+                for encoding in ("literal", "escaped"):
+                    with self.subTest(phase=phase, field=field, encoding=encoding):
+                        scenario = copy.deepcopy(self.base_scenario)
+                        key = "pods"
+                        if phase == "recheck":
+                            key = "podsAfter"
+                            scenario[key] = copy.deepcopy(scenario["pods"])
+                        scenario[key]["items"][0][field]["diagnostic"] = TOKEN_CANARY
+                        projection = [
+                            scenario[key]["items"][0]["metadata"],
+                            scenario[key]["items"][0]["status"],
+                        ]
+                        raw_projection = json.dumps(projection)
+                        if encoding == "escaped":
+                            encoded_secret = "".join(f"\\u{ord(character):04x}" for character in TOKEN_CANARY)
+                            raw_projection = raw_projection.replace(TOKEN_CANARY, encoded_secret)
+                            scenario["podsAfterRaw" if phase == "recheck" else "podsRaw"] = raw_projection
+
+                        result, packets, calls, _ = self.run_gate(scenario)
+
+                        self.assertNotEqual(0, result.returncode)
+                        self.assertEqual(["secret-shaped-output"], packets[0]["blockers"])
+                        self.assertEqual("blocked", packets[0]["producerStatus"])
+                        self.assertEqual([], packets[0]["observations"]["pods"])
+                        self.assertEqual("not-evaluated", packets[0]["gateStatus"])
+                        self.assertFalse(packets[0]["productionGatePassed"])
+                        self.assertNotIn(TOKEN_CANARY, json.dumps(packets) + result.stdout + result.stderr + json.dumps(calls))
+                        if phase == "initial":
+                            self.assertFalse(any("exec" in call for call in calls))
+                        for rejected in (raw_projection, raw_projection + "\n"):
+                            rejected_hash = hashlib.sha256(rejected.encode("utf-8")).hexdigest()
+                            self.assertNotIn(rejected_hash, [entry["sha256"] for entry in packets[0]["sources"]])
+
+    def test_malformed_pod_identity_projection_pairs_and_types_fail_closed(self) -> None:
+        pod = self.base_scenario["pods"]["items"][0]
+        metadata, status = pod["metadata"], pod["status"]
+        cases = {
+            "object-root": {"items": [pod]},
+            "null-root": None,
+            "scalar-root": "ordinary",
+            "odd-pair": [metadata],
+            "extra-entry": [metadata, status, metadata],
+            "null-metadata": [None, status],
+            "scalar-metadata": [7, status],
+            "array-metadata": [[], status],
+            "null-status": [metadata, None],
+            "boolean-status": [metadata, True],
+            "string-status": [metadata, "Running"],
+            "array-status": [metadata, []],
+            "empty-selected-frame": [],
+            "identityless-metadata": [{"annotations": {}}, status],
+            "metadata-in-status-slot": [metadata, metadata],
+        }
+        raw_cases = {name: json.dumps(projection) for name, projection in cases.items()}
+        valid_frame = json.dumps([metadata, status])
+        raw_cases.update({
+            "malformed-first-frame": "{not-json",
+            "trailing-non-json": valid_frame + "\nordinary",
+            "malformed-second-frame": valid_frame + "\n[",
+            "empty-second-frame": valid_frame + "\n[]",
+            "one-field-second-frame": valid_frame + "\n" + json.dumps([metadata]),
+            "flattened-two-pod-union": json.dumps([metadata, metadata, status, status]),
+        })
+        for phase in ("initial", "recheck"):
+            for name, raw_projection in raw_cases.items():
+                with self.subTest(phase=phase, name=name):
+                    scenario = copy.deepcopy(self.base_scenario)
+                    scenario["podsAfterRaw" if phase == "recheck" else "podsRaw"] = raw_projection
+                    result, packets, calls, _ = self.run_gate(scenario)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertEqual(["malformed-pod-list-json"], packets[0]["blockers"])
+                    self.assertEqual([], packets[0]["observations"]["pods"])
+                    self.assertEqual("not-evaluated", packets[0]["gateStatus"])
+                    self.assertFalse(packets[0]["productionGatePassed"])
+                    rejected_source = (
+                        "kubectl:lifecycle-pods-recheck:identity" if phase == "recheck"
+                        else "kubectl:lifecycle-pods:identity"
+                    )
+                    self.assertFalse(any(entry["source"] == rejected_source for entry in packets[0]["sources"]))
+                    if phase == "initial":
+                        self.assertFalse(any("exec" in call for call in calls))
+            with self.subTest(phase=phase, name="empty-sequence"):
+                scenario = copy.deepcopy(self.base_scenario)
+                scenario["podsAfterRaw" if phase == "recheck" else "podsRaw"] = ""
+                result, packets, calls, _ = self.run_gate(scenario)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual(
+                    ["running-pod-changed" if phase == "recheck" else "no-running-lifecycle-pod"],
+                    packets[0]["blockers"],
+                )
+                self.assertEqual([], packets[0]["observations"]["pods"])
+                if phase == "initial":
+                    self.assertFalse(any("exec" in call for call in calls))
+
     def test_partial_or_wrong_identity_observation_blocks_fail_closed(self) -> None:
         cases = {}
         missing_scheduler = copy.deepcopy(self.base_scenario)
@@ -416,6 +575,126 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
                 self.assertEqual(["running-target-identity-drift"], packets[0]["blockers"])
                 self.assertEqual("not-evaluated", packets[0]["gateStatus"])
+
+    def test_framed_multi_pod_projection_preserves_identity_and_phase_provenance(self) -> None:
+        scenario = copy.deepcopy(self.base_scenario)
+        first_name, second_name = self.add_second_pod(scenario)
+        first, second = scenario["pods"]["items"]
+        first["metadata"]["annotations"] = {"capture-ordinal": "first"}
+        second["metadata"]["annotations"] = {"capture-ordinal": "second"}
+        first["status"]["message"] = "first stable observation"
+        second["status"]["message"] = "second stable observation"
+        common_digest = "sha256:" + "b" * 64
+        expected_images = {
+            first_name: "docker-pullable://ghcr.io/dapr/daprd@" + common_digest,
+            second_name: "ghcr.io/dapr/daprd@" + common_digest,
+        }
+        for pod in (first, second):
+            sidecar = next(status for status in pod["status"]["containerStatuses"] if status["name"] == "daprd")
+            sidecar["imageID"] = expected_images[pod["metadata"]["name"]]
+        scenario["podsAfter"] = copy.deepcopy(scenario["pods"])
+        scenario["podsAfter"]["items"].reverse()
+        second_after, first_after = scenario["podsAfter"]["items"]
+        first_after["status"]["message"] = "first stable recheck"
+        second_after["status"]["message"] = "second stable recheck"
+
+        result, packets, calls, _ = self.run_gate(scenario)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        packet = packets[0]
+        self.assertEqual("observed", packet["producerStatus"])
+        self.assertEqual(
+            [(first_name, first["metadata"]["uid"]), (second_name, second["metadata"]["uid"])],
+            [(pod["pod"], pod["podUid"]) for pod in packet["observations"]["pods"]],
+        )
+        for observed in packet["observations"]["pods"]:
+            metadata = scenario["metadata"][observed["pod"]]
+            self.assertEqual(metadata["id"], observed["appId"])
+            self.assertEqual(metadata["runtimeVersion"], observed["runtimeVersion"])
+            self.assertEqual(metadata["enabledFeatures"], observed["enabledFeatures"])
+            self.assertEqual(expected_images[observed["pod"]], observed["sidecarImageId"])
+            self.assertEqual(common_digest, observed["sidecarImageDigest"])
+        pod_gets = [call for call in calls if "get" in call and "pods" in call]
+        self.assertEqual(2, len(pod_gets))
+        self.assertTrue(all(call[call.index("-o") + 1] == POD_IDENTITY_OUTPUT for call in pod_gets))
+        self.assertEqual(6, len([call for call in calls if "exec" in call]))
+
+        # Derive exact source bytes independently of the fake and collector parser.
+        # Real kubectl range emits one pair array per pod, separated by newlines.
+        discovery_json = json.dumps([first["metadata"], first["status"]]) + "\n" + json.dumps([
+            second["metadata"], second["status"],
+        ])
+        recheck_json = json.dumps([second_after["metadata"], second_after["status"]]) + "\n" + json.dumps([
+            first_after["metadata"], first_after["status"],
+        ])
+        discovery_hash = hashlib.sha256(discovery_json.encode("utf-8")).hexdigest()
+        recheck_hash = hashlib.sha256(recheck_json.encode("utf-8")).hexdigest()
+        self.assertNotEqual(discovery_hash, recheck_hash)
+        for source, expected_hash in (
+            ("kubectl:lifecycle-pods:identity", discovery_hash),
+            ("kubectl:lifecycle-pods-recheck:identity", recheck_hash),
+        ):
+            self.assertEqual(
+                [{"source": source, "sha256": expected_hash}],
+                [entry for entry in packet["sources"] if entry["source"] == source],
+            )
+        self.assertEqual("not-evaluated", packet["gateStatus"])
+        self.assertFalse(packet["productionGatePassed"])
+        self.assertEqual("not-evaluated", packet["productionLifecycleWrites"])
+
+    def test_framed_running_and_pending_pods_preserve_running_identity_after_reordering(self) -> None:
+        scenario = copy.deepcopy(self.base_scenario)
+        running_name, pending_name = self.add_second_pod(scenario)
+        running, pending = scenario["pods"]["items"]
+        pending["status"]["phase"] = "Pending"
+        scenario["podsAfter"] = copy.deepcopy(scenario["pods"])
+        scenario["podsAfter"]["items"].reverse()
+
+        result, packets, calls, _ = self.run_gate(scenario)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        packet = packets[0]
+        self.assertEqual("observed", packet["producerStatus"])
+        self.assertEqual(
+            [(running_name, running["metadata"]["uid"])],
+            [(pod["pod"], pod["podUid"]) for pod in packet["observations"]["pods"]],
+        )
+        exec_pods = [call[call.index("exec") + 1] for call in calls if "exec" in call]
+        self.assertEqual([running_name] * 3, exec_pods)
+        self.assertNotIn(pending_name, exec_pods)
+        self.assertEqual("not-evaluated", packet["gateStatus"])
+        self.assertFalse(packet["productionGatePassed"])
+        self.assertEqual("not-evaluated", packet["productionLifecycleWrites"])
+
+    def test_framed_projection_preserves_omitted_fields_as_malformed_selected_pods(self) -> None:
+        for phase in ("initial", "recheck"):
+            for missing_fields in (("metadata",), ("status",), ("metadata", "status")):
+                with self.subTest(phase=phase, missing_fields=missing_fields):
+                    scenario = copy.deepcopy(self.base_scenario)
+                    self.add_second_pod(scenario)
+                    key = "pods"
+                    if phase == "recheck":
+                        key = "podsAfter"
+                        scenario[key] = copy.deepcopy(scenario["pods"])
+                        scenario[key]["items"].reverse()
+                    # A valid sibling must never hide this selected Pod's malformed frame.
+                    for field in missing_fields:
+                        del scenario[key]["items"][1][field]
+
+                    result, packets, calls, _ = self.run_gate(scenario)
+
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertEqual(["malformed-pod-list-json"], packets[0]["blockers"])
+                    self.assertEqual([], packets[0]["observations"]["pods"])
+                    rejected_source = (
+                        "kubectl:lifecycle-pods-recheck:identity" if phase == "recheck"
+                        else "kubectl:lifecycle-pods:identity"
+                    )
+                    self.assertFalse(any(entry["source"] == rejected_source for entry in packets[0]["sources"]))
+                    self.assertEqual("not-evaluated", packets[0]["gateStatus"])
+                    self.assertFalse(packets[0]["productionGatePassed"])
+                    if phase == "initial":
+                        self.assertFalse(any("exec" in call for call in calls))
 
     def test_duplicate_pod_uid_blocks_before_exec_but_case_differing_uid_is_distinct(self) -> None:
         duplicate_uid = copy.deepcopy(self.base_scenario)
@@ -1029,7 +1308,7 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
             all(path.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH) == 0 for path in packet_paths)
         )
 
-    def test_unavailable_production_target_and_operator_residual_remain_explicitly_open(self) -> None:
+    def test_accepted_c1_15_identity_evidence_preserves_production_and_other_gate_restrictions(self) -> None:
         base_kustomization = BASE_KUSTOMIZATION.read_text(encoding="utf-8")
         production_kustomization = PRODUCTION_KUSTOMIZATION.read_text(encoding="utf-8")
         base_deployments = LIFECYCLE_DEPLOYMENTS.read_text(encoding="utf-8")
@@ -1075,11 +1354,15 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
 
         story_text = STORY.read_text(encoding="utf-8")
         sprint_status = SPRINT_STATUS.read_text(encoding="utf-8")
-        self.assertRegex(story_text, r"(?m)^Status: in-progress$")
+        story_state = re.search(r"(?m)^Status: (review|done)$", story_text)
+        self.assertIsNotNone(story_state)
         self.assertRegex(
             sprint_status,
-            r"(?m)^  27-21-runtime-and-control-plane-identity: in-progress$",
+            rf"(?m)^  27-21-runtime-and-control-plane-identity: {story_state.group(1)}$",
         )
+        spec_text = EXECUTION_SPEC.read_text(encoding="utf-8")
+        expected_spec_state = "in-review" if story_state.group(1) == "review" else "done"
+        self.assertRegex(spec_text, rf"(?m)^status: '{expected_spec_state}'$")
         self.assertRegex(
             sprint_status,
             r"(?m)^  27-4-retention-verification-operations-runbook-and-a41-close-out: (?:backlog|in-progress)$",
@@ -1097,12 +1380,74 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         ]
         self.assertEqual(1, len(slice_rows))
         slice_cells = [cell.strip() for cell in slice_rows[0].strip("|").split("|")]
-        self.assertEqual(["pending", "not complete"], slice_cells[-2:])
+        self.assertEqual(["accepted", "complete"], slice_cells[-2:])
+        self.assertEqual("`/root/review_c1_packet`", slice_cells[-3])
+        self.assertEqual(
+            [f"../../{OBSERVED_PACKET_PATH}", f"../../{INDEPENDENT_REVIEW_PATH}"],
+            re.findall(r"\]\(([^)]+)\)", slice_cells[3]),
+        )
+        self.assertIn(OBSERVED_PACKET_SHA256, slice_cells[3])
+        self.assertIn(INDEPENDENT_REVIEW_SHA256, slice_cells[3])
         self.assertIn(
             "pwsh ./tools/verify-access-telemetry-c1.ps1 -Gate C1.15 -ProfileId PG-ONPREM-1 "
             "-EvidenceDirectory ./artifacts/access-telemetry-c1/C1.15",
             story_text,
         )
+
+        expected_disposition = {
+            "Independent reviewer": "/root/review_c1_packet",
+            "Packet disposition": "accepted",
+            "Accepted scope": "DW-718 capture/review closure and C1.15 runtime/control-plane identity capture only",
+            "Observed packet": f"[Observed packet](../../{OBSERVED_PACKET_PATH})",
+            "Observed packet SHA-256": OBSERVED_PACKET_SHA256,
+            "Independent review artifact": f"[Independent packet review](../../{INDEPENDENT_REVIEW_PATH})",
+            "Independent review SHA-256": INDEPENDENT_REVIEW_SHA256,
+            "C1.15 review state": "accepted",
+            "C1.15 completion state": "complete",
+            "Production acceptance": "not-evaluated",
+            "productionGatePassed": "false",
+            "Production write enablement authorized": "false",
+            "Other C1 gates discharged": "none",
+            "C1.25 security approval": "false",
+            "Story 27.4 advanced": "false",
+            "A41 closed": "false",
+            "Human sign-off": "false",
+        }
+        # Bind acceptance to its tracked exact section and immutable references.
+        # Local ignored evidence files need not exist in a fresh CI checkout.
+        for label, text in (("story", story_text), ("execution-spec", spec_text)):
+            with self.subTest(record=label):
+                disposition_section = re.search(
+                    r"(?ms)^## 2026-10-04 Independent C1\.15 Packet Disposition\s*$.*?(?=^## |\Z)",
+                    text,
+                )
+                self.assertIsNotNone(disposition_section)
+                actual_disposition = {}
+                for line in disposition_section.group(0).splitlines():
+                    if not line.startswith("| "):
+                        continue
+                    cells = [cell.strip().strip("`") for cell in line.strip("|").split("|")]
+                    self.assertEqual(2, len(cells))
+                    if cells[0] == "Field" or cells[0].startswith(":--"):
+                        continue
+                    self.assertNotIn(cells[0], actual_disposition)
+                    actual_disposition[cells[0]] = cells[1]
+                self.assertEqual(expected_disposition, actual_disposition)
+
+        handoff_text = HISTORICAL_HANDOFF.read_text(encoding="utf-8")
+        self.assertRegex(handoff_text, r"(?m)^status: 'awaiting-operator'$")
+        historical_halt = re.search(r"(?ms)^## 2026-09-05 DW-718 Halt Note\s*$.*?\Z", handoff_text)
+        self.assertIsNotNone(historical_halt)
+        self.assertIn("DW-718 capture was halted", historical_halt.group(0))
+        self.assertIn("no Ready", historical_halt.group(0))
+        self.assertIn("awaiting-operator", historical_halt.group(0))
+
+        result, packets, _, _ = self.run_gate(self.base_scenario)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("observed", packets[0]["producerStatus"])
+        self.assertEqual("not-evaluated", packets[0]["gateStatus"])
+        self.assertFalse(packets[0]["productionGatePassed"])
+        self.assertEqual("not-evaluated", packets[0]["productionLifecycleWrites"])
 
         change_log_match = re.search(
             r"(?ms)^## Change Log\s*$.*?(?=^## |\Z)",
@@ -1130,6 +1475,9 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
             "The remaining twenty-four C1 gates stay held without a registered owner.",
             epic_context,
         )
+        self.assertIn(INDEPENDENT_REVIEW_PATH, epic_context)
+        self.assertIn(INDEPENDENT_REVIEW_SHA256, epic_context)
+        self.assertIn(OBSERVED_PACKET_SHA256, epic_context)
 
         deferred_work = DEFERRED_WORK.read_text(encoding="utf-8")
         deferred_sections = {}
@@ -1144,7 +1492,14 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         self.assertRegex(deferred_sections["17"], r"(?m)^status: open$")
         residual = deferred_sections["718"]
         self.assertIn("27.21-C1.15-REAL-PACKET-REVIEW", residual)
-        self.assertRegex(residual, r"(?m)^status: open$")
+        self.assertRegex(residual, r"(?m)^status: done 2026-10-04$")
+        resolution = re.search(r"(?m)^resolution: 2026-10-04 .*?$", residual)
+        self.assertIsNotNone(resolution)
+        for bound_evidence in (
+            OBSERVED_PACKET_PATH, OBSERVED_PACKET_SHA256,
+            INDEPENDENT_REVIEW_PATH, INDEPENDENT_REVIEW_SHA256, "/root/review_c1_packet",
+        ):
+            self.assertIn(bound_evidence, resolution.group(0))
 
     def test_unsupported_gate_fails_parameter_validation_before_producer_runs(self) -> None:
         result, packets, calls, evidence = self.run_gate(

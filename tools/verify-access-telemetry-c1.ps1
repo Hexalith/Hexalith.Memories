@@ -23,6 +23,7 @@ $expectedContext = 'jpiquot@local'
 $targetSelector = 'app.kubernetes.io/name=memories-access-telemetry'
 $expectedAppId = 'memories-access-telemetry'
 $expectedActorType = 'AccessTelemetryLifecycleActor'
+$podIdentityOutput = "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}"
 $script:commandLedger = [System.Collections.Generic.List[object]]::new()
 $script:sourceLedger = [System.Collections.Generic.List[object]]::new()
 
@@ -300,6 +301,84 @@ function Get-RequiredProperty {
     throw $FailureCode
 }
 
+function ConvertFrom-PodIdentityProjection {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Json)
+
+    if ($null -eq ('C1PodIdentityJsonSequence' -as [type])) {
+        # Parse the bounded kubectl sequence without requiring newer multiple-value JSON APIs.
+        Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Text.Json;
+
+/// <summary>Reads the bounded per-Pod JSON frames emitted by kubectl range.</summary>
+public static class C1PodIdentityJsonSequence
+{
+    /// <summary>Parses every JSON value strictly and retains its original JSON text.</summary>
+    /// <param name="json">The already bounded selected-field response.</param>
+    /// <returns>Detached frame elements whose documents have been disposed.</returns>
+    public static JsonElement[] Parse(string json)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        var frames = new List<JsonElement>();
+        var options = new JsonReaderOptions { MaxDepth = 30 };
+        int offset = 0;
+        while (offset < bytes.Length)
+        {
+            var reader = new Utf8JsonReader(bytes.AsSpan(offset), options);
+            if (!reader.Read())
+            {
+                break;
+            }
+            using (JsonDocument document = JsonDocument.ParseValue(ref reader))
+            {
+                frames.Add(document.RootElement.Clone());
+            }
+            offset += checked((int)reader.BytesConsumed);
+        }
+        return frames.ToArray();
+    }
+}
+'@
+    }
+
+    $items = [System.Collections.Generic.List[object]]::new()
+    try {
+        $frames = [C1PodIdentityJsonSequence]::Parse($Json)
+        foreach ($frame in $frames) {
+            if ($frame.ValueKind -ne [System.Text.Json.JsonValueKind]::Array -or
+                $frame.GetArrayLength() -ne 2) {
+                throw 'malformed-pod-list-json'
+            }
+            Assert-UniqueMetadataJsonProperties -Element $frame
+            $projection = ConvertFrom-Json -InputObject $frame.GetRawText() -Depth 30 -NoEnumerate
+            $metadata = $projection[0]
+            $status = $projection[1]
+            if ($metadata -isnot [System.Management.Automation.PSCustomObject] -or
+                $status -isnot [System.Management.Automation.PSCustomObject] -or
+                ($null -eq $metadata.PSObject.Properties['name'] -and
+                    $null -eq $metadata.PSObject.Properties['uid']) -or
+                $null -eq $status.PSObject.Properties['phase']) {
+                throw 'malformed-pod-list-json'
+            }
+            # Preserve raw types and fully scan decoded selected fields before any provenance.
+            Assert-SecretSafeMetadata -Value $projection
+            $items.Add([pscustomobject]@{
+                metadata = $metadata
+                status = $status
+            })
+        }
+    }
+    catch {
+        if ($_.Exception.Message -eq 'secret-shaped-output') {
+            throw 'secret-shaped-output'
+        }
+        throw 'malformed-pod-list-json'
+    }
+    return [pscustomobject]@{ items = $items.ToArray() }
+}
+
 function ConvertTo-ExplicitBoolean {
     param(
         [AllowEmptyString()][string]$Value,
@@ -436,17 +515,10 @@ try {
         '-n', $namespace,
         'get', 'pods',
         '-l', $targetSelector,
-        '-o', 'json'
-    )
-    try {
-        $podsPayload = $podsJson | ConvertFrom-Json -Depth 30
-    }
-    catch {
-        throw 'malformed-pod-list-json'
-    }
-    if ($null -eq $podsPayload.items -or $podsPayload.items -isnot [System.Array]) {
-        throw 'malformed-pod-list-json'
-    }
+        '-o', $podIdentityOutput
+    ) -SkipSourceHash
+    $podsPayload = ConvertFrom-PodIdentityProjection -Json $podsJson
+    Add-SourceHash 'kubectl:lifecycle-pods:identity' $podsJson
 
     $runningPods = @($podsPayload.items | Where-Object {
         [string]::Equals([string]$_.status.phase, 'Running', [StringComparison]::Ordinal)
@@ -663,17 +735,10 @@ try {
         '-n', $namespace,
         'get', 'pods',
         '-l', $targetSelector,
-        '-o', 'json'
-    )
-    try {
-        $podsAfterPayload = $podsAfterJson | ConvertFrom-Json -Depth 30
-    }
-    catch {
-        throw 'malformed-pod-list-json'
-    }
-    if ($null -eq $podsAfterPayload.items -or $podsAfterPayload.items -isnot [System.Array]) {
-        throw 'malformed-pod-list-json'
-    }
+        '-o', $podIdentityOutput
+    ) -SkipSourceHash
+    $podsAfterPayload = ConvertFrom-PodIdentityProjection -Json $podsAfterJson
+    Add-SourceHash 'kubectl:lifecycle-pods-recheck:identity' $podsAfterJson
 
     $runningPodsAfter = @($podsAfterPayload.items | Where-Object {
         [string]::Equals([string]$_.status.phase, 'Running', [StringComparison]::Ordinal)
