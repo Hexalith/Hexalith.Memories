@@ -47,6 +47,29 @@ public sealed class AccessTelemetryA41CloseOutTests
     }
 
     [Fact]
+    public void CanonicalMatrix_UsesCurrentVerifierProfileAndRejectsHistoricalIdentity()
+    {
+        var document = new MarkdownContractDocument(ReadRepoFile(EvidenceMatrix));
+        IReadOnlyList<IReadOnlyList<string>> identity = document.GetTableRows("Immutable decision identity");
+        string profileId = identity.Single(row => row[0] == "Profile ID")[1].Trim('`');
+        string profileHash = identity.Single(row => row[0] == "Profile SHA-256")[1].Trim('`');
+        string verifier = ReadRepoFile("tools/verify_access_telemetry_lifecycle.py");
+
+        verifier.ShouldContain($"EXPECTED_PROFILE_ID = '{profileId}'", Case.Sensitive);
+        verifier.ShouldContain($"CURRENT_PROFILE_SHA256 = '{profileHash}'", Case.Sensitive);
+        profileId.ShouldNotBe("postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1");
+        profileHash.ShouldNotBe("dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14");
+
+        string c0 = document.GetTableRows("Canonical C0-C6 matrix")[0][2];
+        c0.ShouldContain("`PG-ONPREM-2`", Case.Sensitive);
+        c0.ShouldNotContain("`PG-ONPREM-1`", Case.Sensitive);
+
+        string runbook = ReadRepoFile("docs/operations/access-telemetry-lifecycle.md");
+        runbook.ShouldContain($"\"profile_sha256\":\"{profileHash}\"", Case.Sensitive);
+        runbook.ShouldContain($"--profile-id {profileId}", Case.Sensitive);
+    }
+
+    [Fact]
     public void ProductionOverlay_RemainsFailClosedWhileCanonicalMatrixIsPending()
     {
         string overlay = ReadRepoFile("deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml");

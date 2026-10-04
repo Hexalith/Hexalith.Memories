@@ -11,14 +11,17 @@ as executed Production evidence.
 Production lifecycle writes remain disabled and
 `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward/open until the complete
 same-profile evidence, approval, terminal-validation, close-out, and remote-publish
-chain passes.
+chain passes. The [PG-ONPREM-2 adoption record](../../planning-artifacts/c1-security-prerequisites-2026-10-04/adoption.md)
+and its [verification receipt](../../planning-artifacts/c1-security-prerequisites-2026-10-04/adoption-verification-evidence.json)
+confirm repository bytes offline only; they provide no running-target gate pass or
+independent approval. Historical PG-ONPREM-1 C1.15 capture grants no PG2 credit.
 
 ## Immutable decision identity
 
 | Field | Value |
 | :---- | :---- |
-| Profile ID | `postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1` |
-| Profile SHA-256 | `dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14` |
+| Profile ID | `postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2` |
+| Profile SHA-256 | `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` |
 | Workload SHA-256 | `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f` |
 | Production lifecycle writes | `disabled` |
 | A41 status | `carried-forward/open` |
@@ -28,13 +31,18 @@ chain passes.
 
 | Checkpoint | State | Repository validation | Required external evidence | Owner | Blocker / operator action |
 | :--------- | :---- | :-------------------- | :------------------------- | :---- | :------------------------ |
-| C0 exact adapter profile | `repository-validated` | Exact `PG-ONPREM-1` profile, hash, workload, parser, and pre-query identity contracts have deterministic guards. This is not Production proof. | Immutable exact-profile qualification packet with executed commands and recomputed source/artifact identity. | Platform Operations | `operator-pending`: execute the authorized C0 producer on the declared target. |
+| C0 exact adapter profile | `repository-validated` | Exact `PG-ONPREM-2` profile, hash, workload, parser, and pre-query identity contracts have deterministic guards. This is not Production proof. | Immutable exact-profile qualification packet with executed commands and recomputed source/artifact identity. | Platform Operations | `operator-pending`: execute the authorized C0 producer on the declared target. |
 | C1 canonical predecessor | `operator-pending` | The verifier requires each canonical `C1.1` through `C1.25` result and rejects a synthetic aggregate. | Twenty-five individually attributable passing gates plus two different named reviewers approving the exact same profile hash. | Gate owners, Platform Operations, Security | Complete all 25 gates; no missing owner, skip, zero-result command, or shared reviewer can pass. |
 | C2 production replacement | `operator-pending` | Producer schema, immutable packet writer, same-profile validator, concurrent fixed two-writer accounting, zero-default gate/Lease transition, and exact per-instance replacement selectors are repository-validated. | Controlled two-writer execution; replacement of both Servers and their sidecars, lifecycle/clock services and their sidecars, actor activation, all three Placement and Scheduler members; and adapter-fault execution with exact acknowledgements, recovery, and audit continuity. | Platform Operations | Run the reviewed C2 producer only after C1 passes with a named shared-system approval; its target-identity observation must prove an initially disabled exact-profile qualification namespace, empty Lease, and zero lifecycle/clock replicas. Zero acknowledged loss and a final disabled/empty/zero state are required. |
 | C3 retention and reclamation | `operator-pending` | Cohort, 1/24/168-hour bounds, attestation negatives, interrupted-purge, newer-record, tuple-attribution, and logical/physical separation guards are repository-validated. | Executed expiry/purge and adapter reclamation commands bound to each of the three independent cohorts and its database/schema/table; newer records preserved and reusable allocator free-space increase observed within 86,400 seconds. | Lifecycle owner and adapter owner | Run the reviewed C3 producer after C1; an OS disk-shrink claim is prohibited. |
 | C4 failure, privacy, and observability | `operator-pending` | Complete failure inventory, health precedence, NoData/last-evidence timestamp, bounded labels, and Story 20.2/24.3 denial guards are repository-validated. | Every declared dependency/fault lane, nonzero business samples with zero business failure, console/configured-OTLP continuity, alerts, and tenant denial before dependency access. | Platform Operations and Security | Run the reviewed C4 producer after C1; missing scenarios, raw/secret aliases, or dependency calls after denial reject. |
 | C5 operations acceptance | `operator-pending` | Neutral and PostgreSQL-specific runbook structure, ownership, monitoring, RPO/RTO, rollback, rotation, and decommission contracts are repository-validated. | Named operations acceptance of the exact immutable profile, evidence set, capacity/cost, incident, restore, and maintenance procedures. | Platform Operations reviewer | Review actual C0-C4 packets and record an independent same-hash decision. |
 | C6 security acceptance | `operator-pending` | Least-privilege, Dapr-only data plane, TLS/secret, bounded observability, evidence redaction, and tenant-isolation documentation guards are repository-validated. | Named security acceptance of the same profile and immutable evidence hashes, independent of the Platform Operations reviewer. | Security reviewer | Review actual packets and record a different named same-hash decision. |
+
+Current C1 blockers are the absent PG-ONPREM-2 C1.15 producer and independent
+review, pending C1.16 connection linkage/capture/review, and twenty-three
+unregistered gate owners. No current-profile C1 predecessor or authorized
+running-target input is established by this offline matrix.
 
 The only permitted states are `repository-validated`, `operator-pending`, `passed`,
 and `rejected`. Only authentic external packets in state `passed` can satisfy C2-C6.

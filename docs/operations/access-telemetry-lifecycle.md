@@ -95,10 +95,11 @@ or raw argument vector. The allowlisted scenario document contains only
 namespace, and exact profile hash. Shared-system authority is derived from the
 already-validated Platform Operations approval in C1, never from scenario input. It contains no
 commands, counters, pass flags, timestamps, credentials, or arbitrary environment
-values. For example:
+values. The example below uses the approved PG-ONPREM-2 identity; historical
+PG-ONPREM-1 captures cannot discharge current-profile gates. For example:
 
 ```json
-{"schema_version":1,"target":{"kind":"non-production-qualification","kube_context":"operator@qualification","namespace":"hexalith-memories-qualification","profile_sha256":"dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14"}}
+{"schema_version":1,"target":{"kind":"non-production-qualification","kube_context":"operator@qualification","namespace":"hexalith-memories-qualification","profile_sha256":"7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"}}
 ```
 
 Set `EVIDENCE_ROOT` to
@@ -111,7 +112,7 @@ python3 tools/verify-access-telemetry-lifecycle.py \
   --kube-context "$KUBE_CONTEXT" \
   --namespace hexalith-memories-qualification \
   --deployment-id "$DEPLOYMENT_ID" \
-  --profile-id postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1 \
+  --profile-id postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2 \
   --workload-profile adr-27.1-two-writer-500eps \
   --steady-state-minutes 30 \
   --purge-backlog-records 150000 \
