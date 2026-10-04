@@ -279,7 +279,7 @@ public sealed class OpenBaoPlatformDocumentationTests
         // be circular, because ReadManifestRow selects the row BY that key.
         string values = ReadRepoFile("deploy/openbao/values.yaml");
         ShouldBindManifest("fullnameOverride: hexalith-keys", document, valuesHeading, "`fullnameOverride: hexalith-keys`", values);
-        ShouldBindManifest("2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653", document, valuesHeading, "`server.image.tag`", values, "2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653");
+        ShouldBindManifest("2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4", document, valuesHeading, "`server.image.tag`", values, "2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4");
         ShouldBindManifest("tlsDisable: false", document, valuesHeading, "`global.tlsDisable: false`", values, "tls_min_version = \"tls12\"");
         ShouldBindManifest("tls_min_version = \"tls12\"", document, valuesHeading, "`global.tlsDisable: false`", values, "tls_min_version = \"tls12\"");
         ShouldBindManifest("replicas: 3", document, valuesHeading, "`server.ha.replicas: 3`", values, ".spec.replicas = 3");
@@ -362,6 +362,9 @@ public sealed class OpenBaoPlatformDocumentationTests
         ShouldBindManifest("ttlSecondsAfterFinished: 300", document, smokeTestHeading, "`backoffLimit: 0`, `activeDeadlineSeconds: 60`, `ttlSecondsAfterFinished: 300`", smokeTest, "one attempt");
         ShouldBindManifest("backoffLimit: 0", document, smokeTestHeading, "`backoffLimit: 0`, `activeDeadlineSeconds: 60`, `ttlSecondsAfterFinished: 300`", smokeTest, "one attempt");
         ShouldBindManifest("activeDeadlineSeconds: 60", document, smokeTestHeading, "`backoffLimit: 0`, `activeDeadlineSeconds: 60`, `ttlSecondsAfterFinished: 300`", smokeTest, "one minute");
+        ShouldBindManifest("2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653", document, smokeTestHeading, "image digest `sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653`", smokeTest, "fixed approved OpenBao 2.6.0 CA-only CLI");
+        NormalizeWhitespace(document.GetSection("Repository adoption on 2026-10-04"))
+            .ShouldContain("compatibility verification remains pending security requalification", Case.Sensitive);
         smokeTest.ShouldNotMatch(
             @"(?i)(tls-skip-verify|BAO_SKIP_VERIFY|VAULT_SKIP_VERIFY)",
             "The smoke test must keep verifying OpenBao's TLS identity, by any spelling.");

@@ -4,7 +4,7 @@
 `jpiquot@local`. Platform Operations owner: **Jérôme Piquot (`jpiquot`)**. Security reviewer:
 **Murat TEA for Jérôme (`murat-tea-for-jpiquot`)**.
 
-Everything below was re-measured read-only on **2026-07-28** against the running platform. Where the
+The historical platform observations below were re-measured read-only on **2026-07-28** against the running platform. Where the
 tracked manifests and this document previously disagreed with the platform, the platform is the
 authority and the manifests were reconciled to it. No claim in this document is carried over from an
 earlier revision unless it is listed in [Named divergences](#named-divergences) with an owner and a
@@ -15,6 +15,32 @@ The bound profile was re-confirmed 2026-09-06 in evidence §8.
 No secret value appears in this document. The unseal key material, recovery shares, operator
 credentials, TLS private key, and Dapr tokens exist only in Kubernetes Secrets and are never copied into
 documentation, evidence, or source control.
+
+## Repository adoption on 2026-10-04
+
+The Administrator approved exact PG-ONPREM-2 bytes, canonical SHA-256
+`7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`. Current server tooling/CI and
+`deploy/openbao/values.yaml` select OpenBao 2.6.4, image
+`quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4`,
+linux/amd64 manifest `sha256:bd3e8b6b67b5c4c3fc1064cd0f86eb8063d9ed92a7af608b6408d6748e6eef64`,
+official chart 0.29.6 OCI manifest `sha256:98c8fc901e2579ac6da9a805537fcd7a19525ef8e563ae8737dc16fc8f641e3e`
+and content `sha256:8079e985bdf608f965ada59c70051693d14dd2454ac16311229f367d0c48c4b9`.
+Values SHA-256 is `4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa`;
+archived render SHA-256 is `16001617572d803bc9b53731a54c8b564e3c6b5a3d9b28b34a727dad9d435303`.
+
+The exact values use preferred hostname anti-affinity (weight 100) to permit the
+already declared three-voter single-node topology. Raft/static-seal/TLS HCL,
+OnDelete updates, retained PVCs, permissions, node-fault exclusions and security
+blockers remain. The [approved package](../../_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/adoption.md)
+records the offline source/configuration identity checks.
+
+This adoption includes no deployment, target contact or security requalification.
+The measured 2.6.0 platform profile and recorded smoke result below stay historical;
+they do not prove the new server runs. The CA-only `deploy/openbao/smoke-test.yaml`
+client remains exactly pinned to 2.6.0 and mounts no server key/seal material. The
+chart's built-in test cannot replace it. Fresh 2.6.0-client-to-2.6.4-server compatibility
+verification remains pending security requalification; the historical result is not that verification.
+Development AppHost defaults are unchanged. Production remains disabled and A41/Story 27.4 remain open.
 
 ## Deployed profile as measured
 
@@ -111,23 +137,24 @@ closes, this platform has no recoverable state after node loss.
 
 ## Owned manifests
 
-These four files are the checked-in, non-secret inputs to the platform. Each section below binds the
-file to what the platform actually runs.
+These four files are the checked-in, non-secret inputs to the platform. The values section records
+current approved repository configuration; the dated platform observations retain their original evidence.
 
 ### `deploy/openbao/values.yaml`
 
-The Helm values for chart `0.28.5`. Story 31.1 reconciled this file to the deployed release; before that
-it declared a single standalone voter with HA disabled, which the running platform contradicted in every
-one of those settings.
+Current approved Helm values target chart `0.29.6` and OpenBao `2.6.4`, adopted 2026-10-04.
+Story 31.1 historically reconciled chart 0.28.5/2.6.0 to the measured release after the original
+standalone declaration was contradicted. That observation does not establish a successor deployment.
 
-| Declared setting | Deployed value it binds |
+| Declared setting | Approved repository value or retained measured boundary |
 | :--------------- | :---------------------- |
 | `fullnameOverride: hexalith-keys` | Helm release, StatefulSet, and Service names |
-| `server.image.tag` | `2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653` — digest-pinned |
+| `server.image.tag` | `2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4` — digest-pinned |
 | `global.tlsDisable: false` | listener runs TLS with `tls_min_version = "tls12"` |
 | `server.standalone.enabled: false` | the standalone single-voter path is off |
 | `server.ha.enabled: true` | `bao status` reports `ha_enabled: true` |
 | `server.ha.replicas: 3` | StatefulSet `.spec.replicas = 3` |
+| `server.affinity` | preferred hostname anti-affinity, weight 100; three voters can share one node; no node HA |
 | `server.ha.apiAddr: null`, `server.ha.clusterAddr: null` | left unset so the chart emits per-pod container env `BAO_API_ADDR=https://$(POD_IP):8200` and `BAO_CLUSTER_ADDR=https://$(HOSTNAME).hexalith-keys-internal:8201`; pinning either would give all three voters one address |
 | `server.ha.raft.enabled: true` | `storage "raft"` with `retry_join`, `storage_type: raft` |
 | `server.ha.raft.setNodeId: true` | container env `BAO_RAFT_NODE_ID` from `metadata.name` |
@@ -204,9 +231,11 @@ no API token; before Story 31.1 this document made exactly that claim and it was
 
 ### `deploy/openbao/smoke-test.yaml`
 
-A Restricted-compatible Job that runs `bao status -format=json` against the Service endpoint. It exists
-because chart `0.28.5`'s built-in Helm test hook does not declare the security context this namespace's
-enforced Restricted profile requires. Do not weaken the namespace policy to run that upstream hook.
+A Restricted-compatible Job that runs `bao status -format=json` against the Service endpoint. At the
+2026-07-28 historical baseline, chart `0.28.5`'s built-in Helm test hook lacked the security context this
+namespace's enforced Restricted profile requires. The adopted chart `0.29.6` inherits Restricted security
+contexts, but its built-in test mounts server TLS/seal material and accepts sealed status. Retain the
+approved CA-only Job; do not weaken the namespace policy or widen its Secret projection.
 
 | Declared setting | Deployed value it binds |
 | :--------------- | :---------------------- |
@@ -216,7 +245,7 @@ enforced Restricted profile requires. Do not weaken the namespace policy to run 
 | `automountServiceAccountToken: false` | the Job needs no Kubernetes API access |
 | `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, capabilities `- ALL` dropped | Restricted profile compliance |
 | `backoffLimit: 0`, `activeDeadlineSeconds: 60`, `ttlSecondsAfterFinished: 300` | one attempt, one minute, reaped five minutes after finishing |
-| image digest `sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653` | the same pinned image the server runs |
+| image digest `sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653` | fixed approved OpenBao 2.6.0 CA-only CLI; its bytes remain bound to PG-ONPREM-2 |
 
 ## Smoke test
 
@@ -408,8 +437,9 @@ kubectl -n hexalith-memories get component secretstore access-telemetry-secrets 
 ```
 
 Expected status on **every** voter is `initialized: true`, `sealed: false`, `storage_type: "raft"`,
-`ha_enabled: true`, and OpenBao `2.6.0`. The StatefulSet must be `3/3` Ready, all six data and audit PVCs
-must be `Bound`, and the four `hexalith-keys*` Services must remain `ClusterIP`.
+and `ha_enabled: true`. OpenBao `2.6.0` is the 2026-07-28 historical baseline. The adopted PG-ONPREM-2
+server expectation is `2.6.4`, pending fresh live verification. The StatefulSet must be `3/3` Ready, all
+six data and audit PVCs must be `Bound`, and the four `hexalith-keys*` Services must remain `ClusterIP`.
 The extra Service `deployment-seal-transit` is NodePort `8200:30820` and is recorded under Deployed platform state not tracked.
 
 After any Helm install or upgrade, re-apply the ServiceAccount hardening **and** re-check the pod-level

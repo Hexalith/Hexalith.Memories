@@ -5616,3 +5616,24 @@ status: open
   Acceptance criteria: design and retain a reconstructible secret-safe canonical identity projection or its exact validated input bytes for future packets; independently recompute its hashes from retained evidence without live state; preserve all earlier immutable packets and their capture-time verification limits.
   summary: Make future Pod source-projection hashes independently recomputable after live metadata changes.
   Evidence: Baseline and current producers hash raw Pod observation text but retain only packet observations, excluding transient metadata/status detail. The independent reviewer recomputed all current hashes against matching live responses; that proves capture-time provenance. Once live metadata changes, the discarded exact Pod input cannot be reconstructed solely from packet observations. This pre-existing temporal limitation is separate from locating/owning the external archive; no historical bytes may be fabricated and current accepted evidence remains unchanged.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-c1-16-component-backend-capture-preparation.md`
+  summary: Preserve container incarnation when shared C1 capture coherence must exclude in-Pod restarts.
+  evidence: Existing C1.15 and inherited C1.16 identity patterns compare Pod UID and imageID only; injected containerID/restartCount changes leave an observed neutral capture. Future qualifying evidence must compare real incarnation before and after.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-c1-16-component-backend-capture-preparation.md`
+  summary: Bound the shared authenticated metadata response before remote shell command substitution.
+  evidence: Existing C1.15 wget probe and inherited C1.16 probe buffer the full HTTP response before local one-megabyte capture limits apply; an oversized response can allocate remote memory. Reopen with a bounded remote reader and oversized actual-probe rejection evidence.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pg-onprem-2-approved-profile-adoption.md`
+  summary: Deployment Adapter Developer owns separately scoped C1 container-incarnation continuity maintenance before evidence relies on uninterrupted processes.
+  evidence: B4/E1: the inherited tools/access-telemetry-c1-component-backend.ps1 Pod recheck compares UID/imageID but omits containerID/restartCount; an in-Pod restart retains an observed neutral capture. This predates the PG2 adoption snapshot. Current captures cannot prove unchanged process incarnation. Reopen by comparing typed initial/final containerID and restartCount and executing actual-path restart rejection fixtures while preserving immutable historical packets.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pg-onprem-2-approved-profile-adoption.md`
+  summary: Deployment Adapter Developer owns separately scoped remote metadata-reader bounding before response size is relied on as a remote memory bound.
+  evidence: B5/E2: the inherited authenticated wget probe in tools/access-telemetry-c1-component-backend.ps1 buffers the full HTTP response in remote shell command substitution before the local one-megabyte limit; oversized responses can allocate remote memory. This predates PG2 adoption. Reopen with a remote reader bounded before substitution and executed oversized actual-probe rejection evidence, including secret-safe output and preserved historical packets.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pg-onprem-2-approved-profile-adoption.md`
+  summary: Deployment Adapter Developer owns separately scoped complete selected-Pod schema validation before filtering non-Running siblings.
+  evidence: B6: inherited Get-C1StablePods in tools/access-telemetry-c1-component-backend.ps1 accepts any alphabetic phase and filters non-Running observations before validating complete name/UID identity; a malformed non-Running sibling beside a valid Running Pod can be omitted from an observed capture. This predates PG2 adoption. Reopen by validating Kubernetes phase values and complete typed identities for every selected Pod before filtering, with executed Bogus-phase/missing-UID negative fixtures and legitimate Pending-sibling coverage.
+

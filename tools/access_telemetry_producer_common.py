@@ -26,7 +26,12 @@ from verify_access_telemetry_lifecycle import (
     REQUIRED_TENANT_DENIAL_TESTS,
     STORY_27_4_PROFILE_SHA256,
     STORY_27_4_WORKLOAD_SHA256,
+    validate_current_profile_inputs,
     EvidenceValidationError,
+    EXPECTED_POSTGRESQL_IMAGE,
+    EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST,
+    EXPECTED_RUNTIME_IMAGE,
+    EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST,
     _canonical_json,
     _json_without_duplicates,
     _require_bool,
@@ -349,12 +354,14 @@ def _load_target(path: Path) -> Mapping[str, str]:
     if normalized["kind"] != "non-production-qualification":
         raise EvidenceValidationError("Story 27.4 producers run only in non-Production qualification")
     if normalized["profile_sha256"] != STORY_27_4_PROFILE_SHA256:
-        raise EvidenceValidationError("scenario target profile differs from PG-ONPREM-1")
+        raise EvidenceValidationError("scenario target profile differs from PG-ONPREM-2")
     if normalized["namespace"] == "hexalith-memories" or not normalized["namespace"].endswith("-qualification"):
         raise EvidenceValidationError("scenario namespace is not the isolated qualification namespace")
     for name in ("kube_context", "namespace"):
         if _SAFE_TARGET.fullmatch(normalized[name]) is None:
             raise EvidenceValidationError(f"target.{name} is not a bounded Kubernetes identity")
+    # Authenticated producers execute a frozen code snapshot with cwd at the owning repository.
+    validate_current_profile_inputs(Path.cwd())
     return normalized
 
 
@@ -2466,6 +2473,8 @@ def _run_locked_operation(
                         raise EvidenceValidationError(
                             f"qualification {kind}/{name} is not bound to digest-pinned container images"
                         )
+                    if kind == "StatefulSet" and name == "access-telemetry-postgresql" and images != [EXPECTED_POSTGRESQL_IMAGE]:
+                        raise EvidenceValidationError("qualification PostgreSQL image differs from PG-ONPREM-2")
                     identity_item["images"] = images
                     service_account = (
                         pod_spec.get("serviceAccountName") if isinstance(pod_spec, Mapping) else None
@@ -2490,6 +2499,10 @@ def _run_locked_operation(
                     spec = item.get("spec") if isinstance(item, Mapping) else None
                     identity_item["type"] = spec.get("type") if isinstance(spec, Mapping) else None
                     identity_item["version"] = spec.get("version") if isinstance(spec, Mapping) else None
+                if kind == "Component" and name == "access-telemetry-store" and (
+                    identity_item["type"] != "state.postgresql" or identity_item["version"] != "v2"
+                ):
+                    raise EvidenceValidationError("qualification component differs from PG-ONPREM-2")
                 runtime_inventory.append(identity_item)
         required_runtime_objects = {
             ("Deployment", "memories"),
@@ -2671,7 +2684,7 @@ def _run_locked_operation(
                     else None
                 )
                 required_workloads = (
-                    {"memories", "access-telemetry-postgresql"}
+                    {"memories", "memories-access-telemetry", "memories-access-telemetry-clock", "access-telemetry-postgresql"}
                     if namespace == target["namespace"]
                     else {
                         "dapr-operator",
@@ -2699,6 +2712,22 @@ def _run_locked_operation(
                     or any(re.search(r"sha256:[0-9a-f]{64}\Z", image) is None for image in images)
                 ):
                     raise EvidenceValidationError("qualification running pod identity is incomplete")
+                if namespace == target["namespace"]:
+                    expected_name = "postgresql" if workload == "access-telemetry-postgresql" else "daprd"
+                    selected = [
+                        container for container in container_statuses or []
+                        if isinstance(container, Mapping) and container.get("name") == expected_name
+                    ]
+                    if len(selected) != 1:
+                        raise EvidenceValidationError("qualification PG-ONPREM-2 running container identity is missing or duplicated")
+                    expected_digests = (
+                        {EXPECTED_POSTGRESQL_IMAGE.rsplit("@", 1)[-1], EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST}
+                        if expected_name == "postgresql"
+                        else {EXPECTED_RUNTIME_IMAGE.rsplit("@", 1)[-1], EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST}
+                    )
+                    observed = re.search(r"sha256:[0-9a-f]{64}\Z", str(selected[0].get("imageID")))
+                    if observed is None or observed.group() not in expected_digests:
+                        raise EvidenceValidationError("qualification running image differs from PG-ONPREM-2")
                 runtime_inventory.append({
                     "kind": "PodRuntime",
                     "namespace": namespace,

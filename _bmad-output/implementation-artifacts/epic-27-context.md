@@ -13,6 +13,7 @@ Provide an owned, deployable, verifiable bounded lifecycle for per-tenant access
 - Story 27.3: Production Adapter Manifest, Unit, and Deployment-Lane Qualification
 - Story 27.4: Retention Verification, Operations Runbook, and A41 Close-Out
 - Story 27.21: Runtime and Control-Plane Identity
+- Story 27.22: Component and Backend Identity (backlog; C1.16 only)
 
 ## Requirements & Constraints
 
@@ -44,3 +45,24 @@ Say “access telemetry.” Distinguish capture completeness, independent review
 - Story 27.2 owns portable implementation and executed lifecycle checkpoints. If Story 27.2 checkpoint gaps remain, they must close through actual executions accepted by an independent reviewer before Story 27.3 enters review. Story 27.3 owns C0 and independent C2/C3/C4 adapter qualification; C0 requires complete predecessor executions accepted by an independent reviewer.
 - Story 27.21 alone owns C1.15 and is `done` after full verification and final implementation code review. On 2026-10-04 independent reviewer `/root/review_c1_packet` [accepted the real packet](../../artifacts/access-telemetry-c1/C1.15/c1.15-independent-framed-packet-review-20261004T104839838701Z-1b6be26b1d604a50bc53eefcc2203278.json) (review SHA-256 `8a70077297e68962f12da991d76c37a58a2faa86697ea0e2212f590941e62c73`, observed packet SHA-256 `17d7f350c3193ce6663364b0b4e6ef52d8f319f4ca4c0a25e9886a006ff0ed87`) for C1.15 runtime/control-plane identity capture only: checkpoint `accepted` / `complete`, DW-718 `done`. The remaining twenty-four C1 gates stay held without a registered owner. The original awaiting-operator handoff and unavailable-target/blocker evidence are preserved as historical; accepted capture grants no Production activation, write authority, C1.25 approval, human sign-off, Story 27.4 advance, or A41 closure.
 - Story 27.4 owns deployment-shaped lifecycle proof, the operations runbook, and A41 close-out. Its repository machinery may proceed as `awaiting-operator`. Completion, Production lifecycle writes, and A41 close-out still require Story 27.3 and all properly registered C1 successors done, all twenty-five C1 gates passed on the same immutable profile hash, and complete terminal validation/publication evidence. A41 remains open until that closure contract is satisfied.
+
+## Dated Adoption and Ownership Correction — 2026-10-04
+
+- Current exact approved qualification identity is PG-ONPREM-2, SHA-256
+  `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`:
+  PostgreSQL 18.6, verified Dapr 1.18.1 image/platform and OpenBao 2.6.4/chart 0.29.6
+  with all exact bound configuration bytes. Four YAML inputs are exact copies;
+  twelve original bound inputs and the CA-only 2.6.0 smoke CLI are unchanged.
+- Story 27.22 is the one checked backlog owner added for C1.16. Its literal
+  PG2 producer is callable and offline fixtures pass; actual eligible-target
+  authorization, external archive, connection linkage and independent review
+  remain pending. Twenty-three other gates remain held and unregistered.
+- Prior twenty-four-held/PG1-only prose above is historical. Story 27.21 stays
+  done for its accepted PG1 C1.15 capture, with original command/operator intent
+  preserved; that evidence cannot satisfy a PG2 consumer. Current downstream
+  C0, predecessors, both approvals and terminal evidence must bind PG2.
+- All captures stay neutral; a secret reference/local peer query does not
+  independently prove Dapr-to-backend linkage. Production stays disabled,
+  lifecycle/clock replicas zero, qualification gate disabled and Lease released.
+  Capacity/workload/fault limits, security blockers, Story 27.4 authority and
+  open A41 are unchanged. No target was contacted or Git published.

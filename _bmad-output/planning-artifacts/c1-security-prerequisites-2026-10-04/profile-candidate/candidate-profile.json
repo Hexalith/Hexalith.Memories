@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "state": "pending-exact-byte-approval",
+  "profile_alias": "PG-ONPREM-2",
+  "repository_revision": "5b43fe2f8a0f04dc021921a077dff1a573c2ce5e",
+  "historical_profile_sha256": "dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14",
+  "activation_authorized": false,
+  "security_requalification": "not-evaluated",
+  "production_gate_passed": false,
+  "manifest": {
+    "canonical_profile": {
+      "capabilities": {
+        "actorStateStore": true,
+        "strongReads": true,
+        "transactionRollback": true,
+        "ttl": true
+      },
+      "identity": {
+        "profileId": "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2",
+        "kubeContext": "jpiquot@local",
+        "kubeNamespace": "hexalith-memories",
+        "postgresqlImage": "docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+        "componentType": "state.postgresql/v2",
+        "maxConns": "40",
+        "postgresqlLinuxAmd64Manifest": "sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04",
+        "runtimeImage": "ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+        "runtimeLinuxAmd64Manifest": "sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b",
+        "platform": "linux/amd64",
+        "securityPlatform": {
+          "openbaoImage": "quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4",
+          "openbaoLinuxAmd64Manifest": "sha256:bd3e8b6b67b5c4c3fc1064cd0f86eb8063d9ed92a7af608b6408d6748e6eef64",
+          "chartVersion": "0.29.6",
+          "chartOciManifest": "sha256:98c8fc901e2579ac6da9a805537fcd7a19525ef8e563ae8737dc16fc8f641e3e",
+          "chartContent": "sha256:8079e985bdf608f965ada59c70051693d14dd2454ac16311229f367d0c48c4b9",
+          "valuesSha256": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa",
+          "renderSha256": "16001617572d803bc9b53731a54c8b564e3c6b5a3d9b28b34a727dad9d435303",
+          "secretAndConfigurationInputs": {
+            "deploy/dapr/components/access-telemetry-config.yaml": "5072909673df235c463a8f64bca8c65644ec22f435aebb663d2d9fc52d7c1b4a",
+            "deploy/dapr/components/access-telemetry-secrets.yaml": "0f34c483c8f531c107d6d318c1416b11d0448007acc1158dc6a2ab921b1f7c03",
+            "deploy/dapr/components/access-telemetry-store.yaml": "4ce8c049b6990a01a046ac372aa9ec1ebb93527afcef155232127a3b4a89c303",
+            "deploy/kubernetes/base/dapr/access-telemetry-clock-config.yaml": "ee10d7831533ac0258829af1d82bf1b02e9b22d1d3c0f428ca6d67a41065de9e",
+            "deploy/kubernetes/base/dapr/access-telemetry-config-store.yaml": "b458851266b2559192caf84f6a5737837336a5470754f7e7f609eadf5efe6303",
+            "deploy/kubernetes/base/dapr/access-telemetry-lifecycle-config.yaml": "981eac21ad9b40980887c0fe907ca5c6c70a166cd9494f9b3476db5e590eecf5",
+            "deploy/kubernetes/base/dapr/access-telemetry-secrets.yaml": "5bd7c2f0caa741df4e3fe45adb408d40dac7b5b37acdf227ea8c88680abf88d7",
+            "deploy/kubernetes/base/dapr/access-telemetry-store.yaml": "457e440c74563d4c2323cef003c393edbd1c5d56c6ef4ad2c005e812bbbb0270",
+            "deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml": "0c2b4b836d14be457ab8ccc79a534cd9997193f9c7b10f3d11b8b100a8b40ab2",
+            "deploy/kubernetes/overlays/production/kustomization.yaml": "f1ec26757295a6da23f1f165453bbb023cae935b9dcdd7000596a0e512913c4a",
+            "deploy/openbao/service-account-hardening.yaml": "44571c24d6b7383428bb1fa0da1f30843e289fa722984f90fa86caf959d6b039",
+            "deploy/openbao/smoke-test.yaml": "c1f4eb2c21b82a0544eb81bab189275d6edf15864932e51c481d47354dedeee7"
+          }
+        },
+        "deploymentInputs": {
+          "postgresql.candidate.yaml": "b73b43cdb3683a5dbdc7de593c7e17caa300b857952f1ae592d13d496499a4f4",
+          "lifecycle-deployments.candidate.yaml": "aba898858bd7e82eb042b6ee50a76cd16821b154a65a7ab83f8e79ef45b835b6",
+          "physical-reporter.candidate.yaml": "59651af0c528d065f0f8686a6802df0cbbf8edae4a4f31455a8bf58cae680711"
+        },
+        "capacityBoundary": {
+          "capacityBytes": 429496729600,
+          "steadyStateBytes": 300647710720,
+          "criticalBytes": 343597383680,
+          "unhealthyBytes": 386547056640,
+          "storageClass": "openebs-hostpath-retain",
+          "zeroLossFaults": [
+            "postgresql-pod-replacement",
+            "postgresql-process-replacement"
+          ],
+          "excludedFaults": [
+            "node-loss",
+            "volume-loss",
+            "control-plane-loss",
+            "site-loss"
+          ],
+          "nodeHa": false
+        }
+      },
+      "workload": {
+        "writer_count": 2,
+        "events_per_second_per_writer": {
+          "search": 200,
+          "ingest": 6,
+          "traverse": 10,
+          "case_access": 16,
+          "delete": 2,
+          "tenant_lifecycle": 0.2,
+          "tenant_config": 0.8,
+          "case_member": 4,
+          "annotation": 11
+        },
+        "total_events_per_second": 500
+      }
+    },
+    "canonical_profile_json": "{\"capabilities\":{\"actorStateStore\":true,\"strongReads\":true,\"transactionRollback\":true,\"ttl\":true},\"identity\":{\"capacityBoundary\":{\"capacityBytes\":429496729600,\"criticalBytes\":343597383680,\"excludedFaults\":[\"node-loss\",\"volume-loss\",\"control-plane-loss\",\"site-loss\"],\"nodeHa\":false,\"steadyStateBytes\":300647710720,\"storageClass\":\"openebs-hostpath-retain\",\"unhealthyBytes\":386547056640,\"zeroLossFaults\":[\"postgresql-pod-replacement\",\"postgresql-process-replacement\"]},\"componentType\":\"state.postgresql/v2\",\"deploymentInputs\":{\"lifecycle-deployments.candidate.yaml\":\"aba898858bd7e82eb042b6ee50a76cd16821b154a65a7ab83f8e79ef45b835b6\",\"physical-reporter.candidate.yaml\":\"59651af0c528d065f0f8686a6802df0cbbf8edae4a4f31455a8bf58cae680711\",\"postgresql.candidate.yaml\":\"b73b43cdb3683a5dbdc7de593c7e17caa300b857952f1ae592d13d496499a4f4\"},\"kubeContext\":\"jpiquot@local\",\"kubeNamespace\":\"hexalith-memories\",\"maxConns\":\"40\",\"platform\":\"linux/amd64\",\"postgresqlImage\":\"docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722\",\"postgresqlLinuxAmd64Manifest\":\"sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04\",\"profileId\":\"postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2\",\"runtimeImage\":\"ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8\",\"runtimeLinuxAmd64Manifest\":\"sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b\",\"securityPlatform\":{\"chartContent\":\"sha256:8079e985bdf608f965ada59c70051693d14dd2454ac16311229f367d0c48c4b9\",\"chartOciManifest\":\"sha256:98c8fc901e2579ac6da9a805537fcd7a19525ef8e563ae8737dc16fc8f641e3e\",\"chartVersion\":\"0.29.6\",\"openbaoImage\":\"quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4\",\"openbaoLinuxAmd64Manifest\":\"sha256:bd3e8b6b67b5c4c3fc1064cd0f86eb8063d9ed92a7af608b6408d6748e6eef64\",\"renderSha256\":\"16001617572d803bc9b53731a54c8b564e3c6b5a3d9b28b34a727dad9d435303\",\"secretAndConfigurationInputs\":{\"deploy/dapr/components/access-telemetry-config.yaml\":\"5072909673df235c463a8f64bca8c65644ec22f435aebb663d2d9fc52d7c1b4a\",\"deploy/dapr/components/access-telemetry-secrets.yaml\":\"0f34c483c8f531c107d6d318c1416b11d0448007acc1158dc6a2ab921b1f7c03\",\"deploy/dapr/components/access-telemetry-store.yaml\":\"4ce8c049b6990a01a046ac372aa9ec1ebb93527afcef155232127a3b4a89c303\",\"deploy/kubernetes/base/dapr/access-telemetry-clock-config.yaml\":\"ee10d7831533ac0258829af1d82bf1b02e9b22d1d3c0f428ca6d67a41065de9e\",\"deploy/kubernetes/base/dapr/access-telemetry-config-store.yaml\":\"b458851266b2559192caf84f6a5737837336a5470754f7e7f609eadf5efe6303\",\"deploy/kubernetes/base/dapr/access-telemetry-lifecycle-config.yaml\":\"981eac21ad9b40980887c0fe907ca5c6c70a166cd9494f9b3476db5e590eecf5\",\"deploy/kubernetes/base/dapr/access-telemetry-secrets.yaml\":\"5bd7c2f0caa741df4e3fe45adb408d40dac7b5b37acdf227ea8c88680abf88d7\",\"deploy/kubernetes/base/dapr/access-telemetry-store.yaml\":\"457e440c74563d4c2323cef003c393edbd1c5d56c6ef4ad2c005e812bbbb0270\",\"deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml\":\"0c2b4b836d14be457ab8ccc79a534cd9997193f9c7b10f3d11b8b100a8b40ab2\",\"deploy/kubernetes/overlays/production/kustomization.yaml\":\"f1ec26757295a6da23f1f165453bbb023cae935b9dcdd7000596a0e512913c4a\",\"deploy/openbao/service-account-hardening.yaml\":\"44571c24d6b7383428bb1fa0da1f30843e289fa722984f90fa86caf959d6b039\",\"deploy/openbao/smoke-test.yaml\":\"c1f4eb2c21b82a0544eb81bab189275d6edf15864932e51c481d47354dedeee7\"},\"valuesSha256\":\"4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa\"}},\"workload\":{\"events_per_second_per_writer\":{\"annotation\":11,\"case_access\":16,\"case_member\":4,\"delete\":2,\"ingest\":6,\"search\":200,\"tenant_config\":0.8,\"tenant_lifecycle\":0.2,\"traverse\":10},\"total_events_per_second\":500,\"writer_count\":2}}",
+    "profile_sha256": "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe",
+    "mutation_manifest_sha256": "ff75ddd004a475420070f07cd82bbb5e74379f12ddebca7693dcd3616475d984"
+  }
+}

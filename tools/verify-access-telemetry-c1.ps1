@@ -1,15 +1,17 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('C1.15')]
+    [ValidateSet('C1.15', 'C1.16')]
     [string]$Gate,
 
     [Parameter(Mandatory)]
-    [ValidateSet('PG-ONPREM-1')]
+    [ValidateSet('PG-ONPREM-1', 'PG-ONPREM-2')]
     [string]$ProfileId,
 
     [Parameter(Mandatory)]
     [string]$EvidenceDirectory,
+
+    [switch]$AllowHistoricalProfileCapture,
 
     [ValidateRange(1, 300)]
     [int]$CommandTimeoutSeconds = 30
@@ -17,6 +19,22 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+
+# Exact literals apply to successor and historical C1.16 dispatch. The legacy
+# C1.15/PG1 ValidateSet behavior remains case-insensitive.
+if ($ProfileId -ieq 'PG-ONPREM-2') {
+    if ($Gate -cne 'C1.16' -or $ProfileId -cne 'PG-ONPREM-2' -or $AllowHistoricalProfileCapture) {
+        throw 'unsupported-successor-gate-or-historical-opt-in'
+    }
+}
+elseif ($Gate -ieq 'C1.16') {
+    if ($Gate -cne 'C1.16' -or $ProfileId -cne 'PG-ONPREM-1') {
+        throw 'unsupported-historical-gate-or-profile'
+    }
+    if (-not $AllowHistoricalProfileCapture) {
+        throw 'historical-profile-capture-opt-in-required'
+    }
+}
 
 $namespace = 'hexalith-memories'
 $expectedContext = 'jpiquot@local'
@@ -272,6 +290,10 @@ function Invoke-KubectlObservation {
 
     Assert-SecretSafeOutput $stdout
     Assert-SecretSafeOutput $stderr
+    if ($Gate -ceq 'C1.16') {
+        Assert-C1DecodedOutputSafety $stdout
+        Assert-C1DecodedOutputSafety $stderr
+    }
     if (-not $SkipSourceHash) {
         Add-SourceHash "kubectl:$Purpose:stdout" $stdout
         Add-SourceHash "kubectl:$Purpose:stderr" $stderr
@@ -436,14 +458,15 @@ function Get-CollectionIdentity {
 function Write-ImmutablePacket {
     param(
         [Parameter(Mandatory)][object]$Packet,
-        [Parameter(Mandatory)][string]$Directory
+        [Parameter(Mandatory)][string]$Directory,
+        [string]$FilePrefix = 'c1.15-runtime-control-plane-identity'
     )
 
     $resolvedDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Directory)
     [System.IO.Directory]::CreateDirectory($resolvedDirectory) | Out-Null
     $timestamp = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')
     $captureId = [Guid]::NewGuid().ToString('N')
-    $path = Join-Path $resolvedDirectory "c1.15-runtime-control-plane-identity-$timestamp-$captureId.json"
+    $path = Join-Path $resolvedDirectory "$FilePrefix-$timestamp-$captureId.json"
     $json = ($Packet | ConvertTo-Json -Depth 14) + [Environment]::NewLine
     $encoding = [System.Text.UTF8Encoding]::new($false)
     $stream = [System.IO.File]::Open($path, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
@@ -478,6 +501,12 @@ function Write-ImmutablePacket {
     }
 
     return $path
+}
+
+if ($Gate -ceq 'C1.16') {
+    . (Join-Path $PSScriptRoot 'access-telemetry-c1-component-backend.ps1')
+    Invoke-C1ComponentBackendCapture
+    exit 0
 }
 
 $capturedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')

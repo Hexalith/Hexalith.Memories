@@ -107,7 +107,7 @@ def write_complete_evidence(
         json.dumps(
             {
                 "schemaVersion": 1,
-                "image": "quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653",
+                "image": "quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4",
                 "endpoint": "https://hexalith-keys.openbao.svc.cluster.local:8200",
                 "tlsVerify": True,
                 "skipVerify": False,
@@ -933,7 +933,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"schemaVersion
         self.assertIn("hexalith/memories/access-telemetry", openbao)
         self.assertIn("hexalith-memories-runtime", openbao)
         self.assertIn("hexalith-memories-access-telemetry", openbao)
-        self.assertIn("quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653", openbao)
+        self.assertIn("quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4", openbao)
         self.assertNotIn("-dev", openbao)
         self.assertNotIn("BAO_DEV", openbao)
         self.assertIn('tls_min_version = "tls12"', openbao)

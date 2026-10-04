@@ -621,6 +621,29 @@ public sealed partial class AccessTelemetryRetentionDecisionTests
     }
 
     [Fact]
+    public void Adr_ApprovedSuccessorBindsExactIdentityAndPreservesHistoricalNeutrality()
+    {
+        MarkdownContractDocument adr = ReadDocument(AdrRelativePath);
+        IReadOnlyList<IReadOnlyList<string>> current = adr.GetTableRows("Current PG-ONPREM-2 qualification profile");
+        AssertCellCounts(current, 2, "Current PG-ONPREM-2 qualification profile");
+        GetRow(current, "Profile ID")[1].ShouldBe("`postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2`");
+        GetRow(current, "Profile SHA-256")[1].ShouldBe("`7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`");
+        GetRow(current, "Backend")[1].ShouldContain("18.6 / 180006", Case.Sensitive);
+        GetRow(current, "Retained capacity admission")[1].ShouldContain("Durability multiplier `2`", Case.Sensitive);
+        GetRow(current, "Retained capacity admission")[1].ShouldContain("one durable copy plus its WAL/snapshot copy", Case.Sensitive);
+        GetRow(current, "Retained capacity admission")[1].ShouldContain("no capacity relaxation", Case.Sensitive);
+        IReadOnlyList<IReadOnlyList<string>> images = adr.GetTableRows("Current PG-ONPREM-2 immutable image set");
+        GetRow(images, "PostgreSQL")[1].ShouldContain("sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722", Case.Sensitive);
+        GetRow(images, "Dapr sidecar")[1].ShouldContain("sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b", Case.Sensitive);
+        GetRow(images, "OpenBao server")[1].ShouldContain("openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4", Case.Sensitive);
+        string adoption = NormalizeWhitespace(adr.GetSection("Approved successor adoption — PG-ONPREM-2"));
+        adoption.ShouldContain("`connectionLinkage: not-evaluated`", Case.Sensitive);
+        adoption.ShouldContain("remaining twenty-three gates", Case.Sensitive);
+        adoption.ShouldContain("reject old or mixed identities", Case.Sensitive);
+        adoption.ShouldContain("no historical capture grants PG2 credit", Case.Sensitive);
+    }
+
+    [Fact]
     public void Adr_Story27_4Handoff_ProjectsToPendingEvidenceAndRuntimeMetricContracts()
     {
         string handoff = NormalizeWhitespace(

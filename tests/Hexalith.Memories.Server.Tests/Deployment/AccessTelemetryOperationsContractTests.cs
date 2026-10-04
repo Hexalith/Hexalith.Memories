@@ -101,10 +101,18 @@ public sealed class AccessTelemetryOperationsContractTests
         }
 
         IReadOnlyList<IReadOnlyList<string>> profile = document.GetTableRows("Scope and immutable profile");
-        profile.Single(row => row[0] == "PostgreSQL")[1].ShouldStartWith("18.4");
+        profile.Single(row => row[0] == "PostgreSQL")[1].ShouldStartWith("18.6");
         profile.Single(row => row[0] == "Profile SHA-256")[1].ShouldBe(
-            "`dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14`");
+            "`7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`");
         profile.Single(row => row[0] == "HA boundary")[1].ShouldContain("no node, disk, zone, control-plane, or site", Case.Sensitive);
+
+        string capacity = NormalizeWhitespace(document.GetSection("Retention, capacity, and cost admission"));
+        capacity.ShouldContain("baseBytes = records * (measuredRecordBytes + measuredIndexBytes) * 2", Case.Sensitive);
+        capacity.ShouldContain("retained executable admission multiplier is `2`", Case.Sensitive);
+        capacity.ShouldContain("one durable copy plus its WAL/snapshot copy", Case.Sensitive);
+        capacity.ShouldContain("no capacity relaxation", Case.Sensitive);
+        capacity.ShouldContain("never admitted on this exact 400-GiB profile", Case.Sensitive);
+        capacity.ShouldContain("changed admission rule requires a new approved profile", Case.Sensitive);
 
         string reclamation = NormalizeWhitespace(document.GetSection("Purge and physical reclamation proof"));
         reclamation.ShouldContain("Dapr Delete, strong Get absence, and index-member removal", Case.Sensitive);

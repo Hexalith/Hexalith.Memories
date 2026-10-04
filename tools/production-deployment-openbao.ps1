@@ -2,7 +2,7 @@
 # Dot-sourced by tools/verify-production-deployment.ps1. Never logs secret values.
 
 # Immutable digest pin. Never overwrite this from OPENBAO_IMAGE or any other caller input.
-$script:OpenBaoPinnedImage = 'quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653'
+$script:OpenBaoPinnedImage = 'quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4'
 $script:OpenBaoImagePin = $script:OpenBaoPinnedImage
 $script:OpenBaoNamespace = 'openbao'
 $script:OpenBaoServiceDns = 'hexalith-keys.openbao.svc.cluster.local'

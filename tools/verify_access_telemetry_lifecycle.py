@@ -156,7 +156,7 @@ class EnvironmentIdentity:
             "declared_single_component_fault": self.declared_single_component_fault,
         }
 
-    def to_profile_identity(self) -> dict[str, str]:
+    def to_profile_identity(self) -> dict[str, Any]:
         """Return the hashed profile identity, in `canonical_pg_onprem_profile`'s key shape.
 
         Story 27.3 code review (eighth-invocation review) fixed two defects here.
@@ -183,14 +183,13 @@ class EnvironmentIdentity:
         rows, not by this hash.
         """
 
-        return {
+        identity = canonical_pg_onprem_2_profile().identity
+        identity.update({
             "profileId": self.profile_id,
             "kubeContext": self.kube_context,
             "kubeNamespace": self.kube_namespace,
-            "postgresqlImage": EXPECTED_POSTGRESQL_IMAGE,
-            "componentType": EXPECTED_COMPONENT_TYPE,
-            "maxConns": EXPECTED_MAX_CONNS,
-        }
+        })
+        return identity
 
 
 @dataclass(frozen=True)
@@ -242,14 +241,23 @@ EXPECTED_KUBE_CONTEXT = os.environ.get(
 )
 EXPECTED_KUBE_NAMESPACE = "hexalith-memories"
 EXPECTED_QUALIFICATION_NAMESPACE = "hexalith-memories-qualification"
-EXPECTED_PROFILE_ID = (
+HISTORICAL_PROFILE_ID = (
     "postgresql-v2-dapr-1.18.1-postgresql-18.4-"
     "onprem-k8s1-openebs-local-retain-400g-v1"
 )
-EXPECTED_POSTGRESQL_IMAGE = (
+HISTORICAL_POSTGRESQL_IMAGE = (
     "docker.io/library/postgres:18.4-trixie@"
     "sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a"
 )
+# Exact approved PG-ONPREM-2 identity, adopted 2026-10-04. Keep the closed
+# PG-ONPREM-1 constructor independent of these current selectors.
+EXPECTED_PROFILE_ID = 'postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2'
+EXPECTED_POSTGRESQL_IMAGE = 'docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722'
+EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST = 'sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04'
+EXPECTED_RUNTIME_IMAGE = 'ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8'
+EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST = 'sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b'
+CURRENT_PROFILE_SHA256 = '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe'
+
 # Shared by `canonical_pg_onprem_profile` and `EnvironmentIdentity.to_profile_identity`
 # so the reviewed profile and the runtime profile cannot drift apart silently.
 EXPECTED_COMPONENT_TYPE = "state.postgresql/v2"
@@ -355,10 +363,10 @@ def canonical_pg_onprem_profile() -> AdapterProfile:
 
     return AdapterProfile(
         identity={
-            "profileId": EXPECTED_PROFILE_ID,
-            "kubeContext": EXPECTED_KUBE_CONTEXT,
+            "profileId": HISTORICAL_PROFILE_ID,
+            "kubeContext": DEFAULT_REVIEWED_KUBE_CONTEXT,
             "kubeNamespace": EXPECTED_KUBE_NAMESPACE,
-            "postgresqlImage": EXPECTED_POSTGRESQL_IMAGE,
+            "postgresqlImage": HISTORICAL_POSTGRESQL_IMAGE,
             "componentType": EXPECTED_COMPONENT_TYPE,
             "maxConns": EXPECTED_MAX_CONNS,
         },
@@ -370,6 +378,113 @@ def canonical_pg_onprem_profile() -> AdapterProfile:
         },
         workload=ADR_TWO_WRITER_WORKLOAD.to_dict(),
     )
+
+
+# Copy of the approved canonical identity, never reconstructed from live output.
+# Candidate receipt envelopes remain immutable historical evidence.
+_PG_ONPREM_2_IDENTITY_JSON = r"""{
+    "capacityBoundary": {
+        "capacityBytes": 429496729600,
+        "criticalBytes": 343597383680,
+        "excludedFaults": [
+            "node-loss",
+            "volume-loss",
+            "control-plane-loss",
+            "site-loss"
+        ],
+        "nodeHa": false,
+        "steadyStateBytes": 300647710720,
+        "storageClass": "openebs-hostpath-retain",
+        "unhealthyBytes": 386547056640,
+        "zeroLossFaults": [
+            "postgresql-pod-replacement",
+            "postgresql-process-replacement"
+        ]
+    },
+    "componentType": "state.postgresql/v2",
+    "deploymentInputs": {
+        "lifecycle-deployments.candidate.yaml": "aba898858bd7e82eb042b6ee50a76cd16821b154a65a7ab83f8e79ef45b835b6",
+        "physical-reporter.candidate.yaml": "59651af0c528d065f0f8686a6802df0cbbf8edae4a4f31455a8bf58cae680711",
+        "postgresql.candidate.yaml": "b73b43cdb3683a5dbdc7de593c7e17caa300b857952f1ae592d13d496499a4f4"
+    },
+    "kubeContext": "jpiquot@local",
+    "kubeNamespace": "hexalith-memories",
+    "maxConns": "40",
+    "platform": "linux/amd64",
+    "postgresqlImage": "docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+    "postgresqlLinuxAmd64Manifest": "sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04",
+    "profileId": "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2",
+    "runtimeImage": "ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+    "runtimeLinuxAmd64Manifest": "sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b",
+    "securityPlatform": {
+        "chartContent": "sha256:8079e985bdf608f965ada59c70051693d14dd2454ac16311229f367d0c48c4b9",
+        "chartOciManifest": "sha256:98c8fc901e2579ac6da9a805537fcd7a19525ef8e563ae8737dc16fc8f641e3e",
+        "chartVersion": "0.29.6",
+        "openbaoImage": "quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4",
+        "openbaoLinuxAmd64Manifest": "sha256:bd3e8b6b67b5c4c3fc1064cd0f86eb8063d9ed92a7af608b6408d6748e6eef64",
+        "renderSha256": "16001617572d803bc9b53731a54c8b564e3c6b5a3d9b28b34a727dad9d435303",
+        "secretAndConfigurationInputs": {
+            "deploy/dapr/components/access-telemetry-config.yaml": "5072909673df235c463a8f64bca8c65644ec22f435aebb663d2d9fc52d7c1b4a",
+            "deploy/dapr/components/access-telemetry-secrets.yaml": "0f34c483c8f531c107d6d318c1416b11d0448007acc1158dc6a2ab921b1f7c03",
+            "deploy/dapr/components/access-telemetry-store.yaml": "4ce8c049b6990a01a046ac372aa9ec1ebb93527afcef155232127a3b4a89c303",
+            "deploy/kubernetes/base/dapr/access-telemetry-clock-config.yaml": "ee10d7831533ac0258829af1d82bf1b02e9b22d1d3c0f428ca6d67a41065de9e",
+            "deploy/kubernetes/base/dapr/access-telemetry-config-store.yaml": "b458851266b2559192caf84f6a5737837336a5470754f7e7f609eadf5efe6303",
+            "deploy/kubernetes/base/dapr/access-telemetry-lifecycle-config.yaml": "981eac21ad9b40980887c0fe907ca5c6c70a166cd9494f9b3476db5e590eecf5",
+            "deploy/kubernetes/base/dapr/access-telemetry-secrets.yaml": "5bd7c2f0caa741df4e3fe45adb408d40dac7b5b37acdf227ea8c88680abf88d7",
+            "deploy/kubernetes/base/dapr/access-telemetry-store.yaml": "457e440c74563d4c2323cef003c393edbd1c5d56c6ef4ad2c005e812bbbb0270",
+            "deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml": "0c2b4b836d14be457ab8ccc79a534cd9997193f9c7b10f3d11b8b100a8b40ab2",
+            "deploy/kubernetes/overlays/production/kustomization.yaml": "f1ec26757295a6da23f1f165453bbb023cae935b9dcdd7000596a0e512913c4a",
+            "deploy/openbao/service-account-hardening.yaml": "44571c24d6b7383428bb1fa0da1f30843e289fa722984f90fa86caf959d6b039",
+            "deploy/openbao/smoke-test.yaml": "c1f4eb2c21b82a0544eb81bab189275d6edf15864932e51c481d47354dedeee7"
+        },
+        "valuesSha256": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa"
+    }
+}"""
+
+
+def canonical_pg_onprem_2_profile() -> AdapterProfile:
+    """Return the exact approved current profile without granting capability credit."""
+
+    return AdapterProfile(
+        identity=json.loads(_PG_ONPREM_2_IDENTITY_JSON),
+        capabilities=canonical_pg_onprem_profile().capabilities.copy(),
+        workload=ADR_TWO_WRITER_WORKLOAD.to_dict(),
+    )
+
+
+def validate_current_profile_inputs(repository_root: Path | None = None) -> None:
+    """Reject source/configuration drift before contacting a qualification target."""
+
+    root = repository_root or Path(__file__).resolve().parents[1]
+    profile = canonical_pg_onprem_2_profile()
+    if profile.manifest()["profile_sha256"] != CURRENT_PROFILE_SHA256:
+        raise EvidenceValidationError("approved PG-ONPREM-2 canonical identity drifted")
+    identity = profile.identity
+    current_selectors = {
+        "profileId": EXPECTED_PROFILE_ID,
+        "postgresqlImage": EXPECTED_POSTGRESQL_IMAGE,
+        "postgresqlLinuxAmd64Manifest": EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST,
+        "runtimeImage": EXPECTED_RUNTIME_IMAGE,
+        "runtimeLinuxAmd64Manifest": EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST,
+    }
+    if current_selectors != {name: identity[name] for name in current_selectors}:
+        raise EvidenceValidationError("approved PG-ONPREM-2 selector identity drifted")
+    security = identity["securityPlatform"]
+    inputs = dict(security["secretAndConfigurationInputs"])
+    inputs["deploy/openbao/values.yaml"] = security["valuesSha256"]
+    deployment_paths = {
+        "postgresql.candidate.yaml": "deploy/kubernetes/base/access-telemetry-postgresql.yaml",
+        "lifecycle-deployments.candidate.yaml": "deploy/kubernetes/base/access-telemetry-deployments.yaml",
+        "physical-reporter.candidate.yaml": "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml",
+    }
+    inputs.update({deployment_paths[name]: digest for name, digest in identity["deploymentInputs"].items()})
+    for relative, expected in inputs.items():
+        try:
+            digest = hashlib.sha256((root / relative).read_bytes()).hexdigest()
+        except OSError as error:
+            raise EvidenceValidationError(f"approved PG-ONPREM-2 input unavailable: {relative}") from error
+        if digest != expected:
+            raise EvidenceValidationError(f"approved PG-ONPREM-2 input drifted: {relative}")
 
 
 _BYTE_UNITS = {
@@ -1031,6 +1146,70 @@ def _items(payload: Any) -> list[Mapping[str, Any]]:
     return [item for item in values if isinstance(item, Mapping)]
 
 
+_C0_PROFILE_CONTAINERS = {
+    "memories": "daprd",
+    "memories-access-telemetry": "daprd",
+    "memories-access-telemetry-clock": "daprd",
+    "access-telemetry-postgresql": "postgresql",
+}
+
+
+def _collect_c0_profile_pods(identity: EnvironmentIdentity) -> list[CommandObservation]:
+    return [
+        _run_kubectl(identity, "get", "pods", "-l", f"app.kubernetes.io/name={workload}", "-o", "json")
+        for workload in _C0_PROFILE_CONTAINERS
+    ]
+
+
+def _c0_profile_runtime_reason(
+    pod_groups: Mapping[str, Sequence[Mapping[str, Any]]], deployments: Sequence[Mapping[str, Any]],
+) -> str:
+    deployments_by_name = {_mapping(item.get("metadata")).get("name"): item for item in deployments}
+    names: set[str] = set()
+    uids: set[str] = set()
+    for workload, container_name in _C0_PROFILE_CONTAINERS.items():
+        running = [pod for pod in pod_groups[workload] if _mapping(pod.get("status")).get("phase") == "Running"]
+        replicas = _mapping(_mapping(deployments_by_name.get(workload)).get("spec")).get("replicas", 0) or 0
+        if (workload in {"memories", "access-telemetry-postgresql"} or replicas > 0) and not running:
+            return f"the running PG-ONPREM-2 {workload} pod identity is missing"
+        if workload == "access-telemetry-postgresql" and len(running) != 1:
+            return "the running PG-ONPREM-2 PostgreSQL pod count is not exactly one"
+        allowed = {
+            EXPECTED_POSTGRESQL_IMAGE.rsplit("@", 1)[-1], EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST,
+        } if container_name == "postgresql" else {
+            EXPECTED_RUNTIME_IMAGE.rsplit("@", 1)[-1], EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST,
+        }
+        for pod in running:
+            metadata, status = _mapping(pod.get("metadata")), _mapping(pod.get("status"))
+            name, uid = metadata.get("name"), metadata.get("uid")
+            ready = [value for value in _sequence(status.get("conditions")) if _mapping(value).get("type") == "Ready"]
+            if (not isinstance(name, str) or not name or name in names
+                or not isinstance(uid, str) or not uid or uid in uids
+                or _mapping(metadata.get("labels")).get("app.kubernetes.io/name") != workload
+                or metadata.get("deletionTimestamp") is not None
+                or len(ready) != 1 or _mapping(ready[0]).get("status") != "True"):
+                return f"the running PG-ONPREM-2 {workload} pod identity is incoherent"
+            names.add(name)
+            uids.add(uid)
+            selected = [value for value in _sequence(status.get("containerStatuses"))
+                        if _mapping(value).get("name") == container_name]
+            if len(selected) != 1 or _mapping(selected[0]).get("ready") is not True:
+                return f"the running PG-ONPREM-2 {container_name} container identity is missing or duplicated or not ready"
+            image_id = _mapping(selected[0]).get("imageID")
+            if (not isinstance(image_id, str)
+                or re.fullmatch(r"(?:[A-Za-z0-9._:/@-]+)?sha256:[0-9a-f]{64}", image_id) is None
+                or "sha256:" + image_id.rsplit("sha256:", 1)[-1] not in allowed):
+                return f"the running {container_name} image differs from the approved PG-ONPREM-2 pin"
+    return ""
+
+
+def _c0_pod_identity(pods: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return sorted([
+        {**_pod_summary(pod), "uid": _mapping(pod.get("metadata")).get("uid")}
+        for pod in pods if _mapping(pod.get("status")).get("phase") == "Running"
+    ], key=lambda value: str(value["name"]))
+
+
 # Capacity operands are supplied by the operator from measured values; none is defaulted.
 _CAPACITY_ENV = {
     "measured_record_bytes": "CAPACITY_MEASURED_RECORD_BYTES",
@@ -1179,7 +1358,7 @@ def _write_rejection_evidence(
     path.parent.mkdir(parents=True, exist_ok=True)
     manifest = profile.manifest()
     timestamp = datetime.now(timezone.utc).isoformat()
-    reviewed_manifest = canonical_pg_onprem_profile().manifest()
+    reviewed_manifest = canonical_pg_onprem_2_profile().manifest()
     lines = [
         "# Story 27.3 C1 Adapter Profile Evidence",
         "",
@@ -1213,9 +1392,9 @@ def _write_rejection_evidence(
             # and the ADR workload envelope, and nothing else. `evidence_root`,
             # `deployment_id` and `declared_single_component_fault` are published in
             # this packet but are deliberately outside the hash.
-            "- profile_hash_covers: `declared profile identity (profileId, kubeContext, kubeNamespace), the reviewed backend constants (postgresqlImage, componentType, maxConns), the C1 capability set, and the ADR two-writer workload envelope; no live query result and no invocation parameter`",
+            "- profile_hash_covers: `declared profile identity (profileId, kubeContext, kubeNamespace), the approved backend/runtime/platform/security/deployment identities and bound inputs, the capacity/fault boundary, the C1 capability set, and the ADR two-writer workload envelope; no live query result and no invocation parameter`",
             f"- reviewed_canonical_profile_sha256: `{reviewed_manifest['profile_sha256']}`",
-            "- reviewed_canonical_profile_source: `tools/verify_access_telemetry_lifecycle.py::canonical_pg_onprem_profile`",
+            "- reviewed_canonical_profile_source: `tools/verify_access_telemetry_lifecycle.py::canonical_pg_onprem_2_profile`",
             f"- runtime_matches_reviewed_profile: `{str(manifest['profile_sha256'] == reviewed_manifest['profile_sha256']).lower()}`",
             "",
             "## Reviewed Source Hashes",
@@ -1594,7 +1773,13 @@ def run_adapter_profile_checkpoint(
             else "execution target does not match the approved on-premises Kubernetes namespace"
         )
     elif identity.profile_id != EXPECTED_PROFILE_ID:
-        preflight_reason = "profile identity does not match the approved immutable PG-ONPREM-1 profile"
+        preflight_reason = "profile identity does not match the approved immutable PG-ONPREM-2 profile"
+
+    if preflight_reason is None:
+        try:
+            validate_current_profile_inputs(repository_root)
+        except EvidenceValidationError as error:
+            preflight_reason = str(error)
 
     capacity = collect_capacity_evidence()
     attestations = collect_attestations()
@@ -1636,21 +1821,16 @@ def run_adapter_profile_checkpoint(
         _run_kubectl(identity, "get", "components.dapr.io", "-o", "json"),
         _run_kubectl(identity, "get", "configurations.dapr.io", "-o", "json"),
         _run_kubectl(identity, "get", "statefulsets", "-o", "json"),
-        _run_kubectl(
-            identity,
-            "get",
-            "pods",
-            "-l",
-            "app.kubernetes.io/name=memories",
-            "-o",
-            "json",
-        ),
+        *_collect_c0_profile_pods(identity),
     ]
     deployments = _items(observations[0].payload)
     components = _items(observations[1].payload)
     configurations = _items(observations[2].payload)
     statefulsets = _items(observations[3].payload)
-    pods = _items(observations[4].payload)
+    pod_groups = {workload: _items(observation.payload)
+                  for workload, observation in zip(_C0_PROFILE_CONTAINERS, observations[4:])}
+    pods = [pod for group in pod_groups.values() for pod in group]
+    required_query_count = len(observations)
     workload_before = _workload_identity(deployments)
 
     summaries = {
@@ -1661,13 +1841,15 @@ def run_adapter_profile_checkpoint(
         "pods": [_pod_summary(item) for item in pods],
     }
 
-    # AC1 requires the running Dapr runtime identity, captured from the deployment rather
-    # than inferred from .NET package pins. This is gate C1.15's producer.
+    # C0 captures the running Dapr identity rather than inferring it from package pins.
+    # These generic observations do not renew the unsupported PG2 C1.15 producer/review.
     # Story 27.3 code review (eighth-invocation review): the digest set used to union
     # *every* pod while the version was read from Running pods only, so a terminated
     # old-ReplicaSet pod could report the fleet as divergent while the running fleet
     # was uniform. Both now observe the same population, and the packet names it.
-    running_pod_summaries = [summary for summary in summaries["pods"] if summary["phase"] == "Running"]
+    running_pod_summaries = [_pod_summary(pod) for workload, group in pod_groups.items()
+                             if _C0_PROFILE_CONTAINERS[workload] == "daprd"
+                             for pod in group if _mapping(pod.get("status")).get("phase") == "Running"]
     sidecar_images, sidecar_digests = collect_sidecar_image_identity(running_pod_summaries)
     runtime_identity: dict[str, Any] = {
         "kube_context_observed": identity.kube_context,
@@ -1695,7 +1877,7 @@ def run_adapter_profile_checkpoint(
     # claim-versus-blocker confusion the sibling fields fail closed to avoid.
     runtime_identity["sidecar_digest_is_uniform"] = _digest_uniformity(sidecar_digests)
 
-    if any(observation.exit_code != 0 or observation.payload is None for observation in observations[:5]):
+    if any(observation.exit_code != 0 or observation.payload is None for observation in observations[:required_query_count]):
         reason = "deployment identity could not be captured from every required read-only Kubernetes query"
     else:
         statefulsets_by_name = {
@@ -1734,9 +1916,19 @@ def run_adapter_profile_checkpoint(
                     "capacity, backup/restore, physical-reclamation, and separated-review result"
                 )
             elif _component_metadata_value(store, "maxConns") != EXPECTED_MAX_CONNS:
-                reason = "the running state component maxConns differs from PG-ONPREM-1"
+                reason = "the running state component maxConns differs from PG-ONPREM-2"
+            elif runtime_reason := _c0_profile_runtime_reason(pod_groups, deployments):
+                reason = runtime_reason
             elif runtime_identity.get("daprd_version") != "1.18.1":
-                reason = "the running Dapr version differs from PG-ONPREM-1"
+                reason = "the running Dapr version differs from PG-ONPREM-2"
+            elif not isinstance(sidecar_digests, list) or not sidecar_digests or any(
+                re.fullmatch(r"(?:[A-Za-z0-9._:/@-]+)?sha256:[0-9a-f]{64}", image_id) is None
+                or "sha256:" + image_id.rsplit("sha256:", 1)[-1] not in {
+                    EXPECTED_RUNTIME_IMAGE.rsplit("@", 1)[-1], EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST,
+                }
+                for image_id in sidecar_digests
+            ):
+                reason = "the running Dapr image differs from the approved PG-ONPREM-2 pin"
             elif runtime_identity.get("sidecar_digest_is_uniform") is not True:
                 reason = "the running Dapr sidecar digest is absent or non-uniform"
             else:
@@ -1750,6 +1942,18 @@ def run_adapter_profile_checkpoint(
 
     if not reason and workload_before != workload_after:
         reason = "deployment workload identity changed during C0 collection"
+
+    if not reason:
+        pod_rechecks = _collect_c0_profile_pods(identity)
+        observations.extend(pod_rechecks)
+        rechecked_groups = {workload: _items(observation.payload)
+                            for workload, observation in zip(_C0_PROFILE_CONTAINERS, pod_rechecks)}
+        if any(observation.exit_code != 0 or observation.payload is None for observation in pod_rechecks):
+            reason = "profile pod identity recheck could not be captured during C0 collection"
+        elif runtime_reason := _c0_profile_runtime_reason(rechecked_groups, _items(after.payload)):
+            reason = runtime_reason
+        elif _c0_pod_identity(pods) != _c0_pod_identity([pod for group in rechecked_groups.values() for pod in group]):
+            reason = "profile pod identity changed during C0 collection"
 
     if not reason and c0_wrapper_path is not None and repository_root is not None:
         try:
@@ -1800,7 +2004,7 @@ STORY_27_4_CHECKPOINTS: tuple[str, ...] = (
     "c3-retention-reclamation",
     "c4-failure-privacy-observability",
 )
-STORY_27_4_PROFILE_SHA256 = canonical_pg_onprem_profile().manifest()["profile_sha256"]
+STORY_27_4_PROFILE_SHA256 = CURRENT_PROFILE_SHA256
 STORY_27_4_WORKLOAD_SHA256 = _sha256(_canonical_json(ADR_TWO_WRITER_WORKLOAD.to_dict()))
 REQUIRED_REPLACEMENTS: tuple[str, ...] = (
     "actor-activation",
@@ -2462,7 +2666,7 @@ def _validate_predecessor(
     if predecessor.get("checkpoint") != "C1" or predecessor.get("status") != "passed":
         raise EvidenceValidationError("C1 predecessor has not passed")
     if predecessor.get("profile_sha256") != STORY_27_4_PROFILE_SHA256:
-        raise EvidenceValidationError("C1 predecessor profile differs from PG-ONPREM-1")
+        raise EvidenceValidationError("C1 predecessor profile differs from PG-ONPREM-2")
     if predecessor.get("production_lifecycle_writes") != "disabled":
         raise EvidenceValidationError("C1 must preserve disabled Production lifecycle writes")
     _require_bool(predecessor.get("qualification_authorized"), "C1.qualification_authorized", True)
@@ -3187,7 +3391,7 @@ def _validate_c3(results: Mapping[str, Any]) -> None:
         if cohort["cohort_id"] != f"retention-{hours}h":
             raise EvidenceValidationError("C3 cohort identifiers are not the closed horizon inventory")
         if cohort["database"] != "memories_access_telemetry" or cohort["schema"] != "access_telemetry":
-            raise EvidenceValidationError("C3 database/schema attribution differs from PG-ONPREM-1")
+            raise EvidenceValidationError("C3 database/schema attribution differs from PG-ONPREM-2")
         _require_nonempty_string(cohort["table"], f"cohorts[{index}].table", maximum=128)
         accepted = _require_utc_milliseconds(cohort["accepted_utc_ms"], f"cohorts[{index}].accepted_utc_ms")
         emitted = _require_utc_milliseconds(cohort["emitted_utc_ms"], f"cohorts[{index}].emitted_utc_ms")
@@ -4279,7 +4483,7 @@ def _validate_c0_adapter_profile(
         "C0 adapter-profile results",
     )
     if results["profile_id"] != EXPECTED_PROFILE_ID:
-        raise EvidenceValidationError("C0 adapter-profile ID differs from PG-ONPREM-1")
+        raise EvidenceValidationError("C0 adapter-profile ID differs from PG-ONPREM-2")
     _require_bool(results["profile_complete"], "C0.profile_complete", True)
     _require_bool(
         results["runtime_matches_reviewed_profile"],
@@ -4329,7 +4533,7 @@ def _validate_terminal_bundle(
 
     _require_exact_fields(bundle, frozenset({"profile_sha256", "checkpoints"}), "terminal bundle")
     if bundle["profile_sha256"] != STORY_27_4_PROFILE_SHA256:
-        raise EvidenceValidationError("terminal bundle profile drifted from PG-ONPREM-1")
+        raise EvidenceValidationError("terminal bundle profile drifted from PG-ONPREM-2")
     checkpoints = _require_mapping(bundle["checkpoints"], "terminal bundle checkpoints")
     expected = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "terminal"}
     if set(checkpoints) != expected:

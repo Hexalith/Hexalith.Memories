@@ -4946,6 +4946,20 @@ Operators can configure and verify a bounded lifecycle for access telemetry thro
 
 **Qualification and close-out split (corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03):** Story 27.3 owns C0 and the independent C2/C3/C4 adapter qualification against the immutable `PG-ONPREM-1` definition. Story 27.21 is the registered `backlog` owner of C1.15; its producer and fixture exist, but C1.15 is still `pending` / `not complete` and has not passed. The remaining twenty-four running-target C1 gates are held without a registered story owner. Story 27.4 owns deployment-shaped lifecycle evidence, operations documentation, and A41 close-out. **Corrected 2026-09-06 by approved Sprint Change Proposal `sprint-change-proposal-2026-09-06-story-27-4-live-producer-contract.md`:** repository-owned producers, validators, runbooks, dashboard, and close-out guards may be implemented and reviewed as `awaiting-operator` while C1 successor files are still absent or unproven. That repository work does not pass any C1 gate, enable Production lifecycle writes, mark Story 27.4 `done`, or close A41. Story 27.4 completion and A41 mutation still require Story 27.3 `done` on C0/C2–C4, actual Story 27.7–27.31 files registered and `done`, all twenty-five C1 gates `passed` on running-target evidence, and the same immutable profile hash. Registration and producer existence never enable Production lifecycle writes or close A41.
 
+**Dated correction 2026-10-04 — exact PG2 adoption and C1.16 registration.**
+The approved current profile is `PG-ONPREM-2`, canonical SHA-256
+`7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`, with
+PostgreSQL 18.6 and the exact approved OpenBao/Dapr/configuration bytes. PG1 and
+its accepted captures are closed historical evidence; current downstream C0,
+predecessors, approvals and terminal consumers reject old or mixed profile evidence.
+Story 27.21 is `done` for its independently accepted historical C1.15 capture.
+Its original PG1 literal command and operator intent remain unchanged. Story 27.22
+is the single checked `backlog` owner added for callable C1.16/PG2; capture/review
+and connection linkage remain pending. The remaining twenty-three C1 gates stay
+held and unregistered. Earlier PG1-only, twenty-four-held and in-progress claims
+below record their dated historical state. This adoption grants no target execution,
+security requalification, Production writes, Story 27.4 completion or A41 closure.
+
 **Registration rollback 2026-08-01.** The 2026-07-28, 2026-07-30, and 2026-07-31 C1 transfers remain provenance for gate identifiers and fail-closed intent, not current ownership. The candidate Story 27.5/27.6 definitions are held, not registered, in Sprint Change Proposal 2026-08-01 until actual story files carry real per-gate evidence producers and a later approved correction registers them.
 
 **Successor registration 2026-08-03.** Story 27.21 is the first one-gate transaction registered under the approved 2026-08-03 sequence. It owns only C1.15 and remains `backlog`; its fixture proves only producer behavior. No Production C1.15 result exists until the literal command captures a complete running-target packet and independent review accepts it.
@@ -5053,6 +5067,11 @@ So that A41 closes only after the policy works in the deployment shape.
 
 **Status:** in-progress. **Owner:** Deployment Adapter Developer.
 
+**Dated status correction 2026-10-04:** Story 27.21 is `done`; its real PG1 C1.15
+capture was independently accepted/complete. The preceding in-progress status is
+historical. Its original command and acceptance contract below are retained without
+successor credit, Production permission or changes to Story 27.4/A41 authority.
+
 As a Deployment Adapter Developer,
 I want one read-only C1.15 producer for the running access-telemetry lifecycle workload,
 So that an independent reviewer can evaluate runtime and control-plane identity without another gate being inferred or discharged.
@@ -5066,7 +5085,47 @@ So that an independent reviewer can evaluate runtime and control-plane identity 
 **And** any incomplete or secret-shaped observation writes a blocker packet, exits nonzero, and never falls back to Server pods,
 **And** every packet keeps `gateStatus: not-evaluated`; producer existence and registration do not pass C1.15, enable Production lifecycle writes, advance Story 27.4, or close A41.
 
-#### Held C1 successor definitions — C1.15 registered only
+### Story 27.22: Component and Backend Identity
+
+**Status:** backlog. **Owner:** Deployment Adapter Developer. **Gate:** C1.16 only.
+
+As a Deployment Adapter Developer,
+I want one read-only exact-profile component/backend identity capture,
+So that an independent reviewer can assess C1.16 without inferring another gate.
+
+**Acceptance Criteria:**
+
+**Given** separately scoped eligible-target authority and exact approved PG2 inputs,
+**When** `pwsh ./tools/verify-access-telemetry-c1.ps1 -Gate C1.16 -ProfileId PG-ONPREM-2 -EvidenceDirectory /approved-evidence/access-telemetry-c1/C1.16` runs,
+**Then** a new immutable secret-safe packet records stable selected Component/API/settings/reference
+identity, capability advertisements, exact PostgreSQL/Dapr index/platform identity,
+and actual PostgreSQL 18.6 / 180006 with local read-only `peer:postgres` identity.
+
+**Given** invalid mode/profile, source drift, missing/malformed/replaced identities,
+wrong image/version/peer or secret-shaped output,
+**When** the producer runs,
+**Then** it rejects without positive partial observations; invalid modes create no
+directory or dependency calls, and source drift is refused before target calls.
+
+**Given** successful capture or offline fixtures,
+**When** recorded,
+**Then** gate/behavior/Production/connection linkage remain `not-evaluated` and
+`productionGatePassed: false`; actual independent Dapr-to-backend linkage and review
+remain necessary. Historical PG1 capture grants no successor credit. No security
+approval, Production activation, Story 27.4 advancement or A41 closure is inferred.
+
+**Registration receipt 2026-10-04:** The final
+[Story 27.22 file](../implementation-artifacts/27-22-component-and-backend-identity.md),
+callable producer, focused matrix fixtures and exactly-one-file required scope guard
+are present. C1.16 remains `pending` / `not complete`; no live execution occurred.
+The remaining twenty-three gates are held and unregistered.
+
+#### Held C1 successor definitions — historical C1.15-only registration
+
+**Dated ownership correction 2026-10-04:** Only Story 27.22/C1.16 is added to the
+historical owner below after exact PG2 adoption and focused checks. Twenty-three
+other gates remain held; the original rollback and registration intent is preserved.
+
 
 **Corrected 2026-08-01 by approved Sprint Change Proposal 2026-08-01.** Stories 27.5 and 27.6 are withdrawn from this epic and from the sprint registry. Their twenty-five C1 definitions, candidate evidence-domain allocation, re-authored Story 27.6 acceptance criteria, and re-derived slice proof are held only in Annexes A and B of that proposal. This heading is not a story-registration surface: it has no owner, sprint state, completion state, or authority to discharge a C1 gate.
 

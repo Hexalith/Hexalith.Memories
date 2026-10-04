@@ -1,0 +1,212 @@
+[
+  {
+    "kind": "PodDisruptionBudget",
+    "name": "hexalith-keys",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "ServiceAccount",
+    "name": "hexalith-keys",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "ConfigMap",
+    "name": "hexalith-keys-config",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "ClusterRoleBinding",
+    "name": "hexalith-keys-server-binding",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "Role",
+    "name": "hexalith-keys-discovery-role",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "RoleBinding",
+    "name": "hexalith-keys-discovery-rolebinding",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "Service",
+    "name": "hexalith-keys-active",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "Service",
+    "name": "hexalith-keys-standby",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "Service",
+    "name": "hexalith-keys-internal",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "Service",
+    "name": "hexalith-keys",
+    "path": "/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/metadata/labels/helm.sh/chart",
+    "before": "openbao-0.28.5",
+    "after": "openbao-0.29.6"
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchLabels/app.kubernetes.io/instance",
+    "before": null,
+    "after": "hexalith-keys"
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchLabels/app.kubernetes.io/name",
+    "before": null,
+    "after": "openbao"
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/labelSelector/matchLabels/component",
+    "before": null,
+    "after": "server"
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/podAffinityTerm/topologyKey",
+    "before": null,
+    "after": "kubernetes.io/hostname"
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/preferredDuringSchedulingIgnoredDuringExecution/0/weight",
+    "before": null,
+    "after": 100
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/requiredDuringSchedulingIgnoredDuringExecution/0/labelSelector/matchLabels/app.kubernetes.io/instance",
+    "before": "hexalith-keys",
+    "after": null
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/requiredDuringSchedulingIgnoredDuringExecution/0/labelSelector/matchLabels/app.kubernetes.io/name",
+    "before": "openbao",
+    "after": null
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/requiredDuringSchedulingIgnoredDuringExecution/0/labelSelector/matchLabels/component",
+    "before": "server",
+    "after": null
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/affinity/podAntiAffinity/requiredDuringSchedulingIgnoredDuringExecution/0/topologyKey",
+    "before": "kubernetes.io/hostname",
+    "after": null
+  },
+  {
+    "kind": "StatefulSet",
+    "name": "hexalith-keys",
+    "path": "/spec/template/spec/containers/0/image",
+    "before": "quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653",
+    "after": "quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4"
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/containers/0/image",
+    "before": "quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653",
+    "after": "quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4"
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/containers/0/securityContext/allowPrivilegeEscalation",
+    "before": null,
+    "after": false
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/containers/0/securityContext/capabilities/drop/0",
+    "before": null,
+    "after": "ALL"
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/securityContext/fsGroup",
+    "before": null,
+    "after": 1000
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/securityContext/fsGroupChangePolicy",
+    "before": null,
+    "after": "OnRootMismatch"
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/securityContext/runAsGroup",
+    "before": null,
+    "after": 1000
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/securityContext/runAsNonRoot",
+    "before": null,
+    "after": true
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/securityContext/runAsUser",
+    "before": null,
+    "after": 100
+  },
+  {
+    "kind": "Pod",
+    "name": "hexalith-keys-server-test",
+    "path": "/spec/securityContext/seccompProfile/type",
+    "before": null,
+    "after": "RuntimeDefault"
+  }
+]

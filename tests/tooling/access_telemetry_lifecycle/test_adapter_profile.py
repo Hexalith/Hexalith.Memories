@@ -32,7 +32,7 @@ class AdapterProfileTests(unittest.TestCase):
         self.assertEqual(adapter_profile.EXPECTED_PROFILE_ID, identity.profile_id)
         self.assertEqual("postgresql-pod-replacement", identity.declared_single_component_fault)
         self.assertEqual("hexalith-memories", adapter_profile.EXPECTED_KUBE_NAMESPACE)
-        self.assertIn("postgres:18.4-trixie@sha256:", adapter_profile.EXPECTED_POSTGRESQL_IMAGE)
+        self.assertIn("postgres:18.6-trixie@sha256:", adapter_profile.EXPECTED_POSTGRESQL_IMAGE)
 
     def test_reviewed_kube_context_is_a_label_not_a_hardcoded_identity_control(self):
         """Another operator must be able to run the checkpoint from their own kubeconfig.
@@ -343,7 +343,7 @@ class AdapterProfileTests(unittest.TestCase):
         )
         self.assertEqual([], json.loads(manifest["canonical_profile_json"]).get("allowed_mutations", []))
         self.assertEqual(
-            adapter_profile.EXPECTED_PROFILE_ID,
+            adapter_profile.HISTORICAL_PROFILE_ID,
             manifest["canonical_profile"]["identity"]["profileId"],
         )
         # The approved profile pins maxConns 40, not the ADR's stale 64.
@@ -627,7 +627,7 @@ class AdapterProfileTests(unittest.TestCase):
         fixed once.
         """
 
-        reviewed = adapter_profile.canonical_pg_onprem_profile()
+        reviewed = adapter_profile.canonical_pg_onprem_2_profile()
         identity = adapter_profile.EnvironmentIdentity.from_mapping(
             {
                 "KUBE_CONTEXT": adapter_profile.EXPECTED_KUBE_CONTEXT,

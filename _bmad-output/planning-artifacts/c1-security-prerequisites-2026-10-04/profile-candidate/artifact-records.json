@@ -1,0 +1,59 @@
+{
+  "status": "inactive candidate artifacts; public registry content identity verified, not operational qualification or approval",
+  "observed_at": "2026-10-04T15:07:30.592904+00:00",
+  "source_repository_head": "5b43fe2f8a0f04dc021921a077dff1a573c2ce5e",
+  "platform": "linux/amd64",
+  "sources": [
+    {
+      "name": "postgresql-18.6-trixie",
+      "registry_tag_url": "https://registry-1.docker.io/v2/library/postgres/manifests/18.6-trixie",
+      "image_index_sha256": "5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+      "linux_amd64_manifest_sha256": "0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04",
+      "linux_amd64_config_sha256": "662db3da228c2ea2649b3ae04db4b4479e85fea5979f6a917a7f6d5cb1e7ec39",
+      "version_observed_in_config": "18.6-1.pgdg13+2",
+      "release_notes_url": "https://www.postgresql.org/docs/release/18.6/"
+    },
+    {
+      "name": "openbao-2.6.4",
+      "registry_tag_url": "https://quay.io/v2/openbao/openbao/manifests/2.6.4",
+      "image_index_sha256": "cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4",
+      "linux_amd64_manifest_sha256": "bd3e8b6b67b5c4c3fc1064cd0f86eb8063d9ed92a7af608b6408d6748e6eef64",
+      "linux_amd64_config_sha256": "4b8e045fa012e9c5b90160a04d405ade557afcb9d65091b4fb8ccf9cf5a9cba1",
+      "version_observed_in_config": "v2.6.4",
+      "source_commit_observed_in_config": "8206bc114009a0e468bbdae143f292922e1dbe27",
+      "release_url": "https://github.com/openbao/openbao/releases/tag/v2.6.4"
+    },
+    {
+      "name": "openbao-chart-0.29.6",
+      "registry_tag_url": "https://ghcr.io/v2/openbao/charts/openbao/manifests/0.29.6",
+      "oci_manifest_sha256": "98c8fc901e2579ac6da9a805537fcd7a19525ef8e563ae8737dc16fc8f641e3e",
+      "chart_content_sha256": "8079e985bdf608f965ada59c70051693d14dd2454ac16311229f367d0c48c4b9",
+      "config_sha256": "44d5c09633b77ac626a00a311cf43153db0091b2cb69ccbc0f0bc0bbeacc3c5b",
+      "app_version_in_chart": "v2.6.3",
+      "explicit_server_override": "2.6.4",
+      "kubernetes_requirement": ">=1.30.0-0",
+      "release_url": "https://github.com/openbao/openbao-helm/releases/tag/openbao-0.29.6",
+      "github_asset_url": "https://github.com/openbao/openbao-helm/releases/download/openbao-0.29.6/openbao-0.29.6.tgz",
+      "github_asset_and_oci_bytes_identical": true
+    }
+  ],
+  "helm_tool": {
+    "version": "v3.22.0",
+    "url": "https://get.helm.sh/helm-v3.22.0-linux-amd64.tar.gz",
+    "archive_sha256": "1e4ab49e429626cf6c6958d914248b78c9730803c2751b87627e171dc800e7bb",
+    "binary_sha256": "7a319dee5ea7a1f7d7a0d92d5c223586f3b65abc33163c9de2a85f083aa3df2b",
+    "release_url": "https://github.com/helm/helm/releases/tag/v3.22.0"
+  },
+  "candidate_values_sha256": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa",
+  "candidate_render_sha256": "16001617572d803bc9b53731a54c8b564e3c6b5a3d9b28b34a727dad9d435303",
+  "baseline_values_sha256": "6a3d08c704c67ae82dafbe093c55b652ff66122c85bfbafe3150a068f7e4d923",
+  "baseline_render_sha256": "dd161463df10441a65431a158ce63c0d43789ad951da8b313e8bf7f5bbcedad9",
+  "evidence_scope": [
+    "SHA256 hash of public TLS registry response bytes equals Docker-Content-Digest header for image indices/manifests",
+    "Selected linux/amd64 manifest and config bytes equal their descriptors",
+    "Chart archive bytes equal OCI layer descriptor and GitHub release asset bytes",
+    "Helm archive bytes equal primary release page SHA256 and downloaded official checksum",
+    "No image binary runtime version command, signature/cosign check, cluster state, migration or requalification performed"
+  ],
+  "preexisting_blocker": "Tracked values omit server.affinity and therefore inherit required host anti-affinity, inconsistent with documented single-node three-voter deployment. Preferred-host-spreading candidate is a proposed correction only."
+}

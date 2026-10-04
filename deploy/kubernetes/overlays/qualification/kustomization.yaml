@@ -13,6 +13,15 @@ transformers:
   - dapr-role-namespace-transformer.yaml
   - dapr-role-binding-namespace-transformer.yaml
 patches:
+  # Derived evidence hash stays outside the exact approved reporter input bytes.
+  - target:
+      kind: ConfigMap
+      name: access-telemetry-physical-evidence-report
+    patch: |-
+      - op: replace
+        path: /data/evidence.json
+        value: >-
+          {"evidenceId":"story-27-4-c3","componentProfileHash":"7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe","artifactSha256":"0000000000000000000000000000000000000000000000000000000000000000","reporterImageDigest":"0000000000000000000000000000000000000000000000000000000000000000","observedAtUnixMilliseconds":0}
   - path: qualification-enabled-patch.yaml
   # Dapr ACL source namespaces are values inside Configuration specs; the
   # kustomize namespace transformer does not rewrite them.  Keep every
@@ -55,4 +64,4 @@ configMapGenerator:
     behavior: merge
     literals:
       - ACCESS_TELEMETRY_ENABLED=true
-      - ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH=dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14
+      - ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH=7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe

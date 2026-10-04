@@ -1681,7 +1681,7 @@ class RetentionVerificationTests(unittest.TestCase):
                     "--kube-context", "operator@local",
                     "--namespace", "hexalith-memories",
                     "--deployment-id", "deployment-27-4-test",
-                    "--profile-id", "postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1",
+                    "--profile-id", "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2",
                     "--workload-profile", "adr-27.1-two-writer-500eps",
                     "--steady-state-minutes", "30",
                     "--purge-backlog-records", "150000",
@@ -1728,7 +1728,7 @@ class RetentionVerificationTests(unittest.TestCase):
                     "--kube-context", "operator@local",
                     "--namespace", "hexalith-memories-qualification",
                     "--deployment-id", "deployment-27-4-test",
-                    "--profile-id", "postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1",
+                    "--profile-id", "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2",
                     "--workload-profile", "adr-27.1-two-writer-500eps",
                     "--steady-state-minutes", "30",
                     "--purge-backlog-records", "150000",
@@ -1925,12 +1925,18 @@ def install_tools(repository: Path) -> None:
                  "access_telemetry_producer_common.py", "access_telemetry_c2_producer.py",
                  "access_telemetry_c3_producer.py", "access_telemetry_c4_producer.py"):
         shutil.copy2(TOOLS_DIR / name, destination / name)
-    reporter = repository / "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml"
-    reporter.parent.mkdir(parents=True)
-    shutil.copy2(
-        REPO_ROOT / "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml",
-        reporter,
-    )
+    from verify_access_telemetry_lifecycle import canonical_pg_onprem_2_profile
+    identity = canonical_pg_onprem_2_profile().identity
+    paths = list(identity["securityPlatform"]["secretAndConfigurationInputs"]) + [
+        "deploy/openbao/values.yaml",
+        "deploy/kubernetes/base/access-telemetry-postgresql.yaml",
+        "deploy/kubernetes/base/access-telemetry-deployments.yaml",
+        "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml",
+    ]
+    for relative in paths:
+        destination = repository / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO_ROOT / relative, destination)
 
 
 def install_a41_files(repository: Path, content: str) -> None:
@@ -2016,6 +2022,15 @@ def install_fake_kubectl(directory: Path) -> None:
     script.write_text("""#!/usr/bin/env python3
 import hashlib, json, os, sys, time
 args = sys.argv[1:]
+prior_calls = []
+call_log = os.environ.get('QUALIFICATION_KUBECTL_LOG')
+if call_log:
+    try:
+        with open(call_log, encoding='utf-8') as stream:
+            prior_calls = [json.loads(line) for line in stream]
+    except FileNotFoundError: pass
+    with open(call_log, 'a', encoding='utf-8') as stream:
+        stream.write(json.dumps(args) + '\\n')
 step = int(os.environ.get('HEXALITH_STORY_27_4_STEP', '0'))
 namespace = args[args.index('--namespace') + 1] if '--namespace' in args else ''
 def selected_items(items):
@@ -2085,14 +2100,14 @@ if 'get' in args and args[-1] == 'json':
         if name == 'access-telemetry-qualification-gate':
             enabled = op not in {'qualification-target-identity', 'qualification-final-state'}
             gate = {'schemaVersion': 1, 'state': 'enabled' if enabled else 'disabled',
-                'profileSha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+                'profileSha256': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
                 'expiresUtcMs': int(time.time() * 1000) + 900000 if enabled else 0}
             print(json.dumps({'metadata': {'name': name, 'namespace': namespace},
                 'data': {'gate.json': json.dumps(gate, separators=(',', ':'))}}, separators=(',', ':')))
             raise SystemExit(0)
         if op == 'cohort-168h-report' and os.environ.get('QUALIFICATION_COMPLETED_REPORTER') == '1':
             evidence = {'evidenceId': 'story-27-4-c3',
-                'componentProfileHash': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+                'componentProfileHash': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
                 'artifactSha256': os.environ['QUALIFICATION_ARTIFACT'],
                 'reporterImageDigest': 'd' * 64,
                 'observedAtUnixMilliseconds': int(os.environ['QUALIFICATION_RECLAIMED'])}
@@ -2127,7 +2142,7 @@ if 'get' in args and args[-1] == 'json':
             'status': ({'succeeded': 1, 'completionTime': '2026-09-06T12:00:00Z'} if completed_reporter else {})}, separators=(',', ':')))
         raise SystemExit(0)
     digest = {'memories': 'b' * 64, 'lifecycle': 'a' * 64, 'clock': 'c' * 64,
-        'daprd': 'd' * 64, 'operator': 'e' * 64, 'placement': 'f' * 64,
+        'daprd': os.environ.get('QUALIFICATION_DAPR_DIGEST', 'b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8'), 'operator': 'e' * 64, 'placement': 'f' * 64,
         'scheduler': '1' * 64, 'sentry': '2' * 64, 'injector': '3' * 64}
     if resource == 'deployment':
         name = args[args.index('get') + 2]
@@ -2188,7 +2203,7 @@ if 'get' in args and args[-1] == 'json':
             'metadata': {'name': 'memories-config'},
             'spec': {'accessControl': {'defaultAction': 'deny', 'policies': []}}}, separators=(',', ':')))
         raise SystemExit(0)
-    postgres_image = 'docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a'
+    postgres_image = os.environ.get('QUALIFICATION_POSTGRES_IMAGE', 'docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722')
     if namespace == 'dapr-system':
         system_items = {
             'deployments': [
@@ -2291,9 +2306,33 @@ if 'get' in args and args[-1] == 'json':
              ]}},
             {'metadata': {'name': 'postgres-0', 'uid': 'postgres-' + pod_phase, 'labels': {'app.kubernetes.io/name': 'access-telemetry-postgresql'}},
              'spec': {'serviceAccountName': 'access-telemetry-postgresql'}, 'status': {'phase': 'Running', 'conditions': [{'type':'Ready','status':'True'}],
-                 'containerStatuses': [{'name': 'postgresql', 'restartCount': 0, 'imageID': postgres_image}]}},
+                 'containerStatuses': [{'name': 'postgresql', 'restartCount': 0, 'imageID': os.environ.get('QUALIFICATION_POSTGRES_RUNNING_ID', postgres_image)}]}},
         ],
     }.get(resource, [])
+    if resource == 'pods':
+        items = [item for item in items if item.get('metadata', {}).get('labels', {}).get('app.kubernetes.io/name') != os.environ.get('QUALIFICATION_MISSING_WORKLOAD')]
+        for item in items:
+            workload = item.get('metadata', {}).get('labels', {}).get('app.kubernetes.io/name')
+            for status in item['status']['containerStatuses']:
+                status.setdefault('ready', True)
+                if workload == os.environ.get('QUALIFICATION_MUTATION_WORKLOAD') and status['name'] in {'daprd', 'postgresql'} and os.environ.get('QUALIFICATION_MUTATION_IMAGE_ID'):
+                    status['imageID'] = os.environ['QUALIFICATION_MUTATION_IMAGE_ID']
+                if workload == os.environ.get('QUALIFICATION_RUNTIME_DRIFT_AFTER') and args in prior_calls:
+                    item['metadata']['uid'] += '-replaced'
+    if resource == 'pods' and os.environ.get('QUALIFICATION_CONTAINER_MUTATION'):
+        for item in items:
+            if item.get('metadata', {}).get('labels', {}).get('app.kubernetes.io/name') != os.environ['QUALIFICATION_MUTATION_WORKLOAD']:
+                continue
+            statuses = item['status']['containerStatuses']
+            expected = 'postgresql' if os.environ['QUALIFICATION_MUTATION_WORKLOAD'] == 'access-telemetry-postgresql' else 'daprd'
+            selected = [value for value in statuses if value['name'] == expected]
+            mutation = os.environ['QUALIFICATION_CONTAINER_MUTATION']
+            if mutation == 'missing':
+                item['status']['containerStatuses'] = [value for value in statuses if value['name'] != expected]
+            elif mutation == 'renamed':
+                selected[0]['name'] = 'unexpected-name'
+            else:
+                statuses.append(dict(selected[0]))
     print(json.dumps({'items': selected_items(items)}, separators=(',', ':')))
     raise SystemExit(0)
 now = int(time.time() * 1000)
@@ -2351,7 +2390,7 @@ if '/operations/access-telemetry/qualification/fixed-workload' in command_text:
     raise SystemExit(0)
 if 'cat /var/run/hexalith/access-telemetry-qualification/gate.json' in command_text:
     print(json.dumps({'schemaVersion': 1, 'state': 'disabled',
-        'profileSha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+        'profileSha256': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
         'expiresUtcMs': 0}, separators=(',', ':')))
     raise SystemExit(0)
 if '--header="Authorization: Bearer' in command_text or 'Bearer $bearer' in command_text:
@@ -2414,7 +2453,7 @@ if 'logs' in args:
         aggregate = {'stage': 'reclamation', 'reclaimed_utc_ms': int(os.environ.get('QUALIFICATION_RECLAIMED', ((now // 3600000) * 3600000 - (8 * 24 * 3600000)) + 168 * 3600000 + 120000)),
             'allocator_free_bytes': 700}
         print(json.dumps({'status': 'accepted', 'evidenceId': 'story-27-4-c3',
-            'componentProfileHash': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+            'componentProfileHash': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
             'artifactSha256': os.environ['HEXALITH_STORY_27_4_PHYSICAL_ARTIFACT_SHA256'],
             'reporterImageDigest': 'd' * 64,
             'observedAtUnixMilliseconds': aggregate['reclaimed_utc_ms']}, separators=(',', ':')))
@@ -2476,7 +2515,7 @@ if 'psql' in command_text and op.startswith('cohort-'):
     raise SystemExit(0)
 if op == 'qualification-target-identity':
     value = {'kind': 'non-production-qualification', 'namespace': 'memories-qualification',
-        'profile_sha256': 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14',
+        'profile_sha256': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
         'writes_state': 'disabled'}
 elif op in {'qualification-enable', 'qualification-disable', 'qualification-final-state'}:
     value = {'state': 'enabled' if op == 'qualification-enable' else 'disabled'}

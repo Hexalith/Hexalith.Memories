@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Deployment;
 
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 using Shouldly;
@@ -121,7 +122,7 @@ public sealed class ProductionDeploymentArtifactsTests
         falkordb.ShouldContain("memory: 4Gi");
 
         accessTelemetryPostgresql.ShouldContain("replicas: 1");
-        accessTelemetryPostgresql.ShouldContain("postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a");
+        accessTelemetryPostgresql.ShouldContain("postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722");
         accessTelemetryPostgresql.ShouldContain("hexalith.io/availability: single-node-non-ha");
         accessTelemetryPostgresql.ShouldContain("value: /var/lib/postgresql/18/docker");
         accessTelemetryPostgresql.ShouldContain("mountPath: /var/lib/postgresql");
@@ -326,7 +327,7 @@ public sealed class ProductionDeploymentArtifactsTests
 
         values.ShouldContain("fullnameOverride: hexalith-keys");
         values.ShouldContain("tlsDisable: false");
-        values.ShouldContain("2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653");
+        values.ShouldContain("2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4");
         values.ShouldContain("type: ClusterIP");
         values.ShouldContain("storage \"raft\"");
         values.ShouldContain("storageClass: openebs-hostpath-retain");
@@ -822,6 +823,39 @@ public sealed class ProductionDeploymentArtifactsTests
         // the pair would otherwise fail asymmetrically if that ever changed.
         => File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)))
             .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    [Fact]
+    public void QualificationOverlay_AdoptsExactApprovedBytesAndKeepsDerivedEvidenceDisabled()
+    {
+        string root = GetRepoRoot();
+        const string candidateRoot = "_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/profile-candidate/";
+        const string currentHash = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe";
+        (string Candidate, string Active)[] copies =
+        [
+            ("openbao-values.candidate.yaml", "deploy/openbao/values.yaml"),
+            ("postgresql.candidate.yaml", "deploy/kubernetes/base/access-telemetry-postgresql.yaml"),
+            ("lifecycle-deployments.candidate.yaml", "deploy/kubernetes/base/access-telemetry-deployments.yaml"),
+            ("physical-reporter.candidate.yaml", "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml"),
+        ];
+        foreach ((string candidate, string active) in copies)
+        {
+            File.ReadAllBytes(Path.Combine(root, active)).ShouldBe(File.ReadAllBytes(Path.Combine(root, candidateRoot + candidate)));
+        }
+
+        string qualification = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/qualification");
+        qualification.ShouldContain("ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH: " + currentHash);
+        Match evidence = Regex.Match(qualification, @"(?m)^  evidence\.json: '(?<json>\{[^\r\n]+\})'$");
+        evidence.Success.ShouldBeTrue();
+        using JsonDocument report = JsonDocument.Parse(evidence.Groups["json"].Value);
+        report.RootElement.GetProperty("componentProfileHash").GetString().ShouldBe(currentHash);
+        report.RootElement.GetProperty("observedAtUnixMilliseconds").GetInt64().ShouldBe(0);
+        qualification.ShouldContain("\"state\":\"disabled\"");
+        qualification.ShouldContain("holderIdentity: \"\"");
+        qualification.ShouldContain("leaseDurationSeconds: 0");
+        Regex.Matches(qualification, @"(?m)^  replicas: 0$").Count.ShouldBeGreaterThanOrEqualTo(2);
+        qualification.ShouldContain("suspend: true");
+        Read(root, "deploy/openbao/smoke-test.yaml").ShouldContain("2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653");
+    }
 
     private static string Run(string root, string fileName, params string[] arguments)
     {

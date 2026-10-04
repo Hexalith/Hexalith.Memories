@@ -1,0 +1,242 @@
+[
+  {
+    "story_id": "27.7",
+    "gate_id": "C1.1",
+    "outcome": "running-target CRUD round trip",
+    "owner": "Deployment Adapter Developer",
+    "observation": "Create/read/update/delete through `state.postgresql/v2`, with immutable request/result identities.",
+    "story_key": "27-7-running-target-crud-round-trip",
+    "draft_path": "stories/27-7-running-target-crud-round-trip.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_1_test.py"
+  },
+  {
+    "story_id": "27.8",
+    "gate_id": "C1.2",
+    "outcome": "post-write strong read",
+    "owner": "Deployment Adapter Developer",
+    "observation": "Acknowledged write followed by a strong read returning the acknowledged value.",
+    "story_key": "27-8-post-write-strong-read",
+    "draft_path": "stories/27-8-post-write-strong-read.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_2_test.py"
+  },
+  {
+    "story_id": "27.9",
+    "gate_id": "C1.3",
+    "outcome": "ETag and `FirstWrite` semantics",
+    "owner": "Deployment Adapter Developer",
+    "observation": "Match, mismatch, stale rejection, and insertion semantics as separate observations in one gate packet.",
+    "story_key": "27-9-etag-and-first-write-semantics",
+    "draft_path": "stories/27-9-etag-and-first-write-semantics.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_3_test.py"
+  },
+  {
+    "story_id": "27.10",
+    "gate_id": "C1.4",
+    "outcome": "rollback-atomic transaction",
+    "owner": "Deployment Adapter Developer",
+    "observation": "Injected later-operation failure with no partial record or expiry-index commit.",
+    "story_key": "27-10-rollback-atomic-transaction",
+    "draft_path": "stories/27-10-rollback-atomic-transaction.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_4_test.py"
+  },
+  {
+    "story_id": "27.11",
+    "gate_id": "C1.5",
+    "outcome": "effective TTL expiration",
+    "owner": "Deployment Adapter Developer",
+    "observation": "Running-target expiry observed across the accepted timing bound.",
+    "story_key": "27-11-effective-ttl-expiration",
+    "draft_path": "stories/27-11-effective-ttl-expiration.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_5_test.py"
+  },
+  {
+    "story_id": "27.12",
+    "gate_id": "C1.6",
+    "outcome": "actor reactivation survival",
+    "owner": "Deployment Adapter Developer",
+    "observation": "State remains correct after controlled actor deactivation and reactivation.",
+    "story_key": "27-12-actor-reactivation-survival",
+    "draft_path": "stories/27-12-actor-reactivation-survival.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_6_test.py"
+  },
+  {
+    "story_id": "27.13",
+    "gate_id": "C1.7",
+    "outcome": "Placement/Scheduler/reminder recovery",
+    "owner": "Platform Operations",
+    "observation": "Controlled disruption, reconnection, and the required reminder firing.",
+    "story_key": "27-13-placement-scheduler-reminder-recovery",
+    "draft_path": "stories/27-13-placement-scheduler-reminder-recovery.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_7_test.py"
+  },
+  {
+    "story_id": "27.14",
+    "gate_id": "C1.8",
+    "outcome": "request-bound enforcement",
+    "owner": "Deployment Adapter Developer",
+    "observation": "Running-target size and count limits fail closed at their boundaries.",
+    "story_key": "27-14-request-bound-enforcement",
+    "draft_path": "stories/27-14-request-bound-enforcement.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_8_test.py"
+  },
+  {
+    "story_id": "27.15",
+    "gate_id": "C1.9",
+    "outcome": "sustained two-writer workload",
+    "owner": "Platform Operations",
+    "observation": "500 events/s for 30 minutes with the ADR latency and loss thresholds.",
+    "story_key": "27-15-sustained-two-writer-workload",
+    "draft_path": "stories/27-15-sustained-two-writer-workload.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_9_test.py"
+  },
+  {
+    "story_id": "27.16",
+    "gate_id": "C1.10",
+    "outcome": "purge backlog catch-up",
+    "owner": "Platform Operations",
+    "observation": "150,000-record backlog and bounded drain/oldest-due result.",
+    "story_key": "27-16-purge-backlog-catch-up",
+    "draft_path": "stories/27-16-purge-backlog-catch-up.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_10_test.py"
+  },
+  {
+    "story_id": "27.17",
+    "gate_id": "C1.11",
+    "outcome": "physical tenant-isolation denial",
+    "owner": "Security Engineer",
+    "observation": "Running-profile cross-tenant negative evidence satisfying the exact tenant-evidence rule.",
+    "story_key": "27-17-physical-tenant-isolation-denial",
+    "draft_path": "stories/27-17-physical-tenant-isolation-denial.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_11_test.py"
+  },
+  {
+    "story_id": "27.18",
+    "gate_id": "C1.12",
+    "outcome": "transport and at-rest encryption",
+    "owner": "Security Engineer",
+    "observation": "Observed TLS `verify-full` plus the approved at-rest posture on the named profile.",
+    "story_key": "27-18-transport-and-at-rest-encryption",
+    "draft_path": "stories/27-18-transport-and-at-rest-encryption.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_12_test.py"
+  },
+  {
+    "story_id": "27.19",
+    "gate_id": "C1.13",
+    "outcome": "capacity admission",
+    "owner": "Platform Operations",
+    "observation": "Measured 1h/24h/7d operands and checked admission against the exact 70/80/90% byte table.",
+    "story_key": "27-19-capacity-admission",
+    "draft_path": "stories/27-19-capacity-admission.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_13_test.py"
+  },
+  {
+    "story_id": "27.20",
+    "gate_id": "C1.14",
+    "outcome": "physical reclamation attribution",
+    "owner": "Platform Operations",
+    "observation": "Named collector/bound and cohort-attributed reclaimed physical space.",
+    "story_key": "27-20-physical-reclamation-attribution",
+    "draft_path": "stories/27-20-physical-reclamation-attribution.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_14_test.py"
+  },
+  {
+    "story_id": "27.22",
+    "gate_id": "C1.16",
+    "outcome": "component/backend identity",
+    "owner": "Deployment Adapter Developer",
+    "observation": "Component/API/capability/backend/PostgreSQL identity from the running target.",
+    "story_key": "27-22-component-and-backend-identity",
+    "draft_path": "stories/27-22-component-and-backend-identity.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_16_test.py"
+  },
+  {
+    "story_id": "27.23",
+    "gate_id": "C1.17",
+    "outcome": "image/manifest/epoch/profile identity",
+    "owner": "Platform Operations",
+    "observation": "Image digests, manifest identity, configuration epoch, profile hash, and hash coverage.",
+    "story_key": "27-23-image-manifest-epoch-and-profile-identity",
+    "draft_path": "stories/27-23-image-manifest-epoch-and-profile-identity.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_17_test.py"
+  },
+  {
+    "story_id": "27.24",
+    "gate_id": "C1.18",
+    "outcome": "node/storage/cost record",
+    "owner": "Platform Operations",
+    "observation": "Node capacity, storage capacity, host headroom, and operating cost tied to the profile hash.",
+    "story_key": "27-24-node-storage-and-cost-record",
+    "draft_path": "stories/27-24-node-storage-and-cost-record.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_18_test.py"
+  },
+  {
+    "story_id": "27.25",
+    "gate_id": "C1.19",
+    "outcome": "declared-fault durability",
+    "owner": "Platform Operations",
+    "observation": "Forced PostgreSQL pod/process replacement with zero acknowledged loss inside the declared boundary.",
+    "story_key": "27-25-declared-fault-durability",
+    "draft_path": "stories/27-25-declared-fault-durability.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_19_test.py"
+  },
+  {
+    "story_id": "27.26",
+    "gate_id": "C1.20",
+    "outcome": "out-of-profile statement",
+    "owner": "Platform Operations",
+    "observation": "Published node, volume, control-plane, and site exclusions tied to the profile hash.",
+    "story_key": "27-26-out-of-profile-statement",
+    "draft_path": "stories/27-26-out-of-profile-statement.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_20_test.py"
+  },
+  {
+    "story_id": "27.27",
+    "gate_id": "C1.21",
+    "outcome": "backup/restore proof",
+    "owner": "Platform Operations",
+    "observation": "Named backup destination and successful restore against the same profile.",
+    "story_key": "27-27-backup-and-restore-proof",
+    "draft_path": "stories/27-27-backup-and-restore-proof.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_21_test.py"
+  },
+  {
+    "story_id": "27.28",
+    "gate_id": "C1.22",
+    "outcome": "RPO/RTO and no-HA boundary",
+    "owner": "Platform Operations",
+    "observation": "Published nonzero RPO/RTO plus an explicit no-HA claim.",
+    "story_key": "27-28-rpo-rto-and-no-ha-boundary",
+    "draft_path": "stories/27-28-rpo-rto-and-no-ha-boundary.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_22_test.py"
+  },
+  {
+    "story_id": "27.29",
+    "gate_id": "C1.23",
+    "outcome": "operations approval",
+    "owner": "Platform Operations Approver",
+    "observation": "Separate hash-bound approval of capacity, cost, operation, recovery, rollback, and reclamation evidence.",
+    "story_key": "27-29-operations-approval",
+    "draft_path": "stories/27-29-operations-approval.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_23_test.py"
+  },
+  {
+    "story_id": "27.30",
+    "gate_id": "C1.24",
+    "outcome": "non-HA acknowledgement",
+    "owner": "Platform Operations Approver",
+    "observation": "Explicit hash-bound node/disk/control-plane/site non-HA acknowledgement.",
+    "story_key": "27-30-non-ha-acknowledgement",
+    "draft_path": "stories/27-30-non-ha-acknowledgement.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_24_test.py"
+  },
+  {
+    "story_id": "27.31",
+    "gate_id": "C1.25",
+    "outcome": "independent security approval",
+    "owner": "Independent Security Reviewer",
+    "observation": "Separate hash-bound approval over identity, secrets, TLS, network, authorization, encryption, privacy, and evidence integrity.",
+    "story_key": "27-31-independent-security-approval",
+    "draft_path": "stories/27-31-independent-security-approval.md",
+    "planned_fixture": "tests/tooling/access_telemetry_c1/gate_c1_25_test.py"
+  }
+]

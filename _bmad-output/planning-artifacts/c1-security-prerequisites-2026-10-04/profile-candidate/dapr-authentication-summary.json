@@ -1,0 +1,41 @@
+{
+  "source_repository_head": "5b43fe2f8a0f04dc021921a077dff1a573c2ce5e",
+  "observed_at": "2026-10-04T15:16:52.760907+00:00",
+  "historical_packet_path": "/home/administrator/projects/hexalith/memories/artifacts/access-telemetry-c1/C1.15/c1.15-runtime-control-plane-identity-20261004T104156676Z-af39ddb5939044f38e438e6e584c3268.json",
+  "historical_packet_sha256": "17d7f350c3193ce6663364b0b4e6ef52d8f319f4ca4c0a25e9886a006ff0ed87",
+  "historical_runtime_version": "1.18.1",
+  "historical_sidecar_image_digest": "sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+  "official_tag_url": "https://ghcr.io/v2/dapr/daprd/manifests/1.18.1",
+  "official_index_sha256": "b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+  "index_identity_authenticated": true,
+  "linux_amd64_manifest_sha256": "edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b",
+  "linux_amd64_config_sha256": "40348efafaef2d1972ab513acf0d5a1e96511f7664a7fc3b94b906425908301e",
+  "linux_amd64_config_os": "linux",
+  "linux_amd64_config_architecture": "amd64",
+  "dapr_source_revision": "4cef924a0b1360c69d810deec8cd59bf853f6721",
+  "dapr_release_url": "https://github.com/dapr/dapr/releases/tag/v1.18.1",
+  "dapr_tag_ref_url": "https://api.github.com/repos/dapr/dapr/git/ref/tags/v1.18.1",
+  "tracked_injection": [
+    {
+      "path": "deploy/kubernetes/base/access-telemetry-deployments.yaml",
+      "file_sha256": "6086a9f010b4f6da47c1c32dc0da58b8689b3da198c5f6f4ee8dcd94b44f3d92",
+      "dapr_injection_enabled": true,
+      "sidecar_image_annotation_present": false
+    },
+    {
+      "path": "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml",
+      "file_sha256": "a32774b798c04f418bb009c9a34575a99b194203890ffca35ba01313f3657f42",
+      "dapr_injection_enabled": true,
+      "sidecar_image_annotation_present": false
+    }
+  ],
+  "official_sidecar_annotation_docs": "https://docs.dapr.io/reference/arguments-annotations-overview/",
+  "identity_gaps": [
+    "Historical imageID is a multi-platform index. It does not independently establish the child manifest actually running on the target.",
+    "Current manifests enable injection without explicit dapr.io/sidecar-image. Their resulting runtime image is controlled externally by injector configuration.",
+    "Official config proves selected candidate linux/amd64 identity, not historical or current target OS/architecture.",
+    "No live target call, binary version execution, or signature verification performed; fixtures do not establish live identity."
+  ],
+  "retained_historical_packet_path": "historical-c1-15-packet-bytes.json",
+  "retained_historical_packet_format": "exact-bytes-base64/v1"
+}

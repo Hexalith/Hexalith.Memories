@@ -1,0 +1,36 @@
+{
+  "canonical_profile": {
+    "capabilities": {
+      "actorStateStore": true,
+      "strongReads": true,
+      "transactionRollback": true,
+      "ttl": true
+    },
+    "identity": {
+      "profileId": "postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1",
+      "kubeContext": "jpiquot@local",
+      "kubeNamespace": "hexalith-memories",
+      "postgresqlImage": "docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a",
+      "componentType": "state.postgresql/v2",
+      "maxConns": "40"
+    },
+    "workload": {
+      "writer_count": 2,
+      "events_per_second_per_writer": {
+        "search": 200,
+        "ingest": 6,
+        "traverse": 10,
+        "case_access": 16,
+        "delete": 2,
+        "tenant_lifecycle": 0.2,
+        "tenant_config": 0.8,
+        "case_member": 4,
+        "annotation": 11
+      },
+      "total_events_per_second": 500
+    }
+  },
+  "canonical_profile_json": "{\"capabilities\":{\"actorStateStore\":true,\"strongReads\":true,\"transactionRollback\":true,\"ttl\":true},\"identity\":{\"componentType\":\"state.postgresql/v2\",\"kubeContext\":\"jpiquot@local\",\"kubeNamespace\":\"hexalith-memories\",\"maxConns\":\"40\",\"postgresqlImage\":\"docker.io/library/postgres:18.4-trixie@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a\",\"profileId\":\"postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1\"},\"workload\":{\"events_per_second_per_writer\":{\"annotation\":11,\"case_access\":16,\"case_member\":4,\"delete\":2,\"ingest\":6,\"search\":200,\"tenant_config\":0.8,\"tenant_lifecycle\":0.2,\"traverse\":10},\"total_events_per_second\":500,\"writer_count\":2}}",
+  "profile_sha256": "dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14",
+  "mutation_manifest_sha256": "2983ccdebedbd12e34bb1aec363335eb825301ce92d1c4ed87f8956d9c176b84"
+}

@@ -162,13 +162,14 @@ story_execution_order:
       - 24-8-semantic-isolation-key-family-classification
       - 24-9-non-destructive-tenant-marker-diagnostics
   epic-27:
-    reason: "Story 27.21 is the first registered one-gate successor and owns only C1.15. On 2026-10-04 independently reviewed real evidence completed its runtime/control-plane identity capture outcome (accepted/complete; DW-718 done); Story 27.21 is done after full verification and final implementation code review. Story 27.3 still owns C0 and its independent C2/C3/C4 work; the remaining twenty-four C1 gates are held, unregistered, and unowned. Story 27.4 authority is unchanged; Production activation/A41 closure still require all properly registered successors and all per-gate/profile/terminal evidence. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record."
+    reason: "Story 27.21 is the first registered one-gate successor and owns only C1.15. On 2026-10-04 independently reviewed real evidence completed its runtime/control-plane identity capture outcome (accepted/complete; DW-718 done); Story 27.21 is done after full verification and final implementation code review. Exact PG-ONPREM-2 was approved and adopted on 2026-10-04. Story 27.22 is the single checked backlog owner added for callable C1.16/PG2; capture, connection linkage and independent acceptance remain pending. Story 27.3 still owns C0 and its independent C2/C3/C4 work; the remaining twenty-three C1 gates are held, unregistered, and unowned. Historical PG1 evidence receives no current-profile credit. Story 27.4 authority is unchanged; Production activation/A41 closure still require all properly registered successors and all per-gate/profile/terminal evidence. Production writes remain disabled and A41 remains open. Document order in epics.md is numeric; this list is the current execution order of record."
     # Historical hardening 2026-09-01: Story 27.21 is in-progress for repository-side producer hardening only; C1.15 remains pending/not complete and every downstream gate remains unchanged.
     order:
       - 27-1-access-telemetry-retention-ownership-decision
       - 27-2-bounded-retention-ttl-and-purge-implementation
       - 27-3-production-adapter-and-deployment-profile
       - 27-21-runtime-and-control-plane-identity
+      - 27-22-component-and-backend-identity
       - 27-4-retention-verification-operations-runbook-and-a41-close-out
   epic-29:
     reason: "Story 29.2 consumes the executable OpenBao AppHost topology and isolation contract produced by Story 29.1."
@@ -462,6 +463,7 @@ development_status:
   27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-production-adapter-and-deployment-profile: done  # 2026-09-03: code review found the 2026-09-01 "review already complete" entry was fabricated (cited deferred-work.md entries never existed); independently re-verified the underlying CI evidence for real (gh run 33400812038, job production-deployment-verification success), wrote DW-725/DW-726/DW-727, and closed C2/AC6 on that verified evidence. AC6's literal-text gap remains tracked open at DW-721 pending a correct-course amendment.
   27-21-runtime-and-control-plane-identity: done
+  27-22-component-and-backend-identity: backlog  # 2026-10-04: checked C1.16-only registration after exact PG2 adoption; live capture/linkage/review pending, no gate or activation credit.
   27-4-retention-verification-operations-runbook-and-a41-close-out: in-progress
   # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
   # C1.15 as backlog; producer existence does not pass that gate. The remaining twenty-four C1
@@ -471,6 +473,9 @@ development_status:
   # Historical hardening 2026-09-01: Story 27.21 is in-progress; this status update changes no gate disposition.
   # 2026-10-04: C1.15 identity capture accepted/complete and DW-718 done after independent real-packet review;
   # Story 27.21 done after full verification and final implementation review. Production writes/other gates/Story 27.4/A41 unchanged.
+  # Dated correction 2026-10-04: current profile is exact approved PG-ONPREM-2;
+  # only Story 27.22/C1.16 is added. Twenty-three remaining gates stay held/unregistered.
+  # Prior twenty-four-held and PG1 claims are historical; no security/Production/27.4/A41 credit.
   epic-27-retrospective: optional
 
   # Epic 28: Owner-Approved EventStore Runtime Adoption

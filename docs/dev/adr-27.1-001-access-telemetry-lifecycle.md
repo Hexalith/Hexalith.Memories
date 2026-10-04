@@ -810,9 +810,70 @@ close-out work:
    A41 deferred entry and action close-out. Scheduling, profile selection, or
    ADR acceptance alone is never closure.
 
+## Approved successor adoption — PG-ONPREM-2
+
+**Dated correction 2026-10-04.** PG-ONPREM-2 is the current exact approved
+qualification profile. The PG1 definition and commands below are closed historical
+context and retain their original hash/evidence; no historical capture grants PG2
+credit. Current C0, predecessors, both separated approvals and terminal consumers
+require PG2 and reject old or mixed identities. This repository adoption grants
+no target execution, capability pass, security requalification, Production write,
+Story 27.4 completion or A41 closure.
+
+The current operations appendix's former multiplier `1` is corrected on 2026-10-04
+to the retained executable admission multiplier `2`, which budgets one durable copy
+plus its WAL/snapshot copy. The PG1 table below preserves its historical wording;
+the correction changes neither executable capacity admission nor fault scope.
+
+### Current PG-ONPREM-2 qualification profile
+
+| Field | Qualification contract |
+| :---- | :--------------------- |
+| Profile ID | `postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2` |
+| Profile SHA-256 | `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` |
+| Mutation manifest SHA-256 | `ff75ddd004a475420070f07cd82bbb5e74379f12ddebca7693dcd3616475d984` |
+| Dapr component | `access-telemetry-store`, `type: state.postgresql`, `version: v2`, `maxConns: "40"` |
+| Backend | PostgreSQL 18.6; actual version 18.6 / 180006 is required for C1.16 |
+| Kubernetes target | Context `jpiquot@local`, namespace `hexalith-memories`, linux/amd64 |
+| Capacity/fault boundary | 400 GiB, steady/critical/unhealthy 300647710720/343597383680/386547056640 bytes; only PostgreSQL pod/process replacement with healthy node/local storage has zero-loss scope |
+| Workload | Two writers, 500 total events/s, mandatory 30-minute qualification; capacity and workload admission are unchanged |
+| Retained capacity admission | Durability multiplier `2` budgets one durable copy plus its WAL/snapshot copy; no capacity relaxation |
+| Availability | No node/volume/control-plane/site HA; outside-profile backup RPO/RTO remains measured and potentially nonzero |
+| Bound source inputs | OpenBao chart/image/values/render; twelve fixed configuration/security inputs; exact PostgreSQL, lifecycle and reporter workloads |
+
+### Current PG-ONPREM-2 immutable image set
+
+| Workload | Required digest |
+| :------- | :-------------- |
+| PostgreSQL | `docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`; linux/amd64 `sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04` |
+| Dapr sidecar | `ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8`; linux/amd64 `sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b` |
+| OpenBao server | `quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4`; linux/amd64 `sha256:bd3e8b6b67b5c4c3fc1064cd0f86eb8063d9ed92a7af608b6408d6748e6eef64` |
+| OpenBao chart | `0.29.6`, OCI `sha256:98c8fc901e2579ac6da9a805537fcd7a19525ef8e563ae8737dc16fc8f641e3e`, content `sha256:8079e985bdf608f965ada59c70051693d14dd2454ac16311229f367d0c48c4b9` |
+| CA-only smoke CLI | Original 2.6.0 digest and bytes are retained as one of the twelve bound inputs |
+| Lifecycle / clock images | Existing application placeholders remain blocking for qualification; both replica counts stay zero |
+
+The embedded `canonical_pg_onprem_2_profile()` in
+`tools/verify_access_telemetry_lifecycle.py` reproduces the exact approved manifest.
+`canonical_pg_onprem_profile()` preserves historical SHA-256
+`dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14`.
+The [adoption record](../../_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/adoption.md)
+links the exact bytes. Reporter evidence hashes are derived only in the qualification
+overlay; Production is disabled, the qualification gate is disabled and its Lease released.
+
+Story 27.22 is the only new registered owner, for C1.16 component/backend capture.
+Its literal PG2 command captures stable selected Component identities, loaded
+capability advertisements, exact Dapr/PostgreSQL images and actual read-only peer
+server identity. Capture is neutral and `connectionLinkage: not-evaluated`: local
+peer identity does not independently prove Dapr's connection reaches that backend.
+Fresh eligible-target authority, independent linkage evidence and review remain
+operator work. C1.15/PG2 and historical-opt-in/PG2 are refused before calls/output;
+PG1 C1.16 stays an explicit historical opt-in. The remaining twenty-three gates
+stay held and unregistered; the accepted PG1 C1.15 capture remains historical.
+
 ## Production Adapter Qualification — PG-ONPREM-1
 
-`PG-ONPREM-1` is the sole approved qualification target, not a certified profile.
+`PG-ONPREM-1` was the approved qualification target at the original decision date, not a certified profile.
+The 2026-10-04 successor correction above closes this definition as historical context.
 Story 27.3 must keep Production lifecycle writes disabled until every C1 probe,
 image pin, configured-retention capacity admission, backup/restore result, and
 separate approval below passes. Any target substitution or profile drift

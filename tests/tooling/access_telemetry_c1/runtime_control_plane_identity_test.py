@@ -1501,6 +1501,21 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
         ):
             self.assertIn(bound_evidence, resolution.group(0))
 
+    def test_legacy_lowercase_gate_and_profile_preserve_c1_15_capture(self) -> None:
+        result, packets, calls, evidence = self.run_gate(
+            self.base_scenario, gate="c1.15", profile_id="pg-onprem-1",
+        )
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(1, len(packets))
+        self.assertEqual("observed", packets[0]["producerStatus"])
+        self.assertEqual("c1.15", packets[0]["gate"])
+        self.assertEqual("pg-onprem-1", packets[0]["profileId"])
+        self.assertEqual("not-evaluated", packets[0]["gateStatus"])
+        self.assertFalse(packets[0]["productionGatePassed"])
+        self.assertTrue(calls)
+        self.assertTrue(next(evidence.glob("c1.15-runtime-control-plane-identity-*.json")))
+
     def test_unsupported_gate_fails_parameter_validation_before_producer_runs(self) -> None:
         result, packets, calls, evidence = self.run_gate(
             self.base_scenario,

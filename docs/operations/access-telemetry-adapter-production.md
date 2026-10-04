@@ -1,18 +1,25 @@
-# Access Telemetry PostgreSQL 18.4 Production Appendix
+# Access Telemetry PostgreSQL 18.6 Production Appendix
 
 ## Scope and immutable profile
 
+Adopted **2026-10-04** from the exact approved PG-ONPREM-2 candidate. This is
+repository configuration adoption; no target was contacted and no capture,
+security requalification, Production activation, Story 27.4 advancement or A41
+closure is credited. The closed PG-ONPREM-1 constructor/hash and historical
+operator packets retain their original identity and have no successor credit.
+
+
 This appendix specializes
 [Access Telemetry Lifecycle Operations](access-telemetry-lifecycle.md) for the sole
-approved qualification target `PG-ONPREM-1`. It does not replace the neutral
+approved qualification target `PG-ONPREM-2`. It does not replace the neutral
 runbook or certify the profile.
 
 | Field | Exact value |
 | :---- | :---------- |
-| Profile ID | `postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1` |
-| Profile SHA-256 | `dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14` |
+| Profile ID | `postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2` |
+| Profile SHA-256 | `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` |
 | Dapr component | `access-telemetry-store`, `state.postgresql/v2`, actor state store |
-| PostgreSQL | 18.4, one raw StatefulSet replica, digest pinned by ADR 27.1-001 |
+| PostgreSQL | 18.6, one raw StatefulSet replica, digest pinned by ADR 27.1-001 |
 | Database/schema | `memories_access_telemetry` / `access_telemetry` |
 | Storage | 400 GiB OpenEBS local retained volume on `node1`; request is not a reservation |
 | Compute | request 4 CPU/8 GiB; limit 8 CPU/16 GiB |
@@ -26,8 +33,33 @@ node, storage class/size, topology, resources, TLS identity, connection pool,
 retention admission, or workload invalidates the approved deployment evidence and
 requires a new approved decision. It changes the canonical profile hash only when
 it changes a field in the ADR-defined canonical identity/capability/workload object;
-all other running observations retain separate artifact hashes. Never patch an
+PG2 additionally binds the exact PostgreSQL/Dapr platform manifests, OpenBao
+image/chart/values/render, twelve fixed configuration/security inputs and three
+workload files. Derived qualification hashes are overlay patches; the approved
+reporter input stays byte-identical. All other running observations retain
+separate artifact hashes. Never patch an
 approved profile packet in place.
+
+## C1.16 component and backend capture
+
+Story 27.22 owns only C1.16 as backlog. After separately scoped operator
+authorization and reviewer assignment, its callable producer is:
+
+```powershell
+pwsh ./tools/verify-access-telemetry-c1.ps1 -Gate C1.16 -ProfileId PG-ONPREM-2 -EvidenceDirectory /approved-evidence/access-telemetry-c1/C1.16
+```
+
+The directory is an operator-supplied external archive, not an authorized target
+or existing evidence location. The producer requires exact approved source bytes,
+stable Component/pod identities, the authenticated PostgreSQL/Dapr index or
+linux/amd64 child, actual PostgreSQL 18.6 / 180006 and `peer:postgres` on the
+read-only local socket. Advertised capabilities are recorded as advertisements.
+`connectionLinkage: not-evaluated` remains until independent evidence links the
+Dapr connection to this backend; a secret reference and local peer query cannot
+prove that connection. Captures retain `gateStatus: not-evaluated` and grant no
+behavioral, independent-review or activation credit. PG1 C1.16 remains a separate
+historical mode requiring `-AllowHistoricalProfileCapture`; C1.15/PG2, lowercase
+successor literals and historical opt-in/PG2 are refused before calls/output.
 
 ## Ownership and secret boundary
 
@@ -46,7 +78,7 @@ those credentials are never mounted into Memories or the lifecycle service.
 Use integer bytes and the measured profile formula:
 
 ```text
-baseBytes = records * (measuredRecordBytes + measuredIndexBytes) * 1
+baseBytes = records * (measuredRecordBytes + measuredIndexBytes) * 2
 controlBytes = 34,359,738,368
 reclamationWorkspace = max(137,438,953,472, ceil_div(baseBytes, 4))
 requiredPeak = baseBytes + controlBytes + reclamationWorkspace
@@ -54,12 +86,15 @@ schedulerBytes = 3 * 17,179,869,184
 totalPlatformRequired = requiredPeak + schedulerBytes
 ```
 
-The one-copy durability multiplier is `1`; backups are recovery evidence, not a
-synchronous replica. Admit steady state only at or below 300,647,710,720 bytes
+**Dated correction 2026-10-04:** the retained executable admission multiplier is `2`,
+budgeting one durable copy plus its WAL/snapshot copy. The earlier appendix multiplier
+`1` understated this unchanged admission rule; the historical PG1 ADR table remains
+historical. This correction grants no capacity relaxation or synchronous replica.
+Admit steady state only at or below 300,647,710,720 bytes
 (70%). Treat 343,597,383,680 bytes (80%) as critical and 386,547,056,640 bytes
-(90%) as lifecycle Unhealthy. The 168-hour software maximum is not admitted merely
-because it is permitted by validation; it needs measured fit or a larger approved
-profile.
+(90%) as lifecycle Unhealthy. The 168-hour (`7d`) software maximum remains
+evidence-only and is never admitted on this exact 400-GiB profile, even if a measured
+requirement fits. A changed admission rule requires a new approved profile.
 
 Before rollout record measured record/index amplification, WAL and snapshot bytes,
 tombstones/dead tuples, control overhead, reclamation workspace, Scheduler/Placement
@@ -147,7 +182,7 @@ the actual loss window rather than repeating the in-profile zero-loss claim.
 
 ## Upgrade and rollback
 
-Pin the PostgreSQL 18.4 image and `linux/amd64` identity from ADR 27.1-001. For a
+Pin the PostgreSQL 18.6 image and `linux/amd64` identity from ADR 27.1-001. For a
 minor image, Dapr component, OpenEBS, Kubernetes, or Dapr runtime change, create a
 new profile decision, verify backup/restore, capacity, TLS, transaction/ETag/TTL,
 actor/reminder, throughput, fault, purge, and reclamation behavior, then obtain both

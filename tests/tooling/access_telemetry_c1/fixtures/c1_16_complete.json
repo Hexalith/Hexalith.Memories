@@ -1,0 +1,173 @@
+{
+  "context": "jpiquot@local",
+  "pods": {
+    "apiVersion": "v1",
+    "kind": "List",
+    "items": [
+      {
+        "metadata": {
+          "name": "memories-access-telemetry-7cc55d9fd8-proof",
+          "uid": "7e36eb30-17d5-48de-9c67-f9c6b95430ce",
+          "labels": {
+            "app.kubernetes.io/name": "memories-access-telemetry"
+          }
+        },
+        "status": {
+          "phase": "Running",
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True"
+            }
+          ],
+          "containerStatuses": [
+            {
+              "name": "lifecycle",
+              "ready": true,
+              "imageID": "docker-pullable://registry.hexalith.com/memories-access-telemetry@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            {
+              "name": "daprd",
+              "ready": true,
+              "imageID": "docker-pullable://ghcr.io/dapr/daprd@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "memories-access-telemetry-7cc55d9fd8-proof": {
+      "id": "memories-access-telemetry",
+      "runtimeVersion": "1.18.1",
+      "scheduler": {
+        "connectedAddresses": [
+          "dapr-scheduler-server-0.dapr-system.svc.cluster.local:50006",
+          "dapr-scheduler-server-1.dapr-system.svc.cluster.local:50006",
+          "dapr-scheduler-server-2.dapr-system.svc.cluster.local:50006"
+        ]
+      },
+      "actors": [
+        {
+          "type": "AccessTelemetryLifecycleActor",
+          "count": 1
+        }
+      ],
+      "enabledFeatures": [
+        "Actor.Reentrancy"
+      ],
+      "components": [
+        {
+          "name": "access-telemetry-store",
+          "type": "state.postgresql",
+          "version": "v2",
+          "capabilities": [
+            "ETAG",
+            "TRANSACTIONAL",
+            "TTL",
+            "KEYS_LIKE"
+          ]
+        }
+      ]
+    }
+  },
+  "component": {
+    "apiVersion": "dapr.io/v1alpha1",
+    "kind": "Component",
+    "name": "access-telemetry-store",
+    "namespace": "hexalith-memories",
+    "uid": "084ad767-5265-4fe2-a878-61dbb3ce6d16",
+    "resourceVersion": "42017",
+    "type": "state.postgresql",
+    "version": "v2",
+    "initTimeout": "1m",
+    "secretStore": "access-telemetry-secrets",
+    "scopes": [
+      "memories-access-telemetry"
+    ],
+    "settings": [
+      {
+        "name": "tablePrefix",
+        "value": "access_telemetry.lifecycle_",
+        "hasSecretReference": false
+      },
+      {
+        "name": "metadataTableName",
+        "value": "access_telemetry.dapr_metadata",
+        "hasSecretReference": false
+      },
+      {
+        "name": "timeout",
+        "value": "3s",
+        "hasSecretReference": false
+      },
+      {
+        "name": "cleanupInterval",
+        "value": "5m",
+        "hasSecretReference": false
+      },
+      {
+        "name": "maxConns",
+        "value": "40",
+        "hasSecretReference": false
+      },
+      {
+        "name": "connectionMaxIdleTime",
+        "value": "5m",
+        "hasSecretReference": false
+      },
+      {
+        "name": "actorStateStore",
+        "value": "true",
+        "hasSecretReference": false
+      },
+      null
+    ],
+    "connectionReferences": [
+      {
+        "name": "connectionString",
+        "secretName": "access-telemetry-postgresql",
+        "secretKey": "connectionString",
+        "hasInlineValue": false
+      },
+      null
+    ]
+  },
+  "backendPods": {
+    "items": [
+      {
+        "metadata": {
+          "name": "access-telemetry-postgresql-0",
+          "uid": "9e909f25-0b37-45a2-93cb-4a20e4f219d0",
+          "labels": {
+            "app.kubernetes.io/name": "access-telemetry-postgresql"
+          }
+        },
+        "status": {
+          "phase": "Running",
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True"
+            }
+          ],
+          "containerStatuses": [
+            {
+              "name": "postgresql",
+              "ready": true,
+              "imageID": "docker-pullable://docker.io/library/postgres@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "server": {
+    "serverVersion": "18.4 (Debian 18.4-1.pgdg13+1)",
+    "serverVersionNum": "180004",
+    "database": "memories_access_telemetry",
+    "user": "memories_admin",
+    "localSocket": true,
+    "systemUser": "peer:postgres"
+  }
+}

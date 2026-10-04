@@ -1,0 +1,137 @@
+[
+  {
+    "command": [
+      "/tmp/c1-security-artifact-research-x3j5njvt/helm",
+      "version",
+      "--short"
+    ],
+    "exit_code": 0,
+    "stdout_path": "/tmp/c1-security-artifact-research-x3j5njvt/helm-version.stdout",
+    "stderr_path": "/tmp/c1-security-artifact-research-x3j5njvt/helm-version.stderr",
+    "stdout_sha256": "f82069dd5303cc785d0f7ff87dcde9f2ef5ba372f815b86dd89f92d5243e18b1",
+    "stderr": "",
+    "status": "final reproducibly bound capture"
+  },
+  {
+    "command": [
+      "/tmp/c1-security-artifact-research-x3j5njvt/helm",
+      "template",
+      "hexalith-keys",
+      "/tmp/c1-security-artifact-research-x3j5njvt/openbao-0.28.5.tgz",
+      "--namespace",
+      "openbao",
+      "--kube-version",
+      "1.34.9",
+      "--values",
+      "/tmp/c1-security-artifact-research-x3j5njvt/current-values.yaml"
+    ],
+    "exit_code": 0,
+    "stdout_path": "/tmp/c1-security-artifact-research-x3j5njvt/baseline-render.stdout",
+    "stderr_path": "/tmp/c1-security-artifact-research-x3j5njvt/baseline-render.stderr",
+    "stdout_sha256": "dd161463df10441a65431a158ce63c0d43789ad951da8b313e8bf7f5bbcedad9",
+    "stderr": "",
+    "values_sha256": "6a3d08c704c67ae82dafbe093c55b652ff66122c85bfbafe3150a068f7e4d923",
+    "status": "final reproducibly bound capture"
+  },
+  {
+    "command": [
+      "/tmp/c1-security-artifact-research-x3j5njvt/helm",
+      "template",
+      "hexalith-keys",
+      "/tmp/c1-security-artifact-research-x3j5njvt/openbao-0.29.6.tgz",
+      "--namespace",
+      "openbao",
+      "--kube-version",
+      "1.34.9",
+      "--values",
+      "/tmp/c1-security-artifact-research-x3j5njvt/current-values.yaml"
+    ],
+    "exit_code": 0,
+    "stdout_path": "/tmp/c1-security-artifact-research-x3j5njvt/chart-only-render.stdout",
+    "stderr_path": "/tmp/c1-security-artifact-research-x3j5njvt/chart-only-render.stderr",
+    "stdout_sha256": "90bd1b101f9c615f4c1ca6bb2e40e1c77e16cceddb8899971385f9f2336187dc",
+    "stderr": "",
+    "values_sha256": "6a3d08c704c67ae82dafbe093c55b652ff66122c85bfbafe3150a068f7e4d923",
+    "status": "final reproducibly bound capture"
+  },
+  {
+    "command": [
+      "/tmp/c1-security-artifact-research-x3j5njvt/helm",
+      "template",
+      "hexalith-keys",
+      "/tmp/c1-security-artifact-research-x3j5njvt/openbao-0.29.6.tgz",
+      "--namespace",
+      "openbao",
+      "--kube-version",
+      "1.34.9",
+      "--values",
+      "/tmp/c1-security-artifact-research-x3j5njvt/candidate-values.yaml"
+    ],
+    "exit_code": 0,
+    "stdout_path": "/tmp/c1-security-artifact-research-x3j5njvt/candidate-render.stdout",
+    "stderr_path": "/tmp/c1-security-artifact-research-x3j5njvt/candidate-render.stderr",
+    "stdout_sha256": "7dd77e2aa89ae873f00919cad674fe22a88494326dfc2c04394561d8bdb877e3",
+    "stderr": "",
+    "values_sha256": "9bb722ad81af334e6564a9df17722d9b8dff07ec163aefe428603fdd94c214d5",
+    "status": "final reproducibly bound capture"
+  },
+  {
+    "command": [
+      "/tmp/c1-security-artifact-research-x3j5njvt/helm",
+      "lint",
+      "/tmp/c1-security-artifact-research-x3j5njvt/openbao-0.29.6.tgz",
+      "--values",
+      "/tmp/c1-security-artifact-research-x3j5njvt/candidate-values.yaml",
+      "--kube-version",
+      "1.34.9",
+      "--strict"
+    ],
+    "exit_code": 0,
+    "stdout_path": "/tmp/c1-security-artifact-research-x3j5njvt/candidate-lint.stdout",
+    "stderr_path": "/tmp/c1-security-artifact-research-x3j5njvt/candidate-lint.stderr",
+    "stdout_sha256": "249b4e01bc4108d08a7776970c0c87391f36355382a100f3f09f82f58a1af236",
+    "stderr": "",
+    "values_sha256": "9bb722ad81af334e6564a9df17722d9b8dff07ec163aefe428603fdd94c214d5",
+    "status": "final reproducibly bound capture"
+  },
+  {
+    "command": [
+      "/tmp/c1-security-artifact-research-x3j5njvt/helm",
+      "template",
+      "hexalith-keys",
+      "/tmp/c1-security-artifact-research-x3j5njvt/openbao-0.29.6.tgz",
+      "--namespace",
+      "openbao",
+      "--kube-version",
+      "1.34.9",
+      "--values",
+      "/tmp/c1-security-artifact-research-x3j5njvt/candidate-preferred-affinity-values.yaml"
+    ],
+    "exit_code": 0,
+    "stdout_path": "/tmp/c1-security-artifact-research-x3j5njvt/candidate-preferred-affinity-render.stdout",
+    "stderr_path": "/tmp/c1-security-artifact-research-x3j5njvt/candidate-preferred-affinity-render.stderr",
+    "stdout_sha256": "16001617572d803bc9b53731a54c8b564e3c6b5a3d9b28b34a727dad9d435303",
+    "stderr": "",
+    "values_sha256": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa",
+    "status": "final reproducibly bound capture"
+  },
+  {
+    "command": [
+      "/tmp/c1-security-artifact-research-x3j5njvt/helm",
+      "lint",
+      "/tmp/c1-security-artifact-research-x3j5njvt/openbao-0.29.6.tgz",
+      "--values",
+      "/tmp/c1-security-artifact-research-x3j5njvt/candidate-preferred-affinity-values.yaml",
+      "--kube-version",
+      "1.34.9",
+      "--strict"
+    ],
+    "exit_code": 0,
+    "stdout_path": "/tmp/c1-security-artifact-research-x3j5njvt/candidate-preferred-affinity-lint.stdout",
+    "stderr_path": "/tmp/c1-security-artifact-research-x3j5njvt/candidate-preferred-affinity-lint.stderr",
+    "stdout_sha256": "249b4e01bc4108d08a7776970c0c87391f36355382a100f3f09f82f58a1af236",
+    "stderr": "",
+    "values_sha256": "4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa",
+    "status": "final reproducibly bound capture"
+  }
+]

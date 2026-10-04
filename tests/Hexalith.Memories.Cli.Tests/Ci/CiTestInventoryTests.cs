@@ -819,6 +819,26 @@ public sealed partial class CiTestInventoryTests
     }
 
     [Fact]
+    public void CiWorkflow_InstallsPinnedKubectlBeforeItsOfflineFixtureConsumers()
+    {
+        string[] workflow = File.ReadAllLines(Path.Combine(GetRepoRoot(), ".github", "workflows", "ci.yml"));
+        ReleaseWorkflowStep[] steps = ParseReleaseWorkflowSteps(GetWorkflowJobLines(workflow, "test-unit-contract"));
+        ReleaseWorkflowStep installer = steps.Single(static step => step.Name == "Initialize kubectl");
+        installer.Uses.ShouldBe("azure/setup-kubectl@v4");
+        installer.With["version"].ShouldBe("${{ env.KUBECTL_VERSION }}");
+        installer.If.ShouldBeNull();
+        installer.ContinueOnError.ShouldBeNull();
+        workflow.ShouldContain("  KUBECTL_VERSION: 'v1.35.0'");
+        int installIndex = Array.IndexOf(steps, installer);
+        foreach (string name in new[] { "Run access-telemetry lifecycle C1 fixtures", "Run access-telemetry C1 producer fixtures", "Run Docker-free unit and contract tests" })
+        {
+            int consumerIndex = Array.FindIndex(steps, step => step.Name == name);
+            consumerIndex.ShouldBeGreaterThanOrEqualTo(0);
+            installIndex.ShouldBeLessThan(consumerIndex, $"The pinned kubectl must precede {name}.");
+        }
+    }
+
+    [Fact]
     public void CiWorkflow_PinsDisposableClusterDeploymentVerificationJob()
     {
         string repoRoot = GetRepoRoot();
@@ -839,7 +859,7 @@ public sealed partial class CiTestInventoryTests
         workflow.ShouldContain("KUBECTL_VERSION: 'v1.35.0'");
         workflow.ShouldContain("KIND_VERSION: 'v0.31.0'");
         workflow.ShouldContain("KIND_NODE_IMAGE: 'kindest/node:v1.35.0'");
-        workflow.ShouldContain("OPENBAO_IMAGE: 'quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653'");
+        workflow.ShouldContain("OPENBAO_IMAGE: 'quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4'");
         workflow.ShouldContain("-KindNodeImage $env:KIND_NODE_IMAGE");
         workflow.ShouldContain("-EvidenceDirectory ./artifacts/production-deployment-verification");
         workflow.ShouldContain("name: Validate production deployment evidence");
@@ -865,7 +885,7 @@ public sealed partial class CiTestInventoryTests
         verifier.ShouldContain("dapr-secret-store-access");
         verifier.ShouldContain("@('docker', 'kind', 'kubectl', 'dapr', 'pwsh', 'curl', 'openssl')");
         string openBao = File.ReadAllText(Path.Combine(repoRoot, "tools", "production-deployment-openbao.ps1"));
-        openBao.ShouldContain("quay.io/openbao/openbao:2.6.0@sha256:900bb64d0671cd1d82b693c56206f7263b582445f3a3bb6ba6e5213f524a6653");
+        openBao.ShouldContain("quay.io/openbao/openbao:2.6.4@sha256:cf2340fc9a22cb9358ca0defd1f39b65673836bd23fe2bb8984a07e11fe13ef4");
         openBao.ShouldContain("OpenBaoPinnedImage");
         openBao.ShouldContain("Assert-OpenBaoAclDenial");
         openBao.ShouldContain("--request-timeout=12s");

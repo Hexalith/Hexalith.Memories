@@ -1,0 +1,50 @@
+{
+  "observed_at": "2026-10-04T15:14:50.138376+00:00",
+  "source_repository_head": "5b43fe2f8a0f04dc021921a077dff1a573c2ce5e",
+  "receipts": [
+    {
+      "url": "https://ghcr.io/v2/dapr/daprd/manifests/1.18.1",
+      "path": "/tmp/c1-security-artifact-research-x3j5njvt/dapr-1.18.1-index.json",
+      "sha256": "b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+      "bytes": 1791,
+      "docker_content_digest": "sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+      "content_type": "application/vnd.docker.distribution.manifest.list.v2+json"
+    },
+    {
+      "url": "https://ghcr.io/v2/dapr/daprd/manifests/sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+      "path": "/tmp/c1-security-artifact-research-x3j5njvt/dapr-accepted-c1.15-manifest.json",
+      "sha256": "b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+      "bytes": 1791,
+      "docker_content_digest": "sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+      "content_type": "application/vnd.docker.distribution.manifest.list.v2+json"
+    },
+    {
+      "url": "https://ghcr.io/v2/dapr/daprd/manifests/sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b",
+      "path": "/tmp/c1-security-artifact-research-x3j5njvt/dapr-1.18.1-linux-amd64-manifest.json",
+      "sha256": "edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b",
+      "bytes": 3233,
+      "docker_content_digest": "sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b",
+      "content_type": "application/vnd.docker.distribution.manifest.v2+json"
+    },
+    {
+      "url": "https://ghcr.io/v2/dapr/daprd/blobs/sha256:40348efafaef2d1972ab513acf0d5a1e96511f7664a7fc3b94b906425908301e",
+      "path": "/tmp/c1-security-artifact-research-x3j5njvt/dapr-1.18.1-linux-amd64-config.json",
+      "sha256": "40348efafaef2d1972ab513acf0d5a1e96511f7664a7fc3b94b906425908301e",
+      "bytes": 3004,
+      "docker_content_digest": null,
+      "content_type": "application/octet-stream"
+    }
+  ],
+  "linux_amd64_descriptor": {
+    "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+    "size": 3233,
+    "digest": "sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b",
+    "platform": {
+      "architecture": "amd64",
+      "os": "linux"
+    }
+  },
+  "dapr_source_revision": "4cef924a0b1360c69d810deec8cd59bf853f6721",
+  "observed_digest_kind": "multi-platform manifest-list index",
+  "tag_matches_observed_index": true
+}
