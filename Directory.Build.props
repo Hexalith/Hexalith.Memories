@@ -82,10 +82,10 @@
     <RequiredRootSubmodule Include="references/Hexalith.Builds">
       <RootName>Hexalith.Builds</RootName>
     </RequiredRootSubmodule>
-    <RequiredRootSubmodule Include="references/Hexalith.McpCli">
+    <RequiredRootSubmodule Include="references/Hexalith.McpCli" Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' != 'true'">
       <RootName>Hexalith.McpCli</RootName>
     </RequiredRootSubmodule>
-    <RequiredRootSubmodule Include="references/Hexalith.Platform">
+    <RequiredRootSubmodule Include="references/Hexalith.Platform" Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' != 'true'">
       <RootName>Hexalith.Platform</RootName>
     </RequiredRootSubmodule>
   </ItemGroup>
