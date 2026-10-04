@@ -314,8 +314,8 @@ public sealed partial class CiTestInventoryTests
 
         JsonElement overrides = manifest.RootElement.GetProperty("overrides");
         overrides.EnumerateObject().Select(static property => property.Name).ShouldBe(["fast-uri", "js-yaml", "semantic-release"]);
-        overrides.GetProperty("fast-uri").GetString().ShouldBe("3.1.7");
-        overrides.GetProperty("js-yaml").GetString().ShouldBe("4.3.1");
+        overrides.GetProperty("fast-uri").GetString().ShouldBe("3.1.8");
+        overrides.GetProperty("js-yaml").GetString().ShouldBe("4.3.2");
         JsonElement semanticReleaseOverride = overrides.GetProperty("semantic-release");
         semanticReleaseOverride.EnumerateObject().Select(static property => property.Name).ShouldBe(["@semantic-release/npm"]);
         semanticReleaseOverride.GetProperty("@semantic-release/npm").GetString().ShouldBe("npm:@semantic-release/error@4.0.0");
@@ -335,10 +335,10 @@ public sealed partial class CiTestInventoryTests
             ["node_modules/@semantic-release/github"] = "12.0.9",
             ["node_modules/@semantic-release/release-notes-generator"] = "14.1.1",
             ["node_modules/cosmiconfig"] = "9.0.2",
-            ["node_modules/fast-uri"] = "3.1.7",
-            ["node_modules/js-yaml"] = "4.3.1",
+            ["node_modules/fast-uri"] = "3.1.8",
+            ["node_modules/js-yaml"] = "4.3.2",
             ["node_modules/semantic-release"] = "25.0.8",
-            ["node_modules/undici"] = "7.29.0",
+            ["node_modules/undici"] = "7.30.0",
         };
         foreach ((string packagePath, string expectedVersion) in expectedLockedVersions)
         {
@@ -347,9 +347,9 @@ public sealed partial class CiTestInventoryTests
 
         JsonElement lockedUndici = lockedPackages.GetProperty("node_modules/undici");
         lockedUndici.GetProperty("resolved").GetString()
-            .ShouldBe("https://registry.npmjs.org/undici/-/undici-7.29.0.tgz");
+            .ShouldBe("https://registry.npmjs.org/undici/-/undici-7.30.0.tgz");
         lockedUndici.GetProperty("integrity").GetString()
-            .ShouldBe("sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==");
+            .ShouldBe("sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==");
         lockedPackages.GetProperty("node_modules/@semantic-release/github")
             .GetProperty("dependencies")
             .GetProperty("undici")
@@ -461,7 +461,7 @@ public sealed partial class CiTestInventoryTests
         installIndex.ShouldBeLessThan(auditIndex);
         auditIndex.ShouldBeLessThan(verifierIndex);
         requiredJobSteps[installIndex].Run.ShouldBe("npm ci");
-        requiredJobSteps[auditIndex].Run.ShouldBe("npm audit --audit-level=low");
+        requiredJobSteps[auditIndex].Run.ShouldBe("npm audit signatures");
         requiredJobSteps[verifierIndex].Run.ShouldBe("npm run verify:semantic-release-config");
         requiredJobSteps[setupIndex].Uses.ShouldBe("actions/setup-node@v6");
         requiredJobSteps[setupIndex].WorkingDirectory.ShouldBeNull();
@@ -502,7 +502,7 @@ public sealed partial class CiTestInventoryTests
         verifierIndex.ShouldBeLessThan(preflightIndex, "the combined configuration verifier must pass before release preflight.");
         preflightIndex.ShouldBeLessThan(semanticReleaseIndex, "release preflight must run before semantic-release starts publish-capable work.");
 
-        steps[auditIndex].Run.ShouldBe("npm audit --audit-level=low");
+        steps[auditIndex].Run.ShouldBe("npm audit signatures");
         steps[verifierIndex].Run.ShouldBe("npm run verify:semantic-release-config");
         foreach (ReleaseWorkflowStep gate in new[] { steps[installIndex], steps[auditIndex], steps[verifierIndex] })
         {

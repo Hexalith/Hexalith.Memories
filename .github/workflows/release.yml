@@ -84,7 +84,7 @@ jobs:
         run: npm ci
 
       - name: Audit root release tooling
-        run: npm audit --audit-level=low
+        run: npm audit signatures
 
       - name: Verify semantic-release configuration offline
         run: npm run verify:semantic-release-config

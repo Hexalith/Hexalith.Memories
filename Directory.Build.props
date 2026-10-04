@@ -82,6 +82,12 @@
     <RequiredRootSubmodule Include="references/Hexalith.Builds">
       <RootName>Hexalith.Builds</RootName>
     </RequiredRootSubmodule>
+    <RequiredRootSubmodule Include="references/Hexalith.McpCli">
+      <RootName>Hexalith.McpCli</RootName>
+    </RequiredRootSubmodule>
+    <RequiredRootSubmodule Include="references/Hexalith.Platform">
+      <RootName>Hexalith.Platform</RootName>
+    </RequiredRootSubmodule>
   </ItemGroup>
 
   <Target Name="CheckSubmodules" BeforeTargets="Restore;Build" Condition="'$(UseHexalithProjectReferences)' == 'true'">

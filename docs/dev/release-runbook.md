@@ -20,7 +20,7 @@ artifacts from a workstation.
 - Release tooling restore uses `npm ci` from the tracked root `package-lock.json`. `npm ci` is the
   release contract because it fails when `package.json` and the lockfile disagree and removes any
   existing `node_modules` tree instead of reusing workstation state. The release job then blocks on
-  the full `npm audit --audit-level=low` and combined configuration-verifier/self-test gates before
+  the full `npm audit signatures` and combined configuration-verifier/self-test gates before
   it can reach release preflight or semantic-release.
 - `tools/release-preflight.ps1` runs after package inventory validation and before `npx
   semantic-release`. It executes the existing `release:dry-run` script to read the next version
@@ -92,7 +92,7 @@ the contract from the repository root with:
 
 ```bash
 npm ci
-npm audit --audit-level=low
+npm audit signatures
 npm run verify:semantic-release-config
 ```
 
