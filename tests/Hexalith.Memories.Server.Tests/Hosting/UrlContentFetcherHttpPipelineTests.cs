@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Hosting;
 
 using Hexalith.Memories.Server.Hosting;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.Tests.Ingestion;
 using Hexalith.Memories.ServiceDefaults;
 
 using Microsoft.AspNetCore.Builder;
@@ -14,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Shouldly;
 
+[Collection(EmbeddingProviderDefaultsStateCollection.Name)]
 public class UrlContentFetcherHttpPipelineTests
 {
     private const string ResilienceControlClientName = "resilience-control";

@@ -12,6 +12,7 @@ using Hexalith.Memories.Server.Ingestion;
 
 using Shouldly;
 
+[Collection(EmbeddingProviderDefaultsStateCollection.Name)]
 public class EmbeddingProviderDefaultsTests
 {
     [Fact]

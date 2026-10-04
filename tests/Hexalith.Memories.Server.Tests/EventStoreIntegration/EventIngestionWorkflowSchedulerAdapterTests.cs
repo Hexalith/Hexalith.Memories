@@ -17,6 +17,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using Hexalith.Memories.Server.Tests.Ingestion;
+
 using NSubstitute;
 
 using Shouldly;
@@ -24,6 +26,7 @@ using Shouldly;
 using System.Collections.Generic;
 using System.Linq;
 
+[Collection(EmbeddingProviderDefaultsStateCollection.Name)]
 public sealed class EventIngestionWorkflowSchedulerAdapterTests
 {
     [Fact]

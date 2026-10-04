@@ -21,6 +21,7 @@ using NSubstitute;
 
 using Shouldly;
 
+[Collection(EmbeddingProviderDefaultsStateCollection.Name)]
 public class EmbeddingClientBatchTests
 {
     private const string TenantId = "test-tenant";
