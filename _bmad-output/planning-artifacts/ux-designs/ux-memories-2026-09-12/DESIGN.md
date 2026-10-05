@@ -4,14 +4,17 @@ description: Visual identity contract for trustworthy, inspectable memory infras
 status: draft
 sources:
   - ../../prd.md
-  - ../../ux-design-specification.md
+  - ../../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md
+  - ../../sprint-change-proposal-2026-10-05-implementation-readiness.md
   - ../../ux-design-directions.html
   - ../../ux-validations/ux-memories-2026-09-09/validation-report.md
   - ../../../../references/Hexalith.AI.Tools/hexalith-ux-instructions.md
-updated: 2026-09-12
+updated: 2026-10-05
+historicalSources:
+  - ../../ux-design-specification.md
 lineage:
   authoritative-prd-sha256: 12579f3a22228348948e805968ea3835732e7ebbcb837e3beef75bd58fc115f1
-  rule: This migration derives from the pinned PRD revision; same-day reciprocal PRD links do not reverse authority for this run.
+  rule: The 2026-09-12 migration derived from this pinned PRD revision; current PRD, architecture spine, and approved 2026-10-05 correction govern new work.
 implementation-evidence:
   - .working/extract-ui-implementation.md
   - .working/extract-protocol-implementation.md

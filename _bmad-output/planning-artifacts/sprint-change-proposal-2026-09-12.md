@@ -1,5 +1,7 @@
 # Sprint Change Proposal — 2026-09-12 Sprint-Readiness Recovery
 
+**Dated update, 2026-10-05:** Administrator chose to retain 2026-12-01 for the expanded G1–G6 gate, with the existing 2026-10-31 prerequisite checkpoint and 2027-01-01 derived Phase 1.5 date. The original D1 `OPEN` fields below are the September draft snapshot; the current decision record and remaining corpus/reviewer and McpCli re-derivation conditions are in [the implementation-readiness successor](sprint-change-proposal-2026-10-05-implementation-readiness.md). This note does not approve the proposal or register any Story 32–35.
+
 **Date:** 2026-09-12  
 **Mode:** Batch  
 **Status:** Draft — approval and the human decisions in section 3 are required before downstream planning changes  

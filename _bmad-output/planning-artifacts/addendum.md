@@ -1,14 +1,14 @@
 # Addendum — Hexalith.Memories PRD
 
 **Role:** Mechanism, topology, rejected alternatives, and change-control residue that must not live in the product-outcome PRD.
-**Updated:** 2026-09-12
+**Updated:** 2026-10-05
 **Does not override:** `prd.md` ship gates, FR/NFR IDs, or Glossary terms.
 
 ## Why this file exists
 
 The 2026-09-05 PRD Update moved implementation how-to out of the requirements contract: Aspire topology, OpenBao, package graphs, fusion numeric weights, Dapr Agents, and SDK pins. Architecture remains authoritative for those facts when they drift.
 
-**Current handoff:** G6 cannot pass until architecture qualifies AD-14 by phase and extends its binding to FR75 and NFR37. Every MVP requirement that lacks current-wording verification must also have current evidence or an approved exception with an owner in `sprint-status.yaml`. See the PRD Release decision record and Open Questions 1, 2, 9, and 10.
+**Current handoff (2026-10-05):** The final architecture spine has ratified AD-14 phasing and binds FR75/NFR37/G6. Ratified decisions do not supply G6 evidence: every MVP-active requirement and architecture-critical active-foundation gap still needs a current re-runnable evidence path under AD-20. The PRD retains 2026-12-01 for the expanded G1–G6 gate and 2026-10-31 for prerequisites. Administrator stewards the real Phase 1 corpus; two independent external human reviewers remain unnamed, so G1 remains no-go. See the PRD Release decision record and Open Questions 1, 2, 9, and 10.
 
 ## EventStore — three contracts (do not collapse)
 
@@ -41,7 +41,7 @@ The suite remains the NFR26 reproducibility gate and a regression check. Expandi
 
 ## Release decision — why dated no-go rather than "gate must pass"
 
-The 2026-09-08 validation found that every prior gate could only delay. The PRD now carries a Release decision record with a decision date per gate and a stated failure outcome. Jerome confirmed **2026-12-01** for the former G1–G5 thesis gate and **2027-01-01** for Phase 1.5 launch; the 2026-09-12 architecture reconciliation added G6. Two points remain explicit assumptions pending Jerome's ratification: retaining 2026-12-01 for the expanded G1–G6 gate and using **2026-10-31** as the prerequisite checkpoint. Moving a confirmed date requires a sprint-change proposal, not an edit.
+The 2026-09-08 validation found that every prior gate could only delay. The PRD now carries a Release decision record with a decision date per gate and a stated failure outcome. Administrator retained **2026-12-01** for the expanded G1–G6 gate on 2026-10-05, with **2026-10-31** as the prerequisite checkpoint and **2027-01-01** as the derived Phase 1.5 launch date. A missed prerequisite makes the retained gate date unreachable; no verdict means no launch. Any reset uses the PRD's single permitted sprint-change route.
 
 ## Isolation mechanism
 
@@ -56,7 +56,7 @@ The 2026-09-08 validation found that every prior gate could only delay. The PRD 
 - **NFR17 proof:** workflow history / Durable Task persistence, not "pipeline actor state."
 - **Projection completion:** work is keyed by `(tenantId, caseId, memoryUnitId, authoritative EventStore sourceVersion, schemaGeneration, embeddingConfigurationEpoch)`. One DAPR-state coordinator advances per-axis checkpoints monotonically with ETag/CAS, rejects stale acknowledgements, and shares the protocol across ingest, repair, and replay.
 - **Idempotency:** V1 tokens are scoped by tenant, case, and command/operation. CloudEvent identity is tenant + case + exact validated `source` + `id`, compared ordinally with no post-validation normalization. Durable EventStore/workflow suppression owns the guarantee; projections are idempotent upserts for the completion tuple. Redis preflight reservation is fail-open admission optimization only and never durable truth.
-- **Recovery distinction:** authoritative EventStore replay, application export restore, and the current Redis-input consistency repair are different operations. The final architecture spine records replay-to-all-current-projections as an implementation gap.
+- **Recovery distinction:** authoritative EventStore replay, application export restore, and the current Redis-input consistency repair are different operations. The current architecture spine records replay-to-all-current-projections as an implementation gap.
 
 ## Identity
 
@@ -84,8 +84,8 @@ The 2026-09-08 validation found that every prior gate could only delay. The PRD 
 
 ## Migration phasing
 
-- The final architecture spine states an unphased create-backfill-verify-switch-retire rule using disjoint active/staging resources and atomic activation. The pre-existing product contract places that experience in Phase 2 for embedding/schema migration and Phase 3 for backend migration; MVP FR43 permits an acknowledged degraded rebuild.
-- That phase boundary is **not yet ratified in the final architecture authority**. G6 cannot pass until architecture either qualifies AD-14 by phase or product explicitly rebaselines MVP through sprint change. This addendum records the conflict; it does not manufacture an exception.
+- The draft architecture spine now ratifies AD-14 by phase: MVP FR43 permits an acknowledged degraded tenant-scoped rebuild; Phase 2 owns non-disruptive embedding/schema migration; Phase 3 owns backend replacement. The decision is settled, while implementation and evidence gaps remain in its alignment ledger.
+- AD-14's ratification gives no G6 credit. The evidence-only AD-20 rule applies to each MVP-active requirement and architecture-critical active-foundation gap; phase-inactive work remains outside MVP scope.
 
 ## Package inventory
 
@@ -141,7 +141,7 @@ Brief claims deliberately **not** carried into the PRD (2026-09-08 product-brief
 
 ## Downstream drift not fixed by this Update (handoff)
 
-The final 2026-09-09 architecture spine supersedes legacy `architecture.md` for architecture decisions. The PRD incorporated its product-observable guarantees on 2026-09-12, but reconciliation remains incomplete until AD-14's phase boundary is ratified and the spine binds FR75/NFR37. `epics.md` and `sprint-status.yaml` also need a change-control pass for the strengthened contracts and corrected status claims. The Story 27.4 live-producer contract stays out of the PRD.
+The current architecture spine supersedes legacy `architecture.md` for architecture decisions. The PRD incorporated its product-observable guarantees on 2026-09-12 and aligned G6 to AD-20 on 2026-10-05. AD-14 phasing and FR75/NFR37/G6 binding are ratified; architecture implementation gaps remain unevidenced. `epics.md` needs re-derivation from the approved correction before sprint tracking can be refreshed. The Story 27.4 live-producer contract stays out of the PRD.
 
 Further handoff items recorded on 2026-09-08 (afternoon adversarial pass), none applied to code or downstream documents by this Update:
 
@@ -149,10 +149,10 @@ Further handoff items recorded on 2026-09-08 (afternoon adversarial pass), none 
 - `README.md` line 84 says "per-tenant audit events (FR67)"; the PRD glossary bans "audit" for access telemetry. Reword downstream.
 - `README.md` line 7 quotes NFR31 as "approximate"; NFR31 now defines the clean machine and the recorded-run requirement. `docs/dev/quickstart-walkthrough-log.md` has no run.
 - Licence: confirmed MIT by Jerome on 2026-09-08 (Open Question 4 closed); the repository already complies. Remaining downstream action: add the README sentence "Hexalith.Memories is committed to the MIT license. We will not change to a restrictive license." Any older Apache 2.0 wording in `architecture.md`/`epics.md` is drift to remove.
-- Dates: Phase 1.5 launch decision 2027-01-01 and the rule "release (thesis-gate) decision = launch − 1 month" (→ 2026-12-01) are confirmed by Jerome; the prerequisite sprint-selection date 2026-10-31 is derived and should be confirmed at the next sprint planning.
+- Dates: Administrator retained the expanded G1–G6 gate on 2026-12-01, the prerequisite checkpoint on 2026-10-31, and the derived Phase 1.5 decision on 2027-01-01 in the approved 2026-10-05 correction. These dates do not waive missing evidence or independent G1 reviewers.
 - `HybridSearchService` skips the graph axis without a start node; the PRD now requires auto-seeding from top-5 syntactic + top-5 semantic (FR17). No owning story exists yet.
 - MCP parameter naming (`axis` vs `axes`) is declared once in the CLI surface table (`--axis`); the MCP tool schema should be checked against it when Epic 10 hardening is next touched.
-- The final architecture spine frontmatter still binds `FR1-FR74` and `NFR1-NFR36`; refresh it to include new MVP idempotency requirement FR75 and active-CLI accessibility NFR37 after this PRD Update is accepted.
+- The final architecture spine binds `FR1-FR75`, `NFR1-NFR37`, `G1-G6`, and `L1-L3`; its AD-14/FR75/NFR37/G6 decisions and AD-23 Identifier Grammar V1 are ratified. Implementations and qualifying evidence remain owed.
 
 ## August 2026 SCP apply log
 

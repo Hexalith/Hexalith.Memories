@@ -2,11 +2,18 @@
 stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation']
 inputDocuments:
   - '_bmad-output/planning-artifacts/prd.md'
+  - '_bmad-output/planning-artifacts/addendum.md'
+  - '_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md'
+  - '_bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/DESIGN.md'
+  - '_bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/EXPERIENCE.md'
+  - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-10-05-implementation-readiness.md'
+historicalSources:
   - '_bmad-output/planning-artifacts/architecture.md'
   - '_bmad-output/planning-artifacts/ux-design-specification.md'
   - '_bmad-output/planning-artifacts/implementation-readiness-report-2026-07-04.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-04.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-01.md'
+correctionStepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics']
 changeControlContext:
   approvedProposalGlob: '_bmad-output/planning-artifacts/sprint-change-proposal-*.md'
   note: 'The latest frontmatter inputs are not the full change-control history. Approved sprint-change proposals are discovered through the glob unless a canonical index replaces it.'
@@ -19,219 +26,167 @@ changeControlContext:
 
 ## Overview
 
-This document provides the complete epic and story breakdown for Hexalith.Memories, decomposing the requirements from the PRD, UX Design Specification, Architecture requirements, and approved sprint change proposals into implementable stories.
+This document preserves completed epic and story history while the 2026-10-05 correction re-derives successor work from the current PRD, addendum, final architecture spine, DESIGN/EXPERIENCE pair, and approved proposal. The current coverage overlays and approved successor Epics 32–35 below supersede the older derivation for new planning. Historical Epics 0–31 and their completed story record remain intact.
 
 ## Requirements Inventory
 
 ### Functional Requirements
 
-**Knowledge Ingestion (13 FRs)**
+**Current PRD wording (FR1–FR75; phase and delivery status remain in the PRD):**
 
 - FR1: Developer can ingest content from local files into a specified case
 - FR2: Developer can ingest content from URLs into a specified case
 - FR3: Developer can batch-ingest content from a directory into a specified case
 - FR4: System can extract text from ingested content (plain text, PDF, markdown)
 - FR5: System can generate embeddings for ingested content via a configurable embedding provider
-- FR6: System ensures a memory unit is fully searchable across all axes after ingestion completes
-- FR7: Developer can attach metadata to ingested content, with each field tracking its origin (human-declared vs AI-inferred) and confidence score
-- FR8: System manages ingestion load per tenant independently
+- FR6: System marks a memory unit `indexed` (searchable as complete on all three axes) only after search, vector, and graph projections each acknowledge the current authoritative EventStore revision under the active schema generation and embedding configuration; stale or incompatible acknowledgements cannot complete a newer revision
+- FR7: Developer can attach metadata to ingested content, with each field tracking its origin (human-declared vs AI-inferred) and metadata confidence score
+- FR8: System applies the measurable bounded per-tenant admission and concurrency contract in NFR13 so one tenant's batch, repair, recovery, or migration work cannot starve another tenant's interactive ingestion or query work
 - FR9: System retries failed ingestion automatically with configurable limits
-- FR10: Developer can view ingestion status per case (queued, embedding, indexed, failed counts)
+- FR10: Developer can view ingestion status per case as counts per ingestion state (`pending`, `extracting`, `embedding`, `projecting`, `indexed`, `failed`)
 - FR11: Developer can view failed ingestion units with error details and failure stage
 - FR12: Developer can manually trigger re-ingestion of failed or previously ingested content, individually or in bulk
-- FR13: System handles partial backend write failures with defined recovery behavior (rollback or retry to achieve consistency across all axes)
-
-**Knowledge Retrieval (12 FRs)**
-
+- FR13: Partial projection failure never yields a silently complete two-of-three unit. EventStore acknowledgement is the durable commit; retry, repair, and replay converge through the same current-revision completion contract until `indexed` or actionable `failed`. Query-time degradation cannot promote an incomplete revision. No distributed transaction is claimed, and rollback of the EventStore commit is not the recovery model.
+- FR75: Retried V1 commands with the same tenant-, case-, and operation-scoped idempotency token, and retried CloudEvents with the same tenant, case, exact validated source, and event ID, produce one durable domain mutation. Each authoritative source-version/schema-generation/embedding-configuration tuple may produce one idempotent projection outcome, so a legitimate reprojection under a new epoch is not suppressed; duplicate delivery never creates another memory unit. **Phase:** MVP. **Status:** partial (authoritative durable suppression is incomplete)
 - FR14: Developer can search memory units by syntactic matching within a tenant
 - FR15: Developer can search memory units by semantic similarity within a tenant
 - FR16: Developer can search memory units by graph traversal within a tenant
-- FR17: Developer can search memory units by hybrid fusion combining all available axes
+- FR17: Developer can search memory units by hybrid fusion combining all available axes; when no graph start node is supplied, the graph axis is auto-seeded from the top syntactic and semantic candidates (Measurable Outcomes › Graph seeding). For tenant-wide search, seeds and traversal are partitioned by each result's authoritative case and never cross case boundaries. Hybrid never silently degrades to two axes on a populated graph. **Status:** partial (auto-seeding and tenant-wide case merge not implemented)
 - FR18: Developer can control which axes are included in a search query
 - FR19: Developer can view per-axis score breakdown for each search result, including normalization method applied (explain mode)
 - FR20: Developer can filter search results by case
 - FR21: Developer can filter search results by metadata field values
 - FR22: Developer can paginate search results
-- FR23: LLM Agent can constrain search response size by token budget
+- FR23: LLM Agent can constrain search response size by token budget. **Phase:** 1.5
 - FR24: System returns the origin identifier (file path, URL, or event ID) and origin type for each search result
-- FR25: Developer can run automated benchmark comparisons of hybrid vs single-axis search results with scored output
-
-**Memory Organization (12 FRs)**
-
+- FR25: Developer can run automated benchmark comparisons of hybrid vs the BM25+semantic control (with single-axis diagnostics) and get per-topic NDCG@10 output in the thesis-gate protocol's terms. **Status:** partial (two-axis control not implemented)
 - FR26: Developer can create a case within a tenant
 - FR27: Developer can delete a case and all its memory units
-- FR28: Developer can add members to a case
+- FR28: Developer can add members to a case. Membership is attribution metadata (listings, activity feed); it does not authorize access in the current phase
 - FR29: Developer can remove members from a case
 - FR30: Developer can list cases within a tenant
-- FR31: Developer can view case status including memory unit count, last activity timestamp, and health indicators
+- FR31: Developer can view case status including memory unit count, last activity timestamp, and the ingestion state of the most recent unit (one of the Glossary ingestion states)
 - FR32: System enforces strict single-case ownership per memory unit — reassignment requires deletion and re-ingestion
-- FR33: System maintains case-scoped graph edges between memory units within a case
-- FR34: Developer can search across all cases within a tenant by keyword, returning results with case attribution
+- FR33: System maintains case-scoped graph edges and paths between memory units within a case; cross-case edges and traversal remain forbidden through Phase 1.5
+- FR34: Developer can search across all cases within a tenant, returning independently ranked results with mandatory case attribution while every graph contribution remains case-local
 - FR35: Developer can delete an individual memory unit from a case
 - FR36: Developer can view recent activity within a case (ingestion events, searches, membership changes)
 - FR37: Developer can annotate or correct a memory unit, with annotations tracked as linked memory units
-
-**Tenant Management (8 FRs)**
-
-- FR38: Operator can create a tenant with physically separate indexes
-- FR39: Operator can delete a tenant and all its indexes, graph data, and memory units
+- FR38: Operator can create a tenant with tenant-scoped backend principals and tenant-scoped indexes (isolation *outcome* is NFR8; mechanism is architecture-owned)
+- FR39: Operator can complete verified tenant erasure: purge every product projection, make EventStore-held tenant content irreversibly inaccessible, and record the access-telemetry erasure handoff. Replay, restart, and restore cannot resurrect erased content; unreadable restored payloads are quarantined, and the deleted tenant ID cannot be reused
 - FR40: Operator can verify tenant isolation via automated checks
 - FR41: Operator can list tenants
 - FR42: Operator can update tenant configuration after creation (rate limits, display name, settings)
-- FR43: System prevents configuration changes that would create data inconsistency without explicit operator acknowledgment
-- FR44: System enforces tenant context at all access layers, rejecting cross-tenant requests with clear error messages
+- FR43: System refuses embedding-provider or index-schema changes that require reindex unless the operator passes an explicit acknowledgment flag; the CLI states that existing vectors will be rebuilt
+- FR44: System derives or verifies tenant and case authority server-side on every external and internal path, rejecting cross-tenant requests with clear errors; request fields, app identity, case membership, and channel credentials cannot authorize by themselves
 - FR45: Operator can view current configuration of a tenant (embedding provider, rate limits, index status)
-
-**Causal Intelligence (7 FRs)**
-
-- FR46: System can index CausationId and CorrelationId from events as typed, directional graph edges
-- FR47: Developer can traverse causal chains from a starting node with configurable depth
+- FR46: System can index CausationId and CorrelationId carried by ingested content metadata as typed, directional graph edges
+- FR47: Developer can traverse the graph from a starting node with configurable depth, including causal chains where causal edges exist
 - FR48: Developer can filter graph traversal by edge type
 - FR49: When an intermediate node in a causal chain is not indexed, the traversal result includes a gap marker with the missing node identifier
 - FR50: System supports edge types: `caused_by`, `correlated_with`, `references`, `contains`, `annotates` — each with default confidence
 - FR51: Developer can promote AI-inferred edge confidence when verifying a relationship
 - FR52: System maintains chronological ordering and timestamps on causal chain nodes
-
-**Developer Interfaces (6 FRs)**
-
-- FR53: Developer can interact with all retrieval and ingestion capabilities via CLI
-- FR54: Developer can interact with search, ingestion, traversal, and case-info capabilities via MCP tools
+- FR53: Developer can interact with retrieval and ingestion capabilities via CLI **per the Phase 1 rows of the CLI surface table** (CLI Specification). Real commands count; `NotImplementedCommand` does not. **Phase:** split (MVP surface vs 1.5 slices). **Status:** partial
+- FR54: Developer can interact with search, ingestion, traversal, and case-info capabilities via MCP tools. **Phase:** 1.5
 - FR55: CLI supports multiple output formats: human-readable (default), JSON, and table
-- FR56: CLI provides actionable error messages with recovery suggestions for common failure modes
-- FR57: Developer can discover available actions from any system state, including empty states and error conditions
-- FR58: MCP tools include typed parameter schemas with descriptions for LLM agent consumption
-
-**EventStore Integration (4 FRs)**
-
-- FR59: System can auto-discover event types published to DAPR pub/sub topics
-- FR60: System can generate dual embeddings for events (raw payload + natural language description)
-- FR61: System can automatically index CausationId/CorrelationId metadata as graph edges without developer mapping code
-- FR62: Developer can list registered event handlers and detect handler registration mismatches
-
-**Trust & Transparency (5 FRs)**
-
-- FR63: System returns composite confidence scores (0.0-1.0) with per-axis breakdowns for each search result
-- FR64: System tracks metadata origin (human-declared vs AI-inferred) and confidence per metadata field on every memory unit
-- FR65: System records `ingested_by` (user or system identity) as a mandatory field on every memory unit
-- FR66: When one or more search backends are unavailable, system returns partial results with an indication of which axes were excluded
-- FR67: System logs search and access events per tenant for audit purposes
-
-**Embedding Provider Management (3 FRs)**
-
+- FR56: CLI provides actionable error messages with recovery suggestions for, at minimum: server unreachable (name the boot command); authentication or tenant-claim mismatch (name the authenticated tenant without disclosing restricted evidence); unknown tenant or case id; true empty tenant or case (name an implemented next action); incomplete/delayed ingestion; active filters; stale evidence; unit `failed` (name the stage and error); backend degraded (name the unavailable/excluded axes); provider rate-limited (name the retry window). A generic "no results" message is insufficient, and unavailable target commands are never presented as completed actions. The CLI exit-code map (`CliExitCodes`) is the machine-readable side of this list
+- FR57: Developer can discover available *implemented* actions from empty states and error conditions (empty-state copy + `--help` examples). Does not require a universal command catalog of unbuilt verbs.
+- FR58: MCP tools include typed parameter schemas with descriptions for LLM agent consumption. **Phase:** 1.5
+- FR59: System can auto-discover event types published to DAPR pub/sub topics. **Phase:** 1.5. Happy path is conventions + subscription; schema evolution requires handler registration.
+- FR60: System can generate dual embeddings for events (raw payload + natural language description). **Phase:** 1.5
+- FR61: System can automatically index CausationId/CorrelationId metadata as graph edges without developer mapping code on the EventStore happy path. **Phase:** 1.5
+- FR62: Developer can list registered event handlers and detect handler registration mismatches. **Phase:** 1.5
+- FR63: System returns a relevance confidence (0.0–1.0) with per-axis breakdowns for each search result
+- FR64: System tracks metadata origin (human-declared vs AI-inferred) and metadata confidence per metadata field on every memory unit
+- FR65: System records `ingested_by` as a mandatory field on every memory unit: normalized authenticated subject for external calls, or a canonical `system:*` principal derived from an authenticated app-ID allowlist plus an explicit tenant grant for internal calls; caller-supplied provenance cannot override it
+- FR66: When selected search axes degrade, the system returns a safe partial result if at least one selected axis can respond and fails only when none can. The Evidence Packet distinguishes unavailable, excluded, and available-with-no-hits axes and reports freshness impact plus recovery guidance; empty results distinguish true absence, empty/wrong scope, incomplete or delayed ingestion, filters, stale evidence, authorization refusal, and backend degradation. Unauthorized responses contain no restricted evidence, and no surface promotes an incomplete ingestion revision
+- FR67: System records search and access events per tenant as access telemetry (Glossary) — infrastructure telemetry that applications may build access records on; not a tamper-evident audit trail. Telemetry delivery failure never changes domain truth or rolls back an accepted product mutation
 - FR68: Operator can configure embedding provider and model per tenant
 - FR69: System enforces per-tenant rate limit ceilings for embedding API calls
 - FR70: System tracks the embedding provider and model used for each memory unit's vectors
-
-**Data Portability & System Health (4 FRs)**
-
-- FR71: Developer can export all memory units, metadata, and graph edges for a case or tenant in a portable format
-- FR72: System exposes readiness and liveness health checks verifying all backends
+- FR71: Developer can export all memory units, metadata, and graph edges for a case or tenant in a portable format. **Phase:** Phase 2. Completed early as non-MVP (Story 8.3). Epic 26 covers operational backup/restore only — do not reschedule application-facing export as new Phase 2 work.
+- FR72: System exposes liveness for process viability and readiness for authentication configuration, the DAPR control boundary, and EventStore command availability. Search-backend outages report capability degradation while safe selected axes remain usable rather than making the entire server unready
 - FR73: Operator can detect index/graph divergence via consistency check
-- FR74: Operator can repair detected index/graph inconsistencies via consistency repair operation
+- FR74: Operator can repair detected index/graph inconsistencies via a dry-run-then-apply consistency repair that cannot cross tenants, cannot silently delete units without provenance in access telemetry, and cannot invent edges the current authoritative EventStore revision does not support
 
-### NonFunctional Requirements
+### Non-Functional Requirements
 
-**Performance (NFR1-NFR7)**
+**Current PRD wording (NFR1–NFR37; measure, verification, and phase are retained):**
 
-- NFR1: Syntactic search latency (p95) <200ms at 10 concurrent queries/tenant, 10K units/tenant [MVP]
-- NFR2: Semantic search latency (p95) <500ms at 10 concurrent queries/tenant, 10K units/tenant [MVP]
-- NFR3: Hybrid search latency (p95) <1s at 10 concurrent queries/tenant, 10K units/tenant [MVP]
-- NFR4: Graph traversal latency (p95) <2s at 10 concurrent queries/tenant, 10K units/tenant, depth <=5 [MVP]
-- NFR5: Ingestion throughput >100 units/min (<=10KB), >10 units/min (<=1MB) per tenant [Ongoing]
-- NFR6: Event indexing freshness <5s from DAPR pub/sub publication to searchable [P1.5]
-- NFR7: Cold start time: service fully operational within 60s [Ongoing]
-
-**Security (NFR8-NFR11)**
-
-- NFR8: Zero cross-tenant data leakage — verified by automated test suite across all axes [MVP]
-- NFR9: Product services retrieve embedding-provider and other application runtime secrets exclusively through the DAPR Secrets API backed by OpenBao; secret values never live in application configuration or ordinary environment variables. Kubernetes Secrets are restricted to documented, unavoidable OpenBao bootstrap credentials or direct pod inputs outside the DAPR secret-store boundary. Verified by structural dependency tests, secret scanning, AppHost topology tests, and integration tests [Ongoing]
-- NFR10: All inter-service communication authenticated via DAPR API tokens [Ongoing]
-- NFR11: External access authenticated at ingress layer [P1.5]
-
-**Scalability (NFR12-NFR15)**
-
-- NFR12: Linear scaling of tenants — adding a tenant does not degrade existing performance by >5% [Ongoing]
-- NFR13: Per-tenant ingestion pipeline scales independently [Ongoing]
-- NFR14: Redis memory footprint per unit is predictable and documented [Ongoing]
-- NFR15: Architecture must not preclude backend migration (Redis -> Qdrant) [Ongoing]
-
-**Reliability (NFR16-NFR19)**
-
-- NFR16: Zero memory unit loss during Redis restart (AOF persistence) [MVP]
-- NFR17: Ingestion pipeline state survives process restarts (DAPR actor state) [MVP]
-- NFR18: Partial backend failure results in degraded service, not total failure [Ongoing]
-- NFR19: Failed ingestion units are never silently dropped [Ongoing]
-
-**Integration (NFR20-NFR23)**
-
-- NFR20: MCP tool responses conform to MCP protocol specification [P1.5]
-- NFR21: DAPR pub/sub integration handles CloudEvents envelope format [P1.5]
-- NFR22: Embedding provider integration handles rate limiting gracefully (429 backoff) [Ongoing]
-- NFR23: CLI connects via configurable endpoint (localhost, docker, remote) [Ongoing]
-
-**Algorithmic Quality (NFR24-NFR26)**
-
-- NFR24: Hybrid fusion uses deterministic weighted reciprocal-rank fusion with per-axis rank contributions in 0.0-1.0; single-axis explain still documents axis-specific score semantics [MVP]
-- NFR25: Fusion algorithm produces deterministic scores [MVP]
-- NFR26: Benchmark suite produces reproducible results (identical NDCG@10) [MVP]
-
-**Observability (NFR27-NFR29)**
-
-- NFR27: Structured JSON logging with OpenTelemetry correlation IDs [Ongoing]
-- NFR28: Trace context propagates across all DAPR service invocation hops [Ongoing]
-- NFR29: Custom metrics exported via OpenTelemetry (ingestion throughput, search latency per axis, index size per tenant) [Ongoing]
-
-**Documentation Quality (NFR30-NFR31)**
-
-- NFR30: Every CLI command includes --help with at least one usage example [MVP]
-- NFR31: README includes working quickstart that completes in <30 minutes [MVP]
+- NFR1: Syntactic search latency (p95) — <200ms — 10 concurrent queries/tenant, 10K memory units/tenant — MVP
+- NFR2: Semantic search latency (p95) — <500ms — 10 concurrent queries/tenant, 10K memory units/tenant — MVP
+- NFR3: Hybrid search latency (p95) — <1s — 10 concurrent queries/tenant, 10K memory units/tenant — MVP
+- NFR4: Graph traversal latency (p95) — <2s — 10 concurrent queries/tenant, 10K memory units/tenant, depth ≤5 — MVP
+- NFR5: Ingestion throughput — >100 memory units/min (payloads ≤10KB), >10 memory units/min (payloads ≤1MB) — Per tenant, single-document embedding calls (not batched) — Ongoing
+- NFR6: Event indexing freshness — <5s from DAPR pub/sub publication to searchable under normal conditions; degradation documented when embedding provider is rate-limited — Per event — P1.5
+- NFR7: Cold start time — Service fully operational within 60s — From containers running to accepting queries — excludes image pull time — Ongoing
+- NFR8: Zero cross-tenant data leakage — a principal whose tenant claims name tenant A cannot read, search, traverse, or ingest into tenant B's data, whatever tenant id the request carries — Automated suite driven by *principals*, not ids: authenticate as tenant A, then search, ingest, and traverse with `--tenant B`, with B's index names, and with malformed/empty ids; every call is rejected or returns only A's data. Graph-specific test: identical graph structures in A and B, traverse as A, zero B nodes even if edge ids collide. Re-run when Epic 24 (tenant-scoped principals) closes — MVP
+- NFR9: Product services retrieve embedding-provider, application, and data-plane credentials exclusively through the DAPR Secrets API backed by OpenBao. Secret values never appear in application configuration, ordinary environment variables, workflow history, logs, or public contracts. Deployments may supply only documented minimum OpenBao bootstrap material outside that boundary; direct Redis/FalkorDB credential injection is an alignment gap, not an approved second path. — Structural dependency tests, secret scanning, AppHost/deployment topology tests, and integration tests proving DAPR reads from OpenBao without secret disclosure — Ongoing
+- NFR10: External/delegated bearer authority survives REST, CLI, MCP, and internal hops. Trusted internal calls additionally use deny-by-default DAPR workload authorization and protected app channels, then map the authenticated app ID through one operator-owned finite allowlist to a canonical `system:*` principal with an explicit tenant grant. Unknown apps and ungranted tenants fail closed; channel authentication never substitutes for tenant authorization. — End-to-end authorization tests covering delegated subjects, allowed and unknown app IDs, granted and ungranted tenants, and protected DAPR channels — Ongoing
+- NFR11: External product REST/CLI ingress is authenticated for the active MVP HTTP surface. Health probes and required DAPR infrastructure routes are the only deliberate anonymous exceptions and are named and tested. Additional identity-provider hardening may remain operational-readiness work; unauthenticated product ingress is not a Phase 1.5 allowance. — Integration test with unauthenticated product requests plus named anonymous exceptions — MVP
+- NFR12: Adding nine loaded tenants does not degrade an existing tenant's p95 query latency or ingestion throughput by more than 5% under the NFR13 reference mixed-load profile — Benchmark tenant 1 alone at 100K units, then repeat with 9 additional 100K-unit tenants running the NFR13 mix; compare p95 latency and throughput — Ongoing
+- NFR13: Under the 10-minute reference mix—tenant A runs 10 concurrent syntactic, semantic, and hybrid queries; tenant B submits 100 ≤10 KB ingests/min; tenant C repairs 100 units—A remains within NFR1–NFR3 and ≤10% of its solo p95, B meets NFR5, and C completes ≥25 units/min. Every eligible non-empty tenant queue receives an admission within 5 seconds after capacity is available. Default pending caps are 1,000 units/tenant and 10,000 globally; the first item beyond either cap is rejected within 1 second with retry guidance, while accepted work is never dropped. `[ASSUMPTION: these mixed-load, fairness, and queue-cap numbers are the initial architecture-reconciliation budgets pending load-test calibration.]` — Reproducible three-tenant mixed-load and cap-plus-one tests, including interactive, batch, repair, recovery, and migration priority — Ongoing
+- NFR14: Redis memory footprint per memory unit is predictable and documented — operator can estimate infrastructure costs before tenant provisioning — Published sizing guide: memory per unit by vector dimension and metadata size — Ongoing
+- NFR15: Architecture must not preclude backend migration (Redis → Qdrant) — concrete implementation with clear extraction points identified, no premature interfaces — Architecture review: extraction points documented, no tight coupling to Redis-specific APIs in domain logic — Ongoing
+- NFR16: No loss of EventStore-committed memory units across Redis restart or projection loss: every non-erased unit that reached `pending` or later becomes searchable again under the current schema and embedding configuration, either because projections survived or because authoritative EventStore replay rebuilt all axes. AOF is an optimisation, not the durability contract. Replay, restart, export restore, and backup restore must never resurrect content from a tenant whose erasure completed under FR39. — Commit N units, restart Redis, then separately destroy projections and replay EventStore truth through the FR6/FR13 completion contract. **AOF-intact:** all N `indexed` within 5 minutes for 10K units/tenant. **Rebuild:** progress visible via `status`, completion at no worse than NFR5 throughput, zero non-erased units missing. Restore an erased-tenant fixture and prove zero content rehydrates. The current architecture spine records the authoritative replay mechanism as missing. — MVP
+- NFR17: Ingestion pipeline state survives process restarts — pending and in-progress units resume without data loss — DAPR Workflow / Durable Task history verified — MVP
+- NFR18: Partial backend failure returns a safe result when at least one selected axis can respond and fails only when none can. The Evidence Packet distinguishes unavailable, excluded, and available-with-no-hits axes and includes freshness impact plus recovery guidance; incomplete ingestion revisions remain incomplete. — Chaos test each backend alone and in combinations; verify safe partial responses, exact Evidence Packet meanings, and the no-safe-axis failure boundary — Ongoing
+- NFR19: Failed ingestion units are never silently dropped — all failures visible via CLI status with error details and failure stage — End-to-end test with intentional failures at each pipeline stage — Ongoing
+- NFR20: MCP tool responses conform to MCP protocol specification — valid tool schemas, typed parameters, structured error responses — MCP protocol conformance test suite — P1.5
+- NFR21: DAPR pub/sub integration accepts the CloudEvents envelope as published by Hexalith.EventStore conventions (envelope attributes, CausationId/CorrelationId extension attributes, source-prefix routing). Envelopes from other DAPR publishers are accepted only for the fields the EventStore convention defines; processing them without custom code is the DAPR-generic *experiment* (Innovation #2), not a requirement — Integration test with EventStore-convention CloudEvents payloads; a documented negative test showing what a non-conforming envelope does — P1.5
+- NFR22: Embedding provider rate limits do not crash the pipeline or lose work: the system honors provider `Retry-After` through durable workflow timers and bounded queues, never retries before the stated instant, and resumes eligible work within 5 seconds after the window when capacity is available — Rate-limit simulation per provider across restart, queue saturation, and concurrent tenants; assert retry timing and no accepted-work loss — Ongoing
+- NFR23: CLI connects to the memory server via configurable endpoint — supports local dev (localhost), container (docker service name), and remote (ingress URL) environments — Configuration layering test across all three environments — Ongoing
+- NFR24: Hybrid fusion uses deterministic weighted reciprocal-rank fusion with per-axis rank contributions in 0.0-1.0; single-axis explain still documents axis-specific score semantics, and every evidence-bearing surface preserves the same contributions and null/empty meanings — Cross-surface fusion and explain contract tests with known rankings/weights — MVP
+- NFR25: Fusion produces deterministic scores and ordering — the same query against the same data and active axes yields identical results across runs and surfaces, with deterministic memory-unit-ID tie breaking — Golden-vector contract tests across REST, CLI JSON, and MCP plus 100 repeated queries with zero score or ordering variance — MVP
+- NFR26: Benchmark suite produces reproducible results — running benchmarks twice against the same dataset yields identical NDCG@10 scores — Reproducibility test in CI — MVP
+- NFR27: Structured JSON logging with OpenTelemetry correlation IDs from DAPR trace context — Log format validation — Ongoing
+- NFR28: Trace context propagates across all DAPR service invocation hops — end-to-end trace from CLI/MCP through server to backend — Distributed trace completeness test — Ongoing
+- NFR29: Custom metrics exported via OpenTelemetry: ingestion throughput, search latency per axis, index size per tenant, pipeline queue depth — Aspire dashboard shows all metrics during local development — Ongoing
+- NFR30: Every CLI command includes --help with at least one usage example — CLI help completeness test: parse all commands, verify example presence — MVP
+- NFR31: README includes a working Phase 1 quickstart that completes in <30 minutes on a clean machine with Docker installed. **G3 is timed on the README manual path** — AppHost boot → `tenant create` → `case create` → `ingest` → `search query` — using real CLI operations; `memories quickstart` is the scripted convenience and may be used *in addition*, not instead. G3 cannot run while `tenant create` is absent and the `case`/`ingest` groups are placeholders; these operations sit on the 2026-12-01 critical path. **Clean machine (definition shared with L2):** a fresh OS user profile on Windows 11, macOS, or Ubuntu LTS with only Docker (or Docker Desktop) and the .NET SDK pinned in `global.json` preinstalled; the Aspire CLI/workload is installed on the clock; broadband network assumed; Docker image pulls are on the clock (unlike NFR7); the embedding-provider API key is **off** the clock (obtained beforehand and pasted at the prompt). Phase 1.5 EventStore 30-minute clock is a separate launch gate (L2) using the same machine definition. — Timed walkthrough on the clean machine above, recorded in `docs/dev/quickstart-walkthrough-log.md` with date, OS, and machine spec; **no run recorded as of 2026-09-08** — MVP
+- NFR32: When a web capability is activated, it meets WCAG 2.2 AA and supports the complete trust workflow by keyboard. Focus remains visible and unobscured. State is not communicated by color alone, and recovery and status changes are announced accessibly. Light and dark themes, forced colors, and reduced motion preserve meaning. Genuinely tabular or graph content has an equivalent ordered representation. Author-sized pointer targets meet WCAG 2.2 SC 2.5.8. Activation requires a dated route/state evidence matrix covering viewport, 200% text resize, 400% zoom/320-CSS-pixel reflow, focus-not-obscured, theme, forced colors, reduced motion, input mode, supported browser/assistive technology (including NVDA on supported Edge/Chrome), keyboard start/end focus, artifact, tester/date, defect or waiver owner, and release disposition. Automated component/axe checks do not replace manual browser/AT evidence. — Dated UX/browser/AT evidence matrix by activated route and representative state — Future web (Epic 17+)
+- NFR33: Evidence Packet freshness semantics: authoritative `current`, `aging`, `stale`, and `unknown` thresholds, transitions, disclosure, and recovery actions, versioned in the Evidence Packet contract and activated per delivery surface. — Contract + surface tests — Ongoing / per surface
+- NFR34: Access telemetry has an explicit Platform Operations owner, configured TTL, observable purge progress, tenant-erasure mapping, bounded recovery, sanitization, and dated accepted debt for unsupported retention profiles. Qualification/configuration fails closed before Production activation. After admission, access-telemetry delivery remains non-blocking for accepted product writes within the approved telemetry-failure bound. The system surfaces degradation when delivery exceeds that bound. It never changes domain truth or claims a tamper-evident audit trail. — Production-admission tests, runtime outage/degradation tests, erasure/TTL runbook evidence, and payload-sanitization checks — Ongoing
+- NFR35: When a web capability is activated, on representative Evidence Packet and graph fixtures the surface targets an initial usable trust packet within 2.5 seconds, p95 local interaction response within 200 ms, cumulative layout shift no greater than 0.1, and initial route payload no greater than 256 KiB. Architecture review may revise these budgets before activation but must replace them with explicit measured values rather than removing the gate. — Measured lab evidence — Future web (Epic 17+)
+- NFR36: File/URL ingest freshness: under normal admitted load with all three projections healthy and the provider not rate-limiting, a ≤10 KB unit moves from `pending` to `indexed` within 60 seconds and a ≤1 MB unit within 5 minutes. When throttled or queued by NFR13/NFR22 controls, the current state and delay are visible; freshness degradation is never silent. `[ASSUMPTION: the 60 s / 5 min budgets were derived from NFR5 throughput; architecture may tighten them, not remove them.]` — Timed p95 test over 100 units plus a concurrent noisy-neighbor batch/repair tenant proving interactive fairness — MVP
+- NFR37: CLI output uses the stable reading order scope → result → sources → reasoning/state → recovery, with text labels for every state, axis, score meaning, omission, progress stage, and recovery. Human output is bounded and wrappable; wide tables have a complete linear alternative; redirected output is deterministic and does not depend on terminal-control sequences. Progress emits durable stage/failure lines with last update and delay reason; cancellation and timeout are explicit; duplicate delivery never prints a second created unit. Users can complete prompts, confirmations, help interactions, and error-recovery actions by keyboard alone. Secrets and restricted identifiers never enter copied output, accessible names, diagnostics, or suggestions. Human, table, JSON, stderr, and exit-code forms preserve the same semantics. — Automated narrow-terminal, redirected-output, no-color, duplication, timeout/cancellation, secret-sanitization, and semantic-parity tests; keyboard-only manual walkthrough across the Phase 1 command tree — MVP
 
 ### Additional Requirements
 
-**From Architecture — Starter Template & Scaffolding:**
-- Aspire Empty + Incremental Projects (D-selected approach). `dotnet new aspire` for orchestration foundation, then add projects incrementally as features are built
-- Git submodules under `references/`: `references/Hexalith.Commons` (error handling, shared base types) and `references/Hexalith.EventStore` (event types, versioning conventions)
-- Build script must detect missing submodules and print helpful error
+**Current architecture spine (final 2026-10-05; adopted target rules, not assertions of implementation):**
 
-**From Architecture — DAPR as First-Class Citizen:**
-- DAPR Workflow for multi-step orchestrations: `IngestionWorkflow`, `TenantProvisioningWorkflow`, `TenantDeletionWorkflow`, `ConsistencyVerificationWorkflow`, `AiEnrichmentWorkflow` (D23)
-- DAPR Actors for per-tenant stateful singletons: `EmbeddingRateLimiterActor`, `CorpusStatisticsActor` (D24)
-- DAPR Conversation API for provider-agnostic LLM communication (D26)
-- Dapr Agents as Python sidecar service for AI enrichment (D27)
-- Polyglot services via DAPR service invocation (D28)
+- AD-1/AD-2: Memories remains a technical platform; EventStore accepts domain mutations before success and is the authoritative replay source. Redis/FalkorDB, workflow state, and application export are distinct derived or import paths.
+- AD-3/AD-4: Projection completion uses the authoritative source-version/schema-generation/embedding-configuration tuple, monotonic per-axis acknowledgements, write fences, and one durable command or CloudEvent mutation per scoped identity. `Indexed` requires all three current axes.
+- AD-5/AD-6/AD-7: Server-derived tenant, case, and principal authority survives ingress and durable work; protected Dapr workload identity plus finite app allowlist and tenant grant are required for internal calls. Lifecycle workflows alone own provisioning, resource changes, and verified tenant state.
+- AD-8/AD-9/AD-10/AD-11/AD-22: Provider configuration and schema changes follow phase-qualified migration; hybrid graph seeds remain case-local; evidence surfaces distinguish selected, unavailable, excluded, and no-hit axes; deterministic fusion and benchmark contracts use the PRD's gate protocol.
+- AD-12/AD-13: `Contracts.V1` is the versioned public vocabulary and name register. Preserve origin, actor provenance, relevance versus metadata/edge confidence, freshness, omission, and recovery semantics across active surfaces.
+- AD-14: MVP migration allocates a new epoch and activates atomically; Phase 2+ staging redirects are separate. Active and declared non-active generation writes never alternate in one derived document.
+- AD-15/AD-17: Dapr Secrets API backed by OpenBao is the runtime secret path; access telemetry has a bounded non-blocking failure posture, owner, TTL, sanitization, erasure mapping, and Production admission evidence.
+- AD-16/AD-21: Verified erasure spans every tenant-held projection and content store, tenant-key crypto-shredding, durable-state purge, query and write fences, restore quarantine, export staging purge, and irreversible platform-partition tombstone and bundle index. Custody-transferred portable exports are outside source-platform deletion control.
+- AD-18/AD-19: Bounded tenant/global admission, fairness, priorities, and capacity proof accompany reproducible pinned source/package/image profiles, deployment parity, and release evidence.
+- AD-20: MVP-active and architecture-critical active-foundation gaps get gate credit only from named current rerunnable evidence; a frozen tracker suspends only the tracker conjunct with a recorded obligation, freeze reference, and review date.
+- AD-23: Platform-issued tenant IDs, canonical case/memory ULIDs, validated CloudEvent source/id, and registered injective key-family codecs obey Identifier Grammar V1; existing keys are alignment gaps until measured and migrated.
+- Current stack and execution: .NET SDK `10.0.401`; Aspire/Dapr local composition; Redis Stack, FalkorDB, EventStore, OpenBao, and their Production boundary as pinned by the spine. An architecture pin is not qualification evidence.
+- Current alignment ledger: each unresolved row needs a disposition, owner, review date, evidence path, and tracker obligation before G6. Its row count and statuses are rechecked at story creation; no historical `done` row grants current-contract credit.
+- McpCli correction: `Hexalith.McpCli` owns target Hexalith CLI/MCP presentation for eligible Memories operations; existing Memories CLI/MCP packages supply compatibility and parity evidence until an approved cutover.
 
-**From Architecture — Technology Decisions:**
-- FalkorDB for MVP with escape hatch via `IGraphQueryBuilder` (D1)
-- Graph axis: dual-role — standalone traversal + optional fusion scorer (D2)
-- Eventual consistency + DAPR Workflow saga/compensation (D3)
-- Google embedding only in MVP; OpenAI/Mistral in Phase 1.5/2 (D4)
-- Kreuzberg NuGet package for content extraction — in-process, Rust core via P/Invoke (D13)
-- Versioned contract namespaces: `Contracts.V1` (D14)
-- Synthetic benchmark dataset with known relationships (D11)
-- Domain validation service: `IngestionValidator` (D12)
+**PRD release gates and sequencing:**
 
-**From Architecture — Testing & CI:**
-- xUnit + Shouldly + NSubstitute (aligned with EventStore) (D16)
-- GitHub Actions + semantic release (D17)
-- Three test layers: unit (mock DaprClient), integration (Aspire DistributedApplicationTestingBuilder), contract (serialization round-trips)
-
-**From Architecture — Build Order Aligned to Gates:**
-1. `Hexalith.Memories.Contracts` (all other projects depend on it)
-2. `Hexalith.Memories.Redis` (three-axis backends — Gate 1)
-3. `Hexalith.Memories.Server` (ingestion pipeline, search — Gate 1)
-4. `Hexalith.Memories.AppHost` (orchestration — Gate 3)
-5. `Hexalith.Memories.ServiceDefaults` (health checks, telemetry — Gate 2 verification)
-6. `Hexalith.Memories.Cli` (Phase 1.5/Gate 3 polish)
-7-10. Client, Client.Rest, Mcp, EventStore (Phase 1.5)
-
-**From Architecture — Gate Strategy:**
-- Gate 1 → Gate 2 → Gate 3 order. Highest risk first.
-- Gate 1 (Three-axis validation): R&D, unproven thesis — start first
-- Gate 2 (Zero cross-tenant leaks): known engineering — design alongside Gate 1
-- Gate 3 (<30 min onboarding): developer experience craft — build last
-- If Gate 1 fails, Gates 2 and 3 are moot
+- G1: hybrid beats BM25+semantic on the thesis protocol (at least 50 topics, ΔNDCG@10 at least 0.02, Cohen's κ at least 0.6), with a corpus steward and two independent human reviewers. Administrator is corpus steward; the reviewers remain unnamed, so G1 cannot pass.
+- G2: zero cross-tenant leakage under principal-driven NFR8 tests.
+- G3: clean-machine README/AppHost to first real target `Hexalith.McpCli` search in under 30 minutes; old Memories CLI is compatibility evidence.
+- G4: case ownership and case-local graph paths under tenant-wide result attribution.
+- G5: deterministic fusion explain and repeatable benchmark evidence.
+- G6: current rerunnable evidence for every MVP-active requirement and architecture-critical active-foundation gap; no risk-acceptance or phase-exception gate credit.
+- L1: Phase 1.5 MCP held-out answer/citation and token-budget gate on at least 10 topics. Evaluate only after Phase 1 gates pass.
+- L2: Phase 1.5 EventStore package/subscription to first search under the separate 30-minute clean-machine clock. Evaluate only after Phase 1 gates pass.
+- L3: Phase 1.5 causal-chain completeness at least 95% on the named known-chain fixture. Evaluate only after Phase 1 gates pass.
+- Date and capacity: the Phase 1 decision date is 2026-12-01 with a 2026-10-31 prerequisite checkpoint; Phase 1.5 derived launch is 2027-01-01. Retaining dates does not itself pass a gate.
 
 ### UX Design Requirements
+
+**Current DESIGN/EXPERIENCE pair.** UX-DR1–UX-DR40 retain stable references but the corrected wording below follows the current spines. UX-DR41–UX-DR47 make previously implicit specimen concepts and active CLI verification explicit. Web requirements activate only with a product route; the existing RCL specimens are conformance evidence.
 
 - UX-DR1: Define the Evidence Packet as the shared response object across CLI, MCP, and future web UI, including scope, result, sources, evidence, graph, state, omitted details, and recovery actions.
 - UX-DR2: Every evidence packet must identify tenant and case scope, top source references, evidence strength, freshness status, retrieval axes used, explain summary, graph relationship summary when relevant, and the next recovery action when evidence is weak, incomplete, absent, or out of scope.
@@ -245,36 +200,47 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - UX-DR10: No-result states must distinguish no match, not ingested yet, wrong case, inaccessible tenant/case, stale memory, degraded backend, graph gap, and insufficient evidence.
 - UX-DR11: Implement a Recovery Action Panel or Recovery Footer for incomplete Evidence Packets, no-result states, operator warnings, and MCP structured errors, with one safest next action and optional secondary actions.
 - UX-DR12: Conflicting evidence must be exposed rather than smoothed away, including competing sources, stale versus fresh memory, high lexical match with weak graph support, strong graph context with weak source confidence, and backend disagreement.
-- UX-DR13: CLI UX must be keyboard-driven and developer/operator focused, with compact explain output, actionable diagnostics, tenant/case visibility, and scriptable output formats.
-- UX-DR14: MCP UX must be schema-first, typed, bounded, source-attributed, confidence-aware, token-budget-aware, and structured so agents can act without parsing prose-only explanations.
-- UX-DR15: All Memories web UI and UX implementation must use only Hexalith.FrontComposer and Microsoft Fluent UI Blazor V5 components for controls, navigation, forms, grids, dialogs, drawers, tabs, menus, status feedback, layout, focus behavior, and command surfaces. Raw HTML/CSS/JavaScript or third-party UI components are allowed only as explicitly justified gaps when no FrontComposer or Fluent UI V5 component/token exists, and those exceptions must be tracked by conformance tests.
-- UX-DR16: Future web surfaces must provide an Evidence Cockpit lens centered on scoped search, Evidence Packets, source inspection, retrieval axes, graph context, and recovery actions.
+- UX-DR13: Target `Hexalith.McpCli` CLI operations preserve scope-first search/ingest/traversal behavior, compact evidence and explain output, actionable diagnostics, and deterministic human/table/JSON/exit-code semantics; the Memories CLI is compatibility evidence pending enrollment and parity.
+- UX-DR14: Target `Hexalith.McpCli` MCP enrollment preserves typed schemas, bounded source-attributed results, tenant and caller authority, token-budget omissions, structured errors, and recovery for the eligible Phase 1.5 subset; existing Memories MCP tools are compatibility evidence.
+- UX-DR15: If a product web route is activated, compose it inside FrontComposerShell with centrally pinned Microsoft Fluent UI Blazor V5 and Fluent 2 primitives and FC-A11Y behavior. The 19 existing Memories RCL concepts are conformance specimens, not live product routes; primitive gaps require a registered semantic/focus/forced-colors exception and test.
+- UX-DR16: On an activated future web route, the Evidence Cockpit presents scoped search, Evidence Packet, source inspection, retrieval axes, graph context, and recovery; the five titled detail regions use one multi-expand accordion, with Evidence and Recovery initially expanded.
 - UX-DR17: Implement a Retrieval Axis Breakdown component or response section for explain mode and benchmark inspection, showing raw score, normalized score, fusion contribution, ranking reason, omitted/degraded axis state, and detail expansion.
 - UX-DR18: Implement a Source Citation Stack for cited sources, including source type, origin identifier, freshness, snippet or summary, confidence/metadata origin, and keyboard-openable preview behavior where UI exists.
 - UX-DR19: Implement a Graph Path Summary for causal and why-oriented workflows, showing relationship path, edge type, confidence, gap markers, and chronological ordering.
-- UX-DR20: Implement an Agent Packet Inspector pattern for MCP debugging, including request summary, response schema, token budget, omitted fields, expansion handles, structured errors, copy controls, and accessible schema/JSON views.
+- UX-DR20: The Agent Packet Inspector specimen shows real MCP tool/schema identity, token budget, omissions, expansion handles, structured errors, and sanitized JSON; any product activation needs a host-owned route, authority, and copy behavior.
 - UX-DR21: Implement Case Activity Trail patterns for Marcus-style continuity, showing ingestion events, searches, membership changes, annotations, health states, source links, and briefing context.
 - UX-DR22: Implement Ingestion Lifecycle Tracker patterns for pending, queued, extracting, embedding, indexing, indexed, failed, retried, and re-ingested states.
 - UX-DR23: Implement Operator Health Matrix patterns for tenant verification, backend health, isolation status, ingestion health, consistency repair, degradation, and alert states.
 - UX-DR24: Implement Benchmark Result Comparator patterns for three-axis validation, hybrid-vs-single-axis comparison, NDCG@10 evidence, and thesis review.
-- UX-DR25: Use a consistent evidence state grammar across CLI, MCP, and web UI: confidence (`supported`, `partial`, `disputed`, `insufficient`), freshness (`current`, `aging`, `stale`, `unknown`), evidence health (`complete`, `degraded`, `missing source`, `schema mismatch`), and scope (`verified`, `inferred`, `cross-case`, `unauthorized`, `out-of-scope`).
+- UX-DR25: Preserve the versioned Contracts.V1 Evidence Packet states (`complete`, `partial`, `weak`, `empty`, `stale`, `degraded`, `unauthorized`, `pendingExpansion`) and separate evidence-strength labels (`none`, `unknown`, `weak`, `moderate`, `strong`), freshness (`current`, `aging`, `stale`, `unknown`), axis availability, and authorization. Do not invent a `disputed` packet state or conflate backend loss with source conflict.
 - UX-DR26: Feedback patterns must answer what happened, what it affects, how serious it is, and what to do next; trust-critical feedback appears close to the affected Evidence Packet or object rather than only in global notifications.
 - UX-DR27: Form patterns must be contract-aware and validation-first, with tenant and case scope near the top and actionable validation for tenant, case, source, permissions, and dangerous scope changes.
 - UX-DR28: Search and filtering patterns must expose active filters for axis, source type, freshness, confidence, time range, metadata, graph depth, and evidence state, and must show when filters narrow scope, broaden scope, exclude axes, or affect confidence.
 - UX-DR29: Navigation patterns must preserve tenant/case/search context and provide clear return paths from Evidence Packets to sources, graph paths, activity items, and agent packets.
 - UX-DR30: Modal and overlay patterns must use inspection drawers or panels for source, graph, reasoning, MCP payload, export, and repair flows; destructive or scope-sensitive confirmations must name the tenant, case, object, and consequence.
-- UX-DR31: Command palette patterns should expose search, ingest, inspect source, verify tenant, open graph, retry ingestion, export packet, and inspect MCP payload actions for advanced users.
+- UX-DR31: Expose only implemented commands and recovery actions in the active CLI and McpCli target; any future web command surface is host-owned and must name disabled reasons rather than imply unavailable operations work.
 - UX-DR32: Data grid patterns should support memory units, sources, ingestion jobs, case activity, tenant checks, backend health, and benchmark results with sorting, filtering, status badges, row actions, and keyboard navigation.
 - UX-DR33: Responsive behavior must preserve trust fundamentals on every viewport; scope, confidence, freshness, source count, evidence health, and recovery remain reachable on mobile, tablet, desktop, and wide desktop.
-- UX-DR34: Responsive breakpoint coverage must include mobile 320-767px, tablet 768-1023px, desktop 1024px+, and wide desktop 1440px+, with test viewports at minimum 360px, 768px, 1024px, and 1440px.
-- UX-DR35: Accessibility must target WCAG 2.2 AA for web surfaces and preserve keyboard access, visible focus, labels, contrast, screen-reader semantics, live-region behavior for meaningful async transitions, reduced-motion support, and forced-colors/high-contrast support.
+- UX-DR34: Future web inherits FrontComposer breakpoints and layout behavior. At 320 CSS pixels and 400% zoom, keep scope, trust, result, primary action, and recovery in a logical column; genuinely tabular/graph content needs an equivalent ordered representation. Do not import the legacy fixed breakpoint values as product tokens.
+- UX-DR35: When a web capability activates, meet WCAG 2.2 AA through keyboard trust workflow, visible and unobscured focus, labels/announcements, no color-only state, 200% resize, 400% zoom/320 CSS-pixel reflow, reduced motion, forced colors, and browser/assistive-technology evidence under NFR32.
 - UX-DR36: Trust states must not rely on color alone; status indicators require text labels, accessible names, and consistent state grammar.
 - UX-DR37: Focus management must move into drawers, dialogs, source previews, graph detail panels, MCP inspectors, and confirmations, then return focus to the invoking control when closed.
 - UX-DR38: Hover-only interactions are forbidden for trust-critical source preview, graph detail, recovery action, tooltip, and command behavior; all must be accessible by keyboard and touch.
-- UX-DR39: Automated and human UX validation must cover color contrast, accessible names, form labels, ARIA validity, heading order, focusable controls, keyboard-only navigation, focus order, no-color-only state comprehension, reduced motion, and high-contrast behavior.
+- UX-DR39: For every activated product web route and representative state, maintain a dated viewport/theme/input/browser/AT/focus evidence matrix with tester, artifact, defect or waiver owner, and release disposition; component/axe checks and the specimen host alone do not qualify the route.
 - UX-DR40: Accessible text, tooltips, labels, announcements, copied text, and diagnostics must not expose secrets, raw payloads, bearer tokens, tenant-sensitive diagnostics, or restricted source details.
 
+- UX-DR41: Evidence Grid and Filter Summary specimens keep labelled/sortable evidence rows, target-qualified actions, active filters, and each filter's effect on scope and results; product activation must bind real packet data and host navigation.
+- UX-DR42: Interaction Form and Action Confirmation specimens keep scope-first validation, a safe cancel default, and named tenant/case/target/consequence for destructive, reindex, repair-apply, migration, and erasure actions; host dispatch and focus lifecycle are activation work.
+- UX-DR43: Command Surface and Context Navigation specimens show available actions, readable disabled reasons, active scope, and clear return paths; the product host owns routing and global commands.
+- UX-DR44: Shared Lens Shell gives the Case Activity Trail, Ingestion Lifecycle Tracker, Operator Health Matrix, Benchmark Result Comparator, and Agent Packet Inspector a common packet-derived scope/trust header before detail and recovery; each lens is a specimen until its host data and route are activated.
+- UX-DR45: The active CLI fulfills NFR37's scope → result → sources → reasoning/state → recovery reading order, text-labelled status/axis/omission/progress, bounded wrapping, linear table alternative, deterministic redirection, durable stage lines, explicit timeout/cancel, keyboard completion, and secret-safe cross-form semantics.
+- UX-DR46: Source Citation Stack, Retrieval Axis Breakdown, Graph Path Summary, Trust Strip, Scope Header, and Recovery Action Panel keep source/origin, case attribution, score meaning, freshness, gap/omission, and safest next action separate; unavailable packet fields are labelled unavailable rather than fabricated.
+- UX-DR47: FrontComposer/Fluent 2 own theme, color, spacing, typography, radius, elevation, shell, and breakpoints. Memories introduces no independent token scale; any product-route visual implementation inherits current centrally pinned components and validates light/dark/forced-colors meaning.
+
 ### UX Design Requirements Coverage Map
+
+**Historical mapping pending current-source re-derivation.** The existing story references below explain prior coverage only and do not register successor work or qualify the current UX contract.
+
 
 - UX-DR1: Story 2.7 and future Story 17.1 — Evidence Packet contract and visual composition.
 - UX-DR2: Stories 2.6 and 2.7 — evidence packet trust fields and explain/confidence semantics.
@@ -317,84 +283,196 @@ This document provides the complete epic and story breakdown for Hexalith.Memori
 - UX-DR39: Story 17.5 — automated and human accessibility/responsive validation.
 - UX-DR40: Stories 7.5, 10.1, 13.2, 13.3, 14.3, and 17.5 — privacy-safe accessible text and diagnostics.
 
+### Current UX Design Requirements Coverage Overlay (2026-10-05)
+
+The preceding UX map is historical. This overlay names current source ownership and keeps held/inactive work visible. A specimen component is evidence of its RCL structure, not an activated product route or a G6 pass.
+
+| UX requirement | Current owner or evidence route | Phase/status |
+| :--- | :--- | :--- |
+| UX-DR1 | Story 33.8; historical Story 2.7 | active packet contract |
+| UX-DR2 | Stories 33.7–33.8 | active trust fields |
+| UX-DR3 | Story 33.8; phase-1.5 McpCli enrollment held | active omission contract; later agent surface |
+| UX-DR4 | Stories 34.8–34.13 and 33.7 | active authority/scope |
+| UX-DR5 | Epic 17.1 specimen; Story 33.8 packet | future web activation |
+| UX-DR6 | Epic 17.1 specimen; Story 34.13 admission | future web activation plus active guard |
+| UX-DR7 | Stories 33.7–33.8 | active trust loop |
+| UX-DR8 | Story 33.8; Epic 17.1–17.2 specimen | active details; future web |
+| UX-DR9 | Story 33.7; Epic 17.2 specimen | active state grammar; future web |
+| UX-DR10 | Story 33.7 | active no-result semantics |
+| UX-DR11 | Story 33.7; Epic 17.2 specimen | active recovery; future web |
+| UX-DR12 | Story 33.7 | active conflicting evidence semantics |
+| UX-DR13 | Epic 32 held on McpCli owner inventory | active CLI gap |
+| UX-DR14 | Epic 32 held; historical Epic 10 | Phase 1.5 MCP gap |
+| UX-DR15 | Epic 17.1/17.5 specimen | future web activation |
+| UX-DR16 | Epic 17.1 specimen | future web activation |
+| UX-DR17 | Stories 33.1 and 33.8; Epic 17.1 specimen | active explain; future web |
+| UX-DR18 | Story 33.8; Epic 17.1 specimen | active source contract; future web |
+| UX-DR19 | Story 33.3; Epic 17.1 specimen | active case-local graph; future web |
+| UX-DR20 | Epic 17.4 specimen; Epic 32 held | Phase 1.5 agent and future web |
+| UX-DR21 | Epic 17.4 specimen; Story 34.4 | future web and active status |
+| UX-DR22 | Story 34.4; Epic 17.4 specimen | active lifecycle; future web |
+| UX-DR23 | Story 34.29; Epic 17.4 specimen | active health; future web |
+| UX-DR24 | Story 33.4; Epic 17.4 specimen | active benchmark; future web |
+| UX-DR25 | Stories 33.7–33.8 | active V1 vocabulary |
+| UX-DR26 | Story 33.7; Epic 17.2 specimen | active feedback; future web |
+| UX-DR27 | Story 34.8; Epic 17.3 specimen | active validation; future web |
+| UX-DR28 | Story 33.3; Epic 17.3 specimen | active scoped filters; future web |
+| UX-DR29 | Epic 17.3 specimen | future web activation |
+| UX-DR30 | Epic 17.3 specimen; Story 34.26 export authority | future web activation |
+| UX-DR31 | Epic 32 held; Epic 17.3 specimen | active CLI and future web |
+| UX-DR32 | Epic 17.3 specimen | future web activation |
+| UX-DR33 | Epic 17.5 specimen | future web activation |
+| UX-DR34 | Epic 17.5 specimen | future web activation |
+| UX-DR35 | Epic 17.5 specimen | future web activation |
+| UX-DR36 | Story 33.7; Epic 17.5 specimen | active labels; future web |
+| UX-DR37 | Epic 17.5 specimen | future web activation |
+| UX-DR38 | Epic 17.5 specimen | future web activation |
+| UX-DR39 | Epic 17.5 specimen | future web activation |
+| UX-DR40 | Story 33.8; Epic 32 held; Epic 17.5 specimen | active data safety; future web |
+| UX-DR41 | Epic 17.3 specimen; Story 33.3 | future web data grids |
+| UX-DR42 | Epic 17.3 specimen; Stories 34.24–34.26 | future web confirmation and active erasure |
+| UX-DR43 | Epic 17.3 specimen; Epic 32 held | future web and active command discovery |
+| UX-DR44 | Epic 17.4 specimen; Stories 33.7–33.8 | future web lens projection |
+| UX-DR45 | Epic 32 held; NFR37 qualification held | active CLI gap |
+| UX-DR46 | Stories 33.7–33.8; Epic 17.1 specimen | active packet fields; future web |
+| UX-DR47 | Epic 17.5 specimen | future web activation |
+
+### Current NFR and Gate Coverage Overlay (2026-10-05)
+
+This is planning ownership, not a qualification verdict. Story 35.10 must resolve each MVP-active row to dated rerunnable evidence or a blocker; phase-inactive L and web rows earn no Phase 1 credit.
+
+| Requirement | Current owner or evidence route |
+| :--- | :--- |
+| NFR1 | Story 35.1 |
+| NFR2 | Story 35.2 |
+| NFR3 | Story 35.3 |
+| NFR4 | Story 35.4 |
+| NFR5 | Story 34.28; G6 matrix 35.10 |
+| NFR6 | historical Epic 9; Phase 1.5 L gates |
+| NFR7 | historical Epic 8; G6 matrix 35.10 |
+| NFR8 | Stories 34.11 and 35.6 |
+| NFR9 | Epic 31; Stories 34.11 and 35.14 |
+| NFR10 | Stories 34.8–34.10 |
+| NFR11 | Story 34.8 and 35.6 |
+| NFR12 | Story 34.28; G6 matrix 35.10 |
+| NFR13 | Story 34.28 |
+| NFR14 | Story 34.39; historical Epic 24; G6 matrix 35.10 |
+| NFR15 | Story 34.37; historical Epic 25; G6 matrix 35.10 |
+| NFR16 | Stories 34.5 and 35.13 |
+| NFR17 | Stories 34.3–34.5 |
+| NFR18 | Story 33.7 |
+| NFR19 | Story 34.4 |
+| NFR20 | historical Epic 10; McpCli Epic 32 held (Phase 1.5) |
+| NFR21 | historical Epic 9 (Phase 1.5) |
+| NFR22 | Story 34.28 |
+| NFR23 | Epic 32 held |
+| NFR24 | Stories 33.1/33.8 and 35.9 |
+| NFR25 | Stories 33.1/33.8 and 35.9 |
+| NFR26 | Stories 33.4 and 35.9 |
+| NFR27 | historical Epic 24; G6 matrix 35.10 |
+| NFR28 | historical Epic 24; G6 matrix 35.10 |
+| NFR29 | historical Epic 24; G6 matrix 35.10 |
+| NFR30 | Epic 32 held |
+| NFR31 | Story 35.7; target enrollment held |
+| NFR32 | Epic 17 future-web activation only |
+| NFR33 | Story 33.7 |
+| NFR34 | Stories 34.32 and 35.15 |
+| NFR35 | Epic 17 future-web activation only |
+| NFR36 | Story 35.5 |
+| NFR37 | Epic 32 and target CLI qualification held |
+| G1 | Stories 33.4/33.6 and held human label/run slots; no qualifying verdict |
+| G2 | Story 35.6; no current verdict |
+| G3 | Story 35.7 and held Epic 32 target operations; no current verdict |
+| G4 | Stories 33.3 and 35.8; no current verdict |
+| G5 | Stories 33.1/33.8 and 35.9; no current verdict |
+| G6 | Story 35.10 evidence-only matrix; no current verdict |
+| L1 | Historical Epics 9–10; Phase 1.5 gate inactive until G1–G6 pass |
+| L2 | Historical Epics 9–10; Phase 1.5 gate inactive until G1–G6 pass |
+| L3 | Historical Epics 9–10; Phase 1.5 gate inactive until G1–G6 pass |
+
 ### FR Coverage Map
 
-- FR1: Epic 1 — Ingest from local files
-- FR2: Epic 6 — Ingest from URLs
-- FR3: Epic 6 — Batch-ingest from directory
+**Current correction overlay (approved 2026-10-05):** Epics 0–31 retain historical ownership. A successor reference marks current-contract work for decomposition, not a registered story or a verified implementation. Phase-inactive FRs retain their PRD phase. Epic 35 evaluates the MVP-active evidence for every mapped requirement and architecture-critical gap; it does not implement a product feature.
+
+- FR1: Epic 1 — Ingest from local files; successor Epic 32 — shared CLI local-file entry and honest status
+- FR2: Epic 6 — Ingest from URLs; successor Epic 32 — shared CLI URL entry
+- FR3: Epic 6 — Batch-ingest from directory; successor Epic 32 — shared CLI directory entry
 - FR4: Epic 1 — Text extraction (Kreuzberg)
 - FR5: Epic 1 — Generate embeddings
-- FR6: Epic 1 — Memory unit fully searchable after ingestion; reinforced by Epic 23 for scalable chunking and batch embedding
+- FR6: Epic 1 — Memory unit fully searchable after ingestion; reinforced by Epic 23 for scalable chunking and batch embedding; successor Epic 34 — current-revision all-axis completion
 - FR7: Epic 1 — Metadata with origin tracking
-- FR8: Epic 6 — Per-tenant ingestion load management
+- FR8: Epic 6 — Per-tenant ingestion load management; successor Epic 34 — bounded tenant admission
 - FR9: Epic 6 — Auto-retry with configurable limits
-- FR10: Epic 6 — Ingestion status per case
-- FR11: Epic 6 — Failed unit visibility
-- FR12: Epic 6 — Re-ingestion of failed content; reinforced by Epic 23 for non-URL re-ingestion correctness
-- FR13: Epic 1 — Partial backend write failure recovery (IngestionWorkflow saga/compensation); reinforced by Epic 21 for ratified consistency and migration safety
-- FR14: Epic 2 — Syntactic search
-- FR15: Epic 2 — Semantic search
-- FR16: Epic 2 — Graph search
-- FR17: Epic 2 — Hybrid fusion search
-- FR18: Epic 2 — Axis selection control
-- FR19: Epic 2 — Per-axis score breakdown (explain)
-- FR20: Epic 3 — Filter search by case
-- FR21: Epic 3 — Filter search by metadata
-- FR22: Epic 2 — Pagination (search concern); reinforced by Epic 22 for semantic, graph-scoped, and hybrid pagination correctness
-- FR23: Epic 10 — Token budget (MCP), including deterministic omitted-detail expansion handles
-- FR24: Epic 2 — Origin identifier in results
-- FR25: Epic 2 — Benchmark comparisons
-- FR26: Epic 0 + Epic 3 — Minimal case bootstrap, then full case management
-- FR27: Epic 3 — Delete case
-- FR28: Epic 3 — Add case members
-- FR29: Epic 3 — Remove case members
-- FR30: Epic 3 — List cases
-- FR31: Epic 3 — Case status
-- FR32: Epic 3 — Single-case ownership
-- FR33: Epic 3 — Case-scoped graph edges
-- FR34: Epic 3 — Cross-case tenant search; reinforced by Epic 22 for fusion case attribution
+- FR10: Epic 6 — Ingestion status per case; successor Epic 32 — case ingestion-status view
+- FR11: Epic 6 — Failed unit visibility; successor Epic 32 — failed-unit inspection
+- FR12: Epic 6 — Re-ingestion of failed content; reinforced by Epic 23 for non-URL re-ingestion correctness; successor Epic 32 — re-ingestion action
+- FR13: Epic 1 — Partial backend write failure recovery (IngestionWorkflow saga/compensation); reinforced by Epic 21 for ratified consistency and migration safety; successor Epic 34 — authoritative commit and projection recovery
+- FR14: Epic 2 — Syntactic search; successor Epic 33 — scoped syntactic result
+- FR15: Epic 2 — Semantic search; successor Epic 33 — scoped semantic result
+- FR16: Epic 2 — Graph search; successor Epic 33 — case-local graph result
+- FR17: Epic 2 — Hybrid fusion search; successor Epic 33 — auto-seeded case-local hybrid fusion
+- FR18: Epic 2 — Axis selection control; successor Epic 33 — explicit axis selection
+- FR19: Epic 2 — Per-axis score breakdown (explain); successor Epic 33 — deterministic explain meaning
+- FR20: Epic 3 — Filter search by case; successor Epic 33 — case filter
+- FR21: Epic 3 — Filter search by metadata; successor Epic 33 — metadata filter
+- FR22: Epic 2 — Pagination (search concern); reinforced by Epic 22 for semantic, graph-scoped, and hybrid pagination correctness; successor Epic 33 — stable result pagination
+- FR23: Epic 10 — Token budget (MCP), including deterministic omitted-detail expansion handles; successor Epic 32 — target MCP token-budget parity in Phase 1.5
+- FR24: Epic 2 — Origin identifier in results; successor Epic 33 — origin and attribution
+- FR25: Epic 2 — Benchmark comparisons; successor Epic 33 — BM25+semantic thesis control
+- FR26: Epic 0 + Epic 3 — Minimal case bootstrap, then full case management; successor Epic 32 — shared CLI case creation
+- FR27: Epic 3 — Delete case; successor Epic 32 — shared CLI case deletion
+- FR28: Epic 3 — Add case members; successor Epic 32 — shared CLI member attribution
+- FR29: Epic 3 — Remove case members; successor Epic 32 — shared CLI member removal
+- FR30: Epic 3 — List cases; successor Epic 32 — shared CLI case list
+- FR31: Epic 3 — Case status; successor Epic 32 — shared CLI case status
+- FR32: Epic 3 — Single-case ownership; successor Epic 33 — single-case ownership evidence
+- FR33: Epic 3 — Case-scoped graph edges; successor Epic 33 — case-local graph paths
+- FR34: Epic 3 — Cross-case tenant search; reinforced by Epic 22 for fusion case attribution; successor Epic 33 — tenant-wide ranking with case-local graph
 - FR35: Epic 3 — Delete memory unit
 - FR36: Epic 3 — Case activity
 - FR37: Epic 3 — Annotations/corrections
-- FR38: Epic 0 + Epic 5 — Tenant creation and isolated infrastructure provisioning; reinforced by Epic 24 for physical isolation strategy
-- FR39: Epic 5 — Delete tenant; reinforced by Epic 21 for deletion completeness
-- FR40: Epic 5 — Verify tenant isolation; reinforced by Epic 24 for verifier scaling
-- FR41: Epic 5 — List tenants
-- FR42: Epic 5 — Update tenant config
-- FR43: Epic 5 — Prevent inconsistent config changes
-- FR44: Epic 0 + Epic 5 — Tenant context validation and enforcement; reinforced by Epic 20 for authorization and Epic 24 for physical isolation
-- FR45: Epic 5 — View tenant configuration
-- FR46: Epic 1 — Index CausationId/CorrelationId as graph edges (creation during ingestion)
-- FR47: Epic 4 — Traverse causal chains
-- FR48: Epic 4 — Filter by edge type
-- FR49: Epic 4 — Gap markers for missing nodes
-- FR50: Epic 4 — Edge type taxonomy
-- FR51: Epic 4 — Promote AI-inferred confidence
-- FR52: Epic 4 — Chronological ordering
-- FR53: Epic 7 — CLI for all capabilities
-- FR54: Epic 10 — MCP tools
-- FR55: Epic 7 — CLI output formats
-- FR56: Epic 7 — Actionable CLI errors
-- FR57: Epic 7 — Discoverable actions
-- FR58: Epic 10 — MCP typed schemas
+- FR38: Epic 0 + Epic 5 + Epic 24 — tenant creation, tenant-scoped indexes, and backend isolation; successor Epic 34 — tenant-scoped principals and indexes
+- FR39: Epic 5 + Epic 21 — tenant deletion and data-integrity history; successor Epic 34 — verified irreversible tenant erasure
+- FR40: Epic 5 — Verify tenant isolation; reinforced by Epic 24 for verifier scaling; successor Epic 34 — principal-driven isolation verification
+- FR41: Epic 5 — List tenants; successor Epic 32 — shared CLI tenant list
+- FR42: Epic 5 — Update tenant config; successor Epic 34 — safe configuration changes
+- FR43: Epic 5 — Prevent inconsistent config changes; successor Epic 34 — acknowledged reindex guard
+- FR44: Epic 0 + Epic 5 + Epic 20 + Epic 24 — tenant context, authorization, and physical isolation history; successor Epic 34 — server-derived authority at every path
+- FR45: Epic 5 — View tenant configuration; successor Epic 32 — shared CLI tenant configuration view
+- FR46: Epic 1 — Index CausationId/CorrelationId as graph edges (creation during ingestion); successor Epic 33 — typed graph edges
+- FR47: Epic 4 — Traverse causal chains; successor Epic 33 — bounded graph traversal
+- FR48: Epic 4 — Filter by edge type; successor Epic 33 — edge-type filter
+- FR49: Epic 4 — Gap markers for missing nodes; successor Epic 33 — literal gap markers
+- FR50: Epic 4 — Edge type taxonomy; successor Epic 33 — edge taxonomy
+- FR51: Epic 4 — Promote AI-inferred confidence; successor Epic 33 — verified confidence promotion
+- FR52: Epic 4 — Chronological ordering; successor Epic 33 — chronological graph order
+- FR53: Epic 7 — historical Memories CLI surface; current target is Hexalith.McpCli; successor Epic 32 — shared CLI target capability inventory
+- FR54: Epic 10 — historical Memories MCP surface; current target is Hexalith.McpCli; successor Epic 32 — shared MCP target enrollment in Phase 1.5
+- FR55: Epic 7 — CLI output formats; successor Epic 32 — human/table/JSON parity
+- FR56: Epic 7 — Actionable CLI errors; successor Epic 32 — actionable recovery and exit semantics
+- FR57: Epic 7 — Discoverable actions; successor Epic 32 — implemented action discovery
+- FR58: Epic 10 — MCP typed schemas; successor Epic 32 — typed target MCP schemas in Phase 1.5
 - FR59: Epic 9 — Auto-discover event types
 - FR60: Epic 9 — Dual embeddings for events
 - FR61: Epic 9 — Auto-index CausationId/CorrelationId
 - FR62: Epic 9 — Handler registration management
-- FR63: Epic 2 — Composite confidence scores and Evidence Packet contract mapping
-- FR64: Epic 7 — Metadata origin tracking display
-- FR65: Epic 1 — `ingested_by` field
-- FR66: Epic 5 — Partial results on backend failure
-- FR67: Epic 7 — Search/access telemetry; reinforced by Epic 20 for audit emission. A41 access-telemetry retention remains governed by `20.5-A41-ACCESS-TELEMETRY-RETENTION`.
-- FR68: Epic 1 — Configure Google embedding provider for MVP with an extensible provider/model/dimensions/rate-limit shape. OpenAI, Mistral, Ollama, and custom runtime providers are post-MVP provider expansion work unless explicitly pulled forward by sprint change.
-- FR69: Epic 5 — Per-tenant rate limits
-- FR70: Epic 5 — Track embedding model per unit
-- FR71: Epic 26 — Portable export reinforced through backup/restore and operational readiness; broader application-facing export remains Phase 2 unless explicitly pulled forward
-- FR72: Epic 8 — Health checks
-- FR73: Epic 8 — Consistency check
-- FR74: Epic 8 — Consistency repair
+- FR63: Epic 2 — Composite confidence scores and Evidence Packet contract mapping; successor Epic 33 — relevance and per-axis score meaning
+- FR64: Epic 7 — Metadata origin tracking display; successor Epic 32 — metadata origin presentation
+- FR65: Epic 1 — `ingested_by` field; successor Epic 34 — server-derived mandatory actor provenance
+- FR66: Epic 5 — Partial results on backend failure; successor Epic 33 — safe available-axis degradation
+- FR67: Epic 7 + Epic 20 + Epic 27 — per-tenant search/access telemetry and its lifecycle; the current contract does not claim a tamper-evident audit trail; successor Epic 34 — bounded access-telemetry lifecycle
+- FR68: Epic 1 — Configure Google embedding provider for MVP with an extensible provider/model/dimensions/rate-limit shape. OpenAI, Mistral, Ollama, and custom runtime providers are post-MVP provider expansion work unless explicitly pulled forward by sprint change.; successor Epic 34 — tenant provider configuration
+- FR69: Epic 5 — Per-tenant rate limits; successor Epic 34 — tenant rate ceilings
+- FR70: Epic 5 — Track embedding model per unit; successor Epic 34 — vector model lineage
+- FR71: Epic 8 Story 8.3 (completed early, non-MVP) + Epic 26 (backup/restore only) — portable case/tenant export; current AD-16/AD-21 custody and tombstone constraints remain to be evidenced; successor Epic 34 — custody-transfer and erasure/restore safety for the already delivered export
+- FR72: Epic 8 — Health checks; successor Epic 34 — capability-aware readiness
+- FR73: Epic 8 — Consistency check; successor Epic 34 — authoritative divergence detection
+- FR74: Epic 8 — Consistency repair; successor Epic 34 — bounded provenance-safe repair
+- FR75: New current PRD requirement — no historical epic ownership; successor Epic 34 — durable command/CloudEvent suppression and epoch-aware projection
 
 ## Selected Implementation Scope
+
+**Dated 2026-10-05 correction:** the following May 2026 selection and the readiness boundary below describe historical execution. Approved successor Epics 32–35 are planning outcomes only until their individual stories pass registration gates and later sprint planning selects them. The Phase 1 G1–G6 release posture remains no-go.
 
 **Selected scope as of 2026-05-17:** planning correction for implementation readiness. No product requirement reset is approved. The clean executable foundation path is:
 
@@ -426,7 +504,7 @@ Minimum build/test CI is part of the executable foundation path and is tracked a
 
 **Post-MVP operational hardening:** Epics 27-31 are Operational Readiness track. Epic 27 hardens the access-telemetry lifecycle; Epic 28 adopts the owner-approved EventStore runtime identity; Epic 29 owns Aspire-local OpenBao secret topology; Epic 30 owns the container release pipeline; Epic 31 owns the deployed OpenBao platform and runtime secret-store migration. None is counted toward MVP product readiness, each requires explicit sprint selection, and each is judged by the Engineering/Operational Readiness Track acceptance rules below.
 
-**FR71 scope interpretation:** Epic 26 covers the operational backup/restore and disaster-recovery slice of FR71. It does not pull the broader application-facing portable export feature into active MVP scope; full export remains Phase 2 unless explicitly sprint-selected.
+**FR71 scope interpretation (historical):** Epic 26 covers the operational backup/restore and disaster-recovery slice of FR71. **Dated 2026-10-05 correction:** the application-facing portable export was delivered early as non-MVP Story 8.3. The story artifact says `done`, while the frozen tracker still labels its key `reserved-non-mvp`; this tracker drift is for later sprint planning. Epic 34 owns the current export custody, staging-purge, and tombstoned-origin admission gaps without rescheduling basic export.
 
 ### Pre-Implementation CI Preflight Gate (2026-05-19)
 
@@ -533,7 +611,7 @@ Developer can accomplish MVP thesis-validation tasks via a CLI tool with actiona
 Operator can verify consistency across all three backends, detect and repair index/graph divergence, and observe the system via readiness/liveness health checks, structured logging, distributed traces, and custom metrics.
 **FRs covered:** FR72, FR73, FR74
 
-FR coverage is 100% traceable. MVP implementation scope is not 100% of FR1-FR74 because FR71 portable export is explicitly deferred to Phase 2 unless a later approved sprint change pulls it forward.
+**Historical May 2026 coverage statement:** FR1–FR74 were mapped to the then-current epics, while FR71 was outside MVP readiness. **Dated 2026-10-05 correction:** the current map above covers FR1–FR75; FR71 export was completed early outside MVP, and its new custody/erasure obligations are Epic 34 gaps. Coverage and a completed historical story do not provide G6 evidence.
 
 ### Phase 1.5 (Fast-Follow — within 4 weeks of thesis validation)
 
@@ -640,7 +718,7 @@ Production deployment artifacts, backup/restore, integration-stub closure, cover
 **Lifecycle label:** Operational Readiness / Deploy & Test
 **Driven by:** Sprint Change Proposal 2026-07-04 — closes A23, A24, A25, A42
 **FRs covered:** FR71
-**FR71 scope note:** This epic covers backup/restore and disaster-recovery readiness. Broader application-facing portable export remains Phase 2 unless explicitly sprint-selected.
+**FR71 scope note (historical):** This epic covers backup/restore and disaster-recovery readiness. **Dated 2026-10-05 correction:** application-facing portable export was completed early as non-MVP Story 8.3; it is not rescheduled. Current custody-transfer, staging-purge, and tombstone/restore obligations remain in successor Epic 34.
 
 ### Epic 27: Access Telemetry Lifecycle Hardening
 Operators can configure and verify a bounded lifecycle for access telemetry through one explicitly owned write-only sink/store without weakening audit emission, tenant/privacy boundaries, or the PRD compliance boundary.
@@ -673,6 +751,41 @@ The deployed OpenBao `hexalith-keys` platform and the runtime Dapr `secretstore`
 **Driven by:** Sprint Change Proposal 2026-07-26 — DW 27.3-CR6 split approved by Administrator 2026-07-21
 **NFRs reinforced:** NFR9
 **Scope boundary:** Epic 31 owns the deployed-cluster platform and runtime secret-store migration. Aspire/AppHost-local topology and provider-neutral composition are Epic 29.
+
+### Phase: 2026-10-05 Approved Successor Outcomes and Stories
+
+The four successor epics below are approved outcome boundaries. The list approves outcomes, and Administrator approved the 64 story definitions in Epics 33–35 together on 2026-10-05. No Story 32 operation is registered. The current PRD, final architecture spine, DESIGN/EXPERIENCE pair, and approved implementation-readiness correction govern story wording and evidence. Each candidate must pass the Historical Slice Scope Guard and Epic AC Verification before registration. The McpCli owner repository is the target for eligible shared CLI/MCP behavior; Memories CLI/MCP assets supply compatibility evidence. Story 27.22 and the 23 held C1 gates remain under their separate approved workflow.
+
+### Epic 32: Use Memories through the shared Hexalith CLI
+A developer or operator can perform eligible Memories operations through `Hexalith.McpCli`, inspect scope and progress, recover from errors, and use human, table, JSON, and MCP forms with the same truthful meaning. The epic delivers each enrolled operation against its current server contract and proves compatibility before any old-surface retirement; it does not claim G3 until the clean-machine manual path is measured.
+**FRs reinforced:** FR1–FR3, FR10–FR12, FR23, FR26–FR31, FR41, FR45, FR47–FR48, FR53–FR58, FR64.
+**NFR/gate obligations:** NFR23, NFR30, NFR37; G3. Phase 1.5 MCP work remains gated by L1 and the PRD phase boundary.
+**Owner boundary:** Shared command/enrollment/output behavior belongs in the McpCli owner repository; Memories supplies its versioned operations, server authority, and compatibility fixtures.
+**Registration hold (verified 2026-10-05):** The owner repository's Stories 4.4 and 4.5 are still `backlog`; the versioned Memories replace/withdraw/defer inventory and generic coverage gate are not approved. Its v1 public CLI currently exposes generic `modules`, `operations`, `describe`, `send`, `query`, `config`, and `mcp` verbs, not a Memories-specific command tree. Until the inventory identifies each eligible Gateway Command/Query and the per-user identity path, no Epic 32 operation story is registered. The old `memories` verbs remain compatibility evidence, not a target grammar. This is a dependency on owner-repository planning, not a second Memories implementation of McpCli Story 4.4.
+
+| Verified claim | Command | Observation | Verdict |
+| :--- | :--- | :--- | :--- |
+| "Stories 4.4 and 4.5 are still `backlog`" | `rg -n '4-4-approve-chatbot-and-memories-migration-inventories\|4-5-gate-module-coverage-against-the-approved-inventory' references/Hexalith.McpCli/_bmad-output/implementation-artifacts/sprint-status.yaml` | Both rows say `backlog` at lines 73–74. | confirmed |
+| "Its v1 public CLI currently exposes generic ... verbs" | `sed -n '68,90p' references/Hexalith.McpCli/src/Hexalith.McpCli/Cli/CliRunner.cs` | `CreateRoot` adds the seven named generic subcommands. | confirmed |
+
+
+### Epic 33: Trust scoped hybrid answers
+A developer can receive a case-attributed, case-local three-axis answer, distinguish unavailable or empty axes from real absence, inspect deterministic explain/source/graph details, and run the frozen BM25+semantic thesis comparison. A qualifying G1 run waits for the two named independent human reviewers; diagnostic runs grant no gate credit.
+**FRs reinforced:** FR14–FR22, FR24–FR25, FR32–FR34, FR46–FR52, FR63, FR66.
+**NFR/gate obligations:** NFR1–NFR4, NFR8, NFR18, NFR24–NFR26, NFR33; G1, G4, G5.
+**Risk boundary:** Retrieval/fusion, benchmark, and graph code share the same result contract; the human corpus/reviewer protocol is a separate evidence checkpoint inside this outcome.
+
+### Epic 34: Keep tenant memory durable and isolated
+An operator can accept and recover memory mutations under the authoritative EventStore revision, see honest projection status, enforce tenant authority and capacity, repair without inventing facts, and complete erasure without resurrection or tenant-ID reuse. This includes source-held export staging and tombstone checks for the already delivered FR71 portable export, not a second Phase 2 export implementation.
+**FRs reinforced:** FR6, FR8, FR13, FR38–FR40, FR42–FR44, FR65, FR67–FR75.
+**NFR/gate obligations:** NFR8–NFR19, NFR22, NFR27–NFR29, NFR34, NFR36; G2 and the active-foundation portion of G6.
+**Risk boundary:** State, identity, projection, erasure, and restore must agree before the operator can trust a completed mutation; the existing C1 gate-stories are not imported into this epic.
+
+### Epic 35: Make a defensible release decision
+The product owner can inspect dated, rerunnable evidence for every MVP-active FR/NFR and architecture-critical active-foundation gap, then record a G1–G6 pass or no-go decision without relying on historical `done` status, a story owner, a risk acceptance, or an inactive-phase exception as gate credit. Phase 1.5 L1–L3 remain a later decision.
+**FRs covered:** evidence assessment for all MVP-active FRs in the current PRD; implementation ownership stays with the capability epics above and historical Epics 0–31.
+**NFR/gate obligations:** current NFR1–NFR37 evidence by active phase; G1–G6, with L1–L3 retained as later launch gates.
+**Owner boundary:** Evidence assembly and the release verdict are independently reviewable outputs; product defects return to a separately scoped capability story.
 
 ---
 
@@ -5527,3 +5640,2265 @@ So that runtime secret resolution crosses one reviewed boundary and every remain
 
 **Retained by Story 27.3:** the access-telemetry-specific secret components and the `PG-ONPREM-1` secret backing remain in Story 27.3 adapter scope and are not migrated by this story.
 
+
+## Epic 33: Trust Scoped Hybrid Answers
+
+**Status:** approved epic; the stories below are backlog planning units and are not sprint-selected or gate-qualified. **Owner:** Administrator with implementation/test reviewers assigned per slice.
+
+The independently demonstrable slices below implement the approved user outcome. Current code claims were checked against the 2026-10-05 worktree before authoring. A successful unit test or story status supplies no G1 credit without the frozen corpus, named independent human labels, and rerunnable gate record.
+
+### Story 33.1: Canonical fusion candidate ranking
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR17, FR19, FR63; NFR24–NFR25; AD-9.
+
+As a developer,
+I want ranked hybrid results whose candidate cleanup and ties are deterministic,
+So that an invalid or repeated axis hit cannot distort the answer.
+
+**Acceptance Criteria:**
+
+**Given selected axis results containing blank IDs, non-finite scores, duplicate IDs, and exact score ties, when fusion runs, then AD-9 canonical preprocessing drops invalid candidates, collapses each duplicate before competition-rank allocation, and orders the remaining fused results deterministically by score then canonical memory-unit ID.**
+
+**Given the same vector through REST and the target surface adapter, when explain is requested, then rank contributions and axis-health meanings agree and a golden-vector test fails on drift.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior story | Classification | Permitted use |
+| :--- | :--- | :--- |
+| Stories 2.8 and 26.8 | `anti-template` | Prior benchmark/fusion story shapes are context only; no AC bundle is copied. |
+
+##### Slice Proof
+
+One fused result list and explain vector is the independently visible outcome; benchmark protocol and graph seeding are separate slices.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "FusionEngine currently accumulates axis results by MemoryUnitId after receiving the lists" | Behavioral/location | `rg -n "AccumulateAxis\(accumulators\|Dictionary<string, FusionAccumulator>" src/Hexalith.Memories.Server/Search/FusionEngine.cs` | The function creates the accumulator and calls AccumulateAxis for each input list. | `confirmed` |
+
+
+### Story 33.2: Case-local automatic graph seeding
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR16–FR17, FR33; AD-9.
+
+As a developer,
+I want hybrid search to include graph evidence without an explicit start node,
+So that a populated case graph contributes to a normal query.
+
+**Acceptance Criteria:**
+
+**Given a case-scoped hybrid query without a graph start, when syntactic and semantic candidates return, then the graph axis seeds from the union of the top five of each axis, traverses within that same case to depth no greater than two, and contributes its ranked results.**
+
+**Given no safe seed or an unavailable graph, when the result is returned, then the axis state says why graph did not contribute and does not present a complete three-axis answer.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior story | Classification | Permitted use |
+| :--- | :--- | :--- |
+| Story 2.8 | `anti-template` | The former benchmark outcome is historical context only. |
+
+##### Slice Proof
+
+One case-scoped query exposes its graph contribution or an explicit absence reason; tenant-wide merging is another story.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "HybridSearchService currently skips graph when graphStartNodeId is null" | Behavioral/location | `rg -n "graphStartNodeId is null\|IsNullOrWhiteSpace\(graphStartNodeId\)" src/Hexalith.Memories.Server/Search/HybridSearchService.cs` | The branch logs a graph skip instead of launching graph work. | `confirmed` |
+
+
+### Story 33.3: Tenant-wide case-partitioned fusion
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR17, FR32–FR34; G4; AD-7/AD-9.
+
+As a developer,
+I want one tenant-wide search with independently ranked, attributed case results,
+So that results from multiple cases remain useful without cross-case graph travel.
+
+**Acceptance Criteria:**
+
+**Given a tenant-wide hybrid query over two cases with colliding node IDs, when seeds and graph paths are collected, then each contribution is evaluated under its authoritative case and every returned result carries case attribution.**
+
+**Given a path or edge that would leave its case, when fusion is assembled, then the cross-case contribution is rejected and principal-driven negative tests find no node, edge, or path from the other case.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior story | Classification | Permitted use |
+| :--- | :--- | :--- |
+| Story 22.2 | `historical-reference-only` | Historical case-attribution evidence supplies a regression fixture, not the story shape. |
+
+##### Slice Proof
+
+One multi-case response proves attributed ranking and case-local graph containment; it follows the case-scoped seed slice.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "HybridSearchService currently dispatches one graph task from one graphStartNodeId" | Behavioral/location | `sed -n "155,188p" src/Hexalith.Memories.Server/Search/HybridSearchService.cs` | The branch starts one graph task only when a start node exists; no per-case loop is present there. | `confirmed` |
+
+
+### Story 33.4: BM25 plus semantic thesis control
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR25; NFR26; G1.
+
+As a gate reviewer,
+I want a reproducible two-axis control beside the hybrid score,
+So that G1 compares the stated thesis against the right baseline.
+
+**Acceptance Criteria:**
+
+**Given a frozen labelled topic set and unchanged retrieval configuration, when the benchmark runs, then it calculates weighted-RRF BM25+semantic control and hybrid NDCG@10 per topic, their delta, aggregate pass share, and worst regression; single-axis scores remain diagnostics.**
+
+**Given the same frozen inputs twice, when the benchmark reruns, then topic ordering, control and hybrid scores, corpus/embedding hashes, and decision inputs match exactly; this run is diagnostic until the human-review protocol is complete.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior story | Classification | Permitted use |
+| :--- | :--- | :--- |
+| Stories 2.8 and 26.8 | `anti-template` | Their synthetic/single-axis benchmark shapes cannot qualify G1. |
+
+##### Slice Proof
+
+One reproducible control report is the outcome; human label freeze and gate verdict remain separate.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "BenchmarkSuiteTests currently compares hybrid against single-axis maxima" | Behavioral/location | `rg -n "bestSingleNdcg\|hybridOutperforms" tests/Hexalith.Memories.Benchmarks/BenchmarkSuiteTests.cs` | The benchmark computes bestSingleNdcg and compares hybrid to it; a two-axis control is absent from this path. | `confirmed` |
+
+
+### Story 33.5: Default-hybrid graph fallback switch
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR17, FR25; G1; AD-9/AD-20.
+
+As an operator,
+I want a tested way to change default hybrid to BM25 plus semantic after a failed G1 verdict,
+So that the PRD kill switch can be executed without disabling explicit traversal.
+
+**Acceptance Criteria:**
+
+**Given a recorded G1 failure decision, when the operator activates the versioned fallback configuration, then default hybrid uses the approved BM25+semantic fusion while explicit graph search and traversal stay available.**
+
+**Given no failure decision, when the configuration is inspected, then the three-axis default remains selected and the fallback has no effect; a test records the exact before/after result and rollback boundary.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior story | Classification | Permitted use |
+| :--- | :--- | :--- |
+| Story 2.8 | `historical-reference-only` | Earlier fusion behavior is regression context only. |
+
+##### Slice Proof
+
+One configuration change controls the default fusion only; executing a fail verdict or repositioning product claims is separate.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "HybridSearchService currently passes graph results to FusionEngine.Fuse" | Behavioral/location | `rg -n "FusionEngine.Fuse\|graphResult\?\.Results" src/Hexalith.Memories.Server/Search/HybridSearchService.cs` | The current path passes graph results to the fusion call. | `confirmed` |
+
+
+### Story 33.6: Freeze the real Phase 1 corpus and topics
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** G1; FR25.
+
+As a corpus steward,
+I want a lawful, immutable real-content corpus and topic manifest,
+So that independent reviewers can grade the same representative evidence.
+
+**Acceptance Criteria:**
+
+**Given an approved acquisition and use boundary, when Administrator freezes the Phase 1 corpus, then a manifest records source rights, at least 50 representative topics, preregistered thesis-stress share, source/edge census, fixture hashes, embedding-cache hashes, and a versioned change log.**
+
+**Given a proposed post-freeze change, when it is requested, then the original input remains immutable and the change creates a new labelled version before any new score is compared.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior story | Classification | Permitted use |
+| :--- | :--- | :--- |
+| Story 26.8 | `anti-template` | The synthetic benchmark is diagnostic history, not a G1 corpus template. |
+
+##### Slice Proof
+
+One hash-identified corpus/topic version is the outcome; human relevance labels are a later slice.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The current benchmark fixture is a synthetic corpus with a ground-truth JSON file" | Behavioral/location | `rg --files tests/Hexalith.Memories.Benchmarks/Data \| rg "synthetic-corpus.json\|ground-truth.json"` | Both named fixture files exist; they do not constitute a real-content G1 corpus. | `confirmed` |
+
+
+### Story 33.7: Report selected-axis safety and omissions
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR66; NFR18, NFR33; AD-10/AD-22.
+
+As a developer,
+I want an Evidence Packet that distinguishes every selected axis outcome,
+So that degraded answers do not look complete or falsely empty.
+
+**Acceptance Criteria:**
+
+**Given selected axes with available hits, available no-hits, unavailable service, or deliberately excluded axes, when search returns, then the packet carries one versioned state per axis, the applied scope/generation facts, freshness impact, and safe recovery.**
+
+**Given no selected axis can respond or an incomplete projection revision, when the packet is assembled, then it fails or stays incomplete without promoting a result to complete and without leaking unauthorized evidence.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior story | Classification | Permitted use |
+| :--- | :--- | :--- |
+| Story 2.7 | `historical-reference-only` | Existing packet mapping is a compatibility fixture only. |
+
+##### Slice Proof
+
+One packet truthfully classifies a query response; canonical byte serialization is a separate slice.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "EvidencePacket currently exposes AxesUsed and UnavailableAxes lists" | Behavioral/location | `rg -n "AxesUsed\|UnavailableAxes" src/Hexalith.Memories.Contracts/V1/EvidencePacket.cs` | Both list properties exist; they do not encode the four AD-22 axis states. | `confirmed` |
+
+
+### Story 33.8: Canonical Evidence Packet bytes
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR19, FR23, FR63, FR66; NFR24–NFR25; AD-12.
+
+As a agent integrator,
+I want one stable Evidence Packet serialization across active surfaces,
+So that golden vectors can detect score, null, and omission drift.
+
+**Acceptance Criteria:**
+
+**Given equivalent authorised search results, when REST and a contract-test surface adapter serialize the packet, then property order, invariant number format, null/empty meanings, omission handles, and per-axis contribution bytes match the versioned golden vector; the vector is available to a later enrolled target surface.**
+
+**Given a schema change or unauthorized result, when serialization runs, then the contract version/negative fixture detects the change and restricted evidence is never included.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior story | Classification | Permitted use |
+| :--- | :--- | :--- |
+| Story 2.7 | `historical-reference-only` | The earlier contract mapping supplies comparison evidence, not acceptance scope. |
+
+##### Slice Proof
+
+One canonical packet byte contract is the outcome; adapter axis facts are supplied by the preceding slice.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The current EvidencePacket type is defined in Contracts.V1" | Behavioral/location | `rg -n "(class\|record) EvidencePacket" src/Hexalith.Memories.Contracts/V1/EvidencePacket.cs` | The type declaration is present in Contracts.V1. | `confirmed` |
+
+
+### Held G1 story reservations (not registered)
+
+The label-freeze and qualifying G1-run stories are not authored or registered here. Administrator is the corpus steward but the two independent human reviewers remain unnamed. The owner and independence checkpoint in the approved 2026-10-05 proposal must be completed before those slices can have story-local owner/evidence tables. The September proposal's numbering for those tasks is superseded by the current Story 33.7 and 33.8 packet slices; it is not a sprint entry.
+
+## Epic 34: Keep Tenant Memory Durable and Isolated
+
+**Status:** approved epic; the story slices below are approved backlog planning units, not sprint-selected or G2/G6-qualified. **Owner:** Administrator. The existing C1 producer stories and Epic 31 secret-store migration keep their separate approved owners and gates. Stories 34.1–34.40 are ordered so each uses only earlier capabilities or existing code, with no dependency on a later story in this epic.
+
+### Story 34.1: Accept V1 ingestion at EventStore first
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR13, FR75; AD-2/AD-4.
+
+As a developer,
+I want an acknowledged ingestion command to be durable before projection starts,
+So that a retry cannot create a second memory unit.
+
+**Acceptance Criteria:**
+
+**Given the same authorized tenant, case, operation and idempotency token, when a file or URL ingestion request is retried, then one EventStore mutation is accepted before any projection scheduling and all attempts return the same operation identity.**
+
+**Given EventStore refusal or timeout before acceptance, when ingestion responds, then no projection is scheduled as a successful mutation and the recovery result does not claim an indexed unit.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One authoritative V1 command acceptance boundary is the slice; CloudEvent identity is separate.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "IngestionEndpoints currently schedules an ingestion workflow" | Existence/behavior/location | `rg -n "ScheduleAsync\(candidateInstanceId\|ScheduleNewWorkflowAsync" src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` | Both scheduling call sites are present. | `confirmed` |
+
+
+### Story 34.2: Suppress duplicate CloudEvent mutations
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR75; AD-4/AD-23.
+
+As a developer,
+I want CloudEvent redelivery to resolve to one durable mutation,
+So that publisher retries do not duplicate memory.
+
+**Acceptance Criteria:**
+
+**Given the same authorized tenant, case, canonical validated CloudEvent source and event ID, when delivery repeats, then one EventStore mutation is accepted and every later delivery resolves to that identity.**
+
+**Given a changed source or malformed source/id, when delivery arrives, then the changed identity is separate or the invalid envelope is refused before key use; a preflight Redis reservation is never the durable decision.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One CloudEvent identity rule is the slice; V1 command token identity is owned by 34.1.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "EventIngestionService currently builds its dedup key from envelope.Id" | Existence/behavior/location | `rg -n "EventStoreDedupKey.Build\(route.TenantId, route.CaseId, envelope.Id\)" src/Hexalith.Memories.EventStore/EventIngestionService.cs` | The key call passes envelope.Id without envelope.Source. | `confirmed` |
+
+
+### Story 34.3: Fence epoch-aware projection writes
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR13, FR75; AD-3/AD-14.
+
+As a developer,
+I want projection retries to respect source version and configuration epoch,
+So that old work cannot overwrite a current result.
+
+**Acceptance Criteria:**
+
+**Given one memory unit under an active schema generation and embedding epoch, when projection activities retry or arrive out of order, then each target write and acknowledgement compares its own tuple and older source versions cannot replace newer data.**
+
+**Given a declared new epoch, when legitimate reprojection runs, then it creates an outcome for that epoch without being suppressed as a duplicate of the prior epoch.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One tuple-aware write/acknowledgement protocol is the slice; public completion status is 34.4.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "RedisDerivedStoreService currently compares request.SourceVersion" | Existence/behavior/location | `rg -n "request.SourceVersion < existing.SourceVersion" src/Hexalith.Memories.Server/DerivedStores/RedisDerivedStoreService.cs` | A source-version comparison exists in one derived-store path. | `confirmed` |
+
+
+### Story 34.4: Require all three current projection acknowledgements
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR10, FR13; AD-3.
+
+As a developer,
+I want indexed status to mean all current axes agree,
+So that search and status never claim a two-of-three unit is complete.
+
+**Acceptance Criteria:**
+
+**Given a committed revision under the active generation and epoch, when syntactic, vector and graph projection acknowledgements arrive, then `indexed` is persisted only after all three match that revision and tuple.**
+
+**Given a missing, stale, failed or incompatible acknowledgement, when status is read, then the unit stays projecting or actionable failed with the missing axis and reason visible; absence of a checkpoint never defaults to indexed.**
+
+**Given a derived-store restore for a previously acknowledged tuple, when the checkpoint is invalidated, then an explicit `reprojectionRequired` record preserves its source version, reports `indexing` and a reason, and clears only after all three axes acknowledge that same tuple; no checkpoint remains distinct from reprojection required.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One durable completion checkpoint and status transition is the slice; replay is 34.5.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "IngestionWorkflow currently transitions to MemoryUnitStatus.Indexed" | Existence/behavior/location | `rg -n "TransitionStatus\(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexed\)" src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` | The workflow contains Indexed transitions that require current-contract review. | `confirmed` |
+
+
+### Story 34.5: Replay EventStore truth into every projection
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR13, FR73–FR74; NFR16.
+
+As an operator,
+I want a lost projection to rebuild from authoritative events,
+So that Redis or graph loss cannot erase accepted memory.
+
+**Acceptance Criteria:**
+
+**Given a non-erased tenant with EventStore-committed units and destroyed projections, when replay is requested, then the system rebuilds each axis through the 34.3/34.4 tuple protocol, exposes progress, and finishes only when every eligible unit is current or actionable failed.**
+
+**Given an erased tenant, when replay encounters its records, then tombstone admission refuses rehydration and reports the refusal without writing a projection.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One authoritative replay path is the slice; export import and Redis-input repair are separate.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The current general repair workflow exists as ConsistencyRepairWorkflow" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/ConsistencyRepairWorkflow.cs` | The workflow file exists; it is not evidence of EventStore replay. | `confirmed` |
+
+
+### Story 34.6: Issue and validate opaque tenant identifiers
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38–FR39, FR44; AD-23.
+
+As an operator,
+I want platform-issued tenant IDs with one grammar,
+So that tenant names and key boundaries cannot be chosen by callers.
+
+**Acceptance Criteria:**
+
+**Given tenant provisioning, when a new identifier is needed, then the platform issues a collision-checked 20-character lower Crockford ID beginning with an allowed letter and refuses caller-chosen or reserved identifiers.**
+
+**Given external input, import or read carrying a legacy, malformed or tombstoned tenant ID, when authority is resolved, then the AD-23 validator rejects or routes through a recorded migration rule before any resource key is composed.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One identifier issuance/admission contract is the slice; key-family codecs are 34.7.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantProvisioningInput currently accepts a TenantId field" | Existence/behavior/location | `rg -n "record TenantProvisioningInput\(string TenantId" src/Hexalith.Memories.Contracts/V1/TenantProvisioningInput.cs` | The public input record accepts a tenant ID. | `confirmed` |
+
+
+### Story 34.7: Compose collision-safe scoped keys
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR75; AD-23.
+
+As an operator,
+I want every tenant/case/source key family to have a registered codec,
+So that two distinct identities never address the same resource.
+
+**Acceptance Criteria:**
+
+**Given an issued tenant/case/memory ID or validated CloudEvent source/id, when a scoped key is built, then its registered family tag, arity, component codec, and destination length rule produce an injective byte representation or a collision-checked digest reservation.**
+
+**Given legacy or ambiguous components, when the key builder cannot prove one-to-one mapping, then it refuses the write and records the migration/remediation path; truncation alone is never accepted.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One key-composition contract is the slice; identifier issuance is 34.6.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantIdContractValidator currently uses a broad safe-character regex" | Existence/behavior/location | `sed -n "45,49p" src/Hexalith.Memories.Contracts/V1/TenantIdContractValidator.cs` | The validator currently accepts mixed case alphanumeric/hyphen IDs. | `confirmed` |
+
+
+### Story 34.8: Version operator identity and privileges
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR65; NFR10; AD-5/AD-15.
+
+As an operator,
+I want one protected operator artifact for app identity, lifecycle privileges and routing,
+So that an internal app cannot grant itself a tenant or lifecycle operation.
+
+**Acceptance Criteria:**
+
+**Given an internal caller, when a protected operation is requested, then one versioned operator-secret artifact supplies the finite app-ID to `system:*` mapping and its allowed lifecycle operations; absent or unknown entries fail closed.**
+
+**Given an artifact change, when it is published, then the previous version, writer, review, and affected authorization decision are observable without exposing secret values.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One operator-owned artifact is the slice; per-tenant grant propagation is 34.9.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantAuthorizationMiddleware is a current Server component" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Authentication/TenantAuthorizationMiddleware.cs` | The middleware file exists; the adopted operator artifact remains a separate target. | `confirmed` |
+
+
+### Story 34.9: Enforce tenant grants and revocation bound
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR65; NFR10; AD-5.
+
+As an operator,
+I want internal and resumed work to lose authority promptly after grant withdrawal,
+So that revoked callers cannot keep acting through cached state.
+
+**Acceptance Criteria:**
+
+**Given an allowlisted app, when it calls for a tenant, then the lifecycle-owned explicit grant and Active state are checked alongside protected Dapr identity before data access.**
+
+**Given grant, allowlist or operator-authority revocation, when a cached or durable activity resumes, then it stops authorizing within 60 seconds or fails closed if freshness cannot be proved.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One grant and revocation admission rule is the slice; channel-to-tenant routing is 34.10.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantStatusGuard currently validates tenant status" | Existence/behavior/location | `rg -n "ValidateTenantActiveAsync" src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs` | An active-status guard exists; it alone is not the adopted grant/revocation contract. | `confirmed` |
+
+
+### Story 34.10: Route pubsub tenant from authenticated channel
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR75; NFR8/NFR10; AD-5.
+
+As an operator,
+I want CloudEvent deliveries to derive tenant scope from trusted channel identity,
+So that publisher-controlled envelope fields cannot select another tenant.
+
+**Acceptance Criteria:**
+
+**Given a Dapr delivery, when tenant scope is selected, then the authenticated component/topic/publisher tuple maps to one candidate tenant through the operator artifact and passes the same allowlist, grant and Active checks as other internal calls.**
+
+**Given a missing route or an envelope tenant/source that disagrees with the authenticated route, when admission runs, then delivery is rejected without a tenant write or restricted diagnostic.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One authenticated delivery-routing boundary is the slice; durable duplicate identity remains 34.2.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantEventRoutingOptions currently declares SourceToTenantMap" | Existence/behavior/location | `rg -n "SourceToTenantMap" src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs` | The options contain a source-derived tenant map. | `confirmed` |
+
+
+### Story 34.11: Give each tenant backend principals
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38, FR40, FR44; NFR8/NFR9; AD-6/AD-15.
+
+As an operator,
+I want provisioned tenant-scoped Redis and FalkorDB access,
+So that a compromised tenant credential cannot read another tenant index.
+
+**Acceptance Criteria:**
+
+**Given a new tenant, when lifecycle provisioning completes, then its Redis ACL and FalkorDB credential resolve through the adopted Dapr/OpenBao secret boundary and only that tenant’s indexes and graph can be accessed with them.**
+
+**Given tenant A credentials against tenant B names and colliding graph IDs, when principal-driven negative tests run, then every read/write is denied without leaking B data; deletion revokes A credentials before purge completes.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One backend-credential isolation outcome is the slice; deployed OpenBao migration stays with Epic 31.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantProvisioningWorkflow currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantProvisioningWorkflow.cs` | The workflow exists; tenant principal provisioning must be measured against it. | `confirmed` |
+
+
+### Story 34.12: Provision a tenant-keyed content store
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR39; AD-4/AD-6/AD-16.
+
+As an operator,
+I want ingestion content kept in a tenant resource outside durable workflow history,
+So that erasure and quota rules reach the actual content bytes.
+
+**Acceptance Criteria:**
+
+**Given accepted ingestion, when workflow work is scheduled, then history and actor state carry references only while extracted text and embeddings live in a tenant-keyed, authorized, quota-bound content store provisioned by the lifecycle.**
+
+**Given deletion or missing store authority, when content is read or purged, then access fails closed and the store is included in erasure completion evidence.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One tenant content-store resource and reader boundary is the slice; general erasure completion follows later.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "DaprWorkflowPayloadStore is a current ingestion component" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Ingestion/DaprWorkflowPayloadStore.cs` | The payload-store component exists for comparison with AD-4’s target. | `confirmed` |
+
+
+### Story 34.13: Hold active tenant authority through a query
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; AD-5/AD-6/AD-16.
+
+As a developer,
+I want an admitted read to remain authorized until its last response byte,
+So that erasure cannot race a streamed answer into a leak.
+
+**Acceptance Criteria:**
+
+**Given an Active tenant and authorized principal, when a query begins, then the lifecycle admission permit remains held through final response emission and is invalidated by Deleting before erasure completion.**
+
+**Given concurrent deletion or loss of authoritative lifecycle state, when a new read attempts admission, then it fails closed and returns no tenant content.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One read-admission permit is the slice; write fencing is 34.14.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantStatusEndpointFilter currently validates tenant status at endpoint entry" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Endpoints/TenantStatusEndpointFilter.cs` | The endpoint filter exists; its presence does not prove a held response-lifetime permit. | `confirmed` |
+
+
+### Story 34.14: Fence writes admitted before deletion
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; AD-3/AD-16.
+
+As an operator,
+I want a tenant lifecycle generation checked at every target write,
+So that old activities cannot recreate data after erasure begins.
+
+**Acceptance Criteria:**
+
+**Given a projection or coordination activity admitted under generation N, when the tenant enters Deleting or advances generation, then every subsequent target write atomically rejects the stale generation or uses a proven revoked tenant-scoped write authority.**
+
+**Given a rejected write, when workflow status is reported, then no target mutation is claimed and erasure waits for the required fence acknowledgements before completing.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One generation-bound write-fence protocol is the slice; purge and crypto-shred are separate.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantDeletionWorkflow is a current Server workflow" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The workflow exists; atomic target-local fences require new evidence. | `confirmed` |
+
+
+### Story 34.15: Separate EventStore preflight key space from durable dedup
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR75; AD-4/AD-8/AD-23.
+
+As an operator,
+I want a distinct reserved prefix for fail-open preflight reservations,
+So that a transient admission shortcut cannot masquerade as durable duplicate truth.
+
+**Acceptance Criteria:**
+
+**Given the EventStore CloudEvent path reserves a preflight key, when the key is composed, then its reserved prefix differs from durable dedup and includes the validated tenant, case, source and event identity without raw unsafe components.**
+
+**Given Redis preflight is unavailable or workflow scheduling fails, when CloudEvent admission is attempted, then unavailable preflight fails open, a reservation from failed scheduling is released, and durable suppression remains authoritative in both tests.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One preflight key family and failure-posture test is the outcome; Story 34.2 owns durable suppression.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "EventIngestionService passes EventStoreDedupKey into TryReserveAsync" | Behavior/location | `rg -n "TryReserveAsync\(dedupKey" src/Hexalith.Memories.EventStore/EventIngestionService.cs` | The preflight call currently receives the durable-style dedup key. | `confirmed` |
+
+
+### Story 34.16: Purge tenant Redis projections and caches
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR73–FR74; AD-3/AD-16.
+
+As an operator,
+I want verified removal of Redis search, vector and cache keys for every declared epoch,
+So that erasure cannot leave tenant state that a retry or read can reuse.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains Redis search, vector and cache keys for every declared epoch, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One independently reviewable purge result for Redis search, vector and cache keys for every declared epoch; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantDeletionWorkflow currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+
+
+### Story 34.17: Purge tenant FalkorDB projections
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR73–FR74; AD-3/AD-16.
+
+As an operator,
+I want verified removal of FalkorDB tenant graph nodes, edges and database,
+So that erasure cannot leave tenant state that a retry or read can reuse.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains FalkorDB tenant graph nodes, edges and database, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One independently reviewable purge result for FalkorDB tenant graph nodes, edges and database; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantDeletionWorkflow currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+
+
+### Story 34.18: Purge durable workflow and actor state
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39; AD-4/AD-16.
+
+As an operator,
+I want verified removal of tenant workflow history and actor state,
+So that erasure cannot leave tenant state that a retry or read can reuse.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains tenant workflow history and actor state, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One independently reviewable purge result for tenant workflow history and actor state; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantDeletionWorkflow currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+
+
+### Story 34.19: Purge failed-unit and projection checkpoint state
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR39; AD-3/AD-16.
+
+As an operator,
+I want verified removal of failed-unit registry and projection checkpoints in every epoch,
+So that erasure cannot leave tenant state that a retry or read can reuse.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains failed-unit registry and projection checkpoints in every epoch, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One independently reviewable purge result for failed-unit registry and projection checkpoints in every epoch; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantDeletionWorkflow currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+
+
+### Story 34.20: Purge tenant duplicate-admission records
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR75; AD-4/AD-8/AD-16.
+
+As an operator,
+I want verified removal of durable dedup records and preflight reservations,
+So that erasure cannot leave tenant state that a retry or read can reuse.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains durable dedup records and preflight reservations, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One independently reviewable purge result for durable dedup records and preflight reservations; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "EventStoreDedupKey currently builds a dedup-prefixed key" | Existence/location | `rg -n "dedup:" src/Hexalith.Memories.EventStore/EventStoreDedupKey.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+
+
+### Story 34.21: Purge import leases and staging content
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR71; AD-2/AD-16.
+
+As an operator,
+I want verified removal of tenant import leases and source-held staging copies,
+So that erasure cannot leave tenant state that a retry or read can reuse.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains tenant import leases and source-held staging copies, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One independently reviewable purge result for tenant import leases and source-held staging copies; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "RedisImportStagingStore currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Import/RedisImportStagingStore.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+
+
+### Story 34.22: Purge migration and rebuild epoch state
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR73–FR74; AD-14/AD-16.
+
+As an operator,
+I want verified removal of tenant migration and rebuild records across active, staging and retired epochs,
+So that erasure cannot leave tenant state that a retry or read can reuse.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains tenant migration and rebuild records across active, staging and retired epochs, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One independently reviewable purge result for tenant migration and rebuild records across active, staging and retired epochs; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "RedisEmbeddingMigrationStore currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+
+
+### Story 34.23: Make EventStore tenant content irreversibly inaccessible
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39; NFR16; AD-16.
+
+As an operator,
+I want tenant-key destruction after fenced purge,
+So that EventStore and retained ciphertext cannot reveal erased memory.
+
+**Acceptance Criteria:**
+
+**Given a tenant whose purge and admission fences are verified, when erasure destroys its tenant content key, then sampled EventStore and retained backup ciphertext become undecryptable and completion records the proof without a secret value.**
+
+**Given key-store failure or an undeciphered backup path, when completion is assessed, then the tenant remains Deleting and no `Erased` result is emitted.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One cryptographic inaccessibility proof is the slice; platform tombstone is 34.24.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The current EventStore integration has tenant-domain commands" | Existence/behavior/location | `test -f src/Hexalith.Memories.EventStore/Domain/Commands/RegisterTenantCommand.cs` | The tenant-domain command exists; crypto-shred is a distinct target. | `confirmed` |
+
+
+### Story 34.24: Record irreversible erased-tenant tombstones
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; AD-21.
+
+As an operator,
+I want a platform-partition register that permanently retires erased IDs,
+So that restart or restored state cannot reuse an erased tenant.
+
+**Acceptance Criteria:**
+
+**Given verified key destruction and purge, when tombstone completion is requested, then a record-scoped append-only platform stream writes the tenant tombstone, population genesis/revision, and content-free completion reference before any later `Erased` status is reported.**
+
+**Given missing, stale, rolled-back or unreadable register lineage, when provisioning, startup or restore checks it, then all tenant creation and content admission fail closed; a routine restart never creates a new genesis.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One platform tombstone and lineage authority is the slice; restore quarantine is 34.25.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "No memories-platform reference is present under src today" | Existence/behavior/location | `rg -n "memories-platform" src` | No match (exit 1) in current source; the platform partition is an adopted target. | `confirmed` |
+
+
+### Story 34.25: Quarantine tombstoned-origin restores
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR71; NFR16; AD-2/AD-16/AD-21.
+
+As an operator,
+I want all restore inputs to consult the erased-tenant register,
+So that old backups and exports cannot resurrect erased content.
+
+**Acceptance Criteria:**
+
+**Given authoritative replay, a tenant-key-protected backup restore or application export import, when origin tenant is tombstoned, then content is refused before materialization and any unsafe restored payload is quarantined with a non-secret reason.**
+
+**Given unavailable register lineage, when any restore starts, then it fails closed without making a tenant Active or searchable.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One restore admission boundary covers the three input types; producing exports is 34.26.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "ImportEndpoints currently maps tenant and case import routes" | Existence/behavior/location | `rg -n "MapPost\(MemoriesRoutes.(TenantImport\|CaseImport)" src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs` | Both import routes exist for current-path verification. | `confirmed` |
+
+
+### Story 34.26: Transfer portable export custody safely
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR71, FR39; AD-16/AD-21.
+
+As an operator,
+I want a portable FR71 bundle with verifiable source custody transfer,
+So that erasure has a finite platform-held export target list.
+
+**Acceptance Criteria:**
+
+**Given a case or tenant export, when its bundle is delivered, then a content-free platform index records origin, integrity proof, delivery lease and transfer while every source-held staging byte is purged before completion.**
+
+**Given a tombstoned origin or expired lease, when the platform attempts same-population import or delivery, then it refuses the operation; external copies already transferred remain outside source-platform custody.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One export issuance/transfer protocol is the slice; the already delivered basic portable JSON export is compatibility evidence, not rescheduled scope.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "ExportEndpoints currently maps case and tenant export routes" | Existence/behavior/location | `rg -n "MapGet\(MemoriesRoutes.(CaseExport\|TenantExport)" src/Hexalith.Memories.Server/Endpoints/ExportEndpoints.cs` | Both export routes exist; custody-transfer evidence is not implied. | `confirmed` |
+
+
+### Story 34.27: Derive mandatory ingestion provenance server-side
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR65; AD-5/AD-13.
+
+As a developer,
+I want every memory unit actor to come from authenticated authority,
+So that caller text cannot forge who ingested it.
+
+**Acceptance Criteria:**
+
+**Given external ingestion, when an accepted unit is created, then `ingested_by` is the normalized authenticated issuer and subject, regardless of any caller-supplied field.**
+
+**Given trusted internal ingestion, when actor provenance is assigned, then the protected app ID resolves through the finite allowlist and tenant grant to a canonical `system:*` principal; unknown app or grant fails closed.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One provenance assignment boundary is the slice; the general authorization artifact is 34.8.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "IngestionEndpoints currently copies request.IngestedBy" | Existence/behavior/location | `rg -n "IngestedBy = request.IngestedBy" src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` | The URL ingestion path copies the request field. | `confirmed` |
+
+
+### Story 34.28: Bound tenant work admission and fairness
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR8, FR69; NFR5/NFR13/NFR22; AD-18.
+
+As an operator,
+I want per-tenant and global queues that admit interactive work fairly,
+So that one tenant’s batch or repair cannot starve another.
+
+**Acceptance Criteria:**
+
+**Given the PRD three-tenant mixed workload, when interactive queries, small ingests, batch work and repair run together, then the declared admission/concurrency budgets, queue caps, cap-plus-one refusal, and five-second eligible admission are measured with per-tenant outcomes.**
+
+**Given provider Retry-After or a full queue, when work is accepted or refused, then durable timing and retry guidance are visible and no accepted unit is silently dropped.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One measurable admission/fairness policy is the slice; latency evidence is assessed in Epic 35.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "PerTenantConcurrencyGate currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs` | The class exists; the PRD mixed-load contract remains to measure. | `confirmed` |
+
+
+### Story 34.29: Report capability-aware server readiness
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR72; AD-10/AD-21.
+
+As an operator,
+I want health to distinguish platform admission from one search-axis outage,
+So that traffic can continue safely without hiding a lost capability.
+
+**Acceptance Criteria:**
+
+**Given authentication, Dapr control and EventStore command dependencies, when readiness is queried, then it reports unavailable authority or lineage as unready.**
+
+**Given one search backend outage with a safe selected axis, when readiness and search are queried, then service readiness remains available and the affected capability reports degradation; no-safe-axis search fails explicitly.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One readiness result with capability health is the slice; selected-axis packet reporting is Epic 33.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "DaprSidecarHealthCheck and RediSearchHealthCheck exist" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/HealthChecks/DaprSidecarHealthCheck.cs && test -f src/Hexalith.Memories.Server/HealthChecks/RediSearchHealthCheck.cs` | Both health-check files exist. | `confirmed` |
+
+
+### Story 34.30: Repair only from authoritative revisions
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR73–FR74; AD-2/AD-3.
+
+As an operator,
+I want a dry-run/apply repair that cannot invent unsupported edges,
+So that divergence cleanup preserves EventStore truth and tenant scope.
+
+**Acceptance Criteria:**
+
+**Given a tenant-scoped consistency report, when dry-run is requested, then every proposed change cites the current authoritative EventStore revision and previews any deletion or edge creation.**
+
+**Given apply, when the operator confirms, then writes use the active tuple and tenant fence, unsupported edges are refused, and deletions emit sanitized access telemetry with a rerunnable before/after report.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One provenance-safe repair operation is the slice; full replay after store loss is 34.5.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "ConsistencyRepairWorkflow currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/ConsistencyRepairWorkflow.cs` | The workflow file exists; current-authority semantics require separate proof. | `confirmed` |
+
+
+### Story 34.31: Activate a Phase 1 embedding rebuild epoch
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR43, FR70; AD-14.
+
+As an operator,
+I want one atomic tenant cutover after current-revision backfill,
+So that model changes do not mix old and new vectors in live answers.
+
+**Acceptance Criteria:**
+
+**Given an acknowledged embedding or schema change, when a Phase 1 rebuild starts, then a new declared epoch backfills from EventStore truth, catches up the authoritative tail, and keeps the old epoch active until all required projections verify.**
+
+**Given verification success or failure, when activation or rollback occurs, then one tenant-wide atomic active-epoch value controls every query/write and retired epoch records are removed only after verified cutover.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One Phase 1 rebuild/cutover is the slice; Phase 2+ staged resources are not imported.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "RedisEmbeddingMigrationStore currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs` | The migration store exists for current-path inspection. | `confirmed` |
+
+
+### Story 34.32: Provision and erase access-telemetry partitions
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR67; NFR34; AD-6/AD-17.
+
+As an operator,
+I want telemetry state owned by tenant lifecycle,
+So that erasure can bound retained telemetry and its reader set.
+
+**Acceptance Criteria:**
+
+**Given tenant provisioning, when its lifecycle reaches Active, then the telemetry principal or partition, TTL and approved readers are recorded as tenant resources.**
+
+**Given verified tenant erasure, when telemetry handoff runs, then its partition/mapping purge and retained opaque TTL are evidenced without blocking accepted product mutations beyond the approved bound.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One lifecycle-owned telemetry resource is the slice; the separate approved C1 delivery gates are not duplicated.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "AccessTelemetryLifecycleBootstrapService currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleBootstrapService.cs` | The bootstrap service exists; tenant partition ownership remains to prove. | `confirmed` |
+
+
+### Story 34.33: Reserve V1 wire names in one build guard
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-12/AD-22; FR19, FR44; G6.
+
+As a contract consumer,
+I want one versioned `Contracts.V1` name register and a failing shape guard,
+So that evidence-bearing fields and closed values cannot drift invisibly.
+
+**Acceptance Criteria:**
+
+**Given an evidence-bearing V1 field, status, axis state, packet state or error code is exposed, when the contract build runs, then the register fixes its wire name and shape and the guard fails for an unregistered or changed name.**
+
+**Given a legitimate additive field is introduced, when the registered contract tests run, then the prior wire names remain valid and the new field has an explicit version and null/absence rule.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One versioned register and its build guard are the outcome; packet serialization is Story 33.8.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "Contracts.V1 EvidencePacket is a current wire type" | Existence/location | `test -f src/Hexalith.Memories.Contracts/V1/EvidencePacket.cs` | The current contract type exists; a register and build guard remain to implement. | `confirmed` |
+
+
+### Story 34.34: Serialize explicit nulls for evidence fields
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-12/AD-22; FR19; G5.
+
+As a gate reviewer,
+I want unavailable evidence represented explicitly in every active JSON form,
+So that absence cannot masquerade as an omitted result.
+
+**Acceptance Criteria:**
+
+**Given an evidence-bearing nullable property has no value, when REST and the compatibility CLI serialize it, then the JSON includes an explicit `null` and the canonical packet fixture matches.**
+
+**Given a producer or serializer is configured to omit that property, when contract tests run, then the test fails before a G5 byte-equality claim can be made.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One null-preserving evidence serialization rule across current V1 producers is the outcome; Story 34.33 reserves its names.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "EvidencePacketFreshness currently opts nullable fields out of JSON" | Behavior/location | `rg -n "JsonIgnoreCondition.WhenWritingNull" src/Hexalith.Memories.Contracts/V1/EvidencePacketFreshness.cs` | The current V1 type has null-omitting attributes. | `confirmed` |
+
+
+### Story 34.35: Enforce the V1 tenant lifecycle transition graph
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38–FR39, FR71; AD-6/AD-12/AD-16/AD-21.
+
+As an operator,
+I want one committed and guarded lifecycle vocabulary,
+So that deactivation and terminal erasure cannot be inferred from stale resources.
+
+**Acceptance Criteria:**
+
+**Given an operator-authorized tenant transition is requested, when the lifecycle workflow runs, then the V1 enum includes `Deactivated` and `Erased`, permitted nonterminal transitions commit before side effects, and the content-free platform projection records the result.**
+
+**Given release intent, deletion, or terminal erasure is requested out of order, when the transition guard evaluates the request, then it refuses the invalid path; `Erased` derives only from the irreversible register tombstone and cannot be reactivated.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One V1 transition graph and persisted state projection is the outcome; resource purge remains Stories 34.16–34.24.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantStatus currently declares Provisioning, Active, Deleting, Failed and CompensationFailed" | Existence/behavior | `sed -n "8,45p" src/Hexalith.Memories.Contracts/V1/TenantStatus.cs` | The enum lists the five current values, with no Deactivated or Erased. | `confirmed` |
+
+
+### Story 34.36: Issue and validate canonical case and unit identifiers
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR26, FR32, FR44; AD-5/AD-23.
+
+As a developer,
+I want server-issued case and MemoryUnit IDs under Identifier Grammar V1,
+So that scope keys cannot collide or change meaning across producers.
+
+**Acceptance Criteria:**
+
+**Given a case or unit is created, when its identifier is issued, then the canonical uppercase ULID is used, and every read/import boundary validates the grammar before Story 34.7 composes a key with its reserved lowercase `u` delimiter.**
+
+**Given legacy, lowercase, malformed or colliding input arrives, when the validator handles it, then the request is rejected or a recorded migration mapping is applied without folding an issued identifier.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One canonical issuer/validator for case and unit IDs is the outcome; Story 34.6 owns tenant IDs and Story 34.7 owns composed keys.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "CaseService currently creates case IDs with BaUlid.New" | Behavior/location | `rg -n "string caseId = BaUlid.New" src/Hexalith.Memories.Server/Cases/CaseService.cs` | The case issuer exists; AD-23 validation and delimiter enforcement remain to prove. | `confirmed` |
+
+
+### Story 34.37: Keep backend SDKs behind extraction points
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR15; AD-1/AD-7.
+
+As a maintainer,
+I want domain-facing search and projection behavior expressed without Redis or FalkorDB SDK types,
+So that a backend replacement can preserve the V1 contract.
+
+**Acceptance Criteria:**
+
+**Given domain search, projection and consistency logic is reviewed, when provider access is extracted, then concrete Redis and FalkorDB calls remain in adapters while domain-facing operations and tests use provider-neutral values.**
+
+**Given a backend adapter is substituted in contract tests, when the tests run, then tenant scope, ranking inputs, projection tuple and error semantics remain identical; the extraction points are documented.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One provider boundary and architecture test is the outcome; no speculative second backend is required.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "NaturalLanguageSemanticSearchService currently imports StackExchange.Redis" | Existence/location | `rg -n "using StackExchange.Redis" src/Hexalith.Memories.Server/Search/NaturalLanguageSemanticSearchService.cs` | A search service directly imports the Redis SDK. | `confirmed` |
+
+
+### Story 34.38: Expire the tenant telemetry representation mapping
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR67; NFR34; AD-16/AD-17/AD-21.
+
+As a privacy reviewer,
+I want a bounded reader set and mapping purge tied to last retained record,
+So that erasure cannot leave a reusable tenant identity bridge.
+
+**Acceptance Criteria:**
+
+**Given the telemetry retention plane derives an opaque tenant representation, when the mapping is used, then the operator artifact enumerates its readers and every use is recorded against the governed retention period.**
+
+**Given the last record using a mapping is purged, when erasure completion is assessed, then the mapping and reader access are removed, the AD-21 register records proof, and an unavailable purge target blocks completion.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One AD-17 mapping lifetime and purge proof is the outcome; Story 34.32 owns partition lifecycle.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "AccessTelemetryLifecycleBootstrapService currently loads marker-key material" | Existence/location | `rg -n "MarkerKeyReference" src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleBootstrapService.cs` | The bootstrap resolves a marker-key reference; tenant mapping lifecycle remains to implement. | `confirmed` |
+
+
+### Story 34.39: Publish Redis memory sizing by unit shape
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR14; AD-18.
+
+As an operator,
+I want a measured memory-per-unit guide by vector dimension and metadata size,
+So that tenant capacity can be estimated before provisioning.
+
+**Acceptance Criteria:**
+
+**Given supported vector dimensions and metadata sizes are measured on the qualified Redis profile, when the sizing guide is published, then it records per-unit memory, fixed overhead, sample counts, method and bounded variance with a repeatable measurement command.**
+
+**Given a profile, index schema or vector dimension changes, when the sizing verification runs, then the guide is regenerated or fails as stale before capacity approval.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One reproducible NFR14 sizing guide is the outcome; no new product surface is introduced.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "IndexSchemaDefinitions reads vector dimensions from Redis index information" | Behavior/location | `rg -n "TryGetVectorDimensions" src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs` | The implementation contains vector-dimension inspection for current indexes. | `confirmed` |
+
+
+### Story 34.40: Bring telemetry V1 routes under the contract catalogue
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-12/AD-17/AD-19; FR67; G6.
+
+As a contract consumer,
+I want a single published-or-internal decision for telemetry V1 wire contracts,
+So that served routes cannot escape the V1 name and error rules.
+
+**Acceptance Criteria:**
+
+**Given access-telemetry and clock `/v1` routes are active, when their contracts are inventoried, then each wire name and error maps to the Story 34.33 register and V1 catalogue; the AD-19 inventory explicitly publishes the plane or marks it internal.**
+
+**Given a consumer reaches an unregistered telemetry route or undocumented contract, when conformance checks run, then the build or gate fails and no public availability claim is made.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One telemetry-plane contract decision and conformance fixture is the outcome; the C1 delivery gates retain their separate owners.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "AccessTelemetry.Contracts is currently a separate source assembly" | Existence/location | `test -f src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryRecord.cs` | The separate contract source exists; its V1 catalogue disposition remains to decide. | `confirmed` |
+
+
+## Epic 35: Make a Defensible Release Decision
+
+**Status:** approved epic; the stories below are approved backlog evidence units, not sprint-selected and not proof that G1–G6 pass. **Owner:** Administrator. Each measurement or profile packet is independently rerunnable. The G6 matrix marks missing evidence as blocker; it never grants credit from a story status or risk acceptance.
+
+### Story 35.1: Measure syntactic search latency
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR1; G6.
+
+As a gate reviewer,
+I want dated NFR1 p95 evidence,
+So that the Phase 1 decision has a real syntactic performance result.
+
+**Acceptance Criteria:**
+
+**Given 10 concurrent queries and 10K units in a tenant, when the final syntactic path is load-tested, then raw samples, environment, corpus/version, and p95 under 200 ms are recorded with a rerunnable command.**
+
+**Given the p95 misses or the lane cannot run, when evidence is reviewed, then NFR1 remains a blocker rather than inheriting a historical test status.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One syntactic latency measurement is the outcome; the other axes are separate stories.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The benchmark project exists" | Existence/absence/location | `test -f tests/Hexalith.Memories.Benchmarks/Hexalith.Memories.Benchmarks.csproj` | The benchmark project is present; no current NFR1 p95 result is implied. | `confirmed` |
+
+
+### Story 35.2: Measure semantic search latency
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR2; G6.
+
+As a gate reviewer,
+I want dated NFR2 p95 evidence,
+So that the semantic axis has a real performance verdict.
+
+**Acceptance Criteria:**
+
+**Given 10 concurrent queries and 10K units in a tenant, when the final semantic path is load-tested, then raw samples, environment, model/configuration, and p95 under 500 ms are recorded with a rerunnable command.**
+
+**Given provider throttling or a miss, when evidence is reviewed, then the run’s limits and NFR2 blocker status remain visible.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One semantic latency measurement is the outcome.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "SemanticSearchService exists" | Existence/absence/location | `test -f src/Hexalith.Memories.Server/Search/SemanticSearchService.cs` | The service file exists; it is not an NFR2 load result. | `confirmed` |
+
+
+### Story 35.3: Measure final hybrid search latency
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR3; G6.
+
+As a gate reviewer,
+I want dated NFR3 p95 evidence,
+So that the real auto-seeded hybrid path meets its budget.
+
+**Acceptance Criteria:**
+
+**Given 10 concurrent queries and 10K units in a tenant after the final graph-seeded path is active, when hybrid load runs, then raw samples, active axes, case mix, and p95 under one second are recorded.**
+
+**Given graph omission, timeout or a miss, when evidence is reviewed, then the run is not counted as a passing three-axis NFR3 result.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One final-hybrid latency measurement is the outcome; graph traversal latency is separate.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "HybridSearchService exists" | Existence/absence/location | `test -f src/Hexalith.Memories.Server/Search/HybridSearchService.cs` | The service exists; its current graph-skip path cannot substitute for the final measurement. | `confirmed` |
+
+
+### Story 35.4: Measure graph traversal latency
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR4; G6.
+
+As a gate reviewer,
+I want dated NFR4 p95 evidence,
+So that a scoped graph path has a bounded cost.
+
+**Acceptance Criteria:**
+
+**Given 10 concurrent traversals, 10K units, and depth no greater than five, when the final graph path is measured, then raw samples, case scope, environment, and p95 under two seconds are recorded.**
+
+**Given truncation, timeout or cross-case traversal, when evidence is reviewed, then NFR4 and G4 remain open.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One traversal latency measurement is the outcome.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "GraphScopedSearch exists" | Existence/absence/location | `test -f src/Hexalith.Memories.Server/Search/GraphScopedSearch.cs` | The graph search component exists; no current p95 proof follows. | `confirmed` |
+
+
+### Story 35.5: Measure file and URL ingest freshness
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR36; G6.
+
+As a gate reviewer,
+I want dated NFR36 current-revision timing,
+So that accepted content is not silently delayed.
+
+**Acceptance Criteria:**
+
+**Given 100 normally admitted file/URL units at each PRD size class, when the final all-axis completion path runs, then p95 pending-to-indexed is at most 60 seconds for ≤10 KB and five minutes for ≤1 MB, with raw timestamps and a rerunnable workload.**
+
+**Given queueing, provider rate limit or noisy-neighbor repair, when the run is reviewed, then delay reason, current state and fairness effects are shown rather than counted as normal-load success.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One freshness experiment over the two specified size classes is the outcome; general throughput is a separate NFR.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "IngestionEndpoints maps file and URL ingestion" | Existence/absence/location | `rg -n "MapPost\(MemoriesRoutes.(Ingest\|IngestUrl)" src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` | Both ingress routes are present for the eventual timed lane. | `confirmed` |
+
+
+### Story 35.6: Prove principal-driven tenant isolation
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR8; G2.
+
+As a security reviewer,
+I want a current NFR8 negative suite,
+So that G2 can reject leakage at the principal boundary.
+
+**Acceptance Criteria:**
+
+**Given tenant-A, tenant-B and no-tenant operator principals with identical graph shapes and colliding node IDs, when each calls search, ingest and traverse using B IDs, index names, malformed IDs and unauthorized routes, then no B content is returned or written.**
+
+**Given a failing or unrun lane, when G2 is assessed, then the verdict remains no-go with the exact request and leaked field recorded.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One principal-driven isolation evidence packet is the outcome; tenant credential implementation is Epic 34.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "TenantIsolationIntegrationTests exists" | Existence/absence/location | `test -f tests/Hexalith.Memories.IntegrationTests/Tenants/TenantIsolationIntegrationTests.cs` | The suite exists; its current scope is not presumed to satisfy restated NFR8. | `confirmed` |
+
+
+### Story 35.7: Time the clean-machine onboarding path
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR31; G3.
+
+As a onboarding reviewer,
+I want a dated manual target-CLI G3 run,
+So that a developer can reach first real search within the promised clock.
+
+**Acceptance Criteria:**
+
+**Given the PRD clean-machine definition and approved Memories enrollment in Hexalith.McpCli, when the README/AppHost manual path is timed from boot through tenant creation, case creation, ingestion and first search, then the total is under 30 minutes and the log names OS, machine, tool versions and raw steps.**
+
+**Given any target operation is absent or the clock exceeds 30 minutes, when G3 is reviewed, then the run records a blocker; the old Memories CLI and quickstart wizard do not substitute.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One timed manual onboarding run is the outcome; target enrollment is an Epic 32 prerequisite and currently held.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The NFR31 walkthrough log currently has a pending row" | Existence/absence/location | `rg -n "_pending_\|No walkthrough has been recorded yet" docs/dev/quickstart-walkthrough-log.md` | The only data row is pending; no timed target run is recorded. | `confirmed` |
+
+
+### Story 35.8: Prove case ownership and graph containment
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR32–FR34; NFR8; G4.
+
+As a security reviewer,
+I want a current G4 case-boundary packet,
+So that tenant-wide search cannot hide cross-case traversal.
+
+**Acceptance Criteria:**
+
+**Given two cases in one tenant with colliding graph IDs and cross-case bait edges, when case-scoped and tenant-wide hybrid queries run, then each result is attributed and every seed, node, edge and path remains in its authoritative case.**
+
+**Given a case reassignment or attempted cross-case path, when negative tests run, then the request is refused or the offending contribution is excluded with no restricted node disclosed.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One case-containment packet is the outcome; fusion implementation belongs to Epic 33.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "GraphScopedSearch accepts a SearchQuery with CaseId" | Existence/absence/location | `rg -n "BuildTraverseFromNode\(startNodeId, depth, normalizedQuery.CaseId\)" src/Hexalith.Memories.Server/Search/GraphScopedSearch.cs` | The current traversal builder receives a case ID; the complete G4 fixture remains to prove. | `confirmed` |
+
+
+### Story 35.9: Prove deterministic explain across surfaces
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR24–NFR26; G5.
+
+As a gate reviewer,
+I want a current G5 golden-vector and repeat-run packet,
+So that score meanings and ordering are stable for users and agents.
+
+**Acceptance Criteria:**
+
+**Given frozen documents, active axes and weights, when REST and the target CLI contract adapter run the same queries 100 times, then fused scores, ranking, memory-unit-ID tie breaks and per-axis explain meanings match one golden vector.**
+
+**Given a semantic mismatch, nondeterministic order or a missing target adapter, when G5 is assessed, then the packet records the failure and does not inherit a prior synthetic benchmark pass.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One cross-surface determinism packet is the outcome; the packet serializer is Epic 33.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "FusionEngineTests exists" | Existence/absence/location | `test -f tests/Hexalith.Memories.Server.Tests/Search/FusionEngineTests.cs` | The unit test file exists; current cross-surface G5 evidence is separate. | `confirmed` |
+
+
+### Story 35.10: Build the evidence-only G6 matrix
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR1–FR75; NFR1–NFR37; G6; AD-20.
+
+As a release owner,
+I want one validated current-contract evidence matrix,
+So that missing work cannot be mistaken for release credit.
+
+**Acceptance Criteria:**
+
+**Given the current PRD and final spine ledger, when the matrix is generated, then every MVP-active FR/NFR and architecture-critical active-foundation row has its current wording, phase, owner, tracker obligation or freeze record, exact rerunnable evidence path, reviewer, date and verdict; phase-inactive rows are explicit and earn no credit.**
+
+**Given a missing, stale, unverifiable or risk-accepted-only row, when validation runs, then G6 remains blocked and the row names its owner and next evidence action.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One complete evidence matrix and validator is the outcome; it records blocker rows without implementing their fixes or deciding release.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "No G6 closure matrix file is currently listed under planning/test artifacts" | Existence/absence/location | `rg --files _bmad-output \| rg "g6-contract-closure-matrix"` | No match (exit 1); a new matrix and validator are needed. | `confirmed` |
+
+
+### Story 35.11: Verify EventStore source and package correspondence
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-19; G6.
+
+As a release engineer,
+I want exact source/package contract evidence,
+So that the active EventStore runtime is reproducible.
+
+**Acceptance Criteria:**
+
+**Given the active source gitlink, restored package and their release artifacts, when independent source-mode and package-mode contract/integration lanes run, then the matrix records exact SHAs, package versions, commands and matching semantic outcomes.**
+
+**Given mismatch or a skipped lane, when the profile is reviewed, then qualification remains blocked and no source build is treated as package proof.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One source-versus-package correspondence packet is the outcome.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The EventStore submodule is declared in root .gitmodules" | Existence/absence/location | `rg -n "references/Hexalith.EventStore" .gitmodules` | The root submodule declaration exists; package correspondence is still an evidence obligation. | `confirmed` |
+
+
+### Story 35.12: Pin one qualified container digest set
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-19; G6.
+
+As a release engineer,
+I want one digest profile shared by AppHost, Kubernetes and tests,
+So that different environments execute the same backend versions.
+
+**Acceptance Criteria:**
+
+**Given Redis, FalkorDB, OpenBao, PostgreSQL and the .NET base image, when the profile is built, then every active consumer uses an approved digest or an explicit reviewed override and the exact source/manifests are recorded.**
+
+**Given a floating default, mismatched harness or unqualified digest, when verification runs, then the profile fails before Production qualification.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One shared digest profile is the outcome; vendor-specific behavior qualification is separate.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "Directory.Build.targets contains a floating .NET base tag" | Existence/absence/location | `rg -n "mcr.microsoft.com/dotnet/aspnet:10.0-alpine" Directory.Build.targets` | The floating base tag is present. | `confirmed` |
+
+
+### Story 35.13: Qualify the Redis production line
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-19; NFR16; G6.
+
+As a release engineer,
+I want a supported Redis line with current replay and index evidence,
+So that the search stores have an auditable support and recovery basis.
+
+**Acceptance Criteria:**
+
+**Given an approved supported Redis image, when protocol, syntactic/vector index, AOF-intact restart and full EventStore rebuild tests run, then raw results, digest, limits and disposition are recorded for the same profile used by Production.**
+
+**Given a failing or skipped lane, when the version is reviewed, then the current line remains a blocker rather than an assumed safe upgrade.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One Redis version qualification packet is the outcome; changing unrelated images is not in this slice.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The current deployment manifest names Redis Stack" | Existence/absence/location | `rg -n "redis-stack" deploy/kubernetes/base/redis-statefulset.yaml` | The manifest names a Redis Stack image; its support/qualification must be assessed. | `confirmed` |
+
+
+### Story 35.14: Qualify the exact OpenBao deployment
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-15/AD-19; NFR9; G6.
+
+As a release engineer,
+I want current security and scoped-secret evidence for the deployed OpenBao bytes,
+So that the runtime secret boundary is qualified on its actual profile.
+
+**Acceptance Criteria:**
+
+**Given** the deployed OpenBao image, chart and configuration, **when** scoped-secret, restore and security probes run, **then** the packet records exact versions, commands, results and limitations for that same profile.
+
+**Given** the smoke-test asset still names a different version, **when** evidence is reviewed, **then** it is aligned or explicitly excluded with reason; it earns no same-profile credit.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current manifests and spine define this one profile proof. |
+
+##### Slice Proof
+
+One OpenBao profile packet is the independently reviewable outcome; PostgreSQL has a separate evidence owner.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The OpenBao smoke-test manifest still pins 2.6.0" | Location | `rg -n "2.6.0" deploy/openbao/smoke-test.yaml` | The smoke-test asset names 2.6.0 rather than the current main deployment pin. | `confirmed` |
+
+### Story 35.15: Qualify the PostgreSQL telemetry store
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-19; NFR34; G6.
+
+As a release engineer,
+I want restore, security and telemetry evidence for the deployed PostgreSQL image,
+So that access-telemetry qualification refers to the real store.
+
+**Acceptance Criteria:**
+
+**Given** the pinned PostgreSQL deployment, **when** restore, access control and telemetry lifecycle tests run, **then** the packet records exact digest, configuration, raw results and bounded failure behavior.
+
+**Given** a mismatch or skipped test, **when** Production admission is reviewed, **then** the store remains a blocking row in the G6 matrix.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current deployment and AD-19 define this one store proof. |
+
+##### Slice Proof
+
+One PostgreSQL profile packet is the outcome; OpenBao is Story 35.14.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The current PostgreSQL deployment pins 18.6-trixie" | Location | `rg -n "postgres:18.6-trixie" deploy/kubernetes/base/access-telemetry-postgresql.yaml` | The deployment pins 18.6-trixie with a SHA-256 digest. | `confirmed` |
+
+### Story 35.16: Verify Production EventStore command availability
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** AD-2/AD-19; FR72; G6.
+
+As an operator,
+I want a qualified external Gateway boundary,
+So that Production readiness can reach its domain source of truth.
+
+**Acceptance Criteria:**
+
+**Given the Production deployment profile, when startup and a tenant-scoped command probe run, then the external EventStore Gateway dependency or an owned workload is named, authenticated and shown available with a rerunnable command.**
+
+**Given missing Gateway, stale package identity or an unauthenticated route, when readiness is assessed, then Production qualification fails closed.**
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 35 evidence reservations | `anti-template` | Gate list only; current PRD/spine/source determine this one measurement or profile slice. |
+
+##### Slice Proof
+
+One Production Gateway dependency evidence packet is the outcome; deployment ownership is explicit in the profile.
+
+##### Epic AC Verification
+
+Verified 2026-10-05 against parent `main` and its current worktree.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "The current Kubernetes base lists Server deployment assets" | Existence/absence/location | `test -f deploy/kubernetes/base/server-deployment.yaml` | The Server manifest exists; it does not prove an EventStore Gateway workload. | `confirmed` |
+
+
+### Held Phase 1 decision and active-CLI qualification (not registered)
+
+The final G1–G6 release-verdict story and target CLI NFR37 qualification story remain unregistered. A release-verdict umbrella requires a per-gate checkpoint table with owner, exact evidence, review state, and completion state; G1 still lacks two named independent human reviewers. The CLI conformance story cannot define its target operation inventory or cross-form parity until the McpCli owner repository approves its Memories migration inventory and coverage gate. No held slot is a sprint row or gate credit.

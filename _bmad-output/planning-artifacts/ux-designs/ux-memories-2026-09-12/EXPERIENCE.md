@@ -4,14 +4,17 @@ description: Behavioral contract for trustworthy, inspectable memory infrastruct
 status: draft
 sources:
   - ../../prd.md
-  - ../../ux-design-specification.md
+  - ../../architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md
+  - ../../sprint-change-proposal-2026-10-05-implementation-readiness.md
   - ../../ux-design-directions.html
   - ../../ux-validations/ux-memories-2026-09-09/validation-report.md
   - ../../../../references/Hexalith.AI.Tools/hexalith-ux-instructions.md
-updated: 2026-09-12
+updated: 2026-10-05
+historicalSources:
+  - ../../ux-design-specification.md
 lineage:
   authoritative-prd-sha256: 12579f3a22228348948e805968ea3835732e7ebbcb837e3beef75bd58fc115f1
-  rule: This migration derives from the pinned PRD revision; same-day reciprocal PRD links do not reverse authority for this run.
+  rule: The 2026-09-12 migration derived from this pinned PRD revision; current PRD, architecture spine, and approved 2026-10-05 correction govern new work.
 implementation-evidence:
   - .working/extract-ui-implementation.md
   - .working/extract-protocol-implementation.md
@@ -44,7 +47,7 @@ Where a capability exists on more than one surface, CLI, MCP, and future web pre
 | Phase 3 | Memory Explorer, Timeline, and Backend Migration Operations | Inactive product horizon | Requires later discovery; do not infer routes, controls, or current capability. |
 | No product phase | <code>Hexalith.Memories.Web</code> specimen host | Implemented conformance evidence only | The 19 RCL components and fixture routes prove component structure, not production routing, authorization, data loading, focus integration, notification behavior, or product activation. |
 
-**Release governance:** the current release posture is no-go. G1–G6 are all hard gates; the retained 2026-12-01 Phase 1 decision date is an explicit assumption. G6 cannot pass while missing work/evidence lacks successor-story ownership, AD-14 phasing is unratified, or architecture has not bound FR75 and NFR37. Phase 1.5 L1–L3 are not evaluated until the Phase 1 gate passes.
+**Release governance (2026-10-05):** the current release posture is no-go. G1–G6 are all hard gates; the 2026-12-01 Phase 1 decision date is ratified, with a 2026-10-31 prerequisite checkpoint. The final architecture spine binds FR75, NFR37, and G6 and ratifies AD-14 phasing. G6 still requires current rerunnable evidence for every MVP-active requirement and architecture-critical active-foundation gap; story ownership, risk acceptance, and design ratification alone supply no gate credit. Phase 1.5 L1–L3 are not evaluated until the Phase 1 gate passes.
 
 Point-of-use maturity matters. Current-revision projection completion (FR6/FR13), case-partitioned tenant-wide graph merge (FR34), verified erasure (FR39), server-derived provenance (FR65), and durable duplicate suppression (FR75) are partial. Tenant authority hardening (FR44) remains in progress. Fairness (FR8), capability-aware degradation (FR66), readiness (FR72), and the active CLI accessibility contract (NFR37) require current-contract evidence or re-verification; NFR37 is not started and has no current-contract evidence. Normative behavior below is target contract unless a current-status table says it is already delivered.
 
