@@ -14,6 +14,27 @@ historicalSources:
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-04.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-01.md'
 correctionStepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics']
+requirementsExtractionRevalidation:
+  date: '2026-10-05'
+  baselineCommit: 'b31d1352'
+  inputDocumentsConfirmed: true
+  status: 'requirements-confirmed'
+  currentStep: 'step-03-create-stories'
+  stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics']
+epicDesignRevalidation:
+  date: '2026-10-05'
+  status: 'approved'
+  proposedDeliveryOrder: [34, 33, 32, 35]
+  stepsCompleted: ['step-02-design-epics']
+storyDesignRevalidation:
+  date: '2026-10-05'
+  status: 'awaiting-story-review'
+  currentEpic: 34
+  currentStory: '34.9'
+  approvedFirstStory: '34.33'
+  reviewedStories: ['34.33', '34.1', '34.8']
+  approvedExecutionPrefix: ['34.33', '34.1', '34.8']
+  stepsCompleted: []
 changeControlContext:
   approvedProposalGlob: '_bmad-output/planning-artifacts/sprint-change-proposal-*.md'
   note: 'The latest frontmatter inputs are not the full change-control history. Approved sprint-change proposals are discovered through the glob unless a canonical index replaces it.'
@@ -159,7 +180,7 @@ This document preserves completed epic and story history while the 2026-10-05 co
 - AD-1/AD-2: Memories remains a technical platform; EventStore accepts domain mutations before success and is the authoritative replay source. Redis/FalkorDB, workflow state, and application export are distinct derived or import paths.
 - AD-3/AD-4: Projection completion uses the authoritative source-version/schema-generation/embedding-configuration tuple, monotonic per-axis acknowledgements, write fences, and one durable command or CloudEvent mutation per scoped identity. `Indexed` requires all three current axes.
 - AD-5/AD-6/AD-7: Server-derived tenant, case, and principal authority survives ingress and durable work; protected Dapr workload identity plus finite app allowlist and tenant grant are required for internal calls. Lifecycle workflows alone own provisioning, resource changes, and verified tenant state.
-- AD-8/AD-9/AD-10/AD-11/AD-22: Provider configuration and schema changes follow phase-qualified migration; hybrid graph seeds remain case-local; evidence surfaces distinguish selected, unavailable, excluded, and no-hit axes; deterministic fusion and benchmark contracts use the PRD's gate protocol.
+- AD-8/AD-9/AD-10/AD-11/AD-22: Provider SDK use stays behind named adapters and the finite coordination exception registry; hybrid graph seeds remain case-local; evidence surfaces distinguish available, truncated, unavailable, excluded, and no-hit meanings; deterministic fusion and benchmark contracts use the PRD's gate protocol.
 - AD-12/AD-13: `Contracts.V1` is the versioned public vocabulary and name register. Preserve origin, actor provenance, relevance versus metadata/edge confidence, freshness, omission, and recovery semantics across active surfaces.
 - AD-14: MVP migration allocates a new epoch and activates atomically; Phase 2+ staging redirects are separate. Active and declared non-active generation writes never alternate in one derived document.
 - AD-15/AD-17: Dapr Secrets API backed by OpenBao is the runtime secret path; access telemetry has a bounded non-blocking failure posture, owner, TTL, sanitization, erasure mapping, and Production admission evidence.
@@ -171,15 +192,41 @@ This document preserves completed epic and story history while the 2026-10-05 co
 - Current alignment ledger: each unresolved row needs a disposition, owner, review date, evidence path, and tracker obligation before G6. Its row count and statuses are rechecked at story creation; no historical `done` row grants current-contract credit.
 - McpCli correction: `Hexalith.McpCli` owns target Hexalith CLI/MCP presentation for eligible Memories operations; existing Memories CLI/MCP packages supply compatibility and parity evidence until an approved cutover.
 
+**Architecture extraction detail (target requirements, not implementation assertions):**
+
+- **Starter and ownership (AD-1):** Extend the existing brownfield platform and reuse technical modules. This extraction does not introduce a greenfield starter or reopen scaffolding. Keep domain namespaces dependency-pure and consumer dependencies independent of AppHost and Server.
+- **Authoritative recovery (AD-2):** EventStore acceptance precedes success. Replay authoritative events into rebuildable stores; keep export import separate. Consult the live erased-tenant register on recovery admission. Shared Redis/FalkorDB projections and tenant-keyed coordination have no operational backup-restore shortcut.
+- **Projection protocol (AD-3):** Key work by tenant, case, unit, source version, schema generation, and embedding epoch. Keep declared non-active documents disjoint from active ones, apply monotonic CAS within a tuple's generation/epoch, reject stale writes at visibility, and persist all-axis completion. Invalidation writes reprojectionRequired rather than deleting checkpoint history. Retire superseded documents/checkpoints only through verified migration cleanup.
+- **Durable work and identity (AD-4):** Workflows are deterministic process managers, activities bounded/idempotent I/O, and actors serialized coordination. History carries identifiers/references/non-secret configuration; resolve content at execution from the tenant-keyed store. V1 suppression identity includes tenant/case/operation/token; CloudEvents include tenant/case/exact validated source/id. Preflight is a TTL-bounded fail-open optimization, never durable suppression.
+- **Authority (AD-5):** Preserve bearer issuer/subject and tenant grants across surfaces/hops. Internal admission requires protected Dapr workload/channel identity, an allowlisted app, a tenant grant, and authoritative Active state. One operator-secret artifact owns principal mappings, enumerated lifecycle privileges, exact authenticated channel routing, and the 60-second revocation bound. Lifecycle/erasure exemptions and retention accounting bind one recorded tenant and revalidate operator authority on every resume/activity boundary; ordinary request fields never select privileged identity.
+- **Lifecycle and egress (AD-6):** Lifecycle workflows alone own tenant resources/grants and legal EventStore-committed transitions. Extend the one TenantStatus vocabulary with Deactivated and terminal Erased; derive Erased from the register tombstone. Hold query-admission permits through the last response byte, drain/revoke egress before Deleting, advance the write generation once, preserve it on retries, and never return Deleting/Erased to admission. Mirrors and cached state do not authorize.
+- **Cases (AD-7):** Resolve one authoritative owner case per unit. Tenant-wide discovery has mandatory case attribution, while graph seeds/nodes/edges/paths stay case-local. Case is partition/attribution, not authorization; cross-case graph references and per-case authorization remain deferred.
+- **Provider boundary (AD-8):** Confine provider SDK/data-plane operations to composition roots and named internal Adapters.Redis/Adapters.FalkorDb namespaces, with guards. Move portable coordination to Dapr state; the finite preflight exception has a separate reserved family, SET NX, finite TTL, and owner-checked release. Any new exception requires a decision naming its single store, protected resource, primitive, scope, failure posture, and evidence.
+- **Canonical retrieval (AD-9):** Drop blank IDs/non-finite scores, retain the first exact ID, use finite Double.Equals ties and competition ranks, and compute 1 / (10 + rank). Default weights are 0.30/0.35/0.35; requested Phase 1.5 NL is default-off at 0.20. One deployment-wide candidate depth stays constant under paging/load. Seed from the first five canonical syntactic and semantic entries, traverse at most depth two, merge cases by canonical score/case/unit order, and apply result/time limits once over the merged work. Page only final fusion; disclose corpus-versus-depth exhaustion.
+- **Axis safety (AD-10/AD-22):** Every adapter reports scope-applied, active-generation/epoch, truncation, and uncovered-scope-unit facts. One server selection step consumes those facts; missing or unsafe proof nulls the axis. Use the four closed states unavailable, available, truncated, excluded; safe truncated hits remain usable with disclosure. Candidate-depth exhaustion alone is not truncation. Only axes returning hits enter the denominator; fail only when no selected axis can safely respond.
+- **Graph phasing (AD-11):** Parameterize values, restrict labels to the contract enum, enforce scope for all nodes/edges, bound depth/results/time, and retain explicit traversal under the graph kill switch. Phase 1 causal edges come only from supplied metadata; Phase 1.5 adds EventStore population. Causation/correlation remain distinct and inferred confidence is never auto-promoted.
+- **Wire and presentation (AD-12):** Reserve V1 names, shapes, nullability, closed vocabularies, error catalogue, envelope, and exit semantics in one tracked Contracts register with a build guard. Embed identical canonical packet bytes across transports: registered property order, invariant round-trippable doubles, minimal escaping, explicit nulls, and empty available/no-hit collections. Authorized omission handles are opaque/scoped; withheld detail and scoped authorization/existence errors stay indistinguishable. Include telemetry/clock V1 contracts and declare publication or internal-only scope. Phase-inactive MCP/EventStore product routes must be unreachable until launch gates pass.
+- **Provenance (AD-13):** Normalize issuer plus subject once at authentication, derive system actors only through the app allowlist and tenant grant, and carry origin/actor into every projection. Authorize before explanation; keep metadata/edge confidence, relevance, and freshness separate. Correlation/causation are opaque provenance distinct from W3C trace context.
+- **Migration (AD-14):** MVP acknowledged rebuilds allocate a new epoch, backfill/catch authoritative mutations and tombstones to a verified high-water mark, briefly fence command acceptance, activate in one EventStore commit only on parity, then verify retirement. Resolve active schema/epoch through the tenant configuration actor, synchronously invalidate on activation, and fail closed when unresolved. Separate-resource zero-downtime staging is Phase 2/3 work.
+- **Secret boundary (AD-15):** Use Dapr/OpenBao runtime references with separate bootstrap/application/data-plane/operator scopes. Revoke prior credentials and stale authorization/clients within the operator artifact's 60-second bound; unavailable freshness proof fails closed. Pin or risk acceptance alone never qualifies Production.
+- **Erasure and custody (AD-16):** Keep identical closed purge/verification sets across every projection epoch, content store, history/actor state, cache, source-held export, principal mapping, and tenant-keyed coordination record. Physically purge those targets; only qualified authoritative EventStore payload/backup classes use tenant-key destruction. Prove pre-deletion records absent and ciphertext undecryptable. Obtain durable target-local fence acknowledgements and generation-bound completion CAS. Stage/finalize portable or recipient-encrypted exports, record signed origin/integrity and content-free index before first-byte release, and serialize release intents with Deleting. Cancellation is terminal only after egress stops or revocation is confirmed. Purge source-held copies and legacy bundles; delivered external bytes are outside custody. Same-population import checks signed origin and live tombstones regardless of target tenant.
+- **Telemetry (AD-17):** Platform Operations owns qualification, TTL, purge progress, bounded recovery/delivery, and dated unsupported-profile debt. Emit content-free opaque/enumerated fields without query text, snippets, or content-derived values; use collision-checked tenant-keyed opaque principal tokens rather than raw issuer/subject. Purge the principal mapping at erasure. Keep active tenant representations stable; enumerate representation readers, record use, and purge an erased mapping with its last retained record. Retention accounting never exposes erased records to product surfaces; bounded delivery degradation never rolls back accepted writes.
+- **Capacity (AD-18):** Separate tenant/global quota owners, bounded durable queues, cap-plus-one rejection, fairness, priority, durable Retry-After, and sizing evidence. Reject/delay at admission before fan-out; never shrink candidate depth or silently drop axes under load. Measure the PRD mixed-workload, throughput, freshness, and noisy-neighbor budgets.
+- **Qualification (AD-19):** Prove isolated pristine source/package restore/build/contract/integration lanes at one source revision with gitlink/package correspondence. One Aspire-owned qualified digest set feeds AppHost, deployment, CI, harnesses, and owned base images. Package only the release inventory; qualify exact SDK/backend/OpenBao profiles independently of version changes.
+- **Evidence governance (AD-20):** Every MVP-active requirement and architecture-critical active-foundation gap needs current rerunnable evidence, owner, and tracking. An approved freeze suspends only the tracker conjunct, with recorded obligation/freeze/review date. Backlog approval, historical done, future dates, and risk acceptance supply no qualification credit.
+- **Platform authority (AD-21):** Keep irreversible tombstones, genesis/population identity, lifecycle mirrors, purge receipts, and the content-free bundle index on a platform EventStore partition with record-scoped readers/writers. First-ever bootstrap uses a one-time external grant; normal startup only verifies live lineage. Missing/copied/restored/uncertain lineage fails closed indefinitely rather than becoming empty. No record reverses a tombstone; artifact admission verifies population, sequence, and origin. A replacement population after lineage loss requires a separate disjoint-namespace decision.
+- **Identifier Grammar V1 (AD-23):** Issue random collision-checked 20-character lowercase Crockford tenant IDs beginning with a letter; use canonical 26-character uppercase ULIDs for cases/units and lowercase u as the reserved delimiter. Register immutable family tag/arity/class order/codec/byte encoding, destination bounds, and golden vectors before use. CloudEvent source is an ASCII URI-reference of 1–2048 bytes with only scheme/host lowercased; id is 1–256 visible ASCII bytes. Non-issued components use bounded reversible encoding or fixed-width digests with collision-detecting canonical-value reservations. Never truncate; validate every trust boundary and remediate legacy/case-variant collisions without silent normalization.
+- **Documentation and phase handoff:** Preserve the PRD/addendum's README MIT/no-restrictive-relicense commitment, deployment/license boundary guidance, relevance-not-fact explanations, erasure limitations, provider reindex/shared-limit operator guidance, and contributor build/test instructions. EventStore/MCP examples remain Phase 1.5 launch prerequisites, not alternative Phase 1 proof.
+
 **PRD release gates and sequencing:**
 
-- G1: hybrid beats BM25+semantic on the thesis protocol (at least 50 topics, ΔNDCG@10 at least 0.02, Cohen's κ at least 0.6), with a corpus steward and two independent human reviewers. Administrator is corpus steward; the reviewers remain unnamed, so G1 cannot pass.
+- G1 (required protocol): at least 50 representative real Phase 1 topics; at least 80% wins against BM25+semantic by ΔNDCG@10 at least 0.02; nonnegative mean delta; no topic regression over 0.10. Pre-register thesis-stress at no more than 20%; disclose similarity-graph testing below 30% explicit/metadata-carried non-contains edges. Hash cached corpus/topic embeddings, freeze graded labels before scoring, require pairwise Cohen's κ at least 0.6 and two named independent human reviewers alongside the steward, and discard/re-freeze instead of editing labels after scoring. Execute the PRD's ordered kill-switch actions on failure. Administrator stewardship and the reviewer hold remain governed by the approved proposal.
 - G2: zero cross-tenant leakage under principal-driven NFR8 tests.
 - G3: clean-machine README/AppHost to first real target `Hexalith.McpCli` search in under 30 minutes; old Memories CLI is compatibility evidence.
 - G4: case ownership and case-local graph paths under tenant-wide result attribution.
 - G5: deterministic fusion explain and repeatable benchmark evidence.
 - G6: current rerunnable evidence for every MVP-active requirement and architecture-critical active-foundation gap; no risk-acceptance or phase-exception gate credit.
-- L1: Phase 1.5 MCP held-out answer/citation and token-budget gate on at least 10 topics. Evaluate only after Phase 1 gates pass.
+- L1: Phase 1.5 MCP uses at least 10 held-out topics outside G1 labelling, keeps every response within token budget, and produces at least 8 of 10 answers citing a labelled-relevant unit under frozen G1 labels/reference agent configuration. Evaluate only after Phase 1 gates pass.
 - L2: Phase 1.5 EventStore package/subscription to first search under the separate 30-minute clean-machine clock. Evaluate only after Phase 1 gates pass.
 - L3: Phase 1.5 causal-chain completeness at least 95% on the named known-chain fixture. Evaluate only after Phase 1 gates pass.
 - Date and capacity: the Phase 1 decision date is 2026-12-01 with a 2026-10-31 prerequisite checkpoint; Phase 1.5 derived launch is 2027-01-01. Retaining dates does not itself pass a gate.
@@ -190,44 +237,44 @@ This document preserves completed epic and story history while the 2026-10-05 co
 
 - UX-DR1: Define the Evidence Packet as the shared response object across CLI, MCP, and future web UI, including scope, result, sources, evidence, graph, state, omitted details, and recovery actions.
 - UX-DR2: Every evidence packet must identify tenant and case scope, top source references, evidence strength, freshness status, retrieval axes used, explain summary, graph relationship summary when relevant, and the next recovery action when evidence is weak, incomplete, absent, or out of scope.
-- UX-DR3: If details are omitted for compactness or token budget, the response must say what was omitted and provide deterministic expansion handles or equivalent expansion guidance.
-- UX-DR4: Search must be scope-first; tenant and case context must be visible before query submission, preserved through result inspection, and treated as trust-blocking when ambiguous, unavailable, unauthorized, or inconsistent.
-- UX-DR5: Implement a Trust Strip for Evidence Packet and briefing surfaces with tenant, case, confidence state, freshness state, source count, evidence health, and optional token-budget indicator.
+- UX-DR3: For authorized details omitted by compactness or token budget, name the omitted groups and provide deterministic expansion handles or supported recovery guidance. Handles are opaque and caller/request-scoped; withheld unauthorized detail is indistinguishable from ordinary absence and never receives a handle.
+- UX-DR4: Resolve required tenant and optional case scope from authenticated authority before work and preserve visible scope through inspection. Missing, malformed, mismatched, or unauthorized required scope blocks work. Authorized tenant-wide discovery is valid without a case filter; deliberate expansion stays within the caller's authority.
+- UX-DR5: The Trust Strip precedes the answer and wraps rather than disappears. Keep relevance and its not-fact caveat, freshness, source count, evidence health, and optional token-budget state separate; the Scope Header keeps authorized tenant/case context visible.
 - UX-DR6: Implement a Scope Header for search, ingestion, briefing, tenant verification, operator workflows, and compact/mobile contexts so tenant, case, permissions, and isolation state remain visible.
-- UX-DR7: Search responses must begin the full trust loop in one query by including source lookup, evidence strength scoring, explain breakdown, relevant graph context, and a safe next action.
+- UX-DR7: The first response keeps authorized scope, source/origin, relevance meaning, freshness/degradation, omission, and safe recovery visible. Source inspection and detailed ranks, weights, or graph diagnostics use supported contract data and opt-in explain/disclosure; absent fields are never fabricated.
 - UX-DR8: Deeper inspection must use progressive disclosure: detailed source snippets, scoring math, graph paths, token-budget behavior, backend diagnostics, and candidate details are available but secondary to the evidence summary.
-- UX-DR9: Empty, weak, stale, degraded, unauthorized, and compressed states must be first-class states with a clear state title, short explanation, diagnostic clue, and recovery action.
-- UX-DR10: No-result states must distinguish no match, not ingested yet, wrong case, inaccessible tenant/case, stale memory, degraded backend, graph gap, and insufficient evidence.
+- UX-DR9: Empty, weak, stale, degraded, unauthorized, and omitted-detail conditions have a clear explanation and safe recovery. Use only contract-supplied versioned packet states; compactness/compression is an omission condition, not a new state.
+- UX-DR10: No-result output distinguishes true absence, empty/wrong authorized scope, incomplete or delayed ingestion, filters, stale evidence, authorization refusal, and backend degradation when safe to disclose. AD-12 scoped authorization/existence failures remain indistinguishable; never expose restricted sources or identifiers.
 - UX-DR11: Implement a Recovery Action Panel or Recovery Footer for incomplete Evidence Packets, no-result states, operator warnings, and MCP structured errors, with one safest next action and optional secondary actions.
-- UX-DR12: Conflicting evidence must be exposed rather than smoothed away, including competing sources, stale versus fresh memory, high lexical match with weak graph support, strong graph context with weak source confidence, and backend disagreement.
+- UX-DR12: Expose source conflict as a separate evidence condition only when a versioned contract supplies the signal, with authorized comparison and recovery. Backend/axis loss is degradation rather than source conflict; neither an unversioned disputed state nor a relevance-score change represents conflict.
 - UX-DR13: Target `Hexalith.McpCli` CLI operations preserve scope-first search/ingest/traversal behavior, compact evidence and explain output, actionable diagnostics, and deterministic human/table/JSON/exit-code semantics; the Memories CLI is compatibility evidence pending enrollment and parity.
 - UX-DR14: Target `Hexalith.McpCli` MCP enrollment preserves typed schemas, bounded source-attributed results, tenant and caller authority, token-budget omissions, structured errors, and recovery for the eligible Phase 1.5 subset; existing Memories MCP tools are compatibility evidence.
 - UX-DR15: If a product web route is activated, compose it inside FrontComposerShell with centrally pinned Microsoft Fluent UI Blazor V5 and Fluent 2 primitives and FC-A11Y behavior. The 19 existing Memories RCL concepts are conformance specimens, not live product routes; primitive gaps require a registered semantic/focus/forced-colors exception and test.
 - UX-DR16: On an activated future web route, the Evidence Cockpit presents scoped search, Evidence Packet, source inspection, retrieval axes, graph context, and recovery; the five titled detail regions use one multi-expand accordion, with Evidence and Recovery initially expanded.
-- UX-DR17: Implement a Retrieval Axis Breakdown component or response section for explain mode and benchmark inspection, showing raw score, normalized score, fusion contribution, ranking reason, omitted/degraded axis state, and detail expansion.
+- UX-DR17: Retrieval Axis Breakdown orders axes deterministically and labels availability, exclusion, truncation, and no hits. Hybrid explain shows weighted reciprocal-rank contributions; single-axis explain preserves its own score/normalization meaning. Detailed ranks, weights, and diagnostics are opt-in and contract-backed.
 - UX-DR18: Implement a Source Citation Stack for cited sources, including source type, origin identifier, freshness, snippet or summary, confidence/metadata origin, and keyboard-openable preview behavior where UI exists.
 - UX-DR19: Implement a Graph Path Summary for causal and why-oriented workflows, showing relationship path, edge type, confidence, gap markers, and chronological ordering.
 - UX-DR20: The Agent Packet Inspector specimen shows real MCP tool/schema identity, token budget, omissions, expansion handles, structured errors, and sanitized JSON; any product activation needs a host-owned route, authority, and copy behavior.
 - UX-DR21: Implement Case Activity Trail patterns for Marcus-style continuity, showing ingestion events, searches, membership changes, annotations, health states, source links, and briefing context.
-- UX-DR22: Implement Ingestion Lifecycle Tracker patterns for pending, queued, extracting, embedding, indexing, indexed, failed, retried, and re-ingested states.
+- UX-DR22: Ingestion Lifecycle Tracker activation presents exactly pending, extracting, embedding, projecting, indexed, and failed as product states; pending maps to queued and projecting to indexing on the V1 wire. Retry, dead-letter, repair, replay, and re-ingest are details of one operation. Show supported delay, last update, attempts, failure stage, and recovery; indexed requires all three current-revision/configuration acknowledgements.
 - UX-DR23: Implement Operator Health Matrix patterns for tenant verification, backend health, isolation status, ingestion health, consistency repair, degradation, and alert states.
-- UX-DR24: Implement Benchmark Result Comparator patterns for three-axis validation, hybrid-vs-single-axis comparison, NDCG@10 evidence, and thesis review.
+- UX-DR24: Benchmark Result Comparator activation compares hybrid with the BM25+semantic two-axis RRF control; single-axis runs are diagnostics. Show the G1 protocol: at least 50 representative real-corpus topics, at least 80% wins by delta NDCG@10 of at least 0.02, pairwise Cohen's kappa of at least 0.6, nonnegative mean delta, no topic regression over 0.10, frozen labels, and reproducible cached embeddings. Diagnostics never qualify G1.
 - UX-DR25: Preserve the versioned Contracts.V1 Evidence Packet states (`complete`, `partial`, `weak`, `empty`, `stale`, `degraded`, `unauthorized`, `pendingExpansion`) and separate evidence-strength labels (`none`, `unknown`, `weak`, `moderate`, `strong`), freshness (`current`, `aging`, `stale`, `unknown`), axis availability, and authorization. Do not invent a `disputed` packet state or conflate backend loss with source conflict.
 - UX-DR26: Feedback patterns must answer what happened, what it affects, how serious it is, and what to do next; trust-critical feedback appears close to the affected Evidence Packet or object rather than only in global notifications.
 - UX-DR27: Form patterns must be contract-aware and validation-first, with tenant and case scope near the top and actionable validation for tenant, case, source, permissions, and dangerous scope changes.
-- UX-DR28: Search and filtering patterns must expose active filters for axis, source type, freshness, confidence, time range, metadata, graph depth, and evidence state, and must show when filters narrow scope, broaden scope, exclude axes, or affect confidence.
+- UX-DR28: Filter Summary exposes contract-supported filters, sort, scope, excluded axes, and result impact; remove/reset never broadens unauthorized scope. The future host owns placement and announces changes without stealing focus. Additional source-type, freshness, confidence, time, graph-depth, or evidence-state controls require an activated supporting contract and are not inferred from legacy designs.
 - UX-DR29: Navigation patterns must preserve tenant/case/search context and provide clear return paths from Evidence Packets to sources, graph paths, activity items, and agent packets.
-- UX-DR30: Modal and overlay patterns must use inspection drawers or panels for source, graph, reasoning, MCP payload, export, and repair flows; destructive or scope-sensitive confirmations must name the tenant, case, object, and consequence.
+- UX-DR30: Use real current FrontComposer or centrally pinned Fluent V5 primitives for inspection, detail, feedback, and overlays; do not prescribe a nonexistent drawer/panel API. Destructive, scope-expanding, reindex, repair-apply, migration, and erasure confirmations name authorized scope, target, consequence, and rollback boundary, with safe-default cancel. The activated host owns dialog service/provider lifecycle and dispatch.
 - UX-DR31: Expose only implemented commands and recovery actions in the active CLI and McpCli target; any future web command surface is host-owned and must name disabled reasons rather than imply unavailable operations work.
 - UX-DR32: Data grid patterns should support memory units, sources, ingestion jobs, case activity, tenant checks, backend health, and benchmark results with sorting, filtering, status badges, row actions, and keyboard navigation.
 - UX-DR33: Responsive behavior must preserve trust fundamentals on every viewport; scope, confidence, freshness, source count, evidence health, and recovery remain reachable on mobile, tablet, desktop, and wide desktop.
 - UX-DR34: Future web inherits FrontComposer breakpoints and layout behavior. At 320 CSS pixels and 400% zoom, keep scope, trust, result, primary action, and recovery in a logical column; genuinely tabular/graph content needs an equivalent ordered representation. Do not import the legacy fixed breakpoint values as product tokens.
 - UX-DR35: When a web capability activates, meet WCAG 2.2 AA through keyboard trust workflow, visible and unobscured focus, labels/announcements, no color-only state, 200% resize, 400% zoom/320 CSS-pixel reflow, reduced motion, forced colors, and browser/assistive-technology evidence under NFR32.
 - UX-DR36: Trust states must not rely on color alone; status indicators require text labels, accessible names, and consistent state grammar.
-- UX-DR37: Focus management must move into drawers, dialogs, source previews, graph detail panels, MCP inspectors, and confirmations, then return focus to the invoking control when closed.
+- UX-DR37: Keep focus stable during asynchronous result/filter/status updates. Move it when navigation or an overlay warrants movement, using shell route/main and dialog lifecycles; prove initial focus, containment, cancellation, and return to a still-present invoker on each activated route. Component structure alone supplies no host focus evidence.
 - UX-DR38: Hover-only interactions are forbidden for trust-critical source preview, graph detail, recovery action, tooltip, and command behavior; all must be accessible by keyboard and touch.
 - UX-DR39: For every activated product web route and representative state, maintain a dated viewport/theme/input/browser/AT/focus evidence matrix with tester, artifact, defect or waiver owner, and release disposition; component/axe checks and the specimen host alone do not qualify the route.
-- UX-DR40: Accessible text, tooltips, labels, announcements, copied text, and diagnostics must not expose secrets, raw payloads, bearer tokens, tenant-sensitive diagnostics, or restricted source details.
+- UX-DR40: Accessible text, announcements, copied output, and diagnostics disclose no secrets, bearer tokens, restricted identifiers, or unauthorized source detail. Agent Packet Inspector may expose sanitized authorized JSON only; sensitive raw payloads never enter accessible names, recovery suggestions, or copied artifacts.
 
 - UX-DR41: Evidence Grid and Filter Summary specimens keep labelled/sortable evidence rows, target-qualified actions, active filters, and each filter's effect on scope and results; product activation must bind real packet data and host navigation.
 - UX-DR42: Interaction Form and Action Confirmation specimens keep scope-first validation, a safe cancel default, and named tenant/case/target/consequence for destructive, reindex, repair-apply, migration, and erasure actions; host dispatch and focus lifecycle are activation work.
@@ -236,6 +283,58 @@ This document preserves completed epic and story history while the 2026-10-05 co
 - UX-DR45: The active CLI fulfills NFR37's scope → result → sources → reasoning/state → recovery reading order, text-labelled status/axis/omission/progress, bounded wrapping, linear table alternative, deterministic redirection, durable stage lines, explicit timeout/cancel, keyboard completion, and secret-safe cross-form semantics.
 - UX-DR46: Source Citation Stack, Retrieval Axis Breakdown, Graph Path Summary, Trust Strip, Scope Header, and Recovery Action Panel keep source/origin, case attribution, score meaning, freshness, gap/omission, and safest next action separate; unavailable packet fields are labelled unavailable rather than fabricated.
 - UX-DR47: FrontComposer/Fluent 2 own theme, color, spacing, typography, radius, elevation, shell, and breakpoints. Memories introduces no independent token scale; any product-route visual implementation inherits current centrally pinned components and validates light/dark/forced-colors meaning.
+
+### Requirements Extraction Revalidation — 2026-10-05
+
+The user confirmed the six active inputs for this run. Extraction is revalidated in place, preserving approved story definitions and historical evidence. The top-level stepsCompleted and correctionStepsCompleted arrays retain prior workflow history. The user confirmed this extraction with C; requirementsExtractionRevalidation records completion of step-01-validate-prerequisites and continuation into epic design. Story registration, sprint tracking, and release qualification have not advanced.
+
+**Source-shape evidence against baseline b31d1352, measured in this run:**
+
+| Claim | Re-runnable command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- |
+| The PRD defines 75 numbered FRs. | `rg -c '^- \*\*FR[0-9]+:\*\* ' _bmad-output/planning-artifacts/prd.md` | 75 | confirmed |
+| The PRD defines 37 numbered NFRs. | `rg -c '^\| \*\*NFR[0-9]+\*\* \|' _bmad-output/planning-artifacts/prd.md` | 37 | confirmed |
+| The current spine defines 23 AD decisions. | `rg -c '^### AD-[0-9]+ ' _bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md` | 23 | confirmed |
+| DESIGN declares 19 component implementation bindings. | `rg -c '^    implementation:' _bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/DESIGN.md` | 19 declarations; this is document shape, not runtime proof | confirmed |
+| FR/NFR extraction matches the current PRD; UX IDs remain complete. | Run the comparison below from the repository root. | FR 75/75, NFR 37/37 exact wording; UX-DR1–UX-DR47 unique and contiguous | confirmed |
+| Earlier UX-DR12 included backend disagreement as source conflict. | `sed -n '149,162p' _bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/EXPERIENCE.md` | Contract-backed source conflict and backend degradation are separate target meanings; UX-DR12 corrected here. | corrected |
+| Earlier UX-DR22 listed retry/re-ingestion as states. | `sed -n '164,179p' _bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/EXPERIENCE.md` | Six product states, deliberate V1 label mappings, retry/replay/repair as details; UX-DR22 corrected here. | corrected |
+| Earlier UX-DR24 used hybrid-vs-single-axis for thesis review. | `sed -n '144p' _bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/EXPERIENCE.md` | BM25+semantic is the G1 control; single-axis runs are diagnostics; UX-DR24 corrected here. | corrected |
+| Earlier UX-DR28/30/37 prescribed unqualified filters, drawers, and focus movement. | `sed -n '111p;238,254p;273,284p' _bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/EXPERIENCE.md` | Activated contracts and real primitives govern controls; host owns placement; async focus remains stable unless navigation/overlay warrants movement. Rows corrected here. | corrected |
+
+These observations verify extraction and design intent only. Implementation claims in source documents remain advisory until re-derived by story-local Epic AC Verification; this record closes no implementation gap. Stable UX IDs preserve historical references. Current coverage overlays are rechecked in the next workflow step.
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import re
+root = Path('_bmad-output/planning-artifacts')
+prd = (root / 'prd.md').read_text()
+epics = (root / 'epics.md').read_text()
+fr = dict(re.findall(r'^- \*\*(FR\d+):\*\* (.+)$', prd, re.M))
+nfr = {key: ' — '.join(row.split(' | ')) for key, row in
+       re.findall(r'^\| \*\*(NFR\d+)\*\* \| (.+) \|$', prd, re.M)}
+for name, source, start, end in [
+    ('FR', fr, '### Functional Requirements\n', '### Non-Functional Requirements\n'),
+    ('NFR', nfr, '### Non-Functional Requirements\n', '### Additional Requirements\n'),
+]:
+    section = epics.split(start, 1)[1].split(end, 1)[0]
+    rows = re.findall(r'^- (' + name + r'\d+): (.+)$', section, re.M)
+    assert len(rows) == len(dict(rows)) and dict(rows) == source, name
+    print(f'{name}: {len(source)}/{len(rows)} exact wording match')
+section = epics.split('### UX Design Requirements\n', 1)[1].split(
+    '### Requirements Extraction Revalidation', 1)[0]
+ids = re.findall(r'^- (UX-DR\d+):', section, re.M)
+assert len(ids) == len(set(ids)) == 47
+assert set(ids) == {f'UX-DR{i}' for i in range(1, 48)}
+print('UX: 47 unique contiguous requirement IDs')
+section = epics.split('### FR Coverage Map\n', 1)[1].split(
+    '## Selected Implementation Scope\n', 1)[0]
+ids = re.findall(r'^- (FR\d+):', section, re.M)
+assert len(ids) == len(set(ids)) == len(fr) and set(ids) == set(fr)
+print(f'FR coverage: {len(ids)} unique complete rows')
+PY
+```
 
 ### UX Design Requirements Coverage Map
 
@@ -300,7 +399,7 @@ The preceding UX map is historical. This overlay names current source ownership 
 | UX-DR9 | Story 33.7; Epic 17.2 specimen | active state grammar; future web |
 | UX-DR10 | Story 33.7 | active no-result semantics |
 | UX-DR11 | Story 33.7; Epic 17.2 specimen | active recovery; future web |
-| UX-DR12 | Story 33.7 | active conflicting evidence semantics |
+| UX-DR12 | Story 33.7 for degradation classification; source-conflict presentation awaits an activated versioned conflict signal | active degradation semantics; source conflict is conditional, not coverage supplied by backend loss |
 | UX-DR13 | Epic 32 held on McpCli owner inventory | active CLI gap |
 | UX-DR14 | Epic 32 held; historical Epic 10 | Phase 1.5 MCP gap |
 | UX-DR15 | Epic 17.1/17.5 specimen | future web activation |
@@ -405,7 +504,7 @@ This is planning ownership, not a qualification verdict. Story 35.10 must resolv
 - FR9: Epic 6 — Auto-retry with configurable limits
 - FR10: Epic 6 — Ingestion status per case; successor Epic 32 — case ingestion-status view
 - FR11: Epic 6 — Failed unit visibility; successor Epic 32 — failed-unit inspection
-- FR12: Epic 6 — Re-ingestion of failed content; reinforced by Epic 23 for non-URL re-ingestion correctness; successor Epic 32 — re-ingestion action
+- FR12: Epic 6 — Re-ingestion of failed content; reinforced by Epic 23 for non-URL re-ingestion correctness. Phase 1 delivery remains the PRD's REST route; Epic 32 may enroll it only if the approved owner inventory selects it. No new Phase 1 CLI verb is required.
 - FR13: Epic 1 — Partial backend write failure recovery (IngestionWorkflow saga/compensation); reinforced by Epic 21 for ratified consistency and migration safety; successor Epic 34 — authoritative commit and projection recovery
 - FR14: Epic 2 — Syntactic search; successor Epic 33 — scoped syntactic result
 - FR15: Epic 2 — Semantic search; successor Epic 33 — scoped semantic result
@@ -429,11 +528,11 @@ This is planning ownership, not a qualification verdict. Story 35.10 must resolv
 - FR33: Epic 3 — Case-scoped graph edges; successor Epic 33 — case-local graph paths
 - FR34: Epic 3 — Cross-case tenant search; reinforced by Epic 22 for fusion case attribution; successor Epic 33 — tenant-wide ranking with case-local graph
 - FR35: Epic 3 — Delete memory unit
-- FR36: Epic 3 — Case activity
+- FR36: Epic 3 — Case activity; successor Epic 32 — required Phase 1 case-activity presentation, subject to the approved McpCli operation/identity inventory
 - FR37: Epic 3 — Annotations/corrections
-- FR38: Epic 0 + Epic 5 + Epic 24 — tenant creation, tenant-scoped indexes, and backend isolation; successor Epic 34 — tenant-scoped principals and indexes
-- FR39: Epic 5 + Epic 21 — tenant deletion and data-integrity history; successor Epic 34 — verified irreversible tenant erasure
-- FR40: Epic 5 — Verify tenant isolation; reinforced by Epic 24 for verifier scaling; successor Epic 34 — principal-driven isolation verification
+- FR38: Epic 0 + Epic 5 + Epic 24 — tenant creation, tenant-scoped indexes, and backend isolation; successor Epic 34 — tenant-scoped principals and indexes; Epic 32 — required Phase 1 tenant-create presentation after owner enrollment
+- FR39: Epic 5 + Epic 21 — tenant deletion and data-integrity history; successor Epic 34 — verified irreversible tenant erasure; Epic 32 — required Phase 1 tenant-delete progress/receipt after owner enrollment
+- FR40: Epic 5 — Verify tenant isolation; reinforced by Epic 24 for verifier scaling; successor Epic 34 — principal-driven isolation verification; Epic 32 — required Phase 1 tenant-verify presentation after owner enrollment
 - FR41: Epic 5 — List tenants; successor Epic 32 — shared CLI tenant list
 - FR42: Epic 5 — Update tenant config; successor Epic 34 — safe configuration changes
 - FR43: Epic 5 — Prevent inconsistent config changes; successor Epic 34 — acknowledged reindex guard
@@ -758,14 +857,14 @@ The four successor epics below are approved outcome boundaries. The list approve
 
 ### Epic 32: Use Memories through the shared Hexalith CLI
 A developer or operator can perform eligible Memories operations through `Hexalith.McpCli`, inspect scope and progress, recover from errors, and use human, table, JSON, and MCP forms with the same truthful meaning. The epic delivers each enrolled operation against its current server contract and proves compatibility before any old-surface retirement; it does not claim G3 until the clean-machine manual path is measured.
-**FRs reinforced:** FR1–FR3, FR10–FR12, FR23, FR26–FR31, FR41, FR45, FR47–FR48, FR53–FR58, FR64.
+**FRs reinforced:** FR1–FR3, FR10–FR11, FR23, FR26–FR31, FR36, FR38–FR41, FR45, FR47–FR48, FR53–FR58, FR64. FR12 enrollment is conditional on the owner inventory; its Phase 1 REST delivery remains sufficient. Search/evidence presentation consumes the Epic 33 contract wherever the owner inventory enrolls it.
 **NFR/gate obligations:** NFR23, NFR30, NFR37; G3. Phase 1.5 MCP work remains gated by L1 and the PRD phase boundary.
 **Owner boundary:** Shared command/enrollment/output behavior belongs in the McpCli owner repository; Memories supplies its versioned operations, server authority, and compatibility fixtures.
 **Registration hold (verified 2026-10-05):** The owner repository's Stories 4.4 and 4.5 are still `backlog`; the versioned Memories replace/withdraw/defer inventory and generic coverage gate are not approved. Its v1 public CLI currently exposes generic `modules`, `operations`, `describe`, `send`, `query`, `config`, and `mcp` verbs, not a Memories-specific command tree. Until the inventory identifies each eligible Gateway Command/Query and the per-user identity path, no Epic 32 operation story is registered. The old `memories` verbs remain compatibility evidence, not a target grammar. This is a dependency on owner-repository planning, not a second Memories implementation of McpCli Story 4.4.
 
 | Verified claim | Command | Observation | Verdict |
 | :--- | :--- | :--- | :--- |
-| "Stories 4.4 and 4.5 are still `backlog`" | `rg -n '4-4-approve-chatbot-and-memories-migration-inventories\|4-5-gate-module-coverage-against-the-approved-inventory' references/Hexalith.McpCli/_bmad-output/implementation-artifacts/sprint-status.yaml` | Both rows say `backlog` at lines 73–74. | confirmed |
+| "Stories 4.4 and 4.5 are still `backlog`" | `rg -n -e '4-4-approve-chatbot-and-memories-migration-inventories' -e '4-5-gate-module-coverage-against-the-approved-inventory' references/Hexalith.McpCli/_bmad-output/implementation-artifacts/sprint-status.yaml` | Both rows say `backlog` at lines 73–74. | confirmed |
 | "Its v1 public CLI currently exposes generic ... verbs" | `sed -n '68,90p' references/Hexalith.McpCli/src/Hexalith.McpCli/Cli/CliRunner.cs` | `CreateRoot` adds the seven named generic subcommands. | confirmed |
 
 
@@ -786,6 +885,37 @@ The product owner can inspect dated, rerunnable evidence for every MVP-active FR
 **FRs covered:** evidence assessment for all MVP-active FRs in the current PRD; implementation ownership stays with the capability epics above and historical Epics 0–31.
 **NFR/gate obligations:** current NFR1–NFR37 evidence by active phase; G1–G6, with L1–L3 retained as later launch gates.
 **Owner boundary:** Evidence assembly and the release verdict are independently reviewable outputs; product defects return to a separately scoped capability story.
+
+### Epic Design Revalidation — 2026-10-05
+
+**Approved by the user with C in this run.** Retain the four approved successor outcome boundaries and stable IDs. Existing historical Epics 0–31 and approved story bodies are preserved. This section proposes delivery order and clarifies coverage; it authors no story or gate acceptance criterion and supplies no release evidence.
+
+**Proposed delivery order:** Epic 34 → Epic 33 → Epic 32 → Epic 35. Stable epic numbers identify existing outcomes, not execution order. External inventory/reviewer preparation may run alongside capability work, but a dependent outcome consumes only an existing or earlier completed contract; no epic needs a later epic to make its delivered functionality work.
+
+| Order / epic | Complete user outcome and independence | Requirements and boundary |
+| :--- | :--- | :--- |
+| 1 / Epic 34 — Keep tenant memory durable and isolated | Operators can commit, recover, scope, admit, repair, and irreversibly erase tenant memory through the existing server/programmatic and operator boundaries. That outcome does not depend on shared-CLI enrollment or a later release verdict. | FR6, FR8, FR13, FR38–FR40, FR42–FR44, FR65, FR67–FR75; AD-2–AD-8 and AD-14–AD-23; current foundation/isolation, capacity, erasure, telemetry, and replay obligations. FR71 remains early non-MVP delivery with active erasure safeguards. |
+| 2 / Epic 33 — Trust scoped hybrid answers | Developers receive deterministic, case-attributed server/API retrieval, honest axis states, source/graph explanation, and a usable BM25+semantic diagnostic comparison over the earlier foundation. Shared presentation and a positive G1 verdict are not prerequisites for that capability. | FR14–FR22, FR24–FR25, FR32–FR34, FR46–FR52, FR63, FR66; retrieval/freshness and G1/G4/G5 obligations. Qualifying human labelling/run work remains held on named independent reviewers. |
+| 3 / Epic 32 — Use Memories through the shared Hexalith CLI | Developers/operators use each owner-approved enrolled operation with truthful scope, progress, recovery, and accessible output against an existing or earlier completed server contract. Compatibility/parity precedes retirement. | FR1–FR3, FR10–FR11, FR23, FR26–FR31, FR36, FR38–FR41, FR45, FR47–FR48, FR53–FR58, FR64; NFR23/NFR30/NFR37 and G3. Additional enrollment is inventory-selected; REST-only FR12 remains sufficient for Phase 1. MCP subset activation is Phase 1.5. |
+| 4 / Epic 35 — Make a defensible release decision | The product owner gets independently rerunnable measurement/profile evidence and an evidence-only closure matrix over delivered capabilities. Missing prerequisite evidence produces an explicit blocker/no-go; a positive verdict requires every hard gate and cannot authorize unfinished capability work. | Evidence assessment for every MVP-active FR/NFR and architecture-critical gap; G1–G6. L1–L3 and future-web activation remain separate later-phase gates. Final-verdict and target-CLI qualification story reservations retain their existing holds. |
+
+**File overlap and grouping decision:** Keep these boundaries. Shared Contracts.V1 is a semantic seam, not a reason to combine durable-state, retrieval, presentation-cutover, and independent evidence work into one epic. Plan contract-name/shape changes with their consumer fixtures and never let a presentation epic reimplement backend truth. The intended seams are Server workflows/lifecycle plus EventStore for 34, Server Search plus benchmark/packet mapping for 33, owner-repository CLI/MCP enrollment for 32, and test/deployment/evidence artifacts for 35. A story touching a shared seam remains one independently demonstrable outcome and consumes only earlier contracts; story-level dependency validation is still owed in step 3.
+
+**Coverage corrections:** The FR map retains one row per FR1–FR75. Add Epic 32 presentation ownership to FR36 and FR38–FR40, preserving Epic 34 backend ownership. Qualify FR12 enrollment rather than invent a required Phase 1 CLI verb. UX-DR12 now credits the existing degradation slice only for degradation classification; source-conflict presentation requires a versioned signal. Historical and inactive-phase mappings never supply current gate credit.
+
+**Current source evidence used for these boundaries:**
+
+| Claim or correction | Re-runnable command / artifact | Observation | Verdict |
+| :--- | :--- | :--- | :--- |
+| The FR coverage map contains every current PRD FR once. | Run the comparison under Requirements Extraction Revalidation. | 75 unique rows; no missing or extra IDs. | confirmed |
+| The McpCli owner prerequisites remain backlog. | `rg -n -e '4-4-approve-chatbot-and-memories-migration-inventories' -e '4-5-gate-module-coverage-against-the-approved-inventory' references/Hexalith.McpCli/_bmad-output/implementation-artifacts/sprint-status.yaml` | Both owner rows read backlog; Epic 32 operation registration remains held. | confirmed |
+| The current target CLI grammar is generic. | `sed -n '68,90p' references/Hexalith.McpCli/src/Hexalith.McpCli/Cli/CliRunner.cs` | CreateRoot registers modules, operations, describe, send, query, config, mcp. No old Memories verb tree is adopted as the target grammar. | confirmed |
+| Case activity and tenant create/delete/verify are Phase 1 surface requirements. | `sed -n '893,911p' _bmad-output/planning-artifacts/prd.md` | PRD target rows name FR36 and FR38–FR40; the epic/map presentation omissions are corrected here. Delivery-status prose is planning context, not current runtime proof. | corrected |
+| FR12 requires a new Phase 1 CLI action. | `sed -n '909,911p' _bmad-output/planning-artifacts/prd.md` | Refuted: the PRD explicitly assigns re-ingest to REST without a Phase 1 CLI verb. The map and Epic 32 reinforcement are corrected to conditional enrollment. | corrected |
+| Independent human G1 reviewers are recorded as unassigned. | `rg -n '^2\. .*PHASE-BLOCKER' _bmad-output/planning-artifacts/prd.md` | The current PRD records names/availability as open; agents cannot discharge this gate. | confirmed |
+| UX-DR12 may treat backend loss as source conflict. | `sed -n '162p' _bmad-output/planning-artifacts/ux-designs/ux-memories-2026-09-12/EXPERIENCE.md` | Refuted by the confirmed target semantics; conditional conflict coverage is recorded separately from degradation. | corrected |
+
+The evidence above verifies document scope and the current owner dependency. Every future story still needs its own current-code verification and slice proof before registration. This proposal neither clears those holds nor changes sprint tracking, C1 ownership, G1–G6 status, or launch activation.
 
 ---
 
@@ -5933,21 +6063,72 @@ The label-freeze and qualifying G1-run stories are not authored or registered he
 
 ## Epic 34: Keep Tenant Memory Durable and Isolated
 
-**Status:** approved epic; the story slices below are approved backlog planning units, not sprint-selected or G2/G6-qualified. **Owner:** Administrator. The existing C1 producer stories and Epic 31 secret-store migration keep their separate approved owners and gates. Stories 34.1–34.40 are ordered so each uses only earlier capabilities or existing code, with no dependency on a later story in this epic.
+**Status:** approved epic; the story slices below are approved backlog planning units, not sprint-selected or G2/G6-qualified. **Owner:** Administrator. The existing C1 producer stories and Epic 31 secret-store migration keep their separate approved owners and gates. Stories 34.1–34.40 retain their registered IDs. Their execution must follow a dependency-verified sequence in which every slice uses existing or earlier completed capabilities; this run does not treat numeric ordering as proof of that condition.
+
+### Story Design Revalidation — Epic 34, 2026-10-05
+
+**Current review:** the user approved the clarified criteria and sequential placement of Stories 34.33, 34.1, and 34.8 with C on 2026-10-05; all three are registered below. The approved execution prefix is 34.33 → 34.1 → 34.8. The dependency check defers Story 34.2 while its collision-safe composition and authenticated routing prerequisites are unresolved. Story 34.9 is the next review candidate, subject to its source, dependency, and slice checks; its revised criteria and placement await review. No story implementation is completed by these planning approvals, and the remaining execution sequence is not yet approved. Prior collective approval remains recorded; current-contract/dependency checks are still owed for the other slices.
+
+**Dependency inference, not a runtime claim:** AD-12 requires new V1 wire names, shapes, and nullability to be registered in the same change. A future addition of a retry-token field to the dedicated URL request therefore consumes the register/guard outcome. The generic IngestionInput already carries a token, so a generic URL input must not be confused with the separate UrlIngestionRequest body. Story 34.1's approved criteria now cover its file/URL transport boundary, indeterminate acceptance, and accepted-but-unscheduled recovery after the prerequisite contract rule. Preserve the current story IDs and carry the eventual approved execution-order obligation into later sprint planning; the tracker remains frozen.
+
+| Verified claim | Re-runnable command | Observation | Verdict |
+| :--- | :--- | :--- | :--- |
+| IngestionInput declares an optional IdempotencyToken property. | `rg -n '^    public string\? IdempotencyToken' src/Hexalith.Memories.Contracts/V1/IngestionInput.cs` | The nullable string property declaration is present. | confirmed |
+| UrlIngestionRequest has no IdempotencyToken declaration. | `rg -n 'IdempotencyToken' src/Hexalith.Memories.Contracts/V1/UrlIngestionRequest.cs` | No match, exit 1. This states the dedicated body shape, not the generic input's behavior. | confirmed |
+| AD-12 adopts a single owning register and requires registration of additive V1 changes. | `sed -n '165p' _bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md` | The adopted rule states the register ownership and same-change reservation obligation. This is design intent, not evidence of implementation. | confirmed |
+| EvidencePacket is a current contract source file. | `test -f src/Hexalith.Memories.Contracts/V1/EvidencePacket.cs` | File exists, exit 0. This does not certify canonical serialization or a register guard. | confirmed |
+
+Stories 34.33, 34.1, and 34.8 have revised acceptance text registered after user approval. Story approval records backlog planning; implementation, sprint-status changes, and qualification require their separate evidence and workflow.
+
+**Next-slot dependency review — 2026-10-05:** AD-4/AD-23 require CloudEvent duplicate identity to consume validated canonical source/id and injective key composition; Story 34.7 owns that composition contract. AD-5 requires candidate tenant routing from an authenticated channel tuple followed by allowlist, grant, and Active checks; Stories 34.8–34.10 own those boundaries. The current raw CloudEvent path's ID-only key and publisher-source routing do not satisfy those adopted rules. Therefore, do not place Story 34.2 next by numeric adjacency or bundle its prerequisite outcomes into its acceptance criteria. Propose the existing Story 34.8 operator-artifact outcome next: the artifact's bounded identity/privilege/routing lookup can be demonstrated independently of the later per-tenant grant and delivery adapters. This is a proposed planning sequence, not approval or implementation evidence; CloudEvent product activation remains subject to its phase gates.
+
+| Verified claim supporting the dependency inference | Re-runnable command | Observation | Verdict |
+| :--- | :--- | :--- | :--- |
+| The raw CloudEvent dedup call passes envelope.Id without envelope.Source. | `rg -n 'EventStoreDedupKey.Build\(route.TenantId, route.CaseId, envelope.Id\)' src/Hexalith.Memories.EventStore/EventIngestionService.cs` | Matching call at line 144; source is not an argument. | confirmed |
+| TenantEventRouter currently selects a candidate tenant using envelope.Source and SourceToTenantMap. | `rg -n -e 'MatchTenant\(envelope.Source' -e 'SourceToTenantMap' src/Hexalith.Memories.EventStore/TenantEventRouter.cs` | Source-derived lookup at line 67. This is a source observation, not runtime certification of every delivery route. | confirmed |
+| AD-5 adopts one protected operator artifact for identity, privilege and authenticated-channel routing facts. | `sed -n '119p' _bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md` | The adopted rule states the single operator writer and finite mappings; routing selects a candidate and never grants tenant authority. Design intent only. | confirmed |
+| AD-23 defines bounded external CloudEvent identities and registered key codecs. | `sed -n '243,261p' _bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md` | Normative grammar requires registered codecs and collision detection for digest reservations. Design intent only. | confirmed |
+
+**Reference correction — 2026-10-05:** Story 34.33's slice proof now points to Story 34.40 for the telemetry V1 catalogue; Story 34.39 is Redis sizing. The approved register/guard criteria are unchanged.
+
+**Operator-artifact approval — 2026-10-05:** the user approved Story 34.8's four clarified criteria and its placement after Story 34.1 with C. The earlier next-slot proposal is now an approved prefix element. Review Story 34.9 next as the lifecycle-owned grant/admission protocol consuming that artifact. Its planned authoritative tenant-state reader and grant evidence are part of that admission outcome; the existing cached status helper is not presumed to implement them, and a future lifecycle-transition story is not presumed completed. Revalidation must account for durable authority references and for activities outside the trace-linked base rather than assuming one wrapper covers every runtime path. The registered Story 34.9 criteria remain pending clarification and review.
+
+
 
 ### Story 34.1: Accept V1 ingestion at EventStore first
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR13, FR75; AD-2/AD-4.
 
 As a developer,
-I want an acknowledged ingestion command to be durable before projection starts,
-So that a retry cannot create a second memory unit.
+I want file and URL ingestion accepted durably before projection starts,
+So that retries and scheduling failures cannot duplicate memory.
 
 **Acceptance Criteria:**
 
-**Given the same authorized tenant, case, operation and idempotency token, when a file or URL ingestion request is retried, then one EventStore mutation is accepted before any projection scheduling and all attempts return the same operation identity.**
+**Given** an authorized request with the same tenant, case, operation, and idempotency token,
+**When** requests repeat concurrently or after restart,
+**Then** one durable mutation produces the same memory-unit and operation identities,
+**And** projection scheduling follows confirmed EventStore acceptance.
 
-**Given EventStore refusal or timeout before acceptance, when ingestion responds, then no projection is scheduled as a successful mutation and the recovery result does not claim an indexed unit.**
+**Given** a dedicated URL request,
+**When** it supplies an optional retry token,
+**Then** the registered V1 field carries that token into the same acceptance protocol,
+**And** requests without it retain V1 compatibility.
+
+**Given** rejection or uncertain acceptance after a timeout,
+**When** ingestion responds,
+**Then** it distinguishes those outcomes and schedules only after acceptance is confirmed,
+**And** retries reconcile the original identity.
+
+**Given** durable acceptance followed by scheduling failure,
+**When** the caller retries,
+**Then** scheduling resumes using the accepted operation without another mutation or rollback,
+**And** the response reports pending recovery accurately.
+
+**Given** requests under different authorized tenant, case, or operation scopes,
+**When** tokens match,
+**Then** their identities remain separate,
+**And** unauthorized requests fail before acceptance, content access, reservation, or scheduling, without revealing another scope's operation.
 
 #### Dev Notes
 
@@ -5956,18 +6137,25 @@ So that a retry cannot create a second memory unit.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.1 definition | `historical-reference-only` | Retain the approved goal and story ID; the user approved clarified criteria and placement after Story 34.33 on 2026-10-05. |
 
 ##### Slice Proof
 
-One authoritative V1 command acceptance boundary is the slice; CloudEvent identity is separate.
+One authoritative V1 file/URL acceptance boundary is the independently demonstrable outcome. Its normal retry, transport compatibility, rejected/uncertain acceptance, accepted-but-unscheduled recovery, and authority/scope checks are failure and compatibility cases of that same boundary. The five criteria do not qualify projection completion, CloudEvent identity, or all internal authority paths. Execution consumes the completed Story 34.33 register/guard outcome; approval of its planning definition is not implementation evidence. New acceptance-path tests must use authenticated principals and assert refusal before acceptance and side effects for unauthorized scopes; matching key prefixes or mocked storage names alone do not prove isolation.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against `main` at baseline `b31d1352` and its current worktree. The user approved the clarified criteria on 2026-10-05; they describe future implementation intent. These observations verify the source baseline, not completion of that intent.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "IngestionEndpoints currently schedules an ingestion workflow" | Existence/behavior/location | `rg -n "ScheduleAsync\(candidateInstanceId\|ScheduleNewWorkflowAsync" src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` | Both scheduling call sites are present. | `confirmed` |
+| "IngestionEndpoints currently schedules an ingestion workflow" | Existence/behavior/location | `rg -n -e 'ScheduleAsync\(candidateInstanceId' -e 'ScheduleNewWorkflowAsync' src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` | The file handler schedules at line 140 and the dedicated URL handler at line 319. | `confirmed` |
+| "IngestionInput declares an optional IdempotencyToken property" | Existence/location | `rg -n '^    public string\? IdempotencyToken' src/Hexalith.Memories.Contracts/V1/IngestionInput.cs` | Nullable string property present at line 65. | `confirmed` |
+| "UrlIngestionRequest has no IdempotencyToken declaration" | Absence/location | `rg -n 'IdempotencyToken' src/Hexalith.Memories.Contracts/V1/UrlIngestionRequest.cs` | No match, exit 1; the dedicated URL body differs from generic IngestionInput. | `confirmed` |
+| "The endpoint and scheduler files contain no IMemoriesCommandStore or AcceptAsync reference" | Absence/location | `rg -n -e 'IMemoriesCommandStore' -e 'AcceptAsync' src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs` | No match, exit 1. This is a source-reference observation, not proof of every transitive runtime path. | `confirmed` |
+| "EventStoreMemoriesCommandStore generates a new message ID and returns response.CorrelationId" | Source behavior/location | `rg -n -e 'string messageId = BaUlid.New' -e 'return response.CorrelationId' src/Hexalith.Memories.Server/EventStoreIntegration/EventStoreMemoriesCommandStore.cs` | Both statements are present at lines 40 and 58. Reading the complete method confirms the source flow; this does not prove durable ingestion idempotency. | `confirmed` |
+
+**Evidence-command correction — 2026-10-05:** the previous matcher used an escaped alternation and returned no match (exit 1). The separate `-e` expressions above return the two observed scheduling call sites. This repairs the evidence command while retaining the desired authoritative acceptance outcome.
 
 
 ### Story 34.2: Suppress duplicate CloudEvent mutations
@@ -6187,14 +6375,28 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR65; NFR10; AD-5/AD-15.
 
 As an operator,
-I want one protected operator artifact for app identity, lifecycle privileges and routing,
-So that an internal app cannot grant itself a tenant or lifecycle operation.
+I want one protected, versioned artifact for workload identity, lifecycle privileges, and routing,
+So that internal applications cannot grant themselves authority.
 
 **Acceptance Criteria:**
 
-**Given an internal caller, when a protected operation is requested, then one versioned operator-secret artifact supplies the finite app-ID to `system:*` mapping and its allowed lifecycle operations; absent or unknown entries fail closed.**
+**Given** an authenticated workload,
+**When** its identity is resolved,
+**Then** the artifact provides an explicit principal mapping and finite lifecycle-operation permissions,
+**And** it records exact component/topic/publisher route mappings and the adopted 60-second freshness bound.
 
-**Given an artifact change, when it is published, then the previous version, writer, review, and affected authorization decision are observable without exposing secret values.**
+**Given** an unavailable, malformed, expired, or unsupported artifact, or an unknown identity or ambiguous mapping,
+**When** lookup runs,
+**Then** it fails closed with a sanitized diagnostic.
+
+**Given** an application attempts to change the artifact or supply its own privilege through request fields or ordinary configuration,
+**When** authorization runs,
+**Then** it cannot gain authority,
+**And** only the authenticated operator writer can publish changes; negative tests demonstrate that boundary.
+
+**Given** an approved operator change,
+**When** a new revision is published,
+**Then** the previous and new versions, writer, review record, and affected mappings are observable without exposing secret values.
 
 #### Dev Notes
 
@@ -6203,18 +6405,19 @@ So that an internal app cannot grant itself a tenant or lifecycle operation.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.8 definition | `historical-reference-only` | Retain the approved goal and ID; clarified criteria and placement after Story 34.1 were approved on 2026-10-05. |
 
 ##### Slice Proof
 
-One operator-owned artifact is the slice; per-tenant grant propagation is 34.9.
+One protected operator artifact and its bounded identity, privilege, and route lookups are the independently demonstrable outcome. Its four criteria cover conforming lookup, fail-closed lookup, the single operator writer boundary, and observable version publication. The candidate route is input to later tenant authorization. Story 34.9 owns per-tenant grant/revocation enforcement and Story 34.10 owns delivery admission. This slice can be demonstrated without those later adapters by proving artifact lookups and publication with authenticated principals; caller-supplied app names or privilege fields are not authority. Execution consumes the completed Story 34.33 contract registration outcome wherever it introduces governed wire names; planning approval does not establish that implementation. Read/publish access uses the adopted AD-15 operator secret scope through Dapr, and the negative publication/lookup tests must demonstrate refusal with authenticated unprivileged principals. This planning record supplies no complete FR44 or qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against `main` at baseline `b31d1352` and its current worktree. The user approved the clarified criteria on 2026-10-05; they are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantAuthorizationMiddleware is a current Server component" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Authentication/TenantAuthorizationMiddleware.cs` | The middleware file exists; the adopted operator artifact remains a separate target. | `confirmed` |
+| "TenantAuthorizationMiddleware is a current Server component" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Authentication/TenantAuthorizationMiddleware.cs` | The middleware source file exists, exit 0. This establishes location only; artifact semantics and lookup/publication tests are future implementation intent. | `confirmed` |
 
 
 ### Story 34.9: Enforce tenant grants and revocation bound
@@ -6245,11 +6448,18 @@ One grant and revocation admission rule is the slice; channel-to-tenant routing 
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against `main` at baseline `b31d1352` and its current worktree. Revised acceptance criteria await user review. These source observations do not qualify grant/revocation behavior or an authoritative tenant-state read.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantStatusGuard currently validates tenant status" | Existence/behavior/location | `rg -n "ValidateTenantActiveAsync" src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs` | An active-status guard exists; it alone is not the adopted grant/revocation contract. | `confirmed` |
+| "TenantStatusGuard currently validates tenant status" | Existence/behavior/location | `rg -n 'ValidateTenantActiveAsync' src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs` | Method exists at line 21; the complete method reads tenant state and permits Active. This does not prove the AD-5 grant/revocation contract. | `confirmed` |
+| "TenantStatusGuard reads GetTenantForStatusGuardAsync and returns null for Active" | Source behavior/location | `rg -n -e 'GetTenantForStatusGuardAsync' -e 'TenantStatus.Active => null' src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs` | The lookup and Active branch occur at lines 23 and 31. The method accepts tenantId, not an authenticated workload principal or grant. | `confirmed` |
+| "GetTenantForStatusGuardAsync is documented as using the short-lived status-read cache" | Source documentation/location | `sed -n '218,233p' src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs` | The method's documentation and delegation to GetTenantEntryForStatusGuardAsync are present. This is not evidence that it reads authoritative committed EventStore state. | `confirmed` |
+| "MemoriesTenantAggregateState defines TenantId and Status" | Existence/location | `rg -n -e '^    public .* (TenantId|Status)' src/Hexalith.Memories.EventStore/Domain/States/MemoriesTenantAggregateState.cs` | TenantId and TenantStatus properties are present. A production read adapter, grant extension, and integration evidence remain implementation intent, not inferred SDK capabilities. | `confirmed` |
+| "WorkflowTraceLinkedActivity wraps RunActivityAsync with tracing" | Source behavior/location | `sed -n '17,46p' src/Hexalith.Memories.Server/Activities/WorkflowTraceLinkedActivity.cs` | The wrapper starts a linked trace then calls RunActivityAsync. This source read establishes its tracing role only. | `confirmed` |
+| "Some Server activities inherit directly from WorkflowActivity" | Existence/location | `rg -n ': WorkflowActivity<' src/Hexalith.Memories.Server` | Results include restore, tenant lifecycle, case projection, and derived-store activities as well as the trace-linked base. Do not assume all activities share that base. | `confirmed` |
+
+**Implementation intent:** consume Story 34.8's authenticated operator-artifact lookups, preserve delegated subjects, and implement the lifecycle-owned grant and authoritative committed-state reads required by the AD-5/AD-6 admission rule. Prove grant withdrawal, allowlist removal, and operator-authority withdrawal from their committed/published change time, including cached and resumed work, using authenticated principals and before-side-effect refusal evidence. AD-5's three enumerated exemptions retain their exact principal, operation, scope, and freshness constraints. This intent closes no current implementation or qualification gap.
 
 
 ### Story 34.10: Route pubsub tenant from authenticated channel
@@ -7062,14 +7272,23 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** AD-12/AD-22; FR19, FR44; G6.
 
 As a contract consumer,
-I want one versioned `Contracts.V1` name register and a failing shape guard,
+I want one versioned `Contracts.V1` register and a build guard,
 So that evidence-bearing fields and closed values cannot drift invisibly.
 
 **Acceptance Criteria:**
 
-**Given an evidence-bearing V1 field, status, axis state, packet state or error code is exposed, when the contract build runs, then the register fixes its wire name and shape and the guard fails for an unregistered or changed name.**
+**Given** current evidence-bearing V1 contracts,
+**When** contract validation runs,
+**Then** one tracked register in `Hexalith.Memories.Contracts` records their wire names, JSON shapes, null/absence rules, property order, and exposed closed values.
 
-**Given a legitimate additive field is introduced, when the registered contract tests run, then the prior wire names remain valid and the new field has an explicit version and null/absence rule.**
+**Given** an unregistered field or a conflicting name, shape, nullability, or closed value,
+**When** validation runs,
+**Then** the build fails with a diagnostic identifying the mismatch,
+**And** negative fixtures demonstrate each failure.
+
+**Given** an approved additive field or value,
+**When** it is registered in the same change with explicit version and null/absence rules,
+**Then** validation passes while prior reservations remain unchanged.
 
 #### Dev Notes
 
@@ -7078,18 +7297,20 @@ So that evidence-bearing fields and closed values cannot drift invisibly.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.33 definition | `historical-reference-only` | Retain the approved goal and story ID; the user approved the clarified criteria and first execution position on 2026-10-05. |
 
 ##### Slice Proof
 
-One versioned register and its build guard are the outcome; packet serialization is Story 33.8.
+One versioned register and its build guard are the independently demonstrable outcome. A conforming registered contract passes, a conflicting or unregistered contract fails with a useful diagnostic, and an approved registered additive change passes. Negative fixtures prove this contract rule; runtime tenant isolation remains a separate proof obligation. Explicit-null serialization is Story 34.34, canonical packet serialization is Story 33.8, and the broader V1-plane inventory is Story 34.40. Their future production behavior is not required to demonstrate this guard. Register metadata expresses the adopted contract intent; recording an existing omission does not approve it as final semantics or close its convergence work.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against `main` at baseline `b31d1352` and its current worktree. The acceptance criteria describe implementation intent; the observations below establish source existence and adopted design rules only.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "Contracts.V1 EvidencePacket is a current wire type" | Existence/location | `test -f src/Hexalith.Memories.Contracts/V1/EvidencePacket.cs` | The current contract type exists; a register and build guard remain to implement. | `confirmed` |
+| "Contracts.V1 EvidencePacket is a current wire type" | Existence/location | `test -f src/Hexalith.Memories.Contracts/V1/EvidencePacket.cs` | File exists, exit 0. This does not establish a register guard, runtime semantics, or canonical serialization. | `confirmed` |
+| "The name register is a single tracked file inside Hexalith.Memories.Contracts" | Adopted design rule/location | `sed -n '165p' _bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md` | AD-12 adopts this ownership/location rule and same-change registration of new wire names, shapes, and nullability. This is future implementation intent. | `confirmed` |
 
 
 ### Story 34.34: Serialize explicit nulls for evidence fields
