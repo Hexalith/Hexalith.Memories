@@ -39,10 +39,22 @@ independent approval. Historical PG-ONPREM-1 C1.15 capture grants no PG2 credit.
 | C5 operations acceptance | `operator-pending` | Neutral and PostgreSQL-specific runbook structure, ownership, monitoring, RPO/RTO, rollback, rotation, and decommission contracts are repository-validated. | Named operations acceptance of the exact immutable profile, evidence set, capacity/cost, incident, restore, and maintenance procedures. | Platform Operations reviewer | Review actual C0-C4 packets and record an independent same-hash decision. |
 | C6 security acceptance | `operator-pending` | Least-privilege, Dapr-only data plane, TLS/secret, bounded observability, evidence redaction, and tenant-isolation documentation guards are repository-validated. | Named security acceptance of the same profile and immutable evidence hashes, independent of the Platform Operations reviewer. | Security reviewer | Review actual packets and record a different named same-hash decision. |
 
-Current C1 blockers are the absent PG-ONPREM-2 C1.15 producer and independent
-review, pending C1.16 connection linkage/capture/review, and twenty-three
-unregistered gate owners. No current-profile C1 predecessor or authorized
-running-target input is established by this offline matrix.
+Current C1 blockers are the separately owned, unregistered PG-ONPREM-2 C1.15
+producer renewal and independent review, pending Story 27.22/C1.16 connection
+linkage/capture/review, and twenty-three unregistered gate owners. The existing
+C1.15/PG2 dispatcher rejects with `unsupported-successor-gate-or-historical-opt-in`
+before target calls or output-directory creation; renewing it requires a separate
+approved scope owned by Deployment Adapter Developer. Story 27.21's accepted PG1
+capture provides no renewal credit. Approved/done current-profile gate-owner
+registrations and twenty-five distinct passed artifacts with independent named
+Platform Operations and Security approvals of the same hash are still required.
+
+No accepted current-profile C1 predecessor, authorized non-Production target scope,
+or external evidence-custody location has been supplied for this offline pass.
+Live C0/C2-C4 execution, independent post-evidence C5/C6 acceptance, terminal
+validation, the exact four-path close-out, staged postflight, and authenticated
+remote containment therefore remain pending. Story 27.4 remains incomplete, A41
+and its sprint action remain open, and Production lifecycle writes stay disabled.
 
 The only permitted states are `repository-validated`, `operator-pending`, `passed`,
 and `rejected`. Only authentic external packets in state `passed` can satisfy C2-C6.
@@ -60,14 +72,95 @@ Production or A41.
 
 ## Offline repository verification
 
-These commands validate implementation structure and deterministic fixtures only:
+Run from the repository root after the [README clone/setup step](../../../README.md#2-clone-and-initialize-submodules-2-min-cold).
+The Debug/source-reference build requires those dependency checkouts. Only submodules
+declared in the root `.gitmodules` may be initialized, without `--recursive`; this
+verification block does not initialize or update any checkout.
+
+These commands validate implementation structure and deterministic fixtures only.
+The scoped Bash block stops on any command or pipeline failure and retains each
+command, exit code, stdout/stderr log, result XML, source revision/worktree diff,
+nonrecursive dependency revisions, and built assembly hash in a unique local
+`/tmp` folder. Keep the printed folder for review. It is offline repository
+verification output, not an external custody archive or live evidence authority.
 
 ```bash
-PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p 'test_*.py' -v
-dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Release --disable-build-servers -m:1 /nr:false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0
-DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Release/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryRetentionDecisionTests -parallel none -noLogo
-git diff --check
+(
+    set -euo pipefail
+    verification_dir=$(mktemp -d /tmp/story-27-4-offline.XXXXXXXX)
+    trap 'verification_status=$?; printf "%s\n" "$verification_status" > "$verification_dir/exit-code"; printf "Offline verification folder: %s (exit %s)\n" "$verification_dir" "$verification_status"; exit "$verification_status"' EXIT
+
+    run_logged() {
+        local name=$1
+        shift
+        printf '%q ' "$@" > "$verification_dir/$name.command"
+        printf '\n' >> "$verification_dir/$name.command"
+        local command_status=0
+        "$@" > "$verification_dir/$name.stdout.log" 2> "$verification_dir/$name.stderr.log" || command_status=$?
+        printf '%s\n' "$command_status" > "$verification_dir/$name.exit-code"
+        return "$command_status"
+    }
+
+    run_logged source-revision git rev-parse HEAD
+    run_logged source-status git status --porcelain=v1 --untracked-files=all
+    run_logged source-diff git diff --binary HEAD
+    run_logged dependency-revisions git submodule status
+    run_logged lifecycle env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p 'test_*.py' -v
+    run_logged build dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug -m:1 -p:UseHexalithProjectReferences=true
+    assembly=tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll
+    run_logged assembly-sha256 sha256sum "$assembly"
+    run_logged architecture env DiffEngine_Disabled=true dotnet exec "$assembly" -class Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryRetentionDecisionTests -class Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryA41CloseOutTests -parallelMode none -noLogo -failSkips -result-xml "$verification_dir/architecture.xml"
+    run_logged architecture-results python3 - "$verification_dir/architecture.xml" <<'PY'
+from collections import Counter
+from pathlib import Path
+import sys
+import xml.etree.ElementTree as ET
+
+report = Path(sys.argv[1])
+if not report.is_file():
+    raise SystemExit("Missing architecture result XML")
+expected = {
+    "Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryRetentionDecisionTests": 12,
+    "Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryA41CloseOutTests": 5,
+}
+tests = ET.parse(report).getroot().findall(".//test")
+counts = Counter(test.get("type") for test in tests)
+if counts != Counter(expected):
+    raise SystemExit(f"Wrong architecture per-class counts: {dict(counts)}; expected {expected}")
+if any(test.get("result") != "Pass" for test in tests):
+    raise SystemExit("Architecture results contain a non-Pass test")
+print("12 retention-decision and 5 A41 guards passed; every result is Pass.")
+PY
+    run_logged whitespace git diff --check
+)
 ```
+
+Initial offline execution from the repository root on 2026-10-06 produced the
+streamed results below; no retained command/source receipt was created for that
+initial run. Use the block above to retain a fresh receipt. These historical counts
+do not establish verification of a later worktree.
+
+| Check | Result |
+| :---- | :----- |
+| Lifecycle tooling | 79 passed; zero failures, errors, or skips. Includes the existing scenario, predecessor-denial, disabled-state cleanup, and complete close-out fixtures. |
+| Debug/source-reference Server test build | Zero warnings and zero errors. |
+| Exact architecture selectors | 12 retention-decision guards plus 5 A41 guards: 17 passed; zero errors, failures, skips, or not-run tests. |
+| Whitespace | `git diff --check` passed. |
+
+Final parent execution of the reviewed block on 2026-10-06 also passed: 79
+lifecycle tests, exact 12/5 architecture counts with every result `Pass`, a Debug
+build with zero warnings/errors, and clean whitespace. All ten logged commands
+and the scoped block exited zero. The retained local receipt is
+`/tmp/story-27-4-offline.4PZnqjZw`; it contains the executed commands, exit codes,
+stdout/stderr, architecture XML, full source revision and execution-time diff,
+nonrecursive dependency revisions, and assembly SHA-256. Its revision and assembly
+hash were independently checked. Subsequent changes only record these results and
+the review disposition; the receipt is offline validation, not live gate credit.
+
+The fixture close-out chain uses temporary repositories and mocked targets; it
+grants no live checkpoint, approval, A41 transition, or publication credit. No new
+tests were added for this command correction. The C0-C6 matrix and all close-out
+prerequisites above retain their recorded states.
 
 The Production producers, close-out preflight/postflight, and publish verifier are
 documented in
