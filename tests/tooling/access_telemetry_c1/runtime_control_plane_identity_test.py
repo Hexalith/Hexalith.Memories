@@ -1472,7 +1472,7 @@ class RuntimeControlPlaneIdentityTests(unittest.TestCase):
 
         epic_context = EPIC_CONTEXT.read_text(encoding="utf-8")
         self.assertIn(
-            "The remaining twenty-four C1 gates stay held without a registered owner.",
+            "Twenty-three other gates remain held and unregistered; planning drafts confer no ownership or gate credit.",
             epic_context,
         )
         self.assertIn(INDEPENDENT_REVIEW_PATH, epic_context)

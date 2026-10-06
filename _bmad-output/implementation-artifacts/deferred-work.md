@@ -5637,3 +5637,10 @@ status: open
   summary: Deployment Adapter Developer owns separately scoped complete selected-Pod schema validation before filtering non-Running siblings.
   evidence: B6: inherited Get-C1StablePods in tools/access-telemetry-c1-component-backend.ps1 accepts any alphabetic phase and filters non-Running observations before validating complete name/UID identity; a malformed non-Running sibling beside a valid Running Pod can be omitted from an observed capture. This predates PG2 adoption. Reopen by validating Kubernetes phase values and complete typed identities for every selected Pod before filtering, with executed Bogus-phase/missing-UID negative fixtures and legitimate Pending-sibling coverage.
 
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-22-component-and-backend-identity.md`
+  summary: Platform Operations must bind and protect the approved kubeconfig context's actual endpoint and cluster trust identity before live C1.16 collection.
+  evidence: B6: Existing C1 producers and the new candidate collector trust a context-name mapping, which can be repointed independently of the scope receipt. This inherited operator trust boundary is not live-authorized by offline preparation. Reopen only with retrievable target authority binding the actual endpoint/trust fingerprint and protected configuration throughout the observation window; missing or uncertain binding prohibits contact and leaves C1.16 pending.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-22-component-and-backend-identity.md`
+  summary: Deployment Adapter Developer must execute the emitted session query contract in an isolated PostgreSQL 18.6 environment before live C1.16 collection.
+  evidence: V3: The synthetic kubectl fixture manufactures JSON independently of SQL execution, so renaming a SQL output alias does not fail the 16-method suite. The approved slice is synthetic offline preparation. Reopen with an isolated same-version query execution check proving exact fields, role/database, timestamp and TLS shapes without tenant records; the live checkpoint stays pending until this prerequisite is met.

@@ -1,6 +1,6 @@
 ---
 title: 'Story 27.22: Component and backend identity'
-status: backlog
+status: in-progress
 registration: registered
 created: '2026-10-04'
 story_key: '27-22-component-and-backend-identity'
@@ -16,7 +16,7 @@ context:
 
 # Story 27.22: Component and backend identity
 
-One checked backlog owner for C1.16, registered after approved PG2 adoption and
+One checked in-progress owner for C1.16, registered after approved PG2 adoption and
 focused fixture verification. Repository support is callable; live capture,
 connection linkage, independent acceptance and completion remain pending.
 
@@ -69,6 +69,8 @@ does not evaluate live Production write state or Dapr-to-backend linkage.
   preserve historical opt-in and reject invalid mode/profile before calls/output.
 - [x] Execute complete, denied, missing, malformed, drift, secret, timeout,
   version/image/peer and immutability fixtures; run the one-file slice guard.
+- [x] Prepare a separate bounded, read-only linkage candidate collector and offline
+  attribution/denial fixtures; preserve the neutral producer and pending checkpoint.
 - [ ] Obtain separately scoped target authorization, an external archive,
   protected runtime credential access and a named independent reviewer before contact.
 - [ ] Capture actual eligible-target evidence and independently prove connection
@@ -147,7 +149,59 @@ remains another held gate requiring live independently authenticated denial evid
 | :---- | :------------ | :---------- | :------------- |
 | Deployment Adapter Developer / Platform Operations | Scoped eligible-target authorization, protected credential access and external archive | No live contact/capture. | Explicit scope and configured target/archive exist. |
 | Deployment Adapter Developer / independent reviewer | Actual Dapr-to-backend linkage proof and reviewer assignment | C1.16 remains pending / not complete. | Independently attributable connection evidence and accepted immutable capture. |
+| Platform Operations | Approved actual API endpoint/trust fingerprint and protected kubeconfig mapping | Context-name scope alone does not authorize live contact. | Retrievable authority binds and protects the selected target throughout observation. |
+| Deployment Adapter Developer | Executed session SQL contract against isolated PostgreSQL 18.6 | Synthetic JSON does not prove the emitted SQL contract; live use remains prohibited. | Same-version execution proves exact fields, role/database, timestamps and TLS shapes without tenant records. |
 | Security / qualification owners | Fresh same-hash security/operations dispositions and other gate evidence | Production, Story 27.4 completion and A41 remain blocked. | Their separately owned required gates and approvals pass. |
+
+## Offline linkage preparation — 2026-10-06
+
+Added `tools/verify-access-telemetry-c1-linkage.ps1` and
+`tests/tooling/access_telemetry_c1/linkage_test.py` under the approved offline
+preparation scope. The separate collector requires exact PG2, a bounded operator
+scope receipt, approved source/application image hashes, a selected lifecycle pod,
+an external archive binding and a named independent reviewer. It brackets one
+authenticated strong GET for a random absent synthetic key with read-only selected
+PostgreSQL session/TLS observations, requiring one stable candidate session
+whose activity advances within the challenge interval. It rechecks Component,
+pod UID/IP, images and container incarnation before emitting positive observations.
+The existing C1.16 producer and historical PG1 evidence remain unchanged.
+
+The command, scope schema and archive/reviewer handoff are documented in the
+[production appendix](../../docs/operations/access-telemetry-adapter-production.md#separate-c116-connection-linkage-candidate).
+Timestamp correlation alone cannot exclude hidden sequential pool reuse. The
+operator must supply independently retained evidence of an exclusive read window;
+the reviewer must verify that evidence and the immutable identity and linkage
+receipts together. Missing or unprovable attribution remains a blocker. The packet
+retains `connectionLinkage`, `componentBehavior`, `productionLifecycleWrites` and
+`gateStatus` as `not-evaluated`, `productionGatePassed: false`, and independent
+disposition `pending`, including after complete offline fixtures.
+
+Changed attribution surfaces are the selected pod IP, runtime role/database, TLS
+session identity/timestamps and Dapr absent-key GET. Focused
+`test_scope_and_source_mismatches_precede_calls_and_directory_creation`,
+`test_wrong_ip_role_database_tls_active_and_timestamp_fields_block`, and
+`test_wrong_images_and_component_scope_block_before_challenge` attach negative
+evidence for cross-namespace, wrong workload scope, another pod IP, wrong runtime
+role and another database. These fixtures grant no physical tenant-isolation gate
+credit and introduce no tenant-data writes or record exports.
+
+Verification receipts for this offline preparation:
+
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p 'linkage_test.py' -v` — final review-patched run: 26 passed, zero failures/errors/skips in 274.195 seconds; raw log `/tmp/story-27-22-final-linkage-tests.log`.
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p '*_test.py' -v` — final full C1 run: 85 passed, zero failures/errors/skips in 1075.938 seconds; raw log `/tmp/story-27-22-final-all-c1-tests-v2.log`.
+- `python3 tools/check-story-slice-scope.py --require-record --story-key 27-22-component-and-backend-identity` — one checked story.
+- `git diff --check` — passed with no whitespace errors.
+- PowerShell parser — passed; final source hashes and the frozen intent were checked, with original producers and approved deployment inputs unchanged.
+
+No live collection ran. The configured target's 2026-10-05 preflight observed
+PostgreSQL 18.4, so it remains ineligible for PostgreSQL 18.6 / 180006 exact-PG2
+capture. `/approved-evidence` remains an absent example path. An eligible target,
+separately scoped contact authority, protected runtime credential access, external
+archive, independent exclusive-window evidence, actual endpoint/trust binding,
+isolated same-version SQL-contract execution and named reviewer remain required
+before live collection. The two additional review prerequisites are recorded in
+the [deferred-work ledger](deferred-work.md). The C1.16 checkpoint remains pending / not complete;
+C1.17, other C1 gates, security, Production, Story 27.4 and A41 receive no credit.
 
 ## Remaining qualification prerequisites — dated 2026-10-04
 

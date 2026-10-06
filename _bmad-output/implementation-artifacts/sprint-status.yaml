@@ -48,7 +48,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-07-05T17:40:39+02:00
-last_updated: 2026-10-04
+last_updated: '2026-10-06'
 project: memories
 project_key: NOKEY
 tracking_system: file-system
@@ -463,7 +463,7 @@ development_status:
   27-2-bounded-retention-ttl-and-purge-implementation: done
   27-3-production-adapter-and-deployment-profile: done  # 2026-09-03: code review found the 2026-09-01 "review already complete" entry was fabricated (cited deferred-work.md entries never existed); independently re-verified the underlying CI evidence for real (gh run 33400812038, job production-deployment-verification success), wrote DW-725/DW-726/DW-727, and closed C2/AC6 on that verified evidence. AC6's literal-text gap remains tracked open at DW-721 pending a correct-course amendment.
   27-21-runtime-and-control-plane-identity: done
-  27-22-component-and-backend-identity: backlog  # 2026-10-04: checked C1.16-only registration after exact PG2 adoption; live capture/linkage/review pending, no gate or activation credit.
+  27-22-component-and-backend-identity: in-progress  # 2026-10-06: offline linkage preparation; live capture/linkage/review pending, no gate or activation credit.
   27-4-retention-verification-operations-runbook-and-a41-close-out: in-progress
   # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
   # C1.15 as backlog; producer existence does not pass that gate. The remaining twenty-four C1
