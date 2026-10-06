@@ -42,8 +42,11 @@ approved profile packet in place.
 
 ## C1.16 component and backend capture
 
-Story 27.22 owns only C1.16 and is in progress for offline preparation. After separately scoped operator
-authorization and reviewer assignment, its callable producer is:
+Story 27.22 owns only C1.16 and is done after independently accepted
+component/backend identity and full-set linkage for the captured 2026-10-06
+window. The dated disposition below records that acceptance; future captures
+require separately scoped authority and reviewer assignment. Its callable
+identity producer is:
 
 ```powershell
 pwsh ./tools/verify-access-telemetry-c1.ps1 -Gate C1.16 -ProfileId PG-ONPREM-2 -EvidenceDirectory /approved-evidence/access-telemetry-c1/C1.16
@@ -62,6 +65,8 @@ historical mode requiring `-AllowHistoricalProfileCapture`; C1.15/PG2, lowercase
 successor literals and historical opt-in/PG2 are refused before calls/output.
 
 ### Separate C1.16 connection linkage candidate
+
+Historical preparation record, superseded for the accepted window below:
 
 Offline linkage support was prepared on **2026-10-06**. Live collection, external
 archive retention and independent disposition remain pending. The configured
@@ -246,6 +251,8 @@ skips, partial suites, failed inspection and source/finalization failures cannot
 produce a passing qualification receipt. **Only V3's isolated emitted-SQL
 prerequisite is closed.** Re-execute and review after source/query/profile drift.
 
+Historical V3-only summary, superseded for the accepted window below:
+
 B6 target endpoint/trust authority and all eligible-target, credential, exclusive
 window, archive and reviewer prerequisites remain required. This local lane
 establishes no Dapr connection linkage, independent C1.16 acceptance, other-gate,
@@ -264,6 +271,14 @@ mean candidate observations only. Every packet retains `connectionLinkage`,
 `pending`. A nonzero exit grants no positive partial evidence. Neither receipt
 changes the C1.16 checkpoint or grants C1.17, another C1 gate, security,
 Production, Story 27.4 or A41 credit.
+
+### Independently accepted captured C1.16 — 2026-10-06
+
+The [accepted disposition](../../../../../evidence/hexalith-memories/C1.16/20261006T125948Z-dbbe89368caa/capture-pool-20261006T150600Z-3c2f874a/independent-c1.16-accepted-disposition.json), SHA-256 `ad2d3024dff5cd00cb8518a3e65b16d006acf596046d193373d0ae55ea2cff70`, supersedes the pending C1.16 summaries above only for this closed actual PG2 window. Story27.22 is done and its C1.16 checkpoint is completed; all three build reviews and final repository checks are complete.
+
+The [separately reviewed full-set procedure](../../../../../evidence/hexalith-memories/C1.16/20261006T125948Z-dbbe89368caa/capture-pool-20261006T150600Z-3c2f874a/independent-external-pool-procedure-disposition.json) retains every session from the unchanged selected-IP SQL. Two stable idle runtime TLS sessions were observed; exactly one existing session advances both activity clocks around one genuine204/empty-body GET, with the entire other row unchanged and independently verified exclusive controls. The canonical collector still refuses two sessions with exit1/session-attribution-ambiguous and null observations; its denied packet remains immutable and no filtered or repaired input is supplied.
+
+[Closure](../../../../../evidence/hexalith-memories/C1.16/20261006T125948Z-dbbe89368caa/capture-pool-20261006T150600Z-3c2f874a/exclusive-window-post.json) and [final controls](../../../../../evidence/hexalith-memories/C1.16/20261006T125948Z-dbbe89368caa/capture-pool-20261006T150600Z-3c2f874a/final-operator-controls.json) verify restored ingress, actual owned-probe absence, disabled lifecycle/Production controls, clock0 and unchanged retained storage. Neutral producer fields, prior dated observations and V3 history remain unchanged. This acceptance grants no other gate, Production activation, Story27.4 or A41 credit. Retained sources and evidence are local archive material; another capture requires fresh authority and review.
 
 ## Ownership and secret boundary
 

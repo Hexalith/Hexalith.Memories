@@ -271,8 +271,12 @@ function Get-C1LoadedComponent {
     $capabilities = @(ConvertTo-ValidatedStringArray -Value $selected[0].capabilities `
         -Pattern '^[A-Z][A-Z_]{0,63}$' -MaximumLength 64 -AllowEmpty $false `
         -FailureCode 'metadata-component-capabilities-invalid')
+    # Dapr 1.18.1 adds ACTOR when ETAG and TRANSACTIONAL are advertised.
+    # Preserve historical PG1 collection; require the exact PG2 runtime set.
+    $expectedCapabilities = @('ETAG', 'KEYS_LIKE', 'TRANSACTIONAL', 'TTL')
+    if ($ProfileId -ceq 'PG-ONPREM-2') { $expectedCapabilities = @('ACTOR', 'ETAG', 'KEYS_LIKE', 'TRANSACTIONAL', 'TTL') }
     if ((Get-CollectionIdentity $capabilities) -cne
-        (Get-CollectionIdentity @('ETAG', 'KEYS_LIKE', 'TRANSACTIONAL', 'TTL'))) {
+        (Get-CollectionIdentity $expectedCapabilities)) {
         throw 'metadata-component-capabilities-mismatch'
     }
     $result = [ordered]@{

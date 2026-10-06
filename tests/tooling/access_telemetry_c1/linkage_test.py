@@ -184,6 +184,8 @@ def write_fake_kubectl(directory):
 class ConnectionLinkageTests(unittest.TestCase):
     def setUp(self):
         self.base = json.loads(FIXTURE.read_text())
+        for metadata in self.base['metadata'].values():
+            metadata['components'][0]['capabilities'].append('ACTOR')
         self.pod = self.base['pods']['items'][0]['metadata']['name']
         self.base['server'].update(serverVersion='18.6 (Debian 18.6-1.pgdg13+1)', serverVersionNum='180006')
         self.base['backendPods']['items'][0]['status']['containerStatuses'][0]['imageID'] = (

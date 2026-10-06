@@ -624,6 +624,8 @@ class ComponentBackendCaptureTests(unittest.TestCase):
 
     def successor_scenario(self):
         scenario = copy.deepcopy(self.base)
+        for metadata in scenario['metadata'].values():
+            metadata['components'][0]['capabilities'].append('ACTOR')
         scenario['server']['serverVersion'] = '18.6 (Debian 18.6-1.pgdg13+1)'
         scenario['server']['serverVersionNum'] = '180006'
         scenario['backendPods']['items'][0]['status']['containerStatuses'][0]['imageID'] = (
@@ -726,6 +728,18 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         scenario['componentAfter'] = copy.deepcopy(scenario['component'])
         scenario['componentAfter']['resourceVersion'] = '42018'
         self.assert_blocked(scenario, 'component-changed', profile='PG-ONPREM-2', opt_in=False)
+
+    def test_successor_requires_exact_dapr_runtime_capabilities(self):
+        for capabilities in (
+            ['ETAG', 'KEYS_LIKE', 'TRANSACTIONAL', 'TTL'],
+            ['ETAG', 'KEYS_LIKE', 'TRANSACTIONAL', 'ACTOR'],
+            ['ETAG', 'KEYS_LIKE', 'TRANSACTIONAL', 'TTL', 'ACTOR', 'ACTOR'],
+            ['ETAG', 'KEYS_LIKE', 'TRANSACTIONAL', 'TTL', 'ACTOR', 'QUERY_API'],
+        ):
+            with self.subTest(capabilities=capabilities):
+                scenario = self.successor_scenario()
+                scenario['metadata'][self.pod]['components'][0]['capabilities'] = capabilities
+                self.assert_blocked(scenario, profile='PG-ONPREM-2', opt_in=False)
 
     def test_successor_source_drift_refuses_before_target_calls(self):
         with tempfile.TemporaryDirectory() as temporary:
