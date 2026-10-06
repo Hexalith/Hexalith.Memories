@@ -42,7 +42,7 @@ approved profile packet in place.
 
 ## C1.16 component and backend capture
 
-Story 27.22 owns only C1.16 as backlog. After separately scoped operator
+Story 27.22 owns only C1.16 and is in progress for offline preparation. After separately scoped operator
 authorization and reviewer assignment, its callable producer is:
 
 ```powershell
@@ -60,6 +60,153 @@ prove that connection. Captures retain `gateStatus: not-evaluated` and grant no
 behavioral, independent-review or activation credit. PG1 C1.16 remains a separate
 historical mode requiring `-AllowHistoricalProfileCapture`; C1.15/PG2, lowercase
 successor literals and historical opt-in/PG2 are refused before calls/output.
+
+### Separate C1.16 connection linkage candidate
+
+Offline linkage support was prepared on **2026-10-06**. Live collection, external
+archive retention and independent disposition remain pending. The configured
+target observed on 2026-10-05 runs PostgreSQL 18.4 and is ineligible for exact
+PG2; `/approved-evidence` is an example, absent locally. This preparation grants
+no target contact, scaling, qualification enablement or lifecycle-write authority.
+
+On a separately authorized eligible target, use PowerShell 7.5 or later, with
+`psql` in the backend container and `nc`, `grep` and `/bin/sh` in the lifecycle
+container. The restricted client requires `nc -w 5` to connect directly to
+`127.0.0.1:3500`, retain native exit status, and preserve HTTP response bytes.
+`grep -q` must distinguish a match (0), no match (1), and execution errors; a
+missing or failing validator refuses the request. Metadata must return one
+HTTP/1.0 or HTTP/1.1 200 response with an exact `Content-Length`, complete bounded
+headers, unencoded JSON and no chunked transfer encoding. The state GET must
+return one complete 204 response with zero body bytes, including whitespace.
+Responses are bounded to 1 MiB and headers to 16 KiB. Redirects are refused, and
+proxy environment variables cannot affect the direct TCP destination. Missing
+capabilities fail closed; this collector does not install utilities or change
+approved images. Use the following command with the approved lifecycle pod name:
+
+```powershell
+pwsh ./tools/verify-access-telemetry-c1-linkage.ps1 -Gate C1.16 -ProfileId PG-ONPREM-2 -Mode Observe -LifecyclePod <approved-lifecycle-pod> -ScopeFile /approved-evidence/access-telemetry-c1/C1.16/linkage-scope.json -EvidenceDirectory /approved-evidence/access-telemetry-c1/C1.16/linkage
+```
+
+The operator approval receipt must be a bounded JSON object with exactly these
+fields. Replace every placeholder through the separately approved operator
+process; this example is neither an authorization nor a runnable receipt:
+
+```json
+{
+  "schemaVersion": "hexalith.access-telemetry.c1.linkage.scope/v1",
+  "gate": "C1.16",
+  "profileId": "PG-ONPREM-2",
+  "profileSha256": "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe",
+  "context": "jpiquot@local",
+  "namespace": "hexalith-memories",
+  "lifecyclePod": "<approved-lifecycle-pod>",
+  "evidenceDirectory": "/approved-evidence/access-telemetry-c1/C1.16/linkage",
+  "authorizedFromUtc": "<approved UTC start ending in Z>",
+  "authorizedUntilUtc": "<approved UTC end ending in Z>",
+  "authorizationReference": "<retrievable operator approval reference>",
+  "independentReviewer": "<named independent reviewer>",
+  "exclusiveReadWindow": true,
+  "exclusiveReadWindowEvidenceSha256": "<64 lowercase hex characters>",
+  "collectorSha256": "<64 lowercase hex characters>",
+  "identityHelperSha256": "<64 lowercase hex characters>",
+  "lifecycleImageSha256": "<approved lifecycle image digest without sha256 prefix>"
+}
+```
+
+The receipt is limited to 16 KiB and an active interval no longer than 15 minutes.
+Bind `collectorSha256` and `identityHelperSha256` to the exact deployed bytes of
+`tools/verify-access-telemetry-c1-linkage.ps1` and
+`tools/access-telemetry-c1-component-backend.ps1`, using `Get-FileHash -Algorithm
+SHA256` and lowercase hex. `lifecycleImageSha256` binds the approved application
+image; PostgreSQL and Dapr must match the exact PG2 approved index or authenticated
+linux/amd64 child. The collector also refuses drift in the sixteen approved
+configuration/workload inputs before calls or directory creation. Invalid mode,
+historical profile, source approval, archive binding or scope fails at the same
+boundary. No Secret values or credentials belong in the receipt.
+
+The approval must cover selected Component and pod identity observations,
+authenticated Dapr metadata, one authenticated read-only state GET, and two
+read-only local PostgreSQL evidence sessions. It must identify protected runtime
+credential access and independently retained evidence that the selected sidecar's
+read window is exclusive, including background component activity. The collector
+does not establish or change traffic isolation, enable workloads, acquire a Lease,
+or obtain credentials. Operators must use a separately authorized procedure for
+the exclusive window; uncertainty about concurrent or sequential pool reuse is
+a blocker.
+
+The collector generates a random absent synthetic key and performs one strong
+Dapr GET. It rejects all response body bytes and failed/truncated transports,
+exporting only a direct HTTP 204 absence observation. The key, token, connection
+string, SQL query text and tenant
+records are never written into the packet. PostgreSQL snapshots project only
+selected session identity/timestamps and TLS status for the exact selected pod IP,
+plus actual 18.6 / 180006 and local `peer:postgres` evidence identity. A single
+stable idle TLS 1.2+ runtime-role/database session must advance within the bounded
+challenge interval. Missing, duplicate, active, stale, replaced or unadvanced
+sessions, wrong images/identity, credential-shaped output, timeouts and changed
+pod UID/IP/container incarnation fail closed with no positive observations.
+Backend observations must be within five seconds of collector UTC, and a session
+must not predate either selected Dapr/backend container start by more than that
+five-second clock tolerance. Activity must advance within the GET interval with
+a one-second tolerance; the two snapshots must span no more than 30 seconds.
+The reviewer must confirm clock agreement within these bounds.
+
+Activity timestamps describe the last command, as documented in
+[PostgreSQL session statistics](https://www.postgresql.org/docs/18/monitoring-stats.html#MONITORING-PG-STAT-ACTIVITY-VIEW).
+They cannot establish exclusive use of a reused pool connection. The independent
+reviewer must verify the referenced exclusive-window evidence, the operator
+authority and selected target, both snapshots, challenge interval, source/command
+hashes and immutable C1.16 identity packet together. If this attribution cannot
+be independently established, keep linkage pending and retain the blocker.
+
+The attribution label is
+`candidate-session-correlation-requires-independent-exclusive-window-verification`.
+It describes a provisional correlation; the receipt does not establish the
+exclusive window or independent connection linkage.
+
+The `commands` ledger retains its `purpose`/`sha256` shape. For
+`linkage-absent-state-get`, the digest covers a reconstructable command template:
+replace the entire private `c1-linkage-absent-<64 hex characters>` path segment
+with literal `__KEY__`, retaining every other argument byte. Reconstruct the probe
+from the approved collector's `Get-LinkageHttpProbe` function definition and this
+literal path. Evaluating only that function produces a string without contact;
+do not execute or source the collector to verify a hash.
+
+```powershell
+$probe = Get-LinkageHttpProbe '/v1.0/state/access-telemetry-store/__KEY__?consistency=strong'
+$template = @('--context', 'jpiquot@local', '-n', 'hexalith-memories', 'exec', '<approved-lifecycle-pod>', '-c', 'lifecycle', '--', '/bin/sh', '-ec', $probe)
+$bytes = [Text.Encoding]::UTF8.GetBytes('kubectl ' + ($template -join [char]0x1f))
+[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+```
+
+The resulting lowercase digest must equal the ledger entry. Other command
+digests cover the exact argument vector, using the same `kubectl ` prefix,
+U+001F argument separators, UTF-8 encoding and SHA-256. No hidden challenge key
+is required for verification.
+
+Two recorded prerequisites also prohibit live use until separately satisfied:
+Platform Operations must bind target authority to the actual API endpoint and
+trust fingerprint and protect the kubeconfig/context mapping throughout the
+observation window (B6). A context name alone can be repointed. Deployment Adapter
+Developer must execute the emitted session SQL contract in an isolated PostgreSQL
+18.6 environment, proving exact aliases, role/database, timestamp and TLS shapes
+without tenant records (V3). Synthetic kubectl JSON does not execute that SQL.
+These pending prerequisites are recorded in the
+[deferred-work ledger](../../_bmad-output/implementation-artifacts/deferred-work.md)
+and grant no target contact or C1.16 disposition.
+
+Each invocation creates a new read-only `c1.16-connection-linkage-candidate-*.json`
+receipt, preserving prior files. Retain its SHA-256, the separate unchanged
+identity-producer packet/hash, scope approval, exclusive-window evidence, and a
+durable external archive receipt before handing them to the named reviewer.
+Local read-only file attributes are an immutability safeguard, not external
+archive or independent review proof. Exit zero and `collectorStatus: observed`
+mean candidate observations only. Every packet retains `connectionLinkage`,
+`componentBehavior`, `productionLifecycleWrites` and `gateStatus` as
+`not-evaluated`, `productionGatePassed: false`, and independent disposition
+`pending`. A nonzero exit grants no positive partial evidence. Neither receipt
+changes the C1.16 checkpoint or grants C1.17, another C1 gate, security,
+Production, Story 27.4 or A41 credit.
 
 ## Ownership and secret boundary
 
