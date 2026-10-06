@@ -184,18 +184,75 @@ digests cover the exact argument vector, using the same `kubectl ` prefix,
 U+001F argument separators, UTF-8 encoding and SHA-256. No hidden challenge key
 is required for verification.
 
-Two recorded prerequisites also prohibit live use until separately satisfied:
+Two prerequisites were recorded before live use:
 Platform Operations must bind target authority to the actual API endpoint and
 trust fingerprint and protect the kubeconfig/context mapping throughout the
 observation window (B6). A context name alone can be repointed. Deployment Adapter
 Developer must execute the emitted session SQL contract in an isolated PostgreSQL
 18.6 environment, proving exact aliases, role/database, timestamp and TLS shapes
 without tenant records (V3). Synthetic kubectl JSON does not execute that SQL.
-These pending prerequisites are recorded in the
+These prerequisites and their dated dispositions are recorded in the
 [deferred-work ledger](../../_bmad-output/implementation-artifacts/deferred-work.md)
 and grant no target contact or C1.16 disposition.
 
-Each invocation creates a new read-only `c1.16-connection-linkage-candidate-*.json`
+### Isolated emitted SQL contract verification
+
+The separate integration lane requires Docker on `linux/amd64`, PowerShell 7.5+
+and OpenSSL. Prefetch only the approved PostgreSQL child before running it:
+
+```bash
+timeout 180 docker pull --platform linux/amd64 docker.io/library/postgres@sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04
+PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_sql_contract -p '*_test.py' -v
+```
+
+Missing image/runtime/TLS prerequisites and timeouts fail without skips. The
+lane creates uniquely named, labelled containers on an internal disposable
+network, publishes no ports, and keeps the database in tmpfs. It extracts the
+deployment's database/runtime-role bootstrap and peer mapping, uses disposable
+credentials and a local CA with service-DNS `sslmode=verify-full`, and loads only
+necessary PowerShell function definitions. Its local adapter executes the actual
+emitted `env`/`psql` argument vector; it never sources collector top-level code,
+calls Kubernetes, or manufactures session JSON. It exercises valid and denied
+real observations, a temporary alias mutation, missing prerequisites and timeout
+cleanup. The deliberate non-TLS scenario changes only the owned local server's
+HBA temporarily and restores it.
+
+Each run prints a new `/tmp/c1-sql-receipt-*/receipt.json` path and SHA-256. The
+read-only, secret-safe receipt binds collector/helper/deployment/test and emitted
+query hashes, exact image/server identity, commands/results, raw psql log hashes,
+per-test outcomes and owned-resource cleanup. A `failed` receipt or nonzero test
+exit leaves V3 unresolved. Copy receipts and raw logs to an independently retained
+archive before relying on them; `/tmp` is local verification evidence only.
+
+**Correction verified, 2026-10-06:** real execution found that original
+`a.client_addr::text AS "clientAddr"` returned an IPv4 address with `/32`, causing
+the existing validator to refuse the valid idle TLS session. After explicit user
+approval, the collector now emits `host(a.client_addr) AS "clientAddr"`. All ten
+integration methods pass, including a temporary-source regression restoring the
+old projection and its exact denial, plus the broken-alias mutation. Receipt
+`/tmp/c1-sql-receipt-gylthuxh/receipt.json` has SHA-256
+`12b08a9a9030c8b6d5ddec3437d44132127ceaea96fe42f3bd4f9c8e2050aaa3` and
+`status: passed` with successful owned cleanup. Deployment Adapter Developer's
+V3 disposition was submitted for independent review; the reviewed completion
+below supersedes that pending state. Local execution grants no live qualification.
+
+**Reviewed V3 completion, 2026-10-06:** independent build review and its
+receipt/cleanup recheck are complete. Parent final verification passed 19/19
+methods (10 real PostgreSQL tests and 9 harness regressions), zero failures,
+errors or skips, in 26.289 seconds. Final receipt `/tmp/c1-sql-receipt-3bd_gjy6/receipt.json` has SHA-256
+`c42eb91b0b356cee4135c8da8b2289e07469a93b289eae8aa87425f226ac52b9`; raw runner log `/tmp/story-27-22-parent-final-sql.log` has SHA-256 `32482e58654fba8683843c39b4892dd6673c260a38e0233907cdeffb1978a111`. The receipt
+requires every expected test identity and successful final outcomes after cleanup;
+skips, partial suites, failed inspection and source/finalization failures cannot
+produce a passing qualification receipt. **Only V3's isolated emitted-SQL
+prerequisite is closed.** Re-execute and review after source/query/profile drift.
+
+B6 target endpoint/trust authority and all eligible-target, credential, exclusive
+window, archive and reviewer prerequisites remain required. This local lane
+establishes no Dapr connection linkage, independent C1.16 acceptance, other-gate,
+Production, Story 27.4 or A41 credit. Story 27.22 remains in-progress and its
+C1.16 checkpoint remains pending / not complete.
+
+Each live candidate collector invocation creates a new read-only `c1.16-connection-linkage-candidate-*.json`
 receipt, preserving prior files. Retain its SHA-256, the separate unchanged
 identity-producer packet/hash, scope approval, exclusive-window evidence, and a
 durable external archive receipt before handing them to the named reviewer.

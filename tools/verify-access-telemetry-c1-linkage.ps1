@@ -742,7 +742,7 @@ function Get-LinkageSessions {
     # application_name, client certificate names, or credentials. LIMIT bounds rows.
     $sql = @"
 WITH sessions AS MATERIALIZED (
- SELECT a.pid, a.usename, a.datname, a.client_addr::text AS "clientAddr", a.client_port AS "clientPort",
+ SELECT a.pid, a.usename, a.datname, host(a.client_addr) AS "clientAddr", a.client_port AS "clientPort",
  to_char(a.backend_start AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "backendStartUtc",
  to_char(a.query_start AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "queryStartUtc",
  to_char(a.state_change AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "stateChangeUtc",

@@ -224,3 +224,110 @@ Developer. No fixes or changes to historical ledger entries are claimed. The
 [current handoff](../planning-artifacts/c1-security-prerequisites-2026-10-04/implementation-handoff.md#remaining-qualification-prerequisites--dated-2026-10-04)
 records concrete owner/consequence/reopen evidence for all four prerequisites.
 No new story registration, live qualification, Production or A41 credit is granted.
+
+## Isolated V3 SQL execution — 2026-10-06
+
+Implemented the separate disposable local lane in
+`tests/tooling/access_telemetry_c1_sql_contract/linkage_sql_contract_test.py` and
+its command in the production appendix. It uses only the approved linux/amd64
+PostgreSQL child, actual 18.6 / 180006, deployment-derived runtime-role/database
+bootstrap and `peer:postgres` mapping, and local service-DNS CA/TLS identity.
+No collector/deployment bytes or historical receipts changed; no Kubernetes,
+real credentials, tenant records or live workload were contacted.
+
+`PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_sql_contract -p '*_test.py' -v`
+exited **1**: 10 test methods, 9 passed, 1 failed, zero errors/skips in 23.600
+seconds. The valid idle TLS runtime session returned `clientAddr: 172.18.0.3/32`
+from emitted `a.client_addr::text`, while the existing validator requires selected
+pod IP `172.18.0.3`; denial was `session-identity-or-tls-invalid`. Missing/duplicate
+sessions, wrong runtime role/database, wrong observer database, non-TLS, DNS
+mismatch, alias mutation, missing prerequisite and timeout cleanup checks ran.
+These denials do not independently isolate all identity predicates while the
+valid address contract is broken. A separately labelled temporary-copy
+`host(a.client_addr)` diagnostic passed the full unchanged validation and returned
+`172.18.0.3`; it is correction proof only, with no V3 closure.
+
+Bounded local evidence:
+
+- Receipt `/tmp/c1-sql-receipt-hmkwj_j_/receipt.json`, SHA-256 `f8b61d24ae5e324477f7ecc95d3dd4876e49e366a062731a1fb977980b61b168`; `status: failed`, `cleanupErrors: []`, `privateWorkspaceRemoved: true`.
+- Unchanged SQL raw result `/tmp/c1-sql-receipt-hmkwj_j_/psql-6.json`; temporary diagnostic `/tmp/c1-sql-receipt-hmkwj_j_/psql-4.json`; each hash is bound in the receipt.
+- Raw runner log `/tmp/story-27-22-sql-contract-final-v2.log`, SHA-256 `79efbe42cea6b790b574dbac793a75ed3e7e58f47da79adebc3e50c4d57c7486`.
+
+The receipt binds source/test/query hashes, image/server identity, emitted and
+executed arguments, raw-log hashes, test outcomes and cleanup. All uniquely owned
+containers/network and private setup files were removed; local `/tmp` receipts
+are not a durable external archive or independent acceptance.
+
+**V3 remains open.** Owner: Deployment Adapter Developer. Consequence: the valid
+emitted-query contract cannot pass, so live linkage collection remains prohibited.
+Reopen trigger: separately authorized collector correction, a complete no-skip
+successful integration run and independent review. B6 actual endpoint/trust and
+protected context authority remain open, together with all eligible-target,
+credential, exclusive-window, archive and reviewer prerequisites. Story 27.22
+remains in-progress, C1.16 pending / not complete, and neutral packet fields,
+other gates, Production, Story 27.4 and A41 receive no credit.
+
+### Authorized V3 correction execution — 2026-10-06
+
+The user explicitly approved "Approve the collector fix and finish verification"
+after the real failure and temporary diagnostic. Changed only the emitted client
+address projection to `host(a.client_addr) AS "clientAddr"`; existing validation,
+transport and neutral packet fields remain unchanged. The former temporary
+correction diagnostic is now a regression restoring the old projection in a
+private source copy and asserting its real `/32` rejection.
+
+The integration command above now exits **0**: 10/10 test methods passed, zero
+failures/errors/skips in 25.468 seconds. Receipt
+`/tmp/c1-sql-receipt-gylthuxh/receipt.json`, SHA-256
+`12b08a9a9030c8b6d5ddec3437d44132127ceaea96fe42f3bd4f9c8e2050aaa3`, binds
+actual 18.6 / 180006, local `peer:postgres`, valid idle TLS runtime identity,
+source/query/test/command hashes, raw results, all ten test outcomes and clean
+owned-resource removal. Valid raw result is `psql-6.json`; old-projection
+regression is `psql-4.json`, with both hashes receipt-bound. Runner log
+`/tmp/story-27-22-sql-contract-corrected.log`, SHA-256
+`5e41e6c86996b89f7c0227dc8281ec7fbdef4e2b2cf4276eb2962a7b53362e1f`.
+
+This supersedes the source-correction blocker above; V3 closure remains pending
+parent independent review of the successful execution and focused regressions.
+All B6/live prerequisites, Story 27.22 in-progress, pending C1.16 checkpoint and
+neutral/no-other-credit interpretation remain unchanged.
+
+Focused existing regression verification:
+`PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p 'linkage_test.py' -v`
+exited 0, 26/26 test methods passed, zero failures/errors/skips in 280.057 seconds.
+Raw log `/tmp/story-27-22-linkage-corrected.log`, SHA-256 `446f925434011a2bcb5b6023a99d1604ece8d14fd89e743df12e84bef698939f`.
+The unchanged complete C1 discovery still contains 85 methods; this focused lane
+is its 26-method linkage subset. Slice, six-file scope, review-readiness,
+PowerShell parser and `git diff --check` checks all passed. These are development
+receipts; parent independent review still owns V3 disposition.
+
+## Reviewed isolated V3 disposition — 2026-10-06
+
+**V3 is closed for the isolated SQL-contract prerequisite only.** The three
+independent build review layers completed; all 14 findings were recorded and
+resolved through nine concrete harness corrections. The verification reviewer
+independently rechecked the corrected receipt/cleanup boundaries: 9/9 harness
+methods passed, with no remaining blocker. Parent final verification ran
+`PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_sql_contract -p '*_test.py' -v`: exit 0, **19/19 test methods**, zero failures/errors/skips in 26.289
+seconds (10 real PostgreSQL methods and 9 harness regressions). The unchanged
+focused linkage lane also passed 26/26 in 280.057 seconds.
+
+Final receipt `/tmp/c1-sql-receipt-3bd_gjy6/receipt.json`, SHA-256 `c42eb91b0b356cee4135c8da8b2289e07469a93b289eae8aa87425f226ac52b9`, binds all 19 expected
+and executed outcomes, current collector/helper/deployment/test hashes, emitted
+SQL and command hashes, real raw results, exact approved linux/amd64 child, actual
+18.6 / 180006, local `peer:postgres`, runtime role/database, UTC ordering and TLS.
+Parent checked every source/query/raw-log hash, neutral packet fields, private
+workspace removal and absence of uniquely labelled owned containers/network.
+Final runner log `/tmp/story-27-22-parent-final-sql.log`, SHA-256 `32482e58654fba8683843c39b4892dd6673c260a38e0233907cdeffb1978a111`. Focused regression log
+`/tmp/story-27-22-linkage-corrected.log`, SHA-256 `446f925434011a2bcb5b6023a99d1604ece8d14fd89e743df12e84bef698939f`. Local receipts
+remain local evidence, not an external archive or independent live acceptance.
+
+This dated disposition supersedes only the isolated-SQL row in Outstanding
+Operator Prerequisites and the earlier V3 pending/blocker statements. Original
+entries and failure receipts remain historical. Owner: Deployment Adapter
+Developer; re-execute and review this lane if approved source/query/profile
+identity changes. B6 actual endpoint/trust authority and protected configuration,
+eligible target, protected runtime credentials, exclusive-window evidence,
+external archive and named live reviewer remain open. **Story 27.22 stays
+in-progress; C1.16 stays pending / not complete.** No live contact, Dapr linkage,
+other-gate, Production, Story 27.4 or A41 credit is granted.
