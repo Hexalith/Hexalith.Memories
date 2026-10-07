@@ -39,18 +39,30 @@ independent approval. Historical PG-ONPREM-1 C1.15 capture grants no PG2 credit.
 | C5 operations acceptance | `operator-pending` | Neutral and PostgreSQL-specific runbook structure, ownership, monitoring, RPO/RTO, rollback, rotation, and decommission contracts are repository-validated. | Named operations acceptance of the exact immutable profile, evidence set, capacity/cost, incident, restore, and maintenance procedures. | Platform Operations reviewer | Review actual C0-C4 packets and record an independent same-hash decision. |
 | C6 security acceptance | `operator-pending` | Least-privilege, Dapr-only data plane, TLS/secret, bounded observability, evidence redaction, and tenant-isolation documentation guards are repository-validated. | Named security acceptance of the same profile and immutable evidence hashes, independent of the Platform Operations reviewer. | Security reviewer | Review actual packets and record a different named same-hash decision. |
 
-Current C1 blockers are the separately owned, unregistered PG-ONPREM-2 C1.15
-producer renewal and independent review, pending Story 27.22/C1.16 connection
-linkage/capture/review, and twenty-three unregistered gate owners. The existing
-C1.15/PG2 dispatcher rejects with `unsupported-successor-gate-or-historical-opt-in`
-before target calls or output-directory creation; renewing it requires a separate
-approved scope owned by Deployment Adapter Developer. Story 27.21's accepted PG1
-capture provides no renewal credit. Approved/done current-profile gate-owner
+Current C1 blockers, re-derived 2026-10-06 after Story 27.22 completed: the
+separately owned, unregistered PG-ONPREM-2 C1.15 producer renewal and independent
+review, and twenty-three unregistered gate owners. The existing C1.15/PG2
+dispatcher rejects with `unsupported-successor-gate-or-historical-opt-in` before
+target calls or output-directory creation; renewing it requires a separate approved
+scope owned by Deployment Adapter Developer. Story 27.21's accepted PG1 capture
+provides no renewal credit.
+
+C1.16 is no longer a capture or linkage blocker. Story 27.22 is done, and its
+independent disposition, SHA-256
+`ad2d3024dff5cd00cb8518a3e65b16d006acf596046d193373d0ae55ea2cff70`, accepts captured
+component/backend identity and full-set connection linkage for one closed window.
+Its canonical single-session refusal stays failed and owned by Deployment Adapter
+Developer. That acceptance does not change the C1 row above and gives no Story
+27.4, A41, Production or other-gate credit. It counts only when it is part of an
+approved C1 predecessor bundle. Approved/done current-profile gate-owner
 registrations and twenty-five distinct passed artifacts with independent named
 Platform Operations and Security approvals of the same hash are still required.
 
-No accepted current-profile C1 predecessor, authorized non-Production target scope,
-or external evidence-custody location has been supplied for this offline pass.
+None of these live inputs has been supplied for this offline pass: an accepted
+current-profile C1 predecessor bundle (external bundle path), approved/done gate
+owners and the two independent approvals, an authorized non-Production kube context
+and namespace, an external evidence root and custody location, credential-file paths
+(paths only, never credential values), and fault and purge authority.
 Live C0/C2-C4 execution, independent post-evidence C5/C6 acceptance, terminal
 validation, the exact four-path close-out, staged postflight, and authenticated
 remote containment therefore remain pending. Story 27.4 remains incomplete, A41
@@ -156,6 +168,59 @@ stdout/stderr, architecture XML, full source revision and execution-time diff,
 nonrecursive dependency revisions, and assembly SHA-256. Its revision and assembly
 hash were independently checked. Subsequent changes only record these results and
 the review disposition; the receipt is offline validation, not live gate credit.
+
+The receipt's identifiers, re-read on 2026-10-06, so the record does not depend on
+the ephemeral `/tmp` folder:
+
+| Item | Identifier |
+| :--- | :--------- |
+| Source revision | `b7a4377aaebce4b2d5f9e66d583ce9022f2f9fca`, with this file and the Story 27.4 spec modified in the worktree |
+| Execution-time diff (`source-diff.stdout.log`) | SHA-256 `e5678e0479bdb0ed4bf718a66be8d6f3afda84be599c42848582579852f011dd` |
+| Built assembly | SHA-256 `c14d72222e20f4964e9fe928189f143ae2328cda3ac1a558889815cc54932700` (build identity only) |
+| `architecture.xml` | SHA-256 `f86ffcc3b3b64b4e3ab038b9c6e2b9bc1372a640a9722f38e8bbea67d46a8e3c`; 17 total = 12 + 5, 17 passed, 0 failed, skipped or not run; run 2026-10-06 08:20:57 UTC |
+| `lifecycle.stderr.log` | SHA-256 `e8b46a4515ea4cd3d58c1c994c6582a923b9fc907df8180276abe8d5a2c396ff`; `Ran 79 tests`, `OK` |
+| `build.stdout.log` | SHA-256 `d067f4d063840a2d88f437e4b5fbd8dc79655a2f883b8d74d4cdb6a337a0b417`; 0 warnings, 0 errors |
+| Exit codes | All ten logged commands and the scoped block: `0` |
+
+The folder also holds two files that the documented block did not produce. They
+were added after it finished and had not been disclosed before:
+
+- `final-a41.xml`, SHA-256 `c01b4a152f2066d6cb88e8b8ddd57cf20a8048c446587c800ada8baf5fb08a42`:
+  a separate `AccessTelemetryA41CloseOutTests`-only rerun at 2026-10-06 08:22:40 UTC
+  after the results were recorded; 5 total, 5 passed, 0 failed, skipped or not run.
+- `final-worktree.diff`, SHA-256 `51bce7acc36bf9e3d8fd09b79d581ff8e49c405ec72b54ddf9bed3392510b570`:
+  the worktree diff after the results were recorded, byte-identical to the reviewed
+  `b7a4377a..95a38fd8` change.
+
+Neither file is part of the ten-command receipt, and neither grants live credit.
+
+Post-patch execution of the unchanged block on 2026-10-06, after the second-pass
+review patches were applied, also passed. Receipt
+`/tmp/story-27-4-offline.al6C55hg` (local, not custody):
+
+| Item | Identifier |
+| :--- | :--------- |
+| Source revision | `6f3c727af1c9733fffb182b342f471f19b213b39`, with the review-patched Story 27.4 spec, this file and `deferred-work.md` modified in the worktree |
+| Execution-time diff (`source-diff.stdout.log`) | SHA-256 `f54084f65feab5cd2a8297d6f04d6af331a5b9e749e4ec68f0ee85d30f66d3b3` |
+| Built assembly | SHA-256 `5f537e2be4b18f4c3e5c5054604d2d76ce112018f1813f4fd37104f29096f0b4` (build identity only; dependency gitlinks moved since the first receipt) |
+| `architecture.xml` | SHA-256 `240fd6244aa6982782057f25e685cf6ae58c57b2b0db0c133de83420f707c122`; 17 total = 12 + 5, 17 passed, 0 failed, skipped or not run; run 2026-10-06 19:09:10 UTC |
+| `lifecycle.stderr.log` | SHA-256 `d52bebbfa1cb5797f8414be1c6e4b938323441570fc3b231ee64d9cf6bcf71d8`; `Ran 79 tests`, `OK` |
+| `build.stdout.log` | SHA-256 `fdcdd141083bb83633d7fd206511e1ee440c003a2c4c866f6f49ff3bce1e445f`; 0 warnings, 0 errors |
+| Exit codes | All ten logged commands and the scoped block: `0` |
+
+A fail-fast check ran the same block text with only the lifecycle command replaced
+by `false` and a separate folder prefix. Receipt
+`/tmp/story-27-4-failfast.njdCm7qY`: the source and dependency commands exited 0,
+the substituted lifecycle command exited 1, and the block exited 1. The folder
+has no build, assembly, architecture, validator or whitespace file, so nothing ran
+after the failure. It also holds `failfast-block.bash`, SHA-256
+`69a51b4c9d1811b4c8e33a7ed5758dbe96ef4844564b1ddb8c03a431f597a7cb`, the exact
+modified block, copied in after the run.
+
+The post-patch execution-time diff was captured before these identifiers were
+recorded, so it shows placeholders where they now appear. Recording them is the
+only later change to this file. Both receipts are offline validation, not live
+gate credit.
 
 The fixture close-out chain uses temporary repositories and mocked targets; it
 grants no live checkpoint, approval, A41 transition, or publication credit. No new
