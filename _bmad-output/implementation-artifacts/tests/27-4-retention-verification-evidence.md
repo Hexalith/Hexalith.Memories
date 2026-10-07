@@ -222,6 +222,36 @@ recorded, so it shows placeholders where they now appear. Recording them is the
 only later change to this file. Both receipts are offline validation, not live
 gate credit.
 
+### 2026-10-07 offline resumption verification
+
+The unchanged canonical block above passed again from the repository root before
+these dated receipt notes were recorded. Retained local receipt:
+`/tmp/story-27-4-offline.sSe9i00R`; all ten logged commands and the scoped block
+exited `0`. Its logs confirm `Ran 79 tests` and bare `OK`, zero build warnings
+and errors, and exactly 12 retention-decision plus 5 A41 results, every result
+`Pass`, with zero failures, errors, skips or not-run tests.
+
+| Item | Identifier |
+| :--- | :--------- |
+| Source revision | `5ccacbe5b017b1967dbd9e7b6a253cbab9d8b278`; the only execution-time worktree change was the existing, user-owned `references/Hexalith.Builds` gitlink at `3107b18de0b740fe77e274d06c79b47d52dd7b83`, preserved unchanged |
+| Execution-time diff (`source-diff.stdout.log`) | SHA-256 `c5af86641ddeb8afec282d230a3c15e634a69dd6affb81149dc51a72c1f37d73` |
+| Built assembly | SHA-256 `226e529497658c3514e402cdb21390057fb07f753808d2d2445bbd9153846594` (build identity only) |
+| `architecture.xml` | SHA-256 `509b8bf874c667613fde4ac3c7aad613abd99a34f6a44da283638f1aee1d5a52`; 17 total = 12 + 5, every result `Pass`; run 2026-10-07 04:50:48 UTC |
+| `lifecycle.stderr.log` | SHA-256 `99e944ffa2818df20b6fffd985a88eebde5130c9f223f58501edaad8960b5366`; `Ran 79 tests`, `OK` |
+| `build.stdout.log` | SHA-256 `bed98c98aa3604a100b5a6157f8c148ee49f03002d166fe0244b4e66a334df73`; 0 warnings, 0 errors |
+| Exit codes | All ten logged commands and the scoped block: `0` |
+
+Current prerequisites remain absent: separately approved PG2 C1.15 renewal,
+twenty-three registered/done gate owners, the accepted 25-artifact same-PG2 C1
+bundle and independent Platform Operations/Security approvals, authorized
+non-Production context/namespace, external evidence custody, credential-file
+paths, and fault/purge authority. Story 27.22's accepted C1.16 capture remains
+accepted for its captured window only. Tasks 3-4, C0-C6 live qualification,
+terminal/postflight/remote verification and the exact four-path close-out remain
+pending; Story 27.4 stays in progress, A41 and its sprint action stay open, and
+Production writes stay disabled. This run contacted no live target and performed
+no staging, commit or publication. No source, test or verification command changed.
+
 The fixture close-out chain uses temporary repositories and mocked targets; it
 grants no live checkpoint, approval, A41 transition, or publication credit. No new
 tests were added for this command correction. The C0-C6 matrix and all close-out

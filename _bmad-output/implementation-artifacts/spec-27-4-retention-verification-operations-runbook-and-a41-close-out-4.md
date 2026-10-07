@@ -240,6 +240,25 @@ credential-file paths, or fault and purge authority. The last two tasks stay
 unchecked. Story 27.4 stays in progress, A41 and its sprint action stay open, and
 Production lifecycle writes stay disabled. No target was contacted.
 
+### 2026-10-07 offline resumption verification
+
+The existing offline correction is complete and unchanged. Re-executed the
+canonical evidence block on `5ccacbe5b017b1967dbd9e7b6a253cbab9d8b278` with the user's existing
+`references/Hexalith.Builds` gitlink preserved: 79 lifecycle fixtures and exactly
+12 retention-decision plus 5 A41 guards passed without skips; the Debug/source
+build logged zero warnings and errors; every logged command and the block exited
+0. The evidence handoff records the fresh receipt and its inline identities.
+Only these dated receipt notes and the ledger row were added; no production code,
+test, runbook, verifier or protected close-out state changed.
+
+The separately owned PG2 C1.15 renewal, 23 unregistered gates, accepted 25-gate
+predecessor with independent same-hash approvals, authorized non-Production scope,
+external custody, credential-file paths and fault/purge authority are still
+missing. Accepted Story 27.22 C1.16 evidence grants no aggregate C1 or A41 credit.
+Tasks 3-4 remain unchecked, Story 27.4 stays `in-progress`, A41 and its sprint
+action stay open, and Production writes stay disabled. No live target operation,
+staging, commit or publication occurred.
+
 ## Spec Change Log
 
 - 2026-10-06, second-pass review patch application: restored frontmatter
@@ -355,6 +374,45 @@ PB11/PE7: the Verification lifecycle and build lines now state what the block
 asserts and what must be checked in the logs. The other rejected rows are
 unchanged.
 
+### 2026-10-07 offline resumption review
+
+All three workflow layers completed against the raw 21-path cumulative diff at
+`/tmp/story-27-4-review-j26b6i6q/cumulative.diff`, SHA-256
+`a43038dbff71b132d4c77d89249a880926394e83d7c032c218485c49e187dca2`,
+on revision `5ccacbe5b017b1967dbd9e7b6a253cbab9d8b278` plus this worktree.
+Blind-hunter returned ten findings (floor 10), edge-case-hunter two deletion
+findings, and verification-gap two gaps. The raw diff includes committed Story
+27.22 work and the preserved user-owned Builds gitlink; this resumption adds only
+verification/review records. Every finding was classified before grouping.
+
+| Finding | Verdict | Route | Evidence / disposition |
+| :------ | :------ | :---- | :--------------------- |
+| B1: canonical HTTP probe is EOF-sensitive | medium | defer | `Get-LinkageHttpProbe` still pipes a completed `printf` into BusyBox `nc`; Story 27.22's dated actual transport diagnosis records request cancellation and a separately reviewed external correction. This predates the resumption. Deployment Adapter Developer owns any permanent transport change. |
+| B2: exact-one collector cannot reproduce full-set acceptance | false | reject | The canonical two-session refusal is intentional and preserved. The accepted full-set procedure, source release and independent disposition are linked at `docs/operations/access-telemetry-adapter-production.md:279`; that separate captured window never claims the canonical command succeeded. Another capture explicitly requires fresh authority/review. |
+| B3: no endpoint/trust binding or mandatory launch procedure | false | reject | `docs/operations/access-telemetry-adapter-production.md:192-198` requires actual endpoint/trust binding and protected configuration before contact, independently of the scope file; Story 27.22 records the reviewed external B6/source release. The collector schema is not presented as satisfying B6 by itself. |
+| B4: SQL lane accepts a remote Docker endpoint | medium | defer | The lane checks daemon platform/image but passes no endpoint and inherits Docker context/environment before network/container creation. An ambient remote daemon can therefore receive resources despite the declared disposable-local scope. Pre-existing Story 27.22 harness issue; no Docker operation ran in this resumption. |
+| B5: manifest validation omits image identity | medium | defer | An isolated temporary manifest with `postgres:18.7` and an unapproved digest still passes `assert_manifest_contract`; execution uses the separately hardcoded approved child. This can let the SQL lane validate a changed deployment against the previous image. Pre-existing Story 27.22 harness issue. |
+| B6: synchronous stdin defeats bounded timeout | low | reject | The helper's `input_bytes` branch writes before the selector deadline, but no current caller supplies `input_bytes`. The demonstrated generic 1-MiB case is not part of the lane; adding a nonblocking stdin event loop is extra complexity for an unused path. |
+| B7: invalid UTF-8 expands retained diagnostic bytes | low | reject | Reproduced: 65,536 raw `0xff` bytes become 196,608 UTF-8 bytes under replacement decoding. Capture is still bounded, and the owned PostgreSQL/PowerShell commands normally emit UTF-8. Enforcing a second encoded-byte cap needs additional handling for an unlikely path. |
+| B8: epic context drops emission/validation/expiry scope | carried medium | defer | Carried from PB3/PE10/PE11/PE12: the same unchanged context recompile is already deferred; no duplicate entry or context edit. |
+| B9: epic context drops technical/timing/authority/capacity decisions | carried medium | defer | Carried from PB2: the same unchanged Technical Decisions loss is already deferred; no duplicate entry or context edit. |
+| B10: sprint execution-order reason still says C1.16 pending | carried low | defer | Carried from the logged second-pass `sprint-status.yaml:165` deferral: the reason is stale beside the done row. Story 27.22 completion sync owns it; no duplicate entry or protected sprint edit. |
+| E1: requirements deletion weakens future implementations | carried medium | defer | Same location/claim as PB3/PE10/PE11/PE12 and B8; prior disposition retained without re-deferral. |
+| E2: technical-decision deletion weakens future implementations | carried medium | defer | Same location/claim as PB2 and B9; prior disposition retained without re-deferral. |
+| V1: real SQL regressions are absent from automated CI | medium | defer | Pre-verified gap: CI discovers only `access_telemetry_c1`, whose manufactured JSON bypasses real inet projection; the separate SQL-contract lane is manual. A restored `a.client_addr::text` can pass fixtures yet reject valid actual sessions. Predates this offline resumption. |
+| V2: source changes during capture lack a rejection fixture | medium | defer | Pre-verified gap: current drift fixtures change inputs before target calls, and the SQL lane never executes final publication. Removing final `Assert-LinkageSourcesStable` is not detected by those fixtures. Predates this offline resumption. |
+
+Five new pre-existing follow-ups (B1, B4, B5, V1, V2) were appended to the
+deferred-work ledger for Deployment Adapter Developer. No intent-gap, bad-spec or
+patch entry survived, so no loopback or production/test change ran. The two epic
+context losses and stale sprint reason retain their existing owners/dispositions.
+No live acceptance claim is established by this review. The approved repository
+portion remains reviewed-awaiting-operator; Tasks 3-4 remain pending.
+
+The existing frozen offline-continuation decision overrides step-05 completion
+and local-commit defaults: the spec returns to `in-progress`, its sprint row stays
+in progress, and no staging/commit/publication is authorized by this resumption.
+
 ## Verification
 
 Run the scoped block in
@@ -399,6 +457,9 @@ configuration unless it names a mapping.
 | 2026-10-06 | code-review | First offline review (blind-hunter, edge-case, verification-gap). Four patches, BH1-BH4, applied to the evidence handoff: fail-fast scoped block, `-failSkips` plus exact 12/5 XML validation, local receipts, setup link. Nothing deferred. Committed with the dev work in `95a38fd8` by the repository owner. | Phase delta +0; cumulative +0. L1 79 -> 79; L2a 12 -> 12; L2b 5 -> 5. Receipt `/tmp/story-27-4-offline.4PZnqjZw`: `Ran 79 tests`, `OK`; `architecture.xml` SHA-256 `f86ffcc3b3b64b4e3ab038b9c6e2b9bc1372a640a9722f38e8bbea67d46a8e3c` with 12 + 5 results, all Pass, 0 skipped or not run; ten exit codes 0. | matched 3/3 against `ed4528d5`: same command and paths as the dev-story row; the review changed only this spec and the evidence handoff. |
 | 2026-10-06 | code-review | Second-pass review of `b7a4377a..95a38fd8` (diff SHA-256 `51bce7acc36bf9e3d8fd09b79d581ff8e49c405ec72b54ddf9bed3392510b570`), six layers: one decision (resolved, option 1), 11 patches left as action items, 4 deferrals added to `deferred-work.md`, 16 rejected. No patch applied in this row. Committed in `6f3c727a`, which also carries unrelated dependency gitlinks. | Phase delta +0; cumulative +0. L1 79 (from the Review record); L2a 12 and L2b 5, all Pass with `-failSkips` (assembly SHA-256 `c14d72222e20f4964e9fe928189f143ae2328cda3ac1a558889815cc54932700`, build identity only). | matched 4/4 against `ed4528d5`: raw `git diff --name-status ed4528d5 6f3c727a` lists 21 paths. Four are Story 27.4 paths: this spec, `epic-27-context.md`, the evidence handoff and `deferred-work.md`. The other 17 are the named File List Exclusions. |
 | 2026-10-06 | code-review | Review-patch application. All 11 second-pass patches applied: ledger and File List adopted; Historical Context Classification, Slice Proof and per-checkpoint table added; C1.16 blocker re-derived; Verification strengthened; Epic AC Verification added; `baseline_commit` restored to `ed4528d5`; missing live inputs listed; planning line restored; receipt identifiers and post-run files disclosed; fail-fast claim narrowed and the documented block's fail-fast exercised; runtime checklist marked not applicable. One deferral added (Epic 27 `epics.md` currency). Tasks 3-4 stay pending. | Phase delta +0; cumulative +0. L1 79 -> 79 (`cd958099…`); L2a 12 -> 12 (`0bdae30a…`); L2b 5 -> 5 (`c490ea56…`). Post-patch receipt `/tmp/story-27-4-offline.al6C55hg` (revision `6f3c727a` plus the patched worktree): `Ran 79 tests`, `OK`; `architecture.xml` SHA-256 `240fd6244aa6982782057f25e685cf6ae58c57b2b0db0c133de83420f707c122` with 12 + 5 results, all Pass, 0 skipped or not run; build 0 warnings, 0 errors; ten exit codes 0. Fail-fast receipt `/tmp/story-27-4-failfast.njdCm7qY`: with the lifecycle command replaced by `false`, the block exits 1 and nothing runs after it. Post-record rerun of both classes against the final evidence handoff (file SHA-256 `5191682780d8c3b10c3281385da879b1c1ae4f7e14fd0e453aafaa1166f08255`), receipt `/tmp/story-27-4-postrecord.D2nYnKfs`: `architecture.xml` SHA-256 `66491b57a54a89c7cb18eba87a2edef659c2a631c69803aab5a290ed09bb97c9`, 17 = 12 + 5, all Pass, 0 skipped or not run; exit 0. | matched 4/4 against `ed4528d5`: `git diff --name-status ed4528d5` (HEAD `6f3c727a` plus the worktree) lists 21 paths: the same 4 Story 27.4 paths and the 17 named exclusions. Readiness: `python3 tools/check-story-review-readiness.py --story-key spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4 --changed-files-file <raw 21 paths>` exits 0 with final line `Story review readiness validation passed.`; adding one unlisted probe path makes it exit 1. Slice: `python3 tools/check-story-slice-scope.py --changed-files-file <b7a4377a..95a38fd8 names> --require-record` exits 0 with final line `story-slice-scope: OK - 1 story file(s) checked: _bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`. On the raw 21 paths it exits 1 only for Story 27.22's `spec-27-22-component-and-backend-identity.md`, a pre-existing out-of-scope result that is identical without this spec. |
+| 2026-10-07 | dev-story | Offline resumption: confirmed the already-implemented canonical handoff and re-executed its unchanged block. Added dated receipt/current-blocker notes only; Tasks 3-4 and all live matrix states remain pending. | Phase delta +0; cumulative +0. L1 79 -> 79; L2a 12 -> 12; L2b 5 -> 5, same runner/scope/configuration and unchanged test sources. Receipt `/tmp/story-27-4-offline.sSe9i00R` on `5ccacbe5b017b1967dbd9e7b6a253cbab9d8b278` plus the preserved user-owned Builds gitlink: `Ran 79 tests`, bare `OK`; architecture XML SHA-256 `509b8bf874c667613fde4ac3c7aad613abd99a34f6a44da283638f1aee1d5a52`, 17 = 12 + 5, every result Pass, 0 skipped/not run; build 0 warnings/errors; ten commands and block exit 0. | matched 4/4 cumulative against `ed4528d51279f488a9be81a762fa5522ceb46203`; the 17 named exclusions remain outside Story 27.4. This resumption changes only this spec and the evidence handoff. The existing Builds worktree gitlink belongs to the user and is excluded from this story. |
+
+| 2026-10-07 | code-review | Offline resumption reviewed by blind-hunter, edge-case-hunter and verification-gap. All 14 findings classified: five newly deferred pre-existing Story 27.22 follow-ups, five carried existing deferrals, two false and two low rejected; no patches or loopbacks. Frozen intent, baseline and pending live states preserved. | Phase delta +0; cumulative +0. L1 79 -> 79, L2a 12 -> 12, L2b 5 -> 5; no test/source/configuration change. Parent independently checked the canonical receipt and all eight named matrix fixtures. Supplemental updated-document receipt `/tmp/story-27-4-resumption-document.1rd_vhkw` records another exact 12 + 5 Pass run and successful readiness/scoped slice/whitespace checks while status was `in-progress`; the workflow's temporary `in-review` vocabulary mismatch retains PV2's existing deferral. | matched 4/4 cumulative against `ed4528d51279f488a9be81a762fa5522ceb46203`; this resumption changes three declared paths: this spec, the evidence handoff and `deferred-work.md`. The 17 excluded paths and user-owned Builds gitlink remain outside this story. |
 
 ## File List
 

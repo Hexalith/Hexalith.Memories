@@ -5719,3 +5719,25 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
   summary: The Story 27.22 deferred-work entries added in `f5beeed5`/`8b9d87ab`/`b969cf32` are missing spaces, with run-together tokens such as "Story27.4", "Story27.22", "exit0" and "identity20/20". A search for "Story 27.4" therefore misses their no-credit disclaimers.
   evidence: `grep -c 'Story27\.' _bmad-output/implementation-artifacts/deferred-work.md` returns 6 (2026-10-06). The text is pre-existing Story 27.22 ledger text that Story 27.4 must not modify. Owner: Story 27.22 owner (Deployment Adapter Developer).
+
+## Deferred from: offline resumption review of spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md (2026-10-07)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+  summary: Deployment Adapter Developer owns separately scoped correction or retirement of the canonical C1.16 EOF-sensitive HTTP transport before relying on it for a future capture.
+  evidence: B1: tools/verify-access-telemetry-c1-linkage.ps1:315 pipes completed printf output into BusyBox nc, while Story 27.22's dated actual diagnosis records request cancellation and a reviewed external transport correction. This predates the Story 27.4 resumption. The accepted captured window used separately reviewed external transport, not a repaired canonical packet. Reopen with approved permanent transport scope and executed actual-runtime native-exit/HTTP framing regressions; preserve historical refused packets and neutral gate fields.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+  summary: Deployment Adapter Developer owns binding the disposable SQL-contract lane to its authorized local Docker endpoint before resource creation.
+  evidence: B4: tests/tooling/access_telemetry_c1_sql_contract/linkage_sql_contract_test.py:383 checks daemon OS/architecture but invokes ambient Docker context/environment without an endpoint binding, so remote DOCKER_HOST/context can receive the lane's owned resources. This pre-existing Story 27.22 harness issue was reviewed read-only; no remote daemon was contacted. Reopen with an explicitly authorized endpoint contract, refusal before creation for another endpoint, and owned-resource cleanup regressions.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+  summary: Deployment Adapter Developer owns asserting deployment image identity in the real SQL-contract lane's manifest contract.
+  evidence: B5: an isolated temporary manifest changed to postgres:18.7 with an unapproved digest still passed assert_manifest_contract, while actual SQL execution uses the hardcoded approved 18.6 child. This pre-existing Story 27.22 test contract can validate a changed deployment against the old image. Reopen with exact approved deployment/index/child identity checks and executed image-drift refusal cases; no tracked deployment bytes changed.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+  summary: Deployment Adapter Developer owns enrolling the existing real PostgreSQL SQL-contract assertions in an automated verification lane with their pinned prerequisites.
+  evidence: V1: .github/workflows/ci.yml:297 discovers access_telemetry_c1 only; its fake transport manufactures normalized clientAddr values. The real valid-session and old-inet-projection regression tests are in the separate manual access_telemetry_c1_sql_contract lane. A restored a.client_addr::text projection can pass CI fixtures while refusing valid actual IPv4 sessions. This predates the Story 27.4 resumption. Reopen with automated isolated discovery and documented Docker/PowerShell/OpenSSL/pinned-image setup, proving the real projection mutation fails the gate.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-4.md`
+  summary: Deployment Adapter Developer owns a regression proving C1.16 source drift after target observation blocks positive publication.
+  evidence: V2: linkage_test.py's existing drift fixtures change sources before contact, while the SQL-contract lane imports selected functions and never runs the final collector publication path. Removing the final Assert-LinkageSourcesStable call at tools/verify-access-telemetry-c1-linkage.ps1:885 is not caught by those tests. This predates the Story 27.4 resumption. Reopen with a copied-input mutation after an observed target call that asserts the drift blocker, null observations and neutral gate fields.
