@@ -40,6 +40,10 @@ using Shouldly;
 [Collection("DaprTokenEnvironment")]
 public sealed class AccessTelemetryQualificationWorkloadTests
 {
+    // Independently pin the published ADR 27.1-001 profile identities. Gate fixtures must
+    // not read the runtime constant, which previously hid its historical PG1 pin.
+    private const string Pg2ProfileSha256 = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe";
+    private const string Pg1ProfileSha256 = "dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14";
     private static readonly DateTimeOffset Now = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
@@ -61,7 +65,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             File.WriteAllText(
                 path,
                 "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
-                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                Pg2ProfileSha256 +
                 "\",\"expiresUtcMs\":" +
                 Now.AddMinutes(1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
                 "}");
@@ -90,7 +94,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             File.WriteAllText(
                 path,
                 "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
-                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                Pg2ProfileSha256 +
                 "\",\"expiresUtcMs\":" +
                 Now.AddMilliseconds(-1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
                 "}");
@@ -100,7 +104,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             File.WriteAllText(
                 path,
                 "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
-                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                Pg2ProfileSha256 +
                 "\",\"expiresUtcMs\":" +
                 Now.AddMinutes(15).AddSeconds(4).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
                 "}");
@@ -109,7 +113,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             File.WriteAllText(
                 path,
                 "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
-                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                Pg2ProfileSha256 +
                 "\",\"expiresUtcMs\":" +
                 Now.AddMinutes(15).AddSeconds(6).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
                 "}");
@@ -119,7 +123,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             File.WriteAllText(
                 path,
                 "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
-                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                Pg2ProfileSha256 +
                 "\",\"expiresUtcMs\":" +
                 Now.AddMinutes(16).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
                 "}");
@@ -129,7 +133,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             File.WriteAllText(
                 path,
                 "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
-                AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+                Pg2ProfileSha256 +
                 "\",\"expiresUtcMs\":" +
                 Now.AddMinutes(1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
                 ",\"extra\":true}");
@@ -152,33 +156,124 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         }
     }
 
+    [Theory]
+    [InlineData(Pg1ProfileSha256)]
+    [InlineData("7F9F69322353CB22EC1254F1D486EE12337C9A9D579DBC80D6D842D32B339EFE")]
+    public void Gate_RejectsHistoricalOrInexactProfile(string profileSha256)
+    {
+        string path = WriteGate(Now.AddMinutes(1), profileSha256);
+        try
+        {
+            CreateGate(path, "Qualification").TryValidate(out string reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Development")]
+    [InlineData("Staging")]
+    public void Gate_RejectsPg2OutsideQualification(string environmentName)
+    {
+        string path = WriteGate(Now.AddMinutes(1));
+        try
+        {
+            CreateGate(path, environmentName).TryValidate(out string reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_environment_required");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Gate_RevalidatesPg2ExpiryRenewalAndRevocationWithoutCaching()
+    {
+        var time = new FakeTimeProvider(Now);
+        string path = WriteGate(Now.AddMinutes(1));
+        try
+        {
+            AccessTelemetryQualificationGate gate = CreateGate(path, "Qualification", time);
+            gate.TryValidate(out string reason).ShouldBeTrue(reason);
+
+            time.Advance(TimeSpan.FromMinutes(1));
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            DateTimeOffset renewedExpiry = time.GetUtcNow().AddMinutes(15).AddSeconds(5);
+            WriteGate(path, renewedExpiry, Pg1ProfileSha256);
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            WriteGate(path, renewedExpiry);
+            gate.TryValidate(out reason).ShouldBeTrue(reason);
+
+            WriteGate(path, renewedExpiry.AddMilliseconds(1));
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            WriteGate(path, renewedExpiry, state: "disabled");
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            WriteGate(path, renewedExpiry);
+            gate.TryValidate(out reason).ShouldBeTrue(reason);
+
+            File.Delete(path);
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_unavailable");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void Gate_AcceptsAConfigMapProjectionSymlinkOnlyInsideItsMount()
     {
         string mount = Path.Combine(Path.GetTempPath(), $"qualification-gate-{Guid.NewGuid():N}");
-        string data = Path.Combine(mount, "..2026_09_06");
-        Directory.CreateDirectory(data);
-        string projected = Path.Combine(data, "gate.json");
-        File.WriteAllText(
-            projected,
-            "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
-            AccessTelemetryQualificationGate.ApprovedProfileSha256 +
-            "\",\"expiresUtcMs\":" +
-            Now.AddMinutes(5).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
-            "}");
+        Directory.CreateDirectory(mount);
+        var time = new FakeTimeProvider(Now);
+        PublishProjectedGate(mount, "..initial", Now.AddMinutes(1));
         string link = Path.Combine(mount, "gate.json");
-        _ = File.CreateSymbolicLink(link, Path.Combine("..2026_09_06", "gate.json"));
+        _ = File.CreateSymbolicLink(link, Path.Combine("..data", "gate.json"));
         try
         {
-            CreateGate(link, "Qualification").TryValidate(out string reason).ShouldBeTrue(reason);
+            AccessTelemetryQualificationGate gate = CreateGate(link, "Qualification", time);
+            gate.TryValidate(out string reason).ShouldBeTrue(reason);
+
+            time.Advance(TimeSpan.FromMinutes(1));
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            DateTimeOffset renewedExpiry = time.GetUtcNow().AddMinutes(1);
+            PublishProjectedGate(mount, "..renewed", renewedExpiry);
+            gate.TryValidate(out reason).ShouldBeTrue(reason);
+
+            PublishProjectedGate(mount, "..historical", renewedExpiry, Pg1ProfileSha256);
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            PublishProjectedGate(mount, "..disabled", renewedExpiry, state: "disabled");
+            gate.TryValidate(out reason).ShouldBeFalse();
+            reason.ShouldBe("qualification_gate_invalid_or_expired");
+
+            PublishProjectedGate(mount, "..current", renewedExpiry);
+            gate.TryValidate(out reason).ShouldBeTrue(reason);
 
             File.Delete(link);
             string outside = Path.GetTempFileName();
             try
             {
-                File.WriteAllText(outside, File.ReadAllText(projected));
+                File.WriteAllText(outside, File.ReadAllText(Path.Combine(mount, "..data", "gate.json")));
                 _ = File.CreateSymbolicLink(link, outside);
-                CreateGate(link, "Qualification").TryValidate(out reason).ShouldBeFalse();
+                gate.TryValidate(out reason).ShouldBeFalse();
                 reason.ShouldBe("qualification_gate_unavailable");
             }
             finally
@@ -235,7 +330,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             var runner = new AccessTelemetryQualificationWorkloadRunner(
                 loggerFactory.CreateLogger<AccessTelemetryCategory>(),
                 accounting,
-                CreateGate(gatePath, "Qualification"),
+                CreateGate(gatePath, "Qualification", time),
                 time,
                 recordsPerSecond: 1,
                 steadyStateSeconds: 1);
@@ -309,6 +404,16 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 "writer-1-segment-0001",
                 Now.AddMilliseconds(1).ToUnixTimeMilliseconds(),
                 CancellationToken.None));
+
+            time.Advance(TimeSpan.FromMinutes(5));
+            InvalidOperationException expiredReplay = await Should.ThrowAsync<InvalidOperationException>(() => runner.RunAsync(
+                "run-001",
+                "writer-1-segment-0001",
+                Now.ToUnixTimeMilliseconds(),
+                CancellationToken.None));
+            expiredReplay.Message.ShouldBe("qualification_gate_invalid_or_expired");
+            accounting.Current.Attempted.ShouldBe(1);
+            queue.Count.ShouldBe(0);
         }
         finally
         {
@@ -327,7 +432,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         File.WriteAllText(
             gatePath,
             "{\"schemaVersion\":1,\"state\":\"disabled\",\"profileSha256\":\"" +
-            AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+            Pg2ProfileSha256 +
             "\",\"expiresUtcMs\":0}");
         try
         {
@@ -420,7 +525,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             builder.Services.AddSingleton(new AccessTelemetryQualificationWorkloadRunner(
                 loggerFactory.CreateLogger<AccessTelemetryCategory>(),
                 accounting,
-                CreateGate(gatePath, "Qualification"),
+                CreateGate(gatePath, "Qualification", time),
                 time,
                 recordsPerSecond: 1,
                 steadyStateSeconds: 1));
@@ -462,6 +567,21 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 time.Advance(TimeSpan.FromSeconds(1));
                 HttpResponseMessage accepted = await acceptedTask;
                 accepted.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+                AccessTelemetryQualificationAccountingSnapshot beforeRevocation = accounting.Current;
+                WriteGate(gatePath, time.GetUtcNow().AddMinutes(5), state: "disabled");
+                using var revokedRequest = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    AccessTelemetryQualificationEndpointExtensions.Route);
+                foreach (var header in acceptedRequest.Headers)
+                {
+                    revokedRequest.Headers.Add(header.Key, header.Value);
+                }
+
+                using HttpResponseMessage revoked = await client.SendAsync(revokedRequest);
+                revoked.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+                (await revoked.Content.ReadAsStringAsync()).ShouldContain("qualification_gate_invalid_or_expired");
+                accounting.Current.ShouldBe(beforeRevocation);
             }
             finally
             {
@@ -653,7 +773,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             var runner = new AccessTelemetryQualificationWorkloadRunner(
                 logger,
                 accounting,
-                CreateGate(gatePath, "Qualification"),
+                CreateGate(gatePath, "Qualification", time),
                 time,
                 recordsPerSecond: 1,
                 steadyStateSeconds: 1);
@@ -706,7 +826,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             builder.Services.AddSingleton(new AccessTelemetryQualificationWorkloadRunner(
                 Substitute.For<ILogger<AccessTelemetryCategory>>(),
                 accounting,
-                CreateGate(gatePath, "Qualification"),
+                CreateGate(gatePath, "Qualification", time),
                 time,
                 recordsPerSecond: 1,
                 steadyStateSeconds: 1));
@@ -748,7 +868,10 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         }
     }
 
-    private static AccessTelemetryQualificationGate CreateGate(string path, string environmentName)
+    private static AccessTelemetryQualificationGate CreateGate(
+        string path,
+        string environmentName,
+        TimeProvider? timeProvider = null)
     {
         IHostEnvironment environment = Substitute.For<IHostEnvironment>();
         environment.EnvironmentName.Returns(environmentName);
@@ -758,7 +881,7 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 ["AccessTelemetryQualification:GatePath"] = path,
             })
             .Build();
-        return new AccessTelemetryQualificationGate(environment, configuration, new FakeTimeProvider(Now));
+        return new AccessTelemetryQualificationGate(environment, configuration, timeProvider ?? new FakeTimeProvider(Now));
     }
 
     private static HttpRequestMessage CreateProgramRequest()
@@ -785,17 +908,49 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         builder.UseSetting("Authentication:JwtBearer:RequireHttpsMetadata", "false");
     }
 
-    private static string WriteGate(DateTimeOffset expires)
+    private static void PublishProjectedGate(
+        string mount,
+        string projectionName,
+        DateTimeOffset expires,
+        string profileSha256 = Pg2ProfileSha256,
+        string state = "enabled")
+    {
+        string projection = Path.Combine(mount, projectionName);
+        Directory.CreateDirectory(projection);
+        WriteGate(Path.Combine(projection, "gate.json"), expires, profileSha256, state);
+        string nextLink = Path.Combine(mount, "..data_tmp");
+        _ = Directory.CreateSymbolicLink(nextLink, projectionName);
+        string currentLink = Path.Combine(mount, "..data");
+        // Managed directory moves cannot replace a directory symlink atomically.
+        // Switch the projection between validations to exercise rereading ..data.
+        if (Directory.Exists(currentLink))
+        {
+            Directory.Delete(currentLink);
+        }
+
+        Directory.Move(nextLink, currentLink);
+    }
+
+    private static string WriteGate(DateTimeOffset expires, string profileSha256 = Pg2ProfileSha256)
     {
         string path = Path.GetTempFileName();
+        WriteGate(path, expires, profileSha256);
+        return path;
+    }
+
+    private static void WriteGate(
+        string path,
+        DateTimeOffset expires,
+        string profileSha256 = Pg2ProfileSha256,
+        string state = "enabled")
+    {
         File.WriteAllText(
             path,
-            "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" +
-            AccessTelemetryQualificationGate.ApprovedProfileSha256 +
+            "{\"schemaVersion\":1,\"state\":\"" + state + "\",\"profileSha256\":\"" +
+            profileSha256 +
             "\",\"expiresUtcMs\":" +
             expires.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) +
             "}");
-        return path;
     }
 
     private sealed class ThrowOnceLogger : ILogger<AccessTelemetryCategory>

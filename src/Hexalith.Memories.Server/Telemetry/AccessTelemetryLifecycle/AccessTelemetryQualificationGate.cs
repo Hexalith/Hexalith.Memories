@@ -13,8 +13,8 @@ internal sealed class AccessTelemetryQualificationGate(
     IConfiguration configuration,
     TimeProvider timeProvider)
 {
-    /// <summary>The sole approved Story 27.4 profile hash.</summary>
-    public const string ApprovedProfileSha256 = "dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14";
+    /// <summary>The sole approved PG-ONPREM-2 Story 27.4 profile hash.</summary>
+    public const string ApprovedProfileSha256 = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe";
 
     private const string DefaultGatePath = "/var/run/hexalith/access-telemetry-qualification/gate.json";
     private static readonly TimeSpan MaximumGateLifetime = TimeSpan.FromMinutes(15);

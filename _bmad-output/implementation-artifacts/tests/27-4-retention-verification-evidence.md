@@ -68,29 +68,29 @@ Approved/done current-profile gate-owner
 registrations and twenty-five distinct passed artifacts with independent named
 Platform Operations and Security approvals of the same hash are still required.
 
-Runtime qualification also remains blocked, re-verified on 2026-10-07 at
-`95dd8758f2f36d262a2b5c23269a0d73a2d7825b`:
-`AccessTelemetryQualificationGate.ApprovedProfileSha256` still pins historical
-PG1 `dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14`, while
-the Python producers require current PG2
-`7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`.
-The Server's fixed-workload gate therefore refuses an enabled PG2 gate file.
-The existing `Gate_AcceptsOnlyCurrentExactProfileInQualification` test builds its
-input from the same runtime constant; its passing result does not prove PG2
-compatibility. C2-C4 repository fixture validation is not proof that this runtime
-prerequisite has been satisfied.
+The runtime profile mismatch identified on 2026-10-07 at
+`95dd8758f2f36d262a2b5c23269a0d73a2d7825b` now has a separately scoped
+[repository source/test correction](../spec-migrate-runtime-qualification-gate-to-pg-onprem-2.md).
+`AccessTelemetryQualificationGate.ApprovedProfileSha256` pins current PG2
+`7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`, matching
+the canonical Python producer profile. Runtime tests independently author the
+published PG2 and historical PG1 hashes rather than deriving inputs from the
+runtime constant. They prove PG2 acceptance and PG1 rejection, Qualification-only
+access, bounded expiry, fresh-file renewal and revocation. This source/test slice
+is `repository-validated`; its dated receipt below is offline evidence only.
 
 The [authenticated predecessor interchange specification](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/SPEC.md)
 is proposed, unstarted and not implementation-ready. Its
 [P7 migration prerequisite](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md#decisions-and-ownership-still-required)
-requires the runtime profile correction to have a separate scope. Its proposed
-decision route assigns the handoff to Deployment Adapter Developer and the Story
-27.4 machinery owner, with Architecture and Operations approving runtime migration.
-Accountable people remain unassigned; these role labels confer no approval or
-completed ownership. Reopen this runtime blocker only when
-approved source changes and independent profile assertions prove PG2 acceptance
-and historical-profile rejection while preserving non-Production scope, bounded
-expiry and renewal behavior. This handoff does not implement or approve that migration.
+requires a separately scoped runtime correction. The source/test correction above
+satisfies that repository behavior check, while Architecture and Operations runtime
+migration approval and authorized deployment remain pending before live C2-C4
+execution. P7's remaining consumer inventory, compatibility/dispatch and
+authenticated-interchange decisions remain unresolved. Its proposed decision route
+assigns the handoff to Deployment Adapter Developer and the Story 27.4 machinery
+owner; accountable people remain unassigned. These role labels and offline test
+results confer no approval, completed ownership or running-target qualification.
+The historical handoff and receipts below preserve the earlier mismatch as observed.
 
 None of these live inputs has been supplied for this offline pass: an accepted
 current-profile C1 predecessor bundle (external bundle path), approved/done gate
@@ -524,3 +524,102 @@ log/dependency identifiers, protected-file byte comparison, two-file mutation sc
 CRLF and whitespace checks passed. The one-shot blind review's four findings were
 corrected; no finding was deferred. These final receipt notes were recorded after
 that check and provide no live gate, authority or closure credit.
+
+### 2026-10-07 runtime PG2 source/test correction
+
+This separately scoped runtime prerequisite was verified against full baseline
+`f98e3f82b4b3f8ed804724811248556c2176139a` with the gate source and tests modified
+in the worktree. Local receipt `/tmp/pg2-runtime-gate-4vo_ukjf` retains command
+arguments, exits, logs, result XML, dependency revisions and build/source hashes.
+The source change replaces only the runtime profile pin and its XML summary.
+All valid gate fixtures use independently published PG2 bytes, including runner,
+endpoint and ConfigMap projection coverage.
+
+The corrected Debug/source-reference test build passed with zero warnings/errors.
+Before changing the runtime pin, direct `Gate_*` execution discovered eight cases:
+four failed, including independent PG2 acceptance and historical PG1 rejection;
+four passed, zero errors/skips/not-run. This proves the independent assertions
+catch the old pin. After the pin change, all eighteen workload-class cases passed,
+including `Gate_RejectsHistoricalOrInexactProfile`,
+`Gate_RejectsPg2OutsideQualification`, and
+`Gate_RevalidatesPg2ExpiryRenewalAndRevocationWithoutCaching`. The latter checks
+exact expiry, rejection of PG1 renewal, a valid PG2 renewal at the 15-minute plus
+five-second bound, refusal one millisecond beyond it, disabled-state revocation,
+re-enablement and file removal on the same gate instance. The twelve retention
+decision and five A41 architecture guards also passed, with zero failures, errors,
+skips or not-run tests. An independent canonical-profile comparison passed for the
+runtime, producer and exact PG2 profile hash, all sixteen bound inputs and the
+unchanged historical PG1 canonical hash.
+
+Commands from the repository root:
+
+```bash
+dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug -m:1 -p:UseHexalithProjectReferences=true
+env DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle.AccessTelemetryQualificationWorkloadTests -parallelMode none -noLogo -failSkips -result-xml /tmp/pg2-runtime-gate-4vo_ukjf/green-workload.xml
+env DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryRetentionDecisionTests -class Hexalith.Memories.Server.Tests.Architecture.AccessTelemetryA41CloseOutTests -parallelMode none -noLogo -failSkips -result-xml /tmp/pg2-runtime-gate-4vo_ukjf/architecture.xml
+```
+
+Identifiers for the initial passing run, before review coverage patches:
+
+| Artifact | SHA-256 |
+| :--- | :--- |
+| Built Server test assembly | `576311a00f3b155db8214aa7fbab6ea5d70f159aaf9f72982fda55c18f9e85e2` |
+| Runtime gate source bytes | `97b4c83000d4bb81ab8a33e1f46cc64a31ef16085f1527798693ea1a2ae9a8dd` |
+| Workload test source bytes | `d8e22d95d178684184752d8e52b29b8af0fa6c8bdd1c7d13830c88f18086a8c5` |
+| `green-workload.xml` | `ae6e2d2a770ba670ca0627f69dd03c4e7cc60fde70fe6b547da3c6ed5877457c` |
+| `architecture.xml` | `858a7cef33ac2bddc2461194d2359b72038a1669ac66b4caaba622c5d49c8fbc` |
+
+This receipt covers repository behavior, not live approval or qualification.
+Documentation was recorded after these test runs; final documentation verification
+and review are recorded in the supporting spec. The canonical C0-C6 states,
+Production disabled state, open A41/action, sprint tracker and historical receipts
+remain unchanged. No qualification target, fault or purge was executed. Architecture
+and Operations runtime migration approval remains pending with the other P7 and
+live prerequisites; this correction does not complete Story 27.4 or close A41.
+
+Review added mounted-projection renewal through `gate.json -> ..data/gate.json`
+on one gate instance, including expiry, independent PG2 renewal, historical PG1
+rejection, disabled-state revocation and the original outside-mount refusal.
+The managed fixture switches directory symlinks synchronously between reads;
+it does not claim to test Kubernetes atomic publication. Runner/endpoint fixtures
+now share their existing fake clock with the gate. The runner refuses a previously
+successful cached segment after expiry without emitting another record; the
+endpoint refuses an authenticated cached replay after disabled-state revocation
+with HTTP 503, a bounded reason and unchanged accounting.
+
+After these review patches the Debug/source-reference build passed again with
+zero warnings/errors, and all eighteen workload cases passed with zero failures,
+errors, skips or not-run tests. The final workload command uses the same selector
+and arguments above with `-result-xml /tmp/pg2-runtime-gate-4vo_ukjf/final-workload.xml`.
+The profile comparison below also ran and exited zero; its exact script, command,
+exit and stdout/stderr are retained as `profile-comparison.*` in the local receipt.
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+import re
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd() / "tools"))
+import verify_access_telemetry_lifecycle as v
+expected_pg2 = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"
+expected_pg1 = "dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14"
+v.validate_current_profile_inputs(Path.cwd())
+assert v.canonical_pg_onprem_2_profile().manifest()["profile_sha256"] == expected_pg2
+assert v.canonical_pg_onprem_profile().manifest()["profile_sha256"] == expected_pg1
+assert v.STORY_27_4_PROFILE_SHA256 == expected_pg2
+source = Path("src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationGate.cs").read_text()
+runtime = re.search(r'ApprovedProfileSha256 = "([0-9a-f]{64})"', source).group(1)
+assert runtime == expected_pg2
+assert runtime != expected_pg1
+print("Runtime, producer and canonical PG2 identities and sixteen bound inputs match; historical PG1 is unchanged and distinct.")
+PY
+```
+
+| Review-patched artifact | SHA-256 |
+| :--- | :--- |
+| `tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll` | `124b6e459789c375d178833902d5a31d121fce2bc28e97f02a7b7d8b8be46665` |
+| `tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.dll` | `abd56e9ef0bdb506afdf6796afde41fddd60349d49003a3352a352df9b17803c` |
+| `tests/Hexalith.Memories.Server.Tests/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationWorkloadTests.cs` | `7dc059d635811abce6c9fa0a2cc43dbef6bbe772f6d353cabcfa779f9321a321` |
+| `final-workload.xml` | `bd0ed6982270247337ebbc95dff9ed9ef90cad02f31cb842b7db002bdf066452` |
+
+Final documentation checks and review triage are recorded in the supporting spec.
