@@ -260,3 +260,30 @@ prerequisites above retain their recorded states.
 The Production producers, close-out preflight/postflight, and publish verifier are
 documented in
 [Access Telemetry Lifecycle Operations](../../../docs/operations/access-telemetry-lifecycle.md).
+
+### 2026-10-07 PG2 C1.15 repository producer preparation
+
+The separate [PG2 C1.15 preparation spec](../spec-pg2-c1-15-runtime-control-plane-renewal.md)
+now has an offline-testable v2 runtime/control-plane collector, a shared sixteen-input
+preflight and a [capture/independent-disposition contract](../../../docs/operations/access-telemetry-c1-pg2-c1-15-contract.md).
+Successful fixtures bind the exact profile/workload/session/target, full source
+HEAD, all three producer/helper sources and sixteen approved input hashes,
+effective invocation, actual Kubernetes and Git command receipts and final source
+recheck. Dirty development captures stay labelled; all packets remain neutral.
+Live capture, external archive custody and independently authenticated acceptance
+remain pending. Production is disabled and the C0-C6 matrix, Story 27.21/27.22,
+Story 27.4 and A41 states remain unchanged.
+
+| Offline check | Receipt and result |
+| :--- | :--- |
+| Review-patched PG2 C1.15 lane | `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p 'pg2_runtime_control_plane_identity_test.py' -v`; 22 cases passed in 547.824s, zero failures/errors/skips. Log `/tmp/pg2-c1-15-review-patch-focused.log`, SHA-256 `3edf582c882aaf8eed3dbe64532d8709b5759ab4f33a82b8bde6ecee4f82a9ac`. Covers exact profile/workload/target and unique 19-source bindings; parsed-source/helper load and final-query races; late dirty refresh; all sixteen input refusals; index/child/bare and mixed/reordered captures; harmless metadata changes; embedded/direct/decoded credential safety and selected secret references; scalar/array/UTF-8/malformed output; absolute LF/CRLF identity anchors; token/identity drift; Git/Kubernetes size/deadline refusals; immutable neutral output and PG1 v1 preservation. |
+| Required-session legacy guard | The updated C1.16 mode-denial method passed separately: 1 test, zero failures/errors/skips; `/tmp/pg2-c1-15-rederived-session-denial.log`, SHA-256 `8daa346844e6cc7915155759de96e8f768224efa26f9359c8c4f66d27a440034`. Missing PG2 C1.15 session is explicitly refused before calls/output. |
+| Earlier canonical lifecycle/architecture boundary block | The unchanged block above passed with receipt `/tmp/story-27-4-offline.7ETQL5cv`; all ten commands and the block exited 0. Lifecycle: 79 passed. Architecture: exactly 12 retention-decision + 5 A41 guards, all `Pass`, zero failures/errors/skips/not-run. Debug source-reference build: zero warnings/errors. This historical receipt predates source-snapshot/Git transport correction; the final-source receipt below supersedes it for current verification. |
+| Earlier canonical execution source | Full HEAD `cc754ab1487ddcec40340f9afa370aa3114851f1` with implementation changes in the worktree. Its execution-time tracked diff hash is `aa5fc14da52419b4e389708561b9c7b679d1f07d063c79e5aa9fd20c350229e9`; untracked paths are listed in the retained status receipt. This boundary receipt predates the source-snapshot/Git transport correction; the corrected PG2 lane above validates the re-derived producer paths. |
+| Final-source canonical lifecycle/architecture boundary block | The unchanged block above passed with receipt `/tmp/story-27-4-offline.jZZMVwe1`; all ten commands and the block exited 0. Lifecycle: 79 passed. Architecture: exactly 12 retention-decision + 5 A41 guards, all Pass, zero failures/errors/skips/not-run. Debug source-reference build: zero warnings/errors. XML SHA-256 `945fab28cbdd337e292f17bc57c5a3305997b54d968057d01624634a3f2d7fa9`; execution-time tracked diff SHA-256 `85415f9b95d6d974d8aaaf6704b8cbc550ea331dbdba987632bcff6c8d623adc`. Dated receipt metadata was recorded afterward; these are offline checks only. |
+| Complete C1 regression | Discovery is 108 unittest cases = the existing 86 + 22 PG2 cases. Fresh parent-owned full verification is running with receipt root `/tmp/pg2-c1-15-reviewed-verification-lo9pmav6`; it must finish with zero failures/errors/skips before completion. Earlier incomplete/stopped runs grant no full-suite verification. |
+
+These `/tmp` receipts are local repository verification, not live evidence or a
+custody archive. The implementation makes no reviewer-authentication, C1.17,
+aggregate C1, successor-registration or activation claim. No deployment input,
+historical capture or independent disposition was changed.

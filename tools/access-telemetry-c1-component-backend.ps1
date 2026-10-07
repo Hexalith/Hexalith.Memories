@@ -5,10 +5,23 @@ function Assert-C1CredentialFields {
     param([AllowNull()][AllowEmptyCollection()][object]$Value)
 
     if ($null -eq $Value) { return }
+    if ($Value -is [string]) {
+        Assert-SecretSafeOutput $Value
+        if ($Value -match '\A\s*[\{\[]') { Assert-C1DecodedOutputSafety $Value }
+        return
+    }
     if ($Value -is [System.Array]) {
         foreach ($item in $Value) { Assert-C1CredentialFields -Value $item }
     }
     elseif ($Value -is [System.Management.Automation.PSCustomObject]) {
+        $nameField = $Value.PSObject.Properties['name']
+        $valueField = $Value.PSObject.Properties['value']
+        if ($null -ne $nameField -and $nameField.Value -is [string] -and
+            $nameField.Value -match '\A(?i:authorization|dapr[-_]?api[-_]?token|password|passwd|token|secret|client[-_]?secret|access[-_]?token|connection[-_]?string)\z' -and
+            $null -ne $valueField -and $null -ne $valueField.Value -and
+            ($valueField.Value -isnot [string] -or $valueField.Value.Length -gt 0)) {
+            throw 'secret-shaped-output'
+        }
         foreach ($property in $Value.PSObject.Properties) {
             $credential = $property.Value
             $nonempty = $null -ne $credential
@@ -35,6 +48,15 @@ function Assert-C1DecodedOutputSafety {
         return [string][char][Convert]::ToInt32($match.Groups[1].Value, 16)
     })
     Assert-SecretSafeOutput $decoded
+    # Decode every JSON string token, even within diagnostics or discarded fields.
+    # This catches escaped slashes, quotes and Unicode before retaining stream hashes.
+    foreach ($token in [regex]::Matches($Text, '"(?:[^"\\]|\\.)*"')) {
+        $stringDocument = $null
+        try { $stringDocument = [System.Text.Json.JsonDocument]::Parse($token.Value) }
+        catch { continue }
+        try { Assert-C1CredentialFields -Value $stringDocument.RootElement.GetString() }
+        finally { $stringDocument.Dispose() }
+    }
     # Inspect each raw property occurrence so diagnostic prefixes or duplicate JSON keys
     # cannot hide an earlier credential value from the parsed-object guard.
     if ($decoded -match '(?i)"(?:authorization|dapr[-_]?api[-_]?token|password|passwd|token|secret|client[-_]?secret|access[-_]?token|connection[-_]?string)"\s*:\s*(?:"(?:[^"\\]|\\.)+"|\[\s*[^\s\]]|\{\s*[^\s\}]|(?:true|false)(?=\s|[,}\]]|$)|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?(?=\s|[,}\]]|$))') {
@@ -306,31 +328,13 @@ function Invoke-C1ComponentBackendCapture {
             })
         }
         if ($ProfileId -ceq 'PG-ONPREM-2') {
-            $approvedInputs = [ordered]@{
-                'deploy/dapr/components/access-telemetry-config.yaml' = '5072909673df235c463a8f64bca8c65644ec22f435aebb663d2d9fc52d7c1b4a'
-                'deploy/dapr/components/access-telemetry-secrets.yaml' = '0f34c483c8f531c107d6d318c1416b11d0448007acc1158dc6a2ab921b1f7c03'
-                'deploy/dapr/components/access-telemetry-store.yaml' = '4ce8c049b6990a01a046ac372aa9ec1ebb93527afcef155232127a3b4a89c303'
-                'deploy/kubernetes/base/access-telemetry-deployments.yaml' = 'aba898858bd7e82eb042b6ee50a76cd16821b154a65a7ab83f8e79ef45b835b6'
-                'deploy/kubernetes/base/access-telemetry-postgresql.yaml' = 'b73b43cdb3683a5dbdc7de593c7e17caa300b857952f1ae592d13d496499a4f4'
-                'deploy/kubernetes/base/dapr/access-telemetry-clock-config.yaml' = 'ee10d7831533ac0258829af1d82bf1b02e9b22d1d3c0f428ca6d67a41065de9e'
-                'deploy/kubernetes/base/dapr/access-telemetry-config-store.yaml' = 'b458851266b2559192caf84f6a5737837336a5470754f7e7f609eadf5efe6303'
-                'deploy/kubernetes/base/dapr/access-telemetry-lifecycle-config.yaml' = '981eac21ad9b40980887c0fe907ca5c6c70a166cd9494f9b3476db5e590eecf5'
-                'deploy/kubernetes/base/dapr/access-telemetry-secrets.yaml' = '5bd7c2f0caa741df4e3fe45adb408d40dac7b5b37acdf227ea8c88680abf88d7'
-                'deploy/kubernetes/base/dapr/access-telemetry-store.yaml' = '457e440c74563d4c2323cef003c393edbd1c5d56c6ef4ad2c005e812bbbb0270'
-                'deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml' = '0c2b4b836d14be457ab8ccc79a534cd9997193f9c7b10f3d11b8b100a8b40ab2'
-                'deploy/kubernetes/overlays/production/kustomization.yaml' = 'f1ec26757295a6da23f1f165453bbb023cae935b9dcdd7000596a0e512913c4a'
-                'deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml' = '59651af0c528d065f0f8686a6802df0cbbf8edae4a4f31455a8bf58cae680711'
-                'deploy/openbao/service-account-hardening.yaml' = '44571c24d6b7383428bb1fa0da1f30843e289fa722984f90fa86caf959d6b039'
-                'deploy/openbao/smoke-test.yaml' = 'c1f4eb2c21b82a0544eb81bab189275d6edf15864932e51c481d47354dedeee7'
-                'deploy/openbao/values.yaml' = '4d6e8909695100901be5008b5a4cd11d108ee03b495d26243d23a22ab25a0caa'
-            }
-            $repositoryRoot = Split-Path $PSScriptRoot -Parent
-            foreach ($relative in $approvedInputs.Keys) {
-                $sourcePath = Join-Path $repositoryRoot $relative
-                if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) { throw 'approved-profile-input-unavailable' }
-                $sourceSha256 = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
-                if ($sourceSha256 -cne $approvedInputs[$relative]) { throw 'approved-profile-input-drift' }
-                $script:sourceLedger.Add([ordered]@{ source = $relative; sha256 = $sourceSha256 })
+            . (Join-Path $PSScriptRoot 'access-telemetry-c1-profile.ps1')
+            $script:sourceLedger.Add([ordered]@{
+                source = 'tools/access-telemetry-c1-profile.ps1'
+                sha256 = (Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'access-telemetry-c1-profile.ps1') -Algorithm SHA256).Hash.ToLowerInvariant()
+            })
+            foreach ($inputSource in @(Assert-C1ApprovedProfileInputs (Split-Path $PSScriptRoot -Parent))) {
+                $script:sourceLedger.Add($inputSource)
             }
         }
         $observedContext = Invoke-KubectlObservation -Purpose 'current-context' -Arguments @('config', 'current-context')

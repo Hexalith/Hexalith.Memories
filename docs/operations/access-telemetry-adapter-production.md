@@ -40,6 +40,25 @@ reporter input stays byte-identical. All other running observations retain
 separate artifact hashes. Never patch an
 approved profile packet in place.
 
+## C1.15 runtime and control-plane preparation
+
+Repository producer preparation completed **2026-10-07** for exact PG2 C1.15.
+The [v2 capture and independent-disposition contract](access-telemetry-c1-pg2-c1-15-contract.md)
+defines required session, source, invocation and child-process provenance:
+
+```powershell
+pwsh ./tools/verify-access-telemetry-c1.ps1 -Gate C1.15 -ProfileId PG-ONPREM-2 -QualificationSessionId pg2-c1-15-20261007-session01 -EvidenceDirectory /approved-evidence/access-telemetry-c1/PG-ONPREM-2/C1.15 -CommandTimeoutSeconds 30
+```
+
+This is invocation guidance for a separately authorized eligible target; the
+example session/path establish no authority. Offline fixtures passed, but live
+capture, archive custody and independent acceptance remain pending. The collector
+requires all sixteen approved input hashes, Dapr 1.18.1 and its authenticated
+index or linux/amd64 child. Dirty development captures are labelled and cannot
+satisfy future accepted-source checks. This preparation advances no C1.17,
+aggregate C1, Production, Story 27.4 or A41 state. Historical PG1 C1.15 packets
+and dated dispositions retain their original provenance and state.
+
 ## C1.16 component and backend capture
 
 Story 27.22 owns only C1.16 and is done after independently accepted
@@ -61,7 +80,8 @@ read-only local socket. Advertised capabilities are recorded as advertisements.
 Dapr connection to this backend; a secret reference and local peer query cannot
 prove that connection. Captures retain `gateStatus: not-evaluated` and grant no
 behavioral, independent-review or activation credit. PG1 C1.16 remains a separate
-historical mode requiring `-AllowHistoricalProfileCapture`; C1.15/PG2, lowercase
+historical mode requiring `-AllowHistoricalProfileCapture`. PG2 C1.15 requires
+the explicit session described above; missing/invalid sessions, lowercase
 successor literals and historical opt-in/PG2 are refused before calls/output.
 
 ### Separate C1.16 connection linkage candidate

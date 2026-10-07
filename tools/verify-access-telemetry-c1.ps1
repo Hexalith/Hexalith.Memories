@@ -13,6 +13,8 @@ param(
 
     [switch]$AllowHistoricalProfileCapture,
 
+    [string]$QualificationSessionId,
+
     [ValidateRange(1, 300)]
     [int]$CommandTimeoutSeconds = 30
 )
@@ -20,10 +22,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-# Exact literals apply to successor and historical C1.16 dispatch. The legacy
+# Exact literals apply to successor and historical dispatch. The legacy
 # C1.15/PG1 ValidateSet behavior remains case-insensitive.
 if ($ProfileId -ieq 'PG-ONPREM-2') {
-    if ($Gate -cne 'C1.16' -or $ProfileId -cne 'PG-ONPREM-2' -or $AllowHistoricalProfileCapture) {
+    if ($Gate -cnotin @('C1.15', 'C1.16') -or $ProfileId -cne 'PG-ONPREM-2' -or $AllowHistoricalProfileCapture) {
         throw 'unsupported-successor-gate-or-historical-opt-in'
     }
 }
@@ -44,6 +46,16 @@ $expectedActorType = 'AccessTelemetryLifecycleActor'
 $podIdentityOutput = "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}"
 $script:commandLedger = [System.Collections.Generic.List[object]]::new()
 $script:sourceLedger = [System.Collections.Generic.List[object]]::new()
+$script:pg2RuntimeCapture = ($Gate -ceq 'C1.15' -and $ProfileId -ceq 'PG-ONPREM-2')
+if ($script:pg2RuntimeCapture) {
+    if ($QualificationSessionId -cnotmatch '\A[A-Za-z0-9][A-Za-z0-9._-]{0,127}\z') {
+        throw 'qualification-session-required-or-invalid'
+    }
+}
+elseif ($PSBoundParameters.ContainsKey('QualificationSessionId')) {
+    throw 'qualification-session-unsupported-mode'
+}
+
 
 function Get-TextSha256 {
     param([AllowEmptyString()][string]$Text)
@@ -71,6 +83,8 @@ function Assert-SecretSafeOutput {
     if ($Text -match '(?i)(C1[_-]?SECRET[_-]?CANARY|SECRET[_-]?CANARY|(?:authorization|dapr[-_]?api[-_]?token)\s*[:=]\s*[^\s"'']+|\b(?:hvs|hvb|hvr)\.[A-Za-z0-9_-]{8,})') {
         throw 'secret-shaped-output'
     }
+    if ($script:pg2RuntimeCapture -and ($Text -match '(?i)\b(?:authorization|dapr[-_]?api[-_]?token|password|passwd|token|secret|client[-_]?secret|access[-_]?token|connection[-_]?string)\s*[:=]\s*["'']?[^\s"'']+' -or
+        $Text -match '(?i)postgres(?:ql)?://[^\s:/]+:[^\s@]+@')) { throw 'secret-shaped-output' }
     if ($Text -match '(?i)"(?:authorization|dapr[-_]?api[-_]?token)"\s*:\s*"(?:[^"\\]|\\.)+"') {
         throw 'secret-shaped-output'
     }
@@ -157,10 +171,25 @@ function Invoke-KubectlObservation {
     )
 
     $commandIdentity = 'kubectl ' + ($Arguments -join [char]0x1f)
-    $script:commandLedger.Add([ordered]@{
+    $commandEntry = [ordered]@{
         purpose = $Purpose
         sha256 = Get-TextSha256 $commandIdentity
-    })
+    }
+    if ($script:pg2RuntimeCapture) {
+        $commandEntry.executable = 'kubectl'
+        $commandEntry.arguments = @($Arguments)
+        $commandEntry.argumentsSha256 = Get-C1JsonSha256 @($Arguments)
+        $commandEntry.startedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        $commandEntry.finishedAtUtc = $null
+        $commandEntry.exitCode = $null
+        $commandEntry.stdoutSha256 = $null
+        $commandEntry.stderrSha256 = $null
+        $commandEntry.streamSafety = 'not-validated'
+        $commandEntry.resultCount = 0
+        $commandEntry.failureCount = 1
+        $commandEntry.skipCount = 0
+    }
+    $script:commandLedger.Add($commandEntry)
 
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = 'kubectl'
@@ -275,14 +304,31 @@ function Invoke-KubectlObservation {
             throw "kubectl-$Purpose-timeout"
         }
 
-        $stdout = [System.Text.Encoding]::UTF8.GetString($stdoutCapture.ToArray())
-        $stderr = [System.Text.Encoding]::UTF8.GetString($stderrCapture.ToArray())
+        if ($script:pg2RuntimeCapture) {
+            $strictUtf8 = [System.Text.UTF8Encoding]::new($false, $true)
+            try {
+                $stdout = $strictUtf8.GetString($stdoutCapture.ToArray())
+                $stderr = $strictUtf8.GetString($stderrCapture.ToArray())
+            }
+            catch { throw "kubectl-$Purpose-invalid-utf8" }
+        }
+        else {
+            $stdout = [System.Text.Encoding]::UTF8.GetString($stdoutCapture.ToArray())
+            $stderr = [System.Text.Encoding]::UTF8.GetString($stderrCapture.ToArray())
+        }
         $exitCode = $process.ExitCode
         if ($stdoutExceeded -or $stderrExceeded) {
             throw "kubectl-$Purpose-output-too-large"
         }
     }
     finally {
+        if ($script:pg2RuntimeCapture) {
+            $commandEntry.finishedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+            try {
+                if ($process.WaitForExit(1000)) { $commandEntry.exitCode = $process.ExitCode }
+            }
+            catch { }
+        }
         $process.Dispose()
         $stdoutCapture.Dispose()
         $stderrCapture.Dispose()
@@ -290,9 +336,18 @@ function Invoke-KubectlObservation {
 
     Assert-SecretSafeOutput $stdout
     Assert-SecretSafeOutput $stderr
-    if ($Gate -ceq 'C1.16') {
+    if ($Gate -ceq 'C1.16' -or $script:pg2RuntimeCapture) {
         Assert-C1DecodedOutputSafety $stdout
         Assert-C1DecodedOutputSafety $stderr
+    }
+    if ($script:pg2RuntimeCapture) {
+        $commandEntry.stdoutSha256 = Get-TextSha256 $stdout
+        $commandEntry.stderrSha256 = Get-TextSha256 $stderr
+        $commandEntry.streamSafety = 'validated'
+        if ($exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($stdout)) {
+            $commandEntry.resultCount = 1
+            $commandEntry.failureCount = 0
+        }
     }
     if (-not $SkipSourceHash) {
         Add-SourceHash "kubectl:$Purpose:stdout" $stdout
@@ -433,6 +488,9 @@ function ConvertTo-ValidatedStringArray {
         throw $FailureCode
     }
 
+    if ($script:pg2RuntimeCapture) {
+        $Pattern = '\A(?:' + $Pattern.Substring(1, $Pattern.Length - 2) + ')\z'
+    }
     $validated = [System.Collections.Generic.List[string]]::new()
     foreach ($rawValue in $rawValues) {
         if ($rawValue -isnot [string] -or [string]::IsNullOrWhiteSpace($rawValue) -or
@@ -447,6 +505,48 @@ function ConvertTo-ValidatedStringArray {
         throw $FailureCode
     }
     return $normalized
+}
+
+function Get-C1PG2PodIdentities {
+    param([object[]]$Items)
+
+    $identities = [System.Collections.Generic.List[object]]::new()
+    foreach ($pod in $Items) {
+        $phase = Get-C1RequiredString $pod.status 'phase' '\A[A-Za-z]+\z' 'running-pod-phase-invalid'
+        if ($phase -cne 'Running') { continue }
+        $name = Get-C1RequiredString $pod.metadata 'name' '\A[a-z0-9][a-z0-9.-]{0,252}\z' 'running-pod-identity-invalid'
+        $uid = Get-C1RequiredString $pod.metadata 'uid' '\A[A-Za-z0-9][A-Za-z0-9-]{0,127}\z' 'running-pod-identity-invalid'
+        $label = Get-C1RequiredString $pod.metadata.labels 'app.kubernetes.io/name' '\A[a-z0-9][a-z0-9.-]{0,252}\z' 'running-pod-label-mismatch'
+        if ($label -cne $expectedAppId) { throw 'running-pod-label-mismatch' }
+        $deleting = $null -ne $pod.metadata.PSObject.Properties['deletionTimestamp'] -and $null -ne $pod.metadata.deletionTimestamp
+        if ($deleting -or $pod.status.conditions -isnot [System.Array] -or
+            $pod.status.containerStatuses -isnot [System.Array]) { throw 'running-pod-not-stable' }
+        $readyConditions = [System.Collections.Generic.List[object]]::new()
+        foreach ($condition in $pod.status.conditions) {
+            $conditionType = Get-C1RequiredString $condition 'type' '\A[A-Za-z]+\z' 'running-pod-not-stable'
+            if ($conditionType -ceq 'Ready') { $readyConditions.Add($condition) }
+        }
+        if ($readyConditions.Count -ne 1) { throw 'running-pod-not-stable' }
+        $readyState = Get-C1RequiredString $readyConditions[0] 'status' '\A(?:True|False|Unknown)\z' 'running-pod-not-stable'
+        if ($readyState -cne 'True') { throw 'running-pod-not-stable' }
+        $containers = [ordered]@{}
+        foreach ($container in $pod.status.containerStatuses) {
+            $containerName = Get-C1RequiredString $container 'name' '\A[a-z0-9][a-z0-9-]{0,62}\z' 'running-pod-containers-not-ready'
+            if ($containerName -cnotin @('lifecycle', 'daprd')) { continue }
+            if ($containers.Contains($containerName) -or $container.ready -isnot [bool] -or -not $container.ready) {
+                throw 'running-pod-containers-not-ready'
+            }
+            $image = Get-C1RequiredString $container 'imageID' '\A(?:[A-Za-z0-9._:/@-]+)?sha256:[0-9a-f]{64}\z' 'runtime-image-mismatch'
+            $containers[$containerName] = [ordered]@{ name = $containerName; ready = $container.ready; imageId = $image }
+        }
+        if ($containers.Count -ne 2) { throw 'running-pod-containers-not-ready' }
+        $identities.Add([ordered]@{
+            pod = $name; podUid = $uid; appLabel = $label; deleting = $deleting; phase = $phase
+            readyCondition = [ordered]@{ type = 'Ready'; status = $readyState }
+            containers = @($containers['lifecycle'], $containers['daprd'])
+        })
+    }
+    return @($identities | Sort-Object { $_.pod } -CaseSensitive)
 }
 
 function Get-CollectionIdentity {
@@ -503,13 +603,51 @@ function Write-ImmutablePacket {
     return $path
 }
 
+if ($script:pg2RuntimeCapture) {
+    Assert-SecretSafeOutput $QualificationSessionId
+    if ($QualificationSessionId -match '(?i)(?:token|secret|password|authorization|credential|connectionstring)') {
+        throw 'qualification-session-required-or-invalid'
+    }
+    $resolvedEvidenceDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($EvidenceDirectory)
+    Assert-SecretSafeOutput $resolvedEvidenceDirectory
+    $script:captureStartedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+    $script:repositoryRoot = Split-Path $PSScriptRoot -Parent
+    try { Assert-SecretSafeOutput $script:repositoryRoot }
+    catch { [Console]::Error.WriteLine('secret-shaped-output'); exit 1 }
+    $script:runtimeSourceSnapshots = [ordered]@{}
+    $strictSourceUtf8 = [System.Text.UTF8Encoding]::new($false, $true)
+    # The executing command's parsed text is the source authority, not a later file read.
+    $parsedMainText = $MyInvocation.MyCommand.ScriptBlock.Ast.Extent.StartScriptPosition.GetFullScript()
+    $script:runtimeSourceSnapshots['tools/verify-access-telemetry-c1.ps1'] = $strictSourceUtf8.GetBytes($parsedMainText)
+    foreach ($helperName in @('access-telemetry-c1-profile.ps1', 'access-telemetry-c1-component-backend.ps1')) {
+        $helperPath = Join-Path $PSScriptRoot $helperName
+        if (-not (Test-Path -LiteralPath $helperPath -PathType Leaf) -or
+            $null -ne (Get-Item -LiteralPath $helperPath).LinkType) { throw 'producer-source-unavailable' }
+        $helperBytes = [System.IO.File]::ReadAllBytes($helperPath)
+        $helperText = $strictSourceUtf8.GetString($helperBytes)
+        $helperTokens = $null; $helperErrors = $null
+        # Retaining the filename in the AST preserves PSCommandPath/PSScriptRoot semantics.
+        $helperAst = [System.Management.Automation.Language.Parser]::ParseInput(
+            $helperText, $helperPath, [ref]$helperTokens, [ref]$helperErrors)
+        if ($helperErrors.Count) { throw 'producer-source-invalid' }
+        $script:runtimeSourceSnapshots['tools/' + $helperName] = $helperBytes
+        . $helperAst.GetScriptBlock()
+    }
+    $script:sourceCommandLedger = [System.Collections.Generic.List[object]]::new()
+    $approvedProfileInputs = @(Assert-C1ApprovedProfileInputs $script:repositoryRoot)
+    Initialize-C1RuntimeProvenance $approvedProfileInputs
+    $invocationArguments = @('-Gate', $Gate, '-ProfileId', $ProfileId,
+        '-QualificationSessionId', $QualificationSessionId, '-EvidenceDirectory',
+        $resolvedEvidenceDirectory, '-CommandTimeoutSeconds', [string]$CommandTimeoutSeconds)
+}
+
 if ($Gate -ceq 'C1.16') {
     . (Join-Path $PSScriptRoot 'access-telemetry-c1-component-backend.ps1')
     Invoke-C1ComponentBackendCapture
     exit 0
 }
 
-$capturedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+$capturedAtUtc = $(if ($script:pg2RuntimeCapture) { $script:captureStartedAtUtc } else { [DateTimeOffset]::UtcNow.ToString('o') })
 $observations = [ordered]@{
     pods = @()
     runtimeVersions = @()
@@ -531,7 +669,10 @@ $context = $null
 try {
     $script:sourceLedger.Add([ordered]@{
         source = 'tools/verify-access-telemetry-c1.ps1'
-        sha256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        sha256 = $(if ($script:pg2RuntimeCapture) {
+            [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData(
+                $script:runtimeSourceSnapshots['tools/verify-access-telemetry-c1.ps1'])).ToLowerInvariant()
+        } else { (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant() })
     })
 
     $context = Invoke-KubectlObservation -Purpose 'current-context' -Arguments @('config', 'current-context')
@@ -547,6 +688,14 @@ try {
         '-o', $podIdentityOutput
     ) -SkipSourceHash
     $podsPayload = ConvertFrom-PodIdentityProjection -Json $podsJson
+    if ($script:pg2RuntimeCapture) {
+        Assert-C1CredentialFields -Value $podsPayload.items
+        foreach ($selectedPod in $podsPayload.items) {
+            [void](Get-C1RequiredString $selectedPod.status 'phase' '\A[A-Za-z]+\z' 'running-pod-phase-invalid')
+            if ($selectedPod.status.conditions -isnot [System.Array] -or
+                $selectedPod.status.containerStatuses -isnot [System.Array]) { throw 'running-pod-not-stable' }
+        }
+    }
     Add-SourceHash 'kubectl:lifecycle-pods:identity' $podsJson
 
     $runningPods = @($podsPayload.items | Where-Object {
@@ -556,6 +705,7 @@ try {
         throw 'no-running-lifecycle-pod'
     }
 
+    if ($script:pg2RuntimeCapture) { $initialSelectedPods = @(Get-C1PG2PodIdentities $podsPayload.items) }
     $seenPodNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $seenPodUids = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $validatedPodUids = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
@@ -563,6 +713,10 @@ try {
         $rawPodName = $pod.metadata.name
         if ($rawPodName -isnot [string] -or [string]::IsNullOrWhiteSpace($rawPodName)) {
             throw 'running-pod-name-missing'
+        }
+        if ($script:pg2RuntimeCapture) {
+            [void](Get-C1RequiredString $pod.metadata 'name' '\A[a-z0-9][a-z0-9.-]{0,252}\z' 'running-pod-identity-invalid')
+            [void](Get-C1RequiredString $pod.metadata 'uid' '\A[A-Za-z0-9][A-Za-z0-9-]{0,127}\z' 'running-pod-identity-invalid')
         }
         $podName = [string]$rawPodName
         if (-not $seenPodNames.Add($podName)) {
@@ -614,7 +768,12 @@ try {
         }
 
         $imageId = [string]$sidecarStatus[0].imageID
-        $digestMatch = [regex]::Match($imageId, 'sha256:[0-9a-f]{64}$')
+        if ($script:pg2RuntimeCapture -and ($sidecarStatus[0].imageID -isnot [string] -or
+            $imageId -cnotmatch '\A(?:[A-Za-z0-9._:/@-]+)?sha256:(?:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8|edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b)\z')) {
+            throw 'runtime-image-mismatch'
+        }
+        $digestPattern = $(if ($script:pg2RuntimeCapture) { 'sha256:[0-9a-f]{64}\z' } else { 'sha256:[0-9a-f]{64}$' })
+        $digestMatch = [regex]::Match($imageId, $digestPattern)
         if (-not $digestMatch.Success) {
             throw 'sidecar-imageid-digest-missing'
         }
@@ -630,6 +789,8 @@ try {
             $daprdVersion.Trim() -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$') {
             throw 'daprd-version-invalid'
         }
+
+        if ($script:pg2RuntimeCapture -and $daprdVersion -cne '1.18.1') { throw 'runtime-version-pin-mismatch' }
 
         $metadataProbe = 'if [ -z "${DAPR_API_TOKEN:-}" ]; then echo "required runtime credential unavailable" >&2; exit 72; fi; metadata="$(wget -qO- --timeout=5 --header="dapr-api-token: ${DAPR_API_TOKEN}" http://127.0.0.1:3500/v1.0/metadata)" || exit $?; case "$metadata" in *"$DAPR_API_TOKEN"*) echo "secret-shaped-output" >&2; exit 73;; esac; printf "%s" "$metadata"'
         $metadataJson = Invoke-KubectlObservation -Purpose "metadata:$podName" -Arguments @(
@@ -647,8 +808,16 @@ try {
             throw 'malformed-metadata-json'
         }
         Assert-SecretSafeMetadata -Value $metadata
+        if ($script:pg2RuntimeCapture) {
+            Assert-C1CredentialFields -Value $metadata
+            if ($metadata.runtimeVersion -isnot [string] -or $metadata.runtimeVersion -cne '1.18.1') {
+                throw 'runtime-version-pin-mismatch'
+            }
+        }
 
-        $appId = [string](Get-RequiredProperty -Object $metadata -Names @('id') -FailureCode 'metadata-app-id-missing')
+        $rawAppId = Get-RequiredProperty -Object $metadata -Names @('id') -FailureCode 'metadata-app-id-missing'
+        if ($script:pg2RuntimeCapture -and $rawAppId -isnot [string]) { throw 'metadata-app-id-mismatch' }
+        $appId = [string]$rawAppId
         if (-not [string]::Equals($appId, $expectedAppId, [StringComparison]::Ordinal)) {
             throw 'metadata-app-id-mismatch'
         }
@@ -767,6 +936,14 @@ try {
         '-o', $podIdentityOutput
     ) -SkipSourceHash
     $podsAfterPayload = ConvertFrom-PodIdentityProjection -Json $podsAfterJson
+    if ($script:pg2RuntimeCapture) {
+        Assert-C1CredentialFields -Value $podsAfterPayload.items
+        try { $recheckedSelectedPods = @(Get-C1PG2PodIdentities $podsAfterPayload.items) }
+        catch { throw 'running-pod-changed' }
+        if ((Get-C1JsonSha256 $initialSelectedPods) -cne (Get-C1JsonSha256 $recheckedSelectedPods)) {
+            throw 'running-pod-changed'
+        }
+    }
     Add-SourceHash 'kubectl:lifecycle-pods-recheck:identity' $podsAfterJson
 
     $runningPodsAfter = @($podsAfterPayload.items | Where-Object {
@@ -833,7 +1010,7 @@ try {
         Get-CollectionIdentity -Values @($_.enabledFeatures)
     } | Sort-Object -CaseSensitive -Unique)
 
-    if ($runtimeVersions.Count -ne 1 -or $sidecarImageDigests.Count -ne 1 -or $appIds.Count -ne 1 -or
+    if ($runtimeVersions.Count -ne 1 -or (-not $script:pg2RuntimeCapture -and $sidecarImageDigests.Count -ne 1) -or $appIds.Count -ne 1 -or
         $componentAlphaValues.Count -ne 1 -or $allowAlphaValues.Count -ne 1 -or
         $schedulerIdentities.Count -ne 1 -or $actorIdentities.Count -ne 1 -or $featureIdentities.Count -ne 1) {
         throw 'running-target-identity-drift'
@@ -863,6 +1040,23 @@ catch {
     $blockers.Add($safeFailure)
 }
 
+if ($script:pg2RuntimeCapture) {
+    $sourceRecheck = 'unchanged'
+    try { Assert-C1RuntimeSourcesUnchanged }
+    catch {
+        $sourceRecheck = 'changed-or-unavailable'
+        $producerStatus = 'blocked'
+        if (-not $blockers.Contains('producer-source-changed')) { $blockers.Add('producer-source-changed') }
+    }
+    if ($producerStatus -ne 'observed') {
+        $observations = [ordered]@{
+            pods = @(); runtimeVersions = @(); sidecarImageIds = @(); sidecarImageDigests = @()
+            appIds = @(); schedulerConnectedAddresses = @(); actorTypes = @(); enabledFeatures = @()
+            alphaOptIn = [ordered]@{ componentIsAlpha = $null; allowAlphaComponent = $null }
+        }
+    }
+}
+
 $packet = [ordered]@{
     schemaVersion = 'hexalith.access-telemetry.c1.evidence/v1'
     gate = $Gate
@@ -879,6 +1073,37 @@ $packet = [ordered]@{
     blockers = @($blockers)
     sources = @($script:sourceLedger)
     commands = @($script:commandLedger)
+}
+
+if ($script:pg2RuntimeCapture) {
+    $packet.schemaVersion = 'hexalith.access-telemetry.c1.evidence/v2'
+    $packet.profileIdentity = 'postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2'
+    $packet.profileSha256 = '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe'
+    $packet.workloadId = 'adr-27.1-two-writer-500eps'
+    $packet.workloadSha256 = '71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f'
+    $packet.qualificationSessionId = $QualificationSessionId
+    $packet.target = [ordered]@{ context = $expectedContext; namespace = $namespace; selector = $targetSelector; appId = $expectedAppId; actorType = $expectedActorType }
+    $packet.targetSha256 = Get-C1JsonSha256 $packet.target
+    $packet.producer = [ordered]@{
+        path = 'tools/verify-access-telemetry-c1.ps1'
+        identity = 'repository-collector'
+        identityAuthentication = 'not-evaluated'
+        arguments = $invocationArguments
+        argumentsSha256 = Get-C1JsonSha256 $invocationArguments
+        startedAtUtc = $capturedAtUtc
+        finishedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        exitCode = $(if ($producerStatus -ceq 'observed') { 0 } else { 1 })
+    }
+    $packet.sourceCommands = @($script:sourceCommandLedger)
+    $packet.sourceCommit = $script:sourceCommit
+    $packet.sourceDisposition = $script:sourceDisposition
+    $packet.worktreeDirty = $script:worktreeDirty
+    $packet.producerSources = @($script:producerSources)
+    $packet.finalSourceRecheck = $sourceRecheck
+    $packet.resultCount = $(if ($producerStatus -ceq 'observed') { $observations.pods.Count } else { 0 })
+    $packet.failureCount = $blockers.Count
+    $packet.skipCount = 0
+    $packet.independentDisposition = 'pending'
 }
 
 $packetPath = Write-ImmutablePacket -Packet $packet -Directory $EvidenceDirectory

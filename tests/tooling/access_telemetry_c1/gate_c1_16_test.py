@@ -17,6 +17,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNNER = REPO_ROOT / 'tools/verify-access-telemetry-c1.ps1'
 HELPER = REPO_ROOT / 'tools/access-telemetry-c1-component-backend.ps1'
+PROFILE_HELPER = REPO_ROOT / 'tools/access-telemetry-c1-profile.ps1'
 FIXTURE = Path(__file__).parent / 'fixtures/c1_16_complete.json'
 TOKEN_CANARY = 'C1_SECRET_CANARY_DO_NOT_EMIT_7429'
 POD_OUTPUT = "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}"
@@ -224,7 +225,7 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         for kwargs in ({'opt_in': False}, {'profile': 'PG-ONPREM-2'}, {'profile': 'PG-CLOUD-1'},
                        {'profile': 'pg-onprem-1'},
                        {'gate': 'C1.17'}, {'gate': 'c1.16'},
-                       {'profile': 'PG-ONPREM-2', 'gate': 'C1.15', 'opt_in': False},
+                       {'profile': 'PG-ONPREM-2', 'gate': 'C1.15', 'opt_in': False},  # required session is absent
                        {'profile': 'pg-onprem-2', 'opt_in': False},
                        {'profile': 'PG-ONPREM-2', 'gate': 'c1.16', 'opt_in': False}):
             with self.subTest(kwargs=kwargs):
@@ -233,6 +234,8 @@ class ComponentBackendCaptureTests(unittest.TestCase):
                 self.assertEqual([], packets)
                 self.assertEqual([], calls)
                 self.assertFalse(evidence.exists())
+                if kwargs == {'profile': 'PG-ONPREM-2', 'gate': 'C1.15', 'opt_in': False}:
+                    self.assertIn('qualification-session-required-or-invalid', result.stderr)
 
     def test_authenticated_historical_linux_amd64_child_image_is_observed(self):
         scenario = copy.deepcopy(self.base)
@@ -746,7 +749,7 @@ class ComponentBackendCaptureTests(unittest.TestCase):
             root = Path(temporary)
             tools = root / 'tools'
             tools.mkdir()
-            for source in (RUNNER, HELPER):
+            for source in (RUNNER, HELPER, PROFILE_HELPER):
                 shutil.copy2(source, tools / source.name)
             proposal = REPO_ROOT / '_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/profile-candidate/candidate-profile.json'
             identity = json.loads(proposal.read_text())['manifest']['canonical_profile']['identity']
