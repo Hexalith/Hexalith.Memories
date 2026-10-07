@@ -14,9 +14,10 @@ backend returned bytes to an allocator, volume, filesystem, or operating system.
 Physical reclamation is a separate adapter-owned observation.
 
 Production lifecycle writes remain disabled until the canonical C1 predecessor,
-the same-profile C2-C6 packets, terminal validation, and two independent approvals
-all pass. A missing packet, skip, zero-result command, stale timestamp, hash drift,
-or approval gap is a stop condition. JSON-console and configured OTLP emission
+the same-profile C2-C6 packets, terminal validation, and both authenticated role
+approvals under the approved reviewer policy all pass. A missing packet, skip,
+zero-result command, stale timestamp, hash drift, or approval gap is a stop
+condition. JSON-console and configured OTLP emission
 remain active during lifecycle failure and rollback.
 
 ## Ownership and authority separation
@@ -31,9 +32,13 @@ remain active during lifecycle failure and rollback.
 | Platform Operations reviewer | independent approval | Approve capacity, cost, operation, maintenance, backup/restore, reclamation, and RPO/RTO for the immutable profile hash. |
 | Security reviewer | independent approval | Approve identity, TLS, secret scope, Dapr ACLs, privacy, images, and tenant-denial evidence for that same hash. |
 
-The Platform Operations and security reviewer must be different named people.
-Neither approval may be inferred from Administrator approval, a deployment, a
-schedule, or the other review.
+Different named Operations and Security reviewers remain the default. The
+owner-approved exception in rollout step 5 permits Jérôme Piquot to hold both
+future authenticated C1 bundle review roles; it does not waive producer/reviewer
+separation, separate role decisions or other checkpoint-specific requirements.
+The label-only legacy predecessor retains its different-reviewer guard until
+strict authenticated consumer migration. Neither role decision may be inferred
+from Administrator approval, a deployment, a schedule or the other review.
 
 ## Configuration and retention bounds
 
@@ -72,8 +77,16 @@ records only unless an independently approved accelerated-purge operation exists
    provider and Production lifecycle write switch remains disabled.
 4. Run the complete C1 predecessor producers. Each C1.1-C1.25 result must have its
    own artifact and reviewed source identity; an aggregate count is not evidence.
-5. Obtain the independent C1 Platform Operations and security authorizations for
-   the same `profile_sha256` and immutable C1 evidence hashes.
+5. Obtain separate authenticated C1 Platform Operations and Security decisions for
+   the same `profile_sha256` and immutable C1 evidence hashes. Under the owner's
+   2026-10-07 policy decision, Jérôme Piquot may provide both review roles as
+   authenticated GitHub principal `github:user:6775094` (`jpiquot`). Each role
+   still needs its own authorized bound decision and distinct receipt. No reviewer,
+   including the owner, may approve a capture they produced. This exception
+   reduces separation between review roles; reconsider it before Production
+   activation or an account/role/producer-identity change. It requires the future
+   authenticated interchange and consumer migration; the current label-only
+   predecessor still refuses the same reviewer for both roles.
 6. Keep the checked-in qualification lifecycle and clock deployments at zero. The
    host-side producer must first prove the disabled gate and empty namespace Lease,
    verify its namespace and shared `dapr-system` RBAC, acquire that Lease under the

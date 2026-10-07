@@ -24,7 +24,7 @@ authority-verification adapter are distinct from prohibited target dependencies.
 | N10 | `MixedScopeRefuses`: PG1/mixed profile/workload/gate/target/session, matching context label with another authenticated cluster, copied approval from a different capture. | Parse and compare every embedded scope fact plus authenticated actual target and decision subject. |
 | N11 | `StaleOrClosedSessionRefuses`: old/future/out-of-order capture; review before completion; unrelated/revoked/expired grant; C1.16 closed-window artifacts relabelled to a new session; invalid or absent session. | Approved collection/review/use windows and one eligible session; archival acceptance cannot authorize. |
 | N12 | `ForgedReviewerAuthorityRefuses`: distinct fabricated labels, unsigned/untrusted/altered receipt, wrong issuer/audience/decision, unauthorized role/delegation or wrong bound reasons. | Selected mechanism authenticates and authorizes all decision facts. Include the original label-only gap as a regression. |
-| N13 | `SelfApprovalAndAliasIdentityRefuse`: producer equals reviewer; Operations/Security labels map to same principal; a review is valid for another gate/role/target/session. | True principal independence and exact scoped role authorization, not string inequality. |
+| N13 | `SelfApprovalAndAliasIdentityRefuse`: producer equals reviewer, including the named owner; both review roles map to one non-owner principal; display-name/alias identity substitutes for the authenticated owner; a review is valid for another gate/role/target/session. | Producer/reviewer separation and exact scoped role authorization. Only authenticated `github:user:6775094` may hold both bundle review roles, with distinct role decisions/receipts; string inequality or copied owner labels prove nothing. |
 | N14 | `ExpiredRevokedOrUnknownAuthorityRefuses`: expiry boundary, revocation before expiry, stale cached status, unavailable status provider or time, revoked role/key/session/decision. | Current independent approval validity and revocation; no availability fallback or lifetime inherited from capture freshness. |
 | N15 | `MissingOrUnprovedCleanupRefuses`: absent receipt, failed/partial cleanup, foreign resource ownership, wrong baseline, unfinished job/lease, claimed read-only mode with mutating command. | Required cleanup proves owned resources restored and protected Production remains disabled. Attempted cleanup does not pass. |
 | N16 | `ApprovalCycleOrSubstitutionRefuses`: gate approves its own dependent manifest; two aggregate approvals reused as three approval gates or post-evidence C5/C6; manifest changes after approval. | Approved acyclic P4 dependency and separately bound decisions; C1.23/C1.24/C1.25 stay separate. |
@@ -35,8 +35,14 @@ Positive case `CompleteAuthenticatedInterchangeValidates` must exercise exactly
 25 distinct capture/disposition/accepted artifacts, same eligible profile/session,
 real semantic verifiers and the **selected adapter** under an isolated test
 issuer/service, two different authorized bundle reviewers, positive target
-observation counts, zero failures/skips and complete required cleanup. Show
-that the capture remains neutral while its separately verified review passes.
+observation counts, zero failures/skips and complete required cleanup. Also
+require a positive case with the authenticated named owner providing both roles,
+each with its own role-authorized decision and distinct receipt on the frozen
+manifest, and with no owner-produced capture. Pair it with a non-owner repeated
+principal refusal, a copied owner label without authentication refusal, and an
+owner/producer conflict refusal. Show that the capture remains neutral while its
+separately verified review passes. The current pure-policy fixtures cover only
+separation; these provider-level cases remain required when I3 is implemented.
 Do not mock the final authority verdict to satisfy provider tests.
 
 Until P5 supplies real gate implementations, a synthetic complete registry and

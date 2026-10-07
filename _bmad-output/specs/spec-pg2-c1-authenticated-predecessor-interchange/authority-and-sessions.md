@@ -105,3 +105,17 @@ already contains that gate's own decision. The proposed manifest is frozen
 after the twenty-five accepted artifacts; later bundle approvals bind it without
 being included in its hash. Distinct role labels, receipt IDs or usernames that
 resolve to one authority principal do not prove independence.
+
+Owner decision, 2026-10-07: Jérôme Piquot explicitly chose to approve both
+Operations and Security roles. The authenticated GitHub profile lookup identifies
+`jpiquot`, stable account ID `6775094`; the policy principal is
+`github:user:6775094`. Only that verified owner may supply both bundle review
+roles. Each role still requires its own authorized, bound decision and distinct
+receipt on the frozen manifest. The owner cannot approve any capture they
+produced; alias usernames cannot hide that conflict. P4's remaining delegation,
+quorum and approval-gate dependency questions remain unresolved. Reconsider this
+reduced role separation before Production activation or an account, role or
+producer-identity change. The pure separation predicate is implemented in
+`tools/access_telemetry_c1_approval_policy.py`; it grants no authentication,
+receipt validation or execution authority. The label-only legacy predecessor
+cannot consume this exception and retains its existing denial behavior.

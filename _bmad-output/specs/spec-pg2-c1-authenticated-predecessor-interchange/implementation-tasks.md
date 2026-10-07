@@ -1,7 +1,8 @@
 # Implementation tasks and unresolved prerequisites
 
 Tracking ID: `SPEC-pg2-c1-authenticated-predecessor-interchange`.
-Review: proposed. Implementation: unstarted. No story number, sprint registration,
+Review: proposed. Integrated I1-I6 verifier: incomplete; common wire and named-owner
+principal-separation preparation are implemented separately. No story number, sprint registration,
 checkpoint approval or permission to operate a target is assigned by this folder.
 
 ## Tasks in this slice
@@ -19,7 +20,8 @@ complete by this spec's source investigation.
 | I5 — assembly and consumer preflight | Assemble immutable manifest, consume real two-role bundle decisions and publish predecessor/v2. Update `_validate_predecessor` and each C1-reading path in `tools/verify_access_telemetry_lifecycle.py` plus the existing `tools/verify-access-telemetry-lifecycle.py` boundary to require strict versioned validation before use. Do not add a new module-specific CLI/server. | Deployment Adapter Developer / Story 27.4 machinery owner; P7 and prior tasks. | Exactly 25 fixture gates with genuine test receipts pass; missing, mixed, reused, cyclic, changed or downgraded inputs refuse. Every launcher and terminal/offline authorization path proves denial before target/dependency calls. |
 | I6 — contract verification and handoff | Add the complete negative matrix and positive nonzero case; update operations interchange guidance with actual schema/provider/consumer contracts and commands. Record exact test totals and limitations after execution, never before. | Deployment Adapter Developer; Security reviews authority cases, Operations reviews custody/session/cleanup; all blocking prerequisites for real use. | The new focused lane passes with zero failures/skips and explicit zero-dependency assertions. Protected status/deployment/history bytes match the baseline; fixture results grant no operational acceptance. |
 
-Proposed focused command, **not executable evidence yet**:
+Focused command executes the current wire/principal preparation fixtures; it
+does not yet prove the complete proposed I1-I6 authenticated verdict:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v
@@ -33,8 +35,11 @@ not merely repeat field names from the implementation.
 ## Decisions and ownership still required
 
 These are blockers for real acceptance, not requests for additional authority.
-Every accountable **person** is still unassigned in this spec. Role allocations
-express the source contract or a proposed cross-owner decision route.
+Jérôme Piquot is the owner-designated Operations/Security bundle approver
+following the explicit 2026-10-07 single-owner decision. Other accountable people
+remain unassigned; role allocations express the source contract or a proposed
+cross-owner decision route. This appointment does not select the receipt provider
+or supply gate acceptance, role grants, session or custody evidence.
 
 | ID | Missing decision/input | Accountable role / collaborators | Consequence now | Objective reopen evidence |
 | --- | --- | --- | --- | --- |
@@ -52,12 +57,32 @@ producer renewal, runtime-gate migration or registration work has its own
 independently demonstrable outcome, author a separate compliant scope; do not
 expand I1–I6 into an umbrella implementation.
 
+## Recorded owner decision: partial P4 resolution (2026-10-07)
+
+The owner chose “Allow Jérôme to approve both roles”, after being told that this
+changes the existing two-reviewer rule. The permitted same-principal exception
+is limited to authenticated `github:user:6775094` (`jpiquot`, Jérôme Piquot).
+Exactly two distinct role decisions and receipts remain required. Neither role
+may be a producer on any capture in the manifest; all scope, time, role, issuer,
+revocation and session requirements remain. This reduces separation of duties
+between review roles and must be reconsidered before Production activation or
+an account/role/producer-identity change.
+
+The bounded pure separation predicate and fixtures are implemented as the
+separate single-owner-policy prerequisite. They do not implement I3's authority
+adapter or any deployed acceptance path. P4 is partially decided, not complete:
+delegation/quorum and the approval-gate dependency topology remain open. P1-P3,
+P5-P7 and real acceptance remain unresolved; the previously completed runtime
+PG2 source/test correction does not resolve P7 consumer migration.
+
 ## Readiness and completion
 
-Spec review can assess the proposed schema and task boundaries now. P1–P7 remain
-unresolved and must not be represented as approvals. Parser scaffolding and
-refusal fixtures can proceed under a later implementation task; acceptance and
-provider integration remain blocked on their relevant decisions.
+Spec review can assess the proposed schema and task boundaries now. P1–P7 are
+not fully resolved; retain the explicit partial P4 owner decision above without
+claiming completion of the remaining prerequisites or actual gate acceptance.
+Parser scaffolding and refusal fixtures can proceed under separate implementation
+tasks; acceptance and provider integration remain blocked on their relevant
+decisions.
 
 Repository preparation completion would mean the implemented consumer and
 negative/positive fixtures have passed review. Operational acceptance additionally

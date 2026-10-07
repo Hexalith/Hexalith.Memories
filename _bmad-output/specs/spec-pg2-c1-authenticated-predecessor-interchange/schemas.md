@@ -149,8 +149,13 @@ Proposed exact fields:
 
 `manifest` is `Ref`; decision/reasons/receipt types follow disposition. Accepted
 bundle roles are exactly `platform-operations` and `security`, each once, with
-different authorized principals and valid separate receipts binding exact
-manifest bytes. Neither reviewer can self-approve a capture it produced. P4 must
+valid separate receipts binding exact manifest bytes. Review principals must
+be different except for the owner-approved exception recorded on 2026-10-07:
+Jérôme Piquot may provide both roles as authenticated GitHub account `jpiquot`,
+canonical principal `github:user:6775094`. The exception removes separation
+between the two review roles only; it does not remove either decision, receipt,
+role authorization or producer/reviewer separation. Neither reviewer can
+self-approve a capture it produced. P4 must
 resolve how approval-gate authors participate without circular or self-approval.
 An aggregate approval cannot double as C1.23/C1.24/C1.25 or C5/C6.
 

@@ -21,6 +21,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 TOOLS_DIR = REPO_ROOT / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
+import verify_access_telemetry_lifecycle as lifecycle_verifier  # noqa: E402
+
+from access_telemetry_c1_approval_policy import (  # noqa: E402
+    OWNER_GITHUB_PRINCIPAL,
+    validate_bundle_principal_separation,
+)
+
 from verify_access_telemetry_lifecycle import (  # noqa: E402
     A41_ALLOWED_MUTATION_PATHS,
     A41_PROTECTED_PATHS,
@@ -1270,6 +1277,18 @@ class RetentionVerificationTests(unittest.TestCase):
             validate_story_27_4_checkpoint(
                 "c3-retention-reclamation", mismatched_control, predecessor()
             )
+
+    def test_c1_owner_exception_does_not_authorize_label_only_legacy_predecessor(self) -> None:
+        retained = predecessor()
+        lifecycle_verifier._validate_predecessor(retained)
+        validate_bundle_principal_separation(
+            OWNER_GITHUB_PRINCIPAL, OWNER_GITHUB_PRINCIPAL, frozenset({"github:user:1003"})
+        )
+        for approval in retained["approvals"]:
+            approval["reviewer"] = OWNER_GITHUB_PRINCIPAL
+        # AdapterProfileTests reload this module; use its current exception type.
+        with self.assertRaisesRegex(lifecycle_verifier.EvidenceValidationError, "independent reviewers"):
+            lifecycle_verifier._validate_predecessor(retained)
 
     def test_c1_requires_unique_25_gate_artifacts_disabled_production_and_authorization(self) -> None:
         reused = predecessor()
