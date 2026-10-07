@@ -2,12 +2,14 @@
 title: 'Story 27.4 remaining retention verification and A41 close-out'
 type: 'feature'
 created: '2026-10-07'
-status: 'draft'
+status: 'ready-for-dev'
 route: 'dispatch'
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
-baseline_commit: 'cc754ab1487ddcec40340f9afa370aa3114851f1'
+baseline_commit: '75046976af3dbd573b360b1ec9eb579fa208fc83'
 review_loop_iteration: 0
-context: []
+context:
+  - '_bmad-output/implementation-artifacts/epic-27-context.md'
+  - '_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/predecessor-interchange-contract.md'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -40,46 +42,46 @@ context: []
 
 ## Code Map
 
-- `tools/verify_access_telemetry_lifecycle.py:2642` — structural/hash predecessor checks; labels do not authenticate authority. `A41_ALLOWED_MUTATION_PATHS` defines exact scope.
-- `tools/verify-access-telemetry-lifecycle.py` — reuse existing producer/close-out entry point.
-- `tools/verify-access-telemetry-c1.ps1` — separate PG2 C1.15 preparation requires a safe session and source/profile preflight; neutral v2 captures still need live custody and independent acceptance.
-- `_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/predecessor-interchange-contract.md` — proposed assembler/registry/authority prerequisite; not implemented.
-- `docs/operations/access-telemetry-lifecycle.md` — exact bounded execution commands.
+- `tools/verify_access_telemetry_lifecycle.py::_validate_predecessor` checks structure/hashes/ledgers, not reviewer authentication, artifact semantics or registered producers. Reuse `A41_ALLOWED_MUTATION_PATHS` and terminal guards.
+- `docs/operations/access-telemetry-lifecycle.md` contains bounded execution/close-out commands.
+- `tools/verify-access-telemetry-c1.ps1` now supports neutral PG2 C1.15 v2 with a valid session; preparation is done, acceptance absent.
+- `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` is canonical; its unsupported-dispatch paragraph is stale despite its later preparation append.
+- `_bmad-output/implementation-artifacts/27-22-component-and-backend-identity.md` records C1.16 acceptance for one closed window; preserve the failed single-session attempt.
 
 ## Historical Context Classification
 
-| Source | Classification | Permitted use |
+| Source | Classification | Use |
 | :--- | :--- | :--- |
-| Prior 27.4 specs; Stories 27.3/27.21/27.22 | historical-reference-only | Handoff/dependency provenance; no inherited gate credit |
-| Existing lifecycle/architecture fixtures | current-narrow-pattern | Reverified offline behavior only |
+| Prior 27.4 specs; Stories 27.3/27.21/27.22 | historical-reference-only | Provenance; no inherited session credit |
+| Lifecycle/architecture fixtures; PG2 C1.15 preparation | current-narrow-pattern | Reverified mechanics only |
 
 ## Slice Proof
 
-Continue the approved checkpoint-tracking story. The canonical evidence matrix remains authoritative; register no successors.
+Continue checkpoint tracking; register no successors. Canonical matrix states remain authoritative.
 
-| Checkpoint | Owner | Evidence command / artifact | Review state | Completion state |
-| :--- | :--- | :--- | :--- | :--- |
-| C0 | Operations | `adapter-profile` wrapper | repository-validated | live pending |
-| C1 | Registered owners; Operations/Security | 25 accepted gates and authenticated decisions | operator-pending | accepted renewal/23 owners/interchange absent |
-| C2 | Operations | `c2-production-replacement` | operator-pending | pending prerequisites |
-| C3 | Lifecycle/adapter owners | `c3-retention-reclamation` | operator-pending | pending prerequisites |
-| C4 | Operations/Security | `c4-failure-privacy-observability` | operator-pending | pending prerequisites |
-| C5 | Independent Operations reviewer | C0-C4 acceptance | operator-pending | pending packets |
-| C6 | Independent Security reviewer | Same packets; different reviewer | operator-pending | pending packets |
-| Terminal/A41 | Operations/repository owner | Inventory/preflight/postflight/publication | operator-pending | pending C0-C6/authority |
+| Checkpoint | Owner / evidence | Completion |
+| :--- | :--- | :--- |
+| C0 | Operations; adapter-profile wrapper | repository-validated; live pending |
+| C1 | Registered owners/Operations/Security; 25 accepted gates | pending renewal acceptance/23 owners/interchange |
+| C2 | Operations; replacement producer | pending prerequisites |
+| C3 | Lifecycle/adapter; retention/reclamation producer | pending prerequisites |
+| C4 | Operations/Security; failure/privacy producer | pending prerequisites |
+| C5 | Independent Operations; actual C0-C4 review | pending packets |
+| C6 | Independent Security; same packets, different reviewer | pending packets |
+| Terminal/A41 | Operations/repository owner; terminal/postflight/publication | pending C0-C6/authority |
 
 ## Tasks & Acceptance
 
-**Execution:**
-- [ ] `tools/verify-access-telemetry-lifecycle.py` — validate completed authenticated prerequisites/authority, then execute existing C0/C2-C4 producers; retain packets/cleanup.
-- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — reuse denial/drift/cleanup/closure fixtures and both architecture classes.
-- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — record actual evidence and independent C5/C6 decisions; otherwise retain pending states.
-- [ ] `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md`, `_bmad-output/project-context.md`, `docs/dev/telemetry.md` — prepare exact approved closure after terminal acceptance; obtain authority for reviewed publication. The separate sprint action follows verified publication.
+- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — correct unsupported-dispatch wording and append fresh offline evidence; preserve pending states/history.
+- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — reuse denial/drift/cleanup/closure tests and both architecture classes; no source/test additions.
+- [ ] `tools/verify-access-telemetry-lifecycle.py` — execute existing C0/C2-C4 only after genuine prerequisites/authority; retain immutable packets/cleanup and independent C5/C6 decisions. Otherwise pending.
+- [ ] `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md`, `_bmad-output/project-context.md`, `docs/dev/telemetry.md` — exact closure after terminal acceptance and explicit post-review publication authority. Sprint action follows verified publication.
 
 **Acceptance Criteria:**
-- Given authorized execution, when expiry/fault scenarios run, then accepted evidence proves two-writer acknowledgements, recovery, purge, newer records, emission and tenant denial.
-- Given accepted C0-C6, when terminal/postflight/publication pass, then A41 closes while historical Epic 20/Story 20.5 remain done.
-- Given missing prerequisites, when evaluated, then Story 27.4 stays incomplete/A41 open.
+- Given completed preparation, when reconciled, then handoff distinguishes callable neutral PG2 C1.15 from missing acceptance/interchange.
+- Given missing prerequisites, when checked, then live execution stays held, Story 27.4 incomplete and A41 open.
+- Given authorized expiry/fault execution, when reviewed, then evidence proves two-writer acknowledgements, recovery, purge/newer preservation, emission and tenant denial.
+- Given accepted C0-C6, when terminal/postflight/publication pass, then A41 closes and Epic 20/Story 20.5 remain historical done.
 
 ## Implementation Notes
 
@@ -89,6 +91,10 @@ Continue the approved checkpoint-tracking story. The canonical evidence matrix r
 
 ## Verification
 
-Use the canonical offline block in the evidence handoff and accepted-input runbook commands. Planning: clean baseline above, 79 lifecycle tests + exact 12 retention-decision/5 A41 guards passed, no skips, build 0 warnings/errors, ten commands/block exit 0. Local receipt `/tmp/story-27-4-offline.MH3EbAdC`; architecture XML SHA-256 `bbc5003e14844bcf2c5b9657ada6143363bf2cd2339cf44eec3a8353beefc632`. This predates the draft and grants no live credit.
+Reuse the canonical offline Bash block: 79 lifecycle cases, exactly 12 retention-decision/5 A41 guards; zero failures/skips, Debug/source-reference build zero warnings/errors, ten commands/block exit zero. After handoff edits rerun architecture guards and whitespace.
 
-Missing inputs: PG2 C1.15 renewal; 23 registered/done owners; executable authenticated interchange; external 25-gate bundle/decisions; authorized context/namespace/deployment ID; external custody; credential-file paths; shared-system/fault/purge scope. C1.16 acceptance covers one closed window only. These dependencies are outside this draft's implementation.
+Planning receipt `/tmp/story-27-4-offline.aEdElFxS` passed at the full baseline above with an empty tracked diff; XML SHA-256 `5844f521038eeb9df6b40fbfd420ece0da4d00b2a535ba092ca80cc02697bd2a`. This predates this draft refresh and grants no live credit.
+
+External blockers: accepted PG2 C1.15; 23 registered/done owners; executable authenticated interchange; external 25-gate bundle and genuine same-profile/session decisions; authorized context/namespace/deployment/session, custody root, credential-file paths and shared-system/fault/purge scope. These are separate prerequisite work. C1.16 credit is limited to its closed window.
+
+Offline correction has no intent gaps or irreversible actions; footprint is draft/handoff. Live faults/purge/publication require later authority. Whole-story readiness remains blocked.
