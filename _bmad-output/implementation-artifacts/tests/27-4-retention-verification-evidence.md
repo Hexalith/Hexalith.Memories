@@ -33,9 +33,9 @@ independent approval. Historical PG-ONPREM-1 C1.15 capture grants no PG2 credit.
 | :--------- | :---- | :-------------------- | :------------------------- | :---- | :------------------------ |
 | C0 exact adapter profile | `repository-validated` | Exact `PG-ONPREM-2` profile, hash, workload, parser, and pre-query identity contracts have deterministic guards. This is not Production proof. | Immutable exact-profile qualification packet with executed commands and recomputed source/artifact identity. | Platform Operations | `operator-pending`: execute the authorized C0 producer on the declared target. |
 | C1 canonical predecessor | `operator-pending` | The verifier requires each canonical `C1.1` through `C1.25` result and rejects a synthetic aggregate. | Twenty-five individually attributable passing gates plus two different named reviewers approving the exact same profile hash. | Gate owners, Platform Operations, Security | Complete all 25 gates; no missing owner, skip, zero-result command, or shared reviewer can pass. |
-| C2 production replacement | `operator-pending` | Producer schema, immutable packet writer, same-profile validator, concurrent fixed two-writer accounting, zero-default gate/Lease transition, and exact per-instance replacement selectors are repository-validated. | Controlled two-writer execution; replacement of both Servers and their sidecars, lifecycle/clock services and their sidecars, actor activation, all three Placement and Scheduler members; and adapter-fault execution with exact acknowledgements, recovery, and audit continuity. | Platform Operations | Run the reviewed C2 producer only after C1 passes with a named shared-system approval; its target-identity observation must prove an initially disabled exact-profile qualification namespace, empty Lease, and zero lifecycle/clock replicas. Zero acknowledged loss and a final disabled/empty/zero state are required. |
-| C3 retention and reclamation | `operator-pending` | Cohort, 1/24/168-hour bounds, attestation negatives, interrupted-purge, newer-record, tuple-attribution, and logical/physical separation guards are repository-validated. | Executed expiry/purge and adapter reclamation commands bound to each of the three independent cohorts and its database/schema/table; newer records preserved and reusable allocator free-space increase observed within 86,400 seconds. | Lifecycle owner and adapter owner | Run the reviewed C3 producer after C1; an OS disk-shrink claim is prohibited. |
-| C4 failure, privacy, and observability | `operator-pending` | Complete failure inventory, health precedence, NoData/last-evidence timestamp, bounded labels, and Story 20.2/24.3 denial guards are repository-validated. | Every declared dependency/fault lane, nonzero business samples with zero business failure, console/configured-OTLP continuity, alerts, and tenant denial before dependency access. | Platform Operations and Security | Run the reviewed C4 producer after C1; missing scenarios, raw/secret aliases, or dependency calls after denial reject. |
+| C2 production replacement | `operator-pending` | Producer schema, immutable packet writer, same-profile validator, concurrent fixed two-writer accounting, zero-default gate/Lease transition, and exact per-instance replacement selectors are repository-validated. | Controlled two-writer execution; replacement of both Servers and their sidecars, lifecycle/clock services and their sidecars, actor activation, all three Placement and Scheduler members; and adapter-fault execution with exact acknowledgements, recovery, and audit continuity. | Platform Operations | Run the reviewed C2 producer only after C1 passes and the separately scoped P7 runtime migration is approved and verified, with a named shared-system approval; its target-identity observation must prove an initially disabled exact-profile qualification namespace, empty Lease, and zero lifecycle/clock replicas. Zero acknowledged loss and a final disabled/empty/zero state are required. |
+| C3 retention and reclamation | `operator-pending` | Cohort, 1/24/168-hour bounds, attestation negatives, interrupted-purge, newer-record, tuple-attribution, and logical/physical separation guards are repository-validated. | Executed expiry/purge and adapter reclamation commands bound to each of the three independent cohorts and its database/schema/table; newer records preserved and reusable allocator free-space increase observed within 86,400 seconds. | Lifecycle owner and adapter owner | Run the reviewed C3 producer after C1 and approved, verified separately scoped P7 runtime migration; an OS disk-shrink claim is prohibited. |
+| C4 failure, privacy, and observability | `operator-pending` | Complete failure inventory, health precedence, NoData/last-evidence timestamp, bounded labels, and Story 20.2/24.3 denial guards are repository-validated. | Every declared dependency/fault lane, nonzero business samples with zero business failure, console/configured-OTLP continuity, alerts, and tenant denial before dependency access. | Platform Operations and Security | Run the reviewed C4 producer after C1 and approved, verified separately scoped P7 runtime migration; missing scenarios, raw/secret aliases, or dependency calls after denial reject. |
 | C5 operations acceptance | `operator-pending` | Neutral and PostgreSQL-specific runbook structure, ownership, monitoring, RPO/RTO, rollback, rotation, and decommission contracts are repository-validated. | Named operations acceptance of the exact immutable profile, evidence set, capacity/cost, incident, restore, and maintenance procedures. | Platform Operations reviewer | Review actual C0-C4 packets and record an independent same-hash decision. |
 | C6 security acceptance | `operator-pending` | Least-privilege, Dapr-only data plane, TLS/secret, bounded observability, evidence redaction, and tenant-isolation documentation guards are repository-validated. | Named security acceptance of the same profile and immutable evidence hashes, independent of the Platform Operations reviewer. | Security reviewer | Review actual packets and record a different named same-hash decision. |
 
@@ -67,6 +67,30 @@ and independent disposition; historical acceptance remains preserved.
 Approved/done current-profile gate-owner
 registrations and twenty-five distinct passed artifacts with independent named
 Platform Operations and Security approvals of the same hash are still required.
+
+Runtime qualification also remains blocked, re-verified on 2026-10-07 at
+`95dd8758f2f36d262a2b5c23269a0d73a2d7825b`:
+`AccessTelemetryQualificationGate.ApprovedProfileSha256` still pins historical
+PG1 `dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14`, while
+the Python producers require current PG2
+`7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`.
+The Server's fixed-workload gate therefore refuses an enabled PG2 gate file.
+The existing `Gate_AcceptsOnlyCurrentExactProfileInQualification` test builds its
+input from the same runtime constant; its passing result does not prove PG2
+compatibility. C2-C4 repository fixture validation is not proof that this runtime
+prerequisite has been satisfied.
+
+The [authenticated predecessor interchange specification](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/SPEC.md)
+is proposed, unstarted and not implementation-ready. Its
+[P7 migration prerequisite](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md#decisions-and-ownership-still-required)
+requires the runtime profile correction to have a separate scope. Its proposed
+decision route assigns the handoff to Deployment Adapter Developer and the Story
+27.4 machinery owner, with Architecture and Operations approving runtime migration.
+Accountable people remain unassigned; these role labels confer no approval or
+completed ownership. Reopen this runtime blocker only when
+approved source changes and independent profile assertions prove PG2 acceptance
+and historical-profile rejection while preserving non-Production scope, bounded
+expiry and renewal behavior. This handoff does not implement or approve that migration.
 
 None of these live inputs has been supplied for this offline pass: an accepted
 current-profile C1 predecessor bundle (external bundle path), approved/done gate
@@ -382,3 +406,121 @@ These final receipt notes were recorded afterward. Three review layers completed
 three handoff clarifications were applied, two findings were rejected with evidence,
 and one earlier dependency-composition verification gap was deferred. No live
 checkpoint, acceptance, A41 transition or publication is claimed.
+
+### 2026-10-07 runtime qualification prerequisite handoff
+
+Reverified the runtime-versus-producer profile mismatch against source HEAD
+`95dd8758f2f36d262a2b5c23269a0d73a2d7825b`. The canonical C0-C6 states remain
+unchanged. The current interchange proposal and separately scoped P7 runtime
+migration are explicit prerequisites, not executable authenticated acceptance.
+
+Read-only source comparison, run from the repository root:
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
+import re, sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd() / 'tools'))
+import verify_access_telemetry_lifecycle as v
+v.validate_current_profile_inputs(Path.cwd())
+assert v.canonical_pg_onprem_2_profile().manifest()['profile_sha256'] == '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe'
+assert v.STORY_27_4_WORKLOAD_SHA256 == '71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f'
+text = Path('src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationGate.cs').read_text()
+runtime = re.search(r'ApprovedProfileSha256 = "([0-9a-f]{64})"', text).group(1)
+print('Current profile, sixteen bound inputs and workload hashes match.')
+print('Runtime profile:', runtime)
+print('Producer profile:', v.STORY_27_4_PROFILE_SHA256)
+print('Runtime matches producer:', runtime == v.STORY_27_4_PROFILE_SHA256)
+PY
+```
+
+Exit 0; current profile, sixteen bound inputs and workload hashes matched. Runtime
+and producer hashes were the full PG1 and PG2 values above, respectively;
+`Runtime matches producer: False`. This comparison confirms a blocker, not a
+successful qualification.
+
+The unchanged canonical ten-command offline block ran before these documentation
+edits, from the clean full HEAD above. Receipt
+`/tmp/story-27-4-offline.DDRI57kg`: all ten commands and the block exited 0;
+79 lifecycle cases passed in 36.053s, zero failures/errors/skips; Debug/source-reference
+build succeeded with zero warnings/errors; exactly 12 retention-decision and 5 A41
+architecture guards passed, every result `Pass`, zero failures/errors/skips/not-run.
+XML run: 2026-10-07 10:14:17 UTC; XML SHA-256
+`6707e37848c88a0a4346220da5ae481eea6dec6e4c17aaa35ef1ecd1e656d1bd`.
+The receipt retains nonrecursive dependency revisions, command exits/logs and built
+assembly identity; its source status and tracked diff were empty.
+
+Durable identifiers from that pre-edit receipt:
+
+| Artifact | SHA-256 |
+| :--- | :--- |
+| Built Server test assembly | `da26b4aef31549254c70cefb12608fac23a572797f4a0e57ff6184252ab82562` |
+| `lifecycle.stdout.log` | `9ce7c22d0cd1bd995512adf2a81a8a30f539a888ab081ad57da18095e6698179` |
+| `lifecycle.stderr.log` | `1d8002977625c076ebff9ba7eb45e44d7a71d6cca74af497a096bab3d362ee79` |
+| `build.stdout.log` | `7a6c4df171722048b8359899d11924b674fb8e750b466fba61ca97bc91ec3ff8` |
+| `build.stderr.log` (empty) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `dependency-revisions.stdout.log` | `ed4d7c9f62b89011aff302c0039f448f62ed6d20fbbacb756cf663850c9f3cd1` |
+
+The recorded nonrecursive dependency revisions were:
+
+| Root-declared dependency | Full revision |
+| :--- | :--- |
+| Hexalith.AI.Tools | `3f194e17174994d308ec84af9ee2b5aa68674d0d` |
+| Hexalith.Builds | `397c94a4e246c90b21cf408790fa0d55bf32d795` |
+| Hexalith.Commons | `116d26815eb81e35b3c161e1799e5ee12805fc0a` |
+| Hexalith.EventStore | `4e4ee8587ee1f6e73f704cd548734e963b2af3e9` |
+| Hexalith.FrontComposer | `c561b3210f15206a90c39c82c58f2e5b1005cd60` |
+| Hexalith.McpCli | `e159f82b7528797fc245045625ff387d65294ba9` |
+| Hexalith.Platform | `eb16638491809df631723d60ed9884e1e2acf040` |
+| Hexalith.PolymorphicSerializations | `98de6e013840ece9f0fa7c68ab7dcdf2bba3b375` |
+| Hexalith.Tenants | `811447342e8f44b644a2074565e83f45519528fd` |
+
+The existing gate-mechanics lane also passed:
+
+```bash
+env DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -method 'Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle.AccessTelemetryQualificationWorkloadTests.Gate_*' -parallelMode none -noLogo -failSkips -result-xml /tmp/story-27-4-runtime.Lp1vjnt4/runtime-gate.xml
+```
+
+Receipt `/tmp/story-27-4-runtime.Lp1vjnt4`, exit 0: exactly
+`Gate_AcceptsOnlyCurrentExactProfileInQualification` and
+`Gate_AcceptsAConfigMapProjectionSymlinkOnlyInsideItsMount` passed; zero
+failures/errors/skips/not-run. XML SHA-256
+`307f1ec86ee9c2acf5da6bb12c61bf032b60a2c6551e71c6fcd9fe811dbebc14`.
+These tests cover existing gate mechanics using the runtime constant; they do not
+resolve the mismatch or supply current-profile compatibility evidence.
+The XML records 2026-10-07 10:16:11 UTC. This earlier receipt did not capture its
+own execution-time source revision or assembly hash and therefore does not
+independently establish which build it executed. The reviewed rerun below records
+those identities rather than retroactively assigning them to this receipt.
+
+The source-bound rerun at 2026-10-07 10:21:46 UTC passed the same exact two tests,
+zero failures/errors/skips/not-run, all eight logged commands and the block exit 0.
+Receipt `/tmp/story-27-4-runtime-bound.6lk0pkyl` records command arguments,
+exit codes and stdout/stderr, nonrecursive dependency revisions, execution-time
+status/diff, and matching source HEAD and assembly hashes before and after the run.
+Source HEAD: `95dd8758f2f36d262a2b5c23269a0d73a2d7825b`; assembly SHA-256
+`da26b4aef31549254c70cefb12608fac23a572797f4a0e57ff6184252ab82562`;
+XML SHA-256 `088301d9f4015d4950fb335312533b3b0cab0d255f0bae4d7366c002b018cd1d`;
+execution-time tracked diff SHA-256
+`058dc0aeb8eade5a08660bfa60e86dc5a11a4048a752a70513e64b2a5fd2ddfb`.
+That diff contains the then-current handoff edits; the untracked supporting spec
+is listed by the retained source status. Later receipt/review notes are recorded
+after the rerun. These are local offline identities, not external custody or live
+qualification evidence.
+
+No target was queried, no qualification/fault/purge operation ran and no acceptance,
+registration or publication was inferred. Story 27.4 remains `in-progress`, A41 and
+its sprint action remain open, and Production lifecycle writes remain disabled.
+
+Final review-patch verification at 2026-10-07 10:23:44 UTC: receipt
+`/tmp/story-27-4-handoff-final.u1japj0y`, six logged commands and the script checks
+exited 0; exactly 12 retention-decision + 5 A41 architecture cases passed, zero
+failures/errors/skips/not-run. XML SHA-256
+`c847f2257ffbc67c83c5f34d42fb910f372ec3245d57eaf8e1dd45e96097e1c6`;
+execution-time tracked diff SHA-256
+`31abf301c4417c8850e517463af8fe986327381d881fb0753f3d1c2c92ac0265`.
+The source HEAD and assembly identity match those above. Link resolution, retained
+log/dependency identifiers, protected-file byte comparison, two-file mutation scope,
+CRLF and whitespace checks passed. The one-shot blind review's four findings were
+corrected; no finding was deferred. These final receipt notes were recorded after
+that check and provide no live gate, authority or closure credit.
