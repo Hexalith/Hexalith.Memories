@@ -39,22 +39,32 @@ independent approval. Historical PG-ONPREM-1 C1.15 capture grants no PG2 credit.
 | C5 operations acceptance | `operator-pending` | Neutral and PostgreSQL-specific runbook structure, ownership, monitoring, RPO/RTO, rollback, rotation, and decommission contracts are repository-validated. | Named operations acceptance of the exact immutable profile, evidence set, capacity/cost, incident, restore, and maintenance procedures. | Platform Operations reviewer | Review actual C0-C4 packets and record an independent same-hash decision. |
 | C6 security acceptance | `operator-pending` | Least-privilege, Dapr-only data plane, TLS/secret, bounded observability, evidence redaction, and tenant-isolation documentation guards are repository-validated. | Named security acceptance of the same profile and immutable evidence hashes, independent of the Platform Operations reviewer. | Security reviewer | Review actual packets and record a different named same-hash decision. |
 
-Current C1 blockers, re-derived 2026-10-06 after Story 27.22 completed: the
-separately owned, unregistered PG-ONPREM-2 C1.15 producer renewal and independent
-review, and twenty-three unregistered gate owners. The existing C1.15/PG2
-dispatcher rejects with `unsupported-successor-gate-or-historical-opt-in` before
-target calls or output-directory creation; renewing it requires a separate approved
-scope owned by Deployment Adapter Developer. Story 27.21's accepted PG1 capture
-provides no renewal credit.
+Current C1 blockers, re-derived 2026-10-07 after the separate PG2 C1.15
+preparation completed: accepted PG-ONPREM-2 C1.15 renewal with an authenticated
+independent disposition, twenty-three registered/done gate owners, and executable
+authenticated predecessor interchange. The C1.15/PG2 dispatcher now supports a
+neutral v2 capture with a valid `QualificationSessionId` and the shared preflight;
+repository preparation is complete. The earlier
+`unsupported-successor-gate-or-historical-opt-in` refusal described historical
+dispatch behavior before that preparation and is no longer a blocker for this
+supported mode. A missing or invalid PG2 C1.15 session still fails with
+`qualification-session-required-or-invalid` before target calls or output-directory
+creation. The [capture/disposition contract](../../../docs/operations/access-telemetry-c1-pg2-c1-15-contract.md)
+and separate preparation remain distinct from live capture, custody and accepted
+renewal. Story 27.21's accepted PG1 capture provides no PG2 renewal credit.
 
-C1.16 is no longer a capture or linkage blocker. Story 27.22 is done, and its
-independent disposition, SHA-256
+C1.16 capture and linkage are accepted for the closed window. Story 27.22 is
+done, and its independent disposition, SHA-256
 `ad2d3024dff5cd00cb8518a3e65b16d006acf596046d193373d0ae55ea2cff70`, accepts captured
 component/backend identity and full-set connection linkage for one closed window.
 Its canonical single-session refusal stays failed and owned by Deployment Adapter
 Developer. That acceptance does not change the C1 row above and gives no Story
 27.4, A41, Production or other-gate credit. It counts only when it is part of an
-approved C1 predecessor bundle. Approved/done current-profile gate-owner
+approved C1 predecessor bundle. A future bundle must establish the capture's
+session eligibility and cannot reuse the closed scope as execution authority.
+A bundle using a new session requires a separately authorized fresh C1.16 capture
+and independent disposition; historical acceptance remains preserved.
+Approved/done current-profile gate-owner
 registrations and twenty-five distinct passed artifacts with independent named
 Platform Operations and Security approvals of the same hash are still required.
 
@@ -288,3 +298,87 @@ These `/tmp` receipts are local repository verification, not live evidence or a
 custody archive. The implementation makes no reviewer-authentication, C1.17,
 aggregate C1, successor-registration or activation claim. No deployment input,
 historical capture or independent disposition was changed.
+
+### 2026-10-07 Story 27.4 current handoff reconciliation
+
+The current handoff now distinguishes the callable neutral PG2 C1.15 v2 producer
+from its missing live capture, custody and authenticated independent acceptance.
+The unsupported-dispatch statement above has been reconciled with the completed
+separate preparation; its historical refusal and the accepted PG1 packet remain
+historical only. No producer, test, profile, registration or verification command
+changed in this Story 27.4 slice.
+
+The unchanged canonical ten-command Bash block passed after that correction and
+before these dated receipt notes were appended. Retained local receipt:
+`/tmp/story-27-4-offline.tCpEtJN6`. All ten commands and the scoped block exited
+`0`; 79 lifecycle cases passed in 47.979 seconds with bare `OK`, zero failures,
+errors or skips. The Debug/source-reference build had zero warnings/errors.
+Architecture XML contains exactly 12 retention-decision and 5 A41 guards, all
+`Pass`, with zero failures, errors, skips or not-run tests. Whitespace passed.
+
+| Item | Identifier |
+| :--- | :--------- |
+| Source revision | `b350c094ab4bc10bd2daf723f9e2c90ffdddae2a`; execution-time changes were the existing Story 27.4 spec and this handoff file; no dependency revision changed |
+| Execution-time diff (`source-diff.stdout.log`) | SHA-256 `cbb03717ce9903db2f41d91eb5dc08e614aeab0c824346dc940ee46560d6de6c` |
+| Built assembly | SHA-256 `54975db810c985922775a6392a113bed4dba80e7ab2f2e2b16b0575550dc48ad` (build identity only) |
+| `architecture.xml` | SHA-256 `04a6ed02217099de59dd52eeb896de136b890804aba5ba84c36a1ed292090c2c`; run 2026-10-07 07:42:22 UTC, 17 total = 12 + 5, every result `Pass` |
+| `lifecycle.stderr.log` | SHA-256 `16243498c2a1d4185286a74a098ac66ce2ec699583e059ce04972e3fb1298970`; `Ran 79 tests`, `OK` |
+| `build.stdout.log` | SHA-256 `0cc511f4b843f173010d258b9444b753316bc1ce80a20e87fbc7f15c668f8c63`; 0 warnings, 0 errors |
+| Exit codes | All ten logged commands and the scoped block: `0` |
+
+A separate initial-handoff post-edit recheck passed in
+`/tmp/story-27-4-handoff.o88ERlot` at 2026-10-07 07:43:56 UTC. Its exact four logged
+commands were `assembly-sha256`, `architecture`, `architecture-results` and
+`whitespace`; each command and the scoped block exited `0`. Both architecture
+classes passed with exactly 12 retention-decision + 5 A41 guards, every result
+`Pass`, zero failures, errors, skips or not-run tests. Its `architecture.xml`
+SHA-256 is `4fd0c2ec49cb87d097c445a6c9416e73fbd784290b5cfe6d76a0d0409eeff657`.
+This four-command receipt records the initial handoff's post-edit checks separately
+from the earlier ten-command `/tmp/story-27-4-offline.tCpEtJN6` receipt; it predates
+these review clarifications.
+
+The existing offline cases exercise structural/fixture behavior relevant to the
+scenario rows below; every named method reports `ok` in the ten-command receipt's
+lifecycle log. Temporary repositories and mocked targets confer no live credit.
+Authenticated refusal of an unaccepted prerequisite before target access awaits
+executable authenticated interchange. This run's no-target outcome was a deliberate
+hold on live execution, not proof of that automated enforcement.
+
+| Scenario | Existing passing fixture methods | Structural/fixture boundary |
+| :--- | :--- | :--- |
+| Denial | `test_current_target_predecessor_approvals_and_c0_reject_old_or_mixed_evidence`; `test_c1_requires_unique_25_gate_artifacts_disabled_production_and_authorization`; `test_both_python_cli_preflights_refuse_bound_input_drift_before_any_kubectl` | Reject historical/mixed identities, reused gate artifacts, enabled Production, missing qualification authorization and bound-input drift. Drift rejection precedes mocked Kubernetes calls. |
+| Qualification | `test_complete_c2_c3_and_c4_packets_validate`; `test_producer_restores_disabled_state_when_body_fails_after_enable`; `test_producer_restores_disabled_state_when_enable_response_is_malformed`; `test_qualification_renewal_rejects_lost_lease_ownership`; `test_registered_producers_and_complete_close_out_chain` | Validate fixture packets, refuse source/Lease drift, restore the disabled gate, release the owned Lease and leave zero lifecycle/clock replicas. The complete-chain fixture also checks exact producer/source bindings and checkpoint artifact hashes. |
+| Closure | `test_registered_producers_and_complete_close_out_chain` | Reject tampered terminal artifacts and dirty preflight; accept the exact four-path fixture transition; reject unpublished, wrong-branch and remapped-remote publication; accept containment in the fixture's local bare remote. |
+
+The existing predecessor validator checks structure, hashes and command ledgers;
+these fixture results do not authenticate reviewers, establish artifact semantics
+or register gate producers. Executable authenticated interchange remains separate
+prerequisite work under the [D3 contract](../../planning-artifacts/c1-security-prerequisites-2026-10-04/predecessor-interchange-contract.md).
+
+Accepted PG2 C1.15 renewal, twenty-three registered/done owners, a genuine accepted
+25-gate same-profile/session bundle and independent Operations/Security decisions
+remain absent. The authorized non-Production context, namespace, deployment and
+session, custody root, credential-file paths and shared-system/fault/purge scope
+are also absent. Story 27.22 acceptance is limited to its closed C1.16 window.
+Live C0/C2-C4, C5/C6 acceptance, terminal/postflight/publication and A41 closure
+therefore remain pending. Story 27.4 stays incomplete; A41 and its sprint action
+stay open; Production writes stay disabled. No live target was contacted and no
+repository staging, commit, publication or dependency update was performed.
+
+Parent verification after the three review clarifications passed using the unchanged
+canonical ten-command block. Receipt `/tmp/story-27-4-offline.L9PhHyQb`: all ten
+commands and the scoped block exited `0`; 79 lifecycle cases passed in 36.988s
+with bare `OK`, zero failures/errors/skips; Debug/source-reference build zero
+warnings/errors; exactly 12 retention-decision + 5 A41 guards, every result `Pass`,
+zero failures/errors/skips/not-run. The XML run was 2026-10-07 07:53:27 UTC.
+Source HEAD was `b350c094ab4bc10bd2daf723f9e2c90ffdddae2a`, with only this handoff,
+its spec and an appended pre-existing dependency verification deferral changed.
+Execution-time diff SHA-256 `2ffc7a3fe5449176b26d1dad574e4a1559ffff6e59c134168e3c29e118e35ff5`;
+XML SHA-256 `efc7e061185c40c729d3fbeb2da559675a6d88efa9b69354600530e7600e327b`;
+lifecycle log SHA-256 `b6d42dce0899fb7cb2fe742a1e9f20527e6f81f244240163a6bdfd80e3c2763d`;
+build log SHA-256 `22171dcfcd072c2610830b777e590ee1628f05d2862921bbe7a760170c19a4e5`.
+The assembly SHA-256 remained `54975db810c985922775a6392a113bed4dba80e7ab2f2e2b16b0575550dc48ad`.
+These final receipt notes were recorded afterward. Three review layers completed;
+three handoff clarifications were applied, two findings were rejected with evidence,
+and one earlier dependency-composition verification gap was deferred. No live
+checkpoint, acceptance, A41 transition or publication is claimed.
