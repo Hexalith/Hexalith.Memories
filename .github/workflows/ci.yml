@@ -296,6 +296,9 @@ jobs:
       - name: Run access-telemetry C1 producer fixtures
         run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p "*_test.py"
 
+      - name: Run access-telemetry C1 interchange wire fixtures
+        run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p "test_*.py"
+
       - name: Run story file-scope gate fixtures
         run: python3 -m unittest discover -s tests/tooling/story_scope -p "*_test.py"
 
