@@ -134,3 +134,35 @@ final corrections still need Platform publication followed by the separately
 authorized Memories gitlink advance. This workflow preserves the existing pinned
 gitlink and performs neither action. Full I1-I6 acceptance and all live holds
 remain unchanged.
+
+
+## Owner-directed policy/session authority preparation (2026-10-08)
+
+The owner selected the recommended bounded GitHub-backed policy/session adapter,
+bundle role integration and genuine TLS gate-review chain. The isolated scope is
+`spec-pg2-c1-github-authority.md`; the reviewable contract is
+[the authority operations contract](../../../docs/operations/c1-github-authority-contract.md).
+
+Platform adds generic immutable exact-review/body authentication over its existing
+transport. Memories adds closed policy/session/gate bodies, independent bootstrap
+root and explicit bounded time/permissions, exact current PG2 scope and Ref
+bindings, subset grants, acyclic parent dependencies and complete-chain freshness
+revalidation. Existing bundle role policy is derived from authenticated session
+grants. All actual capture execution/provenance/custody/target/manifest facts
+remain independent inputs. The named-owner two-role exception retains separate
+decisions and producer exclusion. No target/deployment operation or actual grant
+occurs, and no accepted gate/predecessor/execution output is added.
+
+Dedicated real TLS authority cases cover positive policy/session/gate-parent/
+bundle chains and early target/tenant/session/role/action/producer refusals,
+withdrawal and exact bytes/commit/user matching, strict schema/envelope handling,
+elapsed regression/reuse/suspension and earliest whole-chain expiry/status age.
+Exact commands, counts and logs are recorded only after execution in the scoped
+implementation spec and `/tmp/pg2-c1-authority-lbzyqupl`.
+
+I3/I5 and P1–P7 are still incomplete. Operational bootstrap adoption, eligible
+capture provenance, custody, registrations/semantic verification and accepting
+consumer migration retain their recorded owners/prerequisites. No operational
+dependency topology is chosen by fixtures. Publication of Platform changes and
+a separately authorized matching root gitlink advance remain outstanding;
+27.4/A41/Production and the prior history remain held.

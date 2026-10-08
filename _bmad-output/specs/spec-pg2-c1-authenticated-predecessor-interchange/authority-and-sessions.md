@@ -169,3 +169,36 @@ final corrections still need Platform publication followed by the separately
 authorized Memories gitlink advance. This workflow preserves the existing pinned
 gitlink and performs neither action. Full I1-I6 acceptance and all live holds
 remain unchanged.
+
+
+## Owner-directed GitHub policy/session prerequisite (2026-10-08)
+
+The owner chose “do recommended”: implement a narrow GitHub-backed policy and
+session adapter, derive bundle roles from verified grants, and prove one gate
+review chain through genuine TLS fixtures. The separately scoped implementation
+is `spec-pg2-c1-github-authority.md`; its exact schemas and bootstrap contract are
+in [the authority operations contract](../../../docs/operations/c1-github-authority-contract.md).
+
+Platform's generic exact-review authenticator uses the existing unchanged
+transport. Memories independently anchors issuer, repository, policy reviewers,
+trusted UTC acquisition and explicit limits before authenticating the policy,
+delegated session and scoped gate/bundle review chain. Policy cannot appoint its
+own root; session role/gate/action grants cannot exceed policy. Exact current PG2
+profile/workload identities, tenant/target/source/session scope, body Refs and
+selected review/PR commits bind throughout. Authenticated policy supplies an
+explicit acyclic gate dependency matrix; fixture choices resolve no operational
+C1.23–C1.25 topology. The owner two-bundle-role exception remains unchanged.
+
+Every call re-fetches dependencies and rechecks earliest expiry/session window
+and status freshness after the entire chain, including bundle retrieval. Immutable
+observations contain no accepted gate, predecessor or execution handle. Actual
+capture producer execution/provenance, custody, target identity and manifest
+creation remain separately authenticated caller requirements. A session's planned
+producer list or authenticated review cannot reconstruct missing actual execution.
+
+This prepares part of I3 with real fixture evidence; it does not complete I3/I5,
+appoint an operational bootstrap/policy/session, close P1–P7 or supply a live
+grant. Protected historical decisions, 27.4/A41/Production and legacy consumers
+remain unchanged. Platform publication and a separately authorized matching root
+gitlink advance remain outstanding. Exact executed commands/counts/source hashes
+are retained in the implementation spec and its receipt directory.

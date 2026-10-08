@@ -9,6 +9,8 @@ baseline_commit: 'f4e7eb8626513c83f392a7cabf223b1a4673daa3'
 review_loop_iteration: 0
 context:
   - '_bmad-output/implementation-artifacts/epic-27-context.md'
+investigated: '2026-10-08'
+investigation_commit: 'aac6d9054cb138881e6e49c8e48233553123ffce'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -33,31 +35,30 @@ context:
 | Qualification | Accepted predecessor and authorized target | Immutable C0/C2-C4 packets and cleanup | Reject drift, loss, skips or tenant leakage |
 | Closure | Accepted C0-C6, terminal proof and publication authority | Exact four-path transition and remote proof | Refuse incomplete chain or protected-byte drift |
 
+**Decision 2026-10-08:** The owner selected “do recommended”: implement the narrow GitHub-backed Platform adapter and qualification contract in a separately tracked prerequisite. This selects the provider direction, not actual operational grants or gate acceptance.
+
 </frozen-after-approval>
-
-## Prerequisite progress
-
-2026-10-07: The user asked us to handle the technical prerequisites ourselves. The bounded offline foundation is completed and tracked separately in [the wire-primitives spec](spec-pg2-c1-interchange-wire-primitives.md): strict immutable snapshots, J1 encoding and exact Ref validation, 32 new tests and 3 existing regressions passed, and all six independent review findings fixed. We prepared the implementation and test receipts rather than asking the user to assemble them. This is common wire preparation, not completed authenticated interchange or live qualification. The separately approved single-owner policy is tracked in [its implementation spec](spec-pg2-c1-single-owner-approval-policy.md). Authenticated review of actual evidence and scoped live authority remain prerequisites; no actual gate acceptance is inferred from owner authorization of implementation. The conditional live tasks below stay pending.
 
 ## Code Map
 
-- `tools/verify_access_telemetry_lifecycle.py` — `_validate_predecessor` checks structure/hashes/ledgers; reviewer authentication and artifact semantics remain missing. Reuse `A41_ALLOWED_MUTATION_PATHS`; no launch through this gap.
-- `docs/operations/access-telemetry-lifecycle.md` — existing bounded checkpoint and close-out commands.
-- `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — canonical matrix and offline block; PG2 preparation already reconciled.
-- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/` — separate unready contract with unresolved P1-P7 decisions.
+- `tools/verify_access_telemetry_lifecycle.py` — legacy `_validate_predecessor`, launch and terminal paths check structure/hashes/reviewer strings; require completed authenticated interchange before launch.
+- `tools/access_telemetry_c1_github_approvals.py` — reuse reviewed wire/separation imports and GitHub observations; no session/custody/role authority.
+- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — separate I1-I6/P1-P7 prerequisites; accepting registry/consumer, numerical/time/status policy and scoped authority remain incomplete.
+- `docs/operations/access-telemetry-lifecycle.md` — reuse checkpoint/custody/C3-journal/close-out commands.
+- `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — canonical matrix and offline block. Legacy reviewer checks persist until authenticated migration; C5/C6 keep separate reviewers.
 
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `tools/verify-access-telemetry-lifecycle.py` — after authenticated interchange, accepted predecessor and execution authority, run C0/C2-C4 with external custody/C3 journal; obtain independent C5/C6 decisions.
-- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — reconcile matrix only to accepted actual packets; otherwise retain pending/rejected states.
-- [ ] `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/project-context.md`, `docs/dev/telemetry.md` and canonical matrix — exact four-path closure after terminal/preflight; authorized staging/publication; postflight and remote containment.
-- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — reuse denial/drift/cleanup/closure cases and architecture guards; attach tenant-negative commands/results.
+- [ ] `tools/verify-access-telemetry-lifecycle.py` — after accepted PG2 predecessors, completed interchange, migration approval and scoped target/custody/credential/fault/purge grants, execute C0/C2-C4; retain immutable packets/journal and obtain separate post-evidence C5/C6 decisions.
+- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — reconcile only actual accepted evidence.
+- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — reuse refusal/drift/cleanup/tenant-negative tests and architecture guards; retain commands/results.
+- [ ] `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/project-context.md`, `docs/dev/telemetry.md`, canonical matrix — reviewed four-path closure after terminal/preflight; explicit post-review staging/publication authority, postflight and remote containment.
 
 **Acceptance Criteria:**
-- Given missing prerequisites, when readiness is checked, then no live producer runs and Story 27.4/A41 remain incomplete/open.
-- Given an authorized exact-profile target, when expiry/faults execute, then accepted evidence proves two-writer acknowledgement, recovery, expired purge, newer preservation, emission and denial before dependencies.
-- Given actual accepted C0-C6, when terminal/postflight/publication verification succeeds, then all A41 summaries cite the same evidence and protected historical records remain byte-identical.
+- Given missing prerequisites, when readiness is checked, then no live launch occurs and Story 27.4/A41 remain incomplete/open.
+- Given authorized PG2 execution, when expiry/faults run, then accepted evidence proves two-writer acknowledgement/recovery, expired purge, newer preservation, emission and denial before dependencies, with final disabled gate/released Lease/zero lifecycle-clock replicas.
+- Given accepted C0-C6 and publication authority, when terminal/postflight/remote verification passes, then A41 summaries bind the same evidence and protected historical/sprint bytes remain identical.
 
 ## Implementation Notes
 
@@ -67,28 +68,12 @@ context:
 
 ## Verification
 
-Clean-baseline investigation: canonical ten-command block exited 0; 79 lifecycle cases passed; Debug/source-reference build zero warnings/errors; exact 12 retention-decision + 5 A41 guards passed. Receipt `/tmp/story-27-4-offline.o6JxCzd3` retains commands/logs/source/dependency/build identities/XML. Reproduce using the canonical block; require every exit 0 and every case Pass.
+2026-10-08, clean source `aac6d9054cb138881e6e49c8e48233553123ffce`: canonical ten-command block exited 0; 80 lifecycle cases passed, Debug/source-reference build zero warnings/errors, exact 12 retention-decision + 5 A41 guards passed without skips. Receipt `/tmp/story-27-4-offline.MHHDT1CO` retains commands/exits/logs/dependency identities/assembly hash/XML.
 
-Separate built-assembly `dotnet exec -class Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle.AccessTelemetryQualificationWorkloadTests -parallelMode none -noLogo -failSkips` exited 0: 18/18 passed, zero errors/failures/skips/not-run; XML retained as `runtime-workload.xml` in that receipt. Includes PG1/non-Qualification/revocation negatives. Offline results confer no live acceptance. At that initial story-only investigation, only this draft changed; no source/test addition or target operation occurred. Subsequent offline preparation is recorded in the separately scoped wire-primitives spec.
+Interchange discovery: exit 0, 92 passed without skips; command/log receipt `/tmp/story-27-4-readiness-5epa4681`. Its facts verify sixteen inputs, matching PG2 pins and pinned reviewed transport. Runtime/transport preparation is complete; consumer/deployment approval remains pending.
 
-Blockers: accepted PG2 C1.15; 23 registered/done owners; authenticated interchange/policy; eligible C1.16/session; bundle decisions; runtime migration/deployment approval; target, custody, credential-file paths and fault/purge grant. Jérôme Piquot is now the designated bundle approver under the explicit single-owner policy; remaining gate/implementation owners and authority mechanisms are still unassigned or unselected. Reopen on actual approved prerequisite artifacts.
+Two registered/done stories: 27.21 accepted historical PG1 C1.15; 27.22 accepted PG2 C1.16 for a closed window. PG2 C1.15 registration/capture/disposition, 23 gate registrations and authenticated interchange remain required. C1.16 needs proven session eligibility or a separately authorized fresh capture. No accepted eligible C1 bundle exists. Reopen on accepted prerequisite artifacts.
 
-## Owner direction and concrete next decisions
+The initial readiness investigation changed only this draft and preserved the prior frozen intent. The subsequent owner-selected provider decision above is tracked in its separate prerequisite spec. Prior directions/receipts remain at the investigation commit. No live/status/A41/publication action occurred.
 
-The user explicitly said “as the owner I approve” on 2026-10-07, then named “me Jérôme Piquot” when asked who should provide Operations/Security sign-offs and where approvals are recorded. Record Jérôme Piquot as the owner-designated approver and continue authorized technical preparation without asking for the same approval again. The first reply did not select an approval-recording system or expressly change the existing two-reviewer requirement; the subsequent explicit choice “Allow Jérôme to approve both roles” renegotiates that policy, as recorded in the separate single-owner spec. These conversation directions are not fabricated issuer receipts or current-profile gate acceptance.
-
-The policy alternatives presented to the owner were:
-
-- **Keep the existing rule:** Jérôme Piquot provides one review role; a different authenticated reviewer provides the other. The current `_validate_predecessor` requires exactly two approvals, one Platform Operations and one Security, with different reviewer identities. The future authority adapter must establish real principal independence.
-- **Change the rule (selected by the owner):** Jérôme Piquot may provide both roles under an explicitly revised single-owner policy. Implement and review a versioned policy/schema/validator change before relying on this arrangement. Record the weaker separation of duties and its compensating controls; do not invent a second username for the same person or mark the existing two-person check passed. The owner's approval of technical work alone does not resolve this deliberate requirement change.
-
-The selected approval system must then supply a real authenticated principal and bound review record. Existing product JWT/OIDC, clock signatures and local Kubernetes credentials do not implement that contract. A read-only authenticated GitHub connector profile lookup returned name `Jérôme Piquot`, account `jpiquot`, stable account ID `6775094`, matching the owner's designation. This supplies a concrete candidate account, not an approval on any capture or manifest. GitHub review recording is the proposed mechanism to prepare because this session supports authenticated profile/review access and the repository is hosted there; no review was created and no issuer/receipt policy is adopted by this lookup. We will prepare the implementation and review packets rather than require the owner to produce technical files.
-
-### Environment preparation already performed
-
-- Read-only local configuration identified context `jpiquot@local`, default namespace `default`.
-- `kubectl --context jpiquot@local --request-timeout=15s get namespaces -o name` exited 0. The cluster is reachable and `hexalith-memories` exists; `hexalith-memories-qualification` does not. No resources were created, patched, scaled or deleted.
-- `kubectl kustomize deploy/kubernetes/overlays/qualification` exited 0. The rendered setup contains 61 resources and is retained at `/tmp/pg2-c1-wire-final-qyqhy9wi/qualification-render.yaml`, SHA-256 `5d2a9212b320a6af130ba0f8e395e279764f78344f2b1e18366e3adcdaa6fab0`, with a resource inventory in `qualification-render-summary.json`. Nothing was applied.
-- The proposed target is the separate `hexalith-memories-qualification` namespace on the existing context. Rendering keeps lifecycle and clock replicas at zero, the gate disabled, Lease holder empty and the physical-evidence reporter Job suspended. It also includes application/storage workloads and two namespaced RBAC resources in shared `dapr-system`; those shared resources must appear in the eventual reviewed deployment/execution scope. This overlay is not a claim that runtime prerequisites, images, secrets, capacity or all C1 gates are ready.
-- Before fault/purge execution, complete the selected authority contract and registered gate prerequisites, prepare the exact isolated deployment inputs/custody/session, verify all prerequisite evidence, and use the reviewed producer. The namespace's absence is setup work we can prepare and carry out under a concrete approved scope, rather than an instruction for the user to provision it manually.
-- Protected tracking/context/telemetry/canonical evidence/runtime-gate files match their baseline Git-normalized blobs. Literal worktree hashes are separately retained in `/tmp/pg2-c1-wire-final-qyqhy9wi/protected-files.json`; checkout CRLF conversion is not treated as a code change. No staging, committing or publication occurred.
+Provider implementation is tracked separately in [the authority spec](spec-pg2-c1-github-authority.md). Story 27.4 stays draft pending accepted prerequisites.
