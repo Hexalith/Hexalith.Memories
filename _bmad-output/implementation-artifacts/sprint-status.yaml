@@ -425,10 +425,10 @@ development_status:
   24-3-physical-tenant-isolation-and-verifier-scaling: done
   24-4-metric-naming-and-committed-dashboards: done
   24-5-hot-path-write-amplification-cleanup: done
-  24-6-graph-content-level-tenant-isolation-evidence: done  # 2026-08-29: twelfth-pass review over the first real commit (7b3f29ce) of the closure work. Resolved the outstanding submodule-pointer Ask-First decision (deliberate, option a); rebuilt Server.Tests clean (0 warnings/errors) and got live discovery for the first time since the eighth-pass snapshot: 101/101 (52 baseline + 6 story + 28 Story 24.7 + 15 Story 24.8 = 101). File List reconciled matched 26/26 including the six references/* gitlinks; readiness, slice-scope, and tenant-isolation-evidence gates all pass. 4 further ledger-hygiene patches applied. Owning class 7/7 in 254.358s (unchanged, no integration source touched this pass).
-  24-7-tenant-configured-vector-dimension-verification: done # 2026-08-31: fifth-pass adversarial review (six layers) found no functional defect; resolved its one decision (unit-level AC1-AC3 coverage confirmed sufficient) and applied two record-only patches (deferred-work.md schema reformat; stale Dev Notes correction). Fresh rebuild/test rerun at HEAD b42e0f64 passed clean: 0 warnings/errors, 95/95 tests. Readiness and slice-scope gates rerun and passed against the fixed 10-path inventory.
+  24-6-graph-content-level-tenant-isolation-evidence: done
+  24-7-tenant-configured-vector-dimension-verification: done
   24-8-semantic-isolation-key-family-classification: done
-  24-9-non-destructive-tenant-marker-diagnostics: done # 2026-08-31: second code-review pass applied 6 patches (triple-marker-composition unit test, live-backend integration test code, spec status/ledger-arithmetic/XML-doc/duplication fixes); 99/99 (TenantIsolationVerifierTests + ServerEndpointAuthorizationTests) and 7/7 (TenantIsolationCheckResultSerializationTests) passed, 0 warnings/errors build. New integration test's live execution is an accepted blocker (Aspire/Dapr sandbox startup timeout, not a code defect) with a recorded reopen trigger. Two pre-existing issues deferred to deferred-work.md. Closed deferred-work.md 24.3-MARKER-REMEDIATION.
+  24-9-non-destructive-tenant-marker-diagnostics: done
   epic-24-retrospective: done
 
   # Epic 25: Architecture Factorization & Code Health
@@ -444,15 +444,15 @@ development_status:
   epic-25-retrospective: done
 
   # Epic 26: Test, Deployment & Operational Readiness
-  epic-26: done  # 2026-07-16: unchanged Release benchmark passed 8/8 strict wins and 17/17 tests twice with exact per-query reproducibility; all stories and the retrospective are done.
-  26-1-production-deployment-artifacts: done  # 2026-07-12: chunk-1 review closed 13 release-hardening findings with digest-safe image retries, aggregate release evidence, 113 tooling fixtures, 59 focused C# tests, real SDK archives, and development-settings layer exclusion proof.
-  26-2-backup-and-restore: done  # 2026-07-15: operational-runbook review closed — all 15 approved patches applied under the hybrid policy; fail-closed logical/physical procedures plus executable recovery verifier; focused C# 6/0/0 and Python 13/0/0; one representative 512 MiB / ~100K-unit test explicitly deferred. Prior tracking follows. 2026-07-15: integration-evidence review chunk closed — 6 findings patched; AC7 real Aspire fidelity test 1/0/0 and IntegrationTests Release build 0/0. 2026-07-14: final BMad completion gate on 373d893 — Release build 0/0; aggregate unit/contract 4417/1/0; fast Aspire 224/8/0 with AC7 fidelity Passed; slow Aspire 16/0/0 with AC8 controlled-restart zero-loss Passed; File List reconciled. Prior tracking follows. 2026-07-13: dev-story completion gate passed locally — Release build 0/0; unit/contract 4374/1/0; fast Aspire 224/8/0 including AC7 fidelity; slow Aspire 16/0/0 including AC8 controlled-restart zero-loss; nine missing CLI import/restore error mappings fixed and tested. 2026-07-13: code review (bmad-code-review) — 1 High/6 Med/8 Low, 1 dismissed. 4 decisions resolved + 10 patches applied (build 0/0 full solution; 2 new Docker-free tests green; 163 restore/import/graph tests green). HIGH fixed: AC7 fidelity test HGETALL'd the :case:*activity stream → WRONGTYPE before asserting (now excludes activity read-models). Also: skip-and-report for corrupt records (D4), source-vs-target embedding guard (P3), status-GET rate-limit + 503 (P4). Prior 2026-07-13: dev-story complete — import/restore endpoints + durable RestoreWorkflow (byte-exact data plane + re-derived chunked vectors + graph audit-trail reconstruction), MemoriesClient import methods, 23 Docker-free tests + Aspire fidelity test + AC8 zero-loss assertion, backup-restore.md + disaster-recovery.md. 2026-07-12: story context created — import/restore endpoint (mirrors export routes), export→import fidelity integration test (data-plane hashes verbatim + FalkorDB edges; re-derived semantic hashes), backup-restore.md + disaster-recovery.md runbooks. Key finding surfaced: export omits embeddings/NL descriptions → restore must re-embed, not copy.
-  26-3-integration-stub-closure: done  # 2026-07-15: adversarial review closed all 12 patch findings; final complete integration 243/8/0, closure matrix 20/8/0, provider failure activity proof 1/0/0, structural guard 12/0/0, verifier unit tests 7/0/0, affected Release builds 0 warnings/errors.
-  26-4-coverage-gating-and-benchmark-lane: done  # 2026-07-15: adversarial review closed all 14 patches; coverage/runner fixtures 30/30, release orchestration 5/5, Docker-free lane 4428/1/0, hardened scoped coverage 26721/34191 (78.15%), Release build 0 warnings/errors.
-  26-5-operational-runbook-set: done  # 2026-07-16: adversarial review complete; all 54 accepted findings across three chunks closed (17 in chunk 3, 1 dismissed). Final gates: verifier 8/8, focused contracts 15/15, Docker-free Server 2663/1/0, Release solution 0 warnings/errors, shell/Python/diff checks green.
-  26-6-zot-release-contract-alignment: done  # 2026-07-16: adversarial review closed all 5 actionable findings; overlap-safe secret redaction, validated registry overrides, env-path/legacy-credential fixtures, and step-bound workflow guards; publisher fixtures 38/38, CLI inventory 57/57, focused Release build 0 warnings/errors. Prior evidence: standard publish-only HEXALITH_ZOT auth, flat memories/memories-mcp repositories, package/preflight fixtures, authenticated live dry-run green.
-  26-7-restart-recovery-reliability-gate: done  # 2026-07-16: adversarial review closed all 3 actionable findings; explicit persisted replay recency order, legacy/current serialization coverage, and deterministic URL HttpClient resilience guard; focused tests 20/0/0, full Server.Tests 2668/1/0, Release build 0 warnings/errors. Prior evidence: exact failure isolated as nested HTTP resilience timeout/retries, URL fetch transport retry removed, fail-fast Dapr/counter/log diagnostics retained, bounded replay watermark added; focused restart 3/3 and full slow lane 16/16 green.
-  26-8-benchmark-quality-calibration: done  # 2026-07-16: approved production calibration verified; focused contract 8/8, fusion/persistence/search 94/94, explain integration 8/8, Release build 0 warnings/errors, and two unchanged benchmark runs each 17/17 with 8/8 identical strict-win results.
+  epic-26: done
+  26-1-production-deployment-artifacts: done
+  26-2-backup-and-restore: done
+  26-3-integration-stub-closure: done
+  26-4-coverage-gating-and-benchmark-lane: done
+  26-5-operational-runbook-set: done
+  26-6-zot-release-contract-alignment: done
+  26-7-restart-recovery-reliability-gate: done
+  26-8-benchmark-quality-calibration: done
   epic-26-retrospective: done
 
   # Epic 27: Access Telemetry Lifecycle Hardening
@@ -461,9 +461,9 @@ development_status:
   epic-27: in-progress
   27-1-access-telemetry-retention-ownership-decision: done
   27-2-bounded-retention-ttl-and-purge-implementation: done
-  27-3-production-adapter-and-deployment-profile: done  # 2026-09-03: code review found the 2026-09-01 "review already complete" entry was fabricated (cited deferred-work.md entries never existed); independently re-verified the underlying CI evidence for real (gh run 33400812038, job production-deployment-verification success), wrote DW-725/DW-726/DW-727, and closed C2/AC6 on that verified evidence. AC6's literal-text gap remains tracked open at DW-721 pending a correct-course amendment.
+  27-3-production-adapter-and-deployment-profile: done
   27-21-runtime-and-control-plane-identity: done
-  27-22-component-and-backend-identity: done  # 2026-10-06: captured C1.16 identity/full-set linkage independently accepted; all three build reviews and final checks complete; canonical single-session limitation retained; no other-gate or activation credit.
+  27-22-component-and-backend-identity: done
   27-4-retention-verification-operations-runbook-and-a41-close-out: in-progress
   # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
   # C1.15 as backlog; producer existence does not pass that gate. The remaining twenty-four C1
