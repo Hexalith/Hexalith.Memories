@@ -31,9 +31,9 @@ storyDesignRevalidation:
   lastUpdated: '2026-10-08'
   status: 'awaiting-story-review'
   currentEpic: 34
-  currentStory: '34.46'
+  currentStory: '34.10'
   approvedFirstStory: '34.33'
-  reviewedStories: ['34.33', '34.1', '34.8', '34.9', '34.44', '34.41', '34.42', '34.43', '34.48']
+  reviewedStories: ['34.33', '34.1', '34.8', '34.9', '34.44', '34.41', '34.42', '34.43', '34.48', '34.46', '34.47']
   approvedExecutionPrefix: ['34.33', '34.1', '34.8']
   approvedSplit:
     date: '2026-10-08'
@@ -6112,6 +6112,8 @@ Stories 34.33, 34.1, and 34.8 have revised acceptance text registered after user
 
 **Lifecycle-endpoint authority prerequisite — 2026-10-08:** Story 34.46's lifecycle and erasure exemption revalidates an operator principal, but only provisioning carries one (Story 34.44): tenant deletion and verification are authorized by a matching tenant claim, and the deletion workflow is scheduled without a principal (Story 34.48 Epic AC Verification rows 4–5). The user approved and registered new Story 34.48 (require operator authority for tenant deletion and verification) before Story 34.46, and approved, as maintainer, the breaking change that tenant-claim principals lose both operations; the decision is recorded in Story 34.48. The planned order after the prefix is now 34.44 → 34.41 → 34.42 → 34.9 → 34.43 → 34.48 → 34.46 → 34.47, conditional on each unregistered story's own review.
 
+**Story 34.9 dependency chain registered — 2026-10-08:** the user approved and registered Stories 34.44, 34.41, 34.42, 34.9 (narrowed), 34.43, 34.48, 34.46, and 34.47. The planned execution order after the approved prefix is 34.44 → 34.41 → 34.42 → 34.9 → 34.43 → 34.48 → 34.46 → 34.47; it records planning dependencies only and is approved for planning, not sprint-selected. Planned Story 34.45 remains unregistered and is drafted in the purge range. Story 34.10, authenticated channel routing, is the next review candidate: its operator-artifact routing map (Story 34.8) and admission checks (Story 34.9) are now registered prerequisites, subject to its own source, dependency, and slice checks.
+
 
 
 ### Story 34.1: Accept V1 ingestion at EventStore first
@@ -7803,6 +7805,122 @@ Verified 2026-10-08 against `main` at `0b59bba5`. The approved criteria are impl
 | "RegisterTenantCommand is accepted with a workflow-instance or literal system correlation, not a principal" | Source behavior/location | `rg -n -e 'new RegisterTenantCommand' -e 'workflowInstanceId \?\? "system"' src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs` | The command at line 144 is accepted with `workflowInstanceId ?? "system"` at line 145. | `confirmed` |
 | "Story 5.1 specified no provisioning authorization" | Existence/absence | `awk '/^### Story 5\.1:/,/^### Story 5\.2:/' _bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'auth' -e 'admin' -e 'role'` | No match, exit 1. | `confirmed` |
 | "Before this revision, no epics.md story owns operator authorization of provisioning" | Existence/absence | `git show 0b59bba5:_bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'operator[- ]authori[sz]ed (tenant )?provisioning' -e 'provisioning .{0,40}operator principal' -e 'AutoProvisionRoutedTenants' -e 'startup-initiated provisioning'` | No match, exit 1. This is a pattern-scoped absence check. | `confirmed` |
+
+
+### Story 34.46: Revalidate captured tenant authority in workflows and activities
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44 (partial); NFR10; AD-4/AD-5.
+
+As an operator,
+I want every workflow and activity to carry an explicit tenant authority and revalidate it at every resume and activity boundary,
+So that in-flight durable work stops within the revocation bound when its authority is withdrawn.
+
+**Acceptance Criteria:**
+
+**Given** a non-lifecycle workflow is started,
+**When** it is initiated,
+**Then** it captures an explicit tenant authority — the tenant, the initiating principal, and, for an app-ID principal, its grant — distinct from captured configuration,
+**And** a workflow started without that authority is refused before its first activity.
+
+**Given** a captured tenant authority,
+**When** the workflow resumes or any activity begins, whether trace-linked or direct,
+**Then** it revalidates that the tenant is `Active` through the authoritative read and, for an app-ID principal, that its grant and allowlist entry remain in force, failing closed before any side effect otherwise,
+**And** an inventory test fails when any registered workflow or activity type bypasses this boundary.
+
+**Given** an activity that can outlive the revocation bound,
+**When** its authority window nears expiry,
+**Then** it refreshes authority or stops before the window ends; unprovable freshness fails closed.
+
+**Given** a tenant provisioning or deletion workflow,
+**When** it resumes or reaches an activity boundary,
+**Then** it revalidates its bound operator principal and its single bound tenant instead of `Active`,
+**And** it fails closed once that operator authority is withdrawn.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.9 definition ("Enforce tenant grants and revocation bound") | `historical-reference-only` | Source of the durable-work revocation goal, moved here by the 2026-10-08 splits. Its bundled criterion is not reused. |
+
+##### Slice Proof
+
+One durable-work revalidation boundary for Dapr workflows and activities is the independently demonstrable outcome: explicit authority captured at initiation, revalidated at every resume and activity boundary, refreshed or stopped before the revocation window ends, with the lifecycle and erasure exemption revalidating its bound operator principal. Its four criteria cover capture, boundary revalidation, long-running refresh, and the exemption. The registration inventory test in the second criterion makes "every registered workflow and activity" one verifiable gate rather than 69 enumerated ones. Execution consumes Story 34.9's admission checks and authoritative read, Story 34.43's freshness bound, the operator principals bound by Stories 34.44 and 34.48, the grants of Stories 34.41 and 34.42, and the completed Story 34.33 register/guard outcome for new workflow-input wire names. Actors, timers, and background services are planned Story 34.47. AD-17 retention accounting, exemption (3), runs in AccessTelemetry and is not claimed here. Restore of a tombstoned origin is Story 34.25. This planning record supplies no complete FR44 or NFR10 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `3e18d0dc`, whose source and spine are unchanged from `0b59bba5`. The approved criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| Durable work "carries an explicit tenant authority captured at initiation" | Location/design | `grep -n -o -F 'carries an explicit tenant authority captured at initiation' SPINE` | Present in the AD-5 rule at line 119. Design intent only. | `confirmed` |
+| "captured configuration is not authority" | Location/design | `grep -n -o -F 'captured configuration is not authority' SPINE` | Present at line 119. Design intent only. | `confirmed` |
+| Durable work "fails closed when the tenant is not `Active`, is erased, or is absent from the initiating principal's grant" | Location/design | ``grep -n -o -F 'fails closed when the tenant is not `Active`, is erased, or is absent from the initiating principal' SPINE`` | Present at line 119. Design intent only. | `confirmed` |
+| Lifecycle and erasure workflows "revalidate that operator principal — not the tenant — at every resume and activity boundary" | Location/design | `grep -n -o -F 'revalidates that operator principal — not the tenant — at every resume and activity boundary' SPINE` | Present at line 119. Design intent only. | `confirmed` |
+| "12 workflows and 57 activities are registered in one file" | Quantitative/location | `rg -c 'RegisterWorkflow<' HOSTING`; `rg -c 'RegisterActivity<' HOSTING`; `rg -l -e 'RegisterActivity<' -e 'RegisterWorkflow<' src --type cs` | 12 workflow and 57 activity registrations, all in that one file. The 57 match the 33 direct and 24 trace-linked activity declarations of Story 34.9's Epic AC Verification row 6. The lifecycle workflows are declared at `TenantProvisioningWorkflow.cs:22` and `TenantDeletionWorkflow.cs:23`. | `confirmed` |
+| "No workflow or activity checks tenant state today" | Existence/absence | `rg -l -e 'ValidateTenantActiveAsync' -e 'TenantStatusGuard' -e 'GetTenantForStatusGuardAsync' src/Hexalith.Memories.Server/Activities src/Hexalith.Memories.Server/Workflows src/Hexalith.Memories.Server/DerivedStores` | No match, exit 1. | `confirmed` |
+| "Workflow inputs carry no captured authority" | Existence/absence | `rg -n -i -e 'principal' -e 'authority' -g '*Input.cs' src`; `rg --files -g '*Input.cs' src \| wc -l` | Of 42 input files, only `RestoreWorkflowInput.cs:17` and `RestoreDataPlaneInput.cs:12` match, both documenting a `RequestedBy` principal kept for audit. `IngestionInput.IngestedBy` is FR65 provenance, not authority. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `HOSTING` is `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs`.
+
+
+### Story 34.47: Revalidate tenant authority in actors, timers, and background services
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44 (partial); NFR10; AD-4/AD-5/AD-6.
+
+As an operator,
+I want actor timers and background services to act for a tenant only under explicit, revalidated authority,
+So that work with no human caller cannot outlive a revocation or choose its own tenant.
+
+**Acceptance Criteria:**
+
+**Given** an actor timer for a tenant,
+**When** a tick would read or change tenant data,
+**Then** it first revalidates that tenant through the authoritative `Active` read,
+**And** otherwise it skips the work fail-closed and stops rescheduling for that tenant; no actor's cached state supplies authority.
+
+**Given** a hosted service that works per tenant,
+**When** it starts each tenant's unit of work,
+**Then** it acts under an explicit `system:*` principal resolved through the operator-artifact allowlist and that tenant's grant, revalidated before each unit, and any workflow it schedules receives that captured authority,
+**And** an inventory test fails when a registered tenant-touching hosted service or actor timer bypasses revalidation.
+
+**Given** work that derives a tenant from an index name or key prefix,
+**When** it would act on that tenant's resources,
+**Then** the derived identifier never authorizes it: it proceeds only after the preceding criterion's authorization of the authoritatively resolved tenant,
+**And** otherwise it is refused and reported with a sanitized diagnostic, deleting nothing.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.9 definition ("Enforce tenant grants and revocation bound") | `historical-reference-only` | Source of the durable-work revocation goal, moved here by the 2026-10-08 splits. Its bundled criterion is not reused. |
+| Story 9.2 (origin of the backfill migration, embedding-retry service, and orphan reconciler, per their source comments) | `historical-reference-only` | Dependency context for the three hosted services only. Its story shape, tasks, and proof are not reused. |
+
+##### Slice Proof
+
+One revalidation boundary for durable work outside Dapr workflows and activities is the independently demonstrable outcome. It names five surfaces — the corpus-statistics timer, cached actor state, the migration backfill, the embedding-retry service, and the orphan-index reconciler — which is within the five-gate limit, and its inventory test covers any surface added later. Its three criteria cover actor timers, per-tenant hosted services, and tenant identifiers derived from names or keys. Execution consumes Story 34.9's authoritative read and checks, Story 34.43's freshness bound, the grants of Stories 34.41 and 34.42, and Story 34.46's requirement that scheduled workflows carry captured authority. The AccessTelemetry lifecycle actor's reminders fall under AD-5 exemption (3), bounded in AD-17, and are not claimed here. This planning record supplies no complete FR44 or NFR10 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `3e18d0dc`; source and spine are unchanged from `0b59bba5` through `c4697367`. The approved criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| AD-5 covers "workflows, activities, actors, reminders, data repair, replay, and migration" | Location/design | `grep -n -o -F 'workflows, activities, actors, reminders, data repair, replay, and migration' SPINE` | Present in the AD-5 rule at line 119. Design intent only. | `confirmed` |
+| AD-5 prevents "key prefixes" from serving as authorization | Location/design | `grep -n -o -F 'key prefixes' SPINE` | Present in the AD-5 Prevents line at line 118. Design intent only. | `confirmed` |
+| "No cached copy held by the tenant configuration actor" supplies authority | Location/design | `grep -n -o -F 'No cached copy held by the tenant configuration actor' SPINE` | Present in the AD-6 rule at line 127. Design intent only. | `confirmed` |
+| "The Server has four actor types" | Quantitative/location | `rg -n ': Actor,' src/Hexalith.Memories.Server --type cs` | `CaseIngestionCounterActor.cs:17`, `EmbeddingRateLimiterActor.cs:15`, `CorpusStatisticsActor.cs:22`, and `TenantConfigurationActor.cs:19`. | `confirmed` |
+| "CorpusStatisticsActor runs a tenant timer that reads tenant data" | Source behavior/location | `rg -n -e 'RegisterTimerAsync' -e 'period: TimeSpan.FromMinutes\(5\)' -e 'string tenantId = Id.GetId\(\)' src/Hexalith.Memories.Server/Actors/CorpusStatisticsActor.cs` | Timer registration at line 133 with a 5-minute period at line 138; the callback takes the tenant from the actor ID at line 146 and refreshes RediSearch statistics for it. | `confirmed` |
+| "The Server registers no reminders" | Existence/absence | `rg -n -e 'RegisterReminderAsync' -e 'IRemindable' src/Hexalith.Memories.Server --type cs` | No match, exit 1. The only reminders are in the AccessTelemetry lifecycle actor, which exemption (3) covers. | `confirmed` |
+| "Three hosted services work per tenant, one deriving the tenant from an index name" | Source behavior/location | `rg -n -e 'ListTenantsAsync' -e 'foreach \(TenantInfo tenant' src/Hexalith.Memories.Server/Hosting/IsStubBackfillMigrationHostedService.cs`; `rg -n -e 'ListTenantsWithBacklogAsync' -e 'ScheduleNewWorkflowAsync' src/Hexalith.Memories.Server/NaturalLanguage/NaturalLanguageEmbeddingRetryHostedService.cs`; `rg -n -e 'string tenantId = nlIndex' -e 'LogOrphanDropped\(' src/Hexalith.Memories.Server/Hosting/OrphanSemanticIndexReconciler.cs` | The backfill iterates every tenant at lines 50 and 55; the retry service iterates tenants with backlog at line 81 and schedules a workflow at line 129; the reconciler derives `tenantId` from the index name at line 88 and drops the orphan, logged at line 99. | `confirmed` |
+| "None of these actors or services checks tenant state" | Existence/absence | `rg -l -e 'ValidateTenantActiveAsync' -e 'TenantStatusGuard' -e 'GetTenantForStatusGuardAsync' src/Hexalith.Memories.Server/Actors src/Hexalith.Memories.Server/Hosting/IsStubBackfillMigrationHostedService.cs src/Hexalith.Memories.Server/Hosting/OrphanSemanticIndexReconciler.cs src/Hexalith.Memories.Server/NaturalLanguage/NaturalLanguageEmbeddingRetryHostedService.cs` | No match, exit 1. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.48: Require operator authority for tenant deletion and verification

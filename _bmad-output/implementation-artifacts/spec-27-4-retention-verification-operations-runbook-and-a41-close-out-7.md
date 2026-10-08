@@ -10,7 +10,7 @@ review_loop_iteration: 0
 context:
   - '_bmad-output/implementation-artifacts/epic-27-context.md'
 investigated: '2026-10-08'
-investigation_commit: '3e18d0dcdceb387eff89862c382637da89ad7e47'
+investigation_commit: 'c46973679fcf09bdc5aab19928f2fe03dae82226'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -41,31 +41,32 @@ investigation_commit: '3e18d0dcdceb387eff89862c382637da89ad7e47'
 
 ## Open Questions
 
-1. Continue with **separate strict artifact readers** (recommended: finish I1 as a library-only prerequisite; no acceptance, consumer migration or target access), or **keep 27.4 pending** until accepted prerequisites and scoped execution inputs exist? Selecting I1 requires its own build spec under the existing scope boundary.
+1. Select **C1.15 source-label correction** (recommended: separate collector fix and offline reader-compatibility proof), **I2 structural registry inspection** (separate closed-entry/J1/source-set library; no accepting registrations), or **keep 27.4 pending** for accepted prerequisites and scoped inputs. Each implementation needs its own build spec.
 
 ## Code Map
 
-- `tools/access_telemetry_c1_interchange.py` — snapshots/J1/Refs complete; closed artifact readers absent. Reuse primitives for separately selected I1.
-- `tools/access_telemetry_c1_github_authority.py` — reviewed authenticated observations, no capture acceptance or custody proof. Platform is published/pinned at `48d5c6e64087bb33232651d8b59422e95185c699`.
-- `tools/verify_access_telemetry_lifecycle.py` — legacy predecessor checks hashes/reviewer labels. Approved P7 must migrate checkpoint validation, producer launch and terminal bundle consumers together.
-- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — accepting registry, semantic verification, assembly and migration remain absent despite completed authority preparation.
+- `tools/access_telemetry_c1_interchange.py:784` — I1 readers/dispatch complete; reuse snapshots/J1/Refs. Parsing grants no acceptance.
+- `tools/verify-access-telemetry-c1.ps1:353` — labels collapse to `kubectl:`; readers refuse duplicates. Separate fix/tests required.
+- `tools/access_telemetry_c1_github_authority.py:607` — authenticated observations exist; actual execution/custody facts remain external.
+- `tools/verify_access_telemetry_lifecycle.py:2642` — legacy predecessor; P7 must migrate checkpoint/launcher/terminal consumers together.
+- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — I2–I6/P1–P7 incomplete; registry/assembler absent.
 
 ## Tasks & Acceptance
 
-**Execution (blocked):**
-- [ ] `tools/verify-access-telemetry-lifecycle.py` — after accepted PG2 predecessors, migration approval and scoped target/custody/credential/fault/purge grants, execute C0/C2-C4; retain packets/journal/cleanup and separate post-evidence C5/C6 decisions.
-- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — reconcile actual accepted evidence; retain checkpoint/custody/cleanup commands from the operations runbook.
-- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — rerun refusal/drift/cleanup/tenant-negative and architecture guards, retaining results.
-- [ ] `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/project-context.md`, `docs/dev/telemetry.md`, canonical evidence — reviewed four-path closure after terminal/preflight, explicit staging/publication authority, postflight and remote containment.
+**Execution (live work blocked):**
+- [ ] `tools/verify-access-telemetry-lifecycle.py` — execute C0/C2–C4 only after accepted PG2 predecessors, approved migration and scoped target/custody/credential/fault/purge grants; retain cleanup and independent C5/C6 decisions.
+- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — reconcile accepted evidence and runbook commands.
+- [x] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — rerun offline refusal/drift/cleanup/tenant-negative and architecture guards.
+- [ ] `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/project-context.md`, `docs/dev/telemetry.md`, canonical evidence — exact four-path closure after terminal/preflight, explicit staging/publication authority, postflight and remote containment.
 
 **Acceptance Criteria:**
 - Given missing prerequisites, when readiness is checked, then no live launch occurs and 27.4/A41 remain incomplete/open.
 - Given authorized PG2 execution, when expiry/faults run, then evidence proves acknowledgement/recovery, purge/newer preservation, emission and tenant denial, with final disabled gate/released Lease/zero lifecycle-clock replicas.
-- Given accepted C0-C6 and publication authority, when terminal/postflight/remote proof passes, then summaries bind one evidence set and protected history/sprint bytes remain identical.
+- Given accepted C0–C6 and publication authority, when terminal/postflight/remote proof passes, then summaries bind one evidence set and protected history/sprint bytes remain identical.
 
 ## Design Notes
 
-Live purge/faults/publication require scoped authority. PG2 C1.15 lacks registration/accepted renewal; 23 owners remain held; closed-window C1.16 eligibility is unproven. No eligible bundle or execution inputs supplied. Footprint: draft/context only.
+Missing: PG2 C1.15 registered/accepted renewal, 23 registered/done owners, eligible C1.16 session, complete accepted bundle and scoped execution inputs. Live purge/faults/publication need separate authority. Footprint: draft/context only; preserve user edits. I1 selection is superseded by completion.
 
 ## Implementation Notes
 
@@ -75,6 +76,8 @@ Live purge/faults/publication require scoped authority. PG2 C1.15 lacks registra
 
 ## Verification
 
-2026-10-08 at the investigation commit: canonical offline block exit 0; 80 lifecycle tests; Debug/source-reference build zero warnings/errors; exact 12 retention + 5 A41 guards, no skips. Receipt `/tmp/story-27-4-offline.vr3cQrDZ` retains commands/exits/source/dependencies/assembly/XML.
+Earlier offline/135-interchange receipts at `3e18d0dcdceb387eff89862c382637da89ad7e47`: `/tmp/story-27-4-offline.vr3cQrDZ`, `/tmp/story-27-4-readiness-ucu_dcz1`.
 
-`env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`: exit 0, 135 passed, no skips. Receipt `/tmp/story-27-4-readiness-ucu_dcz1` retains log/exit, pre-edit draft and protected hashes. Earlier receipts remain at the investigation commit. User edits preserved; no live/status/A41/publication action. Draft remains unresolved.
+Current canonical offline block: exit 0; 80 lifecycle passes, zero-warning/error Debug/source-reference build, exact 12 retention + 5 A41 passes. Commands/source/dependencies/assembly/XML: `/tmp/story-27-4-offline.Ga42WIRM`.
+
+`env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`: exit 0; 167 passes. All lanes have zero failures/errors/skips. Logs/source/protected hashes and label-collapse probe: `/tmp/story-27-4-resume-4e1vv77o`. Offline only; draft unresolved.
