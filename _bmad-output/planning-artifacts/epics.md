@@ -1,4 +1,5 @@
 ---
+status: 'draft'
 stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories', 'step-04-final-validation']
 inputDocuments:
   - '_bmad-output/planning-artifacts/prd.md'
@@ -13,7 +14,7 @@ historicalSources:
   - '_bmad-output/planning-artifacts/implementation-readiness-report-2026-07-04.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-04.md'
   - '_bmad-output/planning-artifacts/sprint-change-proposal-2026-07-01.md'
-correctionStepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics']
+correctionStepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-03-create-stories']
 requirementsExtractionRevalidation:
   date: '2026-10-05'
   baselineCommit: 'b31d1352'
@@ -29,11 +30,12 @@ epicDesignRevalidation:
 storyDesignRevalidation:
   date: '2026-10-05'
   lastUpdated: '2026-10-08'
-  status: 'awaiting-story-review'
+  status: 'stories-revalidated'
   currentEpic: 34
-  currentStory: '34.3'
+  currentStory: 'final-validation-draft'
+  epic34Completed: '2026-10-08'
   approvedFirstStory: '34.33'
-  reviewedStories: ['34.33', '34.1', '34.8', '34.9', '34.44', '34.41', '34.42', '34.43', '34.48', '34.46', '34.47', '34.10', '34.7', '34.36', '34.6', '34.2', '34.15']
+  reviewedStories: ['34.33', '34.1', '34.8', '34.9', '34.44', '34.41', '34.42', '34.43', '34.48', '34.46', '34.47', '34.10', '34.7', '34.36', '34.6', '34.2', '34.15', '34.3', '34.4', '34.5', '34.11', '34.12', '34.13', '34.14', '34.16', '34.17', '34.18', '34.19', '34.20', '34.21', '34.22', '34.45', '34.55', '34.56', '34.23', '34.24', '34.51', '34.25', '34.26', '34.57', '34.27', '34.28', '34.29', '34.30', '34.31', '34.32', '34.34', '34.35', '34.37', '34.38', '34.39', '34.40', '34.52', '34.53', '34.54', '34.49', '34.50', '34.59', '34.60', '34.61']
   approvedExecutionPrefix: ['34.33', '34.1', '34.8']
   approvedSplit:
     date: '2026-10-08'
@@ -45,23 +47,43 @@ storyDesignRevalidation:
       - '2026-10-08: tenant-claim principals lose tenant deletion and verification (Story 34.48)'
       - '2026-10-08: pub/sub serves one tenant per subscribed topic; per-tenant EventStore topics are the Phase 1.5 target (Story 34.10)'
       - '2026-10-08: prd.md line 265 gets a dated correction note; docs change with Story 34.10'
-    plannedPurgeRangeStories: ['34.45']
+    registeredPurgeRangeStories: ['34.45', '34.55', '34.56']
   keyCompositionRevision:
     date: '2026-10-08'
     narrowedStory: '34.7'
-    plannedStories: ['34.49', '34.50', '34.51', '34.52']
+    plannedStories: ['34.49', '34.50', '34.51', '34.52', '34.53', '34.54', '34.58', '34.59', '34.60', '34.61']
     plannedOrderPendingReview: ['34.6', '34.36', '34.7', '34.2']
     carriedObligations:
-      - 'AD-23 digest-collision reservation purge: assign during the purge-range review (Story 34.20 or planned Story 34.45)'
-      - 'Adjust Story 34.24 when planned Story 34.51 takes register genesis and the lineage check'
-      - 'Planned Story 34.50 covers tenant, case, and unit IDs at every read and import boundary'
       - 'Register the curated search-index CloudEvent path (direct Redis upsert, no dedup) in the next spine revision (Story 34.2)'
+      - 'Planned Story 34.58 (tenant content-store quota) needs a declared per-tenant storage budget; the PRD declares none (Story 34.28)'
+    resolvedObligations:
+      - '2026-10-08: Story 34.54 registered adopting Hexalith.EventStore payload protection'
+      - '2026-10-08: Story 34.49 registered code-only and split by destination (Story 34.60)'
+      - '2026-10-08: Story 34.50 registered for tenant, case, and unit identifiers'
+      - '2026-10-08: export release-intent ordering registered as Story 34.57'
+      - '2026-10-08: Story 34.26 consumes Story 34.25 boundary and records populationId and register sequence'
+      - '2026-10-08: Story 34.24 narrowed; register genesis and lineage check registered as Story 34.51'
+      - '2026-10-08: digest-collision reservation purge assigned to Story 34.20'
+      - '2026-10-08: tenant content store purge assigned to Story 34.55'
     recordedDecisions:
       - '2026-10-08: memory units created before Story 34.36 are re-ingested under a pre-release reset; no legacy-mapping story'
       - '2026-10-08: existing tenants are re-provisioned with issued IDs under the pre-release reset; no legacy mapping (Story 34.6)'
       - '2026-10-08: POST /api/v1/tenants and Client.Rest stop accepting a caller-chosen TenantId when Story 34.52 lands'
+      - '2026-10-08 (standing approval): V1 IngestedBy request field kept but ignored for provenance and registered as deprecated (Story 34.27)'
     spineCorrections: ['2026-10-08: inline note at the AD-23 claim that memory-unit ULIDs are already issued (Story 34.36)']
-  stepsCompleted: []
+    prdCorrections:
+      - '2026-10-08: inline note at prd.md line 265 on source-prefix routing (Story 34.10)'
+      - '2026-10-08: inline note at prd.md line 71 on EventStore as memory-unit source of truth (Story 34.5)'
+  standingApproval: '2026-10-08: per-story review questions answered yes; decisions listed for veto in each summary'
+  finalValidation:
+    date: '2026-10-08'
+    result: 'draft'
+    openChecks:
+      - 'R1: Epic 32 target-surface FRs have no operation story (McpCli owner inventory pending)'
+      - 'R3: Epic 35 qualification handoff (G1 reviewers, label-freeze and qualifying-run slices) open'
+      - 'Planned Story 34.58 needs a declared per-tenant storage budget'
+  recordedExecutionOrder: ['34.33', '34.1', '34.8', '34.6', '34.28', '34.34', '34.36', '34.7', '34.3', '34.4', '34.37', '34.38', '34.39', '34.40', '34.44', '34.11', '34.32', '34.41', '34.42', '34.9', '34.10', '34.2', '34.15', '34.27', '34.43', '34.48', '34.13', '34.46', '34.12', '34.47', '34.49', '34.51', '34.29', '34.52', '34.50', '34.53', '34.14', '34.16', '34.17', '34.18', '34.19', '34.20', '34.21', '34.22', '34.30', '34.45', '34.54', '34.55', '34.56', '34.23', '34.24', '34.25', '34.5', '34.26', '34.31', '34.57', '34.35', '34.59', '34.60', '34.61']
+  stepsCompleted: ['step-03-create-stories']
 changeControlContext:
   approvedProposalGlob: '_bmad-output/planning-artifacts/sprint-change-proposal-*.md'
   note: 'The latest frontmatter inputs are not the full change-control history. Approved sprint-change proposals are discovered through the glob unless a canonical index replaces it.'
@@ -6144,6 +6166,16 @@ Stories 34.33, 34.1, and 34.8 have revised acceptance text registered after user
 
 **Story 34.15 revision — 2026-10-08:** verification found that CloudEvent preflight reservations and durable source-URI dedup records share one raw Redis key shape, and that a preflight hit drops a delivery without consulting durable truth, while fail-open and release already exist (Story 34.15 Epic AC Verification rows 2–5). The user approved revised criteria — a separate registered family, a retryable outcome on a preflight hit without durable acceptance, and regression tests for fail-open and release — with the spine registry row update in the definition of done. This closes the CloudEvent identity chain 34.6 and 34.36 → 34.7 → 34.10 → 34.2 → 34.15 for planning. Story 34.3 is the next review candidate.
 
+**Story 34.3 revision and standing approval — 2026-10-08:** the user gave standing approval for per-story review questions; subsequent stories are verified, registered in the recommended shape, and their decisions listed for veto. Story 34.3 was narrowed to write fencing by revision tuple: projection code carries no generation, epoch, or source version today, writes are unconditional, and acceptance returns no version (Story 34.3 Epic AC Verification rows 2–6). Story 34.3 now reads the committed sequence through Hexalith.EventStore's authoritative stream reader and initializes the tenant's first active pair at provisioning, which no story previously owned.
+
+**Purge-range review — 2026-10-08:** every slice proof in Stories 34.16–34.22 claimed that seven stories cover all erasure target classes; AD-16's closed purge set refutes that (spine lines 191 and 198), and today's deletion leaves derived-store, diagnostics, metadata, failed-unit, import-staging, restore-lease, and `ingest-reserve:` keys behind. Under standing approval: the claim was corrected in all seven stories; Story 34.16 now names derived-store, diagnostics, and metadata keys; Story 34.20 now names `ingest-reserve:` and AD-23 digest-collision reservations; and Stories 34.45 (grants), 34.55 (tenant content store), and 34.56 (query-admission gate, permits, and write fences) were drafted in the same template and registered. Story 34.23 is the next review candidate.
+
+**Epic 34 story review complete — 2026-10-08:** 60 stories are registered in numeric order and every one was re-verified at `8c7c1e96` under the user's standing approval; planned Story 34.58 (tenant content-store quota) stays unregistered until a per-tenant storage budget is declared, because the PRD declares none. Requirement coverage: of the 37 requirements this epic reinforces, 26 are cited by Epic 34 stories and the other 11 — FR42, FR68, NFR11, NFR12, NFR17, NFR18, NFR19, and NFR27–NFR29, NFR36 — are owned as evidence obligations by Epic 35 stories (NFR18 also by Epic 33), so none is orphaned. Next: a consistency pass over Epics 33 and 35 for drift and for references to Epic 34 stories whose scope changed today.
+
+**Epics 33 and 35 consistency pass — 2026-10-08:** neither epic references an Epic 34 story by number, so today's Epic 34 scope changes stale none of their stories; all 24 of their recorded Epic AC Verification commands were re-run at `8c7c1e96` and each still produces the recorded result. Epic 32 still has no operation story while readiness finding R1 (McpCli owner inventory) is open. Document checks: no template placeholder remains; every FR1–FR75 is cited by at least one successor-epic story; UX-DR1–UX-DR47 coverage stays in the UX Design Requirements Coverage Map, with Epic 32-held entries awaiting R1. Step 3 story revalidation is complete and awaits the final-menu choice.
+
+**Dependency-verified execution order and final validation — 2026-10-08:** the 60 Epic 34 stories form an acyclic graph of 137 dependency edges taken from their own slice proofs — every "consumes", "precedes", and "follows" statement, plus the purge stories' write-fence precondition on Story 34.14. The planning execution order, which respects the approved prefix and every recorded chain, is: 34.33 → 34.1 → 34.8 → 34.6 → 34.28 → 34.34 → 34.36 → 34.7 → 34.3 → 34.4 → 34.37 → 34.38 → 34.39 → 34.40 → 34.44 → 34.11 → 34.32 → 34.41 → 34.42 → 34.9 → 34.10 → 34.2 → 34.15 → 34.27 → 34.43 → 34.48 → 34.13 → 34.46 → 34.12 → 34.47 → 34.49 → 34.51 → 34.29 → 34.52 → 34.50 → 34.53 → 34.14 → 34.16 → 34.17 → 34.18 → 34.19 → 34.20 → 34.21 → 34.22 → 34.30 → 34.45 → 34.54 → 34.55 → 34.56 → 34.23 → 34.24 → 34.25 → 34.5 → 34.26 → 34.31 → 34.57 → 34.35 → 34.59 → 34.60 → 34.61. It records planning dependencies only; it is not sprint selection, and external prerequisites (Epic 31 Story 31.2, the McpCli owner inventory) still gate the stories that name them. Epics 33 and 35 have no forward same-epic dependency. **Final validation result: draft, three checks open.** (1) FR coverage: every FR1–FR75 is cited by a story, but Epic 32's target-surface FRs have no implementing operation story while readiness finding R1 is open. (2) Epic 35's qualification handoff — named independent G1 reviewers and the held label-freeze and qualifying-run slices — remains open under readiness finding R3, so Epic 35 cannot complete. (3) Planned Story 34.58 (tenant content-store quota) is unregistered until a per-tenant storage budget is declared; the PRD declares none. Passed: architecture (brownfield, no starter template; resources are created by the first story that needs them), story quality (Given/When/Then criteria, requirement references, and at most five gates each; Stories 34.49, 34.59, and 34.61 are large mechanical refactors and carry a sizing risk), epic structure (user-outcome epics; the Search and projection file overlap between Epics 33 and 34 is sequenced by the 34 → 33 delivery order), and within-epic dependencies.
+
 
 
 ### Story 34.1: Accept V1 ingestion at EventStore first
@@ -6268,19 +6300,29 @@ Verified 2026-10-08 against `main` at `dbe4ce0a`; source is unchanged from `0b59
 `SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `EPICS` is `_bmad-output/planning-artifacts/epics.md`.
 
 
-### Story 34.3: Fence epoch-aware projection writes
+### Story 34.3: Fence projection writes by revision tuple
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR13, FR75; AD-3/AD-14.
 
 As a developer,
-I want projection retries to respect source version and configuration epoch,
-So that old work cannot overwrite a current result.
+I want every projection write to carry and respect its revision tuple,
+So that old or out-of-order work cannot overwrite a current result.
 
 **Acceptance Criteria:**
 
-**Given one memory unit under an active schema generation and embedding epoch, when projection activities retry or arrive out of order, then each target write and acknowledgement compares its own tuple and older source versions cannot replace newer data.**
+**Given** an accepted memory-unit revision,
+**When** projection work is admitted,
+**Then** it captures the tuple: tenant, case, unit, the revision's committed EventStore sequence read back through the authoritative stream reader after confirmed acceptance, and the tenant's active `(schemaGeneration, embeddingConfigurationEpoch)` pair, which provisioning initializes to the first declared pair,
+**And** an unreadable sequence or a missing pair fails closed; no value is guessed.
 
-**Given a declared new epoch, when legitimate reprojection runs, then it creates an outcome for that epoch without being suppressed as a duplicate of the prior epoch.**
+**Given** the syntactic, vector, graph, and derived-store adapters,
+**When** a write carries an older source version than the stored document for its own pair,
+**Then** it is a no-op, proven by one shared contract test with out-of-order retries run against all four adapters.
+
+**Given** a write for a different `(schemaGeneration, embeddingConfigurationEpoch)` pair,
+**When** it lands,
+**Then** it touches only that pair's own document, because the pair is part of the document's registered key family,
+**And** it never touches the active pair's document and is never suppressed as a duplicate of the prior epoch.
 
 #### Dev Notes
 
@@ -6289,18 +6331,28 @@ So that old work cannot overwrite a current result.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.3 definition ("Fence epoch-aware projection writes") | `historical-reference-only` | Retain the ID and goal; its criteria were revised on 2026-10-08 under the user's standing approval. |
 
 ##### Slice Proof
 
-One tuple-aware write/acknowledgement protocol is the slice; public completion status is 34.4.
+Write fencing by revision tuple is the independently demonstrable outcome: projection work carries an authoritative tuple, an older write is a no-op within its own pair, and a different pair stays disjoint. Its three criteria cover tuple capture, the shared four-adapter fence contract, and pair disjointness. Execution consumes Story 34.1's confirmed acceptance, Story 34.7's registered families for pair-scoped document keys, and Hexalith.EventStore's authoritative stream reader for the committed sequence. Existing documents are re-ingested under the approved pre-release reset rather than migrated. Acknowledgements and `indexed` status are Story 34.4; the tenant lifecycle write-generation fence is Story 34.14; replay is Story 34.5; switching the active epoch and active-pair-only queries are Story 34.31. This planning record supplies no complete FR6, FR13, or FR75 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The pinned Hexalith.EventStore client package was probed at version 3.117.1. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "RedisDerivedStoreService currently compares request.SourceVersion" | Existence/behavior/location | `rg -n "request.SourceVersion < existing.SourceVersion" src/Hexalith.Memories.Server/DerivedStores/RedisDerivedStoreService.cs` | A source-version comparison exists in one derived-store path. | `confirmed` |
+| "RedisDerivedStoreService currently compares request.SourceVersion" | Existence/behavior/location | `rg -n "request.SourceVersion < existing.SourceVersion" src/Hexalith.Memories.Server/DerivedStores/RedisDerivedStoreService.cs` | Line 142, in the derived-store path only. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Projection code carries no revision tuple" | Existence/absence | `rg -l '\bSchemaGeneration\b' src --type cs -g '!*Test*'`; `rg -l '\bEmbeddingConfigurationEpoch\b' src --type cs -g '!*Test*'`; `rg -l '\bSourceVersion\b' src --type cs -g '!*Test*'`; `rg -l '\bSourceVersion\b' src/Hexalith.Memories.Server/Activities src/Hexalith.Memories.Server/Workflows --type cs` | No file declares `SchemaGeneration` or `EmbeddingConfigurationEpoch` (each exit 1); `SourceVersion` appears in five derived-store files only, and in nothing under `Activities` or `Workflows` (exit 1). | `confirmed` |
+| "Index writes are unconditional" | Source behavior/location | `rg -n 'HashSetAsync\(hashKey' src/Hexalith.Memories.Server/Activities/Indexing/IndexSyntacticActivity.cs src/Hexalith.Memories.Server/Activities/Indexing/IndexSemanticActivity.cs`; `rg -n 'MERGE \(m:MemoryUnit' src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs`; `rg -n -i 'version' src/Hexalith.Memories.Server/Graph/GraphQueryBuilder.cs` | `HashSetAsync` at `IndexSyntacticActivity.cs` line 81 and `IndexSemanticActivity.cs` line 99; the graph upsert `MERGE (m:MemoryUnit {id: $id})` at `GraphQueryBuilder.cs` line 111 is keyed by unit ID only, and the builder mentions no version (exit 1). | `confirmed` |
+| "No projection checkpoint coordinator exists" | Existence/absence | `rg -l -i -e 'ProjectionCheckpoint' -e 'ProjectionCoordinator' src --type cs -g '!*Test*'` | No match, exit 1. Pattern-scoped; Story 34.4 owns the coordinator. | `confirmed` |
+| "EventStore acceptance returns no source version" | Source behavior/location | `sed -n '40p;58p' src/Hexalith.Memories.Server/EventStoreIntegration/EventStoreMemoriesCommandStore.cs` | `AcceptAsync` submits with a generated message ID (line 40) and returns `response.CorrelationId` (line 58). | `confirmed` |
+| "The pinned EventStore client ships an authoritative stream reader that Memories does not use yet" | Existence/location | `sed -n '9p' references/Hexalith.Builds/Props/Directory.Packages.props`; `strings ~/.nuget/packages/hexalith.eventstore.client/3.117.1/lib/net10.0/Hexalith.EventStore.Client.dll \| grep -c -e AuthoritativeEventStreamReader`; positive control `… \| grep -c EventStoreDomainEventsOptions`; `rg -l 'AuthoritativeEventStreamReader' src --type cs` | Version 3.117.1 is pinned; the reader name occurs 3 times and the positive control once; Memories source does not reference it (exit 1). | `confirmed` |
+| AD-3: "Identify projection work by" the tuple; "every projection write is conditional on the stored document for its own pair"; "the generation and epoch are part of the document's identity" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | All at line 105. Design intent only. | `confirmed` |
+| Story 34.31 owns "one tenant-wide atomic active-epoch value" | Location/dependency | `awk '/^### Story 34\.31:/,/^#### Dev Notes/' EPICS \| rg -o 'one tenant-wide atomic active-epoch value'` | Present. No story created the initial pair before this revision; Story 34.3 now initializes it at provisioning. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `EPICS` is `_bmad-output/planning-artifacts/epics.md`.
 
 
 ### Story 34.4: Require all three current projection acknowledgements
@@ -6308,16 +6360,24 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR10, FR13; AD-3.
 
 As a developer,
-I want indexed status to mean all current axes agree,
-So that search and status never claim a two-of-three unit is complete.
+I want a unit to report `indexed` only when every projection axis has acknowledged its current revision,
+So that partial fan-out is never exposed as complete.
 
 **Acceptance Criteria:**
 
-**Given a committed revision under the active generation and epoch, when syntactic, vector and graph projection acknowledgements arrive, then `indexed` is persisted only after all three match that revision and tuple.**
+**Given** a committed revision under the tenant's active pair, carrying Story 34.3's tuple,
+**When** the syntactic, vector, and graph acknowledgements arrive in any order,
+**Then** one Dapr-state coordinator advances each axis checkpoint with ETag/CAS and persists `indexed` only after all three match that revision and tuple,
+**And** a duplicate ingestion reports the existing unit's actual checkpoint state, never `indexed` by assumption.
 
-**Given a missing, stale, failed or incompatible acknowledgement, when status is read, then the unit stays projecting or actionable failed with the missing axis and reason visible; absence of a checkpoint never defaults to indexed.**
+**Given** a missing, stale, failed, or incompatible acknowledgement, or a stored status that is absent or unparseable,
+**When** status is read,
+**Then** the unit reports `projecting` or actionable `failed` with the missing axis and reason,
+**And** nothing defaults to `indexed`.
 
-**Given a derived-store restore for a previously acknowledged tuple, when the checkpoint is invalidated, then an explicit `reprojectionRequired` record preserves its source version, reports `indexing` and a reason, and clears only after all three axes acknowledge that same tuple; no checkpoint remains distinct from reprojection required.**
+**Given** a derived-store restore of a previously acknowledged tuple,
+**When** its checkpoint is invalidated,
+**Then** an explicit `reprojectionRequired` record keeps its source version, reports `indexing` with a reason, and clears only after all three axes acknowledge that same tuple.
 
 #### Dev Notes
 
@@ -6326,33 +6386,47 @@ So that search and status never claim a two-of-three unit is complete.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.4 definition | `historical-reference-only` | Retain the ID and goal; its criteria were restated on 2026-10-08 under the user's standing approval, adding the duplicate path and the stored-status default found by verification. |
 
 ##### Slice Proof
 
-One durable completion checkpoint and status transition is the slice; replay is 34.5.
+One durable completion checkpoint and status rule is the independently demonstrable outcome: a CAS-advanced per-axis coordinator, `indexed` only after three matching acknowledgements, no default to `indexed`, and an explicit reprojection state. Its three criteria cover completion, incomplete or unreadable states, and checkpoint invalidation. Execution consumes Story 34.3's tuple. The natural-language embedding has its own status and retry and is not one of AD-3's three axes. Replay is Story 34.5; the tenant lifecycle write-generation fence is Story 34.14. This planning record supplies no complete FR6, FR10, or FR13 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "IngestionWorkflow currently transitions to MemoryUnitStatus.Indexed" | Existence/behavior/location | `rg -n "TransitionStatus\(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexed\)" src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` | The workflow contains Indexed transitions that require current-contract review. | `confirmed` |
+| "IngestionWorkflow currently transitions to MemoryUnitStatus.Indexed" | Existence/behavior/location | `rg -n "TransitionStatus\(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexed\)" src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` | Lines 96 and 608. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "The duplicate path marks the unit indexed without checking projection state" | Source behavior/location | `sed -n '88,96p' src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` | On `idempotency.IsDuplicate`, the workflow transitions straight to `Indexed` at line 96. | `confirmed` |
+| "Projection axes run as sequential activities with no per-axis checkpoint" | Source behavior/location | `rg -n -e 'nameof\(IndexSyntacticActivity\)' -e 'nameof\(IndexSemanticChunksActivity\)' -e 'nameof\(IndexGraphActivity\)' -e 'nameof\(IndexNaturalLanguageSemanticActivity\)' src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs`; `rg -l -i -e 'ProjectionCheckpoint' -e 'ProjectionCoordinator' src --type cs -g '!*Test*'` | Syntactic at line 333, semantic chunks at line 350, graph at line 354, and natural-language semantic at line 380; no coordinator (exit 1). | `confirmed` |
+| "A missing or unparseable stored status defaults to Indexed" | Source behavior/location | `sed -n '995,997p' src/Hexalith.Memories.Server/Cases/CaseService.cs` | `Enum.TryParse(...) ? parsedStatus : MemoryUnitStatus.Indexed`. | `confirmed` |
+| "No reprojection-required state exists" | Existence/absence | `rg -l -i 'reprojectionRequired' src --type cs -g '!*Test*'` | No match, exit 1. | `confirmed` |
+| AD-3: "one Dapr-state projection coordinator advances per-axis checkpoints monotonically with ETag/CAS"; "Mark `Indexed` only after syntactic, vector, and graph projections acknowledge that tuple"; prevents "a deliberately invalidated checkpoint being read as work never attempted" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | The first two at line 105, the third at line 104. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.5: Replay EventStore truth into every projection
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR13, FR73–FR74; NFR16.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR13, FR73–FR74; NFR16; AD-2/AD-3.
 
 As an operator,
-I want a lost projection to rebuild from authoritative events,
-So that Redis or graph loss cannot erase accepted memory.
+I want destroyed projections rebuilt only from authoritative EventStore events,
+So that recovery never depends on a Redis or FalkorDB backup.
 
 **Acceptance Criteria:**
 
-**Given a non-erased tenant with EventStore-committed units and destroyed projections, when replay is requested, then the system rebuilds each axis through the 34.3/34.4 tuple protocol, exposes progress, and finishes only when every eligible unit is current or actionable failed.**
+**Given** an `Active` tenant whose units were accepted in EventStore through Stories 34.1 and 34.2 and whose projections are destroyed,
+**When** an authorized replay runs,
+**Then** it reads the accepted events through the authoritative stream reader and the unit content from the tenant content store, rebuilds each axis through the Story 34.3 and 34.4 tuple protocol, and exposes progress,
+**And** it finishes only when every eligible unit is current or actionable failed; a unit with an accepted deletion is not rehydrated.
 
-**Given an erased tenant, when replay encounters its records, then tombstone admission refuses rehydration and reports the refusal without writing a projection.**
+**Given** an erased or tombstoned tenant,
+**When** replay encounters its records,
+**Then** the erased-tenant register consult refuses rehydration and reports the refusal without writing a projection,
+**And** an unavailable register fails closed.
 
 #### Dev Notes
 
@@ -6361,18 +6435,26 @@ So that Redis or graph loss cannot erase accepted memory.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.5 definition | `historical-reference-only` | Retain the ID and goal; its criteria were restated on 2026-10-08 under the user's standing approval with the prerequisites verification found. |
 
 ##### Slice Proof
 
-One authoritative replay path is the slice; export import and Redis-input repair are separate.
+One authoritative replay path is the independently demonstrable outcome. Its two criteria cover rebuilding an `Active` tenant from accepted events and refusing an erased one. **There is no EventStore truth to replay for ingested units today:** ingestion commits no unit event, so replay depends on Story 34.1 and Story 34.2 making ingestion EventStore-first, on Story 34.12's tenant content store for unit content, on Stories 34.3 and 34.4 for the tuple protocol, on Story 34.46 for replay's captured authority, and on Story 34.51's register consult through Story 34.25's admission boundary; tombstones themselves are written by Story 34.24. Under the approved pre-release reset, no pre-existing unit needs replay. Export import and Redis-input repair are separate paths. This planning record supplies no complete FR6, FR13, FR73, FR74, or NFR16 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "The current general repair workflow exists as ConsistencyRepairWorkflow" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/ConsistencyRepairWorkflow.cs` | The workflow file exists; it is not evidence of EventStore replay. | `confirmed` |
+| "The current general repair workflow exists as ConsistencyRepairWorkflow" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/ConsistencyRepairWorkflow.cs` | Exit 0. It is not evidence of EventStore replay. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "EventStore holds no memory-unit ingestion event" | Existence/absence | `ls src/Hexalith.Memories.EventStore/Domain/Events/`; `rg -n 'public static MemoriesDomainResult Handle\(' src/Hexalith.Memories.EventStore/Domain/Aggregates/MemoryUnitAggregate.cs` | Seven event files, none an ingestion or acceptance event; `MemoryUnitAggregate` handles `RequestAnnotationCommand` (line 17) and `DeleteMemoryUnitCommand` (line 40) only. | `confirmed` |
+| "No ingestion path commits to EventStore" | Existence/absence | `rg -l 'AcceptAsync\(' src/Hexalith.Memories.Server/Workflows src/Hexalith.Memories.Server/Activities src/Hexalith.Memories.Server/Ingestion --type cs` | No match, exit 1; `AcceptAsync` is called only from `CaseService` and `TenantRegistryService`. | `confirmed` |
+| PRD: "Hexalith.EventStore is already the **domain source of truth** for Case / MemoryUnit / Tenant writes" | Behavior/location | `grep -n -o -F 'Hexalith.EventStore is already the **domain source of truth** for Case / MemoryUnit / Tenant writes' PRD` | Present at line 71. True for cases, tenants, and unit annotation and deletion; refuted for ingested units by the two rows above. A dated inline correction note was added at the claim on 2026-10-08, moving no PRD line. | `corrected` |
+| AD-2: "authoritative EventStore replay is the only rebuild that may set projection truth" | Location/design | `grep -n -o -F 'authoritative EventStore replay is the only rebuild that may set projection truth' SPINE` | Line 99. Design intent only. | `confirmed` |
+| "Memories does not use the authoritative stream reader yet, and no register exists" | Existence/absence | `rg -l 'AuthoritativeEventStreamReader' src --type cs`; `rg -l -i -e 'ErasedTenant' -e 'TenantTombstone' -e 'populationId' -e 'GenesisRecord' src --type cs` | No match for either, each exit 1; Story 34.3 row 6 shows the pinned client ships the reader. | `confirmed` |
+
+`SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `PRD` is `_bmad-output/planning-artifacts/prd.md`.
 
 
 ### Story 34.6: Validate tenant identifiers against Identifier Grammar V1
@@ -6658,19 +6740,28 @@ Verified 2026-10-08 against `main` at `dbe4ce0a`; source, deployment, docs, PRD,
 `SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
-### Story 34.11: Give each tenant backend principals
+### Story 34.11: Give each tenant a Redis ACL principal
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38, FR40, FR44; NFR8/NFR9; AD-6/AD-15.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38, FR40, FR44; NFR8/NFR9; AD-6/AD-15/AD-23.
 
 As an operator,
-I want provisioned tenant-scoped Redis and FalkorDB access,
-So that a compromised tenant credential cannot read another tenant index.
+I want every tenant's Redis data-plane access to run under its own ACL principal,
+So that a compromised tenant credential cannot read another tenant's keys or indexes.
 
 **Acceptance Criteria:**
 
-**Given a new tenant, when lifecycle provisioning completes, then its Redis ACL and FalkorDB credential resolve through the adopted Dapr/OpenBao secret boundary and only that tenant’s indexes and graph can be accessed with them.**
+**Given** a tenant being provisioned,
+**When** lifecycle provisioning completes,
+**Then** a per-tenant Redis ACL principal exists whose key patterns and command set admit only that tenant's registered key families and indexes, and its secret resolves through the AD-15 Dapr secret-store path, never ordinary configuration or direct Kubernetes-secret injection,
+**And** the Server performs every tenant Redis data-plane operation with that principal.
 
-**Given tenant A credentials against tenant B names and colliding graph IDs, when principal-driven negative tests run, then every read/write is denied without leaking B data; deletion revokes A credentials before purge completes.**
+**Given** tenant A's principal,
+**When** principal-driven negative tests address tenant B's keys and indexes, including RediSearch `FT.*` commands,
+**Then** every read and write is denied without leaking B data.
+
+**Given** tenant deletion,
+**When** purge runs,
+**Then** the tenant's principal is revoked before purge completes, and a revoked principal no longer authenticates.
 
 #### Dev Notes
 
@@ -6679,33 +6770,49 @@ So that a compromised tenant credential cannot read another tenant index.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.11 definition ("Give each tenant backend principals") | `historical-reference-only` | Retain the ID and goal. Its FalkorDB half moves to planned Story 34.53; the narrowed criteria were registered on 2026-10-08 under the user's standing approval. |
 
 ##### Slice Proof
 
-One backend-credential isolation outcome is the slice; deployed OpenBao migration stays with Epic 31.
+One per-tenant Redis principal, used for every tenant Redis operation and revoked at deletion, is the independently demonstrable outcome. Its three criteria cover provisioning and use, principal-driven denial, and revocation. FalkorDB is a separate server with its own shared password, so its per-tenant credential is planned Story 34.53. Execution consumes Story 34.6's tenant grammar and Story 34.7's registered families, because AD-23 builds every ACL pattern from the same delimiter as the keys it admits; Story 34.44's operator-authorized provisioning; and Epic 31 Story 31.2's runtime Dapr secret-store migration, which is `ready-for-dev`. **Feasibility risk:** the negative test must prove that the deployed Redis enforces key-pattern ACLs on RediSearch `FT.*` commands; if it cannot, escalate before relying on the principal for index isolation. The full NFR8 principal-driven suite remains its own evidence obligation. This planning record supplies no complete FR38, FR40, FR44, NFR8, or NFR9 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source and deployment are unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantProvisioningWorkflow currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantProvisioningWorkflow.cs` | The workflow exists; tenant principal provisioning must be measured against it. | `confirmed` |
+| "TenantProvisioningWorkflow currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantProvisioningWorkflow.cs` | Exit 0. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "No per-tenant Redis ACL principal is provisioned" | Existence/absence | `rg -n -i 'SETUSER' src --type cs` | No match, exit 1. | `confirmed` |
+| "Redis and FalkorDB use shared credentials injected from Kubernetes Secrets, on separate servers" | Existence/location | `sed -n '46,59p' deploy/kubernetes/base/server-deployment.yaml`; `sed -n '4p' deploy/kubernetes/base/falkordb-statefulset.yaml` | `REDIS_PASSWORD` (line 46) and `FALKORDB_PASSWORD` (line 51) feed the shared `ConnectionStrings__redis` (line 57) and `ConnectionStrings__falkordb` (line 59); FalkorDB runs as its own `falkordb` StatefulSet. | `confirmed` |
+| AD-6: "Redis uses a per-tenant ACL principal resolved server-side; FalkorDB selects a separate tenant database/graph"; AD-15: "Production qualification is blocked until per-tenant backend principals replace it"; gap row: "Provision and resolve per-tenant Redis ACL principals and per-tenant FalkorDB credentials" and "Graph-per-tenant selection already exists"; AD-23 binds "every composed key, ACL pattern" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Lines 127, 185, 408, 408, and 245 respectively. Design intent only. | `confirmed` |
+| "Epic 31's runtime Dapr secret-store migration is not yet delivered" | Existence/location | `rg -n -e '^  31-' _bmad-output/implementation-artifacts/sprint-status.yaml` | Story 31.1 is `in-progress` (line 528) and Story 31.2, the runtime Dapr secret-store migration, is `ready-for-dev` (line 529). | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
-### Story 34.12: Provision a tenant-keyed content store
+### Story 34.12: Keep ingestion content out of workflow history
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR39; AD-4/AD-6/AD-16.
 
 As an operator,
-I want ingestion content kept in a tenant resource outside durable workflow history,
-So that erasure and quota rules reach the actual content bytes.
+I want ingestion content held in a lifecycle-provisioned tenant content store and referenced, never copied, by durable work,
+So that erasure and quota rules can reach the actual content bytes.
 
 **Acceptance Criteria:**
 
-**Given accepted ingestion, when workflow work is scheduled, then history and actor state carry references only while extracted text and embeddings live in a tenant-keyed, authorized, quota-bound content store provisioned by the lifecycle.**
+**Given** a tenant being provisioned,
+**When** lifecycle provisioning completes,
+**Then** the tenant has its own content store, provisioned as a named tenant resource and reachable only under that tenant's authority.
 
-**Given deletion or missing store authority, when content is read or purged, then access fails closed and the store is included in erasure completion evidence.**
+**Given** accepted ingestion,
+**When** workflow work is scheduled and runs,
+**Then** extracted text, chunk text, and embeddings are written to and read from the tenant content store, while workflow history, activity inputs and outputs, and actor state carry references only,
+**And** an inventory test fails when any registered activity input or output type carries content.
+
+**Given** an activity that cannot resolve the tenant content store or lacks authority for it,
+**When** it runs,
+**Then** it fails closed and never falls back to an inline payload.
 
 #### Dev Notes
 
@@ -6714,18 +6821,26 @@ So that erasure and quota rules reach the actual content bytes.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.12 definition ("Provision a tenant-keyed content store") | `historical-reference-only` | Retain the ID and goal. Tenant-key encryption moves to planned Story 34.54; storage quota and erasure purge become carried obligations; the narrowed criteria were registered on 2026-10-08 under the user's standing approval. |
 
 ##### Slice Proof
 
-One tenant content-store resource and reader boundary is the slice; general erasure completion follows later.
+A lifecycle-provisioned tenant content store that durable work references instead of copying is the independently demonstrable outcome. Its three criteria cover provisioning, references-only workflow data, and fail-closed resolution. Execution consumes Story 34.44's operator-authorized provisioning and Story 34.46's captured tenant authority. The store's technology is an implementation choice within AD-4. **Not claimed here:** encrypting the store's contents and EventStore tenant payloads under a per-tenant content key is planned Story 34.54, because Story 34.23 destroys that key but no story creates it; under the approved pre-release reset, content written before Story 34.54 lands is reset before release rather than re-encrypted. The store's AD-18 storage quota is a carried obligation for Story 34.28's review, which covers work admission rather than storage. Purging the store at erasure is a carried obligation for the purge-range review, because Stories 34.16–34.24 do not cover it. This planning record supplies no complete FR6 or FR39 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "DaprWorkflowPayloadStore is a current ingestion component" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Ingestion/DaprWorkflowPayloadStore.cs` | The payload-store component exists for comparison with AD-4’s target. | `confirmed` |
+| "DaprWorkflowPayloadStore is a current ingestion component" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Ingestion/DaprWorkflowPayloadStore.cs`; `rg -n -e 'SaveStateAsync' -e 'StateStoreName,' src/Hexalith.Memories.Server/Ingestion/DaprWorkflowPayloadStore.cs` | Exit 0; it saves payloads to the shared Dapr state store at lines 78–79, not to a tenant resource. Re-run from 2026-10-05 with the storage detail added. | `confirmed` |
+| "Extracted text flows through workflow activity data today" | Source behavior/location | `rg -n 'string ContentText' src/Hexalith.Memories.Server/Activities/Ingestion/EmbeddingInput.cs`; `rg -n 'public required string Text' src/Hexalith.Memories.Server/Activities/Ingestion/ChunkEmbeddingResult.cs` | `EmbeddingInput.ContentText` at line 26 and `ChunkEmbeddingResult.Text` at line 17 carry content as activity input and output. | `confirmed` |
+| "No tenant-key encryption exists in code" | Existence/absence | `rg -n -e 'AesGcm' -e 'IDataProtector' -e 'CreateProtector' -e 'TenantContentKey' -e 'TenantKeyStore' src --type cs` | No match, exit 1. Pattern-scoped. | `confirmed` |
+| "Story 34.23 destroys a tenant content key that no story creates" | Location/dependency | `awk '/^### Story 34\.23:/,/^#### Dev Notes/' EPICS \| rg -o 'destroys its tenant content key'`; `git show 8c7c1e96:EPICS \| awk '/^## Epic 34:/,/^## Epic 35:/' \| rg -n -i -e 'provision.{0,40}tenant (content )?key' -e 'tenant (content )?key.{0,40}(provision\|creat\|issu)'` | The destroy phrase is present; no Epic 34 story provisions or creates the key (exit 1). | `confirmed` |
+| "No purge story covers the tenant content store" | Existence/absence | `awk '/^### Story 34\.16:/,/^### Story 34\.25:/' EPICS \| rg -n -i 'content store'` | No match, exit 1. | `confirmed` |
+| AD-4: "That store is a named tenant resource, not a property"; "An activity that cannot resolve it fails closed rather than falling back to a payload" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Both at line 113. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `EPICS` is `_bmad-output/planning-artifacts/epics.md`.
 
 
 ### Story 34.13: Hold active tenant authority through a query
@@ -6733,14 +6848,25 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; AD-5/AD-6/AD-16.
 
 As a developer,
-I want an admitted read to remain authorized until its last response byte,
+I want an admitted read to hold a tenant query-admission permit until its last response byte,
 So that erasure cannot race a streamed answer into a leak.
 
 **Acceptance Criteria:**
 
-**Given an Active tenant and authorized principal, when a query begins, then the lifecycle admission permit remains held through final response emission and is invalidated by Deleting before erasure completion.**
+**Given** an `Active` tenant and an authorized principal,
+**When** a product read is admitted,
+**Then** it acquires a permit from the tenant's serialized query-admission gate before the authoritative `Active` read and holds it until its last response byte,
+**And** a sender that cannot renew its permit stops before emitting another byte.
 
-**Given concurrent deletion or loss of authoritative lifecycle state, when a new read attempts admission, then it fails closed and returns no tenant content.**
+**Given** a tenant deletion,
+**When** the lifecycle workflow prepares to commit `Deleting`,
+**Then** it durably closes the gate and waits until every in-flight sender has ended or acknowledged cancellation, and only then commits `Deleting`,
+**And** a failed commit reopens the gate only after an authoritative `Active` read with an unchanged lifecycle generation.
+
+**Given** a closed, lost, or unavailable gate, or an unreadable authoritative tenant state,
+**When** a new read attempts admission,
+**Then** it fails closed and returns no tenant content,
+**And** absence of gate state is never treated as evidence that admitted senders have drained.
 
 #### Dev Notes
 
@@ -6749,33 +6875,50 @@ So that erasure cannot race a streamed answer into a leak.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.13 definition | `historical-reference-only` | Retain the ID and goal; its criteria were restated on 2026-10-08 under the user's standing approval, adding the gate closure and drain that the `Deleting` commit needs. |
 
 ##### Slice Proof
 
-One read-admission permit is the slice; write fencing is 34.14.
+One read-admission permit protocol is the independently demonstrable outcome: permits held to the last byte, a `Deleting` commit that waits for drain, and fail-closed admission. Its three criteria cover holding, draining, and refusal. Execution consumes Story 34.9's authoritative `Active` read and Story 34.48's operator-authorized deletion. Write fencing is Story 34.14. AD-6's export release-intent ordering — `Deleting` cannot commit until every active release intent has a terminal record — is not in Story 34.26's criteria, which name only the delivery lease, so it is a carried obligation for Story 34.26's review. This planning record supplies no complete FR39 or FR44 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantStatusEndpointFilter currently validates tenant status at endpoint entry" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Endpoints/TenantStatusEndpointFilter.cs` | The endpoint filter exists; its presence does not prove a held response-lifetime permit. | `confirmed` |
+| "TenantStatusEndpointFilter currently validates tenant status at endpoint entry" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Endpoints/TenantStatusEndpointFilter.cs`; `rg -n -e 'ActiveOnly' -e 'ValidateTenantActiveAsync' src/Hexalith.Memories.Server/Endpoints/TenantStatusEndpointFilter.cs` | Exit 0; the `ActiveOnly` mode (lines 20–21) calls `ValidateTenantActiveAsync` once at entry (line 47), which reads the short-lived status cache (Story 34.9 row 3). Its presence does not prove a held permit. Re-run from 2026-10-05 with the mechanism added. | `confirmed` |
+| "No query-admission gate or permit exists" | Existence/absence | `rg -l -i -e 'QueryAdmission' -e 'AdmissionPermit' -e 'AdmissionGate' src --type cs` | No match, exit 1. Pattern-scoped. | `confirmed` |
+| "Tenant deletion commits its status without closing any gate" | Source behavior/location | `rg -n 'nameof\(UpdateTenantStatusActivity\)' src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs`; `rg -n -i 'gate' src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The status update is called at lines 80 and 154; the workflow mentions no gate (exit 1). | `confirmed` |
+| AD-6: "A product read holds AD-6's serialized query-admission permit through its last response byte"; "durably closes the tenant's serialized AD-4/Dapr query-admission gate"; "absence of gate state alone is never evidence that an admitted sender has drained"; "a failed Deleting commit may reopen the gate only after an authoritative `Active` read with unchanged lifecycle generation" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | The first at line 127, the other three at line 129. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.14: Fence writes admitted before deletion
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; AD-3/AD-16.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; AD-3/AD-6/AD-16.
 
 As an operator,
-I want a tenant lifecycle generation checked at every target write,
-So that old activities cannot recreate data after erasure begins.
+I want every target write checked against the tenant lifecycle write generation,
+So that work admitted before deletion cannot recreate data after erasure begins.
 
 **Acceptance Criteria:**
 
-**Given a projection or coordination activity admitted under generation N, when the tenant enters Deleting or advances generation, then every subsequent target write atomically rejects the stale generation or uses a proven revoked tenant-scoped write authority.**
+**Given** a tenant,
+**When** its first `Deleting` commit lands,
+**Then** the tenant lifecycle write generation advances,
+**And** retries of that commit preserve the advanced generation.
 
-**Given a rejected write, when workflow status is reported, then no target mutation is claimed and erasure waits for the required fence acknowledgements before completing.**
+**Given** a projection or coordination activity admitted under generation N,
+**When** the generation advances,
+**Then** every subsequent syntactic, vector, graph, derived-store, and checkpoint write either compares N with the target's writable generation atomically in the same backend operation and is rejected without mutation, or — for a target that cannot compare atomically — fails because its adapter has proven the tenant-scoped write authority revoked before purge begins,
+**And** one shared fence contract test runs against every target adapter.
+
+**Given** a rejected write,
+**When** workflow status is reported,
+**Then** no target mutation is claimed,
+**And** erasure waits for the required fence acknowledgements before completing.
 
 #### Dev Notes
 
@@ -6784,18 +6927,25 @@ So that old activities cannot recreate data after erasure begins.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.14 definition | `historical-reference-only` | Retain the ID and goal; its criteria were restated on 2026-10-08 under the user's standing approval, adding the generation advance and the shared adapter contract. |
 
 ##### Slice Proof
 
-One generation-bound write-fence protocol is the slice; purge and crypto-shred are separate.
+One generation-bound write-fence protocol is the independently demonstrable outcome: the generation advances at the first `Deleting` commit, every target write is fenced atomically or by proven revoked authority, and erasure waits for fence acknowledgements. Its three criteria cover the advance, the shared four-target-plus-checkpoint fence contract, and reporting. Execution consumes Story 34.3's admission-time capture (to which the generation is added), Story 34.4's checkpoint writes, Story 34.48's operator-authorized deletion, and Story 34.13's gate closure before the `Deleting` commit; the revoked-authority alternative consumes Story 34.11's Redis principal and planned Story 34.53's FalkorDB principal. Purge and crypto-shredding remain Stories 34.16–34.23. This planning record supplies no complete FR39 or FR44 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantDeletionWorkflow is a current Server workflow" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The workflow exists; atomic target-local fences require new evidence. | `confirmed` |
+| "TenantDeletionWorkflow is a current Server workflow" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | Exit 0. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "No tenant lifecycle write generation exists" | Existence/absence | `rg -l -i -e 'WriteGeneration' -e 'LifecycleGeneration' -e 'lifecycle write generation' src --type cs` | No match, exit 1. | `confirmed` |
+| "Deletion updates status and deletes resources with no generation step" | Source behavior/location | `rg -n 'nameof\(' src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | Registry read at line 56, status update at line 80, then RediSearch, Redis vector, and FalkorDB deletion from line 102; no generation activity. | `confirmed` |
+| "Target writes are unconditional" | Source behavior/location | Story 34.3's Epic AC Verification row 3 | `HashSetAsync` and an ID-keyed graph `MERGE`, with no generation comparison. | `confirmed` |
+| AD-3: "Every projection activity captures AD-16's tenant lifecycle write generation when its work is admitted"; "a separate lifecycle read followed by a write does not satisfy this rule"; "its adapter must instead prove that the tenant-scoped write authority has been revoked before AD-16 begins purge"; AD-6: "The first commit entering `Deleting` advances the tenant lifecycle write generation and fences ordinary writes" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | The three AD-3 phrases at line 107; the AD-6 phrase at line 129. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.15: Separate EventStore preflight key space from durable dedup
@@ -6855,12 +7005,12 @@ Verified 2026-10-08 against `main` at `dbe4ce0a`; source is unchanged from `0b59
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR73–FR74; AD-3/AD-16.
 
 As an operator,
-I want verified removal of Redis search, vector and cache keys for every declared epoch,
+I want verified removal of Redis search, vector, derived-store, diagnostics, metadata and cache keys for every declared epoch,
 So that erasure cannot leave tenant state that a retry or read can reuse.
 
 **Acceptance Criteria:**
 
-**Given** a tenant write fence is acknowledged and its target contains Redis search, vector and cache keys for every declared epoch, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+**Given** a tenant write fence is acknowledged and its target contains Redis search, vector, derived-store, diagnostics, metadata and cache keys for every declared epoch, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
 
 **Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
 
@@ -6874,15 +7024,17 @@ So that erasure cannot leave tenant state that a retry or read can reuse.
 
 ##### Slice Proof
 
-One independently reviewable purge result for Redis search, vector and cache keys for every declared epoch; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+One independently reviewable purge result for Redis search, vector, derived-store, diagnostics, metadata and cache keys for every declared epoch; AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26 (export staging), Stories 34.32 and 34.38 (telemetry), and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. **[Corrected 2026-10-08: the earlier claim that seven stories cover all erasure target classes was refuted; see this story's Epic AC Verification.]**
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against parent `main` and its current worktree; re-verified 2026-10-08 at `8c7c1e96`, when the rows after the first were added. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
 | "TenantDeletionWorkflow currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+| "All seven erasure target classes have separate story numbers before EventStore key destruction at 34.23" | Quantitative | `sed -n '191p;198p' SPINE` | AD-16's closed purge set also names the tenant content store, AD-23 digest-collision reservations, the AD-6 query-admission gate and permits, tenant and derived-store write fences, derived artifacts, export staging and release leases, and the AD-17 mapping, and AD-5 adds grant revocation; seven stories do not cover it. Every slice proof in Stories 34.16–34.22 was corrected on 2026-10-08. | `corrected` |
+| "Today's deletion leaves derived-store, diagnostics, and metadata keys" | Source behavior/location | `sed -n '60,69p' src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs`; `rg -n -e '\$"\{tenantId\}:memories:derived' -e '\$"\{tenantId\}:memories:diagnostics' src/Hexalith.Memories.Server/DerivedStores/RedisDerivedStoreService.cs`; `rg -n '\$"\{tenantId\}:metadata' src/Hexalith.Memories.Server/Tenants/TenantMetricsService.cs` | Deletion scans `{t}:case:*`, `dedup:{t}:*`, `{t}:eventstore:*`, `{t}:embedding-migration:*`, `{t}:mu:*`, `{t}:vec:*`, `{t}:vecnl:*`, and `{t}:vec:nl:*`; the derived-store and diagnostics families at `RedisDerivedStoreService.cs` lines 509–782 and `{t}:metadata` at `TenantMetricsService.cs` line 124 match none of them. | `confirmed` |
 
 
 ### Story 34.17: Purge tenant FalkorDB projections
@@ -6909,15 +7061,16 @@ So that erasure cannot leave tenant state that a retry or read can reuse.
 
 ##### Slice Proof
 
-One independently reviewable purge result for FalkorDB tenant graph nodes, edges and database; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+One independently reviewable purge result for FalkorDB tenant graph nodes, edges and database; AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26 (export staging), Stories 34.32 and 34.38 (telemetry), and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. **[Corrected 2026-10-08: the earlier claim that seven stories cover all erasure target classes was refuted; see this story's Epic AC Verification.]**
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against parent `main` and its current worktree; re-verified 2026-10-08 at `8c7c1e96`, when the rows after the first were added. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
 | "TenantDeletionWorkflow currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+| "All seven erasure target classes have separate story numbers before EventStore key destruction at 34.23" | Quantitative | `sed -n '191p;198p' SPINE` | AD-16's closed purge set also names the tenant content store, AD-23 digest-collision reservations, the AD-6 query-admission gate and permits, tenant and derived-store write fences, derived artifacts, export staging and release leases, and the AD-17 mapping, and AD-5 adds grant revocation; seven stories do not cover it. Every slice proof in Stories 34.16–34.22 was corrected on 2026-10-08. | `corrected` |
 
 
 ### Story 34.18: Purge durable workflow and actor state
@@ -6944,15 +7097,17 @@ So that erasure cannot leave tenant state that a retry or read can reuse.
 
 ##### Slice Proof
 
-One independently reviewable purge result for tenant workflow history and actor state; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+One independently reviewable purge result for tenant workflow history and actor state; AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26 (export staging), Stories 34.32 and 34.38 (telemetry), and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. **[Corrected 2026-10-08: the earlier claim that seven stories cover all erasure target classes was refuted; see this story's Epic AC Verification.]**
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against parent `main` and its current worktree; re-verified 2026-10-08 at `8c7c1e96`, when the rows after the first were added. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
 | "TenantDeletionWorkflow currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+| "All seven erasure target classes have separate story numbers before EventStore key destruction at 34.23" | Quantitative | `sed -n '191p;198p' SPINE` | AD-16's closed purge set also names the tenant content store, AD-23 digest-collision reservations, the AD-6 query-admission gate and permits, tenant and derived-store write fences, derived artifacts, export staging and release leases, and the AD-17 mapping, and AD-5 adds grant revocation; seven stories do not cover it. Every slice proof in Stories 34.16–34.22 was corrected on 2026-10-08. | `corrected` |
+| "No workflow instance or history is purged today" | Existence/absence | `rg -l 'PurgeInstanceAsync' src --type cs -g '!*Test*'` | No match, exit 1. | `confirmed` |
 
 
 ### Story 34.19: Purge failed-unit and projection checkpoint state
@@ -6979,15 +7134,17 @@ So that erasure cannot leave tenant state that a retry or read can reuse.
 
 ##### Slice Proof
 
-One independently reviewable purge result for failed-unit registry and projection checkpoints in every epoch; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+One independently reviewable purge result for failed-unit registry and projection checkpoints in every epoch; AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26 (export staging), Stories 34.32 and 34.38 (telemetry), and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. **[Corrected 2026-10-08: the earlier claim that seven stories cover all erasure target classes was refuted; see this story's Epic AC Verification.]**
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against parent `main` and its current worktree; re-verified 2026-10-08 at `8c7c1e96`, when the rows after the first were added. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
 | "TenantDeletionWorkflow currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+| "All seven erasure target classes have separate story numbers before EventStore key destruction at 34.23" | Quantitative | `sed -n '191p;198p' SPINE` | AD-16's closed purge set also names the tenant content store, AD-23 digest-collision reservations, the AD-6 query-admission gate and permits, tenant and derived-store write fences, derived artifacts, export staging and release leases, and the AD-17 mapping, and AD-5 adds grant revocation; seven stories do not cover it. Every slice proof in Stories 34.16–34.22 was corrected on 2026-10-08. | `corrected` |
+| "Failed-unit keys survive today's deletion" | Source behavior/location | `sed -n '60,69p' src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs`; `rg -n '\$"\{tenantId\}:failed-unit' src/Hexalith.Memories.Server/Activities/Ingestion/PersistFailedUnitActivity.cs` | `{t}:failed-unit:*` at line 132 matches no deletion pattern. | `confirmed` |
 
 
 ### Story 34.20: Purge tenant duplicate-admission records
@@ -6995,12 +7152,12 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR75; AD-4/AD-8/AD-16.
 
 As an operator,
-I want verified removal of durable dedup records and preflight reservations,
+I want verified removal of durable dedup records, preflight and `ingest-reserve:` reservations, and AD-23 digest-collision reservations,
 So that erasure cannot leave tenant state that a retry or read can reuse.
 
 **Acceptance Criteria:**
 
-**Given** a tenant write fence is acknowledged and its target contains durable dedup records and preflight reservations, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+**Given** a tenant write fence is acknowledged and its target contains durable dedup records, preflight and `ingest-reserve:` reservations, and AD-23 digest-collision reservations, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
 
 **Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
 
@@ -7014,15 +7171,17 @@ So that erasure cannot leave tenant state that a retry or read can reuse.
 
 ##### Slice Proof
 
-One independently reviewable purge result for durable dedup records and preflight reservations; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+One independently reviewable purge result for durable dedup records, preflight and `ingest-reserve:` reservations, and AD-23 digest-collision reservations; AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26 (export staging), Stories 34.32 and 34.38 (telemetry), and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. **[Corrected 2026-10-08: the earlier claim that seven stories cover all erasure target classes was refuted; see this story's Epic AC Verification.]**
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against parent `main` and its current worktree; re-verified 2026-10-08 at `8c7c1e96`, when the rows after the first were added. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
 | "EventStoreDedupKey currently builds a dedup-prefixed key" | Existence/location | `rg -n "dedup:" src/Hexalith.Memories.EventStore/EventStoreDedupKey.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+| "All seven erasure target classes have separate story numbers before EventStore key destruction at 34.23" | Quantitative | `sed -n '191p;198p' SPINE` | AD-16's closed purge set also names the tenant content store, AD-23 digest-collision reservations, the AD-6 query-admission gate and permits, tenant and derived-store write fences, derived artifacts, export staging and release leases, and the AD-17 mapping, and AD-5 adds grant revocation; seven stories do not cover it. Every slice proof in Stories 34.16–34.22 was corrected on 2026-10-08. | `corrected` |
+| "`ingest-reserve:` reservations are not tenant-prefixed and survive today's deletion" | Source behavior/location | `sed -n '60,69p' src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs`; `rg -n 'ReservationKeyPrefix = ' src/Hexalith.Memories.Server/Ingestion/IngestDedupReservation.cs` | The prefix `ingest-reserve:` at line 47 precedes the identity key, so deletion's `dedup:{t}:*` scan at line 61 cannot reach it. | `confirmed` |
 
 
 ### Story 34.21: Purge import leases and staging content
@@ -7049,15 +7208,17 @@ So that erasure cannot leave tenant state that a retry or read can reuse.
 
 ##### Slice Proof
 
-One independently reviewable purge result for tenant import leases and source-held staging copies; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+One independently reviewable purge result for tenant import leases and source-held staging copies; AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26 (export staging), Stories 34.32 and 34.38 (telemetry), and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. **[Corrected 2026-10-08: the earlier claim that seven stories cover all erasure target classes was refuted; see this story's Epic AC Verification.]**
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against parent `main` and its current worktree; re-verified 2026-10-08 at `8c7c1e96`, when the rows after the first were added. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
 | "RedisImportStagingStore currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Import/RedisImportStagingStore.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+| "All seven erasure target classes have separate story numbers before EventStore key destruction at 34.23" | Quantitative | `sed -n '191p;198p' SPINE` | AD-16's closed purge set also names the tenant content store, AD-23 digest-collision reservations, the AD-6 query-admission gate and permits, tenant and derived-store write fences, derived artifacts, export staging and release leases, and the AD-17 mapping, and AD-5 adds grant revocation; seven stories do not cover it. Every slice proof in Stories 34.16–34.22 was corrected on 2026-10-08. | `corrected` |
+| "Import staging and restore-lease keys survive today's deletion" | Source behavior/location | `sed -n '60,69p' src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs`; `rg -n -e 'import:staging' -e 'restore:lease' src/Hexalith.Memories.Server/Import/RedisImportStagingStore.cs` | `{t}:import:staging:*` at line 361 and `{t}:restore:lease` at line 373 match no deletion pattern. | `confirmed` |
 
 
 ### Story 34.22: Purge migration and rebuild epoch state
@@ -7084,15 +7245,17 @@ So that erasure cannot leave tenant state that a retry or read can reuse.
 
 ##### Slice Proof
 
-One independently reviewable purge result for tenant migration and rebuild records across active, staging and retired epochs; all seven erasure target classes have separate story numbers before EventStore key destruction at 34.23.
+One independently reviewable purge result for tenant migration and rebuild records across active, staging and retired epochs; AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26 (export staging), Stories 34.32 and 34.38 (telemetry), and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. **[Corrected 2026-10-08: the earlier claim that seven stories cover all erasure target classes was refuted; see this story's Epic AC Verification.]**
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-05 against parent `main` and its current worktree; re-verified 2026-10-08 at `8c7c1e96`, when the rows after the first were added. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
 | "RedisEmbeddingMigrationStore currently exists" | Existence/location | `test -f src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs` | The named current source exists; target-specific erasure coverage remains to prove. | `confirmed` |
+| "All seven erasure target classes have separate story numbers before EventStore key destruction at 34.23" | Quantitative | `sed -n '191p;198p' SPINE` | AD-16's closed purge set also names the tenant content store, AD-23 digest-collision reservations, the AD-6 query-admission gate and permits, tenant and derived-store write fences, derived artifacts, export staging and release leases, and the AD-17 mapping, and AD-5 adds grant revocation; seven stories do not cover it. Every slice proof in Stories 34.16–34.22 was corrected on 2026-10-08. | `corrected` |
+| "Raw migration keys are deleted today, but no epoch state exists yet" | Source behavior/location | `sed -n '60,69p' src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs`; Story 34.3's Epic AC Verification row 2 | Deletion scans `{t}:embedding-migration:*` at line 65; no schema generation or embedding epoch exists in source. | `confirmed` |
 
 
 ### Story 34.23: Make EventStore tenant content irreversibly inaccessible
@@ -7100,14 +7263,19 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR39; NFR16; AD-16.
 
 As an operator,
-I want tenant-key destruction after fenced purge,
-So that EventStore and retained ciphertext cannot reveal erased memory.
+I want erasure to destroy the tenant content key through Hexalith.EventStore's crypto-shredding capability,
+So that EventStore payloads and retained backups become permanently unreadable.
 
 **Acceptance Criteria:**
 
-**Given a tenant whose purge and admission fences are verified, when erasure destroys its tenant content key, then sampled EventStore and retained backup ciphertext become undecryptable and completion records the proof without a secret value.**
+**Given** a tenant whose purge and admission fences are verified,
+**When** erasure destroys its tenant content key through Hexalith.EventStore's crypto-shredding workflow,
+**Then** sampled EventStore payload and retained-backup ciphertext captured before deletion no longer decrypts,
+**And** completion records the proof without any secret value.
 
-**Given key-store failure or an undeciphered backup path, when completion is assessed, then the tenant remains Deleting and no `Erased` result is emitted.**
+**Given** a key-store failure or an undeciphered backup path,
+**When** completion is assessed,
+**Then** the tenant remains `Deleting` and no `Erased` result is emitted.
 
 #### Dev Notes
 
@@ -7116,33 +7284,46 @@ So that EventStore and retained ciphertext cannot reveal erased memory.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.23 definition | `historical-reference-only` | Retain the ID and goal; its criteria were restated on 2026-10-08 under the user's standing approval to consume the platform crypto-shredding capability. |
 
 ##### Slice Proof
 
-One cryptographic inaccessibility proof is the slice; platform tombstone is 34.24.
+One cryptographic-inaccessibility proof is the independently demonstrable outcome. Its two criteria cover destruction with sampled-ciphertext proof and fail-closed completion. Execution consumes planned Story 34.54, which creates the per-tenant content key and protects tenant payloads under it; under the Hexalith boundary rule, both stories adopt Hexalith.EventStore's existing payload-protection and crypto-shredding capability rather than re-implementing it. It also consumes Stories 34.16–34.22, 34.45, 34.55, and 34.56 for the purge it follows. The platform tombstone is Story 34.24. This planning record supplies no complete FR39 or NFR16 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The pinned Hexalith.EventStore Contracts package was probed at 3.117.1. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "The current EventStore integration has tenant-domain commands" | Existence/behavior/location | `test -f src/Hexalith.Memories.EventStore/Domain/Commands/RegisterTenantCommand.cs` | The tenant-domain command exists; crypto-shred is a distinct target. | `confirmed` |
+| "The current EventStore integration has tenant-domain commands" | Existence/behavior/location | `test -f src/Hexalith.Memories.EventStore/Domain/Commands/RegisterTenantCommand.cs` | Exit 0. Crypto-shredding is a distinct target. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "The pinned Hexalith.EventStore Contracts package ships payload-protection and crypto-shredding types" | Existence/location | `strings ~/.nuget/packages/hexalith.eventstore.contracts/3.117.1/lib/net10.0/Hexalith.EventStore.Contracts.dll \| grep -c -e CryptoShreddingWorkflowScope`; the same for `EventStorePayloadProtectionMetadata` and `KeyReferencePolicy`; positive control `AggregateIdentity` | Counts 1, 2, and 3; the positive control is present (2). Package presence is not proof of fitness for Memories' payloads. | `confirmed` |
+| "Memories does not use EventStore payload protection or crypto-shredding yet" | Existence/absence | `rg -l -e 'CryptoShredding' -e 'PayloadProtection' -e 'KeyReferencePolicy' src --type cs` | No match, exit 1. | `confirmed` |
+| "No tenant content key exists in Memories" | Existence/absence | Story 34.12's Epic AC Verification row 3 | No tenant-key encryption in source (exit 1); planned Story 34.54 creates it. | `confirmed` |
+| AD-16: "The closed cryptographic-unreadability target set is authoritative live EventStore tenant payloads and qualified authoritative backups"; "sampled ciphertext captured before deletion no longer decrypts after tenant-key destruction" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Lines 191 and 193. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.24: Record irreversible erased-tenant tombstones
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; AD-21.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; AD-16/AD-21.
 
 As an operator,
-I want a platform-partition register that permanently retires erased IDs,
-So that restart or restored state cannot reuse an erased tenant.
+I want one irreversible tombstone event to complete each erasure and permanently retire the tenant identifier,
+So that restart or restored state can never reuse an erased tenant.
 
 **Acceptance Criteria:**
 
-**Given verified key destruction and purge, when tombstone completion is requested, then a record-scoped append-only platform stream writes the tenant tombstone, population genesis/revision, and content-free completion reference before any later `Erased` status is reported.**
+**Given** verified key destruction (Story 34.23) and every purge target's verified outcome,
+**When** tombstone completion is requested,
+**Then** the erasure workflow alone appends one idempotent, content-free completion and non-reuse tombstone event to the register stream, carrying the tenant, lifecycle write generation, closed target list, each target's outcome, and the completion time,
+**And** no `Erased` status is reported before that event is durable.
 
-**Given missing, stale, rolled-back or unreadable register lineage, when provisioning, startup or restore checks it, then all tenant creation and content admission fail closed; a routine restart never creates a new genesis.**
+**Given** a tombstoned identifier,
+**When** provisioning, replay, restore, or import consults the register,
+**Then** it is refused as permanently erased,
+**And** no principal or later event can reverse, supersede, or delete the tombstone, and an application principal's attempt to append or alter one is refused.
 
 #### Dev Notes
 
@@ -7151,18 +7332,23 @@ So that restart or restored state cannot reuse an erased tenant.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.24 definition | `historical-reference-only` | Retain the ID and goal. Register genesis and the lineage check moved to Story 34.51 on 2026-10-08 under the user's standing approval. |
 
 ##### Slice Proof
 
-One platform tombstone and lineage authority is the slice; restore quarantine is 34.25.
+One irreversible tombstone event and its permanent-retirement effect is the independently demonstrable outcome. Its two criteria cover the single completion event and refusal on every consult path. Execution consumes Story 34.51's register genesis, lineage verification, and consult, Story 34.23's key destruction, and the verified purge outcomes of Stories 34.16–34.22, 34.45, 34.55, and 34.56. Restore quarantine is Story 34.25. This planning record supplies no complete FR39 or FR44 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "No memories-platform reference is present under src today" | Existence/behavior/location | `rg -n "memories-platform" src` | No match (exit 1) in current source; the platform partition is an adopted target. | `confirmed` |
+| "No memories-platform reference is present under src today" | Existence/behavior/location | `rg -n "memories-platform" src` | No match, exit 1; the platform partition is an adopted target. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Today a deleted tenant identifier can be provisioned again" | Source behavior/location | `rg -n 'nameof\(RemoveTenantRegistryActivity\)' src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs`; `sed -n '40,51p' src/Hexalith.Memories.Server/Activities/Tenants/InitializeTenantRegistryActivity.cs` | Deletion removes the registry entry at line 191 and records no tombstone; provisioning's only duplicate guard switches on that registry entry (lines 40–51). A source observation, not a runtime test. | `confirmed` |
+| AD-16: "Completion evidence and the irreversible non-reuse tombstone are one content-free AD-2 event"; AD-21: "only AD-16's erasure workflow may append the combined completion/non-reuse tombstone event"; "An erasure tombstone is irreversible and permanently retires its tenant identifier" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Lines 193, 234, and 235. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.25: Quarantine tombstoned-origin restores
@@ -7170,14 +7356,20 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR71; NFR16; AD-2/AD-16/AD-21.
 
 As an operator,
-I want all restore inputs to consult the erased-tenant register,
+I want one artifact-admission boundary that every restore input passes,
 So that old backups and exports cannot resurrect erased content.
 
 **Acceptance Criteria:**
 
-**Given authoritative replay, a tenant-key-protected backup restore or application export import, when origin tenant is tombstoned, then content is refused before materialization and any unsafe restored payload is quarantined with a non-secret reason.**
+**Given** an authoritative replay, an export-bundle import, or an EventStore restore artifact,
+**When** admission runs,
+**Then** one shared boundary admits it only if the live register lineage's `populationId` matches the artifact's, its sequence is at least the artifact's, and the origin tenant has no tombstone,
+**And** an artifact ahead of the live sequence makes the register unavailable rather than advancing it.
 
-**Given unavailable register lineage, when any restore starts, then it fails closed without making a tenant Active or searchable.**
+**Given** an input the boundary refuses, or an unsafe payload already restored,
+**When** it is handled,
+**Then** content is refused before materialization and any unsafe restored payload is quarantined with a non-secret reason,
+**And** no tenant becomes `Active` or searchable as a result.
 
 #### Dev Notes
 
@@ -7186,33 +7378,49 @@ So that old backups and exports cannot resurrect erased content.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.25 definition | `historical-reference-only` | Retain the ID and goal; its criteria were restated on 2026-10-08 under the user's standing approval as the single admission boundary, removing the unavailable-register case now owned by Story 34.51. |
 
 ##### Slice Proof
 
-One restore admission boundary covers the three input types; producing exports is 34.26.
+One artifact-admission boundary for every restore input is the independently demonstrable outcome. Its two criteria cover the AD-21 admission rule and refusal with quarantine. It is the single owner of that boundary: Story 34.5's erased-tenant replay refusal and Story 34.26's tombstoned-origin import refusal consume it, and Story 34.51 owns failing closed while the register is unavailable. In Memories, "restore" is the export-import path — `RestoreWorkflow` is scheduled from the import endpoints — so artifact metadata (`populationId` and register sequence) must be recorded by the export producer, Story 34.26. Execution consumes Story 34.51's consult and Story 34.24's tombstones, and precedes Story 34.5's refusal criterion. This planning record supplies no complete FR39, FR71, or NFR16 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "ImportEndpoints currently maps tenant and case import routes" | Existence/behavior/location | `rg -n "MapPost\(MemoriesRoutes.(TenantImport\|CaseImport)" src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs` | Both import routes exist for current-path verification. | `confirmed` |
+| "ImportEndpoints currently maps tenant and case import routes" | Existence/behavior/location | `rg -n "MapPost\(MemoriesRoutes.(TenantImport\|CaseImport)" src/Hexalith.Memories.Server/Endpoints/ImportEndpoints.cs` | Lines 46 and 58. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Memories' restore is the export-import path and carries no lineage metadata" | Source behavior/location | `rg -n 'nameof\(RestoreWorkflow\)' src --type cs -g '!*Test*'`; `sed -n '18,22p' src/Hexalith.Memories.Server/Workflows/Contracts/RestoreWorkflowInput.cs`; `rg -l -i 'populationId' src --type cs` | `RestoreWorkflow` is scheduled only from `ImportEndpoints.cs` line 258; its input is `TenantId`, `CaseId`, `StagingKey`, and `RequestedBy`; no source mentions `populationId` (exit 1). | `confirmed` |
+| AD-21: "Every backup, delivered export bundle, and EventStore restore artifact records the register"; "Admission requires the live lineage's population identifier to match, its sequence to be at least the artifact's, and the origin tenant identifier to have no tombstone"; "an artifact ahead of the live sequence makes the register unavailable rather than advancing it" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | All at line 235. Design intent only. | `confirmed` |
+| "Story 34.26 already refuses tombstoned-origin import" | Location/dependency | `awk '/^### Story 34\.26:/,/^#### Dev Notes/' EPICS \| rg -o 'refuses the operation'` | Present in Story 34.26's second criterion, which now consumes this boundary (a carried obligation for Story 34.26's review). | `confirmed` |
+
+`SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `EPICS` is `_bmad-output/planning-artifacts/epics.md`.
 
 
-### Story 34.26: Transfer portable export custody safely
+### Story 34.26: Issue portable export bundles with verifiable origin
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR71, FR39; AD-16/AD-21.
 
 As an operator,
-I want a portable FR71 bundle with verifiable source custody transfer,
-So that erasure has a finite platform-held export target list.
+I want every export issued as a staged, verifiable bundle with a content-free platform index record,
+So that erasure has a finite list of platform-held export targets and imports can prove where a bundle came from.
 
 **Acceptance Criteria:**
 
-**Given a case or tenant export, when its bundle is delivered, then a content-free platform index records origin, integrity proof, delivery lease and transfer while every source-held staging byte is purged before completion.**
+**Given** a case or tenant export,
+**When** it is produced,
+**Then** the source stages one self-contained portable JSON bundle, or a recipient-encrypted bundle, under the tenant key and appends a content-free bundle-index record on the `memories-platform` partition carrying the origin tenant, `populationId`, register sequence, signed origin, and payload-integrity proof,
+**And** the export principal gains no tombstone or lifecycle authority.
 
-**Given a tombstoned origin or expired lease, when the platform attempts same-population import or delivery, then it refuses the operation; external copies already transferred remain outside source-platform custody.**
+**Given** a delivered bundle,
+**When** it is later imported,
+**Then** Story 34.25's admission boundary verifies its signed origin and integrity proof and refuses a tampered bundle or a tombstoned origin in the same population.
+
+**Given** a transfer that completes or is cancelled,
+**When** the export finishes,
+**Then** every source-held staging byte is purged and read back absent before completion is reported,
+**And** copies already delivered externally remain outside source-platform custody.
 
 #### Dev Notes
 
@@ -7221,33 +7429,50 @@ So that erasure has a finite platform-held export target list.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.26 definition ("Transfer portable export custody safely") | `historical-reference-only` | Retain the ID and goal. Delivery-lease and release-intent binding moved to Story 34.57 on 2026-10-08 under the user's standing approval. |
+| Already delivered basic portable JSON export | `historical-reference-only` | Compatibility evidence, not rescheduled scope. |
 
 ##### Slice Proof
 
-One export issuance/transfer protocol is the slice; the already delivered basic portable JSON export is compatibility evidence, not rescheduled scope.
+One export issuance protocol — staged bundle, content-free index record, verifiable origin, and staging purge — is the independently demonstrable outcome. Its three criteria cover issuance, verifiable import, and staging purge. Execution consumes planned Story 34.54's tenant key, Story 34.51's register for `populationId` and sequence, and Story 34.25's admission boundary. Binding delivery to the tenant lifecycle is Story 34.57. **Legacy source-held bundles:** none exist, because today's export streams JSON directly to the caller without staging, so AD-16's legacy sweep has no target. This planning record supplies no complete FR71 or FR39 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "ExportEndpoints currently maps case and tenant export routes" | Existence/behavior/location | `rg -n "MapGet\(MemoriesRoutes.(CaseExport\|TenantExport)" src/Hexalith.Memories.Server/Endpoints/ExportEndpoints.cs` | Both export routes exist; custody-transfer evidence is not implied. | `confirmed` |
+| "ExportEndpoints currently maps case and tenant export routes" | Existence/behavior/location | `rg -n "MapGet\(MemoriesRoutes.(CaseExport\|TenantExport)" src/Hexalith.Memories.Server/Endpoints/ExportEndpoints.cs` | Lines 57 and 122. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Today's export streams JSON directly, with no staging, bundle index, or release intent" | Source behavior/location | `rg -n 'application/json' src/Hexalith.Memories.Server/Endpoints/ExportEndpoints.cs`; `rg -l -i -e 'BundleIndex' -e 'ReleaseIntent' -e 'ExportStaging' src --type cs` | The response content type is set at lines 113 and 169; no export-specific staging, index, or release-intent construct exists (exit 1). Hence no legacy source-held bundle exists to sweep. | `confirmed` |
+| "No export or restore artifact records `populationId`" | Existence/absence | Story 34.25's Epic AC Verification row 2 | No source mentions `populationId` (exit 1). | `confirmed` |
+| AD-16: "The source stages a complete, self-contained portable JSON bundle or recipient-encrypted bundle under the tenant key"; "Legacy source-held bundles are enumerated and either brought under this contract or destroyed"; gap row: "current export streams plaintext JSON without a source-held staged artifact" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Lines 195, 195, and 438. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.27: Derive mandatory ingestion provenance server-side
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR65; AD-5/AD-13.
 
-As a developer,
-I want every memory unit actor to come from authenticated authority,
+As an operator,
+I want every memory unit's `ingested_by` derived from authenticated authority,
 So that caller text cannot forge who ingested it.
 
 **Acceptance Criteria:**
 
-**Given external ingestion, when an accepted unit is created, then `ingested_by` is the normalized authenticated issuer and subject, regardless of any caller-supplied field.**
+**Given** external ingestion through any path — file, URL, directory, or annotation —
+**When** an accepted unit is created,
+**Then** `ingested_by` is the normalized authenticated issuer and subject from the validated bearer token,
+**And** any caller-supplied `IngestedBy` value is ignored for provenance; the V1 field stays accepted for compatibility and is registered as deprecated.
 
-**Given trusted internal ingestion, when actor provenance is assigned, then the protected app ID resolves through the finite allowlist and tenant grant to a canonical `system:*` principal; unknown app or grant fails closed.**
+**Given** trusted internal ingestion, including CloudEvents admitted under Story 34.10,
+**When** provenance is assigned,
+**Then** it is the canonical `system:*` principal that Story 34.9's admission resolved from the allowlist and the tenant grant,
+**And** an unknown app or a missing grant fails closed before acceptance.
+
+**Given** every `IngestionInput` construction site,
+**When** the provenance inventory test runs,
+**Then** it fails if `IngestedBy` comes from a request field or a constant, except where re-ingestion or a correction preserves the original unit's recorded provenance.
 
 #### Dev Notes
 
@@ -7256,18 +7481,23 @@ So that caller text cannot forge who ingested it.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.27 definition | `historical-reference-only` | Retain the ID and goal; its criteria were restated on 2026-10-08 under the user's standing approval with every provenance path verification found. |
 
 ##### Slice Proof
 
-One provenance assignment boundary is the slice; the general authorization artifact is 34.8.
+One provenance assignment boundary is the independently demonstrable outcome. Its three criteria cover external principals, internal `system:*` principals, and an inventory test over every construction site. Execution consumes Story 34.9's admission (the `system:*` principal), Story 34.10's admitted CloudEvent publisher, and Story 34.33's register for marking the V1 `IngestedBy` request field deprecated. **Decision taken under standing approval (2026-10-08):** the V1 field is ignored for provenance rather than removed, so V1 clients keep working; removing it would be a breaking V1 change. The obsolete Memories MCP tool's `"mcp"` default belongs to the McpCli migration, not this story. This planning record supplies no complete FR65 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "IngestionEndpoints currently copies request.IngestedBy" | Existence/behavior/location | `rg -n "IngestedBy = request.IngestedBy" src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` | The URL ingestion path copies the request field. | `confirmed` |
+| "IngestionEndpoints currently copies request.IngestedBy" | Existence/behavior/location | `rg -n "IngestedBy = request.IngestedBy" src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` | Line 311, on the URL path. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Directory ingestion also copies the caller's field, and both request validators require it" | Source behavior/location | `rg -n 'IngestedBy = request.IngestedBy' src/Hexalith.Memories.Server/Ingestion/DirectoryIngestionService.cs`; `sed -n '584,586p;645p' src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs` | Copy at `DirectoryIngestionService.cs` line 256; the URL and directory validators reject a missing field with "Provide the identity of the ingesting principal" (lines 584–586 and 645). | `confirmed` |
+| "CloudEvent provenance is a fixed constant" | Source behavior/location | `rg -n 'IngestedByEvents' src/Hexalith.Memories.EventStore/CloudEventToIngestionInputMapper.cs` | A constant declared at line 35 and assigned at line 82, not an authenticated `system:*` principal. | `confirmed` |
+| "Six internal sites copy an existing `IngestedBy` value" | Source behavior/location | `rg -n -e 'IngestedBy = record.IngestedBy' -e 'IngestedBy = artifact.IngestedBy' -e 'IngestedBy = input.IngestedBy' src --type cs -g '!*Test*'` | Six matches. Three preserve or propagate an already-assigned value and are the inventory test's permitted exceptions: `ReIngestionCoordinator.cs` line 175, `ApplyDerivedStoreCorrectionActivity.cs` line 84, and `IngestionWorkflow.cs` line 314. Three carry the annotation path's caller-supplied value — `CaseService.cs` line 212, `ScheduleAnnotationIngestionActivity.cs` line 38, and `AnnotationProjectionWorkflow.cs` line 91 — which the first criterion's annotation path replaces at its source. **[Corrected 2026-10-08 during registration: the first draft of this row listed three sites.]** | `confirmed` |
+| FR65: "`ingested_by` as a mandatory field … caller-supplied provenance cannot override it" | Location/requirement | `rg -n '^- \*\*FR65:\*\*' _bmad-output/planning-artifacts/prd.md` | Line 1095. | `confirmed` |
 
 
 ### Story 34.28: Bound tenant work admission and fairness
@@ -7275,14 +7505,18 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR8, FR69; NFR5/NFR13/NFR22; AD-18.
 
 As an operator,
-I want per-tenant and global queues that admit interactive work fairly,
-So that one tenant’s batch or repair cannot starve another.
+I want measured per-tenant admission, concurrency, and queue behavior under mixed load,
+So that one tenant's batch or repair work cannot starve another tenant's interactive work.
 
 **Acceptance Criteria:**
 
-**Given the PRD three-tenant mixed workload, when interactive queries, small ingests, batch work and repair run together, then the declared admission/concurrency budgets, queue caps, cap-plus-one refusal, and five-second eligible admission are measured with per-tenant outcomes.**
+**Given** the PRD's three-tenant mixed workload,
+**When** interactive queries, small ingests, batch work, and repair run together,
+**Then** the declared admission and concurrency budgets, queue caps, cap-plus-one refusal, and five-second eligible admission are measured with per-tenant outcomes in one re-runnable evidence packet.
 
-**Given provider Retry-After or a full queue, when work is accepted or refused, then durable timing and retry guidance are visible and no accepted unit is silently dropped.**
+**Given** a provider `Retry-After` or a full queue,
+**When** work is accepted or refused,
+**Then** durable timing and retry guidance are visible, retries wait on workflow timers rather than in memory, and no accepted unit is silently dropped.
 
 #### Dev Notes
 
@@ -7291,18 +7525,24 @@ So that one tenant’s batch or repair cannot starve another.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.28 definition | `historical-reference-only` | Retain the ID and goal; restated on 2026-10-08 under the user's standing approval, adding the workflow-timer retry behavior verification found. |
 
 ##### Slice Proof
 
-One measurable admission/fairness policy is the slice; latency evidence is assessed in Epic 35.
+One measurable admission and fairness policy is the independently demonstrable outcome; one workload run produces the whole evidence packet. Its two criteria cover the mixed-load measurement and retry and refusal behavior. Latency qualification is assessed in Epic 35. **Storage capacity is not work admission:** AD-4 makes the tenant content store's capacity an AD-18 tenant quota, which is planned Story 34.58; the PRD declares no per-tenant storage budget, so drafting Story 34.58 needs that number declared first. This planning record supplies no complete FR8, FR69, NFR5, NFR13, or NFR22 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "PerTenantConcurrencyGate currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs` | The class exists; the PRD mixed-load contract remains to measure. | `confirmed` |
+| "PerTenantConcurrencyGate currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Ingestion/PerTenantConcurrencyGate.cs` | Exit 0; the PRD mixed-load contract remains to measure. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Provider Retry-After already reaches durable workflow timers" | Source behavior/location | `sed -n '151,154p' src/Hexalith.Memories.Server/Activities/Ingestion/GenerateEmbeddingActivity.cs`; `rg -n 'context.CreateTimer' src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` | The activity normalizes `Retry-After` and throws `EmbeddingRateLimitException` (lines 151–154); the workflow waits with `context.CreateTimer` at lines 721 and 726. Only a small jitter delay is held in memory (line 122). | `confirmed` |
+| "The PRD declares no per-tenant storage budget" | Existence/absence | `rg -n -i -e 'storage quota' -e 'content.store.{0,30}quota' _bmad-output/planning-artifacts/prd.md` | No match, exit 1; the PRD's quota language covers rate limiting and the embedding throttle (lines 304 and 760). | `confirmed` |
+| AD-18: "Give tenant and global quotas separate owners"; AD-4: "its capacity is an AD-18 tenant quota" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Lines 213 and 113. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.29: Report capability-aware server readiness
@@ -7310,14 +7550,19 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR72; AD-10/AD-21.
 
 As an operator,
-I want health to distinguish platform admission from one search-axis outage,
-So that traffic can continue safely without hiding a lost capability.
+I want readiness to fail on lost platform authority and to report a single search-axis outage as degradation,
+So that traffic continues safely without hiding a lost capability.
 
 **Acceptance Criteria:**
 
-**Given authentication, Dapr control and EventStore command dependencies, when readiness is queried, then it reports unavailable authority or lineage as unready.**
+**Given** authentication configuration, the Dapr control boundary, EventStore command availability, and AD-21's population marker and register lineage,
+**When** readiness is queried,
+**Then** any unavailable one reports the service unready with HTTP 503.
 
-**Given one search backend outage with a safe selected axis, when readiness and search are queried, then service readiness remains available and the affected capability reports degradation; no-safe-axis search fails explicitly.**
+**Given** one search backend outage with a safe selected axis,
+**When** readiness and search are queried,
+**Then** readiness stays available with HTTP 200 and the affected capability reported as degraded,
+**And** a search with no safe axis fails explicitly.
 
 #### Dev Notes
 
@@ -7326,18 +7571,24 @@ So that traffic can continue safely without hiding a lost capability.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.29 definition | `historical-reference-only` | Retain the ID and goal; restated on 2026-10-08 under the user's standing approval with the spine's readiness dependency list. |
 
 ##### Slice Proof
 
-One readiness result with capability health is the slice; selected-axis packet reporting is Epic 33.
+One readiness result with capability health is the independently demonstrable outcome. Its two criteria cover fail-closed platform authority and degraded-but-ready search. The second criterion is largely current behavior — search backends already fail as `Degraded`, which maps to HTTP 200 — and becomes a regression test; the first adds the authentication, EventStore, and register-lineage checks that do not exist today. Execution consumes Story 34.51's lineage verification. Selected-axis packet reporting is Epic 33. This planning record supplies no complete FR72 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "DaprSidecarHealthCheck and RediSearchHealthCheck exist" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/HealthChecks/DaprSidecarHealthCheck.cs && test -f src/Hexalith.Memories.Server/HealthChecks/RediSearchHealthCheck.cs` | Both health-check files exist. | `confirmed` |
+| "DaprSidecarHealthCheck and RediSearchHealthCheck exist" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/HealthChecks/DaprSidecarHealthCheck.cs && test -f src/Hexalith.Memories.Server/HealthChecks/RediSearchHealthCheck.cs` | Exit 0. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Search backends already fail as Degraded, which readiness maps to HTTP 200" | Source behavior/location | `sed -n '168,194p' src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs`; `sed -n '630,633p;645,648p' src/Hexalith.Memories.ServiceDefaults/Extensions.cs` | `dapr-sidecar` and `dapr-statestore` fail as `Unhealthy`; `redisearch`, `redis-vector`, and `falkordb` fail as `Degraded`; `redis-ping` fails as `Unhealthy`; `Degraded` maps to 200 and `Unhealthy` to 503. | `confirmed` |
+| "No readiness check covers authentication, EventStore, or the register lineage" | Existence/absence | `ls src/Hexalith.Memories.Server/HealthChecks/`; `rg -l -i -e 'EventStore\w*HealthCheck' -e 'Oidc\w*HealthCheck' -e 'Authority\w*HealthCheck' -e 'Register\w*HealthCheck' -e 'Lineage\w*HealthCheck' src --type cs -g '!*Test*'` | Five health-check files (Dapr sidecar, Dapr state store, RediSearch, Redis vector, FalkorDB); the pattern search finds none (exit 1). | `confirmed` |
+| Spine health convention: "Readiness requires authentication configuration, the Dapr control boundary, EventStore command availability, and AD-21's expected tenant-population marker and register-lineage" | Location/design | `grep -n -o -F` on the quoted phrase in SPINE | Line 275. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.30: Repair only from authoritative revisions
@@ -7345,14 +7596,19 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR73–FR74; AD-2/AD-3.
 
 As an operator,
-I want a dry-run/apply repair that cannot invent unsupported edges,
-So that divergence cleanup preserves EventStore truth and tenant scope.
+I want consistency repair to propose and apply changes only from authoritative EventStore revisions,
+So that a repair can never invent or resurrect projected content.
 
 **Acceptance Criteria:**
 
-**Given a tenant-scoped consistency report, when dry-run is requested, then every proposed change cites the current authoritative EventStore revision and previews any deletion or edge creation.**
+**Given** a tenant-scoped consistency report,
+**When** dry-run is requested,
+**Then** every proposed change cites the unit's current authoritative EventStore revision and previews any deletion or edge creation,
+**And** no proposal is derived from cross-backend presence alone.
 
-**Given apply, when the operator confirms, then writes use the active tuple and tenant fence, unsupported edges are refused, and deletions emit sanitized access telemetry with a rerunnable before/after report.**
+**Given** apply,
+**When** the operator confirms,
+**Then** writes use the active tuple and the tenant write fence, unsupported edges are refused, and deletions emit sanitized access telemetry with a re-runnable before-and-after report.
 
 #### Dev Notes
 
@@ -7361,33 +7617,44 @@ So that divergence cleanup preserves EventStore truth and tenant scope.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 8.2 (origin of the current repair activity, per its source comment) | `historical-reference-only` | Dependency context for the presence-based repair being replaced. Its story shape, tasks, and proof are not reused. |
 
 ##### Slice Proof
 
-One provenance-safe repair operation is the slice; full replay after store loss is 34.5.
+One provenance-safe repair operation is the independently demonstrable outcome. Its two criteria cover the authoritative dry-run and the fenced apply. Today repair decides from which backends hold a unit, not from EventStore truth, and has no dry-run. Execution consumes Stories 34.1 and 34.2 (the EventStore unit truth that does not exist yet), Story 34.3's tuple, Story 34.14's fence, and Story 34.46's captured repair authority. Full replay after store loss is Story 34.5. This planning record supplies no complete FR73 or FR74 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "ConsistencyRepairWorkflow currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/ConsistencyRepairWorkflow.cs` | The workflow file exists; current-authority semantics require separate proof. | `confirmed` |
+| "ConsistencyRepairWorkflow currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/ConsistencyRepairWorkflow.cs` | Exit 0. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Repair plans come from cross-backend presence, not EventStore revisions" | Source behavior/location | `sed -n '10,14p' src/Hexalith.Memories.Server/Consistency/RepairPlanCalculator.cs`; `rg -n -i -e 'eventstore' -e 'sourceVersion' -e 'revision' src/Hexalith.Memories.Server/Consistency/RepairPlanCalculator.cs src/Hexalith.Memories.Server/Activities/Indexing/RepairUnitActivity.cs` | The calculator is a "pure mapping from the three backend-presence booleans"; neither file mentions EventStore, source version, or revision (exit 1). | `confirmed` |
+| "Repair has no dry-run" | Existence/absence | `rg -l -i 'DryRun' src --type cs -g '!*Test*'` | Four files, all embedding migration or CLI quickstart; none in consistency repair. | `confirmed` |
+| "Ingested units have no EventStore truth yet" | Existence/absence | Story 34.5's Epic AC Verification rows 2 and 3 | No ingestion event or `AcceptAsync` call on any ingestion path. | `confirmed` |
+| "Story 8.2 carries no anti-template language" | Existence/absence | `awk '/^### Story 8\.2:/,/^### Story 8\.4:/' _bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'Historical Scope Guard' -e 'historical broad' -e 'must split' -e 'do not reopen'` | No match, exit 1. Epic 8 has no Story 8.3 heading, so a range ending at "Story 8.3" overruns into Story 8.5's scope guard; the range must end at Story 8.4. | `confirmed` |
 
 
 ### Story 34.31: Activate a Phase 1 embedding rebuild epoch
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR43, FR70; AD-14.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR6, FR43, FR70; AD-2/AD-14.
 
 As an operator,
-I want one atomic tenant cutover after current-revision backfill,
-So that model changes do not mix old and new vectors in live answers.
+I want an embedding or schema change rebuilt from authoritative truth under a new epoch and activated atomically for the tenant,
+So that queries and writes never mix old and new representations.
 
 **Acceptance Criteria:**
 
-**Given an acknowledged embedding or schema change, when a Phase 1 rebuild starts, then a new declared epoch backfills from EventStore truth, catches up the authoritative tail, and keeps the old epoch active until all required projections verify.**
+**Given** an acknowledged embedding or schema change,
+**When** a Phase 1 rebuild starts,
+**Then** a new declared `(schemaGeneration, embeddingConfigurationEpoch)` pair is backfilled on every axis from EventStore truth and the tenant content store — never from Redis projections — and catches up the authoritative tail,
+**And** the old pair stays active until every required projection verifies.
 
-**Given verification success or failure, when activation or rollback occurs, then one tenant-wide atomic active-epoch value controls every query/write and retired epoch records are removed only after verified cutover.**
+**Given** verification success or failure,
+**When** activation or rollback occurs,
+**Then** one tenant-wide atomic active-pair value switches every query and write together,
+**And** records of the retired pair are removed only after a verified cutover.
 
 #### Dev Notes
 
@@ -7396,18 +7663,24 @@ So that model changes do not mix old and new vectors in live answers.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Current "Path A" embedding vector migration | `historical-reference-only` | Dependency context only. Its dry-run, resume, and rollback modes are observable today, but its re-embedding source (the Redis syntactic projection) contradicts AD-2 and its per-index alias cutover is not the tenant-wide pair; neither is reused. |
 
 ##### Slice Proof
 
-One Phase 1 rebuild/cutover is the slice; Phase 2+ staged resources are not imported.
+One Phase 1 rebuild and atomic cutover is the independently demonstrable outcome. Its two criteria cover backfill from authoritative truth and atomic activation or rollback. Execution consumes Story 34.3's pair-scoped documents and provisioning-initialized active pair, Story 34.5's replay from EventStore truth, and Story 34.12's tenant content store. Phase 2+ staged resources are not imported. This planning record supplies no complete FR6, FR43, or FR70 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "RedisEmbeddingMigrationStore currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs` | The migration store exists for current-path inspection. | `confirmed` |
+| "RedisEmbeddingMigrationStore currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Migration/RedisEmbeddingMigrationStore.cs` | Exit 0. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "The current migration re-embeds content read from the Redis syntactic projection" | Source behavior/location | `sed -n '14p' src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs`; `rg -n 'unit.Content' src/Hexalith.Memories.Server/Migration/EmbeddingVectorMigrationService.cs` | A dry-run, live, resume, and rollback service (line 14) that validates and embeds `unit.Content` from the syntactic hash (lines 456 and 463). | `confirmed` |
+| "Cutover today is a per-semantic-index alias, not a tenant-wide pair" | Source behavior/location | `rg -n -e 'public static string GetSemanticActiveAliasName' -e ':previous:' -e 'public static string GetNaturalLanguageSemanticActiveAliasName' src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs` | Active and previous aliases for the semantic and natural-language indexes at lines 130, 138, 215, and 223; no generation or epoch exists anywhere (Story 34.3 row 2). | `confirmed` |
+| AD-14: "and activates it atomically for the tenant when its verification succeeds"; "The tenant migration workflow owns create, backfill, authoritative-tail catch-up, verification, activation, and resumable retire" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Lines 177 and 179. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.32: Provision and erase access-telemetry partitions
@@ -7415,14 +7688,19 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR67; NFR34; AD-6/AD-17.
 
 As an operator,
-I want telemetry state owned by tenant lifecycle,
-So that erasure can bound retained telemetry and its reader set.
+I want each tenant's access-telemetry partition provisioned and erased by the tenant lifecycle,
+So that telemetry storage follows the same ownership and erasure rules as every other tenant resource.
 
 **Acceptance Criteria:**
 
-**Given tenant provisioning, when its lifecycle reaches Active, then the telemetry principal or partition, TTL and approved readers are recorded as tenant resources.**
+**Given** tenant provisioning,
+**When** its lifecycle reaches `Active`,
+**Then** the telemetry principal or partition, its TTL, and its approved readers are recorded as tenant resources.
 
-**Given verified tenant erasure, when telemetry handoff runs, then its partition/mapping purge and retained opaque TTL are evidenced without blocking accepted product mutations beyond the approved bound.**
+**Given** verified tenant erasure,
+**When** the telemetry handoff runs,
+**Then** its partition and mapping purge and the retained opaque TTL are evidenced,
+**And** accepted product mutations are not blocked beyond the approved bound.
 
 #### Dev Notes
 
@@ -7431,18 +7709,20 @@ So that erasure can bound retained telemetry and its reader set.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Epic 27 access-telemetry C1 delivery work (active in a concurrent session) | `historical-reference-only` | Separate approved gates; not duplicated or reopened by this story. |
 
 ##### Slice Proof
 
-One lifecycle-owned telemetry resource is the slice; the separate approved C1 delivery gates are not duplicated.
+One lifecycle-owned telemetry resource is the independently demonstrable outcome. Its two criteria cover provisioning and erasure handoff. Today the telemetry bootstrap loads retention and marker-key material at startup, and nothing provisions a per-tenant partition through the lifecycle. Execution consumes Story 34.44's operator-authorized provisioning. The tenant telemetry representation mapping is Story 34.38. The separate approved C1 delivery gates are not duplicated. This planning record supplies no complete FR39, FR67, or NFR34 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "AccessTelemetryLifecycleBootstrapService currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleBootstrapService.cs` | The bootstrap service exists; tenant partition ownership remains to prove. | `confirmed` |
+| "AccessTelemetryLifecycleBootstrapService currently exists" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleBootstrapService.cs` | Exit 0. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "The telemetry bootstrap loads startup material and does not provision tenant partitions" | Source behavior/location | `sed -n '14p' src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleBootstrapService.cs`; `rg -l -i -e 'ProvisionPartition' -e 'TenantPartition' -e 'PartitionProvision' src --type cs -g '!*Test*'` | The service "loads authoritative retention and marker-key material without blocking business startup"; no lifecycle partition provisioning exists (exit 1). Pattern-scoped. | `confirmed` |
 
 
 ### Story 34.33: Reserve V1 wire names in one build guard
@@ -7495,15 +7775,19 @@ Verified 2026-10-05 against `main` at baseline `b31d1352` and its current worktr
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** AD-12/AD-22; FR19; G5.
 
-As a gate reviewer,
-I want unavailable evidence represented explicitly in every active JSON form,
-So that absence cannot masquerade as an omitted result.
+As a developer,
+I want every evidence-bearing nullable property serialized as an explicit `null`,
+So that a G5 byte-equality claim compares like with like.
 
 **Acceptance Criteria:**
 
-**Given an evidence-bearing nullable property has no value, when REST and the compatibility CLI serialize it, then the JSON includes an explicit `null` and the canonical packet fixture matches.**
+**Given** an evidence-bearing nullable property with no value,
+**When** a current V1 REST producer serializes it,
+**Then** the JSON includes an explicit `null` and the canonical packet fixture matches.
 
-**Given a producer or serializer is configured to omit that property, when contract tests run, then the test fails before a G5 byte-equality claim can be made.**
+**Given** a producer or serializer configured to omit that property,
+**When** contract tests run,
+**Then** they fail before any G5 byte-equality claim can be made.
 
 #### Dev Notes
 
@@ -7512,18 +7796,21 @@ So that absence cannot masquerade as an omitted result.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.34 definition ("REST and the compatibility CLI") | `historical-reference-only` | Retain the ID and goal. Its "compatibility CLI" surface is an obsolete asset under the approved 2026-09-27 McpCli course correction, so the criteria now name V1 REST producers; McpCli presentation parity is Epic 32's. |
 
 ##### Slice Proof
 
-One null-preserving evidence serialization rule across current V1 producers is the outcome; Story 34.33 reserves its names.
+One null-preserving evidence serialization rule across current V1 producers is the independently demonstrable outcome. Its two criteria cover explicit nulls and the failing contract test. Seven evidence contract types omit nulls today; one shared contract test covers all of them. Story 34.33 reserves the wire names. This planning record supplies no G5 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "EvidencePacketFreshness currently opts nullable fields out of JSON" | Behavior/location | `rg -n "JsonIgnoreCondition.WhenWritingNull" src/Hexalith.Memories.Contracts/V1/EvidencePacketFreshness.cs` | The current V1 type has null-omitting attributes. | `confirmed` |
+| "EvidencePacketFreshness currently opts nullable fields out of JSON" | Behavior/location | `rg -n "JsonIgnoreCondition.WhenWritingNull" src/Hexalith.Memories.Contracts/V1/EvidencePacketFreshness.cs` | Lines 18–21. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Seven evidence contract types omit nulls" | Quantitative/location | `rg -l "JsonIgnoreCondition.WhenWritingNull" src/Hexalith.Memories.Contracts/V1 \| rg -i -e 'evidence' -e 'freshness'` | `EvidencePacket`, `EvidencePacketMetadata`, `EvidencePacketFreshness`, `EvidencePacketMcpSchema`, `EvidencePacketBenchmarkQuery`, `EvidencePacketBenchmarkEvidence`, and `EvidencePacketIngestionMetadata`; 20 V1 contract files use the attribute in total. | `confirmed` |
+| "The Memories CLI is an obsolete compatibility asset" | Location/decision | `rg -n -o 'Stories 7.1, 10.1, and 25.5–25.6 name obsolete Memories CLI/MCP compatibility assets' _bmad-output/planning-artifacts/epics.md` | Present at line 84, in the approved 2026-09-27 McpCli course correction. The previous criterion's "compatibility CLI" surface is therefore replaced. | `corrected` |
 
 
 ### Story 34.35: Enforce the V1 tenant lifecycle transition graph
@@ -7536,9 +7823,14 @@ So that deactivation and terminal erasure cannot be inferred from stale resource
 
 **Acceptance Criteria:**
 
-**Given an operator-authorized tenant transition is requested, when the lifecycle workflow runs, then the V1 enum includes `Deactivated` and `Erased`, permitted nonterminal transitions commit before side effects, and the content-free platform projection records the result.**
+**Given** an operator-authorized tenant transition,
+**When** the lifecycle workflow runs,
+**Then** the V1 enum includes `Deactivated` and `Erased`, permitted non-terminal transitions commit before side effects, and the content-free platform projection records the result.
 
-**Given release intent, deletion, or terminal erasure is requested out of order, when the transition guard evaluates the request, then it refuses the invalid path; `Erased` derives only from the irreversible register tombstone and cannot be reactivated.**
+**Given** a transition outside AD-6's legal graph — including deletion while a release intent is active, or erasure out of order —
+**When** the transition guard evaluates it,
+**Then** it refuses the invalid path,
+**And** `Erased` derives only from the irreversible register tombstone and can never be reactivated.
 
 #### Dev Notes
 
@@ -7550,15 +7842,16 @@ So that deactivation and terminal erasure cannot be inferred from stale resource
 
 ##### Slice Proof
 
-One V1 transition graph and persisted state projection is the outcome; resource purge remains Stories 34.16–34.24.
+One V1 transition graph and persisted state projection is the independently demonstrable outcome. Its two criteria cover legal transitions and the guard. Today the tenant aggregate accepts any status change other than a no-op, so the graph does not exist. Execution consumes Stories 34.44 and 34.48 for operator-authorized transitions, Story 34.57's release-intent records, Story 34.24's tombstone, and Story 34.33's register for the additive enum values. Resource purge remains Stories 34.16–34.24, 34.45, 34.55, and 34.56. This planning record supplies no complete FR38, FR39, or FR71 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantStatus currently declares Provisioning, Active, Deleting, Failed and CompensationFailed" | Existence/behavior | `sed -n "8,45p" src/Hexalith.Memories.Contracts/V1/TenantStatus.cs` | The enum lists the five current values, with no Deactivated or Erased. | `confirmed` |
+| "TenantStatus currently declares Provisioning, Active, Deleting, Failed and CompensationFailed" | Existence/behavior | `sed -n "8,45p" src/Hexalith.Memories.Contracts/V1/TenantStatus.cs` | The enum lists the five current values, with no `Deactivated` or `Erased`. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "The tenant aggregate enforces no transition graph" | Source behavior/location | `sed -n '30,38p' src/Hexalith.Memories.EventStore/Domain/Aggregates/MemoriesTenantAggregate.cs` | `Handle(UpdateTenantLifecycleStatusCommand)` emits a status event for any change and no-ops only when the status is unchanged. | `confirmed` |
 
 
 ### Story 34.36: Issue canonical ULIDs for every new case and memory unit
@@ -7615,19 +7908,25 @@ Verified 2026-10-08 against `main` at `dbe4ce0a`; source is unchanged from `0b59
 `SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
-### Story 34.37: Keep backend SDKs behind extraction points
+### Story 34.37: Guard the provider boundary and extract search adapters
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR15; AD-1/AD-7.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR15; AD-1/AD-7/AD-8.
 
-As a maintainer,
-I want domain-facing search and projection behavior expressed without Redis or FalkorDB SDK types,
-So that a backend replacement can preserve the V1 contract.
+As a developer,
+I want an architecture test that confines provider SDKs to composition roots and named adapter namespaces, with search moved behind them,
+So that provider clients cannot leak further into domain code while the remaining extraction proceeds.
 
 **Acceptance Criteria:**
 
-**Given domain search, projection and consistency logic is reviewed, when provider access is extracted, then concrete Redis and FalkorDB calls remain in adapters while domain-facing operations and tests use provider-neutral values.**
+**Given** the Server assembly,
+**When** the provider-boundary architecture test runs,
+**Then** it fails for any `StackExchange.Redis` or FalkorDB client reference outside composition roots and the `Adapters.Redis` and `Adapters.FalkorDb` namespaces, except files on an explicit allowlist that may only shrink,
+**And** adding a new violation or growing the allowlist fails the build.
 
-**Given a backend adapter is substituted in contract tests, when the tests run, then tenant scope, ranking inputs, projection tuple and error semantics remain identical; the extraction points are documented.**
+**Given** the search and consistency services,
+**When** their provider access is extracted,
+**Then** concrete Redis and FalkorDB calls live only in the adapter namespaces and are removed from the allowlist,
+**And** a contract test that substitutes a search adapter keeps tenant scope, ranking inputs, and error semantics identical.
 
 #### Dev Notes
 
@@ -7636,33 +7935,43 @@ So that a backend replacement can preserve the V1 contract.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.37 definition ("Keep backend SDKs behind extraction points") | `historical-reference-only` | Retain the ID and goal. Its whole-server extraction moves in part to planned Story 34.59; narrowed on 2026-10-08 under the user's standing approval. |
 
 ##### Slice Proof
 
-One provider boundary and architecture test is the outcome; no speculative second backend is required.
+One enforced provider boundary, plus the search and consistency extraction, is the independently demonstrable outcome. Its two criteria cover the ratcheting architecture test and the extracted, substitutable search adapters. 89 Server files import the Redis SDK today, 49 of them in domain-facing areas, so the whole extraction is not one session; the 40 activity files and the graph query sites outside `Graph/` move in planned Story 34.59, and the allowlist must be empty before production qualification. No speculative second backend is required. This planning record supplies no complete NFR15 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "NaturalLanguageSemanticSearchService currently imports StackExchange.Redis" | Existence/location | `rg -n "using StackExchange.Redis" src/Hexalith.Memories.Server/Search/NaturalLanguageSemanticSearchService.cs` | A search service directly imports the Redis SDK. | `confirmed` |
+| "NaturalLanguageSemanticSearchService currently imports StackExchange.Redis" | Existence/location | `rg -n "using StackExchange.Redis" src/Hexalith.Memories.Server/Search/NaturalLanguageSemanticSearchService.cs` | Line 22. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "89 Server files import the Redis SDK, 49 in domain-facing areas" | Quantitative | `rg -l 'using StackExchange.Redis' src/Hexalith.Memories.Server --type cs \| wc -l`; the same per area for `Search`, `Activities`, `Consistency`, and `Workflows`; `rg -l -e 'GRAPH\.QUERY' -e 'IGraphQueryBuilder' src/Hexalith.Memories.Server --type cs \| rg -v '/Graph/' \| wc -l` | 89 in total; Search 6, Activities 40, Consistency 3, Workflows 0; 20 graph-query sites outside `Graph/`. | `confirmed` |
+| AD-8: provider SDKs confined to named adapter namespaces, "enforced by an architecture test **still to be added**" | Location/design | `grep -n -o -F 'enforced by an architecture test **still to be added**' SPINE`; `rg -l 'namespace Hexalith.Memories.Server.Adapters' src --type cs` | Spine line 141; no adapter namespace exists (exit 1). | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.38: Expire the tenant telemetry representation mapping
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR67; NFR34; AD-16/AD-17/AD-21.
 
-As a privacy reviewer,
-I want a bounded reader set and mapping purge tied to last retained record,
-So that erasure cannot leave a reusable tenant identity bridge.
+As an operator,
+I want the opaque tenant representation used by access telemetry governed by enumerated readers and a retention-bound lifetime,
+So that telemetry cannot outlive erasure as a tenant identifier.
 
 **Acceptance Criteria:**
 
-**Given the telemetry retention plane derives an opaque tenant representation, when the mapping is used, then the operator artifact enumerates its readers and every use is recorded against the governed retention period.**
+**Given** the telemetry retention plane derives an opaque tenant representation,
+**When** the mapping is used,
+**Then** the operator artifact enumerates its readers and every use is recorded against the governed retention period.
 
-**Given the last record using a mapping is purged, when erasure completion is assessed, then the mapping and reader access are removed, the AD-21 register records proof, and an unavailable purge target blocks completion.**
+**Given** the last record using a mapping is purged,
+**When** erasure completion is assessed,
+**Then** the mapping and reader access are removed and the AD-21 register records the proof,
+**And** an unavailable purge target blocks completion.
 
 #### Dev Notes
 
@@ -7671,18 +7980,21 @@ So that erasure cannot leave a reusable tenant identity bridge.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Epic 27 access-telemetry C1 delivery work (active in a concurrent session) | `historical-reference-only` | Separate approved gates; not duplicated or reopened by this story. |
 
 ##### Slice Proof
 
-One AD-17 mapping lifetime and purge proof is the outcome; Story 34.32 owns partition lifecycle.
+One AD-17 mapping lifetime and purge proof is the independently demonstrable outcome. Its two criteria cover governed use and removal at erasure. Story 34.32 owns the partition lifecycle; Story 34.8 owns the operator artifact; Story 34.24 owns the register proof. This planning record supplies no complete FR39, FR67, or NFR34 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "AccessTelemetryLifecycleBootstrapService currently loads marker-key material" | Existence/location | `rg -n "MarkerKeyReference" src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleBootstrapService.cs` | The bootstrap resolves a marker-key reference; tenant mapping lifecycle remains to implement. | `confirmed` |
+| "AccessTelemetryLifecycleBootstrapService currently loads marker-key material" | Existence/location | `rg -n "MarkerKeyReference" src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleBootstrapService.cs` | Lines 56 and 58 resolve the marker-key reference. Re-run unchanged from 2026-10-05. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.39: Publish Redis memory sizing by unit shape
@@ -7690,14 +8002,18 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** NFR14; AD-18.
 
 As an operator,
-I want a measured memory-per-unit guide by vector dimension and metadata size,
+I want a reproducible Redis sizing guide for every supported vector dimension and metadata size,
 So that tenant capacity can be estimated before provisioning.
 
 **Acceptance Criteria:**
 
-**Given supported vector dimensions and metadata sizes are measured on the qualified Redis profile, when the sizing guide is published, then it records per-unit memory, fixed overhead, sample counts, method and bounded variance with a repeatable measurement command.**
+**Given** the supported vector dimensions and metadata sizes on the qualified Redis profile,
+**When** the sizing guide is published,
+**Then** it extends `docs/operations/capacity-planning.md` with per-unit memory, fixed overhead, sample counts, method, and bounded variance for each supported dimension, using a repeatable measurement command.
 
-**Given a profile, index schema or vector dimension changes, when the sizing verification runs, then the guide is regenerated or fails as stale before capacity approval.**
+**Given** a changed profile, index schema, or vector dimension,
+**When** the sizing verification runs,
+**Then** the guide is regenerated or fails as stale before capacity approval.
 
 #### Dev Notes
 
@@ -7706,33 +8022,42 @@ So that tenant capacity can be estimated before provisioning.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Existing capacity-planning guide (768-dimension anchor) | `current-narrow-pattern` | Its measurement method and commands, re-verified on 2026-10-08; its single measured anchor is not a scale guarantee. |
 
 ##### Slice Proof
 
-One reproducible NFR14 sizing guide is the outcome; no new product surface is introduced.
+One reproducible NFR14 sizing guide is the independently demonstrable outcome. Its two criteria cover per-dimension measurement and staleness. The existing guide measures one anchor — 35 units at 768 dimensions — and says itself that the anchor must not be scaled to other dimensions. No new product surface is introduced. This planning record supplies no complete NFR14 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "IndexSchemaDefinitions reads vector dimensions from Redis index information" | Behavior/location | `rg -n "TryGetVectorDimensions" src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs` | The implementation contains vector-dimension inspection for current indexes. | `confirmed` |
+| "IndexSchemaDefinitions reads vector dimensions from Redis index information" | Behavior/location | `rg -n "TryGetVectorDimensions" src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs` | Called at line 516 and defined at line 598. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "A sizing guide exists with one measured anchor" | Existence/location | `sed -n '64p;75p;77,78p;88,90p' docs/operations/capacity-planning.md` | 35 units at 768 dimensions (line 64), measured byte rows (lines 75–78), and an explicit warning that the anchor is not reusable for another dimension (lines 88–90). | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.40: Bring telemetry V1 routes under the contract catalogue
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** AD-12/AD-17/AD-19; FR67; G6.
 
-As a contract consumer,
-I want a single published-or-internal decision for telemetry V1 wire contracts,
-So that served routes cannot escape the V1 name and error rules.
+As a developer,
+I want every active access-telemetry and clock `/v1` route registered in the V1 catalogue or explicitly marked internal,
+So that no telemetry contract becomes public by accident.
 
 **Acceptance Criteria:**
 
-**Given access-telemetry and clock `/v1` routes are active, when their contracts are inventoried, then each wire name and error maps to the Story 34.33 register and V1 catalogue; the AD-19 inventory explicitly publishes the plane or marks it internal.**
+**Given** the active access-telemetry and clock `/v1` routes,
+**When** their contracts are inventoried,
+**Then** each wire name and error maps to the Story 34.33 register and V1 catalogue,
+**And** the AD-19 inventory explicitly publishes the plane or marks it internal.
 
-**Given a consumer reaches an unregistered telemetry route or undocumented contract, when conformance checks run, then the build or gate fails and no public availability claim is made.**
+**Given** a consumer reaching an unregistered telemetry route or undocumented contract,
+**When** conformance checks run,
+**Then** the build or gate fails and no public-availability claim is made.
 
 #### Dev Notes
 
@@ -7741,18 +8066,21 @@ So that served routes cannot escape the V1 name and error rules.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Epic 27 access-telemetry C1 delivery work (active in a concurrent session) | `historical-reference-only` | The C1 delivery gates keep their separate owners; not duplicated. |
 
 ##### Slice Proof
 
-One telemetry-plane contract decision and conformance fixture is the outcome; the C1 delivery gates retain their separate owners.
+One telemetry-plane contract decision and conformance fixture is the independently demonstrable outcome. Its two criteria cover inventory and failing conformance. Execution consumes Story 34.33's register. This planning record supplies no G6 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Restated under the user's standing approval. The criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "AccessTelemetry.Contracts is currently a separate source assembly" | Existence/location | `test -f src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryRecord.cs` | The separate contract source exists; its V1 catalogue disposition remains to decide. | `confirmed` |
+| "AccessTelemetry.Contracts is currently a separate source assembly" | Existence/location | `test -f src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryRecord.cs` | Exit 0; its V1 catalogue disposition remains to decide. Re-run unchanged from 2026-10-05. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.41: Materialize provisioning grants from lifecycle evidence
@@ -7964,6 +8292,44 @@ Verified 2026-10-08 against `main` at `0b59bba5`. The approved criteria are impl
 | "Before this revision, no epics.md story owns operator authorization of provisioning" | Existence/absence | `git show 0b59bba5:_bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'operator[- ]authori[sz]ed (tenant )?provisioning' -e 'provisioning .{0,40}operator principal' -e 'AutoProvisionRoutedTenants' -e 'startup-initiated provisioning'` | No match, exit 1. This is a pattern-scoped absence check. | `confirmed` |
 
 
+### Story 34.45: Revoke tenant grants at erasure completion
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39, FR44; NFR10; AD-5/AD-16.
+
+As an operator,
+I want verified revocation of every per-tenant grant,
+So that erasure completion covers every tenant target AD-16 enumerates.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains the tenant's per-tenant grants, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Stories 34.16–34.22 (current purge range) | `current-narrow-pattern` | Only their two-criterion purge template, re-verified on 2026-10-08; each story names one target class and its own evidence. |
+| Story 34.9 split note (2026-10-08) | `historical-reference-only` | Source of this planned story's ID and scope. |
+
+##### Slice Proof
+
+One independently reviewable purge result for the tenant's grants; readback also proves Story 34.9 admission refuses every former grantee. Grants are written by Stories 34.41 and 34.42. AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26, Stories 34.32 and 34.38, and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. This planning record supplies no complete FR39, FR44, or NFR10 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| AD-5: "every grant is revoked as a completion condition of AD-16 erasure" | Location/design | `grep -n -o -F 'every grant is revoked as a completion condition of AD-16 erasure' SPINE` | Line 119. Design intent only. | `confirmed` |
+| "No grant exists in source yet" | Existence/absence | Story 34.9's Epic AC Verification row 7 | No tenant grant in source; Stories 34.41 and 34.42 create one. | `confirmed` |
+
+
 ### Story 34.46: Revalidate captured tenant authority in workflows and activities
 
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR44 (partial); NFR10; AD-4/AD-5.
@@ -8128,6 +8494,539 @@ Verified 2026-10-08 against `main` at `3e18d0dc`, whose source and spine are unc
 | "The deletion workflow is scheduled without a principal" | Existence/location | `rg -n 'new TenantDeletionInput' src/Hexalith.Memories.Server/Endpoints/TenantLifecycleEndpoints.cs`; `sed -n '13p' src/Hexalith.Memories.Contracts/V1/TenantDeletionInput.cs` | `new TenantDeletionInput(tenantId)` at line 470; the only constructor is `TenantDeletionInput(string tenantId)` at line 13. | `confirmed` |
 | "Story 5.2 specified no initiation authority" | Existence/absence | `awk '/^### Story 5\.2:/,/^### Story 5\.3:/' _bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'authori' -e 'admin' -e 'tenant claim'` | No match, exit 1. | `confirmed` |
 | "Before this revision, no Epic 34 story owns operator authority for tenant deletion or verification" | Existence/absence | `git show 3e18d0dc:_bmad-output/planning-artifacts/epics.md \| awk '/^## Epic 34:/,/^## Epic 35:/' \| rg -n -i -e 'operator authority to (start\|request) tenant deletion' -e 'deletion .{0,40}operator principal' -e 'verification .{0,40}operator principal' -e 'tenant-claim'` | No match, exit 1. This is a pattern-scoped absence check. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.49: Compose existing Redis key and state families through the registry
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR75; AD-23.
+
+As a developer,
+I want every Redis key and Dapr state key the Server composes for a tenant built by a registered codec family,
+So that no existing key can collide across tenants, cases, or sources.
+
+**Acceptance Criteria:**
+
+**Given** every Redis key and Dapr state key the Server composes for a tenant,
+**When** it is built,
+**Then** it comes from a registered Story 34.7 family,
+**And** an inventory test fails on any interpolated tenant key outside the registry.
+
+**Given** a family whose rendered key exceeds its destination limit, or that Story 34.11's ACL patterns would not match,
+**When** it is registered,
+**Then** registration fails.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 34.7 narrowing note (2026-10-08) | `historical-reference-only` | Source of this story's scope: the planned Story 34.49 split by destination. |
+
+##### Slice Proof
+
+Routing every existing Redis key and state family through the registry is the independently demonstrable outcome. Its two criteria cover registry-only composition and destination and ACL alignment. Under the approved pre-release reset this is code-only: existing data is reset, not re-keyed. Index, graph, and actor names are Story 34.60. Execution consumes Story 34.7. This planning record supplies no complete FR44 or FR75 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "About 25 tenant key families are composed with `:` at 76 sites" | Quantitative | Story 34.7's Epic AC Verification row 3 | 76 matching lines in 34 files (a pattern-scoped lower bound). | `confirmed` |
+| "Two duplicate dedup builders exist" | Existence/location | Story 34.7's Epic AC Verification row 2 | `EventStoreDedupKey.cs` and `DedupKeyBuilder.cs`. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.50: Validate issued identifiers at every read and import boundary
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR26, FR32, FR38, FR44; AD-23.
+
+As a developer,
+I want every tenant, case, and memory-unit identifier validated against Identifier Grammar V1 wherever it enters,
+So that a malformed or foreign identifier can never reach a key or a query.
+
+**Acceptance Criteria:**
+
+**Given** any HTTP route that binds a tenant, case, or memory-unit identifier,
+**When** a request arrives,
+**Then** the shared Story 34.6 and Story 34.36 validators reject a non-conforming identifier before handler code runs,
+**And** an inventory test fails when such a route parameter lacks validation.
+
+**Given** an identifier arriving through import, a CloudEvent, a migration, or a workflow input,
+**When** it is read,
+**Then** it is validated against its class grammar before use and rejected without folding.
+
+**Given** the duplicate regex validators,
+**When** this story lands,
+**Then** `TenantIdGuard`, `TenantIdContractValidator`, and the export case-identifier regex are replaced by the shared validators.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 34.36 and Story 34.6 split notes (2026-10-08) | `historical-reference-only` | Source of this story's scope. |
+
+##### Slice Proof
+
+Boundary enforcement of the shared validators is the independently demonstrable outcome. Its three criteria cover routes, non-HTTP entry points, and removal of the duplicate validators. It follows Story 34.52 because, once identifiers are issued and existing tenants are reset, strict validation rejects nothing legitimate. Execution consumes Stories 34.6 and 34.36. This planning record supplies no complete FR26, FR32, FR38, or FR44 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "34 route parameters carry case or unit identifiers" | Quantitative | Story 34.36's Epic AC Verification row 6 | 34 `{caseId}`, `{memoryUnitId}`, or `{unitId}` parameters in `MemoriesRoutes.cs`. | `confirmed` |
+| "Duplicate broad validators exist" | Existence/location | Story 34.6's Epic AC Verification row 2; Story 34.36's Epic AC Verification row 6 | Two `^[a-zA-Z0-9\-]+$` tenant regexes and an export case regex without the `[0-7]` rule; `ValidateMemoryUnitId` checks only for whitespace. | `confirmed` |
+| AD-23: "Every trust boundary validates identifiers on read" | Location/design | `grep -n -o -F 'Every trust boundary validates identifiers on read' SPINE` | Line 247. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.51: Establish the erased-tenant register genesis and lineage check
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38, FR39, FR44; AD-5/AD-15/AD-21.
+
+As an operator,
+I want the erased-tenant register created once at bootstrap and verified on every start,
+So that an unavailable or rolled-back register is never mistaken for an empty one.
+
+**Acceptance Criteria:**
+
+**Given** a first-ever tenant population with an unconsumed one-time bootstrap grant,
+**When** the AD-15-scoped platform-bootstrap identity runs bootstrap,
+**Then** it appends the genesis marker with the expected `populationId` to the dedicated register stream on the `memories-platform` partition and durably consumes the grant,
+**And** no other principal can append a genesis marker, and an uncertain or consumed grant forbids retrying genesis.
+
+**Given** ordinary Server or deployment startup,
+**When** it checks the register,
+**Then** it only verifies the marker, `populationId`, and stream continuity and never creates them,
+**And** an absent or mismatched marker, unreachable partition, read error, copied or restored stream, or unexplained sequence gap is reported as unavailable, never as empty.
+
+**Given** an unavailable register,
+**When** tenant provisioning, deletion, authoritative replay, restore, or import is attempted,
+**Then** each fails closed and stays operator-visible and resumable,
+**And** an identifier consult answers only from the live lineage.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.24 definition ("population genesis/revision" and the lineage check) | `historical-reference-only` | Source of the genesis and lineage scope moved here; Story 34.24 keeps the tombstone. |
+
+##### Slice Proof
+
+One register genesis, lineage verification, and fail-closed consult is the independently demonstrable outcome, which lets tenant-ID issuance (planned Story 34.52), replay (Story 34.5), and the tombstone (Story 34.24) run early instead of waiting for the erasure chain. Its three criteria cover one-time genesis, verify-only startup, and fail-closed operations. Execution consumes the AD-15 deployment-bootstrap identity and secret scope (Epic 31's OpenBao path). A clean-room population after lineage loss remains deferred by AD-21. Drafted and registered on 2026-10-08 under the user's standing approval. This planning record supplies no complete FR38, FR39, or FR44 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "No register or platform partition exists in source" | Existence/absence | `rg -n "memories-platform" src`; `rg -l -i -e 'ErasedTenant' -e 'TenantTombstone' -e 'populationId' -e 'GenesisRecord' src --type cs` | No match for either, each exit 1. | `confirmed` |
+| "Story 34.24 previously owned register genesis and the lineage check" | Location/dependency | `git show 8c7c1e96:EPICS \| awk '/^### Story 34\.24:/,/^#### Dev Notes/' \| rg -o -e 'population genesis/revision' -e 'register lineage'` | Both present at the baseline; moved here on 2026-10-08. | `confirmed` |
+| AD-21: "Only the AD-15-scoped authenticated platform-bootstrap identity may create the register's genesis marker"; "Ordinary Server and deployment startup may only verify the configured prior marker and continuity, never create them"; "is **unavailable**, never an empty register"; "While the register is unavailable, tenant provisioning, tenant deletion, authoritative replay, EventStore restore, projection-store restore, and export re-import fail closed"; AD-5: "AD-21 genesis creation is a one-time platform operation" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Line 232 for the first three, line 233 for the fourth, and line 121 for the AD-5 phrase. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `EPICS` is `_bmad-output/planning-artifacts/epics.md`.
+
+
+### Story 34.52: Issue platform tenant identifiers at provisioning
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38, FR44; AD-5/AD-6/AD-21/AD-23.
+
+As an operator,
+I want every new tenant identifier issued by the platform under Identifier Grammar V1,
+So that tenant names and key boundaries can never be chosen by callers.
+
+**Acceptance Criteria:**
+
+**Given** an operator-authorized provisioning request,
+**When** provisioning issues the tenant identifier,
+**Then** the platform generates a 20-character lowercase Crockford identifier beginning with an allowed letter from a cryptographic random source, checks it against issued identifiers and the live register, and returns it,
+**And** a collision is regenerated, never truncated or folded.
+
+**Given** a request that supplies its own tenant identifier,
+**When** provisioning is called through REST, `Client.Rest`, or startup configuration,
+**Then** the caller-chosen identifier is refused,
+**And** `Client.Rest` stops sending one.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 34.6 split note (2026-10-08) | `historical-reference-only` | Source of this story's scope and of the recorded breaking-change decision. |
+
+##### Slice Proof
+
+One platform issuance boundary is the independently demonstrable outcome. Its two criteria cover issuance and refusal of chosen identifiers. Execution consumes Story 34.44's operator-authorized provisioning, Story 34.51's register consult, and Story 34.6's validator. **Recorded decision (2026-10-08):** `POST /api/v1/tenants` and `Client.Rest` stop accepting a caller-chosen `TenantId`; existing tenants are re-provisioned under the pre-release reset. With issued identifiers, startup auto-provisioning from routing configuration can no longer name a tenant in advance, so Story 34.44's refusal of unauthorized startup provisioning is the remaining behavior. Enforcing the validator at every read and import boundary is planned Story 34.50. This planning record supplies no complete FR38 or FR44 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "Tenant identifiers are caller-chosen today" | Existence/behavior/location | Story 34.6's Epic AC Verification rows 1 and 3 | `TenantProvisioningInput(string TenantId, …)` at line 9; `Client.Rest/MemoriesClient.cs` line 282 and the startup service at line 99 pass a chosen identifier. | `confirmed` |
+| AD-23: "Identifiers must be issued rather than chosen"; grammar: "platform-issued from a cryptographic random source and collision-checked against issued IDs and AD-21 tombstones" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Lines 247 and 253. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.53: Give each tenant a FalkorDB principal
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38, FR40, FR44; NFR8/NFR9; AD-6/AD-15.
+
+As an operator,
+I want every tenant's FalkorDB graph access to run under its own principal,
+So that a compromised tenant credential cannot read another tenant's graph.
+
+**Acceptance Criteria:**
+
+**Given** a tenant being provisioned,
+**When** lifecycle provisioning completes,
+**Then** a per-tenant FalkorDB principal exists that admits only that tenant's graph, and its secret resolves through the AD-15 Dapr secret-store path,
+**And** the Server performs every tenant graph operation with that principal.
+
+**Given** tenant A's principal,
+**When** principal-driven negative tests address tenant B's graph, including colliding graph names,
+**Then** every read and write is denied without leaking B data.
+
+**Given** tenant deletion,
+**When** purge runs,
+**Then** the tenant's FalkorDB principal is revoked before purge completes, and a revoked principal no longer authenticates.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 34.11 split (2026-10-08) | `historical-reference-only` | Source of this story's scope; Story 34.11 keeps the Redis principal. |
+
+##### Slice Proof
+
+One per-tenant FalkorDB principal, used for every graph operation and revoked at deletion, is the independently demonstrable outcome. Its three criteria cover provisioning and use, principal-driven denial, and revocation. FalkorDB already selects one graph per tenant; the residual risk is the shared password. Execution consumes Story 34.6's grammar, Story 34.44's provisioning authority, and Epic 31 Story 31.2's runtime Dapr secret-store migration. This planning record supplies no complete FR38, FR40, FR44, NFR8, or NFR9 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "FalkorDB uses one shared password on its own server, with a graph per tenant" | Existence/location | Story 34.11's Epic AC Verification row 3; `rg -n 'string graphId = input.TenantId' src/Hexalith.Memories.Server/Activities/Tenants/ProvisionFalkorDbActivity.cs` | `FALKORDB_PASSWORD` feeds the shared `ConnectionStrings__falkordb` on the separate `falkordb` StatefulSet; the graph is named by the tenant identifier at line 42. | `confirmed` |
+| Gap row: "Provision and resolve per-tenant Redis ACL principals and per-tenant FalkorDB credentials"; "Graph-per-tenant selection already exists" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Both at line 408. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.54: Protect tenant payloads under a per-tenant content key
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39; NFR16; AD-15/AD-16.
+
+As an operator,
+I want every tenant's EventStore payloads and content-store data protected under its own content key from the moment they are written,
+So that destroying that key at erasure makes the content permanently unreadable.
+
+**Acceptance Criteria:**
+
+**Given** a tenant being provisioned,
+**When** lifecycle provisioning completes,
+**Then** a per-tenant content key exists in the AD-15 key store and is referenced, never copied, by tenant resources.
+
+**Given** a tenant write to EventStore or the tenant content store,
+**When** it is persisted,
+**Then** its payload is protected under the tenant's content key through Hexalith.EventStore's payload-protection capability, and content-store data is encrypted under the same key.
+
+**Given** a payload whose key reference cannot be resolved,
+**When** it is read,
+**Then** the read fails closed and never falls back to plaintext.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 34.12 and Story 34.23 split notes (2026-10-08) | `historical-reference-only` | Source of this story's scope: Story 34.23 destroys a key that no story created. |
+
+##### Slice Proof
+
+One per-tenant content key protecting every tenant payload from first write is the independently demonstrable outcome. Its three criteria cover key provisioning, protected writes, and fail-closed reads. Under the Hexalith boundary rule it adopts Hexalith.EventStore's existing payload-protection and crypto-shredding capability rather than re-implementing it. Execution consumes Story 34.44's provisioning authority, Story 34.12's content store, and Epic 31's AD-15 key path. Under the pre-release reset, content written before this story lands is reset rather than re-encrypted. Story 34.23 destroys the key at erasure. This planning record supplies no complete FR39 or NFR16 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "No tenant content key or encryption exists in Memories" | Existence/absence | Story 34.12's Epic AC Verification row 3 | No tenant-key encryption in source (exit 1). | `confirmed` |
+| "The pinned EventStore Contracts package ships payload protection, which Memories does not use" | Existence/location | Story 34.23's Epic AC Verification rows 2 and 3 | The types are present in 3.117.1; Memories source references none (exit 1). | `confirmed` |
+| AD-16: "The closed cryptographic-unreadability target set is authoritative live EventStore tenant payloads and qualified authoritative backups" | Location/design | `grep -n -o -F` on the quoted phrase in SPINE | Line 191. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.55: Purge the tenant content store
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39; AD-4/AD-16.
+
+As an operator,
+I want verified removal of the tenant content store's live data,
+So that erasure completion covers every tenant target AD-16 enumerates.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains the tenant content store's live data, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Stories 34.16–34.22 (current purge range) | `current-narrow-pattern` | Only their two-criterion purge template, re-verified on 2026-10-08; each story names one target class and its own evidence. |
+| Story 34.12 (narrowed 2026-10-08) | `historical-reference-only` | Creates the store this story purges; source of the carried purge obligation. |
+
+##### Slice Proof
+
+One independently reviewable purge result for the tenant content store's live data. The store is created by Story 34.12; encrypted backups of it are governed by planned Story 34.54 and Story 34.23. AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26, Stories 34.32 and 34.38, and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. This planning record supplies no complete FR39 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| AD-16 physical purge set includes "the AD-4 tenant content store's live data" | Location/design | `grep -n -o -F "the AD-4 tenant content store's live data" SPINE` | Line 191. Design intent only. | `confirmed` |
+| "No purge story covered the tenant content store" | Existence/absence | Story 34.12's Epic AC Verification row 5 | `awk` over Stories 34.16–34.24 for "content store" exited 1. | `confirmed` |
+
+
+### Story 34.56: Purge lifecycle coordination records
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39; AD-3/AD-6/AD-16.
+
+As an operator,
+I want verified removal of the tenant's query-admission gate, permits, and write fences,
+So that erasure completion covers every tenant target AD-16 enumerates.
+
+**Acceptance Criteria:**
+
+**Given** a tenant write fence is acknowledged and its target contains the AD-6 query-admission gate and its permits, and tenant and derived-store write fences, **when** the target purge runs, **then** the named records are enumerated, removed and read back empty with counts and the target identity recorded.
+
+**Given** a target is unavailable or readback finds a surviving record, **when** erasure completion is assessed, **then** the tenant remains Deleting and the failed target and safe retry are reported.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Stories 34.16–34.22 (current purge range) | `current-narrow-pattern` | Only their two-criterion purge template, re-verified on 2026-10-08; each story names one target class and its own evidence. |
+
+##### Slice Proof
+
+One independently reviewable purge result for lifecycle coordination records. The gate and permits are created by Story 34.13 and the tenant write fence by Story 34.14; derived-store correction fences already exist. Purging the gate happens only after the `Deleting` commit and drain that Story 34.13 requires. AD-16's closed purge set is covered by Stories 34.16–34.22, Stories 34.45, 34.55, and 34.56, Story 34.26, Stories 34.32 and 34.38, and the principal revocations of Story 34.11 and planned Story 34.53, before EventStore key destruction at Story 34.23. This planning record supplies no complete FR39 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. `SPINE` is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| AD-16 purge set names "the AD-6 query-admission gate and its permits, tenant and derived-store write fences" | Location/design | `grep -n -o -F 'the AD-6 query-admission gate and its permits, tenant and derived-store write fences' SPINE` | Line 198. Design intent only. | `confirmed` |
+| "Derived-store correction fences exist and survive today's deletion" | Source behavior/location | `rg -n -e 'derived-correction-fence' -e 'derived-correction-unit-fence' src/Hexalith.Memories.Server/DerivedStores/RedisDerivedStoreService.cs`; `sed -n '60,69p' src/Hexalith.Memories.Server/Activities/Tenants/DeleteTenantDataKeysActivity.cs` | Fence keys at lines 776 and 779 under `{t}:memories:derived-correction-*`, which no deletion pattern matches. | `confirmed` |
+| "No query-admission gate exists yet" | Existence/absence | Story 34.13's Epic AC Verification row 2 | No gate or permit in source (exit 1). | `confirmed` |
+
+
+### Story 34.57: Bind export release to the tenant lifecycle
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR71, FR39; AD-6/AD-16.
+
+As an operator,
+I want every export release recorded on the tenant lifecycle stream and bound to its write generation,
+So that deletion cannot complete while tenant content is still leaving the platform.
+
+**Acceptance Criteria:**
+
+**Given** an export release,
+**When** it begins,
+**Then** a release-intent begin record commits on the tenant's `memories-tenants` lifecycle stream only while the tenant is `Active`, and delivery is bound to the current lifecycle write generation through a release lease.
+
+**Given** an active release intent,
+**When** deletion tries to commit `Deleting`,
+**Then** the commit waits until every intent has a terminal end or cancel record,
+**And** a cancel record is admitted only after the sender has stopped and acknowledged that no later bytes can leave, or its egress capability is confirmed revoked.
+
+**Given** an advanced generation or an expired lease,
+**When** delivery continues,
+**Then** it stops and refuses any further release.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.26 definition (delivery lease) and Story 34.13's carried obligation (release-intent ordering) | `historical-reference-only` | Sources of this story's scope, moved here on 2026-10-08 under the user's standing approval. |
+
+##### Slice Proof
+
+One lifecycle-bound release protocol is the independently demonstrable outcome. Its three criteria cover intent and lease at release start, the `Deleting` commit waiting for terminal intents, and stopping on a stale generation or expired lease. Execution consumes Story 34.26's bundle, Story 34.14's lifecycle write generation, and Story 34.13's gate-and-drain sequence before the `Deleting` commit. Dapr transfer leases only mirror the lifecycle records for coordination and never authorize release. Drafted and registered on 2026-10-08 under the user's standing approval. This planning record supplies no complete FR71 or FR39 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "No release intent or export lease exists today" | Existence/absence | `rg -l -i -e 'BundleIndex' -e 'ReleaseIntent' -e 'ExportStaging' src --type cs` | No match, exit 1. | `confirmed` |
+| AD-6: "The same authoritative tenant-lifecycle stream owns AD-16's release-intent begin/end/cancel records"; "`Deleting` cannot commit until every active intent has a terminal record" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | Both at line 129. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.59: Move activity provider calls behind adapters
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR15; AD-8.
+
+As a developer,
+I want every workflow activity to reach Redis and FalkorDB only through the named adapter namespaces,
+So that activities stay provider-neutral and the provider-boundary allowlist shrinks.
+
+**Acceptance Criteria:**
+
+**Given** the 40 activity files that import the Redis SDK,
+**When** their provider access is extracted,
+**Then** concrete Redis and FalkorDB calls live only in the `Adapters.Redis` and `Adapters.FalkorDb` namespaces,
+**And** each moved file leaves Story 34.37's allowlist.
+
+**Given** an activity whose adapter is substituted in contract tests,
+**When** the tests run,
+**Then** tenant scope, the projection tuple, and error semantics remain identical.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 34.37 narrowing (2026-10-08) | `historical-reference-only` | Source of this story's scope: emptying the provider-boundary allowlist by area. |
+
+##### Slice Proof
+
+Provider-neutral activities are the independently demonstrable outcome. Its two criteria cover extraction and substitution. Endpoints, services, and stores are Story 34.61. Execution consumes Story 34.37's guard. This planning record supplies no complete NFR15 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "40 activity files import the Redis SDK" | Quantitative | `rg -l 'using StackExchange.Redis' src/Hexalith.Memories.Server/Activities --type cs \| wc -l` | 40. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.60: Name indexes, graphs, and actors through registered families
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44; AD-23.
+
+As a developer,
+I want every RediSearch index name, FalkorDB graph name, and Dapr actor ID built by a registered family,
+So that names that carry tenant identity are injective and pass destination conformance.
+
+**Acceptance Criteria:**
+
+**Given** the RediSearch index-name builders, the FalkorDB graph name, and the tenant and tenant-case actor IDs,
+**When** a name is built,
+**Then** it comes from a registered Story 34.7 family with golden vectors,
+**And** a conformance test proves valid syntax, length, and case stability for each destination.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 34.7 narrowing note (2026-10-08) | `historical-reference-only` | Source of this story's scope: the planned Story 34.49 split by destination. |
+
+##### Slice Proof
+
+Registry-built names for indexes, graphs, and actors are the independently demonstrable outcome. Its single criterion covers composition and conformance across three destinations. Under the approved pre-release reset this is code-only. Redis key and state families are Story 34.49. Execution consumes Stories 34.6, 34.36, and 34.7. This planning record supplies no complete FR44 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "Nine index-name builders exist" | Quantitative | Story 34.7's Epic AC Verification row 4 | 9 in `IndexSchemaDefinitions.cs`. | `confirmed` |
+| "The graph is named by the raw tenant identifier" | Source behavior/location | `rg -n 'string graphId = input.TenantId' src/Hexalith.Memories.Server/Activities/Tenants/ProvisionFalkorDbActivity.cs` | Line 42. | `confirmed` |
+| "Actor IDs use the raw tenant identifier or `{tenant}:{case}`" | Source behavior/location | `rg -n -o -e 'new ActorId\(\$"[^"]*"\)' -e 'new ActorId\([a-zA-Z.]+\)' src/Hexalith.Memories.Server --type cs -g '!*Test*'` | Seven tenant-only forms and two `{tenant}:{case}` forms. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.61: Move endpoint, service, and store provider calls behind adapters
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** NFR15; AD-8.
+
+As a developer,
+I want endpoints, services, and stores to reach Redis and FalkorDB only through the named adapter namespaces,
+So that Story 34.37's provider-boundary allowlist reaches zero.
+
+**Acceptance Criteria:**
+
+**Given** the 40 remaining non-domain Server files that import the Redis SDK, including 8 endpoint files,
+**When** their provider access is extracted or relocated,
+**Then** concrete provider calls live only in composition roots and the adapter namespaces,
+**And** Story 34.37's allowlist is empty and the architecture test runs without exceptions.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 34.37 narrowing (2026-10-08) | `historical-reference-only` | Source of this story's scope: emptying the provider-boundary allowlist by area. |
+
+##### Slice Proof
+
+An empty provider-boundary allowlist is the independently demonstrable outcome. Its single criterion covers the last 40 files. Endpoints importing the Redis SDK violate AD-8 directly. Execution consumes Stories 34.37 and 34.59. This planning record supplies no complete NFR15 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `8c7c1e96`; source is unchanged from `0b59bba5`. Drafted and registered under the user's standing approval. The criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "40 non-domain Server files import the Redis SDK, 8 of them endpoints" | Quantitative | `rg -l 'using StackExchange.Redis' src/Hexalith.Memories.Server --type cs \| rg -v -e '/Search/' -e '/Activities/' -e '/Consistency/' -e '/Workflows/' \| wc -l`; the same list grouped by directory | 40 in total: Endpoints 8, Ingestion 4, Infrastructure 4, Migration 3, Import 3, HealthChecks 3, EventStoreIntegration 3, Tenants 2, Hosting 2, Cases 2, and 1 each in NaturalLanguage, Migrations, Graph, and Export. | `confirmed` |
+| AD-8 prevents "Provider clients and connection details leaking into endpoints, workflows, actors, domain code, public services, or contracts" | Location/design | `grep -n -o -F` on the quoted phrase in SPINE | Line 140. Design intent only. | `confirmed` |
 
 `SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
