@@ -2,13 +2,13 @@
 title: 'Story 27.4: Remaining live qualification and A41 close-out'
 type: 'feature'
 created: '2026-10-07'
-status: 'draft'
+status: 'ready-for-dev'
 route: 'dispatch'
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
 baseline_commit: 'f4e7eb8626513c83f392a7cabf223b1a4673daa3'
 review_loop_iteration: 0
 investigated: '2026-10-08'
-investigation_commit: '906bc07ad6a8e4912a7222d9d097da434148266a'
+investigation_commit: 'd172165ebe1ab39efebd38b875b94f6d4ef6d191'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -39,14 +39,18 @@ investigation_commit: '906bc07ad6a8e4912a7222d9d097da434148266a'
 
 **Decision 2026-10-08 (I2):** The owner said “apply recommended”, authorizing a separately tracked offline registry/source-validation prerequisite. Its approved scope uses isolated fixture contracts and no deployed accepting entries; live Story 27.4 remains held. See `spec-pg2-c1-offline-producer-bindings.md`.
 
+**Decision 2026-10-08 (session scope):** The owner selected RECHECK_ONLY: rerun the offline block at `d172165e`, refresh readiness/evidence, and keep the draft held. No live progress is authorized; holds are re-confirmed at current HEAD.
+
 </frozen-after-approval>
 
 ## Code Map
 
-- `tools/access_telemetry_c1_interchange.py` — reuse I1; registry/semantic assembly absent.
+- `tools/access_telemetry_c1_interchange.py` — reuse I1 readers; semantic assembly absent.
+- `tools/access_telemetry_c1_producer_bindings.py` — done offline I2 registry/source inspection (isolated fixture contracts, no deployed accepting entries); confers no registration or acceptance.
+- `tools/access_telemetry_c1_capture_semantics.py` — done offline C1.15 declared-observation pin inspection; no live gate credit.
 - `tools/access_telemetry_c1_github_authority.py` — authenticated observations confer no acceptance.
 - `tools/verify_access_telemetry_lifecycle.py` — legacy labels cannot authenticate C1.
-- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — I2–I6/P1–P7 holds; companion `producer-bindings.md` specifies proposed I2 fields/source rules.
+- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — offline I2 preparation done; closed I2 registration/provenance, I3–I6 and P1–P7 holds remain.
 
 ## Tasks & Acceptance
 
@@ -63,7 +67,7 @@ investigation_commit: '906bc07ad6a8e4912a7222d9d097da434148266a'
 
 ## Design Notes
 
-Runtime PG2 correction complete; deployment approval pending. Footprint: draft, context and offline receipt only. Live faults/purge/publication require their recorded authority.
+Runtime PG2 correction and both offline prerequisites (source-receipt labels, I2 registry/source inspection, C1.15 observation pins) are complete; deployment approval pending. Footprint: draft, context and offline receipt only. Live faults/purge/publication require their recorded authority.
 
 ## Implementation Notes
 
@@ -90,3 +94,5 @@ Current canonical offline block: exit 0; 80 lifecycle passes, zero-warning/error
 `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`: exit 0; 167 passes. All lanes have zero failures/errors/skips. Logs/source/protected hashes and label-collapse probe: `/tmp/story-27-4-resume-4e1vv77o`. Offline only; draft unresolved.
 
 Current resumption: 80 lifecycle + 12/5 architecture + 167 interchange passes; zero-warning/error Debug/source-reference build. Canonical receipt `/tmp/story-27-4-offline.fq11FV9r`; investigation/interchange/protected hashes `/tmp/story-27-4-current-readiness-3gv1qqwq`. Offline only; draft unresolved.
+
+2026-10-08 planning recheck at `d172165ebe1ab39efebd38b875b94f6d4ef6d191`: `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py'` — exit 0; 219 passes (includes the new producer-bindings and capture-semantics lanes), zero failures/errors/skips. Offline only; draft unresolved.
