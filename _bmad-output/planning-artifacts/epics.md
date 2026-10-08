@@ -28,12 +28,19 @@ epicDesignRevalidation:
   stepsCompleted: ['step-02-design-epics']
 storyDesignRevalidation:
   date: '2026-10-05'
+  lastUpdated: '2026-10-08'
   status: 'awaiting-story-review'
   currentEpic: 34
-  currentStory: '34.9'
+  currentStory: '34.41'
   approvedFirstStory: '34.33'
-  reviewedStories: ['34.33', '34.1', '34.8']
+  reviewedStories: ['34.33', '34.1', '34.8', '34.9']
   approvedExecutionPrefix: ['34.33', '34.1', '34.8']
+  approvedSplit:
+    date: '2026-10-08'
+    baselineCommit: '0b59bba5'
+    narrowedStory: '34.9'
+    plannedStories: ['34.41', '34.42', '34.43']
+    plannedOrderPendingReview: ['34.41', '34.42', '34.9', '34.43']
   stepsCompleted: []
 changeControlContext:
   approvedProposalGlob: '_bmad-output/planning-artifacts/sprint-change-proposal-*.md'
@@ -6093,6 +6100,8 @@ Stories 34.33, 34.1, and 34.8 have revised acceptance text registered after user
 
 **Operator-artifact approval — 2026-10-05:** the user approved Story 34.8's four clarified criteria and its placement after Story 34.1 with C. The earlier next-slot proposal is now an approved prefix element. Review Story 34.9 next as the lifecycle-owned grant/admission protocol consuming that artifact. Its planned authoritative tenant-state reader and grant evidence are part of that admission outcome; the existing cached status helper is not presumed to implement them, and a future lifecycle-transition story is not presumed completed. Revalidation must account for durable authority references and for activities outside the trace-linked base rather than assuming one wrapper covers every runtime path. The registered Story 34.9 criteria remain pending clarification and review.
 
+**Story 34.9 split approval — 2026-10-08:** re-verification at `0b59bba5` found no grant writer. AD-5 makes the per-tenant grant a tenant resource written only by AD-6's lifecycle workflow, at provisioning and by grant amendment on a live tenant, but no current source and no registered story creates or amends one (Story 34.9 Epic AC Verification rows 7, 9, 10, and 11). The previous Story 34.9 definition also bundled call-time admission with the revocation bound for cached and resumed work. The user approved splitting it with stable IDs: Story 34.9 is narrowed to call-time admission and registered below; planned new Stories 34.41 (materialize provisioning grants from lifecycle evidence), 34.42 (amend live-tenant grants through the lifecycle workflow), and 34.43 (bound revocation for cached and resumed work at 60 seconds) carry the other outcomes. The approved planned order after the prefix is 34.41 → 34.42 → 34.9 → 34.43, conditional on each new story's own review; 34.42 precedes 34.9 so that a tenant provisioned before 34.41 can receive a grant before enforcement. The user approved the split as within approved Epic 34 intent: it adds no requirement and changes no epic intent or ratified decision, so no correct-course proposal was raised. Stories 34.41–34.43 are not registered until individually approved. The approved execution prefix remains 34.33 → 34.1 → 34.8.
+
 
 
 ### Story 34.1: Accept V1 ingestion at EventStore first
@@ -6420,19 +6429,34 @@ Verified 2026-10-05 against `main` at baseline `b31d1352` and its current worktr
 | "TenantAuthorizationMiddleware is a current Server component" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Authentication/TenantAuthorizationMiddleware.cs` | The middleware source file exists, exit 0. This establishes location only; artifact semantics and lookup/publication tests are future implementation intent. | `confirmed` |
 
 
-### Story 34.9: Enforce tenant grants and revocation bound
+### Story 34.9: Admit internal calls only with allowlist, grant, and Active state
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR65; NFR10; AD-5.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR65 (principal derivation only); NFR10; AD-5/AD-6.
 
 As an operator,
-I want internal and resumed work to lose authority promptly after grant withdrawal,
-So that revoked callers cannot keep acting through cached state.
+I want every trusted internal call to pass the allowlist, an explicit tenant grant, and an authoritative Active check before it touches tenant data,
+So that a protected app identity alone can never act for a tenant.
 
 **Acceptance Criteria:**
 
-**Given an allowlisted app, when it calls for a tenant, then the lifecycle-owned explicit grant and Active state are checked alongside protected Dapr identity before data access.**
+**Given** an authenticated workload whose app ID is in the operator-artifact allowlist, a grant for the requested tenant naming that app ID, and an authoritative committed `memories-tenants` state of `Active`,
+**When** it calls a tenant-scoped operation,
+**Then** it is admitted as the artifact's canonical `system:*` principal,
+**And** any delegated bearer subject carried by the call is preserved, not replaced.
 
-**Given grant, allowlist or operator-authority revocation, when a cached or durable activity resumes, then it stops authorizing within 60 seconds or fails closed if freshness cannot be proved.**
+**Given** an unknown app ID, no grant naming that app ID for the requested tenant, or a tenant state other than `Active`,
+**When** admission runs,
+**Then** the call is refused before any tenant read or side effect, with a sanitized diagnostic,
+**And** negative tests use authenticated principals for each failing check.
+
+**Given** the authoritative committed tenant state cannot be read, or only the short-lived status-read cache or the platform mirror is available,
+**When** admission runs,
+**Then** it fails closed; no cached copy supplies authority.
+
+**Given** an operator-scoped app ID invokes an operation the operator artifact enumerates, with an authenticated workflow-instance scope bound to exactly one tenant recorded in its lifecycle evidence,
+**When** admission runs,
+**Then** the call is evaluated against that tenant's lifecycle state instead of `Active`,
+**And** the same identity's non-enumerated calls, calls for any other tenant, and any exemption asserted through a header, flag, or field receive the ordinary three checks.
 
 #### Dev Notes
 
@@ -6441,25 +6465,29 @@ So that revoked callers cannot keep acting through cached state.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.9 definition ("Enforce tenant grants and revocation bound") | `historical-reference-only` | Retain the ID and the admission goal. Its revocation-bound criterion moves to planned Story 34.43; the narrowed criteria and the split were approved on 2026-10-08. |
 
 ##### Slice Proof
 
-One grant and revocation admission rule is the slice; channel-to-tenant routing is 34.10.
+One admission decision for trusted internal calls is the independently demonstrable outcome: the allowlist, explicit-grant, and authoritative-`Active` checks, each failing closed, plus recognition of an enumerated lifecycle call from its authenticated identity. Its four criteria cover conforming admission, each failing check, unavailable authoritative state, and the lifecycle-exemption boundary. Execution consumes Story 34.8's operator-artifact lookups and the grant written by planned Stories 34.41 (provisioning materialization) and 34.42 (live-tenant amendment, which also gives a tenant provisioned before 34.41 its first grant); without 34.42, enforcement would refuse every internal caller of such a tenant. Neither planned story is registered or approved by this record, so this placement is conditional on their review. The 60-second revocation bound for cached decisions and resumed durable work is planned Story 34.43; channel-to-tenant routing is 34.10; the query-lifetime permit is 34.13; `ingested_by` provenance assignment is 34.27. Execution consumes the completed Story 34.33 register/guard outcome wherever it introduces governed wire names. This planning record supplies no complete FR44, FR65, or NFR10 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against `main` at baseline `b31d1352` and its current worktree. Revised acceptance criteria await user review. These source observations do not qualify grant/revocation behavior or an authoritative tenant-state read.
+Verified 2026-10-08 against `main` at `0b59bba5`. Rows 1–6 were first recorded on 2026-10-05 at `b31d1352` and were re-run with unchanged results at `0b59bba5`; rows 5–6 inform planned Story 34.43's revalidation scope. The approved criteria are implementation intent, not current runtime claims. These source observations do not qualify grant, admission, or revocation behavior or an authoritative tenant-state read.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantStatusGuard currently validates tenant status" | Existence/behavior/location | `rg -n 'ValidateTenantActiveAsync' src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs` | Method exists at line 21; the complete method reads tenant state and permits Active. This does not prove the AD-5 grant/revocation contract. | `confirmed` |
+| "TenantStatusGuard currently validates tenant status" | Existence/behavior/location | `rg -n 'ValidateTenantActiveAsync' src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs` | Method exists at line 21; the complete method reads tenant state and permits Active. This does not prove the AD-5 grant/admission contract. | `confirmed` |
 | "TenantStatusGuard reads GetTenantForStatusGuardAsync and returns null for Active" | Source behavior/location | `rg -n -e 'GetTenantForStatusGuardAsync' -e 'TenantStatus.Active => null' src/Hexalith.Memories.Server/Tenants/TenantStatusGuard.cs` | The lookup and Active branch occur at lines 23 and 31. The method accepts tenantId, not an authenticated workload principal or grant. | `confirmed` |
 | "GetTenantForStatusGuardAsync is documented as using the short-lived status-read cache" | Source documentation/location | `sed -n '218,233p' src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs` | The method's documentation and delegation to GetTenantEntryForStatusGuardAsync are present. This is not evidence that it reads authoritative committed EventStore state. | `confirmed` |
-| "MemoriesTenantAggregateState defines TenantId and Status" | Existence/location | `rg -n -e '^    public .* (TenantId|Status)' src/Hexalith.Memories.EventStore/Domain/States/MemoriesTenantAggregateState.cs` | TenantId and TenantStatus properties are present. A production read adapter, grant extension, and integration evidence remain implementation intent, not inferred SDK capabilities. | `confirmed` |
+| "MemoriesTenantAggregateState defines TenantId and Status" | Existence/location | `rg -n -e '^    public .* (TenantId\|Status)' src/Hexalith.Memories.EventStore/Domain/States/MemoriesTenantAggregateState.cs` | TenantId and Status properties at lines 15 and 21. A production read adapter, grant extension, and integration evidence remain implementation intent, not inferred SDK capabilities. | `confirmed` |
 | "WorkflowTraceLinkedActivity wraps RunActivityAsync with tracing" | Source behavior/location | `sed -n '17,46p' src/Hexalith.Memories.Server/Activities/WorkflowTraceLinkedActivity.cs` | The wrapper starts a linked trace then calls RunActivityAsync. This source read establishes its tracing role only. | `confirmed` |
-| "Some Server activities inherit directly from WorkflowActivity" | Existence/location | `rg -n ': WorkflowActivity<' src/Hexalith.Memories.Server` | Results include restore, tenant lifecycle, case projection, and derived-store activities as well as the trace-linked base. Do not assume all activities share that base. | `confirmed` |
-
-**Implementation intent:** consume Story 34.8's authenticated operator-artifact lookups, preserve delegated subjects, and implement the lifecycle-owned grant and authoritative committed-state reads required by the AD-5/AD-6 admission rule. Prove grant withdrawal, allowlist removal, and operator-authority withdrawal from their committed/published change time, including cached and resumed work, using authenticated principals and before-side-effect refusal evidence. AD-5's three enumerated exemptions retain their exact principal, operation, scope, and freshness constraints. This intent closes no current implementation or qualification gap.
+| "Some Server activities inherit directly from WorkflowActivity" | Existence/location | `rg -n ': WorkflowActivity<' src/Hexalith.Memories.Server \| wc -l`; `rg -n ': WorkflowTraceLinkedActivity<' src/Hexalith.Memories.Server \| wc -l` | 34 matching declarations: the trace-linked base plus 33 direct subclasses, including restore, tenant lifecycle, case projection, indexing, and derived-store activities. 24 declarations subclass the trace-linked base. Do not assume all activities share that base. | `confirmed` |
+| "No current source declares a tenant grant" | Existence/absence | `rg -n -i 'grant' src --type cs` | Five hits, none a tenant grant: the OAuth `grant_type` at `OidcTokenProvider.cs:259`, its interface doc at `IOidcTokenProvider.cs:11`, a `CaseMemberType.cs:17` doc comment, and comments at Server `Program.cs:104` and AccessTelemetry `Program.cs:134`. | `confirmed` |
+| "No app-ID-based internal principal derivation exists in source" | Existence/absence | `rg -n -i -e 'callerAppId' -e 'caller-app-id' -e 'x-dapr' src --type cs` | No match, exit 1. This is a pattern-scoped absence check covering Dapr caller-app-ID header names, not every possible naming. | `confirmed` |
+| "TenantProvisioningInput carries no app-ID grant set" | Existence/location | `sed -n '9,13p' src/Hexalith.Memories.Contracts/V1/TenantProvisioningInput.cs` | The record declares `TenantId`, `DisplayName`, and `VectorDimensions` only. | `confirmed` |
+| "Before this revision, no epics.md story owns grant materialization or amendment" | Existence/absence | `git show 0b59bba5:_bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'grant[- ]amendment' -e 'grant set' -e 'materiali[sz]e.*grant' -e 'grant membership'` | No match, exit 1. | `confirmed` |
+| "AD-5 makes the per-tenant grant a tenant resource whose sole writer is AD-6's lifecycle workflow, amended on a live tenant only by an AD-6 lifecycle operation" | Location/design | `sed -n '119p' _bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md \| grep -o -e 'sole writer is AD-6.s lifecycle workflow' -e 'AD-6 grant-amendment lifecycle operation'` | Both phrases are present in the AD-5 rule on line 119. Design intent only. | `confirmed` |
 
 
 ### Story 34.10: Route pubsub tenant from authenticated channel
