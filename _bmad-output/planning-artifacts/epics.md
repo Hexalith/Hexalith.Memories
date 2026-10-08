@@ -31,16 +31,18 @@ storyDesignRevalidation:
   lastUpdated: '2026-10-08'
   status: 'awaiting-story-review'
   currentEpic: 34
-  currentStory: '34.41'
+  currentStory: '34.46'
   approvedFirstStory: '34.33'
-  reviewedStories: ['34.33', '34.1', '34.8', '34.9']
+  reviewedStories: ['34.33', '34.1', '34.8', '34.9', '34.44', '34.41', '34.42', '34.43', '34.48']
   approvedExecutionPrefix: ['34.33', '34.1', '34.8']
   approvedSplit:
     date: '2026-10-08'
     baselineCommit: '0b59bba5'
     narrowedStory: '34.9'
-    plannedStories: ['34.41', '34.42', '34.43']
-    plannedOrderPendingReview: ['34.41', '34.42', '34.9', '34.43']
+    plannedStories: ['34.44', '34.41', '34.42', '34.43', '34.45', '34.46', '34.47', '34.48']
+    plannedOrderPendingReview: ['34.44', '34.41', '34.42', '34.9', '34.43', '34.48', '34.46', '34.47']
+    recordedDecisions: ['2026-10-08: tenant-claim principals lose tenant deletion and verification (Story 34.48)']
+    plannedPurgeRangeStories: ['34.45']
   stepsCompleted: []
 changeControlContext:
   approvedProposalGlob: '_bmad-output/planning-artifacts/sprint-change-proposal-*.md'
@@ -6102,6 +6104,14 @@ Stories 34.33, 34.1, and 34.8 have revised acceptance text registered after user
 
 **Story 34.9 split approval — 2026-10-08:** re-verification at `0b59bba5` found no grant writer. AD-5 makes the per-tenant grant a tenant resource written only by AD-6's lifecycle workflow, at provisioning and by grant amendment on a live tenant, but no current source and no registered story creates or amends one (Story 34.9 Epic AC Verification rows 7, 9, 10, and 11). The previous Story 34.9 definition also bundled call-time admission with the revocation bound for cached and resumed work. The user approved splitting it with stable IDs: Story 34.9 is narrowed to call-time admission and registered below; planned new Stories 34.41 (materialize provisioning grants from lifecycle evidence), 34.42 (amend live-tenant grants through the lifecycle workflow), and 34.43 (bound revocation for cached and resumed work at 60 seconds) carry the other outcomes. The approved planned order after the prefix is 34.41 → 34.42 → 34.9 → 34.43, conditional on each new story's own review; 34.42 precedes 34.9 so that a tenant provisioned before 34.41 can receive a grant before enforcement. The user approved the split as within approved Epic 34 intent: it adds no requirement and changes no epic intent or ratified decision, so no correct-course proposal was raised. Stories 34.41–34.43 are not registered until individually approved. The approved execution prefix remains 34.33 → 34.1 → 34.8.
 
+**Provisioning-authority prerequisite — 2026-10-08:** writing Story 34.41 found that its grant set has no authorizing principal: AD-5 requires the provisioning grant set to be authorized by the initiating operator principal and AD-6 requires provisioning to be authorized by an operator principal, but the provisioning endpoint relies only on the fallback authenticated-user policy and startup auto-provisioning schedules the workflow with no principal (Story 34.44 Epic AC Verification rows 4–6), and no registered story owned that authorization (row 10). The user approved and registered new Story 34.44 (require operator authority to start tenant provisioning) as the first planned story. The planned order after the prefix is now 34.44 → 34.41 → 34.42 → 34.9 → 34.43, conditional on each unregistered story's own review; the planned IDs recorded above are not renumbered.
+
+**Erasure grant revocation — 2026-10-08:** AD-5 makes grant revocation a completion condition of AD-16 erasure ("every grant is revoked as a completion condition of AD-16 erasure", spine line 119) and AD-16 binds per-tenant grants (line 189), but neither tenant workflow and none of purge Stories 34.16–34.24 revokes a grant: `rg -n -i 'grant' src/Hexalith.Memories.Server/Workflows/TenantDeletionWorkflow.cs src/Hexalith.Memories.Server/Workflows/TenantProvisioningWorkflow.cs` and `awk '/^### Story 34\.16:/,/^### Story 34\.25:/' _bmad-output/planning-artifacts/epics.md | rg -n -i 'grant'` each exit 1. The user approved registering Story 34.41 and recording planned Story 34.45 (revoke tenant grants at erasure completion) for the purge range beside Stories 34.16–34.22, which keep one purge target per story, rather than bundling erasure into provisioning. Story 34.45 is not registered until it is drafted and approved in that range. Until then, a leftover grant cannot authorize once Story 34.9 requires an `Active` tenant, but erasure cannot be complete.
+
+**Durable-work revocation split — 2026-10-08:** AD-5 applies the 60-second revocation bound to cached decisions, sessions, and "workflows, activities, actors, reminders, data repair, replay, and migration" (spine line 119), plus operator-principal revalidation for the lifecycle and erasure exemptions. At `3e18d0dc` that surface is 12 Server workflow classes (`rg -n ': Workflow<' src/Hexalith.Memories.Server --type cs | wc -l`), 33 direct activity subclasses besides the 24 on the trace-linked base (Story 34.9 Epic AC Verification row 6), 4 Server actor types (`rg -n ': Actor,' src/Hexalith.Memories.Server --type cs | wc -l`), the `CorpusStatisticsActor.cs:133` timer, and tenant-iterating hosted services (`IsStubBackfillMigrationHostedService.cs:50-55`, `NaturalLanguageEmbeddingRetryHostedService.cs:81`): more than five independently verifiable gates for one story. The user approved splitting planned Story 34.43 by mechanism: Story 34.43 is narrowed to expiring cached admission authority and registered below; planned new Stories 34.46 (revalidate captured tenant authority in workflows and activities) and 34.47 (revalidate tenant authority in actors, timers, and background services) carry durable work. The AccessTelemetry actor's reminders fall under AD-5 exemption (3), bounded in AD-17, and are not in Story 34.47. The planned order after the prefix is now 34.44 → 34.41 → 34.42 → 34.9 → 34.43 → 34.46 → 34.47, conditional on each unregistered story's own review.
+
+**Lifecycle-endpoint authority prerequisite — 2026-10-08:** Story 34.46's lifecycle and erasure exemption revalidates an operator principal, but only provisioning carries one (Story 34.44): tenant deletion and verification are authorized by a matching tenant claim, and the deletion workflow is scheduled without a principal (Story 34.48 Epic AC Verification rows 4–5). The user approved and registered new Story 34.48 (require operator authority for tenant deletion and verification) before Story 34.46, and approved, as maintainer, the breaking change that tenant-claim principals lose both operations; the decision is recorded in Story 34.48. The planned order after the prefix is now 34.44 → 34.41 → 34.42 → 34.9 → 34.43 → 34.48 → 34.46 → 34.47, conditional on each unregistered story's own review.
+
 
 
 ### Story 34.1: Accept V1 ingestion at EventStore first
@@ -7584,6 +7594,267 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
 | "AccessTelemetry.Contracts is currently a separate source assembly" | Existence/location | `test -f src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryRecord.cs` | The separate contract source exists; its V1 catalogue disposition remains to decide. | `confirmed` |
+
+
+### Story 34.41: Materialize provisioning grants from lifecycle evidence
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44 (partial); NFR10; AD-5/AD-6.
+
+As an operator,
+I want a new tenant's internal-caller grant to be an explicit app-ID set that I authorize, recorded in its lifecycle evidence and materialized by verified provisioning,
+So that only app IDs I chose for that tenant can ever be granted to it.
+
+**Acceptance Criteria:**
+
+**Given** an operator-authorized provisioning request carrying an explicit app-ID set whose every member is in the operator-artifact allowlist,
+**When** provisioning runs,
+**Then** the set and its authorizing operator principal are committed in the tenant's lifecycle evidence before the grant is materialized,
+**And** the materialized grant is verified against that committed set before the tenant can become `Active` and is readable by tenant and app ID; an explicitly empty set is recorded and grants no app ID.
+
+**Given** a set containing an app ID absent from the allowlist, compared ordinally, or any wildcard or pattern entry,
+**When** the request is validated,
+**Then** provisioning is refused before any lifecycle commit, grant, or backend resource is created, with a sanitized diagnostic.
+
+**Given** provisioning fails after the grant is materialized,
+**When** compensation runs, including after a resume,
+**Then** the grant is removed and verified absent together with the tenant's other provisioned resources,
+**And** no resume or retry can change the committed set.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 5.1 ("Tenant Provisioning Workflow") | `historical-reference-only` | Dependency context: it is the origin of the provisioning workflow, its compensation saga, and its verification step. Its story shape, tasks, and proof are not reused. |
+
+##### Slice Proof
+
+One provisioning-time grant writer is the independently demonstrable outcome: an operator-authorized, allowlist-bounded app-ID set is committed in lifecycle evidence, materialized, verified before `Active`, and removed by compensation. Its three criteria cover conforming materialization, refusal before any effect, and compensation. It can be demonstrated before any enforcement exists by reading the materialized grant. Execution consumes Story 34.44's operator-authorized provisioning start and principal binding, Story 34.8's allowlist lookup, and the completed Story 34.33 register/guard outcome for the new provisioning-input and lifecycle-evidence wire names. Amending a live tenant's grant, including the first grant for a tenant provisioned before this story, is planned Story 34.42; call-time enforcement is Story 34.9; revoking grants at erasure completion is planned Story 34.45 in the purge range. The AD-21 erased-tenant register consult before identifier issuance remains with its register stories, and platform-issued identifiers are Story 34.6. This planning record supplies no complete FR44 or NFR10 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `0b59bba5`; the cited source and spine paths are unchanged at `3e18d0dc`. The approved criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "explicit app-ID set in the tenant's AD-6 lifecycle evidence" | Location/design | `grep -n -o -F "explicit app-ID set in the tenant's AD-6 lifecycle evidence" SPINE` | Present in the AD-5 rule at line 119. Design intent only. | `confirmed` |
+| "limited to app IDs already present in the operator artifact's allowlist" | Location/design | `grep -n -o -F "limited to app IDs already present in the operator artifact's allowlist" SPINE` | Present at line 119. Design intent only. | `confirmed` |
+| "grants are enumerated and any wildcard requires its own architecture decision" | Location/design | `grep -n -o -F 'grants are enumerated and any wildcard requires its own architecture decision' SPINE` | Present at line 119. Design intent only. | `confirmed` |
+| "AD-6 binds per-tenant grants and requires verification, compensation, and resumable cleanup" | Location/design | `grep -n -o -F 'per-tenant grants' SPINE`; `grep -n -o -F 'verification, compensation, and resumable cleanup' SPINE` | `per-tenant grants` at line 125 (AD-6 Binds) and line 189 (AD-16 Binds); the cleanup phrase at line 127. Design intent only. | `confirmed` |
+| "TenantProvisioningWorkflow has no grant step" | Existence/absence/location | `rg -n 'nameof\(' src/Hexalith.Memories.Server/Workflows/TenantProvisioningWorkflow.cs`; `rg -n -i 'grant' src/Hexalith.Memories.Server/Workflows/TenantProvisioningWorkflow.cs` | Registry initialization at line 73, RediSearch, Redis Vector, and FalkorDB provisioning at lines 93, 97, and 101, verification at line 105, and the `Active` status update at line 109; compensation deletes only the three backends at lines 139, 145, and 151. The grant search has no match, exit 1. | `confirmed` |
+| "VerifyTenantActivity verifies only the three backends" | Source behavior/location | `rg -n '// Verify' src/Hexalith.Memories.Server/Activities/Tenants/VerifyTenantActivity.cs` | RediSearch, Redis Vector, and FalkorDB checks at lines 48, 67, and 86. | `confirmed` |
+| "No current source declares a tenant grant" | Existence/absence | `rg -n -i 'grant' src --type cs` | Five hits, none a tenant grant; the same result as Story 34.9's Epic AC Verification row 7. | `confirmed` |
+| "TenantProvisioningInput carries no app-ID grant set" | Existence/location | `sed -n '9,13p' src/Hexalith.Memories.Contracts/V1/TenantProvisioningInput.cs` | The record declares `TenantId`, `DisplayName`, and `VectorDimensions` only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.42: Amend live-tenant grants through the lifecycle workflow
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44 (partial); NFR10; AD-5/AD-6.
+
+As an operator,
+I want to add or remove app IDs on a live tenant's grant through an authorized lifecycle operation,
+So that a tenant's internal callers change only by a committed decision, and tenants created before grants existed can receive their first one.
+
+**Acceptance Criteria:**
+
+**Given** an operator-scoped principal holding the enumerated grant-amendment operation and an `Active` tenant,
+**When** it adds or removes allowlisted app IDs,
+**Then** the amendment and its authorizing principal are committed in the tenant's lifecycle evidence before the materialized grant changes,
+**And** the grant reads back with the new membership after verification; for a tenant provisioned before Story 34.41, the first amendment creates its grant.
+
+**Given** a principal without the grant-amendment operation, an app ID absent from the allowlist, a wildcard entry, or a tenant not in `Active`,
+**When** the amendment is requested,
+**Then** it is refused before any lifecycle commit or grant change, with a sanitized diagnostic,
+**And** negative tests use authenticated principals.
+
+**Given** two amendments race for one tenant, or an amendment is resumed or retried,
+**When** they commit,
+**Then** each applies against the membership it read or is refused,
+**And** no committed change is lost or applied twice.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+
+##### Slice Proof
+
+One live-tenant grant-amendment operation is the independently demonstrable outcome: an operator-authorized, allowlist-bounded add or remove is committed in lifecycle evidence before the grant changes, refused before any effect when unauthorized or invalid, and serialized against concurrent or repeated amendments. It can be demonstrated by reading the grant back, before any enforcement exists. Execution consumes Story 34.41's grant resource and reader, Story 34.8's enumerated-operation lookup, and the completed Story 34.33 register/guard outcome for the new amendment wire names. Removing an app ID changes the grant here; bounding how quickly that removal stops authorizing cached decisions and durable work is planned Story 34.43. Allowlist changes remain operator-artifact publications under Story 34.8, never grant amendments. Amending a `Deactivated` tenant is decided when Story 34.35 adds that state. This planning record supplies no complete FR44 or NFR10 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `3e18d0dc`, whose source and spine are unchanged from `0b59bba5`. The approved criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "adding or removing an app ID on a live tenant is an AD-6 grant-amendment lifecycle operation and not an edit to the operator artifact" | Location/design | `grep -n -o -F 'adding or removing an app ID on a live tenant is an AD-6 grant-amendment lifecycle operation and not an edit to the operator artifact' SPINE` | Present in the AD-5 rule at line 119. Design intent only. | `confirmed` |
+| "grant amendment" is an enumerated lifecycle-workflow operation | Location/design | `grep -n -o -F 'lifecycle repair, grant amendment' SPINE` | Present in AD-5's exhaustive operation list at line 119. Design intent only. | `confirmed` |
+| "The tenant aggregate handles only registration and status-change commands" | Existence/location | `rg -n 'public static MemoriesDomainResult Handle\(' src/Hexalith.Memories.EventStore/Domain/Aggregates/MemoriesTenantAggregate.cs` | `RegisterTenantCommand` at line 17 and `UpdateTenantLifecycleStatusCommand` at line 30 only. | `confirmed` |
+| "No tenant lifecycle endpoint amends grants" | Existence/absence/location | `rg -n -o 'app\.Map(Post\|Put\|Patch\|Delete)\(MemoriesRoutes\.\w+' src/Hexalith.Memories.Server/Endpoints/TenantLifecycleEndpoints.cs`; `sed -n '15p' src/Hexalith.Memories.Contracts/V1/TenantUpdateInput.cs` | PUT embedding config at line 63, POST tenants at line 124, PATCH tenant at line 308, DELETE tenant at line 359, and POST verify at line 564; the PATCH body is `TenantUpdateInput(string DisplayName)` only. | `confirmed` |
+| "No current source declares a tenant grant" | Existence/absence | `rg -n -i 'grant' src --type cs` | Five hits, none a tenant grant; the same result as Story 34.9's Epic AC Verification row 7. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.43: Expire cached admission authority within 60 seconds
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44 (partial); NFR10; AD-5.
+
+As an operator,
+I want a revoked grant, removed allowlist entry, or withdrawn operator authority to stop admitting new calls within 60 seconds,
+So that no cached authorization decision outlives the authority it was made under.
+
+**Acceptance Criteria:**
+
+**Given** the operator artifact's `revocationMaxAgeSeconds` of 60,
+**When** a grant amendment removing an app ID commits, or an operator-artifact revision removing an allowlist entry or operator authority is published,
+**Then** no call is admitted under the superseded authority more than 60 seconds after that change, whether through a cached decision or an established session,
+**And** tests measure from the committed or published change time, not from cache insertion.
+
+**Given** admission cannot prove that its cached grant, allowlist, or operator-authority state is within the bound because the source is unreachable, the change time is unknown, or clock evidence is missing,
+**When** a call arrives,
+**Then** admission fails closed with a sanitized diagnostic.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.9 definition ("Enforce tenant grants and revocation bound") | `historical-reference-only` | Source of this story's revocation-bound goal, moved here by the 2026-10-08 split. Its bundled criterion is not reused; durable-work revalidation is planned Stories 34.46 and 34.47. |
+
+##### Slice Proof
+
+A freshness bound on Story 34.9's admission inputs is the independently demonstrable outcome: after a committed grant removal or a published allowlist or operator-authority removal, new calls stop being admitted under the superseded authority within 60 seconds, and unprovable freshness fails closed. Its two criteria cover the bound and the fail-closed case. Execution consumes Story 34.9's admission decision, Story 34.42's committed removals, and Story 34.8's published revisions; storing and validating the `revocationMaxAgeSeconds` value itself remains Story 34.8's artifact outcome. In-flight durable work is planned Story 34.46 (workflows and activities) and planned Story 34.47 (actors, timers, and background services). AD-15's use of the same bound for rotated credentials is not claimed here. This planning record supplies no complete FR44 or NFR10 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `3e18d0dc`, whose source and spine are unchanged from `0b59bba5`. The approved criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "revocationMaxAgeSeconds = 60" | Location/design | `grep -n -o -F 'revocationMaxAgeSeconds = 60' SPINE` | Present in the AD-5 rule at line 119. Design intent only. | `confirmed` |
+| "long-running activities refresh authority or stop before it expires, and unavailable freshness proof fails closed" | Location/design | `grep -n -o -F 'long-running activities refresh authority or stop before it expires, and unavailable freshness proof fails closed' SPINE` | Present at line 119. Design intent only. | `confirmed` |
+| "The tenant status-read cache TTL defaults to 10 seconds and is clamped to 1–60 seconds" | Source behavior/location | `sed -n '15p;37,38p' src/Hexalith.Memories.Server/Tenants/TenantReadCacheOptions.cs` | `TenantStatusTtlSeconds` defaults to 10 at line 15, and `GetTenantStatusTtl` clamps it to 1–60 seconds at line 38. This cache holds tenant status, not grant or allowlist authority, and Story 34.9 forbids using it as authority; it is context, not an implementation of the bound. | `confirmed` |
+| "No grant or app-ID authority cache exists to bound yet" | Existence/absence | `rg -n -i 'grant' src --type cs`; `rg -n -i -e 'callerAppId' -e 'caller-app-id' -e 'x-dapr' src --type cs` | The same results as Story 34.9's Epic AC Verification rows 7 and 8: no tenant grant, and no match for app-ID principal derivation (exit 1). | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
+
+
+### Story 34.44: Require operator authority to start tenant provisioning
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38, FR44 (partial); NFR10; AD-5/AD-6.
+
+As an operator,
+I want tenant provisioning to start only under an authenticated operator principal bound to one tenant,
+So that no ordinary caller or service can create a tenant or its grants.
+
+**Acceptance Criteria:**
+
+**Given** an authenticated principal that the operator artifact marks operator-scoped with the enumerated tenant-provisioning operation,
+**When** it requests provisioning,
+**Then** the workflow starts with that principal and exactly one tenant identifier recorded in its lifecycle evidence,
+**And** neither the principal nor the tenant identifier can change on resume or retry.
+
+**Given** an authenticated principal that is not operator-scoped, or that is operator-scoped without the provisioning operation,
+**When** it requests provisioning,
+**Then** it is refused before any registry write, workflow schedule, or backend resource creation, with a sanitized diagnostic,
+**And** negative tests use authenticated principals.
+
+**Given** startup auto-provisioning of routed tenants is configured,
+**When** the Server starts,
+**Then** it schedules no provisioning without an operator-authorized request bound to that tenant,
+**And** the Server's own identity never suffices; each refusal is sanitized and creates nothing.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 5.1 ("Tenant Provisioning Workflow") | `historical-reference-only` | Dependency context: it is the origin of the current provisioning endpoint and workflow. Its operator wording specified no authorization, and its story shape, tasks, and proof are not reused. |
+
+##### Slice Proof
+
+Operator-authorized provisioning start is the independently demonstrable outcome: both entry points, the provisioning endpoint and startup auto-provisioning, admit only an operator-scoped principal holding the enumerated provisioning operation and bind that principal and one tenant identifier into lifecycle evidence. Its three criteria cover conforming start with binding, refusal before any effect, and the startup path. It can be demonstrated without grants, because it adds no grant set; Story 34.41 consumes it to authorize the grant set it materializes. Execution consumes Story 34.8's operator-scoped marking and enumerated-operation lookups, and the completed Story 34.33 register/guard outcome for any new lifecycle-evidence wire names. Revalidating the operator principal at resume and activity boundaries is planned Story 34.43; platform-issued tenant identifiers are 34.6; channel-identity routing, which replaces the source-keyed map that startup auto-provisioning reads, is 34.10; Story 34.35's transition graph presumes operator-authorized transitions and is not changed here. The AD-21 erased-tenant register consult before identifier issuance remains with its register stories and is not claimed here. This planning record supplies no complete FR38, FR44, or NFR10 qualification credit.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `0b59bba5`. The approved criteria are implementation intent, not current runtime claims. These are source-path observations; deployment ingress and Dapr access-control policy were not inspected and are not certified by these rows.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "FR38: Operator can create a tenant" | Location | `rg -n '^- \*\*FR38:\*\* Operator can create a tenant' _bmad-output/planning-artifacts/prd.md` | Present at line 1054. | `confirmed` |
+| "Provisioning is authorized by an operator principal under AD-5" | Location/design | `grep -n -o 'Provisioning is authorized by an operator principal under AD-5' _bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md` | Present in the AD-6 rule at line 127. Design intent only. | `confirmed` |
+| "scoped at initiation to exactly one tenant identifier recorded in its lifecycle evidence" | Location/design | `grep -n -o 'scoped at initiation to exactly one tenant identifier recorded in its lifecycle evidence' _bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md` | Present in the AD-5 rule at line 119. Design intent only. | `confirmed` |
+| "The provisioning endpoint relies only on the fallback authenticated-user policy" | Existence/behavior/location | `sed -n '104,107p' src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs`; `rg -n 'RequireAuthorization' src/Hexalith.Memories.Server --type cs`; `sed -n '124,198p' src/Hexalith.Memories.Server/Endpoints/TenantLifecycleEndpoints.cs \| rg -c -e 'RequireAuthorization' -e 'AddEndpointFilter'` | The fallback policy is `RequireAuthenticatedUser()`. `RequireAuthorization` has no match in Server (exit 1). The `MapPost(MemoriesRoutes.Tenants, ...)` mapping at lines 124–198 adds no authorization call or endpoint filter (exit 1). | `confirmed` |
+| "TenantAuthorizationMiddleware applies no tenant check to the provisioning route" | Source behavior/location | `sed -n '40,57p' src/Hexalith.Memories.Server/Authentication/TenantAuthorizationMiddleware.cs` | `GetTenantId` reads the tenant only from a path segment after `/api/v1/tenants` (line 43) or the search query, and otherwise returns null (line 56). `POST /api/v1/tenants` carries no such segment. | `confirmed` |
+| "Startup auto-provisioning schedules TenantProvisioningWorkflow with no principal" | Source behavior/location | `rg -n -e 'AutoProvisionRoutedTenants' -e 'new\(tenantId, tenantId\)' -e 'ScheduleNewWorkflowAsync' src/Hexalith.Memories.Server/EventStoreIntegration/RoutedTenantProvisioningStartupService.cs` | The flag gate at line 67, the input `new(tenantId, tenantId)` at line 99, and the schedule call at line 116. The input carries a tenant ID and display name only. | `confirmed` |
+| "TenantRegisteredEvent records no initiating principal" | Existence/location | `sed -n '10,13p' src/Hexalith.Memories.EventStore/Domain/Events/TenantRegisteredEvent.cs` | The event declares `TenantId`, `DisplayName`, and `RegisteredAt` only. | `confirmed` |
+| "RegisterTenantCommand is accepted with a workflow-instance or literal system correlation, not a principal" | Source behavior/location | `rg -n -e 'new RegisterTenantCommand' -e 'workflowInstanceId \?\? "system"' src/Hexalith.Memories.Server/Tenants/TenantRegistryService.cs` | The command at line 144 is accepted with `workflowInstanceId ?? "system"` at line 145. | `confirmed` |
+| "Story 5.1 specified no provisioning authorization" | Existence/absence | `awk '/^### Story 5\.1:/,/^### Story 5\.2:/' _bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'auth' -e 'admin' -e 'role'` | No match, exit 1. | `confirmed` |
+| "Before this revision, no epics.md story owns operator authorization of provisioning" | Existence/absence | `git show 0b59bba5:_bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'operator[- ]authori[sz]ed (tenant )?provisioning' -e 'provisioning .{0,40}operator principal' -e 'AutoProvisionRoutedTenants' -e 'startup-initiated provisioning'` | No match, exit 1. This is a pattern-scoped absence check. | `confirmed` |
+
+
+### Story 34.48: Require operator authority for tenant deletion and verification
+
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR39 (initiation authority only), FR44 (partial); NFR10; AD-5/AD-6.
+
+As an operator,
+I want tenant deletion and tenant verification to accept only an operator principal holding that enumerated operation, bound to one tenant,
+So that a tenant's own principals cannot act as lifecycle authority, and lifecycle workflows carry an operator principal to revalidate.
+
+**Acceptance Criteria:**
+
+**Given** an operator-scoped principal holding the enumerated tenant-deletion or tenant-verification operation,
+**When** it requests that operation for one tenant,
+**Then** the operation runs bound to that principal and tenant,
+**And** a deletion workflow records both in its lifecycle evidence, and neither can change on resume or retry.
+
+**Given** a principal authorized only by a matching tenant claim, or an operator-scoped principal without that operation,
+**When** it requests deletion or verification,
+**Then** it is refused before any lifecycle commit, workflow schedule, or verification probe, with a sanitized diagnostic,
+**And** negative tests use authenticated principals.
+
+#### Dev Notes
+
+##### Historical Context Classification
+
+| Prior work | Classification | Permitted use |
+| :--- | :--- | :--- |
+| 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Story 5.2 ("Tenant Deletion Workflow") | `historical-reference-only` | Dependency context: it is the origin of the deletion workflow and endpoint. It specified no initiation authority, and its story shape, tasks, and proof are not reused. |
+
+##### Slice Proof
+
+Operator-authorized initiation of the two existing lifecycle endpoints is the independently demonstrable outcome: deletion and verification admit only an operator-scoped principal holding the enumerated operation, and deletion binds that principal and one tenant into its lifecycle evidence. Its two criteria cover conforming initiation with binding and refusal before any effect. These routes must stop relying on the tenant-claim check, because an operator principal carries no tenant claim and can never pass it. Execution consumes Story 34.8's enumerated-operation lookup and the completed Story 34.33 register/guard outcome for the new deletion lifecycle-evidence wire names. Revalidating the bound operator principal at resume and activity boundaries is planned Story 34.46; the lifecycle transition graph is Story 34.35; grant revocation at erasure completion is planned Story 34.45. This planning record supplies no complete FR39, FR44, or NFR10 qualification credit.
+
+**Recorded maintainer decision — 2026-10-08:** the user, as maintainer, approved the breaking behavior change: after this story, a principal authorized only by a matching tenant claim is refused tenant deletion and tenant verification, and existing consumers must use an operator principal. This is a `confirmed` implementation gap against AD-5/AD-6 and FR39, not a corrected claim; it is recorded here before any story selection, following the Story 25.3 escalation precedent.
+
+##### Epic AC Verification
+
+Verified 2026-10-08 against `main` at `3e18d0dc`, whose source and spine are unchanged from `0b59bba5`. The approved criteria are implementation intent, not current runtime claims.
+
+| Epic claim | Class | Command / evidence | Observed | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| "FR39: Operator can complete verified tenant erasure" | Location | `rg -n '^- \*\*FR39:\*\* Operator can complete verified tenant erasure' _bmad-output/planning-artifacts/prd.md` | Present at line 1055. | `confirmed` |
+| "tenant verification" and "tenant deletion" are enumerated lifecycle-workflow operations | Location/design | `grep -n -o -F 'tenant verification, lifecycle repair' SPINE`; `grep -n -o -F 'tenant deactivation, tenant deletion' SPINE` | Both present in AD-5's exhaustive operation list at line 119. Design intent only. | `confirmed` |
+| An operator principal is an identity "carrying no tenant claim by construction" | Location/design | `grep -n -o -F 'carrying no tenant claim by construction' SPINE` | Present at line 119. Design intent only. | `confirmed` |
+| "Tenant deletion and verification are authorized by a matching tenant claim" | Source behavior/location | `rg -n -e 'public const string Tenant =' -e 'public const string TenantVerify =' src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs`; `sed -n '40,48p' src/Hexalith.Memories.Server/Authentication/TenantAuthorizationMiddleware.cs`; `sed -n '68,73p' src/Hexalith.Memories.Server/Authentication/TenantAuthorizationEndpointFilter.cs` | The routes `/api/v1/tenants/{tenantId}` (line 71) and `/api/v1/tenants/{tenantId}/verify` (line 86) carry a tenant segment, which the middleware reads at line 43; `TryAuthorizeTenant` then requires a tenant claim ordinal-equal to that tenant (lines 68–69) and denies otherwise. These are source-path observations; deployment ingress was not inspected. | `confirmed` |
+| "The deletion workflow is scheduled without a principal" | Existence/location | `rg -n 'new TenantDeletionInput' src/Hexalith.Memories.Server/Endpoints/TenantLifecycleEndpoints.cs`; `sed -n '13p' src/Hexalith.Memories.Contracts/V1/TenantDeletionInput.cs` | `new TenantDeletionInput(tenantId)` at line 470; the only constructor is `TenantDeletionInput(string tenantId)` at line 13. | `confirmed` |
+| "Story 5.2 specified no initiation authority" | Existence/absence | `awk '/^### Story 5\.2:/,/^### Story 5\.3:/' _bmad-output/planning-artifacts/epics.md \| rg -n -i -e 'authori' -e 'admin' -e 'tenant claim'` | No match, exit 1. | `confirmed` |
+| "Before this revision, no Epic 34 story owns operator authority for tenant deletion or verification" | Existence/absence | `git show 3e18d0dc:_bmad-output/planning-artifacts/epics.md \| awk '/^## Epic 34:/,/^## Epic 35:/' \| rg -n -i -e 'operator authority to (start\|request) tenant deletion' -e 'deletion .{0,40}operator principal' -e 'verification .{0,40}operator principal' -e 'tenant-claim'` | No match, exit 1. This is a pattern-scoped absence check. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ## Epic 35: Make a Defensible Release Decision

@@ -10,7 +10,7 @@ review_loop_iteration: 0
 context:
   - '_bmad-output/implementation-artifacts/epic-27-context.md'
 investigated: '2026-10-08'
-investigation_commit: 'aac6d9054cb138881e6e49c8e48233553123ffce'
+investigation_commit: '3e18d0dcdceb387eff89862c382637da89ad7e47'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -39,26 +39,33 @@ investigation_commit: 'aac6d9054cb138881e6e49c8e48233553123ffce'
 
 </frozen-after-approval>
 
+## Open Questions
+
+1. Continue with **separate strict artifact readers** (recommended: finish I1 as a library-only prerequisite; no acceptance, consumer migration or target access), or **keep 27.4 pending** until accepted prerequisites and scoped execution inputs exist? Selecting I1 requires its own build spec under the existing scope boundary.
+
 ## Code Map
 
-- `tools/verify_access_telemetry_lifecycle.py` — legacy `_validate_predecessor`, launch and terminal paths check structure/hashes/reviewer strings; require completed authenticated interchange before launch.
-- `tools/access_telemetry_c1_github_approvals.py` — reuse reviewed wire/separation imports and GitHub observations; no session/custody/role authority.
-- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — separate I1-I6/P1-P7 prerequisites; accepting registry/consumer, numerical/time/status policy and scoped authority remain incomplete.
-- `docs/operations/access-telemetry-lifecycle.md` — reuse checkpoint/custody/C3-journal/close-out commands.
-- `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — canonical matrix and offline block. Legacy reviewer checks persist until authenticated migration; C5/C6 keep separate reviewers.
+- `tools/access_telemetry_c1_interchange.py` — snapshots/J1/Refs complete; closed artifact readers absent. Reuse primitives for separately selected I1.
+- `tools/access_telemetry_c1_github_authority.py` — reviewed authenticated observations, no capture acceptance or custody proof. Platform is published/pinned at `48d5c6e64087bb33232651d8b59422e95185c699`.
+- `tools/verify_access_telemetry_lifecycle.py` — legacy predecessor checks hashes/reviewer labels. Approved P7 must migrate checkpoint validation, producer launch and terminal bundle consumers together.
+- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — accepting registry, semantic verification, assembly and migration remain absent despite completed authority preparation.
 
 ## Tasks & Acceptance
 
-**Execution:**
-- [ ] `tools/verify-access-telemetry-lifecycle.py` — after accepted PG2 predecessors, completed interchange, migration approval and scoped target/custody/credential/fault/purge grants, execute C0/C2-C4; retain immutable packets/journal and obtain separate post-evidence C5/C6 decisions.
-- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — reconcile only actual accepted evidence.
-- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — reuse refusal/drift/cleanup/tenant-negative tests and architecture guards; retain commands/results.
-- [ ] `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/project-context.md`, `docs/dev/telemetry.md`, canonical matrix — reviewed four-path closure after terminal/preflight; explicit post-review staging/publication authority, postflight and remote containment.
+**Execution (blocked):**
+- [ ] `tools/verify-access-telemetry-lifecycle.py` — after accepted PG2 predecessors, migration approval and scoped target/custody/credential/fault/purge grants, execute C0/C2-C4; retain packets/journal/cleanup and separate post-evidence C5/C6 decisions.
+- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — reconcile actual accepted evidence; retain checkpoint/custody/cleanup commands from the operations runbook.
+- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — rerun refusal/drift/cleanup/tenant-negative and architecture guards, retaining results.
+- [ ] `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/project-context.md`, `docs/dev/telemetry.md`, canonical evidence — reviewed four-path closure after terminal/preflight, explicit staging/publication authority, postflight and remote containment.
 
 **Acceptance Criteria:**
-- Given missing prerequisites, when readiness is checked, then no live launch occurs and Story 27.4/A41 remain incomplete/open.
-- Given authorized PG2 execution, when expiry/faults run, then accepted evidence proves two-writer acknowledgement/recovery, expired purge, newer preservation, emission and denial before dependencies, with final disabled gate/released Lease/zero lifecycle-clock replicas.
-- Given accepted C0-C6 and publication authority, when terminal/postflight/remote verification passes, then A41 summaries bind the same evidence and protected historical/sprint bytes remain identical.
+- Given missing prerequisites, when readiness is checked, then no live launch occurs and 27.4/A41 remain incomplete/open.
+- Given authorized PG2 execution, when expiry/faults run, then evidence proves acknowledgement/recovery, purge/newer preservation, emission and tenant denial, with final disabled gate/released Lease/zero lifecycle-clock replicas.
+- Given accepted C0-C6 and publication authority, when terminal/postflight/remote proof passes, then summaries bind one evidence set and protected history/sprint bytes remain identical.
+
+## Design Notes
+
+Live purge/faults/publication require scoped authority. PG2 C1.15 lacks registration/accepted renewal; 23 owners remain held; closed-window C1.16 eligibility is unproven. No eligible bundle or execution inputs supplied. Footprint: draft/context only.
 
 ## Implementation Notes
 
@@ -68,12 +75,6 @@ investigation_commit: 'aac6d9054cb138881e6e49c8e48233553123ffce'
 
 ## Verification
 
-2026-10-08, clean source `aac6d9054cb138881e6e49c8e48233553123ffce`: canonical ten-command block exited 0; 80 lifecycle cases passed, Debug/source-reference build zero warnings/errors, exact 12 retention-decision + 5 A41 guards passed without skips. Receipt `/tmp/story-27-4-offline.MHHDT1CO` retains commands/exits/logs/dependency identities/assembly hash/XML.
+2026-10-08 at the investigation commit: canonical offline block exit 0; 80 lifecycle tests; Debug/source-reference build zero warnings/errors; exact 12 retention + 5 A41 guards, no skips. Receipt `/tmp/story-27-4-offline.vr3cQrDZ` retains commands/exits/source/dependencies/assembly/XML.
 
-Interchange discovery: exit 0, 92 passed without skips; command/log receipt `/tmp/story-27-4-readiness-5epa4681`. Its facts verify sixteen inputs, matching PG2 pins and pinned reviewed transport. Runtime/transport preparation is complete; consumer/deployment approval remains pending.
-
-Two registered/done stories: 27.21 accepted historical PG1 C1.15; 27.22 accepted PG2 C1.16 for a closed window. PG2 C1.15 registration/capture/disposition, 23 gate registrations and authenticated interchange remain required. C1.16 needs proven session eligibility or a separately authorized fresh capture. No accepted eligible C1 bundle exists. Reopen on accepted prerequisite artifacts.
-
-The initial readiness investigation changed only this draft and preserved the prior frozen intent. The subsequent owner-selected provider decision above is tracked in its separate prerequisite spec. Prior directions/receipts remain at the investigation commit. No live/status/A41/publication action occurred.
-
-Provider implementation is tracked separately in [the authority spec](spec-pg2-c1-github-authority.md). Story 27.4 stays draft pending accepted prerequisites.
+`env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`: exit 0, 135 passed, no skips. Receipt `/tmp/story-27-4-readiness-ucu_dcz1` retains log/exit, pre-edit draft and protected hashes. Earlier receipts remain at the investigation commit. User edits preserved; no live/status/A41/publication action. Draft remains unresolved.
