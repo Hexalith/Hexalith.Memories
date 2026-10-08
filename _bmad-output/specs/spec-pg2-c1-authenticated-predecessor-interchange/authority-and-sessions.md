@@ -5,8 +5,10 @@
 The source mechanisms and their limits are recorded with reproducible commands
 in [brownfield.md](brownfield.md). None of the inspected mechanisms implements
 C1 reviewer authorization plus a retained, revocable decision receipt.
-**No authentication scheme, issuer, key, role grant or deployed service is
-selected by this spec.** P1 is a Security-owned blocking decision.
+**The full gate/session authority scheme, role grants and deployed accepting
+service remain unselected.** The separately authorized GitHub bundle review
+prerequisite below prepares a narrow reviewer-identity/read-only decision
+contract; it does not resolve the rest of P1.
 
 Consume the selected mechanism through one required authority adapter. Do not
 build a new proprietary Memories MCP server/CLI or receipt issuer. If the
@@ -119,3 +121,51 @@ producer-identity change. The pure separation predicate is implemented in
 `tools/access_telemetry_c1_approval_policy.py`; it grants no authentication,
 receipt validation or execution authority. The label-only legacy predecessor
 cannot consume this exception and retains its existing denial behavior.
+
+
+## Prepared GitHub bundle review prerequisite (2026-10-07)
+
+The owner authorized preparing and implementing the concrete read-only GitHub
+bundle approval contract. Platform now owns the importable authenticated GET
+library `references/Hexalith.Platform/eng/hexalith_github_reviews.py`; Memories
+checks exact C1 bindings in `tools/access_telemetry_c1_github_approvals.py`.
+The exact wire, mandatory trusted inputs, limitations and publication handoff
+are in [the operations contract](../../../docs/operations/c1-github-review-contract.md).
+
+GitHub's certificate-verified fixed production API identifies each stable user
+and current review state. A separate independently authenticated current policy
+must supply both role allowlists, exact profile/workload/target/session scope
+and policy digest. All producer principals, exact manifest/body retained bytes,
+manifest creation time, evidence/PR commits, trusted UTC and numerical request,
+status-age, review-lag and approval-lifetime limits remain mandatory caller
+inputs. No values are chosen or adopted on the owner's behalf. Trusted UTC ages
+from context acquisition across repeated calls; it cannot reset on reuse.
+
+Two distinct approved review IDs on one PR are re-fetched for each call. Each
+body binds the same exact frozen manifest and its own role. The named owner
+exception is reused unchanged; any reviewer/producer overlap still refuses.
+The resulting immutable checked observations retain issuer and exact response/
+body digests but no credential, grant, execution handle or accepted predecessor.
+An explicitly marked loopback TLS issuer produces fixture observations only.
+
+This is bounded prerequisite preparation, not full I3/I5 provider integration
+or P1/P2/P3/P4 closure. Platform publication and a separately authorized matching
+Memories root gitlink advance are still needed for a fresh pinned CI checkout.
+The root gitlink is preserved in this implementation. Actual GitHub evidence
+PRs require an independently authorized producer/PR author different from the
+reviewer because GitHub forbids approving one's own PR. Sessions, producer
+execution authentication, custody, current role grants, trusted time and all
+remaining live evidence remain external prerequisites. The legacy accepting
+consumer, Story 27.4, A41 and Production remain unchanged and held.
+
+
+Resumed review (2026-10-08): independent review corrections add bounded inherited
+worker-bootstrap checks, suppress keylog configuration before context creation,
+make repository-root imports usable, reject elapsed regressions, and cover the
+remaining real TLS and temporal boundaries. Current verification and source
+identities are recorded in the implementation spec. Platform's separate published
+commit `7192c313edc39c6f698bc25c5475ff41d12197cd` contains the earlier library;
+final corrections still need Platform publication followed by the separately
+authorized Memories gitlink advance. This workflow preserves the existing pinned
+gitlink and performs neither action. Full I1-I6 acceptance and all live holds
+remain unchanged.

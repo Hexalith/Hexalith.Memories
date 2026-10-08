@@ -296,7 +296,13 @@ jobs:
       - name: Run access-telemetry C1 producer fixtures
         run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p "*_test.py"
 
-      - name: Run access-telemetry C1 interchange wire fixtures
+      - name: Initialize root Platform review-reader dependency
+        # Nonrecursive, pinned root dependency only. Platform must publish the
+        # library and Memories must advance its gitlink before a clean CI clone
+        # can discover these tests. Missing source fails import; never skip it.
+        run: git submodule update --init references/Hexalith.Platform
+
+      - name: Run access-telemetry C1 interchange and HTTPS review fixtures
         run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p "test_*.py"
 
       - name: Run story file-scope gate fixtures

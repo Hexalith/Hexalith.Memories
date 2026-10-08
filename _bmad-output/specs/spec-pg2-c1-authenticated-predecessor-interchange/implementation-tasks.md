@@ -2,7 +2,8 @@
 
 Tracking ID: `SPEC-pg2-c1-authenticated-predecessor-interchange`.
 Review: proposed. Integrated I1-I6 verifier: incomplete; common wire and named-owner
-principal-separation preparation are implemented separately. No story number, sprint registration,
+principal-separation preparation and narrow read-only GitHub bundle review
+observations are implemented separately. No story number, sprint registration,
 checkpoint approval or permission to operate a target is assigned by this folder.
 
 ## Tasks in this slice
@@ -20,8 +21,9 @@ complete by this spec's source investigation.
 | I5 — assembly and consumer preflight | Assemble immutable manifest, consume real two-role bundle decisions and publish predecessor/v2. Update `_validate_predecessor` and each C1-reading path in `tools/verify_access_telemetry_lifecycle.py` plus the existing `tools/verify-access-telemetry-lifecycle.py` boundary to require strict versioned validation before use. Do not add a new module-specific CLI/server. | Deployment Adapter Developer / Story 27.4 machinery owner; P7 and prior tasks. | Exactly 25 fixture gates with genuine test receipts pass; missing, mixed, reused, cyclic, changed or downgraded inputs refuse. Every launcher and terminal/offline authorization path proves denial before target/dependency calls. |
 | I6 — contract verification and handoff | Add the complete negative matrix and positive nonzero case; update operations interchange guidance with actual schema/provider/consumer contracts and commands. Record exact test totals and limitations after execution, never before. | Deployment Adapter Developer; Security reviews authority cases, Operations reviews custody/session/cleanup; all blocking prerequisites for real use. | The new focused lane passes with zero failures/skips and explicit zero-dependency assertions. Protected status/deployment/history bytes match the baseline; fixture results grant no operational acceptance. |
 
-Focused command executes the current wire/principal preparation fixtures; it
-does not yet prove the complete proposed I1-I6 authenticated verdict:
+Focused command executes wire/principal preparation and real local TLS GitHub
+review observation fixtures; it does not yet prove the complete proposed I1-I6
+authenticated verdict:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v
@@ -38,12 +40,13 @@ These are blockers for real acceptance, not requests for additional authority.
 Jérôme Piquot is the owner-designated Operations/Security bundle approver
 following the explicit 2026-10-07 single-owner decision. Other accountable people
 remain unassigned; role allocations express the source contract or a proposed
-cross-owner decision route. This appointment does not select the receipt provider
-or supply gate acceptance, role grants, session or custody evidence.
+cross-owner decision route. The separately authorized GitHub prerequisite below prepares only bundle
+review identity/state consumption; this appointment supplies no gate acceptance,
+role grants, session or custody evidence.
 
 | ID | Missing decision/input | Accountable role / collaborators | Consequence now | Objective reopen evidence |
 | --- | --- | --- | --- | --- |
-| P1 | Supported producer/reviewer identity, decision service/receipt protocol, issuer/trust roots, authenticated retrieval, principal mapping and revocation mechanism; owning repository and maintainer. | Security; platform identity/McpCli maintainers if applicable. | No reviewer authentication or receipt validation; I3 production integration and accepted output blocked. | Named owner approves the concrete existing/added provider contract and deployment/support boundary; selected adapter verifies authentic bound receipts and rejects forged/wrong-scope/revoked test receipts. An external service URL alone is insufficient. |
+| P1 | Complete producer/gate/session identity and decision service/receipt protocol, issuer/trust roots, authenticated retrieval, principal mapping and revocation mechanism; owning repository and maintainer. Narrow GitHub bundle reviewer/state retrieval is prepared separately below. | Security; platform identity/McpCli maintainers if applicable. | Narrow bundle reviewer/state observations are prepared; complete I3 production integration, other authority facts and accepted output remain blocked. | Named owner approves the concrete existing/added provider contract and deployment/support boundary; selected adapter verifies authentic bound receipts and rejects forged/wrong-scope/revoked test receipts. An external service URL alone is insufficient. |
 | P2 | Numeric collection duration/age, review lag, disposition precision, approval maximum lifetime, session use lifetime, trusted time/skew, status-proof age, key rotation and unavailable-service policy. Reconcile existing 15-minute pre-launch freshness with long C1 evidence windows. | Security with Platform Operations. | No authorization defaults; absent time/status policy refuses. | Approved immutable policy artifact with every numerical limit and boundary case; clock/expiry/status tests pass, including equality-at-expiry and unavailable status/time. |
 | P3 | Authenticated actual cluster identity and scoped session grant, approved capture/review/use actions and principals; custody root/retention/access, immutable receipt retrieval, retained source/command support, cleanup and incident ownership. | Platform Operations; Security validates grants; archive custodian to be named. | Labels do not authorize target access; genuine custody/session eligibility cannot be claimed. | Approved scoped grant and custody/cleanup contract, authenticated immutable retrieval receipts, protected supporting evidence and independently verified actual target identity. No target is contacted in this task. |
 | P4 | Authorized review role for each gate, delegation/quorum and independence rules; exact decision dependencies for C1.23 operations, C1.24 non-HA acknowledgement and C1.25 security, and whether their authors may also approve the bundle. | Security / Independent Security Reviewer and Platform Operations Approver; Architecture for dependency topology. | Cannot substitute aggregate decisions or resolve a self-reference/self-approval cycle. | Approved role/action/scope matrix and acyclic evidence dependency contract; alias-principal, self-review, cross-role and cycle tests refuse. Different strings alone do not qualify. |
@@ -89,3 +92,45 @@ negative/positive fixtures have passed review. Operational acceptance additional
 requires actual eligible capture/custody/authority and all real registered gate
 evidence. Neither outcome closes Story 27.4/A41 or enables Production; those
 retain their separate full close-out requirements.
+
+
+## Prepared read-only GitHub review consumption (2026-10-07)
+
+The separately scoped implementation spec is
+`_bmad-output/implementation-artifacts/spec-pg2-c1-github-review-consumption.md`.
+Its prerequisite library adds authenticated bounded Platform HTTPS retrieval,
+strict Memories two-role/body/scope/time checks and genuine local TLS fixtures.
+The owner exception and existing wire primitives are reused unchanged. It
+returns checked immutable observations only; neither I3 nor I5 is marked done,
+no accepting provider/registry entry is added, and P1-P7 remain incompletely
+resolved. Numerical policy values and current scoped role grants are required
+independently authenticated caller inputs, not defaults or adopted policy.
+
+The supported GitHub machine review body and explicit trust prerequisites are
+published as local reviewable documentation in
+[the operations contract](../../../docs/operations/c1-github-review-contract.md).
+The local TLS issuer is visibly distinct from production, and missing Platform
+source fails test discovery. CI initializes only the root-declared Platform
+checkout at its pinned commit. Platform publication and a separate authorized
+root gitlink advance are outstanding; this unpublished pinned checkout is not
+shippable. The legacy consumer and Story 27.4/A41/Production holds persist.
+
+Exact executed verification results are recorded in the implementation spec's
+Verification section. The focused tests include unchanged wire/separation
+regressions, current owner and distinct-reviewer positive cases, edit/dismissal/
+scope/producer/time denials, status ageing across both requests, trusted-context
+reuse expiry, and bounded real HTTPS/TLS/redirect/HTTP/body failures. A resolver
+stall inside the fixture HTTPS worker verifies the deadline includes DNS.
+Fixture success proves no live grant, session, custody or eligible producer.
+
+
+Resumed review (2026-10-08): independent review corrections add bounded inherited
+worker-bootstrap checks, suppress keylog configuration before context creation,
+make repository-root imports usable, reject elapsed regressions, and cover the
+remaining real TLS and temporal boundaries. Current verification and source
+identities are recorded in the implementation spec. Platform's separate published
+commit `7192c313edc39c6f698bc25c5475ff41d12197cd` contains the earlier library;
+final corrections still need Platform publication followed by the separately
+authorized Memories gitlink advance. This workflow preserves the existing pinned
+gitlink and performs neither action. Full I1-I6 acceptance and all live holds
+remain unchanged.
