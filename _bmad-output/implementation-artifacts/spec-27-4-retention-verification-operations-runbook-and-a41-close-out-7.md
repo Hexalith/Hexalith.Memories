@@ -7,10 +7,8 @@ route: 'dispatch'
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
 baseline_commit: 'f4e7eb8626513c83f392a7cabf223b1a4673daa3'
 review_loop_iteration: 0
-context:
-  - '_bmad-output/implementation-artifacts/epic-27-context.md'
 investigated: '2026-10-08'
-investigation_commit: 'c46973679fcf09bdc5aab19928f2fe03dae82226'
+investigation_commit: '906bc07ad6a8e4912a7222d9d097da434148266a'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -39,15 +37,16 @@ investigation_commit: 'c46973679fcf09bdc5aab19928f2fe03dae82226'
 
 **Decision 2026-10-08 (source labels):** The owner selected the recommended separate C1.15 source-receipt correction, tracked in `spec-pg2-c1-15-source-receipt-labels.md`. This authorizes offline producer/tests only; 27.4 remains pending.
 
+**Decision 2026-10-08 (I2):** The owner said “apply recommended”, authorizing a separately tracked offline registry/source-validation prerequisite. Its approved scope uses isolated fixture contracts and no deployed accepting entries; live Story 27.4 remains held. See `spec-pg2-c1-offline-producer-bindings.md`.
+
 </frozen-after-approval>
 
 ## Code Map
 
-- `tools/access_telemetry_c1_interchange.py:784` — I1 readers/dispatch complete; reuse snapshots/J1/Refs. Parsing grants no acceptance.
-- `tools/verify-access-telemetry-c1.ps1:353` — separate source-receipt correction implemented; distinct labels and PG2 initial/recheck stdout digests pass unchanged I1 inspection. See the prerequisite below; this grants no acceptance.
-- `tools/access_telemetry_c1_github_authority.py:607` — authenticated observations exist; actual execution/custody facts remain external.
-- `tools/verify_access_telemetry_lifecycle.py:2642` — legacy predecessor; P7 must migrate checkpoint/launcher/terminal consumers together.
-- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — I2–I6/P1–P7 incomplete; registry/assembler absent.
+- `tools/access_telemetry_c1_interchange.py` — reuse I1; registry/semantic assembly absent.
+- `tools/access_telemetry_c1_github_authority.py` — authenticated observations confer no acceptance.
+- `tools/verify_access_telemetry_lifecycle.py` — legacy labels cannot authenticate C1.
+- `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — I2–I6/P1–P7 holds; companion `producer-bindings.md` specifies proposed I2 fields/source rules.
 
 ## Tasks & Acceptance
 
@@ -64,7 +63,7 @@ investigation_commit: 'c46973679fcf09bdc5aab19928f2fe03dae82226'
 
 ## Design Notes
 
-Missing: PG2 C1.15 registered/accepted renewal, 23 registered/done owners, eligible C1.16 session, complete accepted bundle and scoped execution inputs. Live purge/faults/publication need separate authority. Footprint: draft/context only; preserve user edits. I1 selection is superseded by completion.
+Runtime PG2 correction complete; deployment approval pending. Footprint: draft, context and offline receipt only. Live faults/purge/publication require their recorded authority.
 
 ## Implementation Notes
 
@@ -75,6 +74,8 @@ independent review and both follow-ups are complete. This fixes producer/reader
 compatibility only.
 27.4 remains draft, A41 open and Production writes disabled pending the accepted
 prerequisites and scoped execution inputs listed above.
+
+2026-10-08: Rechecked holds; updated readiness only. No source/test/target changes.
 
 ## Spec Change Log
 
@@ -87,3 +88,5 @@ Earlier offline/135-interchange receipts at `3e18d0dcdceb387eff89862c382637da89a
 Current canonical offline block: exit 0; 80 lifecycle passes, zero-warning/error Debug/source-reference build, exact 12 retention + 5 A41 passes. Commands/source/dependencies/assembly/XML: `/tmp/story-27-4-offline.Ga42WIRM`.
 
 `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`: exit 0; 167 passes. All lanes have zero failures/errors/skips. Logs/source/protected hashes and label-collapse probe: `/tmp/story-27-4-resume-4e1vv77o`. Offline only; draft unresolved.
+
+Current resumption: 80 lifecycle + 12/5 architecture + 167 interchange passes; zero-warning/error Debug/source-reference build. Canonical receipt `/tmp/story-27-4-offline.fq11FV9r`; investigation/interchange/protected hashes `/tmp/story-27-4-current-readiness-3gv1qqwq`. Offline only; draft unresolved.

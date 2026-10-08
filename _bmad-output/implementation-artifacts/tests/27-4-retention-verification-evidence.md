@@ -699,3 +699,40 @@ sources remained identical; the historical receipt prefix and matrix states were
 preserved. The next separate implementation dependency is I2 closed
 registry/source binding, with genuine registration/command/role receipts still
 required; this supporting slice supplies none of those approvals.
+
+### 2026-10-08 Story 27.4 draft readiness recheck
+
+The unchanged ten-command offline block passed at source revision
+`906bc07ad6a8e4912a7222d9d097da434148266a`. Receipt `/tmp/story-27-4-offline.fq11FV9r`
+retains all commands, exit codes, source/worktree and dependency identities,
+logs, assembly hash and XML. All ten commands and the block exited `0`:
+80 lifecycle tests, exactly 12 retention-decision plus 5 A41 guards, every XML
+result `Pass`, zero failures/errors/skips/not-run; Debug/source-reference build
+had zero warnings and errors.
+
+| Receipt item | SHA-256 |
+| :--- | :--- |
+| Execution-time diff | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Built assembly (build identity only) | `7f4c851d0c4306937e8b4302be53bc36e8e6ec9aea033b5390e4e46e3ae28d89` |
+| Architecture XML | `26c934d0544125bd72ea843207b4ca664bb8d348351600f8d0c657f671de0698` |
+| Lifecycle stderr | `31bb90df5b743e447f862fddc67731880c9ccad17fad2bc63b20b23e5417a01f` |
+
+`env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`
+exited `0`: 167 passes, zero failures/errors/skips. Logs and protected-file
+baselines: `/tmp/story-27-4-current-readiness-3gv1qqwq` (local offline receipt).
+The retained named negatives include
+`test_c1_owner_exception_does_not_authorize_label_only_legacy_predecessor`,
+`test_producer_refuses_unverifiable_target_identity_without_mutating_target`,
+`test_producer_restores_disabled_state_when_body_fails_after_enable`, and
+`test_business_and_privacy_canaries_use_curl_config_and_tenant_routes`;
+all passed. They test refusal, cleanup and tenant/privacy boundaries using
+fixtures; they confer no target authority or live gate acceptance.
+
+Investigation found no executable remaining live task within the current draft.
+I2 closed registry/source-binding preparation can be proposed separately with
+isolated fixture contracts and no deployed accepting entries; the current
+27.4 intent excludes implementing separate prerequisites. Semantic admission,
+assembly, consumer migration and genuine accepted evidence/execution inputs
+remain outstanding. Runtime PG2 correction is already complete offline.
+No checkpoint state, A41/action status, Production deployment, sprint or
+historical Epic 20/Story 20.5 byte changed; no target was contacted.

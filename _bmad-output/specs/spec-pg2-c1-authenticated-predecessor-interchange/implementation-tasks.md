@@ -166,3 +166,147 @@ consumer migration retain their recorded owners/prerequisites. No operational
 dependency topology is chosen by fixtures. Publication of Platform changes and
 a separately authorized matching root gitlink advance remain outstanding;
 27.4/A41/Production and the prior history remain held.
+
+
+## Prepared offline I2 registry/source inspection (2026-10-08)
+
+The separately authorized bounded slice is
+`spec-pg2-c1-offline-producer-bindings.md`; its actual API and proof limits are
+published in [the inspection contract](../../../docs/operations/c1-producer-binding-inspection-contract.md).
+`tools/access_telemetry_c1_producer_bindings.py` adds frozen thirteen-field
+registry inventories and J1 hashes, explicit retained UTF-8 byte pairs and
+normalization metadata, exact C1.15 source-set/commit-label comparisons and
+independently recomputed SHA-256/Git blob SHA-1 receipts. It reuses I1 unchanged,
+bounds each byte form to 1 MiB, and counts registry/capture JSON and both source
+forms together under a deduplicated 32 MiB limit. Deployed lookup always refuses.
+
+Independent isolated fixtures in `test_producer_bindings.py` cover literal
+J1/Git-OID vectors, all nineteen source identities/commit labels, exact registry
+shape/order/path/Ref checks, missing/extra/substituted sources, clean/blocked/
+recheck state, transform/mode refusals, immutable results, exact byte budgets
+and cross-JSON/source deduplication. Named negative evidence includes
+`test_missing_extra_substituted_duplicate_and_mutable_sources_refuse`,
+`test_each_source_receipt_digest_and_oid_are_recomputed`,
+`test_transform_and_nonregular_mode_metadata_refuse`,
+`test_valid_neutral_blocked_and_recheck_drift_captures_remain_ineligible`,
+`test_manually_constructed_registry_wrappers_cannot_establish_success` and
+`test_every_api_has_zero_filesystem_process_network_and_ambient_calls`.
+
+Executed commands from the repository root:
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_producer_bindings.py' -v
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v
+```
+
+The focused lane passed 24 tests and the full interchange regression lane passed
+191 tests, each with zero failures/errors/skips. All twelve protected receipt
+hashes and both unchanged canonical history/workspace receipts matched
+`/tmp/pg2-c1-i2-2z7veqau`; the parent scope-decision draft edit was separately
+authorized and left untouched. Existing I1/source/consumer files and nonrecursive
+root gitlinks remain unchanged; `git diff --check` passed.
+
+This preparation authenticates no Git repository/commit, actual attributes,
+source custody, producer execution, registration, command grammar or role policy.
+No accepting entry, accepted artifact, authority integration, consumer migration
+or dependency is added. I2–I6 and P1–P7 remain incomplete, and no checkpoint,
+whole-story/sprint/history status, Story 27.4/A41 hold or disabled Production
+configuration advances.
+
+Review correction receipt (2026-10-08): the same implementation agent applied
+bounded source/registry cardinality guards, content-free UTF-8/checksum-provider
+refusals and stronger named-digest, ordering and denial-barrier coverage. Final
+parent verification passed 28 focused and 195 full interchange tests with zero
+failures/errors/skips. The strengthened positive test rejected an in-memory
+executed/blob digest swap. Three independent review layers were triaged in the
+separate slice spec; nothing was deferred. The operations contract now retains
+the exact twelve-file offline preservation manifest and executed recheck result.
+The initial 24/191 receipt above remains historical; all stated operational
+holds and incomplete I2–I6/P1–P7 prerequisites remain unchanged.
+
+
+## Prepared offline C1.15 declared-observation pins (2026-10-08)
+
+The separately authorized bounded slice is
+`spec-pg2-c1-15-offline-observation-pins.md`; its actual API, literal pins and
+proof limits are published in [the observation inspection contract](../../../docs/operations/c1-observation-pin-inspection-contract.md).
+`tools/access_telemetry_c1_capture_semantics.py` reuses the unchanged immutable
+snapshot, structural capture reader and content-free refusal helpers. It
+requires observed declarations and compares the published PG2 profile/workload,
+five target fields, per-Pod runtime and either approved OCI index/child digest
+exactly. Its frozen result retains the identical capture snapshot and derives
+Pod count/names from Pods in their input order. Mixed index/child and independently
+supported raw prefixes remain inspectable; no repository-prefix policy is added.
+
+Independent fixtures in `test_capture_semantics.py` execute every API case under
+filesystem/process/network/environment/clock denial barriers, with zero calls.
+Named evidence includes
+`test_each_profile_and_workload_semantic_substitution_is_structurally_admitted`,
+`test_each_target_substitution_is_self_consistent_before_pin_refusal`,
+`test_runtime_changes_are_structurally_valid_when_all_pods_agree`,
+`test_each_pod_image_substitution_refuses_including_a_later_bad_pod`,
+`test_single_pod_captures_derive_nonconstant_count_and_selected_name`,
+`test_dirty_declarations_are_inspectable_but_source_eligibility_independently_refuses`
+and `test_result_and_retained_nested_values_are_frozen`.
+Every new semantic-negative fixture first succeeds through structural parsing.
+Changed profile IDs and contradictory one-Pod runtime declarations already
+refuse structurally and are covered separately, preserving that existing reader.
+A parent acceptance audit found that the initial two-Pod-only positives did not
+reject a constant-count mutation; one-Pod positives now verify both possible
+selected names and a different count. Independent final review is tracked in
+the separate spec.
+
+Executed from the repository root with zero failures/errors/skips:
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_capture_semantics.py' -v
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v
+git diff --check
+```
+
+The final focused run passed **20 tests**; the full interchange run passed
+**215 tests**. Exact logs and working-byte preservation receipts reside in
+`/tmp/pg2-c1-i4-observations-41meebiy/`. Rechecks compare the original 6,137
+nonledger working-file hashes and this ledger's complete 21,169-byte prior
+prefix, plus HEAD/root gitlinks and the permitted changed-path inventory.
+The source reader, PowerShell producer, prior I2 preparation and existing user
+changes retain their original bytes.
+
+I2–I6 remain incomplete: source inspection is separate, deployed lookup still
+refuses, full authority consumption and registered semantic dispatch are absent,
+and no accepted-gate/all-gate assembly or strict consumer migration is supplied.
+P1–P7 retain their recorded unresolved/partial decisions and owners: operational
+provider adoption, numerical time/status policy, actual target/session and
+custody/cleanup, complete role/dependency policy, gate registrations, C1.16
+eligibility/renewal and strict predecessor/v2 consumer dispatch remain required.
+The previously prepared PG2 runtime profile correction does not resolve P7;
+Platform authority publication and a separately authorized root gitlink advance
+remain outstanding. Matching dirty-development declarations here do not satisfy
+independent source eligibility. Simplified structural commands do not prove
+registered grammar, execution, selection completeness, streams or provenance.
+
+No registry/acceptance entry, accepted artifact, execution handle, authority or
+consumer integration, dependency, live operation or submodule change is added.
+Story 27.4/A41, Production, sprint/checkpoint and historical holds remain exactly
+as before this standalone preparation.
+
+
+Final independent review correction receipt (2026-10-08): all three review
+layers returned; seven blind-review findings were individually triaged and
+corrected, with no deferred work or intent change. Known prebound dependency
+aliases and access/descriptor/removal/rename/write operations now have counted
+denial coverage. Self-consistent fullwidth declarations refuse without Unicode
+normalization; three-Pod captures prove complete derived counts/names and
+final-Pod image refusal. Fixture wording identifies the actual neutral labels
+and evidence-directory argument. The inspector source remains unchanged.
+
+Parent final verification passed **24 focused** and **219 full interchange**
+tests, with zero failures/errors/skips. All four reproduced mutation gaps are
+now detected without source edits. The supporting
+[verification receipt archive](../../implementation-artifacts/tests/pg2-c1-15-offline-observation-pins/verification-receipts.zip)
+retains the original 6,138-file byte manifest, exact 21,169-byte ledger prefix,
+preservation checker, executed logs and source/hash records. Its operations
+contract gives the extraction/recheck command; the separately tracked spec
+records exact final identities and results. I2–I6/P1–P7 remain incomplete,
+Story 27.4 pending, A41 open and Production disabled. No acceptance, live
+operation, commit, push, dependency or root gitlink change occurred.
