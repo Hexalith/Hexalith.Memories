@@ -31,9 +31,9 @@ storyDesignRevalidation:
   lastUpdated: '2026-10-08'
   status: 'awaiting-story-review'
   currentEpic: 34
-  currentStory: '34.10'
+  currentStory: '34.3'
   approvedFirstStory: '34.33'
-  reviewedStories: ['34.33', '34.1', '34.8', '34.9', '34.44', '34.41', '34.42', '34.43', '34.48', '34.46', '34.47']
+  reviewedStories: ['34.33', '34.1', '34.8', '34.9', '34.44', '34.41', '34.42', '34.43', '34.48', '34.46', '34.47', '34.10', '34.7', '34.36', '34.6', '34.2', '34.15']
   approvedExecutionPrefix: ['34.33', '34.1', '34.8']
   approvedSplit:
     date: '2026-10-08'
@@ -41,8 +41,26 @@ storyDesignRevalidation:
     narrowedStory: '34.9'
     plannedStories: ['34.44', '34.41', '34.42', '34.43', '34.45', '34.46', '34.47', '34.48']
     plannedOrderPendingReview: ['34.44', '34.41', '34.42', '34.9', '34.43', '34.48', '34.46', '34.47']
-    recordedDecisions: ['2026-10-08: tenant-claim principals lose tenant deletion and verification (Story 34.48)']
+    recordedDecisions:
+      - '2026-10-08: tenant-claim principals lose tenant deletion and verification (Story 34.48)'
+      - '2026-10-08: pub/sub serves one tenant per subscribed topic; per-tenant EventStore topics are the Phase 1.5 target (Story 34.10)'
+      - '2026-10-08: prd.md line 265 gets a dated correction note; docs change with Story 34.10'
     plannedPurgeRangeStories: ['34.45']
+  keyCompositionRevision:
+    date: '2026-10-08'
+    narrowedStory: '34.7'
+    plannedStories: ['34.49', '34.50', '34.51', '34.52']
+    plannedOrderPendingReview: ['34.6', '34.36', '34.7', '34.2']
+    carriedObligations:
+      - 'AD-23 digest-collision reservation purge: assign during the purge-range review (Story 34.20 or planned Story 34.45)'
+      - 'Adjust Story 34.24 when planned Story 34.51 takes register genesis and the lineage check'
+      - 'Planned Story 34.50 covers tenant, case, and unit IDs at every read and import boundary'
+      - 'Register the curated search-index CloudEvent path (direct Redis upsert, no dedup) in the next spine revision (Story 34.2)'
+    recordedDecisions:
+      - '2026-10-08: memory units created before Story 34.36 are re-ingested under a pre-release reset; no legacy-mapping story'
+      - '2026-10-08: existing tenants are re-provisioned with issued IDs under the pre-release reset; no legacy mapping (Story 34.6)'
+      - '2026-10-08: POST /api/v1/tenants and Client.Rest stop accepting a caller-chosen TenantId when Story 34.52 lands'
+    spineCorrections: ['2026-10-08: inline note at the AD-23 claim that memory-unit ULIDs are already issued (Story 34.36)']
   stepsCompleted: []
 changeControlContext:
   approvedProposalGlob: '_bmad-output/planning-artifacts/sprint-change-proposal-*.md'
@@ -6114,6 +6132,18 @@ Stories 34.33, 34.1, and 34.8 have revised acceptance text registered after user
 
 **Story 34.9 dependency chain registered — 2026-10-08:** the user approved and registered Stories 34.44, 34.41, 34.42, 34.9 (narrowed), 34.43, 34.48, 34.46, and 34.47. The planned execution order after the approved prefix is 34.44 → 34.41 → 34.42 → 34.9 → 34.43 → 34.48 → 34.46 → 34.47; it records planning dependencies only and is approved for planning, not sprint-selected. Planned Story 34.45 remains unregistered and is drafted in the purge range. Story 34.10, authenticated channel routing, is the next review candidate: its operator-artifact routing map (Story 34.8) and admission checks (Story 34.9) are now registered prerequisites, subject to its own source, dependency, and slice checks.
 
+**Story 34.10 revision — 2026-10-08:** the user approved Story 34.10's revised criteria: the publisher element of the channel tuple comes from the operator-controlled publishing scope, never from `source`; the scoped publisher passes Story 34.9's checks; and unroutable, ambiguous, or contradicted deliveries are rejected. App-token channel protection already exists (`DaprApplicationTokenMiddleware`), so no new prerequisite was added. The user approved two recommendations: record one tenant per subscribed topic as a stated limitation, with per-tenant topics on Hexalith.EventStore's native naming named as the Phase 1.5 target rather than an AD-5 amendment; and add a dated inline correction note at the end of `prd.md` line 265 instead of rewriting the PRD, with the operational docs updated in Story 34.10's own change. Story 34.7 is the next review candidate because Story 34.2 consumes its collision-safe key composition; its own source, dependency, and slice checks come first.
+
+**Story 34.7 narrowing — 2026-10-08:** the registered Story 34.7 promised a codec for every tenant, case, and source key family, but the current source composes tenant keys at 76 interpolated sites across 34 files with about 25 `:`-delimited families, nine index-name builders, and two duplicate dedup builders, and no AD-23 codec exists yet (Story 34.7 Epic AC Verification rows 2–5). The user approved narrowing Story 34.7 to the registry, builder, three codecs, digest-collision reservation, refusal rule, and tag immutability, proven on the CloudEvent duplicate-identity family that Story 34.2 consumes; recording planned Story 34.49 (move existing tenant key families onto registered codecs), which must be sized and split by destination when drafted; carrying the AD-23 digest-collision reservation purge as an obligation into the purge-range review, because Story 34.20 names only dedup records and preflight reservations; and the placement 34.6 and 34.36 → 34.7 → 34.2, which Story 34.36's own criterion already implies. Stories 34.36 and 34.6 are the next review candidates.
+
+**Story 34.36 narrowing and spine correction — 2026-10-08:** verification refuted the spine's statement that the platform already issues ULIDs for memory units: single REST ingest reuses a runtime-assigned workflow instance ID and CloudEvent ingest issues a GUID (Story 34.36 Epic AC Verification rows 3–4). The user approved a dated inline correction note at the spine claim, which moves no spine line; narrowing Story 34.36 to uniform canonical issuance, one shared case/unit validator, and replay-deterministic issuance; recording planned Story 34.50 (validate case and unit IDs at every read and import boundary); and a pre-release reset for existing units instead of a legacy mapping, so no mapping story is planned. Placement 34.6 and 34.36 → 34.7 → 34.2 is unchanged. Story 34.6 is the next review candidate.
+
+**Story 34.6 narrowing — 2026-10-08:** literal Story 34.6 issuance requires AD-21's live register lineage (spine line 253), but no register exists in code and its genesis and lineage check sit in Story 34.24, after erasure key destruction; issuance is also a breaking change to public API (Story 34.6 Epic AC Verification rows 3–6). The user approved narrowing Story 34.6 to one shared tenant validator with destination conformance tests, not yet wired into the existing guards; planned Story 34.51 (establish the erased-tenant register genesis and lineage check, taking genesis out of Story 34.24, whose text is adjusted when Story 34.51 is drafted); planned Story 34.52 (issue platform tenant IDs at provisioning, consuming Stories 34.51 and 34.44); extending planned Story 34.50 to tenant, case, and unit IDs; the pre-release reset for existing tenants; and, as maintainer, the breaking change that `POST /api/v1/tenants` and `Client.Rest` stop accepting a caller-chosen `TenantId`. The placement 34.6 and 34.36 → 34.7 → 34.2 is unchanged; a grammar exception was considered and not pursued. Story 34.2 is the next review candidate; real CloudEvent use still waits for issued tenant IDs (planned Story 34.52).
+
+**Story 34.2 revision — 2026-10-08:** verification found that durable CloudEvent suppression is a Dapr workflow-instance ID rather than an EventStore mutation, that `source` and `id` are not validated at ingress, and that an unregistered curated search-index path bypasses dedup and writes Redis directly (Story 34.2 Epic AC Verification rows 2, 4, 6, and 8). The user approved revised criteria — AD-23 ingress validation and Story 34.7's key, one EventStore-accepted mutation through Story 34.1's protocol regardless of preflight state, and source sensitivity — with the curated path explicitly excluded because it produces no domain mutation, and flagged for the next spine revision. Story 34.15, which moves the preflight onto its own reserved prefix, is the next review candidate.
+
+**Story 34.15 revision — 2026-10-08:** verification found that CloudEvent preflight reservations and durable source-URI dedup records share one raw Redis key shape, and that a preflight hit drops a delivery without consulting durable truth, while fail-open and release already exist (Story 34.15 Epic AC Verification rows 2–5). The user approved revised criteria — a separate registered family, a retryable outcome on a preflight hit without durable acceptance, and regression tests for fail-open and release — with the spine registry row update in the definition of done. This closes the CloudEvent identity chain 34.6 and 34.36 → 34.7 → 34.10 → 34.2 → 34.15 for planning. Story 34.3 is the next review candidate.
+
 
 
 ### Story 34.1: Accept V1 ingestion at EventStore first
@@ -6181,7 +6211,7 @@ Verified 2026-10-05 against `main` at baseline `b31d1352` and its current worktr
 
 ### Story 34.2: Suppress duplicate CloudEvent mutations
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR75; AD-4/AD-23.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR75; AD-2/AD-4/AD-23.
 
 As a developer,
 I want CloudEvent redelivery to resolve to one durable mutation,
@@ -6189,9 +6219,19 @@ So that publisher retries do not duplicate memory.
 
 **Acceptance Criteria:**
 
-**Given the same authorized tenant, case, canonical validated CloudEvent source and event ID, when delivery repeats, then one EventStore mutation is accepted and every later delivery resolves to that identity.**
+**Given** a delivery admitted under Story 34.10,
+**When** its `source` and `id` are checked at ingress,
+**Then** `source` must be an ASCII URI-reference of 1–2048 bytes with only scheme and host lowercased, and `id` must be 1–256 visible ASCII bytes kept byte-for-byte, and a malformed or overlong value is refused before any key use,
+**And** the identity key comes from Story 34.7's CloudEvent duplicate-identity family over tenant, case, `source`, and `id`.
 
-**Given a changed source or malformed source/id, when delivery arrives, then the changed identity is separate or the invalid envelope is refused before key use; a preflight Redis reservation is never the durable decision.**
+**Given** the same identity delivered again — concurrently, after a restart, or after a scheduling failure —
+**When** it is admitted,
+**Then** exactly one EventStore mutation is accepted through Story 34.1's acceptance protocol, every later delivery resolves to the same memory-unit and operation identities, and projection scheduling follows confirmed acceptance,
+**And** that outcome holds whatever the state of the Redis preflight reservation.
+
+**Given** the same `id` with a different `source`,
+**When** it is admitted,
+**Then** it is a separate identity.
 
 #### Dev Notes
 
@@ -6200,18 +6240,32 @@ So that publisher retries do not duplicate memory.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.2 definition | `historical-reference-only` | Retain the ID and goal; its criteria were revised and approved on 2026-10-08. |
 
 ##### Slice Proof
 
-One CloudEvent identity rule is the slice; V1 command token identity is owned by 34.1.
+One durable CloudEvent identity rule is the independently demonstrable outcome: validated `source` and `id`, a registered injective key, one EventStore-accepted mutation per identity, and separate identities for a changed `source`. Its three criteria cover ingress validation and key composition, single durable acceptance, and source sensitivity. Execution consumes Story 34.7's CloudEvent family, Story 34.10's admitted delivery (and through it Story 34.9), Story 34.1's EventStore-first acceptance protocol, and Story 34.36's replay-deterministic issuance; it replaces both current dedup builders. Story 34.15 then moves the preflight reservation onto its own reserved prefix built from the same validated identity. V1 command token identity remains Story 34.1.
+
+**Curated search-index path, excluded:** `SearchIndexEntryChanged` and `SearchIndexEntryRemoved` events bypass dedup and upsert straight into Redis, deliberately reusing a stable `id` across revisions. They produce no domain mutation — only upsert-by-aggregate snapshots — so FR75 does not govern them and this story leaves them unchanged; they still pass Story 34.10's routing, which runs before the curated check. The path is not registered in the spine, PRD, or epics; it is flagged for the next spine revision as an unregistered architecture surface, an observation rather than a new story.
+
+Real CloudEvent use still waits for issued tenant IDs (planned Story 34.52), because the issued-form codec refuses today's legacy tenant IDs. This planning record supplies no complete FR75 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `dbe4ce0a`; source is unchanged from `0b59bba5`. The approved criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "EventIngestionService currently builds its dedup key from envelope.Id" | Existence/behavior/location | `rg -n "EventStoreDedupKey.Build\(route.TenantId, route.CaseId, envelope.Id\)" src/Hexalith.Memories.EventStore/EventIngestionService.cs` | The key call passes envelope.Id without envelope.Source. | `confirmed` |
+| "EventIngestionService currently builds its dedup key from envelope.Id" | Existence/behavior/location | `rg -n "EventStoreDedupKey.Build\(route.TenantId, route.CaseId, envelope.Id\)" src/Hexalith.Memories.EventStore/EventIngestionService.cs` | Line 144; `source` is not an argument. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Durable duplicate suppression is a Dapr workflow-instance ID, not an EventStore mutation" | Source behavior/location | `rg -n -e 'string instanceId = dedupKey' -e 'options.PreflightDedupEnabled' -e 'TryReserveAsync' src/Hexalith.Memories.EventStore/EventIngestionService.cs` | The optional Redis preflight at lines 148 and 151, then the dedup key reused as the workflow instance ID at line 176. | `confirmed` |
+| FR75: retried CloudEvents "produce one durable domain mutation"; Story 34.1: "projection scheduling follows confirmed EventStore acceptance" | Location/requirement | `rg -n '^- \*\*FR75:\*\*' _bmad-output/planning-artifacts/prd.md`; `awk '/^### Story 34\.1:/,/^#### Dev Notes/' EPICS \| rg -o 'projection scheduling follows confirmed EventStore acceptance'` | FR75 at PRD line 1020; the Story 34.1 phrase is present. | `confirmed` |
+| "A CloudEvent memory unit receives `context.NewGuid()`" | Source behavior/location | `sed -n '758,771p' src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs` | The `dedup:` instance prefix selects `context.NewGuid().ToString()` at line 766; Story 34.36 owns replacing it. | `confirmed` |
+| AD-23 ingress bounds for CloudEvent `source` (1–2048 bytes) and `id` (1–256 visible ASCII bytes) | Location/design | `grep -n -o -F 'is an ASCII RFC 3986 URI-reference of **1–2048 bytes**' SPINE`; `grep -n -o -F 'is **1–256 visible ASCII bytes**' SPINE` | Both at line 261. Design intent only. | `confirmed` |
+| "CloudEvent `source` and `id` are not length-validated at ingress" | Existence/absence | `rg -n -i -e '2048' -e 'MaxSourceLength' -e 'MaxIdLength' src/Hexalith.Memories.EventStore --type cs` | No match, exit 1. Pattern-scoped. | `confirmed` |
+| "The Redis preflight is the registered `dedup:` coordination exception" | Location/design | ``grep -n -o -F 'Reserved key prefix `dedup:`' SPINE`` | Line 287, in the Direct Redis Exception Registry. Design intent only. | `confirmed` |
+| "A curated search-index path bypasses dedup and writes Redis directly, and no planning artifact registers it" | Existence/behavior/location | `rg -n 'CuratedSearchIndexEventTypes.IsCuratedType' src/Hexalith.Memories.EventStore/EventIngestionService.cs`; `rg -n -e 'ApplyEntryChangedAsync' -e 'ApplyEntryRemovedAsync' src/Hexalith.Memories.Server/EventStoreIntegration/RedisSearchIndexMaintenanceAdapter.cs`; `rg -n -i -e 'curated' -e 'SearchIndexMaintenance' SPINE _bmad-output/planning-artifacts/prd.md`; `git show dbe4ce0a:EPICS \| rg -n -i -e 'curated search-index' -e 'SearchIndexMaintenance'` | The curated check at line 133 precedes dedup at line 144; the Redis adapter's upsert and removal at lines 62 and 122; no match in the spine, PRD, or baseline epics (each exit 1). | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `EPICS` is `_bmad-output/planning-artifacts/epics.md`.
 
 
 ### Story 34.3: Fence epoch-aware projection writes
@@ -6321,19 +6375,24 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 | "The current general repair workflow exists as ConsistencyRepairWorkflow" | Existence/behavior/location | `test -f src/Hexalith.Memories.Server/Workflows/ConsistencyRepairWorkflow.cs` | The workflow file exists; it is not evidence of EventStore replay. | `confirmed` |
 
 
-### Story 34.6: Issue and validate opaque tenant identifiers
+### Story 34.6: Validate tenant identifiers against Identifier Grammar V1
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38–FR39, FR44; AD-23.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR38–FR39, FR44 (partial); AD-23.
 
 As an operator,
-I want platform-issued tenant IDs with one grammar,
-So that tenant names and key boundaries cannot be chosen by callers.
+I want one shared validator that admits only Identifier Grammar V1 tenant IDs,
+So that tenant names and key boundaries cannot be chosen by callers or folded downstream.
 
 **Acceptance Criteria:**
 
-**Given tenant provisioning, when a new identifier is needed, then the platform issues a collision-checked 20-character lower Crockford ID beginning with an allowed letter and refuses caller-chosen or reserved identifiers.**
+**Given** a tenant ID,
+**When** the shared validator checks it,
+**Then** it accepts exactly `[abcdefghjkmnpqrstvwxyz][0123456789abcdefghjkmnpqrstvwxyz]{19}` and rejects mixed-case, descriptive, wrong-length, and reserved platform names or prefixes without folding them,
+**And** golden tests cover each accepted and rejected form.
 
-**Given external input, import or read carrying a legacy, malformed or tombstoned tenant ID, when authority is resolved, then the AD-23 validator rejects or routes through a recorded migration rule before any resource key is composed.**
+**Given** a conforming tenant ID,
+**When** a table-driven conformance test renders it into every destination it reaches today — Redis keys, RediSearch index names, FalkorDB graph names, and Hexalith.EventStore's kebab-case topic segment —
+**Then** each rendering has valid syntax, length, and case stability.
 
 #### Dev Notes
 
@@ -6342,33 +6401,56 @@ So that tenant names and key boundaries cannot be chosen by callers.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.6 definition ("Issue and validate opaque tenant identifiers") | `historical-reference-only` | Retain the ID and goal. Issuance moves to planned Story 34.52, register genesis to planned Story 34.51, and boundary enforcement to planned Story 34.50; the narrowed criteria were approved on 2026-10-08. |
 
 ##### Slice Proof
 
-One identifier issuance/admission contract is the slice; key-family codecs are 34.7.
+One shared Identifier Grammar V1 tenant validator with destination conformance tests is the independently demonstrable outcome. It is a new shared component and is not wired into the existing `TenantIdGuard` or `TenantIdContractValidator` regexes in this story, because enforcing it there would reject every current tenant and test fixture before platform issuance exists. Its two criteria cover exact accept/reject behavior and destination conformance. Story 34.7's issued-form codec consumes it, so this story precedes Story 34.7 alongside Story 34.36. Planned Story 34.51 establishes the AD-21 register genesis and lineage check; planned Story 34.52 issues platform tenant IDs at provisioning and wires this validator there; planned Story 34.50 enforces tenant, case, and unit validation at every read and import boundary. **Recorded decisions — 2026-10-08:** existing tenants are re-provisioned with issued IDs and their data re-ingested under the pre-release reset, with no legacy mapping; and, as maintainer, the user approved the breaking change that `POST /api/v1/tenants` and `Client.Rest` stop accepting a caller-chosen `TenantId` when Story 34.52 lands. This planning record supplies no complete FR38, FR39, or FR44 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `dbe4ce0a`; source is unchanged from `0b59bba5`. Hexalith.EventStore rows read the `references/Hexalith.EventStore` checkout at `9542d3c9`. The approved criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantProvisioningInput currently accepts a TenantId field" | Existence/behavior/location | `rg -n "record TenantProvisioningInput\(string TenantId" src/Hexalith.Memories.Contracts/V1/TenantProvisioningInput.cs` | The public input record accepts a tenant ID. | `confirmed` |
+| "TenantProvisioningInput currently accepts a TenantId field" | Existence/behavior/location | `rg -n "record TenantProvisioningInput\(string TenantId" src/Hexalith.Memories.Contracts/V1/TenantProvisioningInput.cs` | Line 9. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Two duplicate tenant-ID validators use the same broad regex" | Existence/behavior/location | `rg -n 'GeneratedRegex' src/Hexalith.Memories.Contracts/V1/TenantIdContractValidator.cs src/Hexalith.Memories.Server/Activities/Indexing/TenantIdGuard.cs` | `^[a-zA-Z0-9\-]+$` at `TenantIdContractValidator.cs` line 48 and `TenantIdGuard.cs` line 41. | `confirmed` |
+| "Caller-chosen tenant IDs are public API and widely used" | Existence/location | `rg -n 'new TenantProvisioningInput\(' src --type cs -g '!*Test*'`; `rg -n 'new\(tenantId, tenantId\)' src/Hexalith.Memories.Server/EventStoreIntegration/RoutedTenantProvisioningStartupService.cs`; `rg -l 'new TenantProvisioningInput\(' tests \| wc -l` | `Client.Rest/MemoriesClient.cs` line 282 and the startup service at line 99 pass a caller-chosen ID; 13 test files construct the input. | `confirmed` |
+| Tenant grammar `[abcdefghjkmnpqrstvwxyz][0123456789abcdefghjkmnpqrstvwxyz]{19}`; "Issuance requires AD-21's live register lineage"; reserved names and "the reserved prefixes" | Location/design | `grep -n -o -F '[abcdefghjkmnpqrstvwxyz][0123456789abcdefghjkmnpqrstvwxyz]{19}' SPINE`; `grep -n -o -F "Issuance requires AD-21's live register lineage" SPINE`; `grep -n -o -F 'or beginning with the reserved prefixes' SPINE` | Grammar and lineage rule at line 253; reserved names and prefixes at line 248. Design intent only. | `confirmed` |
+| "No AD-21 register exists in code" | Existence/absence | `rg -l -i -e 'ErasedTenant' -e 'TenantTombstone' -e 'populationId' -e 'GenesisRecord' src --type cs` | No match, exit 1. Pattern-scoped. | `confirmed` |
+| "Story 34.24 currently owns register genesis and the lineage check" | Location/dependency | `awk '/^### Story 34\.24:/,/^#### Dev Notes/' EPICS \| rg -o -e 'population genesis/revision' -e 'register lineage'` | Both present in Story 34.24's criteria; planned Story 34.51 takes genesis and the lineage check when drafted. | `confirmed` |
+| "Tenant IDs reach Redis keys, RediSearch index names, FalkorDB graph names, and EventStore topics today" | Source behavior/location | `rg -n -o 'public static string Get\w*Name' src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs`; `rg -n 'string graphId = input.TenantId' src/Hexalith.Memories.Server/Activities/Tenants/ProvisionFalkorDbActivity.cs`; `sed -n '89,95p' references/Hexalith.EventStore/src/Hexalith.EventStore.Client/Conventions/NamingConventionEngine.cs` | Nine index-name builders; the FalkorDB graph is named by the tenant ID at line 42; EventStore validates the tenant ID as kebab-case and composes `{tenantId}.{domain}.events`. Redis key families are counted in Story 34.7's Epic AC Verification row 3. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `EPICS` is `_bmad-output/planning-artifacts/epics.md`.
 
 
-### Story 34.7: Compose collision-safe scoped keys
+### Story 34.7: Compose collision-safe keys through a registered codec family
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR75; AD-23.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR75 (key composition only); AD-4/AD-23.
 
-As an operator,
-I want every tenant/case/source key family to have a registered codec,
-So that two distinct identities never address the same resource.
+As a developer,
+I want scoped keys built only through registered, versioned codec families,
+So that two distinct identities can never address the same key.
 
 **Acceptance Criteria:**
 
-**Given an issued tenant/case/memory ID or validated CloudEvent source/id, when a scoped key is built, then its registered family tag, arity, component codec, and destination length rule produce an injective byte representation or a collision-checked digest reservation.**
+**Given** a registered family — a fixed tag without `u`, an arity, a class order, a destination, and one immutable codec per position —
+**When** a key is built from conforming components,
+**Then** it emits `tag u c1 u c2 …` and matches the family's golden vectors byte-for-byte for each codec: issued form, length-prefixed reversible Crockford, and 52-digit SHA-256 Crockford,
+**And** the CloudEvent duplicate-identity family (tenant, case, validated `source`, validated `id`) is the first registered family.
 
-**Given legacy or ambiguous components, when the key builder cannot prove one-to-one mapping, then it refuses the write and records the migration/remediation path; truncation alone is never accepted.**
+**Given** a digest-coded component,
+**When** a second, different canonical value yields the same digest within a tenant, forced through a test seam,
+**Then** the tenant-keyed reservation rejects it before any key use.
+
+**Given** a component that fails its class grammar or length bound, or a rendered key over its destination limit,
+**When** the key is built,
+**Then** the build is refused with a sanitized diagnostic and a recorded remediation path,
+**And** nothing is truncated or folded.
+
+**Given** a registered tag,
+**When** code attempts a different codec, arity, or class order under it,
+**Then** registration fails; a change requires a new tag.
 
 #### Dev Notes
 
@@ -6377,18 +6459,29 @@ So that two distinct identities never address the same resource.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.7 definition ("Compose collision-safe scoped keys") | `historical-reference-only` | Retain the ID and goal. Its "every tenant/case/source key family" breadth moves to planned Story 34.49; the narrowed criteria were approved on 2026-10-08. |
 
 ##### Slice Proof
 
-One key-composition contract is the slice; identifier issuance is 34.6.
+One registered key-composition contract, proven on its first family, is the independently demonstrable outcome: the registry, builder, three AD-23 codecs, digest-collision reservation, refusal rule, and tag immutability, exercised by golden vectors for the CloudEvent duplicate-identity family. Its four criteria cover emission and golden vectors, collision rejection, refusal without truncation, and tag immutability. The issued-form codec consumes the Identifier Grammar V1 validators of Story 34.6 (tenant) and Story 34.36 (case and `MemoryUnitId`), so execution follows both; it also consumes the completed Story 34.33 register/guard outcome. Story 34.2 consumes this family and replaces both current dedup builders with it; validating CloudEvent `source` and `id` at ingress stays with Story 34.2. Moving the existing tenant key families onto registered codecs is planned Story 34.49. Purging the digest-collision reservations at erasure is a carried obligation for the purge-range review, not claimed here. The issued-form codec refuses today's legacy mixed-case tenant IDs; that is harmless until pub/sub routing is configured, because shipped `SourceToTenantMap` values are empty and CloudEvent ingestion is Phase 1.5. This planning record supplies no complete FR44 or FR75 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `dbe4ce0a`; source and spine are unchanged from `0b59bba5`. The approved criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantIdContractValidator currently uses a broad safe-character regex" | Existence/behavior/location | `sed -n "45,49p" src/Hexalith.Memories.Contracts/V1/TenantIdContractValidator.cs` | The validator currently accepts mixed case alphanumeric/hyphen IDs. | `confirmed` |
+| "TenantIdContractValidator currently uses a broad safe-character regex" | Existence/behavior/location | `sed -n "45,49p" src/Hexalith.Memories.Contracts/V1/TenantIdContractValidator.cs` | The regex at line 48 is `^[a-zA-Z0-9\-]+$`, accepting mixed-case alphanumeric and hyphen IDs. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Both current dedup builders compose `dedup:{tenantId}:{caseId}:{hex SHA-256}`" | Existence/behavior/location | `rg -n -e 'dedup:' -e 'ToHexString' src/Hexalith.Memories.EventStore/EventStoreDedupKey.cs src/Hexalith.Memories.Server/Activities/Ingestion/DedupKeyBuilder.cs` | `EventStoreDedupKey.cs` lines 17 and 20, and `DedupKeyBuilder.cs` lines 16, 24 (`tok:` variant), and 37: a `:` delimiter and a 64-character hexadecimal SHA-256, not the `u` delimiter or 52-digit Crockford digest. | `confirmed` |
+| "Roughly 25 tenant key families are composed with `:` at many sites" | Quantitative | `rg -n -e '\$"[^"]*\{(tenantId\|TenantId\|input\.TenantId\|tenant\.Id\|route\.TenantId)\}[^"]*[:]' src --type cs -g '!*Test*' \| wc -l`; the same pattern with `rg -l` | 76 matching lines in 34 files. This is a pattern-scoped lower bound, not a complete key inventory; planned Story 34.49 owns the inventory. | `confirmed` |
+| "IndexSchemaDefinitions has nine index-name builders" | Quantitative/location | `rg -c 'public static string Get\w*Name' src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs` | 9. | `confirmed` |
+| "No AD-23 key-composition codec exists" | Existence/absence | `rg -n -i 'crockford' src --type cs`; `sed -n '9,34p' src/Hexalith.Memories.Server/Infrastructure/SemanticKeyFamily.cs` | 17 hits, all ULID validation messages, an AccessTelemetry ULID generator, or AccessTelemetry qualification constants. `SemanticKeyFamily` classifies semantic index namespaces and is not a codec registry. | `confirmed` |
+| AD-23: `u` "is the **only reserved component delimiter**"; "Builders cannot select a codec at runtime under the same tag"; "No component truncates an identifier, digest, or composite key"; "Each family registers a golden vector for every component codec before first key use"; "The reservation is an AD-16 purge target" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | The first three at line 257, the golden-vector rule at line 259, and the purge-target rule at line 247. Design intent only. | `confirmed` |
+| Story 34.36 validates identifiers "before Story 34.7 composes a key" | Location/dependency | `awk '/^### Story 34\.36:/,/^#### Dev Notes/' EPICS \| rg -o 'before Story 34.7 composes a key'` | Present in Story 34.36's first criterion. | `confirmed` |
+| "Story 34.20 does not purge digest-collision reservations" | Existence/absence | `awk '/^### Story 34\.20:/,/^### Story 34\.21:/' EPICS \| rg -n -i 'collision'` | No match, exit 1; Story 34.20 names durable dedup records and preflight reservations only. | `confirmed` |
+| "CloudEvent `source` and `id` are not length-validated at ingress" | Existence/absence | `rg -n -i -e '2048' -e 'MaxSourceLength' -e 'MaxIdLength' src/Hexalith.Memories.EventStore --type cs` | No match, exit 1. Pattern-scoped; context for Story 34.2, which owns ingress validation. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`; `EPICS` is `_bmad-output/planning-artifacts/epics.md`.
 
 
 ### Story 34.8: Version operator identity and privileges
@@ -6504,7 +6597,7 @@ Verified 2026-10-08 against `main` at `0b59bba5`. Rows 1–6 were first recorded
 
 ### Story 34.10: Route pubsub tenant from authenticated channel
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR75; NFR8/NFR10; AD-5.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR44, FR75 (tenant component of CloudEvent identity only); NFR8/NFR10; AD-5.
 
 As an operator,
 I want CloudEvent deliveries to derive tenant scope from trusted channel identity,
@@ -6512,9 +6605,19 @@ So that publisher-controlled envelope fields cannot select another tenant.
 
 **Acceptance Criteria:**
 
-**Given a Dapr delivery, when tenant scope is selected, then the authenticated component/topic/publisher tuple maps to one candidate tenant through the operator artifact and passes the same allowlist, grant and Active checks as other internal calls.**
+**Given** a delivery on a subscribed pub/sub component and topic,
+**When** tenant scope is selected,
+**Then** the tuple of subscribing component, topic, and scoped publisher is looked up exactly and ordinally in the operator artifact's routing map to one candidate tenant,
+**And** the publisher element comes from the operator-controlled publishing scope, never from `source` or any other publisher-set field.
 
-**Given a missing route or an envelope tenant/source that disagrees with the authenticated route, when admission runs, then delivery is rejected without a tenant write or restricted diagnostic.**
+**Given** that candidate tenant,
+**When** admission runs,
+**Then** the scoped publisher's app ID passes Story 34.9's allowlist, explicit-grant, and `Active` checks for that tenant before any write.
+
+**Given** a tuple with no route or more than one candidate, or an envelope-declared tenant that differs from the candidate,
+**When** admission runs,
+**Then** the delivery is rejected with no tenant write and a sanitized diagnostic,
+**And** `SourceToTenantMap` and other ordinary configuration no longer select a tenant.
 
 #### Dev Notes
 
@@ -6523,18 +6626,36 @@ So that publisher-controlled envelope fields cannot select another tenant.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.10 definition | `historical-reference-only` | Retain the ID and goal; its criteria were revised and approved on 2026-10-08. |
+| Story 9.1 ("Event Auto-Discovery & DAPR Pub/Sub Subscription") | `historical-reference-only` | Dependency context: it is the origin of the subscription endpoint and the source-prefix map this story replaces. Its story shape, tasks, and proof are not reused. |
 
 ##### Slice Proof
 
-One authenticated delivery-routing boundary is the slice; durable duplicate identity remains 34.2.
+One authenticated delivery-routing boundary is the independently demonstrable outcome: a delivery's tenant comes only from the operator artifact's entry for the subscription it arrived on, the scoped publisher passes the ordinary internal-call checks, and every unroutable, ambiguous, or contradicted delivery is rejected without a write. Its three criteria cover lookup, admission, and rejection. Match on the subscription the delivery arrived on (one route per subscription), not on CloudEvent attributes, which have not been verified as publisher-proof. The publisher app ID recorded in an artifact entry must equal the deployed Dapr `publishingScopes` for that topic; a deploy-time check asserts that equality, because the application cannot read component scoping at runtime. Execution consumes Story 34.8's routing map and Story 34.9's admission checks. Durable duplicate identity remains Story 34.2, and startup provisioning remains Story 34.44.
+
+**Stated limitation (approved 2026-10-08):** AD-5 maps one channel to one candidate tenant, and the deployment subscribes to the single topic `memories-events`, so after this story pub/sub ingestion serves one tenant per subscribed topic. No shipped configuration loses behavior, because `SourceToTenantMap` is empty in production and development. The planned multi-tenant target is one topic per tenant using Hexalith.EventStore's native `{TenantId}.{Domain}.events` naming with a multi-topic subscription built from the routing map; it is to be planned with Phase 1.5 CloudEvent activation, not in this story. An AD-5 amendment that would let a grant-checked envelope tenant select the tenant on a shared topic was considered and not pursued.
+
+**Definition of done includes documentation:** in the same change, update the source-prefix routing descriptions in `docs/dev/eventstore-integration.md` (including the shared-topic `SourceToTenantMap` example), `docs/operations/deployment-configuration.md`, and `docs/dev/telemetry.md`, and resolve the dated inline correction note at the end of `prd.md` line 265. This planning record supplies no complete FR44, FR75, NFR8, or NFR10 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `dbe4ce0a`; source, deployment, docs, PRD, and spine are unchanged from `0b59bba5`. Hexalith.EventStore rows read the `references/Hexalith.EventStore` checkout at `9542d3c9`. The approved criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "TenantEventRoutingOptions currently declares SourceToTenantMap" | Existence/behavior/location | `rg -n "SourceToTenantMap" src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs` | The options contain a source-derived tenant map. | `confirmed` |
+| "TenantEventRoutingOptions currently declares SourceToTenantMap" | Existence/behavior/location | `rg -n "SourceToTenantMap" src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs` | Declared at line 21 with `StringComparer.OrdinalIgnoreCase`; line 19 documents longest-prefix, case-insensitive matching. This matches the spine gap-row anchor `TenantEventRoutingOptions.cs:19-21`. | `confirmed` |
+| "The router selects the tenant from envelope source" | Source behavior/location | `rg -n 'MatchTenant\(envelope.Source' src/Hexalith.Memories.EventStore/TenantEventRouter.cs` | Line 67. | `confirmed` |
+| "Routing is bound from ordinary configuration" | Source behavior/location | `sed -n '8,9p' src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs` | Bound from the `EventStoreIntegration:Routing` configuration section, not the operator artifact. | `confirmed` |
+| "Shipped configuration routes no source" | Existence/location | `rg -n 'SourceToTenantMap' src/Hexalith.Memories.Server/appsettings.Production.json src/Hexalith.Memories.Server/appsettings.Development.json` | `{}` at Production line 17 and Development line 25. | `confirmed` |
+| "The delivery channel requires the sidecar app token" | Source behavior/location | `rg -n -e '\[Route\(' -e '\[HttpPost\(' -e 'AllowAnonymous' src/Hexalith.Memories.EventStore/EventIngestionController.cs`; `rg -n 'DaprApplicationTokenMiddleware' src/Hexalith.Memories.Server/Program.cs`; `sed -n '41,69p' src/Hexalith.Memories.ServiceDefaults/Security/DaprApplicationTokenMiddleware.cs`; `sed -n '18,20p;37p' src/Hexalith.Memories.ServiceDefaults/Security/DaprTokenStartupValidator.cs` | `/events/ingest` (lines 33 and 57) is `[AllowAnonymous]` at line 58, which skips JWT only; the middleware registered at `Program.cs` line 32 rejects every non-probe request without the app token, and production startup throws when tokens are missing. | `confirmed` |
+| "Only eventstore may publish to memories-events, and only memories may subscribe" | Existence/location | `sed -n '17,24p' deploy/dapr/components/pubsub.yaml`; `sed -n '15,22p' deploy/kubernetes/base/dapr/pubsub.yaml` | `publishingScopes` is `eventstore=memories-events;memories=` and `subscriptionScopes` is `eventstore=;memories=memories-events` in both components. | `confirmed` |
+| "One topic is configured for Memories" | Quantitative/location | `rg -n 'memories-events' src/Hexalith.Memories.AppHost/Program.cs deploy/kubernetes/base/server-deployment.yaml` | AppHost line 364 and `server-deployment.yaml` line 99 set `MEMORIES_EVENTSTORE_TOPIC` to `memories-events`. | `confirmed` |
+| "Hexalith.EventStore publishes per-tenant topics unless a domain override applies" | Source behavior/location | `sed -n '92,94p' references/Hexalith.EventStore/src/Hexalith.EventStore.Contracts/Identity/AggregateIdentity.cs`; `sed -n '42,46p' references/Hexalith.EventStore/src/Hexalith.EventStore.Server/Configuration/EventPublisherOptions.cs` | `{TenantId}.{Domain}.events`, or `{Domain}.events` for the `system` tenant; a per-domain `TopicOverrides` entry takes precedence. Reference source, not a Memories contract. | `confirmed` |
+| AD-5: "Channel-identity tuple lookups are exact and ordinal"; `source` "is a publisher-set envelope field"; "an envelope tenant that differs from the authorized candidate tenant is rejected"; "a delivery whose channel resolves to no tenant is rejected" | Location/design | `grep -n -o -F` on each quoted phrase in SPINE | All four are present in the AD-5 rule at line 119. Design intent only. | `confirmed` |
+| "prd.md line 265 describes source-prefix routing" | Location/behavior | `sed -n '265p' _bmad-output/planning-artifacts/prd.md \| grep -o 'source-prefix routing maps events to tenant/case memory'` | Present. It is true of current code and contradicts adopted AD-5; a dated correction note was added inline at the end of that line on 2026-10-08, moving no PRD line. | `confirmed` |
+| "Operational docs describe source-prefix routing" | Existence/location | `rg -n -i -e 'SourceToTenantMap' -e 'source-prefix' -e 'source prefix' docs/dev/eventstore-integration.md docs/operations/deployment-configuration.md docs/dev/telemetry.md` | Matches in all three, including the shared-topic example at `eventstore-integration.md` lines 159–164, `deployment-configuration.md` lines 124 and 158, and `telemetry.md` line 872. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.11: Give each tenant backend principals
@@ -6682,14 +6803,23 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 **Status:** backlog; **Owner:** Administrator; **Requirements:** FR75; AD-4/AD-8/AD-23.
 
 As an operator,
-I want a distinct reserved prefix for fail-open preflight reservations,
+I want a distinct, non-authoritative key space for fail-open preflight reservations,
 So that a transient admission shortcut cannot masquerade as durable duplicate truth.
 
 **Acceptance Criteria:**
 
-**Given the EventStore CloudEvent path reserves a preflight key, when the key is composed, then its reserved prefix differs from durable dedup and includes the validated tenant, case, source and event identity without raw unsafe components.**
+**Given** a CloudEvent preflight reservation,
+**When** its key is composed,
+**Then** it comes from a registered Story 34.7 family whose tag differs from every durable dedup family, over the validated tenant, case, `source`, and `id`,
+**And** a cross-family golden test proves that no preflight key can equal a durable dedup key.
 
-**Given Redis preflight is unavailable or workflow scheduling fails, when CloudEvent admission is attempted, then unavailable preflight fails open, a reservation from failed scheduling is released, and durable suppression remains authoritative in both tests.**
+**Given** a preflight hit,
+**When** the delivery has no confirmed durable acceptance,
+**Then** it receives a retryable outcome rather than being dropped; only confirmed EventStore acceptance under Story 34.2 answers "duplicate".
+
+**Given** Redis is unavailable or workflow scheduling fails,
+**When** CloudEvent admission runs,
+**Then** the preflight fails open and the failed attempt's reservation is released, and regression tests keep both behaviors.
 
 #### Dev Notes
 
@@ -6698,18 +6828,26 @@ So that a transient admission shortcut cannot masquerade as durable duplicate tr
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.15 definition | `historical-reference-only` | Retain the ID and goal; its criteria were revised and approved on 2026-10-08. |
 
 ##### Slice Proof
 
-One preflight key family and failure-posture test is the outcome; Story 34.2 owns durable suppression.
+A non-authoritative preflight with its own key space is the independently demonstrable outcome. Its three criteria cover key-space separation, a preflight hit that never decides alone, and kept fail-open and release behavior. Execution consumes Story 34.7's family registry and Story 34.2's durable EventStore decision. **Definition of done includes the architecture registry:** in the same change, update the spine's Direct Redis Exception Registry row for `IPreflightDedupStore`, which reads "Reserved key prefix `dedup:`, as shipped", to the new family tag, editing inline so no spine line moves. Purging preflight reservations remains Story 34.20. The shared key shape is dormant in production today, because shipped `SourceToTenantMap` values are empty, so no CloudEvent reaches the preflight. This planning record supplies no complete FR75 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `dbe4ce0a`; source is unchanged from `0b59bba5`. The approved criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "EventIngestionService passes EventStoreDedupKey into TryReserveAsync" | Behavior/location | `rg -n "TryReserveAsync\(dedupKey" src/Hexalith.Memories.EventStore/EventIngestionService.cs` | The preflight call currently receives the durable-style dedup key. | `confirmed` |
+| "EventIngestionService passes EventStoreDedupKey into TryReserveAsync" | Behavior/location | `rg -n "TryReserveAsync\(dedupKey" src/Hexalith.Memories.EventStore/EventIngestionService.cs` | Line 151 passes the durable-style dedup key. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "Preflight reservations and durable source-URI dedup records share one raw Redis key shape" | Source behavior/location | `rg -n 'dedup:' src/Hexalith.Memories.EventStore/EventStoreDedupKey.cs src/Hexalith.Memories.Server/Activities/Ingestion/DedupKeyBuilder.cs`; `rg -n -e 'StringSetAsync' -e 'When.NotExists' src/Hexalith.Memories.EventStore/RedisPreflightDedupStore.cs`; `rg -n 'StringGetAsync\(dedupKey\)' src/Hexalith.Memories.Server/Activities/Ingestion/CheckIdempotencyActivity.cs`; `rg -l 'DedupKeyBuilder.BuildKey' src/Hexalith.Memories.Server --type cs \| wc -l` | Both build `dedup:{tenantId}:{caseId}:{hex SHA-256}` (`EventStoreDedupKey.cs` line 17 hashes the CloudEvent `id`; `DedupKeyBuilder.cs` line 16 hashes `sourceUri`); the preflight writes with `StringSetAsync(…, When.NotExists)` at line 48 and the durable check reads with `StringGetAsync` at line 58; six Server files use the durable builder. A physical collision assumes both stores use the same Redis database, which this source observation does not certify. | `confirmed` |
+| "A preflight hit drops the delivery as a duplicate" | Source behavior/location | `sed -n '156,163p' src/Hexalith.Memories.EventStore/EventIngestionService.cs` | `PreflightReservationResult.Duplicate` returns an `EventIngestionOutcome.Duplicate` response without consulting durable truth. | `confirmed` |
+| "Preflight is on by default with a 24-hour TTL" | Source behavior/location | `rg -n -e 'PreflightDedupEnabled' -e 'PreflightDedupTtl' src/Hexalith.Memories.EventStore/TenantEventRoutingOptions.cs`; `rg -n 'PreflightDedupEnabled' src/Hexalith.Memories.Server/appsettings.Production.json` | Default `true` at line 46 and `TimeSpan.FromHours(24)` at line 50; Production sets `true` at line 21. | `confirmed` |
+| "Fail-open and release after scheduling failure already exist" | Source behavior/location | `rg -n -e 'case PreflightReservationResult.FailOpen' -e 'ReleaseAsync\(dedupKey' src/Hexalith.Memories.EventStore/EventIngestionService.cs` | Fail-open at line 167; best-effort release at line 209. | `confirmed` |
+| Registry: "Reservation fails open to AD-4 durable suppression"; "Reserved key prefix `dedup:`" | Location/design | `grep -n -o -F 'Reservation fails open to AD-4 durable suppression' SPINE`; ``grep -n -o -F 'Reserved key prefix `dedup:`' SPINE`` | Both in the Direct Redis Exception Registry row at line 287. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.16: Purge tenant Redis projections and caches
@@ -7423,19 +7561,29 @@ Verified 2026-10-05 against parent `main` and its current worktree.
 | "TenantStatus currently declares Provisioning, Active, Deleting, Failed and CompensationFailed" | Existence/behavior | `sed -n "8,45p" src/Hexalith.Memories.Contracts/V1/TenantStatus.cs` | The enum lists the five current values, with no Deactivated or Erased. | `confirmed` |
 
 
-### Story 34.36: Issue and validate canonical case and unit identifiers
+### Story 34.36: Issue canonical ULIDs for every new case and memory unit
 
-**Status:** backlog; **Owner:** Administrator; **Requirements:** FR26, FR32, FR44; AD-5/AD-23.
+**Status:** backlog; **Owner:** Administrator; **Requirements:** FR26, FR32, FR44 (partial); AD-4/AD-23.
 
 As a developer,
-I want server-issued case and MemoryUnit IDs under Identifier Grammar V1,
+I want every new case and memory unit to receive a canonical uppercase ULID from one issuer and one validator,
 So that scope keys cannot collide or change meaning across producers.
 
 **Acceptance Criteria:**
 
-**Given a case or unit is created, when its identifier is issued, then the canonical uppercase ULID is used, and every read/import boundary validates the grammar before Story 34.7 composes a key with its reserved lowercase `u` delimiter.**
+**Given** any creation path — case, annotation, REST ingest, directory ingest, or CloudEvent ingest —
+**When** an identifier is issued,
+**Then** it is a canonical uppercase ULID,
+**And** an inventory test fails when any issuance site bypasses the issuer.
 
-**Given legacy, lowercase, malformed or colliding input arrives, when the validator handles it, then the request is rejected or a recorded migration mapping is applied without folding an issued identifier.**
+**Given** a case or `MemoryUnitId` value,
+**When** the shared Identifier Grammar V1 validator checks it,
+**Then** it accepts exactly `[0-7][0-9A-HJKMNP-TV-Z]{25}` and rejects lowercase, GUID, and noncanonical-leading-digit forms without folding them,
+**And** golden tests cover each accepted and rejected form.
+
+**Given** an identifier issued inside a workflow,
+**When** the workflow replays,
+**Then** it reissues the identical identifier.
 
 #### Dev Notes
 
@@ -7444,18 +7592,27 @@ So that scope keys cannot collide or change meaning across producers.
 | Prior work | Classification | Permitted use |
 | :--- | :--- | :--- |
 | 2026-09-12 proposed Epic 34 story reservations | `anti-template` | Problem inventory only; current PRD, final spine, and source govern this independently observable slice. |
+| Previously registered Story 34.36 definition ("Issue and validate canonical case and unit identifiers") | `historical-reference-only` | Retain the ID and goal. Its every-boundary validation moves to planned Story 34.50, and its legacy-mapping branch is replaced by the approved pre-release reset; the narrowed criteria were approved on 2026-10-08. |
 
 ##### Slice Proof
 
-One canonical issuer/validator for case and unit IDs is the outcome; Story 34.6 owns tenant IDs and Story 34.7 owns composed keys.
+Uniform canonical issuance plus one shared case/unit validator is the independently demonstrable outcome. Its three criteria cover every creation path, the validator's exact accept/reject behavior, and replay determinism, which AD-4 requires because workflows are deterministic process managers and the CloudEvent path issues inside a workflow. Story 34.7's issued-form codec consumes this validator, so this story precedes Story 34.7. Enforcing the validator at every read and import boundary is planned Story 34.50. Tenant identifiers are Story 34.6. **Recorded decision — 2026-10-08:** memory units created before this story, including GUID and runtime-instance-ID forms, are not mapped; they are re-ingested under a pre-release reset, so no legacy-mapping story is planned. This planning record supplies no complete FR26, FR32, or FR44 qualification credit.
 
 ##### Epic AC Verification
 
-Verified 2026-10-05 against parent `main` and its current worktree.
+Verified 2026-10-08 against `main` at `dbe4ce0a`; source is unchanged from `0b59bba5`. The approved criteria are implementation intent, not current runtime claims.
 
 | Epic claim | Class | Command / evidence | Observed | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| "CaseService currently creates case IDs with BaUlid.New" | Behavior/location | `rg -n "string caseId = BaUlid.New" src/Hexalith.Memories.Server/Cases/CaseService.cs` | The case issuer exists; AD-23 validation and delimiter enforcement remain to prove. | `confirmed` |
+| "CaseService currently creates case IDs with BaUlid.New" | Behavior/location | `rg -n "string caseId = BaUlid.New" src/Hexalith.Memories.Server/Cases/CaseService.cs` | Line 86. Re-run unchanged from 2026-10-05. | `confirmed` |
+| "`ByteAether.Ulid.ToString` emits the canonical Crockford form" | Behavior | `grep -n -A4 'M:ByteAether.Ulid.Ulid.ToString"' ~/.nuget/packages/byteaether.ulid/1.4.1/lib/net6.0/ByteAether.Ulid.xml`; version pin at `references/Hexalith.Builds/Props/Directory.Packages.props` line 156 | The package documentation states the canonical Crockford Base32 format. Byte-level uppercase output was not executed here; the first and second criteria's golden tests prove it. | `confirmed` |
+| Spine: "the uppercase Crockford base32 ULIDs the platform already issues for cases and memory units" | Behavior/location | `grep -n -o -F 'the uppercase Crockford base32 ULIDs the platform already issues for cases and memory units' SPINE` | Present at line 247. True for cases; refuted for memory units by the next two rows. A dated inline correction note was added at the claim on 2026-10-08 without moving any spine line. | `corrected` |
+| "Memory-unit IDs are issued in three forms" | Source behavior/location | `rg -n -e 'nameof\(IngestionWorkflow\), input: input' src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs`; `sed -n '758,771p' src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs`; `rg -n 'DedupWorkflowInstancePrefix\s*=' src/Hexalith.Memories.Server/Workflows/IngestionWorkflow.cs`; `rg -n 'requestedInstanceId' src/Hexalith.Memories.Server/Ingestion/DirectoryIngestionService.cs`; `rg -n 'annotationMuId = BaUlid.New' src/Hexalith.Memories.Server/Cases/CaseService.cs` | Single REST ingest schedules with no instance ID at line 319, and the workflow reuses its instance ID as the unit ID (lines 760–763); the `dedup:` CloudEvent prefix (line 29) selects `context.NewGuid().ToString()` (line 766); directory ingest schedules with a ULID instance ID (lines 247 and 273); annotation units use a ULID (line 152). | `confirmed` |
+| "A legacy seam accepts GUID unit IDs" | Source behavior/location | `sed -n '242p' src/Hexalith.Memories.Server/Consistency/ConsistencyInspectionService.cs` | Requires "a 26-character Crockford-base32 ULID or a GUID (D or N format)". | `confirmed` |
+| "Case and unit IDs are barely validated today" | Source behavior/location | `sed -n '726,729p' src/Hexalith.Memories.Server/Infrastructure/IndexSchemaDefinitions.cs`; `sed -n '54,55p' src/Hexalith.Memories.Server/Export/TenantExportService.cs`; `rg -o -e '\{caseId\}' -e '\{memoryUnitId\}' -e '\{unitId\}' src/Hexalith.Memories.Contracts/V1/MemoriesRoutes.cs \| wc -l` | `ValidateMemoryUnitId` rejects only null or whitespace; the export case-ID regex `^[0-9A-HJKMNP-TV-Z]{26}$` omits the `[0-7]` leading-digit rule; 34 route parameters carry case or unit IDs. | `confirmed` |
+| Identifier Grammar V1 case and `MemoryUnitId` form `[0-7][0-9A-HJKMNP-TV-Z]{25}`; AD-4 "Workflows are deterministic process managers" | Location/design | `grep -n -o -F '[0-7][0-9A-HJKMNP-TV-Z]{25}' SPINE`; `grep -n -o -F 'Workflows are deterministic process managers' SPINE` | Grammar rows at lines 254 and 255; AD-4 at line 113. Design intent only. | `confirmed` |
+
+`SPINE` in the commands above is `_bmad-output/planning-artifacts/architecture/architecture-memories-2026-09-09/ARCHITECTURE-SPINE.md`.
 
 
 ### Story 34.37: Keep backend SDKs behind extraction points

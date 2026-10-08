@@ -7,6 +7,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -14,6 +15,9 @@ from datetime import datetime
 from pathlib import Path
 
 from runtime_control_plane_identity_test import FIXTURE, REPO_ROOT, TOKEN_CANARY, write_fake_kubectl
+
+sys.path.insert(0, str(REPO_ROOT / 'tools'))
+from access_telemetry_c1_interchange import InterchangeFormatError, JsonSnapshot, parse_capture
 
 RUNNER = REPO_ROOT / 'tools/verify-access-telemetry-c1.ps1'
 PROFILE_HELPER = REPO_ROOT / 'tools/access-telemetry-c1-profile.ps1'
@@ -261,6 +265,159 @@ if scenario.get("failPurpose") == purpose:
                 self.assertEqual(digest(exact), entry['stdoutSha256'])
 
         self.assertEqual({'validated'}, {entry['streamSafety'] for entry in packet['commands']})
+
+    def test_source_receipt_labels_bind_each_stream_and_strict_reader_inspects_actual_capture(self):
+        for count in (1, 2):
+            with self.subTest(pod_count=count):
+                scenario = copy.deepcopy(self.base)
+                scenario.update(stderrPurpose='current-context', stderr='offline diagnostic')
+                if count == 2:
+                    second = copy.deepcopy(scenario['pods']['items'][0])
+                    second['metadata'].update(name=self.pod + '-second', uid='other-safe-pod-uid')
+                    scenario['pods']['items'].append(second)
+                    for field in ('metadata', 'daprdVersions', 'alphaOptIn'):
+                        scenario[field][second['metadata']['name']] = copy.deepcopy(scenario[field][self.pod])
+                scenario['podsAfter'] = copy.deepcopy(scenario['pods'])
+                scenario['podsAfter']['items'].reverse()
+                scenario['podsAfter']['items'][0]['metadata']['resourceVersion'] = 'safe-recheck-version'
+                result, packets, calls, evidence = self.run_gate(scenario, timeout=90)
+                self.assertEqual(0, result.returncode, result.stderr)
+                packet = packets[0]
+                labels = [source['source'] for source in packet['sources']]
+                self.assertEqual(len(labels), len(set(labels)))
+                sources = {source['source']: source['sha256'] for source in packet['sources']}
+                for command in packet['commands']:
+                    purpose = command['purpose']
+                    if purpose == 'current-context' or purpose.startswith(('daprd-version:', 'alpha-opt-in:')):
+                        for stream in ('stdout', 'stderr'):
+                            self.assertEqual(command[stream + 'Sha256'], sources['kubectl:' + purpose + ':' + stream])
+                self.assertEqual(digest(b'offline diagnostic\n'), sources['kubectl:current-context:stderr'])
+                for purpose, key in (('lifecycle-pods', 'pods'), ('lifecycle-pods-recheck', 'podsAfter')):
+                    output = ''.join(json.dumps([pod['metadata'], pod['status']]) + '\n'
+                                     for pod in scenario[key]['items']).encode()
+                    command = next(command for command in packet['commands'] if command['purpose'] == purpose)
+                    self.assertEqual(digest(output), command['stdoutSha256'])
+                    self.assertEqual(digest(output), sources['kubectl:' + purpose + ':identity'])
+                    self.assertNotEqual(digest(output.strip()), sources['kubectl:' + purpose + ':identity'])
+                raw = next(evidence.glob('*.json')).read_bytes()
+                snapshot = JsonSnapshot(raw)
+                self.assertIs(snapshot, parse_capture(snapshot))
+                self.assertEqual(raw, snapshot.raw)
+                self.assertEqual(digest(raw), snapshot.sha256)
+                self.assertEqual('not-evaluated', snapshot.value['gateStatus'])
+                self.assertEqual('pending', snapshot.value['independentDisposition'])
+                self.assertEqual(3 + count * 3, len(calls))
+                for purpose in ('lifecycle-pods', 'lifecycle-pods-recheck'):
+                    for receipt in ('identity', 'command'):
+                        with self.subTest(purpose=purpose, mutated_receipt=receipt):
+                            mutated = copy.deepcopy(packet)
+                            if receipt == 'identity':
+                                source = next(source for source in mutated['sources']
+                                              if source['source'] == 'kubectl:' + purpose + ':identity')
+                                source['sha256'] = '0' * 64
+                            else:
+                                command = next(command for command in mutated['commands'] if command['purpose'] == purpose)
+                                command['stdoutSha256'] = '0' * 64
+                            with self.assertRaisesRegex(InterchangeFormatError, '^artifact-literal-mismatch$'):
+                                parse_capture(JsonSnapshot(json.dumps(mutated).encode()))
+
+    def test_blocked_capture_source_labels_remain_distinct_and_structurally_inspectable(self):
+        scenario = copy.deepcopy(self.base)
+        scenario.update(context='wrong-context', stderrPurpose='current-context', stderr='offline diagnostic')
+        result, packets, calls, evidence = self.run_gate(scenario, timeout=90)
+        self.assertNotEqual(0, result.returncode, result.stderr)
+        packet = packets[0]
+        self.assertIn('profile-context-mismatch', packet['blockers'])
+        self.assertEqual(1, len(calls))
+        sources = {source['source']: source['sha256'] for source in packet['sources']}
+        self.assertEqual(3, len(sources))
+        self.assertEqual(digest(b'wrong-context\n'), sources['kubectl:current-context:stdout'])
+        self.assertEqual(digest(b'offline diagnostic\n'), sources['kubectl:current-context:stderr'])
+        raw = next(evidence.glob('*.json')).read_bytes()
+        snapshot = JsonSnapshot(raw)
+        self.assertIs(snapshot, parse_capture(snapshot))
+        self.assertEqual(raw, snapshot.raw)
+        self.assertEqual(digest(raw), snapshot.sha256)
+        self.assertEqual('blocked', snapshot.value['producerStatus'])
+        self.assertFalse(snapshot.value['productionGatePassed'])
+
+    def test_safe_nonzero_per_pod_command_retains_exact_streams_and_strict_reader_blocker(self):
+        scenario = copy.deepcopy(self.base)
+        scenario.update(failPurpose='version', stderr='offline per-pod diagnostic')
+        result, packets, calls, evidence = self.run_gate(scenario, timeout=90)
+        self.assertNotEqual(0, result.returncode, result.stderr)
+        packet = packets[0]
+        purpose = 'daprd-version:' + self.pod
+        self.assertEqual(['kubectl-' + purpose + '-exit-71'], packet['blockers'])
+        self.assertEqual(3, len(calls))
+        command = packet['commands'][-1]
+        self.assertEqual(purpose, command['purpose'])
+        self.assertEqual(71, command['exitCode'])
+        self.assertEqual('validated', command['streamSafety'])
+        self.assertEqual((0, 1, 0), (command['resultCount'], command['failureCount'], command['skipCount']))
+        labels = [source['source'] for source in packet['sources']]
+        self.assertEqual(6, len(labels))
+        self.assertEqual(len(labels), len(set(labels)))
+        sources = {source['source']: source['sha256'] for source in packet['sources']}
+        for stream, output in (('stdout', b''), ('stderr', b'offline per-pod diagnostic\n')):
+            self.assertEqual(digest(output), command[stream + 'Sha256'])
+            self.assertEqual(digest(output), sources['kubectl:' + purpose + ':' + stream])
+        identity_output = ''.join(json.dumps([pod['metadata'], pod['status']]) + '\n'
+                                  for pod in scenario['pods']['items']).encode()
+        self.assertEqual(digest(identity_output), sources['kubectl:lifecycle-pods:identity'])
+        self.assertNotIn('kubectl:lifecycle-pods-recheck:identity', sources)
+        raw = next(evidence.glob('*.json')).read_bytes()
+        snapshot = JsonSnapshot(raw)
+        self.assertIs(snapshot, parse_capture(snapshot))
+        self.assertEqual(raw, snapshot.raw)
+        self.assertEqual(digest(raw), snapshot.sha256)
+        self.assertEqual('blocked', snapshot.value['producerStatus'])
+        self.assertEqual((), snapshot.value['observations']['pods'])
+        self.assertEqual(0, snapshot.value['resultCount'])
+        self.assertGreater(snapshot.value['failureCount'], 0)
+        self.assertEqual('not-evaluated', snapshot.value['gateStatus'])
+        self.assertFalse(snapshot.value['productionGatePassed'])
+        self.assertEqual('not-evaluated', snapshot.value['productionLifecycleWrites'])
+        self.assertEqual('pending', snapshot.value['independentDisposition'])
+
+    def test_malformed_identity_queries_publish_no_identity_source_and_blocked_bytes_remain_inspectable(self):
+        for raw_key, purpose, call_count in (('podsRaw', 'lifecycle-pods', 2),
+                                            ('podsAfterRaw', 'lifecycle-pods-recheck', 6)):
+            with self.subTest(query=purpose):
+                scenario = copy.deepcopy(self.base)
+                scenario[raw_key] = '{'
+                result, packets, calls, evidence = self.run_gate(scenario, timeout=90)
+                self.assertNotEqual(0, result.returncode, result.stderr)
+                self.assertEqual(1, len(packets))
+                packet = packets[0]
+                self.assertEqual('blocked', packet['producerStatus'])
+                self.assertEqual(['malformed-pod-list-json'], packet['blockers'])
+                self.assertEqual(call_count, len(calls))
+                sources = {source['source']: source['sha256'] for source in packet['sources']}
+                self.assertNotIn('kubectl:' + purpose + ':identity', sources)
+                if raw_key == 'podsAfterRaw':
+                    self.assertIn('kubectl:lifecycle-pods:identity', sources)
+                command = packet['commands'][-1]
+                self.assertEqual(purpose, command['purpose'])
+                self.assertEqual(0, command['exitCode'])
+                self.assertEqual('validated', command['streamSafety'])
+                self.assertEqual(digest(b'{\n'), command['stdoutSha256'])
+                self.assertEqual(digest(b''), command['stderrSha256'])
+                self.assertEqual((1, 0, 0), (command['resultCount'], command['failureCount'], command['skipCount']))
+                self.assertEqual([], packet['observations']['pods'])
+                self.assertEqual({'componentIsAlpha': None, 'allowAlphaComponent': None},
+                                 packet['observations']['alphaOptIn'])
+                self.assertEqual((0, 1, 0), (packet['resultCount'], packet['failureCount'], packet['skipCount']))
+                self.assertEqual(1, packet['producer']['exitCode'])
+                self.assertEqual('not-evaluated', packet['gateStatus'])
+                self.assertFalse(packet['productionGatePassed'])
+                self.assertEqual('not-evaluated', packet['productionLifecycleWrites'])
+                self.assertEqual('pending', packet['independentDisposition'])
+                raw = next(evidence.glob('*.json')).read_bytes()
+                snapshot = JsonSnapshot(raw)
+                self.assertIs(snapshot, parse_capture(snapshot))
+                self.assertEqual(raw, snapshot.raw)
+                self.assertEqual(digest(raw), snapshot.sha256)
 
     def test_clean_and_dirty_source_states_are_labelled_without_acceptance(self):
         root = self.temporary_repository()
@@ -651,12 +808,24 @@ if scenario.get("failPurpose") == purpose:
                     self.assert_blocked(scenario, failure)
 
     def test_legacy_c1_15_stays_v1_without_session_and_cannot_consume_v2_session(self):
-        result, packets, _, _ = self.run_gate(profile='PG-ONPREM-1', session=None)
+        scenario = copy.deepcopy(self.base)
+        scenario.update(stderrPurpose='current-context', stderr='offline legacy diagnostic')
+        scenario['podsAfter'] = copy.deepcopy(scenario['pods'])
+        scenario['podsAfter']['items'][0]['metadata']['resourceVersion'] = 'safe-legacy-recheck'
+        result, packets, _, _ = self.run_gate(scenario, profile='PG-ONPREM-1', session=None, timeout=90)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual('hexalith.access-telemetry.c1.evidence/v1', packets[0]['schemaVersion'])
         self.assertNotIn('qualificationSessionId', packets[0])
         self.assertNotIn('producerSources', packets[0])
         self.assertEqual({'purpose', 'sha256'}, set(packets[0]['commands'][0]))
+        sources = {source['source']: source['sha256'] for source in packets[0]['sources']}
+        self.assertEqual(len(packets[0]['sources']), len(sources))
+        self.assertEqual(digest(b'offline legacy diagnostic\n'), sources['kubectl:current-context:stderr'])
+        for purpose, key in (('lifecycle-pods', 'pods'), ('lifecycle-pods-recheck', 'podsAfter')):
+            output = ''.join(json.dumps([pod['metadata'], pod['status']]) + '\n'
+                             for pod in scenario[key]['items']).encode()
+            self.assertEqual(digest(output.strip()), sources['kubectl:' + purpose + ':identity'])
+            self.assertNotEqual(digest(output), sources['kubectl:' + purpose + ':identity'])
 
 
 if __name__ == '__main__':

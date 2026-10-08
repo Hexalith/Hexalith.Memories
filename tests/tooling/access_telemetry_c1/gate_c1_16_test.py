@@ -184,6 +184,15 @@ class ComponentBackendCaptureTests(unittest.TestCase):
         for path in evidence.glob('*.json'):
             self.assertTrue(path.name.startswith('c1.16-component-backend-identity-'))
             self.assertFalse(path.stat().st_mode & stat.S_IWUSR)
+        for emitted in packets:
+            stream_sources = [entry for entry in emitted['sources']
+                              if entry['source'].endswith((':stdout', ':stderr'))]
+            sources = {entry['source']: entry['sha256'] for entry in stream_sources}
+            self.assertEqual(len(stream_sources), len(sources))
+            self.assertEqual({'kubectl:current-context:stdout', 'kubectl:current-context:stderr'}, set(sources))
+            self.assertEqual(hashlib.sha256((self.base['context'] + '\n').encode()).hexdigest(),
+                             sources['kubectl:current-context:stdout'])
+            self.assertEqual(hashlib.sha256(b'').hexdigest(), sources['kubectl:current-context:stderr'])
         packet = packets[0]
         self.assertEqual('C1.16', packet['gate'])
         self.assertEqual('PG-ONPREM-1', packet['profileId'])

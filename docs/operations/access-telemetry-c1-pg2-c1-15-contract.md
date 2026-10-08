@@ -154,7 +154,24 @@ is embedded in the packet. Future validators must reject duplicate/unknown field
 wrong types, wrong hashes and contradictory facts, rather than reinterpret them.
 
 `sources` retains the existing `{source, sha256}` allowlisted observation hashes
-and collector byte hash. `observations` retains exactly `pods`, `runtimeVersions`,
+and collector byte hash. Stream receipts have distinct
+`kubectl:<purpose>:stdout` and `kubectl:<purpose>:stderr` labels, including each
+Pod's `daprd-version:<pod>` and `alpha-opt-in:<pod>` purposes. For PG2 C1.15,
+`kubectl:lifecycle-pods:identity` and `kubectl:lifecycle-pods-recheck:identity`
+each use the corresponding validated command's existing `stdoutSha256` directly.
+They bind the exact complete, secret-safe UTF-8 Pod identity projection stdout
+bytes, including trailing newlines. Parsing still uses trimmed text, and each
+identity receipt is published only after its existing initial/recheck projection
+validation. Metadata receipts retain the sanitized `allowlisted` projection;
+stream digests and observation shapes are unchanged.
+
+PG1 C1.15 v1 retains its established trimmed Pod identity hashes. C1.16 also
+receives the shared distinct stdout/stderr label correction; its projection and
+identity hashes and stream digest calculations are unchanged. Historical packet
+bytes remain immutable and receive no retroactive acceptance from this producer
+correction.
+
+`observations` retains exactly `pods`, `runtimeVersions`,
 `sidecarImageIds`, `sidecarImageDigests`, `appIds`, `schedulerConnectedAddresses`,
 `actorTypes`, `enabledFeatures`, `alphaOptIn`. Each pod contains `pod`, `podUid`,
 `runtimeVersion`, `sidecarImageId`, `sidecarImageDigest`, `appId`,

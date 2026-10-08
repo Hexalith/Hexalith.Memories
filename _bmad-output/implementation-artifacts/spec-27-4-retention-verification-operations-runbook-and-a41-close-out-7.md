@@ -37,16 +37,14 @@ investigation_commit: 'c46973679fcf09bdc5aab19928f2fe03dae82226'
 
 **Decision 2026-10-08:** The owner selected “do recommended”: implement the narrow GitHub-backed Platform adapter and qualification contract in a separately tracked prerequisite. This selects the provider direction, not actual operational grants or gate acceptance.
 
+**Decision 2026-10-08 (source labels):** The owner selected the recommended separate C1.15 source-receipt correction, tracked in `spec-pg2-c1-15-source-receipt-labels.md`. This authorizes offline producer/tests only; 27.4 remains pending.
+
 </frozen-after-approval>
-
-## Open Questions
-
-1. Select **C1.15 source-label correction** (recommended: separate collector fix and offline reader-compatibility proof), **I2 structural registry inspection** (separate closed-entry/J1/source-set library; no accepting registrations), or **keep 27.4 pending** for accepted prerequisites and scoped inputs. Each implementation needs its own build spec.
 
 ## Code Map
 
 - `tools/access_telemetry_c1_interchange.py:784` — I1 readers/dispatch complete; reuse snapshots/J1/Refs. Parsing grants no acceptance.
-- `tools/verify-access-telemetry-c1.ps1:353` — labels collapse to `kubectl:`; readers refuse duplicates. Separate fix/tests required.
+- `tools/verify-access-telemetry-c1.ps1:353` — separate source-receipt correction implemented; distinct labels and PG2 initial/recheck stdout digests pass unchanged I1 inspection. See the prerequisite below; this grants no acceptance.
 - `tools/access_telemetry_c1_github_authority.py:607` — authenticated observations exist; actual execution/custody facts remain external.
 - `tools/verify_access_telemetry_lifecycle.py:2642` — legacy predecessor; P7 must migrate checkpoint/launcher/terminal consumers together.
 - `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md` — I2–I6/P1–P7 incomplete; registry/assembler absent.
@@ -69,6 +67,14 @@ investigation_commit: 'c46973679fcf09bdc5aab19928f2fe03dae82226'
 Missing: PG2 C1.15 registered/accepted renewal, 23 registered/done owners, eligible C1.16 session, complete accepted bundle and scoped execution inputs. Live purge/faults/publication need separate authority. Footprint: draft/context only; preserve user edits. I1 selection is superseded by completion.
 
 ## Implementation Notes
+
+The owner approved the PG2 identity-digest extension with “apply recommendation”.
+Implementation and offline verification are recorded in
+[the separate C1.15 prerequisite](spec-pg2-c1-15-source-receipt-labels.md);
+independent review and both follow-ups are complete. This fixes producer/reader
+compatibility only.
+27.4 remains draft, A41 open and Production writes disabled pending the accepted
+prerequisites and scoped execution inputs listed above.
 
 ## Spec Change Log
 

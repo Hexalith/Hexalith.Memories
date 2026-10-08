@@ -350,8 +350,8 @@ function Invoke-KubectlObservation {
         }
     }
     if (-not $SkipSourceHash) {
-        Add-SourceHash "kubectl:$Purpose:stdout" $stdout
-        Add-SourceHash "kubectl:$Purpose:stderr" $stderr
+        Add-SourceHash "kubectl:${Purpose}:stdout" $stdout
+        Add-SourceHash "kubectl:${Purpose}:stderr" $stderr
     }
 
     if ($exitCode -ne 0) {
@@ -696,7 +696,15 @@ try {
                 $selectedPod.status.containerStatuses -isnot [System.Array]) { throw 'running-pod-not-stable' }
         }
     }
-    Add-SourceHash 'kubectl:lifecycle-pods:identity' $podsJson
+    if ($script:pg2RuntimeCapture) {
+        $script:sourceLedger.Add([ordered]@{
+            source = 'kubectl:lifecycle-pods:identity'
+            sha256 = $script:commandLedger[$script:commandLedger.Count - 1].stdoutSha256
+        })
+    }
+    else {
+        Add-SourceHash 'kubectl:lifecycle-pods:identity' $podsJson
+    }
 
     $runningPods = @($podsPayload.items | Where-Object {
         [string]::Equals([string]$_.status.phase, 'Running', [StringComparison]::Ordinal)
@@ -944,7 +952,15 @@ try {
             throw 'running-pod-changed'
         }
     }
-    Add-SourceHash 'kubectl:lifecycle-pods-recheck:identity' $podsAfterJson
+    if ($script:pg2RuntimeCapture) {
+        $script:sourceLedger.Add([ordered]@{
+            source = 'kubectl:lifecycle-pods-recheck:identity'
+            sha256 = $script:commandLedger[$script:commandLedger.Count - 1].stdoutSha256
+        })
+    }
+    else {
+        Add-SourceHash 'kubectl:lifecycle-pods-recheck:identity' $podsAfterJson
+    }
 
     $runningPodsAfter = @($podsAfterPayload.items | Where-Object {
         [string]::Equals([string]$_.status.phase, 'Running', [StringComparison]::Ordinal)

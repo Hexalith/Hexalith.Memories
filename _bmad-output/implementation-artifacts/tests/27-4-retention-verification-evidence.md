@@ -32,7 +32,7 @@ independent approval. Historical PG-ONPREM-1 C1.15 capture grants no PG2 credit.
 | Checkpoint | State | Repository validation | Required external evidence | Owner | Blocker / operator action |
 | :--------- | :---- | :-------------------- | :------------------------- | :---- | :------------------------ |
 | C0 exact adapter profile | `repository-validated` | Exact `PG-ONPREM-2` profile, hash, workload, parser, and pre-query identity contracts have deterministic guards. This is not Production proof. | Immutable exact-profile qualification packet with executed commands and recomputed source/artifact identity. | Platform Operations | `operator-pending`: execute the authorized C0 producer on the declared target. |
-| C1 canonical predecessor | `operator-pending` | The verifier requires each canonical `C1.1` through `C1.25` result and rejects a synthetic aggregate. | Twenty-five individually attributable passing gates plus two different named reviewers approving the exact same profile hash. | Gate owners, Platform Operations, Security | Complete all 25 gates; no missing owner, skip, zero-result command, or shared reviewer can pass. |
+| C1 canonical predecessor | `operator-pending` | The legacy verifier structurally checks each canonical `C1.1` through `C1.25` input and rejects a synthetic aggregate; it does not authenticate reviewer identity or establish accepted C1 evidence. | Twenty-five individually attributable passing gates with registered/done owners and eligible session, plus authenticated Operations and Security decisions bound to the exact manifest and profile hash. | Gate owners, Platform Operations, Security | Complete all 25 gates and the approved authenticated interchange. The required authenticated interchange must refuse missing owners, skips, zero-result commands and bare reviewer labels. The named-owner bundle exception below applies only after authenticated role, scope and producer-exclusion checks; the legacy guard remains stricter. |
 | C2 production replacement | `operator-pending` | Producer schema, immutable packet writer, same-profile validator, concurrent fixed two-writer accounting, zero-default gate/Lease transition, and exact per-instance replacement selectors are repository-validated. | Controlled two-writer execution; replacement of both Servers and their sidecars, lifecycle/clock services and their sidecars, actor activation, all three Placement and Scheduler members; and adapter-fault execution with exact acknowledgements, recovery, and audit continuity. | Platform Operations | Run the reviewed C2 producer only after C1 passes and the separately scoped P7 runtime migration is approved and verified, with a named shared-system approval; its target-identity observation must prove an initially disabled exact-profile qualification namespace, empty Lease, and zero lifecycle/clock replicas. Zero acknowledged loss and a final disabled/empty/zero state are required. |
 | C3 retention and reclamation | `operator-pending` | Cohort, 1/24/168-hour bounds, attestation negatives, interrupted-purge, newer-record, tuple-attribution, and logical/physical separation guards are repository-validated. | Executed expiry/purge and adapter reclamation commands bound to each of the three independent cohorts and its database/schema/table; newer records preserved and reusable allocator free-space increase observed within 86,400 seconds. | Lifecycle owner and adapter owner | Run the reviewed C3 producer after C1 and approved, verified separately scoped P7 runtime migration; an OS disk-shrink claim is prohibited. |
 | C4 failure, privacy, and observability | `operator-pending` | Complete failure inventory, health precedence, NoData/last-evidence timestamp, bounded labels, and Story 20.2/24.3 denial guards are repository-validated. | Every declared dependency/fault lane, nonzero business samples with zero business failure, console/configured-OTLP continuity, alerts, and tenant denial before dependency access. | Platform Operations and Security | Run the reviewed C4 producer after C1 and approved, verified separately scoped P7 runtime migration; missing scenarios, raw/secret aliases, or dependency calls after denial reject. |
@@ -64,9 +64,18 @@ approved C1 predecessor bundle. A future bundle must establish the capture's
 session eligibility and cannot reuse the closed scope as execution authority.
 A bundle using a new session requires a separately authorized fresh C1.16 capture
 and independent disposition; historical acceptance remains preserved.
-Approved/done current-profile gate-owner
-registrations and twenty-five distinct passed artifacts with independent named
-Platform Operations and Security approvals of the same hash are still required.
+Approved/done current-profile gate-owner registrations and twenty-five distinct
+passed artifacts with two authenticated Platform Operations and Security bundle
+decisions for the exact manifest/profile remain required. The owner-approved
+exception permits Jérôme Piquot (`github:user:6775094`) to approve both C1 bundle
+roles only through distinct decisions/receipts and authenticated role/scope/time
+checks, excluding every capture producer. Other bundle reviewers must be distinct.
+Reconsider the exception before Production activation or account/role/producer
+changes. The existing label-only legacy predecessor still rejects a shared
+reviewer, but accepts two distinct nonempty reviewer labels with claimed approval
+fields as structurally valid. That structural verdict authenticates no decision
+and cannot satisfy the required C1 acceptance. The prepared authority checks
+supply no legacy bypass or accepting predecessor. Post-evidence C5/C6 still require separate reviewers.
 
 The runtime profile mismatch identified on 2026-10-07 at
 `95dd8758f2f36d262a2b5c23269a0d73a2d7825b` now has a separately scoped
@@ -80,7 +89,16 @@ access, bounded expiry, fresh-file renewal and revocation. This source/test slic
 is `repository-validated`; its dated receipt below is offline evidence only.
 
 The [authenticated predecessor interchange specification](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/SPEC.md)
-is proposed, unstarted and not implementation-ready. Its
+has completed I1 structural readers and separately reviewed narrow GitHub
+policy/session/gate/bundle observation preparation; the source-receipt
+label/digest correction is also complete offline. These slices authenticate
+structure or observations, never a semantic gate verdict or accepted predecessor.
+I2–I6 registry/source binding, complete authority/provenance/custody consumption,
+gate semantics, assembly, consumer migration and final verification remain
+incomplete. Operational P1–P7 inputs/decisions remain unresolved; the full
+interchange is not implementation-ready for live acceptance. See the
+[authority preparation contract](../../../docs/operations/c1-github-authority-contract.md)
+and [source-receipt correction](../spec-pg2-c1-15-source-receipt-labels.md). Its
 [P7 migration prerequisite](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md#decisions-and-ownership-still-required)
 requires a separately scoped runtime correction. The source/test correction above
 satisfies that repository behavior check, while Architecture and Operations runtime
@@ -94,7 +112,8 @@ The historical handoff and receipts below preserve the earlier mismatch as obser
 
 None of these live inputs has been supplied for this offline pass: an accepted
 current-profile C1 predecessor bundle (external bundle path), approved/done gate
-owners and the two independent approvals, an authorized non-Production kube context
+owners and two authenticated C1 bundle-role decisions under the named-owner
+policy above, an authorized non-Production kube context
 and namespace, an external evidence root and custody location, credential-file paths
 (paths only, never credential values), and fault and purge authority.
 Live C0/C2-C4 execution, independent post-evidence C5/C6 acceptance, terminal
@@ -623,3 +642,60 @@ PY
 | `final-workload.xml` | `bd0ed6982270247337ebbc95dff9ed9ef90cad02f31cb842b7db002bdf066452` |
 
 Final documentation checks and review triage are recorded in the supporting spec.
+
+
+### 2026-10-08 current readiness handoff reconciliation
+
+The current C1 handoff now separates completed I1, narrow authenticated GitHub
+observations and source-receipt correction from incomplete I2–I6/P1–P7 and live
+acceptance. The named-owner C1 bundle exception requires authenticated separate
+Operations/Security receipts and producer exclusion. It changes neither the
+legacy label-only predecessor refusal nor the separate C5/C6 reviewer rule.
+The compiled epic context includes the current tenant-principal/erasure constraints.
+The parent `-7` draft and its frozen intent remain unchanged.
+
+At source `dbe4ce0a97c6a3a883af800f7873a99b79434d44`, the unchanged ten-command
+canonical block passed: `/tmp/story-27-4-offline.FKA9f5hE`; all commands and block
+exit 0, 80 lifecycle cases in 31.490s, exactly 12 retention + 5 A41 guards all
+Pass with zero failures/errors/skips/not-run, and Debug/source-reference build
+with zero warnings/errors. Execution-time tracked diff SHA-256:
+`c148449fc8b8615dba96c7d4d4f775808398e2aba2d3d621d5a4947f83f39a33`; result XML SHA-256: `ce754554a10e606109e5cd9adbcb54550c95a1af4c855cb630ea2e0a83185694`;
+assembly SHA-256: `8a9e11c489f78dc745e898077d282c02a6c0d52d9dcdd8d8bec092a863310013`.
+
+Five existing real-TLS authority cases also passed in 1.764s, zero failures,
+errors or skips. Exact executed command:
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 PYTHONPATH=/home/administrator/projects/hexalith/memories/tests/tooling/access_telemetry_c1_interchange python3 -m unittest -v test_github_authority.GitHubAuthorityTests.test_real_tls_root_policy_session_parent_gate_and_owner_bundle_chain test_github_authority.GitHubAuthorityTests.test_verified_grants_drive_distinct_bundle_reviewers test_github_authority.GitHubAuthorityTests.test_reviewer_producer_overlap_including_root_session_and_owner_refuses test_github_authority.GitHubAuthorityTests.test_non_owner_same_bundle_reviewer_refuses_even_with_two_verified_roles test_github_authority.GitHubAuthorityTests.test_cross_target_tenant_session_profile_workload_and_source_denials_before_dependents
+```
+
+`test_reviewer_producer_overlap_including_root_session_and_owner_refuses`,
+`test_non_owner_same_bundle_reviewer_refuses_even_with_two_verified_roles`, and
+`test_cross_target_tenant_session_profile_workload_and_source_denials_before_dependents`
+attach negative evidence to the current reviewer/scope-attribution claims. The
+canonical lifecycle lane also passed
+`test_c1_owner_exception_does_not_authorize_label_only_legacy_predecessor`.
+Logs/commands/exits and 1,818 baseline file hashes:
+`/tmp/story-27-4-readiness-92sb2tz2`. All existing user changes, source/dependency
+revisions, matrix states, sprint/history/Production bytes and historical receipts
+were preserved; current links and CRLF passed. These are local offline fixtures,
+not live grants or custody. Dated receipt notes were added after execution.
+Live gates, Story 27.4, A41 close-out and Production activation remain pending.
+
+
+Read-only review follow-up confirmed Platform publication: the freshly observed
+`origin/main` is `2c4f788a6ffde2646de1686492dc817f5505c922`; it contains the
+authenticated-decision commit `48d5c6e64087bb33232651d8b59422e95185c699`,
+transport commit `794e8c63fe945bf689064edb8a406801810cb4cf`, root-recorded pin
+`495d1d0dfceb33e6bb628809a42a284526707ff6` and the preserved user checkout
+`94c0359ffd4da1c186df7ad4218b20c0eae99a89`. The root-recorded pin already
+contains both exact executed authority/transport files. The older prerequisite
+publication wording does not establish a current missing handoff; provenance is
+recorded in `platform-publication-check.json` in the readiness receipt. No
+fetch, gitlink change, publication action or operational acceptance occurred.
+Review corrections clarified the legacy structural-label limitation and added
+AD-17 token stability/collision safeguards to the compiled context. All executable
+sources remained identical; the historical receipt prefix and matrix states were
+preserved. The next separate implementation dependency is I2 closed
+registry/source binding, with genuine registration/command/role receipts still
+required; this supporting slice supplies none of those approvals.
