@@ -5749,7 +5749,19 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-pg2-c1-p1-authenticated-bootstrap-and-receipts-2.md`
   summary: Bind any future P1 consumer verdict to the immutable receipt, status and subject bytes or their verified digests.
   evidence: P1ReceiptVerifier returns only bool, while P1SignedDocument exposes mutable byte arrays. A caller can mutate retained arrays after a true offline verdict and later associate it with different bytes. The existing contract requires immutable retention, and no operational adapter exists; settle the returned evidence shape with that adapter rather than changing the current pure verifier API.
+  status: resolved 2026-10-09
+  resolution: `spec-pg2-c1-p1-enrollment-receipt-transport.md` — `P1ReceiptVerifier.TryVerify` returns immutable digests of the exact receipt/status payload and signature snapshots plus subject bytes. The retained-byte comparison and operational custody adapter remain separate unimplemented prerequisites; this resolution covers only the offline evidence shape.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-pg2-c1-p1-authenticated-bootstrap-and-receipts-2.md`
   summary: Align the P1 HTTP response-body size cap with the maximum signed payload and envelope size before implementing transport.
   evidence: The contract permits a 1 MiB receipt/status payload but also limits HTTP response bodies to 1 MiB. The specified transport adds a four-byte length and 64-byte detached signature, so a maximal valid payload needs a 1 MiB plus 68-byte body. This predates the follow-up and no HTTP adapter exists yet.
+  status: resolved 2026-10-09
+  resolution: `spec-pg2-c1-p1-enrollment-receipt-transport.md` — The approved total response-body cap remains 1,048,576 bytes; the new envelope decoder caps transport payloads at 1,048,508 bytes and the contract now states the distinction from the larger pure-verifier payload limit. No live HTTP adapter is claimed.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pg2-c1-p1-enrollment-receipt-transport.md`
+  summary: Validate the P1 receipt and status signed wire formats against independent protocol vectors before deploying an issuer.
+  evidence: The existing receipt/status encoder and decoder share implementation assumptions; the new transport tests use that encoder for signed fixture payloads. A separately authored canonical byte vector would detect shared encoding drift. This predates the offline transport boundary and requires an issuer interoperability fixture or independent vector author.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pg2-c1-p1-enrollment-receipt-transport.md`
+  summary: Reject a changed validly signed P1 response under an already observed receipt ID using authenticated immutable custody history.
+  evidence: The pure P1 verifier accepts any valid issuer signature matching the exact claims, including a second signature over the same payload. The new evidence object exposes distinct signature digests, but only an independently approved live retrieval and custody adapter can compare the current body with a previously retained body for the same receipt ID and raise an incident. No operational issuer, custody root or live adapter is enrolled.
