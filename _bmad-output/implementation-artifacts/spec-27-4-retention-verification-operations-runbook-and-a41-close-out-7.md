@@ -2,7 +2,7 @@
 title: 'Story 27.4: Remaining live qualification and A41 close-out'
 type: 'feature'
 created: '2026-10-07'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
 baseline_commit: 'f4e7eb8626513c83f392a7cabf223b1a4673daa3'
@@ -81,6 +81,13 @@ prerequisites and scoped execution inputs listed above.
 
 2026-10-08: Rechecked holds; updated readiness only. No source/test/target changes.
 
+2026-10-09: Rechecked the offline block at current HEAD
+`5d0cbefedc828ab829b0b9104c5ab77788dcd5b2`, which contains
+`d172165ebe1ab39efebd38b875b94f6d4ef6d191`. Refreshed canonical readiness and
+compiled epic context only. No source, test, target, sprint, history, or
+Production-byte changes. Live C0/C2–C4, C5/C6, and A41 close-out stay pending;
+the draft remains held.
+
 ## Spec Change Log
 
 ## Review Triage Log
@@ -96,3 +103,5 @@ Current canonical offline block: exit 0; 80 lifecycle passes, zero-warning/error
 Current resumption: 80 lifecycle + 12/5 architecture + 167 interchange passes; zero-warning/error Debug/source-reference build. Canonical receipt `/tmp/story-27-4-offline.fq11FV9r`; investigation/interchange/protected hashes `/tmp/story-27-4-current-readiness-3gv1qqwq`. Offline only; draft unresolved.
 
 2026-10-08 planning recheck at `d172165ebe1ab39efebd38b875b94f6d4ef6d191`: `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py'` — exit 0; 219 passes (includes the new producer-bindings and capture-semantics lanes), zero failures/errors/skips. Offline only; draft unresolved.
+
+2026-10-09 current-HEAD recheck at `5d0cbefedc828ab829b0b9104c5ab77788dcd5b2` (contains `d172165e`): canonical ten-command block exit 0; 80 lifecycle passes in 29.041s; zero-warning/error Debug/source-reference build; exact 12 retention + 5 A41 passes. Receipt `/tmp/story-27-4-offline.RJE0jKex`. Interchange discover exit 0; 219 passes in 48.603s, zero failures/errors/skips. Receipt `/tmp/story-27-4-interchange.48qhOxQj`. Readiness text and compiled epic context refreshed. Offline only; draft held; no live launch. A41 remains open and Production writes remain disabled.

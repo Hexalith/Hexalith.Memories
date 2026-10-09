@@ -89,16 +89,20 @@ access, bounded expiry, fresh-file renewal and revocation. This source/test slic
 is `repository-validated`; its dated receipt below is offline evidence only.
 
 The [authenticated predecessor interchange specification](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/SPEC.md)
-has completed I1 structural readers and separately reviewed narrow GitHub
-policy/session/gate/bundle observation preparation; the source-receipt
-label/digest correction is also complete offline. These slices authenticate
-structure or observations, never a semantic gate verdict or accepted predecessor.
-I2–I6 registry/source binding, complete authority/provenance/custody consumption,
-gate semantics, assembly, consumer migration and final verification remain
+has completed I1 structural readers, separately reviewed narrow GitHub
+policy/session/gate/bundle observation preparation, the offline source-receipt
+label/digest correction, offline I2 registry/source inspection, and offline
+C1.15 declared-observation pin inspection. Those slices authenticate structure,
+observations, isolated fixture bindings, or declared pins. They confer no
+registration, deployed accepting entry, semantic gate verdict, or accepted
+predecessor. Closed I2 registration and provenance, I3–I6 authority consumption,
+gate semantics, assembly, consumer migration, and final verification remain
 incomplete. Operational P1–P7 inputs/decisions remain unresolved; the full
 interchange is not implementation-ready for live acceptance. See the
-[authority preparation contract](../../../docs/operations/c1-github-authority-contract.md)
-and [source-receipt correction](../spec-pg2-c1-15-source-receipt-labels.md). Its
+[authority preparation contract](../../../docs/operations/c1-github-authority-contract.md),
+the [source-receipt correction](../spec-pg2-c1-15-source-receipt-labels.md),
+the [producer-binding inspection contract](../../../docs/operations/c1-producer-binding-inspection-contract.md),
+and the [observation-pin inspection contract](../../../docs/operations/c1-observation-pin-inspection-contract.md). Its
 [P7 migration prerequisite](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/implementation-tasks.md#decisions-and-ownership-still-required)
 requires a separately scoped runtime correction. The source/test correction above
 satisfies that repository behavior check, while Architecture and Operations runtime
@@ -736,3 +740,83 @@ assembly, consumer migration and genuine accepted evidence/execution inputs
 remain outstanding. Runtime PG2 correction is already complete offline.
 No checkpoint state, A41/action status, Production deployment, sprint or
 historical Epic 20/Story 20.5 byte changed; no target was contacted.
+
+### 2026-10-09 current-HEAD readiness recheck
+
+The owner session scope is recheck only: rerun the offline block, refresh this
+readiness record, and keep Story 27.4 held. Current HEAD
+`5d0cbefedc828ab829b0b9104c5ab77788dcd5b2` contains the investigation commit
+`d172165ebe1ab39efebd38b875b94f6d4ef6d191`. No live target was contacted. C0–C6
+matrix states, close-out prerequisites, A41, the sprint action, Production
+lifecycle writes, and Epic 20/Story 20.5 bytes stay as recorded above.
+
+Offline I2 registry/source inspection and C1.15 declared-observation pin
+inspection are complete as isolated fixture contracts. Deployed lookup still
+refuses, and neither slice registers an accepting entry or accepts a gate.
+Closed I2 registration and provenance, I3–I6, and P1–P7 remain held. Accepted
+PG-ONPREM-2 C1.15 renewal, twenty-three registered/done gate owners, an accepted
+25-gate predecessor, authenticated Operations/Security decisions, and scoped
+target/custody/credential/fault/purge grants remain absent. Live C0/C2–C4,
+independent C5/C6, terminal validation, the exact four-path close-out, and
+remote containment therefore stay pending.
+
+The unchanged canonical ten-command block passed before these dated notes were
+appended. Receipt `/tmp/story-27-4-offline.RJE0jKex`; all ten commands and the
+block exited `0`. Lifecycle: 80 tests in 29.041s, bare `OK`, zero failures,
+errors, or skips. Debug/source-reference build: zero warnings and zero errors.
+Architecture XML run `2026-10-08T23:47:07Z`: exactly 12 retention-decision and
+5 A41 guards, every result `Pass`, zero failures, errors, skips, or not-run
+tests. `git diff --check` passed.
+
+| Receipt item | SHA-256 |
+| :--- | :--- |
+| Execution-time diff | `16099db9e36a15fc5967b15a0f3cb8533b2b08d011935dd70c2d38146190e376` |
+| Built assembly (build identity only) | `c183e5f3f6a8521e2cac5d1d3597769973b78d61838bcd4ca69433ae61c2f1b4` |
+| Architecture XML | `dba7c7bc64fecffa20255976e475ee013d29264fc0c2ddb1d3e10d0286637299` |
+| Lifecycle stderr | `a63616603754e00c6330d25ebc840b073c0c99b31fb14f7d783bec80e650f56d` |
+| Build stdout | `9b8f6db3715cf60a0b7b859dcf34e27400bddf5783776b94d5d28d173a8ed183` |
+| Dependency revisions | `fad42ddc1834631026c88e64caaf732c71f18e580c4b056249a5923bf45c920d` |
+
+The execution-time worktree change was only this story's spec status field,
+`ready-for-dev` to `in-progress`. Nonrecursive dependency revisions were
+Hexalith.AI.Tools `3f194e17174994d308ec84af9ee2b5aa68674d0d`, Hexalith.Builds
+`fef031806321793c9effb17235c2465118984432`, Hexalith.Commons
+`b247ed116c6523f8c596ec0a933eff8973d11568`, Hexalith.EventStore
+`07d1e23a6c5b06bbbb1fc8ddb5174cc3382d3d93`, Hexalith.FrontComposer
+`0e114214007c22f5cdbac21a6853cff4208340ee`, Hexalith.McpCli
+`1b1012d099b18067e8b915c6bf00b48ac6ce458d`, Hexalith.Platform
+`f6f95cdf5a63e264ada564c4cbb5a5b40b0d5a9a`, Hexalith.PolymorphicSerializations
+`98de6e013840ece9f0fa7c68ab7dcdf2bba3b375`, and Hexalith.Tenants
+`10c9f6f66632f6861fe13fb9f41ab05b90c37f67`.
+
+`env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`
+exited `0`: 219 tests in 48.603s, bare `OK`, zero failures, errors, or skips.
+Receipt `/tmp/story-27-4-interchange.48qhOxQj`; stderr SHA-256
+`a58b70d0cf17fe6ce31308076c776ebe41d48d601e712184d104ebcff8b43451`.
+
+The lifecycle log again records `ok` for
+`test_c1_owner_exception_does_not_authorize_label_only_legacy_predecessor`,
+`test_producer_refuses_unverifiable_target_identity_without_mutating_target`,
+`test_producer_restores_disabled_state_when_body_fails_after_enable`,
+`test_business_and_privacy_canaries_use_curl_config_and_tenant_routes`,
+`test_current_target_predecessor_approvals_and_c0_reject_old_or_mixed_evidence`,
+and `test_qualification_renewal_rejects_lost_lease_ownership`. These fixture
+results prove offline refusal, drift, cleanup, and tenant-boundary behavior.
+They confer no live gate, custody, or publication credit.
+
+Protected bytes read before this readiness text was appended, and left unchanged
+by it: `sprint-status.yaml`
+`0e288f08029843870db90402c0cc3d3a1ea5b661dc3c11282729e397a7fcc05a`;
+`20-5-inbound-rate-limiting-quotas-and-audit-completeness.md`
+`5bfdb89ef34f8cc8f113df5a0638865bf246e49c084f1c608159e1ea71d820dd`;
+`deferred-work.md`
+`8acedc1f0563b34baf2409e94fad13688d4e0cdfd7c38b2dcc7c864d82f9d48f`;
+`deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml`
+`0c2b4b836d14be457ab8ccc79a534cd9997193f9c7b10f3d11b8b100a8b40ab2`;
+`_bmad-output/project-context.md`
+`0b62f5ad02d34cb4ad5ddacb5ad0693d0251874f5733fbb4de87c7593636e665`;
+`docs/dev/telemetry.md`
+`2f7a252dd2c9d229058b929b90e2dc3b6e7ee338cec28d9f4eb494dbe7846b2a`.
+The Production patch hash matches the lifecycle verifier's pinned disabled
+overlay. Story 27.4 remains incomplete, A41 and its sprint action remain open,
+and Production lifecycle writes remain disabled.
