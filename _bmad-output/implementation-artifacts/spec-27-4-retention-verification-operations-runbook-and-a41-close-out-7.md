@@ -88,6 +88,14 @@ compiled epic context only. No source, test, target, sprint, history, or
 Production-byte changes. Live C0/C2–C4, C5/C6, and A41 close-out stay pending;
 the draft remains held.
 
+2026-10-09: Rechecked at clean HEAD
+`1cb117c517e2644e239a22a82c1a9a9c876a21cb`. Refreshed canonical offline
+readiness only. The P1–P4 owner decision packet records `APPROVE` directions,
+but operational trust, target/session, custody and reviewer grants remain
+explicitly denied; the offline I3 boundary has no accepting path. Live C0/C2–C4,
+C5/C6 and A41 close-out remain pending under `RECHECK_ONLY`. No source, test,
+target, sprint, history or Production-byte change was made.
+
 ## Spec Change Log
 
 ## Review Triage Log
@@ -117,3 +125,13 @@ lane passed 219 tests with zero failures/errors/skips; receipt
 protected-byte checks are appended to canonical evidence. No live target was
 contacted, no C0-C6 state or A41 action advanced, and Production writes remain
 disabled. The draft remains held under RECHECK_ONLY.
+
+2026-10-09 clean-HEAD follow-up at
+`1cb117c517e2644e239a22a82c1a9a9c876a21cb`: canonical ten-command block
+exit 0, 80 lifecycle passes, zero-warning/error Debug source-reference build,
+exact 12 retention and 5 A41 architecture passes, and clean whitespace.
+Receipt `/tmp/story-27-4-offline.uLtgJrsf`. Authenticated interchange exit 0,
+242 passes with zero failures/errors/skips; receipt
+`/tmp/story-27-4-interchange.dGuoGMS2`. Exact hashes, dependency revisions,
+protected-byte checks and current P1–P4 operational holds are in canonical
+evidence. Offline only; draft unresolved.

@@ -863,3 +863,54 @@ target/custody/credential/fault/purge grants remain absent. Live C0/C2-C4,
 independent C5/C6, terminal validation, exact four-path A41 close-out and
 remote containment remain pending. Story 27.4 remains incomplete, A41 and its
 sprint action remain open, and Production lifecycle writes remain disabled.
+
+### 2026-10-09 recheck at `1cb117c5`
+
+The approved Story 27.4 session remains `RECHECK_ONLY`. Source HEAD was
+`1cb117c517e2644e239a22a82c1a9a9c876a21cb`, with a clean execution-time
+worktree and an empty tracked diff. The unchanged canonical ten-command block
+exited `0`; every logged command exited `0`. Receipt:
+`/tmp/story-27-4-offline.uLtgJrsf`. The separately logged authenticated
+interchange lane exited `0`; receipt:
+`/tmp/story-27-4-interchange.dGuoGMS2`. These local receipts are offline
+verification output only.
+
+| Check | Observed result |
+| :---- | :-------------- |
+| Lifecycle tooling | 80 tests in 29.061s; bare `OK`, zero failures, errors or skips. Refusal, drift, cleanup and tenant-negative fixtures passed. |
+| Debug/source-reference Server test build | Succeeded with zero warnings and zero errors. |
+| Exact architecture selectors | 12 retention-decision plus 5 A41 guards, all `Pass`; zero failures, errors, skips or not-run cases. |
+| Authenticated interchange | 242 tests in 55.410s; bare `OK`, zero failures, errors or skips, including offline I2 provenance and I3 authority-boundary tests. |
+| Whitespace | `git diff --check` exited `0`. |
+
+| Receipt item | SHA-256 |
+| :----------- | :------ |
+| Execution-time tracked diff (empty) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Nonrecursive dependency revisions | `d9be8ddf152d03571503787ee235b30aa0ab911fb60608e43d379592a66bcd2d` |
+| Built assembly (build identity only) | `037b305d123eadea7901b2ebc234389c66ea29952403ad1a74dd1c456395c497` |
+| Architecture XML | `a673502d4219717c0fdbcf95f6e19e73f273b9ce877430e031759a18be8c446b` |
+| Lifecycle stderr | `63ddde3eab12852a27da05e1c5b45f9d85134b070a5cfb06f9041679ea357f10` |
+| Build stdout | `eb25a81ab0d2fceced8b85051e4bf3c413b4f5f5f6f4094ee4b3706e8117468d` |
+| Interchange stderr | `7af4974b62a9925541e6628865ef6c3bfe72f2d85453b8174822a45c2e22483d` |
+
+Root-declared nonrecursive dependencies changed since the previous receipt;
+its revision log records the exact current set. The protected sprint,
+Story 20.5, deferred-work, Production-disabled overlay, project-context and
+telemetry-document SHA-256 values still match the preceding 2026-10-09 record.
+The Production patch remains at the lifecycle verifier's pinned disabled hash.
+No source, test, target, sprint, history, protected or Production byte changed
+during this recheck.
+
+The [P1–P4 owner decision packet](../../specs/spec-pg2-c1-authenticated-predecessor-interchange/p1-p4-security-operations-decision-packet.md)
+now records owner `APPROVE` dispositions and selected offline policy values.
+It explicitly denies operational bootstrap, non-GitHub receipt issuer,
+authenticated target/session grant, custody root and gate-reviewer grants; its
+policy is not operationally effective. The offline I3 boundary always refuses
+acceptance. Closed I2 registration/provenance, I3–I6 operational authority and
+semantics, P5–P7, accepted PG-ONPREM-2 C1.15 renewal, twenty-three
+registered/done gate owners, an eligible accepted 25-gate predecessor,
+authenticated Operations/Security bundle decisions and scoped
+target/custody/credential/fault/purge grants remain absent. Live C0/C2–C4,
+independent C5/C6, terminal validation, exact four-path A41 close-out and
+remote containment remain pending. Story 27.4 remains incomplete, A41 and its
+sprint action remain open, and Production lifecycle writes remain disabled.
