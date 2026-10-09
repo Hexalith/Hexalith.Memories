@@ -9,6 +9,32 @@ gate, predecessor, live grant, execution handle or deployment call is produced.
 Story 27.4, A41, Production, historical evidence and legacy consumers retain
 their existing state.
 
+## Offline disposition consumption boundary (2026-10-09)
+
+`tools/access_telemetry_c1_authority_boundary.py` exposes
+`require_authenticated_disposition`. It checks a C1.15 retained capture's
+SHA-256 and length, strict capture/disposition shape, exact capture Ref, gate,
+current PG2 profile/workload, source commit, target and session labels, and an
+observed clean capture with zero failures/skips. It rejects a review dated at
+or before capture completion and requires an asserted accepted decision. It
+then always raises
+`authority-prerequisites-unapproved`. It performs no receipt retrieval, GitHub
+request, target call or artifact publication. Its caller-supplied scope and
+retained bytes do not authenticate execution, cluster identity or custody.
+
+This boundary is deliberately terminal while I3 remains incomplete. The
+structural `authorityReceipt` URI, digest, issuer and decision ID are claims,
+not an approved trust root or receipt verifier. The existing GitHub chain
+returns fixture-capable observations only and cannot bypass this refusal.
+Security must approve P1's complete producer/gate/session identity and receipt
+protocol, issuer, trust roots, retrieval, revocation and owning maintainer.
+Security with Operations must approve P2's numerical windows, authenticated
+time, status freshness and rotation policy. Operations with Security must
+approve P3's actual target identity, eligible session grant and custody/cleanup
+contract. Security, gate approvers, Operations and Architecture must finish
+P4's gate role/delegation/quorum matrix and acyclic C1.23–C1.25 dependencies.
+The owner-only two-bundle-role exception remains the sole partial P4 decision.
+
 ## Ownership and supported transport
 
 Platform owns `eng/hexalith_github_decisions.py`, the application-neutral strict
