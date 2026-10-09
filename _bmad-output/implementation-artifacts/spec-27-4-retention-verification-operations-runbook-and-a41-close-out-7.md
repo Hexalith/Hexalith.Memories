@@ -135,3 +135,14 @@ Receipt `/tmp/story-27-4-offline.uLtgJrsf`. Authenticated interchange exit 0,
 `/tmp/story-27-4-interchange.dGuoGMS2`. Exact hashes, dependency revisions,
 protected-byte checks and current P1–P4 operational holds are in canonical
 evidence. Offline only; draft unresolved.
+
+2026-10-09 current-revision recheck at
+`d5feac61bb6fe90f13b338ab7c10a9220b6d7602`: the canonical ten-command
+offline block exited 0 with 80 lifecycle tests, a zero-warning/error Debug
+source-reference build, exactly 12 retention plus 5 A41 architecture passes,
+and clean whitespace; receipt `/tmp/story-27-4-offline.NHHGW9aS`. The separate
+authenticated-interchange lane exited 0 with 242 passes and no
+failures/errors/skips; receipt `/tmp/story-27-4-interchange.RurXxP9g`.
+Canonical evidence records hashes, current dependency revisions and unchanged
+live holds. The session remains `RECHECK_ONLY`; no C0-C6 gate or A41 action
+advanced, and Production writes remain disabled.

@@ -914,3 +914,69 @@ target/custody/credential/fault/purge grants remain absent. Live C0/C2–C4,
 independent C5/C6, terminal validation, exact four-path A41 close-out and
 remote containment remain pending. Story 27.4 remains incomplete, A41 and its
 sprint action remain open, and Production lifecycle writes remain disabled.
+
+### 2026-10-09 current-revision offline recheck at `d5feac61`
+
+The approved Story 27.4 scope remains `RECHECK_ONLY`. The canonical ten-command
+block above ran against root HEAD
+`d5feac61bb6fe90f13b338ab7c10a9220b6d7602` and exited `0`; every logged
+command exited `0`. Its execution-time tracked diff was empty. Source status
+recorded only the new, untracked one-shot spec for this recheck. The separate
+authenticated-interchange command also exited `0`. Local receipts:
+`/tmp/story-27-4-offline.NHHGW9aS` and
+`/tmp/story-27-4-interchange.RurXxP9g`. They are offline logs, not target or
+custody evidence.
+
+The separate interchange invocation was
+`env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`.
+
+| Check | Observed result |
+| :---- | :-------------- |
+| Lifecycle tooling | 80 tests in 49.971s; bare `OK`, zero failures, errors or skips. |
+| Debug/source-reference Server test build | Succeeded with zero warnings and zero errors. |
+| Exact architecture selectors | 12 retention-decision plus 5 A41 guards, all `Pass`; zero failures, errors, skips or not-run cases. |
+| Authenticated interchange | 242 tests in 73.871s; bare `OK`, zero failures, errors or skips. |
+| Whitespace | Canonical `git diff --check` exited `0` before the evidence edit. |
+
+| Receipt item | SHA-256 |
+| :----------- | :------ |
+| Execution-time tracked diff (empty) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Nonrecursive dependency revisions | `38e19c88fc2694dd8dc6432bd88adc3b82f459a0ffc443eeeb52e6abf859c3ea` |
+| Built assembly (build identity only) | `dfa0b03dea7a1a43544fa55d3da1b5e2d3fe2817ed5bc34121cf2c90cb2eb326` |
+| Architecture XML | `33f6d812b80fb92d321ec4c827df5242e39f464e1205c5e509fbae83d8df454a` |
+| Lifecycle stderr | `8555f3c09440020a5b97719e1e90288ae1544a02ccd6a56e7833e051942b34fc` |
+| Build stdout | `1d53666167779357d021b1d94f353b1411d874fec12e422c4d5b86acabd83c5b` |
+| Interchange stderr | `88684acf7c0389dcac98255a196a8d21da6a8055762f9f4967eab84f013b97a7` |
+
+The receipt records all nine root-declared, nonrecursive dependency revisions:
+
+| Dependency | Revision |
+| :--------- | :------- |
+| Hexalith.AI.Tools | `3f194e17174994d308ec84af9ee2b5aa68674d0d` |
+| Hexalith.Builds | `468fdbba04e2d9a27d251298875125b57fa6d836` |
+| Hexalith.Commons | `b247ed116c6523f8c596ec0a933eff8973d11568` |
+| Hexalith.EventStore | `5e5d2305d870a03d6d63f52470ce9f7a1ec058da` |
+| Hexalith.FrontComposer | `0e114214007c22f5cdbac21a6853cff4208340ee` |
+| Hexalith.McpCli | `bfb2ae376bfe0243e6283d24a6cad44315c48208` |
+| Hexalith.Platform | `c489268fb347e7a65eedc6f2a4a40ab3ed4ce118` |
+| Hexalith.PolymorphicSerializations | `98de6e013840ece9f0fa7c68ab7dcdf2bba3b375` |
+| Hexalith.Tenants | `96cc6f115865f9e2307aedc3748e60e0f99edeae` |
+
+The protected sprint, Story 20.5, Production-disabled overlay, project-context
+and telemetry-document hashes still match the earlier 2026-10-09 record.
+`deferred-work.md` now hashes to
+`5aac0ee356fca0bb91f8271ccbfc0d27b5a0aa97e77c614f5132eadfc670bfad`
+after the separately committed P1 receipt hardening; this recheck did not edit it.
+
+Operational P1-P4 roots and grants, closed I2 registration/provenance, I3-I6,
+P5-P7, accepted PG2 C1.15 renewal, twenty-three registered/done gate owners,
+an eligible accepted 25-gate C1 predecessor, authenticated bundle decisions,
+and scoped target/custody/credential/fault/purge grants remain absent. The
+offline I3 boundary still refuses acceptance. No live target was contacted;
+C0-C6 states, Production writes, Story 27.4, A41 and its sprint action remain
+unchanged.
+
+After the evidence edit and review corrections, `git diff --check` exited `0`.
+The two exact architecture selectors were rerun from the built Debug assembly:
+17 passed with zero errors, failures, skips or not-run cases. These are
+post-edit repository checks only.
