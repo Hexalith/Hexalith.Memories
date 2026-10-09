@@ -13,7 +13,7 @@ from typing import Any
 from access_telemetry_c1_interchange import (
     EvidenceReference, JsonSnapshot, MAX_AGGREGATE_BYTES, MAX_ARTIFACT_BYTES,
     _array, _artifact_ref, _boolean, _commit, _gate, _literal, _object, _path,
-    _refuse, _text, j1_bytes, parse_capture,
+    _refuse, _text, authenticate_snapshot, j1_bytes, parse_capture,
 )
 
 
@@ -27,6 +27,16 @@ _C115_HELPERS = frozenset({
     "tools/access-telemetry-c1-profile.ps1",
     "tools/access-telemetry-c1-component-backend.ps1",
 })
+_REGISTRATION_SCHEMA = "hexalith.access-telemetry.c1.fixture-registration/v1"
+_COMMAND_SCHEMA = "hexalith.access-telemetry.c1.fixture-command-contract/v1"
+_ROLE_SCHEMA = "hexalith.access-telemetry.c1.fixture-review-role-policy/v1"
+_REGISTRATION_FIELDS = (_ENTRY_FIELDS - {"registrationReceipt"}) | {"schemaVersion", "sourceCommit"}
+_COMMAND_FIELDS = frozenset("schemaVersion gate profileId producerPath executable purposes readOnly".split())
+_ROLE_FIELDS = frozenset("schemaVersion gate profileId reviewerRole producerExcluded".split())
+_C115_PURPOSES = (
+    "current-context", "lifecycle-pods", "daprd-version", "metadata",
+    "alpha-opt-in", "lifecycle-pods-recheck",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +207,21 @@ class SourceInspection:
     unique_retained_byte_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class RegistrationInspection:
+    """Exact retained Ref materials and one fixture statement; no approval."""
+
+    source: SourceInspection = field(repr=False)
+    statement: JsonSnapshot = field(repr=False)
+    command_contract: JsonSnapshot = field(repr=False)
+    review_role_policy: JsonSnapshot = field(repr=False)
+    gate: str
+    source_commit: str
+    registration_sha256: str
+    command_sha256: str
+    role_policy_sha256: str
+
+
 def inspect_sources(
     registry: RegistryInspection,
     capture: JsonSnapshot,
@@ -289,6 +314,74 @@ def inspect_sources(
             _refuse("source-byte-identity-mismatch")
         inspected.append(SourceByteInspection(path, expected_source_commit, executed_digest, blob_digest, oid))
     return SourceInspection(registry, capture, entry, expected_source_commit, tuple(inspected), budget.byte_count)
+
+
+def inspect_registration(
+    registry: RegistryInspection,
+    capture: JsonSnapshot,
+    sources: tuple[SourceSnapshot, ...],
+    expected_source_commit: str,
+    statement: JsonSnapshot,
+    command_contract: JsonSnapshot,
+    review_role_policy: JsonSnapshot,
+) -> RegistrationInspection:
+    """Corroborate a proposed fixture statement and all three exact Ref bytes.
+
+    This validates local retained declarations only. No owner, signer, status,
+    authority provider or deployed registry is consulted or inferred.
+    """
+    if any(type(item) is not JsonSnapshot for item in (statement, command_contract, review_role_policy)):
+        _refuse("registration-snapshots-required")
+    source = inspect_sources(registry, capture, sources, expected_source_commit)
+    entry = source.entry
+    authenticate_snapshot(entry.registration_receipt, statement)
+    authenticate_snapshot(entry.command_contract, command_contract)
+    authenticate_snapshot(entry.review_role_policy, review_role_policy)
+    value = _object(statement.value, _REGISTRATION_FIELDS)
+    _literal(value["schemaVersion"], _REGISTRATION_SCHEMA)
+    _commit(value["sourceCommit"])
+    _literal(value["sourceCommit"], source.source_commit)
+    budget = _RetainedBudget()
+    for raw in (registry.snapshot.raw, capture.raw, statement.raw,
+                command_contract.raw, review_role_policy.raw):
+        budget.add(raw)
+    for retained_source in sources:
+        budget.add(retained_source.executed_bytes)
+        budget.add(retained_source.blob_bytes)
+    fields = {
+        "gate": entry.gate, "profileId": entry.profile_id,
+        "registeredStory": entry.registered_story, "producerPath": entry.producer_path,
+        "helperPaths": entry.helper_paths, "inputPaths": entry.input_paths,
+        "captureSchema": entry.capture_schema, "verifierPath": entry.verifier_path,
+        "verifierSchema": entry.verifier_schema, "cleanupRequired": entry.cleanup_required,
+    }
+    for name, expected in fields.items():
+        _literal(value[name], expected)
+    for name, expected in (("commandContract", entry.command_contract),
+                           ("reviewRolePolicy", entry.review_role_policy)):
+        actual = _artifact_ref(value[name])
+        if actual != expected:
+            _refuse("registration-entry-mismatch")
+    command = _object(command_contract.value, _COMMAND_FIELDS)
+    for name, expected in (("schemaVersion", _COMMAND_SCHEMA), ("gate", entry.gate),
+                           ("profileId", entry.profile_id), ("producerPath", entry.producer_path),
+                           ("executable", "kubectl"), ("readOnly", True)):
+        _literal(command[name], expected)
+    purposes = _array(command["purposes"])
+    if purposes != _C115_PURPOSES:
+        _refuse("command-contract-unsupported")
+    observed = tuple(item["purpose"].split(":", 1)[0] for item in capture.value["commands"])
+    if observed != purposes or entry.cleanup_required:
+        _refuse("command-contract-unsupported")
+    policy = _object(review_role_policy.value, _ROLE_FIELDS)
+    for name, expected in (("schemaVersion", _ROLE_SCHEMA), ("gate", entry.gate),
+                           ("profileId", entry.profile_id), ("reviewerRole", "independent-security-reviewer"),
+                           ("producerExcluded", True)):
+        _literal(policy[name], expected)
+    return RegistrationInspection(
+        source, statement, command_contract, review_role_policy, entry.gate,
+        source.source_commit, statement.sha256, command_contract.sha256, review_role_policy.sha256,
+    )
 
 
 def lookup_deployed_binding(

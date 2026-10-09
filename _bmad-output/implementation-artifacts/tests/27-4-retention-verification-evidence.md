@@ -820,3 +820,46 @@ by it: `sprint-status.yaml`
 The Production patch hash matches the lifecycle verifier's pinned disabled
 overlay. Story 27.4 remains incomplete, A41 and its sprint action remain open,
 and Production lifecycle writes remain disabled.
+
+### 2026-10-09 follow-up recheck at `1ead5a1b`
+
+The approved session remains `RECHECK_ONLY`. Source HEAD was
+`1ead5a1b2432e24211b18060fe1d2da6126b31b3`, with a clean execution-time
+worktree. The unchanged canonical ten-command block above exited `0`; every
+logged command exited `0`. Receipt: `/tmp/story-27-4-offline.XLdeHWCY`.
+The separately logged authenticated-interchange command exited `0`; receipt:
+`/tmp/story-27-4-interchange.yDRybdwi`. These local receipts are offline
+verification output and confer no operational or custody authority.
+
+| Check | Observed result |
+| :---- | :-------------- |
+| Lifecycle tooling | 80 tests in 38.205s; bare `OK`, zero failures, errors or skips. Refusal, drift, cleanup and tenant-negative fixtures remain passing. |
+| Debug/source-reference Server test build | Succeeded with zero warnings and zero errors. |
+| Exact architecture selectors | 12 retention-decision plus 5 A41 guards, all `Pass`; zero failures, errors, skips or not-run cases. |
+| Authenticated interchange | 219 tests in 69.050s; bare `OK`, zero failures, errors or skips. |
+| Whitespace | `git diff --check` exited `0`. |
+
+| Receipt item | SHA-256 |
+| :----------- | :------ |
+| Execution-time tracked diff (empty) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Nonrecursive dependency revisions | `299a9c30c2c462b0b5e5e8f4d2be34169668c10f0034bda198a5d5b623afd8c1` |
+| Built assembly (build identity only) | `0fadef08ae1184f2ea006eead3cbcee5614538343f66f8c9ff14544e8ce4194f` |
+| Architecture XML | `39a97b4dd5f25cb88ce74b0c348cc90b90559343d4bfdc0a13262cd0f50edd80` |
+| Lifecycle stderr | `28b43af8172f975fe491fdc138f3fd39afff96220440a6032f2c5e2a7d4978f4` |
+| Build stdout | `741edeb7005778fceb9b56e50fda6483d41dad94062ef216dc135f18179d3f82` |
+| Interchange stderr | `2c0cb85603c0becd533d20c4635cfc4b9f5e44f93474ab7370a222fd77679b71` |
+
+The protected sprint, Story 20.5, deferred-work, Production-disabled overlay,
+project-context and telemetry-document hashes match the prior 2026-10-09
+readiness record exactly. The root-recorded nonrecursive dependencies include
+Hexalith.McpCli `ecf8952513eaf20e09a8ecb4f6fcc56dc0e829df`; the receipt
+retains every revision. No source, test, target, sprint, history, protected or
+Production byte changed during this recheck.
+
+Closed I2 registration/provenance, I3-I6, P1-P7, accepted PG-ONPREM-2 C1.15
+renewal, twenty-three registered/done gate owners, an accepted eligible
+25-gate predecessor, authenticated Operations/Security decisions and scoped
+target/custody/credential/fault/purge grants remain absent. Live C0/C2-C4,
+independent C5/C6, terminal validation, exact four-path A41 close-out and
+remote containment remain pending. Story 27.4 remains incomplete, A41 and its
+sprint action remain open, and Production lifecycle writes remain disabled.

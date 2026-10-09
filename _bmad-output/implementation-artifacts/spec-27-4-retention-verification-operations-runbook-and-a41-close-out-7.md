@@ -105,3 +105,15 @@ Current resumption: 80 lifecycle + 12/5 architecture + 167 interchange passes; z
 2026-10-08 planning recheck at `d172165ebe1ab39efebd38b875b94f6d4ef6d191`: `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py'` — exit 0; 219 passes (includes the new producer-bindings and capture-semantics lanes), zero failures/errors/skips. Offline only; draft unresolved.
 
 2026-10-09 current-HEAD recheck at `5d0cbefedc828ab829b0b9104c5ab77788dcd5b2` (contains `d172165e`): canonical ten-command block exit 0; 80 lifecycle passes in 29.041s; zero-warning/error Debug/source-reference build; exact 12 retention + 5 A41 passes. Receipt `/tmp/story-27-4-offline.RJE0jKex`. Interchange discover exit 0; 219 passes in 48.603s, zero failures/errors/skips. Receipt `/tmp/story-27-4-interchange.48qhOxQj`. Readiness text and compiled epic context refreshed. Offline only; draft held; no live launch. A41 remains open and Production writes remain disabled.
+
+2026-10-09 follow-up at current HEAD
+`1ead5a1b2432e24211b18060fe1d2da6126b31b3`: the unchanged canonical
+ten-command block exited 0 from a clean worktree. It passed 80 lifecycle tests,
+a zero-warning/error Debug source-reference build, and exactly 12 retention plus
+5 A41 architecture guards, all `Pass`; receipt
+`/tmp/story-27-4-offline.XLdeHWCY`. The focused authenticated-interchange
+lane passed 219 tests with zero failures/errors/skips; receipt
+`/tmp/story-27-4-interchange.yDRybdwi`. Exact hashes, dependency revisions and
+protected-byte checks are appended to canonical evidence. No live target was
+contacted, no C0-C6 state or A41 action advanced, and Production writes remain
+disabled. The draft remains held under RECHECK_ONLY.

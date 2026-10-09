@@ -290,7 +290,6 @@ consumer integration, dependency, live operation or submodule change is added.
 Story 27.4/A41, Production, sprint/checkpoint and historical holds remain exactly
 as before this standalone preparation.
 
-
 Final independent review correction receipt (2026-10-08): all three review
 layers returned; seven blind-review findings were individually triaged and
 corrected, with no deferred work or intent change. Known prebound dependency
@@ -310,3 +309,31 @@ contract gives the extraction/recheck command; the separately tracked spec
 records exact final identities and results. I2–I6/P1–P7 remain incomplete,
 Story 27.4 pending, A41 open and Production disabled. No acceptance, live
 operation, commit, push, dependency or root gitlink change occurred.
+
+
+## Offline I2 registration and Git-source corroboration (2026-10-09)
+
+The isolated follow-on scope is
+`_bmad-output/implementation-artifacts/spec-pg2-c1-i2-registration-source-provenance.md`.
+The proposed fixture registration statement binds every thirteen-field entry
+declaration except its self-referential registration Ref, plus the full source
+commit. Its three Refs authenticate exact retained registration, command and
+role-policy snapshots. The added local corroborator verifies one explicit clean
+Git checkout and HEAD, exact tracked regular blobs, effective supported
+attributes and safely read working bytes. The precise API, fixture schemas and
+proof limits are in
+[the producer-binding inspection contract](../../../docs/operations/c1-producer-binding-inspection-contract.md).
+
+This remains nonauthoritative offline corroboration. No actual owner approval,
+registration authority, custody, execution, disposition or deployed eligibility
+is established; deployed lookup still refuses. P1/P5 owner evidence and the
+remaining I3–I6/P1–P7 prerequisites stay held. Story 27.4 remains RECHECK_ONLY
+and in progress, A41 remains open, and Production writes remain disabled.
+
+Final offline verification passed 15 focused registration/provenance tests and
+234 full interchange tests with zero failures, errors or skips; `git diff --check`
+passed. Three independent review layers were triaged and their concrete
+provenance/test gaps corrected, with no deferred finding. The two preexisting
+Story 27.4 edits, sprint status and Production-disabled overlay retain their
+pre-work byte hashes. These fixture results confer no I2 operational closure,
+gate registration or Production authority.

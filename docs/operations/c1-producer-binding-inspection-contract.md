@@ -2,27 +2,35 @@
 
 `tools/access_telemetry_c1_producer_bindings.py` inventories closed registry
 entries and compares explicit retained source bytes to the unchanged neutral
-C1.15 v2 capture. It returns frozen inspection records. It creates no accepted
-artifact, registration, gate verdict or permission to execute a producer.
+C1.15 v2 capture. Its added registration inspector binds exact retained Ref
+materials. `tools/access_telemetry_c1_source_provenance.py` checks one explicit
+local Git checkout against those retained bytes. They return frozen inspection
+records. They create no accepted artifact, registration, gate verdict or
+permission to execute a producer.
 
 This is the separately authorized preparation described by
-[`spec-pg2-c1-offline-producer-bindings.md`](../../_bmad-output/implementation-artifacts/spec-pg2-c1-offline-producer-bindings.md).
+[`spec-pg2-c1-offline-producer-bindings.md`](../../_bmad-output/implementation-artifacts/spec-pg2-c1-offline-producer-bindings.md)
+and its bounded
+[`registration/source follow-on`](../../_bmad-output/implementation-artifacts/spec-pg2-c1-i2-registration-source-provenance.md).
 The integrated I2–I6 tasks and P1–P7 prerequisites remain incomplete. Story 27.4,
 A41, prior history, sprint holds and the disabled Production configuration retain
 their existing state.
 
 ## Library APIs
 
-Import the module with the repository's `tools` directory on the import path.
-The library takes supplied immutable objects; callers own snapshot acquisition.
-No API reads files, runs Git/processes/collectors/verifiers, contacts targets or
-networks, or loads ambient configuration.
+Import the modules with the repository's `tools` directory on the import path.
+Callers own retained snapshot acquisition. The registry, source and registration
+inspectors are pure. The local provenance API reads only the explicit checkout
+and runs bounded local Git read commands; none runs collectors/verifiers,
+contacts targets or networks, or loads ambient configuration.
 
 | API | Required inputs | Inspection result |
 | --- | --- | --- |
 | `inspect_registry(snapshot)` | An I1 `JsonSnapshot` containing a JSON array, including an empty array. | `RegistryInspection`: original `snapshot`, ordered tuple `entries`, and `registry_sha256`. |
 | `inspect_sources(registry, capture, sources, expected_source_commit)` | A `RegistryInspection`, I1 capture `JsonSnapshot`, tuple of `SourceSnapshot` records and explicit canonical lowercase 40-hex commit label. | `SourceInspection`: rederived `registry` and selected `entry`, original `capture`, compared `source_commit`, ordered tuple `sources` of recomputed identities and `unique_retained_byte_count`. |
 | `lookup_deployed_binding(gate, profile_id, inventory=None)` | Any requested gate/profile and optional inspection inventory. | Always raises `InterchangeFormatError("deployed-producer-binding-unavailable")` before inspecting inputs or using dependencies. |
+| `inspect_registration(registry, capture, sources, expected_source_commit, statement, command_contract, review_role_policy)` | The original inspection inputs plus three exact retained I1 `JsonSnapshot` materials. | Frozen `RegistrationInspection` containing the source inspection, retained snapshots, gate/commit and three exact SHA-256 values. This is a proposed fixture statement, not approval. |
+| `corroborate_local_sources(registry, capture, sources, expected_source_commit, statement, command_contract, review_role_policy, repository_root)` | All registration inputs plus an explicit canonical absolute local repository path. | Frozen `LocalSourceCorroboration` with the registration inspection, full commit, root, ordered source paths and Git blob OIDs. No acceptance field or deployed lookup exists. |
 
 All result dataclasses are frozen, all result arrays are tuples, and I1 retains
 JSON objects as immutable mappings. There is no caller pass flag or accepted
@@ -120,6 +128,71 @@ a repository/commit, ownership, custody, real source state, producer execution,
 command grammar, verifier behavior, registration approval or role policy.
 An ordinary `done` story label, matching hash or successful fixture supplies no
 deployed eligibility.
+
+## Proposed registration and local Git corroboration
+
+The offline statement has exactly `schemaVersion`, `gate`, `profileId`,
+`registeredStory`, `producerPath`, `helperPaths`, `inputPaths`, `captureSchema`,
+`verifierPath`, `verifierSchema`, `commandContract`, `cleanupRequired`,
+`reviewRolePolicy`, and `sourceCommit`. Its schema is
+`hexalith.access-telemetry.c1.fixture-registration/v1`. Every field other than
+the schema and commit must exactly match one reinspected registry entry. The
+full 40-hex commit must match the capture and every retained source. There is
+no `registrationReceipt` inside the statement, avoiding a circular digest.
+The entry's three Refs must match the exact retained statement, command and
+role-policy snapshot lengths and SHA-256 hashes. The statement has no approval
+status field. Adding owner/status labels does not grant authority.
+The registration check also charges all three material snapshots against the
+same deduplicated 32 MiB retained-byte budget as registry, capture and sources.
+
+The proposed fixture command material has exactly `schemaVersion`, `gate`,
+`profileId`, `producerPath`, `executable`, `purposes`, and `readOnly`. Its schema
+is `hexalith.access-telemetry.c1.fixture-command-contract/v1`; executable is
+`kubectl`, `readOnly` is `true`, and purposes are the C1.15 capture's six ordered
+purpose kinds: `current-context`, `lifecycle-pods`, `daprd-version`, `metadata`,
+`alpha-opt-in`, `lifecycle-pods-recheck`. The proposed fixture role material has
+exactly `schemaVersion`, `gate`, `profileId`, `reviewerRole`, and
+`producerExcluded`; schema is
+`hexalith.access-telemetry.c1.fixture-review-role-policy/v1`, role label is
+`independent-security-reviewer`, and producer exclusion is `true`. These
+closed declarations check format and consistency only. They do not prove that
+commands ran as declared, captured argv matched a safe grammar, or that a
+reviewer, role policy or registration was approved. The proposed format is not
+an adopted owner registration format and does not establish command safety.
+
+The local corroborator first repeats the retained source/registration checks,
+before any filesystem or Git access. It traverses the supplied root and each
+source path with directory descriptors and no-follow opens, requiring regular
+files at most 1 MiB. Git runs only local read commands from that root descriptor
+with lazy object fetching disabled. It requires the explicit commit at HEAD, a
+clean full worktree (including Git-visible untracked paths), ordinary index bits,
+no object alternates, no replacement refs, each exact `ls-tree` regular blob and
+its local `cat-file` bytes, and identical working bytes and owner-executable
+mode. The registered story and verifier paths must also be distinct tracked
+regular files at the same commit; their working bytes are safely read and
+compared to their local Git blobs after the supported text normalization. This
+proves file presence and identity, not story approval or verifier behavior.
+Effective repository Git attributes under the isolated invocation must
+specify text normalization and `eol=lf` or `eol=crlf`; filters, ident expansion
+and working-tree encoding are unsupported. System/global attributes and network
+protocols are disabled for this local inspection.
+It checks HEAD/worktree again and rereads every source before returning. Missing
+objects, foreign blobs, aliases, links, dirty paths and unsupported attributes
+refuse with content-free errors. The checkout is local evidence only; Git hashes,
+authors and signatures do not authenticate owner approval or custody.
+Git-ignored untracked files are outside the clean-tree claim. This API requires
+a physical `.git` directory at the supplied root; linked worktrees with a
+`.git` pointer file are outside its supported checkout form.
+
+Run the new focused offline lane from the repository root:
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_registration_provenance.py' -v
+```
+
+Current deployed lookup remains an unconditional refusal. P1/P5 must supply a
+real authenticated registration and owner-evidence integration before an
+accepting entry can be added; the other P1–P7 and I3–I6 holds remain.
 
 ## Byte budgets and reproducible verification
 
