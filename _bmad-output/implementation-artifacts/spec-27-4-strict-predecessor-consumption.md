@@ -2,7 +2,7 @@
 title: 'Story 27.4 strict C1 predecessor consumption'
 type: 'feature'
 created: '2026-10-10'
-status: 'draft'
+status: 'ready-for-dev'
 route: 'dispatch'
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
 baseline_commit: 'f298a2071ae19e4cd8eae465c7f86397a2241560'
