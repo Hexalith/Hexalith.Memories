@@ -2,10 +2,11 @@
 title: 'Story 27.4 remaining retention verification and A41 close-out'
 type: 'feature'
 created: '2026-10-10'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
 review_loop_iteration: 0
+baseline_commit: '4167ce3fdcffd0923bc9f5d8960025492a279608'
 context:
   - '_bmad-output/implementation-artifacts/epic-27-context.md'
   - 'docs/dev/adr-27.1-001-access-telemetry-lifecycle.md'
@@ -49,7 +50,7 @@ context:
 **Execution:**
 - [ ] `_bmad-output/implementation-artifacts/pg2-c1-i2-operations-security-request.md` — authenticate Platform's versioned decision, target, custody, session, grant and source records; record denials.
 - [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — verify P1-P7/I2-I6, eligible C1.15/C1.16, 23 other registered/done successors and all 25 accepted C1 gates in one profile/session.
-- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` and `tests/tooling/access_telemetry_c1_interchange/test_authority_boundary.py` — unit-test held-state refusal, drift and cleanup edges; extend only if an edge lacks coverage.
+- [x] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` and `tests/tooling/access_telemetry_c1_interchange/test_authority_boundary.py` — unit-test held-state refusal, drift and cleanup edges; extend only if an edge lacks coverage.
 - [ ] `tools/verify-access-telemetry-lifecycle.py` — after action grants, run C0/C2-C4 in the approved isolated target; retain receipts and final cleanup proof.
 - [ ] `docs/operations/access-telemetry-lifecycle.md`, `docs/operations/access-telemetry-adapter-production.md` — reconcile observed operations and obtain independent C5/C6 decisions.
 - [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — record terminal, A41 pre/postflight and remote publication checks.
@@ -61,6 +62,9 @@ context:
 - Given accepted C0-C6 and publication authority, when terminal and publication checks pass, then A41 binds one evidence set and protected history remains intact.
 
 ## Implementation Notes
+
+- 2026-10-10: Continue `RECHECK_ONLY`; Production lifecycle writes stay disabled and A41 stays open. Platform P1 v1 feasibility and an authenticated adoption manifest are requested in Hexalith/Hexalith.Platform#5, linked from Hexalith/Hexalith.Memories#57. Neither issue grants target access.
+- Actual independent reviewer principals and grants, C1.15 and the twenty-three held gate registrations, C1.16 eligibility, and strict consumer migration remain prerequisites. If Platform cannot operate P1 v1, a different receipt protocol requires a separate owner decision. Recheck on changed inputs or immediately before authorized execution.
 
 ## Spec Change Log
 
