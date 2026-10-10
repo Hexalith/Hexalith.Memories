@@ -5785,3 +5785,11 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
   summary: Make direct MCP integration transports usable and verifiable with APP_API_TOKEN enabled.
   evidence: Review V3 (medium, pre-existing). McpServerIntegrationTests and McpAuthenticationIntegrationTests construct independent HttpClientTransport headers with bearer authorization but no dapr-api-token. In token mode their requests can receive app-token 401 before bearer or tool assertions. Reopen with header propagation and one enabled-mode MCP request.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-live-tenant-isolation-evidence.md`
+  summary: Verify that the routine integration lane supplies the test JWT settings needed for Aspire fixture startup.
+  evidence: Blind review B1 (medium if reproduced, pre-existing). `.github/workflows/ci.yml` invokes `tools/test.sh` without the test JWT environment used by the focused Story 5.4 runs; the earlier local env-free attempt failed EventStore gateway startup before any test body. A CI-equivalent run with those variables unset, or a workflow inspection showing another source of equivalent settings, would settle whether the routine lane is affected. Owner: CI/AppHost integration maintainers. Reopen when qualifying the routine integration lane.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-live-tenant-isolation-evidence.md`
+  summary: Add live authenticated HTTP proof that tenant A's bearer cannot traverse tenant B's graph route.
+  evidence: Blind review B2 (medium, pre-existing). The executed two-tenant graph method mints a bearer matching each route, while the focused in-memory endpoint theory proves A-to-B denial before graph dependencies but does not exercise the live Aspire transport. Owner: tenant authorization integration tests. Reopen with an A-bearer-to-B-route request that returns 403 `TENANT_FORBIDDEN` and no foreign response data.
