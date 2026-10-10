@@ -1964,6 +1964,13 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             BaseAddress = memoriesBaseAddress,
             Timeout = TimeSpan.FromSeconds(60),
         };
+        // The fixture calls the application port directly. In token mode, present the same
+        // application token that daprd would attach when forwarding a request to the app.
+        string? appApiToken = Environment.GetEnvironmentVariable("APP_API_TOKEN");
+        if (!string.IsNullOrWhiteSpace(appApiToken))
+        {
+            MemoriesClient.DefaultRequestHeaders.Add("dapr-api-token", appApiToken);
+        }
 
         // The AppHost resource-health wait above is the backend readiness gate. Use the liveness
         // endpoint here so a slow aggregate health check cannot fail fixture initialization for
@@ -1987,6 +1994,11 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
 
         McpClient = _app.CreateHttpClient("memories-mcp");
         McpClient.Timeout = TimeSpan.FromSeconds(60);
+        if (!string.IsNullOrWhiteSpace(appApiToken))
+        {
+            McpClient.DefaultRequestHeaders.Add("dapr-api-token", appApiToken);
+        }
+
         McpEndpoint = _app.GetEndpoint("memories-mcp", "http");
 
         await WaitForEndpointAsync(

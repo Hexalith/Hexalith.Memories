@@ -137,18 +137,44 @@ public sealed class TenantContextEnforcementIntegrationTests
         //   3. Plant corruption by direct Redis write: HSET tenant-a:mu:mu-xyz tenantId tenant-b.
         //   4. GET /api/v1/tenants/tenant-a/cases/{caseId}/memory-units/mu-xyz
         //   5. Assert the endpoint returns 404 (not 200 — no data leakage).
-        //   6. The production path records TENANT_MISMATCH via TenantMismatchMonitor; this
-        //      integration fixture asserts the externally enforceable no-leakage boundary.
+        //   6. Assert the production path records Critical TENANT_MISMATCH.
         string tenantA = await _fixture.ProvisionActiveTenantAsync($"tenant-a-{Guid.NewGuid():N}");
         string tenantB = await _fixture.ProvisionActiveTenantAsync($"tenant-b-{Guid.NewGuid():N}");
         string caseId = "case-1";
         string memoryUnitId = "mu-xyz";
         await SeedMemoryUnitHashAsync(tenantA, caseId, memoryUnitId, "Corrupted tenant payload.", storedTenantId: tenantB);
+        int logStart = _fixture.LogEntryCount;
 
         using HttpResponseMessage response = await _fixture.MemoriesClient
             .GetAsync($"/api/v1/tenants/{tenantA}/cases/{caseId}/memory-units/{memoryUnitId}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        string responseBody = await response.Content.ReadAsStringAsync();
+        ErrorResponse? error = JsonSerializer.Deserialize<ErrorResponse>(responseBody, MemoriesJsonContext.Options);
+        error.ShouldNotBeNull();
+        error.Code.ShouldBe("MEMORY_UNIT_NOT_FOUND");
+        responseBody.ShouldNotContain(tenantB);
+        responseBody.ShouldNotContain("Corrupted tenant payload.");
+
+        bool criticalMismatchLogged = false;
+        for (int attempt = 0; attempt < 50 && !criticalMismatchLogged; attempt++)
+        {
+            criticalMismatchLogged = _fixture.GetLogEntriesSince(logStart).Any(entry =>
+                entry.Category == "Hexalith.Memories.AppHost.Resources.memories"
+                && entry.Message.Contains("\"EventId\":5400", StringComparison.Ordinal)
+                && entry.Message.Contains("\"LogLevel\":\"Critical\"", StringComparison.Ordinal)
+                && entry.Message.Contains("TENANT_MISMATCH", StringComparison.Ordinal)
+                && entry.Message.Contains(tenantA, StringComparison.Ordinal)
+                && entry.Message.Contains(tenantB, StringComparison.Ordinal)
+                && entry.Message.Contains(memoryUnitId, StringComparison.Ordinal));
+
+            if (!criticalMismatchLogged)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
+            }
+        }
+
+        criticalMismatchLogged.ShouldBeTrue("A stored foreign tenantId must emit the Critical TENANT_MISMATCH signal.");
     }
 
     [Fact]
@@ -184,6 +210,18 @@ public sealed class TenantContextEnforcementIntegrationTests
         if (string.Equals(Environment.GetEnvironmentVariable("DAPR_API_TOKEN_MODE"), "enabled", StringComparison.OrdinalIgnoreCase))
         {
             response.StatusCode.ShouldBeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+
+            string configuredToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN")
+                ?? throw new InvalidOperationException("Enabled token mode requires DAPR_API_TOKEN.");
+            using var wrongTokenRequest = new HttpRequestMessage(HttpMethod.Get, "/v1.0/metadata");
+            wrongTokenRequest.Headers.Add("dapr-api-token", configuredToken + "-incorrect");
+            using HttpResponseMessage wrongTokenResponse = await tokenlessClient.SendAsync(wrongTokenRequest);
+            wrongTokenResponse.StatusCode.ShouldBeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
+
+            using HttpClient validTokenClient = AspireIngestionPipelineFixture.CreateDaprSidecarClient(
+                _fixture.DaprSidecarHttpEndpoint);
+            using HttpResponseMessage validTokenResponse = await validTokenClient.GetAsync("/v1.0/metadata");
+            validTokenResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         }
         else
         {

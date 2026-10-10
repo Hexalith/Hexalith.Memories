@@ -5769,3 +5769,19 @@ status: open
 - source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-pg-onprem-2-c1-p1-http-retrieval-and-status.md`
   summary: Add isolated production server TLS tests for successful system trust and refusal when offline CRL evidence is absent.
   evidence: The local-root server trap refuses under system trust regardless of server CRL policy; an isolated system-trusted root and current offline CRL fixture is unavailable here, so a server-side NoCheck regression would not fail existing tests.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
+  summary: Restore stable Aspire fixture startup for token-free sidecar and authenticated HTTP graph checks.
+  evidence: Review B1/B2 (medium, pre-existing). The token-free method timed out after 65 seconds with test JWT settings and xUnit Total: 0; the HTTP graph test also stopped before its body after 120 seconds. The real-FalkorDB graph boundary test passed, but endpoint graph choice and default-mode sidecar behavior remain unverified locally. Reopen when fixture startup can complete both methods with bounded runs.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
+  summary: Add live non-health-route denial checks for absent and wrong APP_API_TOKEN values.
+  evidence: Review B5 (medium, pre-existing). The fixture now sets the valid token on direct clients in token mode, while only middleware unit tests cover invalid app tokens. Reopen with an enabled-mode direct application request that proves denial before protected endpoint work.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
+  summary: Enroll the enabled Dapr sidecar token test in a routine verification lane.
+  evidence: Review V1 (medium, pre-existing). CI and nightly run integration filters without DAPR_API_TOKEN_MODE=enabled, so neither the prior enabled branch nor the new missing/wrong/valid token assertions execute routinely. Reopen with a focused token-enabled CI invocation and its fixture prerequisites.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-tenant-context-requalification.md`
+  summary: Make direct MCP integration transports usable and verifiable with APP_API_TOKEN enabled.
+  evidence: Review V3 (medium, pre-existing). McpServerIntegrationTests and McpAuthenticationIntegrationTests construct independent HttpClientTransport headers with bearer authorization but no dapr-api-token. In token mode their requests can receive app-token 401 before bearer or tool assertions. Reopen with header propagation and one enabled-mode MCP request.

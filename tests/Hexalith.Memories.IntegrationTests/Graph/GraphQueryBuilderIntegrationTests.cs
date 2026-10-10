@@ -141,18 +141,57 @@ public class GraphQueryBuilderIntegrationTests
         // Arrange — two tenants = two separate FalkorDB graphs
         string tenantA = $"tenant-a-{Guid.NewGuid():N}";
         string tenantB = $"tenant-b-{Guid.NewGuid():N}";
+        const string hostileContent = "TENANT-A-' MATCH (n) DETACH DELETE n //";
+        const string tenantBContent = "TENANT-B-PRIVATE";
         FalkorDB falkor = new(_falkorDb.Connection.GetDatabase());
 
-        // Act — create node in tenant A only
-        (string query, IDictionary<string, object> parameters) = _builder.BuildMergeCaseNode("secret-case");
-        await falkor.SelectGraph(tenantA).QueryAsync(query, parameters);
+        // Act — send hostile user content as a parameter to tenant A's graph.
+        (string queryA, IDictionary<string, object> parametersA) = _builder.BuildMergeMemoryUnitNode(
+            "mu-a", "case-1", hostileContent, "hash-a", "file:///a.txt", SourceType.File,
+            "provider", 3, "integration@example.com", DateTimeOffset.UtcNow, "{}");
+        queryA.ShouldNotContain(hostileContent);
+        parametersA["content"].ShouldBe(hostileContent);
+        await falkor.SelectGraph(tenantA).QueryAsync(queryA, parametersA);
 
-        // Assert — tenant B's graph has no nodes
+        (string queryB, IDictionary<string, object> parametersB) = _builder.BuildMergeMemoryUnitNode(
+            "mu-b", "case-1", tenantBContent, "hash-b", "file:///b.txt", SourceType.File,
+            "provider", 3, "integration@example.com", DateTimeOffset.UtcNow, "{}");
+        await falkor.SelectGraph(tenantB).QueryAsync(queryB, parametersB);
+
+        // Assert — each graph contains only its own node, despite the injected-looking value.
+        ResultSet resultA = await falkor.SelectGraph(tenantA).QueryAsync(
+            "MATCH (n:MemoryUnit) RETURN count(n) as cnt", new Dictionary<string, object>());
         ResultSet resultB = await falkor.SelectGraph(tenantB).QueryAsync(
-            "MATCH (n) RETURN count(n) as cnt",
-            new Dictionary<string, object>());
+            "MATCH (n:MemoryUnit) RETURN count(n) as cnt", new Dictionary<string, object>());
 
-        ReadCount(resultB).ShouldBe(0);
+        ReadCount(resultA).ShouldBe(1);
+        ReadCount(resultB).ShouldBe(1);
+        ResultSet storedA = await falkor.SelectGraph(tenantA).QueryAsync(
+            "MATCH (n:MemoryUnit {id: $id}) RETURN n.content as content",
+            new Dictionary<string, object> { ["id"] = "mu-a" });
+        ResultSet storedB = await falkor.SelectGraph(tenantB).QueryAsync(
+            "MATCH (n:MemoryUnit {id: $id}) RETURN n.content as content",
+            new Dictionary<string, object> { ["id"] = "mu-b" });
+        ReadContent(storedA).ShouldBe(hostileContent);
+        ReadContent(storedB).ShouldBe(tenantBContent);
+
+        ResultSet foreignNodeInA = await falkor.SelectGraph(tenantA).QueryAsync(
+            "MATCH (n:MemoryUnit {id: $id}) RETURN count(n) as cnt",
+            new Dictionary<string, object> { ["id"] = "mu-b" });
+        ResultSet foreignNodeInB = await falkor.SelectGraph(tenantB).QueryAsync(
+            "MATCH (n:MemoryUnit {id: $id}) RETURN count(n) as cnt",
+            new Dictionary<string, object> { ["id"] = "mu-a" });
+        ReadCount(foreignNodeInA).ShouldBe(0);
+        ReadCount(foreignNodeInB).ShouldBe(0);
+    }
+
+    private static string ReadContent(ResultSet result)
+    {
+        result.Count.ShouldBe(1);
+
+        var enumerator = result.GetEnumerator();
+        enumerator.MoveNext().ShouldBeTrue();
+        return enumerator.Current.GetValue<string>("content");
     }
 
     private static long ReadCount(ResultSet result)
