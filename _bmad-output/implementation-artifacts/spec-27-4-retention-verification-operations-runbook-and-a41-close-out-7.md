@@ -96,6 +96,17 @@ explicitly denied; the offline I3 boundary has no accepting path. Live C0/C2–C
 C5/C6 and A41 close-out remain pending under `RECHECK_ONLY`. No source, test,
 target, sprint, history or Production-byte change was made.
 
+2026-10-10 current-revision recheck at
+`b0834097b02a982f6635c5dbe6397053e61b9810`: the canonical ten-command
+block exited 0 with 80 lifecycle tests, a zero-warning/error Debug
+source-reference build, and exactly 12 retention plus 5 A41 architecture
+passes. The separate authenticated-interchange lane exited 0 with 242 passes.
+Receipts: `/tmp/story-27-4-offline.kiDxsypC` and
+`/tmp/story-27-4-interchange.ruf5qebs`. Exact hashes and all nine dependency
+revisions are in canonical evidence. Offline only; the parent remains held under
+`RECHECK_ONLY`, with no live gate or A41 advancement and Production writes
+disabled.
+
 ## Spec Change Log
 
 ## Review Triage Log
@@ -104,11 +115,11 @@ target, sprint, history or Production-byte change was made.
 
 Earlier offline/135-interchange receipts at `3e18d0dcdceb387eff89862c382637da89ad7e47`: `/tmp/story-27-4-offline.vr3cQrDZ`, `/tmp/story-27-4-readiness-ucu_dcz1`.
 
-Current canonical offline block: exit 0; 80 lifecycle passes, zero-warning/error Debug/source-reference build, exact 12 retention + 5 A41 passes. Commands/source/dependencies/assembly/XML: `/tmp/story-27-4-offline.Ga42WIRM`.
+Earlier canonical offline block: exit 0; 80 lifecycle passes, zero-warning/error Debug/source-reference build, exact 12 retention + 5 A41 passes. Commands/source/dependencies/assembly/XML: `/tmp/story-27-4-offline.Ga42WIRM`.
 
 `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`: exit 0; 167 passes. All lanes have zero failures/errors/skips. Logs/source/protected hashes and label-collapse probe: `/tmp/story-27-4-resume-4e1vv77o`. Offline only; draft unresolved.
 
-Current resumption: 80 lifecycle + 12/5 architecture + 167 interchange passes; zero-warning/error Debug/source-reference build. Canonical receipt `/tmp/story-27-4-offline.fq11FV9r`; investigation/interchange/protected hashes `/tmp/story-27-4-current-readiness-3gv1qqwq`. Offline only; draft unresolved.
+Earlier resumption: 80 lifecycle + 12/5 architecture + 167 interchange passes; zero-warning/error Debug/source-reference build. Canonical receipt `/tmp/story-27-4-offline.fq11FV9r`; investigation/interchange/protected hashes `/tmp/story-27-4-current-readiness-3gv1qqwq`. Offline only; draft unresolved.
 
 2026-10-08 planning recheck at `d172165ebe1ab39efebd38b875b94f6d4ef6d191`: `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py'` — exit 0; 219 passes (includes the new producer-bindings and capture-semantics lanes), zero failures/errors/skips. Offline only; draft unresolved.
 

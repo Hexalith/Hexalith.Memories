@@ -980,3 +980,70 @@ After the evidence edit and review corrections, `git diff --check` exited `0`.
 The two exact architecture selectors were rerun from the built Debug assembly:
 17 passed with zero errors, failures, skips or not-run cases. These are
 post-edit repository checks only.
+
+### 2026-10-10 current-revision offline recheck at `b0834097`
+
+The approved Story 27.4 scope remains `RECHECK_ONLY`. The canonical ten-command
+block above ran at root HEAD `b0834097b02a982f6635c5dbe6397053e61b9810`;
+all ten commands and the block exited `0`. The execution-time tracked diff was
+empty; status showed only the new untracked one-shot recheck spec. The separate
+authenticated-interchange invocation
+`env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v`
+exited `0`. Local receipts are `/tmp/story-27-4-offline.kiDxsypC` and
+`/tmp/story-27-4-interchange.ruf5qebs`; they are offline logs, not live target
+or custody evidence.
+
+| Check | Observed result |
+| :---- | :-------------- |
+| Lifecycle tooling | 80 tests in 41.552s; bare `OK`, zero failures, errors or skips. |
+| Debug/source-reference Server test build | Succeeded with zero warnings and zero errors. |
+| Exact architecture selectors | 12 retention-decision plus 5 A41 guards, all `Pass`; zero failures, errors, skips or not-run cases. |
+| Authenticated interchange | 242 tests in 72.877s; bare `OK`, zero failures, errors or skips. |
+| Whitespace | Canonical `git diff --check` exited `0` before this evidence edit. |
+
+| Receipt item | SHA-256 |
+| :----------- | :------ |
+| Execution-time tracked diff (empty) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Nonrecursive dependency revisions | `1e2df938c9624328c73e0bbdbd11250cc19b8539d8bbf50f20d25f256fa5bdbe` |
+| Built assembly (build identity only) | `efc8144890de432b3428982f789194c363b19ebcd1609d39c30cd83e6e410e34` |
+| Architecture XML | `43e526cb81c5cc02e486bc153f88ebf559b27eb603ed16cddb67354f1d021751` |
+| Lifecycle stderr | `4fd9d5015b8e11a4d1e29371a1e3d7373306439cd975fc196555ed5ecaa77a2b` |
+| Build stdout | `510ed595ef49df76bde0855a81ce27c738c2fc3a3f7da8195d569c5431a4ec5d` |
+| Interchange stderr | `f9ab7ec2fed371ba886f59dc72db1895c1d54cbce9f2cd831fa77c4a84ea05f5` |
+
+The receipt records all nine root-declared, nonrecursive dependency revisions:
+
+| Dependency | Revision |
+| :--------- | :------- |
+| Hexalith.AI.Tools | `3f194e17174994d308ec84af9ee2b5aa68674d0d` |
+| Hexalith.Builds | `0d5f45c7612a0f9582690d5eb143948e7798946e` |
+| Hexalith.Commons | `b247ed116c6523f8c596ec0a933eff8973d11568` |
+| Hexalith.EventStore | `ea4c9857e6865030a3b6eb900d55fdfaf4c621a1` |
+| Hexalith.FrontComposer | `0e114214007c22f5cdbac21a6853cff4208340ee` |
+| Hexalith.McpCli | `f83bac4939a24402e4386cd56c70cd3f2dfd22ac` |
+| Hexalith.Platform | `8a56bd57837784806aae989159fbcbc71fbd41d4` |
+| Hexalith.PolymorphicSerializations | `98de6e013840ece9f0fa7c68ab7dcdf2bba3b375` |
+| Hexalith.Tenants | `cdd0c80c111109125f6bec63d7a3d64885` |
+
+Protected sprint, Story 20.5, Production-disabled overlay, project-context and
+telemetry-document hashes remain
+`0e288f08029843870db90402c0cc3d3a1ea5b661dc3c11282729e397a7fcc05a`,
+`5bfdb89ef34f8cc8f113df5a0638865bf246e49c084f1c608159e1ea71d820dd`,
+`0c2b4b836d14be457ab8ccc79a534cd9997193f9c7b10f3d11b8b100a8b40ab2`,
+`0b62f5ad02d34cb4ad5ddacb5ad0693d0251874f5733fbb4de87c7593636e665`
+and `2f7a252dd2c9d229058b929b90e2dc3b6e7ee338cec28d9f4eb494dbe7846b2a`
+respectively, matching the prior record.
+`deferred-work.md` is `296b415ee8d9f8823cfccdd9f284a76d0da2d246710e8a98070c079e6a30367e`
+at this root revision; this recheck did not edit it.
+
+Operational P1-P4 roots and grants, closed I2 registration/provenance, I3-I6,
+P5-P7, accepted PG2 C1.15 renewal, twenty-three registered/done gate owners,
+an eligible accepted 25-gate C1 predecessor, authenticated bundle decisions,
+and scoped target/custody/credential/fault/purge grants remain absent. No live
+target was contacted; C0-C6 states, Production writes, Story 27.4, A41 and its
+sprint action remain unchanged.
+
+Post-review repository checks for the 2026-10-10 recheck: `git diff --check`
+exited `0`; the same exact two architecture selectors passed all 17 tests with
+zero errors, failures, skips or not-run cases. The post-review XML SHA-256 is
+`00df7991291658d2521c46fd63ea76920a4f8db8244633c2881061b99d6d2ceb`.
