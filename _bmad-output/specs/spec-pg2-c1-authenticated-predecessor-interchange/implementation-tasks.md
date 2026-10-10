@@ -337,3 +337,7 @@ provenance/test gaps corrected, with no deferred finding. The two preexisting
 Story 27.4 edits, sprint status and Production-disabled overlay retain their
 pre-work byte hashes. These fixture results confer no I2 operational closure,
 gate registration or Production authority.
+
+## I2 operational registration handoff (2026-10-10)
+
+The separately tracked [Operations/Security request](../../implementation-artifacts/pg2-c1-i2-operations-security-request.md) names a candidate target and namespace, new external custody root, credential-file paths, scoped C1.15 registration/session/grants, later fault/purge authority and reviewer assignments. These are proposed values for authenticated operational adoption, not approvals or observed live facts. No accepting I2 entry or C1 gate is created. The current `NO_*` P1–P4 states, P5–P7 blockers, Story 27.4 `RECHECK_ONLY` hold, open A41 and disabled Production writes remain in force.

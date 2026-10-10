@@ -1,0 +1,52 @@
+# PG-ONPREM-2 C1 I2 registration and live-evidence request
+
+**State:** request prepared 2026-10-10; no execution grant or approval recorded. This is the next separately tracked prerequisite for Story 27.4. It does not change the owner-approved P1–P4 directions, the deployed refusal, or any C1 gate state.
+
+## Repository work already available
+
+The [closed I2 inspector](spec-pg2-c1-i2-registration-source-provenance.md) validates an exact thirteen-field registry entry, retained registration/command/role Ref bytes, the C1.15 source inventory and a clean explicit local Git checkout. `lookup_deployed_binding` still refuses every gate. The [interchange spec](../specs/spec-pg2-c1-authenticated-predecessor-interchange/SPEC.md) and [decision packet](../specs/spec-pg2-c1-authenticated-predecessor-interchange/p1-p4-security-operations-decision-packet.md) require genuine approved registration and authenticated live provenance before any accepting entry can be considered. Current source revision `25a412e75e88c44bf184b2c5b3859fda5f5f5cbe` is a candidate label only; approval must bind the actual retained source bytes and full revision used for capture. Neither a matching Git hash nor an offline fixture authenticates an owner decision.
+
+The closed entry must supply exactly `gate`, `profileId`, `registeredStory`, `registrationReceipt`, `producerPath`, `helperPaths`, `inputPaths`, `captureSchema`, `verifierPath`, `verifierSchema`, `commandContract`, `cleanupRequired` and `reviewRolePolicy`. For C1.15 the candidate producer is `tools/verify-access-telemetry-c1.ps1`; helpers are `tools/access-telemetry-c1-component-backend.ps1` and `tools/access-telemetry-c1-profile.ps1`; capture schema is `hexalith.access-telemetry.c1.evidence/v2`; the proposed command material names `kubectl` and the six ordered purposes in the [inspection contract](../../docs/operations/c1-producer-binding-inspection-contract.md). The sixteen exact input paths are:
+
+```text
+deploy/dapr/components/access-telemetry-config.yaml
+deploy/dapr/components/access-telemetry-secrets.yaml
+deploy/dapr/components/access-telemetry-store.yaml
+deploy/kubernetes/base/access-telemetry-deployments.yaml
+deploy/kubernetes/base/access-telemetry-postgresql.yaml
+deploy/kubernetes/base/dapr/access-telemetry-clock-config.yaml
+deploy/kubernetes/base/dapr/access-telemetry-config-store.yaml
+deploy/kubernetes/base/dapr/access-telemetry-lifecycle-config.yaml
+deploy/kubernetes/base/dapr/access-telemetry-secrets.yaml
+deploy/kubernetes/base/dapr/access-telemetry-store.yaml
+deploy/kubernetes/overlays/production/access-telemetry-disabled-patch.yaml
+deploy/kubernetes/overlays/production/kustomization.yaml
+deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml
+deploy/openbao/service-account-hardening.yaml
+deploy/openbao/smoke-test.yaml
+deploy/openbao/values.yaml
+```
+
+The current [C1.15 pin inspector](../../tools/access_telemetry_c1_capture_semantics.py) checks declared observations only; it is not a complete registered semantic verifier. `registeredStory`, final `verifierPath`/`verifierSchema`, actual closed command grammar, `cleanupRequired`, the three authenticated registration/command/role Ref values and done owner evidence remain for the C1.15 owner to supply and Security to review. A fixture schema or historical PG1 story cannot fill them.
+
+## Requested Operations and Security decisions
+
+The paths below are **concrete proposals for review**, not existing approved resources. Operations and Security must return exact approved values or an explicit replacement in a new authenticated, immutable policy/grant record. An unfilled field remains a denial; no local label, directory or credential path can be promoted by this request.
+
+| Item | Proposed scope or named value | Required returned evidence |
+| --- | --- | --- |
+| Target | Read-only C1 capture against the Kubernetes API selected by client context `jpiquot@local`; local cluster label `local` is not trusted identity. Selector `app.kubernetes.io/name=memories-access-telemetry`. | Independently verified API TLS CA/public-key fingerprint, authoritative cluster ID, exact target digest and approved workload/profile hashes. Do not derive identity from the context or selector. |
+| Namespace | `hexalith-memories` for C1; C2–C4 qualification remains separately scoped. | Authenticated namespace UID and allowed resource/action list. The local kubeconfig default `default` does not select this namespace. |
+| Custody root | Candidate new external root `/srv/hexalith-evidence/access-telemetry-c1`, with session material beneath `PG-ONPREM-2/<issued-session-id>/`. The path alone says nothing about its backing. | Identify the external mount or custody service, accountable service owner, approved immutable volume ID, and authenticated receipt origin/retrieval/status protocol. Prove immutable receipt creation, owner-only access enforcement, 365-day retention after session closure, cleanup and incident procedure. Historical `/home/administrator/evidence/hexalith-memories` and `/approved-evidence/...` are not approved custody. |
+| Credential-file paths | Candidate `KUBECONFIG=/run/hexalith/access-telemetry-c1/kubeconfig`; C2–C4 only: `HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE=/run/hexalith/access-telemetry-c1/business-bearer.jwt`; GitHub review client candidate `/run/hexalith/access-telemetry-c1/github-review-token`. | Approve or replace each absolute owner-only, non-symlink path and name the issuing principal, expiry, audience and rotation procedure. Supply paths and file metadata only, never credential values. The GitHub client currently accepts a caller-supplied token, so its proposed file path needs a separately reviewed caller boundary. Any non-GitHub receipt-reader credential path awaits the selected P1 issuer/protocol. |
+| C1.15 registration and execution | Register exact PG2 C1.15 story/producer/helpers/16 inputs, v2 capture schema, implemented verifier, closed command grammar, cleanup rule, role policy, full source commit and approved registration receipt. Grant one issued session ID and immutable grant Ref for `capture`, `review`, `assemble` and `use` with distinct action windows. | Approved/done successor owner record; authenticated registration/command/role materials and source snapshots; independent producer-execution, target and custody receipts; exact tenant ID, registry revision/digest and effective policy revision/digest; exact profile SHA-256 `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` and workload SHA-256 `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f`. C1.16 closed-window acceptance supplies no new session grant. |
+| Fault and purge authority | **No fault or purge operation is requested for C1.15.** For later C2–C4, request a separate non-Production grant covering exact shared-system fault selectors, rollback/recovery owner, three retention cohorts, active purge, PostgreSQL physical reclamation and final disabled/empty-Lease/zero-replica cleanup. | Operations must return stable principal IDs and separate action grants for the Platform Operations fault owner, lifecycle purge owner and adapter reclamation owner; exact resource scope, action windows, safety/abort criteria and Security concurrence are required before any live mutation. Jérôme Piquot's archive/incident assignment is not mutation authority. C1 read-only authority cannot be reused. |
+| Reviewers | Jérôme Piquot (`github:user:6775094`) is the recorded sole P1–P4 policy signer and may fill **both bundle roles only** with two distinct authenticated decisions/receipts if he produced no manifest capture. | Appoint the actual C1.15 producer and a different independently granted Security gate reviewer; record stable principal IDs and exclude every actual producer. Name the Operations and Security bundle-role reviewers/grants for this session. Name an authorized GitHub PR author distinct from each reviewer and bind the PR/commit/review IDs. C1.25 needs different Security author/reviewer principals; later C5 and C6 need separate named reviewers. No principal is inferred from a role label or this request. |
+
+Security also needs to publish the operational P1 receipt issuer, trust roots, retrieval/status/revocation protocol and principal mapping; an authenticated P2 numerical-policy revision; and effective P4 gate grants/parent matrix. The [decision packet](../specs/spec-pg2-c1-authenticated-predecessor-interchange/p1-p4-security-operations-decision-packet.md) records owner approval of directions and numerical limits, but its `NO_*` states remain effective until these records exist. P5 still needs registrations for the other twenty-three held gates; P6 must decide C1.16 session eligibility; P7 must approve and verify strict consumer migration.
+
+## Required response and release boundary
+
+Operations and Security should return one versioned record with the exact target and namespace identities, tenant ID, custody root/volume/receipt origin, approved credential-file paths, session ID/grant Ref/action windows, registry and policy revision/digests, producer and reviewer principal grants, source/registration Refs, fault/purge decisions and the immutable record digest. A reviewer must be able to retrieve and authenticate every referenced byte and current status independently. If a proposed path or person changes, the record must name the replacement explicitly.
+
+Until that response and live evidence are verified, do not run the C1.15 collector or later fault/purge producers, add a deployed accepting registry entry, assemble a passing C1 predecessor, or claim Story 27.4/A41/Production credit. Story 27.4 stays `in-progress` under `RECHECK_ONLY`, A41 and its sprint action stay open, and Production lifecycle writes stay disabled.
