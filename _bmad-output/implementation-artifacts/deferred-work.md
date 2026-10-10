@@ -5765,3 +5765,7 @@ status: open
 - source_spec: `_bmad-output/implementation-artifacts/spec-pg2-c1-p1-enrollment-receipt-transport.md`
   summary: Reject a changed validly signed P1 response under an already observed receipt ID using authenticated immutable custody history.
   evidence: The pure P1 verifier accepts any valid issuer signature matching the exact claims, including a second signature over the same payload. The new evidence object exposes distinct signature digests, but only an independently approved live retrieval and custody adapter can compare the current body with a previously retained body for the same receipt ID and raise an incident. No operational issuer, custody root or live adapter is enrolled.
+
+- source_spec: `/home/administrator/projects/hexalith/memories/_bmad-output/implementation-artifacts/spec-pg-onprem-2-c1-p1-http-retrieval-and-status.md`
+  summary: Add isolated production server TLS tests for successful system trust and refusal when offline CRL evidence is absent.
+  evidence: The local-root server trap refuses under system trust regardless of server CRL policy; an isolated system-trusted root and current offline CRL fixture is unavailable here, so a server-side NoCheck regression would not fail existing tests.
