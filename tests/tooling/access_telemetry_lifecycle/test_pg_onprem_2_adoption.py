@@ -92,8 +92,8 @@ class ApprovedProfileAdoptionTests(unittest.TestCase):
                         lifecycle.validate_current_profile_inputs(root)
                     target.write_bytes(approved)
 
-    def test_current_target_predecessor_approvals_and_c0_reject_old_or_mixed_evidence(self):
-        self.assertIsNone(lifecycle._validate_predecessor(predecessor()))
+    def test_historical_predecessor_inspection_and_c0_reject_old_or_mixed_evidence(self):
+        self.assertIsNone(lifecycle._inspect_legacy_predecessor(predecessor()))
         for kind in ("predecessor", "operations-approval", "security-approval"):
             with self.subTest(kind=kind):
                 packet = predecessor()
@@ -102,7 +102,7 @@ class ApprovedProfileAdoptionTests(unittest.TestCase):
                 else:
                     packet["approvals"][0 if kind == "operations-approval" else 1]["profile_sha256"] = HISTORICAL_HASH
                 with self.assertRaises(ValueError):
-                    lifecycle._validate_predecessor(packet)
+                    lifecycle._inspect_legacy_predecessor(packet)
         for checkpoint in ("C0", "c2-production-replacement", "c3-retention-reclamation", "c4-failure-privacy-observability"):
             with self.subTest(checkpoint=checkpoint):
                 packet = common(checkpoint)

@@ -2,7 +2,7 @@
 title: 'Story 27.4 strict C1 predecessor consumption'
 type: 'feature'
 created: '2026-10-10'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
 baseline_commit: 'f298a2071ae19e4cd8eae465c7f86397a2241560'
@@ -49,10 +49,10 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `tools/verify_access_telemetry_lifecycle.py` — introduce strict C1 authorization dispatch and use it in direct, offline, producer, terminal and close-out consumers; refuse legacy and unverifiable v2 before side effects.
-- [ ] `tools/verify-access-telemetry-lifecycle.py` — ensure both CLI input routes and freshness flags cannot bypass dispatch.
-- [ ] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — cover all matrix cases, producer dependency sentinels and terminal/preflight denial; update legacy happy-path fixtures to express historical inspection only.
-- [ ] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — append an offline refusal receipt; preserve prior packet bytes and C0–C6 verdicts.
+- [x] `tools/verify_access_telemetry_lifecycle.py` — introduce strict C1 authorization dispatch and use it in direct, offline, producer, terminal and close-out consumers; refuse legacy and unverifiable v2 before side effects.
+- [x] `tools/verify-access-telemetry-lifecycle.py` — ensure both CLI input routes and freshness flags cannot bypass dispatch.
+- [x] `tests/tooling/access_telemetry_lifecycle/test_retention_verification.py` — cover all matrix cases, producer dependency sentinels and terminal/preflight denial; update legacy happy-path fixtures to express historical inspection only.
+- [x] `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md` — append an offline refusal receipt; preserve prior packet bytes and C0–C6 verdicts.
 
 **Acceptance Criteria:**
 - Given a complete-looking legacy C1 packet, when any 27.4 authorizing consumer reads it, then it refuses before target access and emits no passing checkpoint.
@@ -64,6 +64,20 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Finding | Verdict and route | Evidence |
+| --- | --- | --- |
+| Blind 1: postflight/publish consume a self-hashed preflight without C1 recheck | high; patch | `_authenticate_preflight` validates packet shape and its own digest but never revalidates C1; both close-out continuations call it. A fabricated passing preflight can reach downstream mutation checks despite the new preflight refusal. Fail closed at that shared continuation boundary. |
+| Blind 2: producer expects legacy reviewer objects after future v2 acceptance | false; rejected | `_validate_predecessor` always raises for v2 before reviewer extraction in `run_story_27_4_producer_checkpoint`; no current v2 packet reaches that line. Future acceptance needs a separate implementation. |
+| Blind 3: terminal loop expects legacy C1 fields after future v2 acceptance | false; rejected | `_validate_terminal_bundle` calls `_validate_predecessor` before entering the later loop, and v2 always refuses, so the claimed current failure path is unreachable. |
+| Blind 4: terminal C1 snapshot can change between two reads | false; rejected | The first C1 read always ends in `_validate_predecessor` refusal; the later read does not occur in the present implementation. |
+| Blind 5: v2 references lack terminal aggregate accounting | false; rejected | No v2 reference is accepted or traversed; the dispatch refuses before the terminal chain loop. Accounting belongs to the future authenticated accepting path. |
+| Blind 6: canonicalized v2 mapping loses original bytes | false; rejected | Canonicalization is used only for structural rejection. No authorization is inferred from those bytes, and every v2 packet ends in an explicit unavailable-authority refusal. |
+| Blind 7: successful producer and terminal chain test was removed | low; rejected | The prior success test depended on legacy C1 authorization, which is now intentionally unavailable. Recreating a passing test would need a synthetic accepting path or future verifier; current denial behavior is covered by executed tests. |
+| Blind 8: postflight, publish, branch, remote and tampered-bundle assertions were removed | low; rejected | Those assertions depended on the same now-unavailable passing legacy preflight. They are not exercisable in ordinary current operation; restoring them requires an accepting verifier or substantial isolated fixture work. |
+| Blind 9: malformed-v2 denial cases are absent from the new lifecycle tests | false; rejected | The requested matrix covers structurally valid v2 lacking current authority; that case ran and passed. `parse_predecessor` shape checks run before dependencies, and the interchange suite covers malformed shapes. |
+| Blind 10: five gitlinks changed without C1 justification | false; rejected | The gitlinks were committed between the spec's older baseline and current HEAD; `git status --short` showed no gitlink changes at implementation start or now. This slice did not change them. |
+| Edge 1: removed chain test leaves postflight/publish untested | low; rejected | Same deleted legacy success path as Blind 8. Current close-out cannot legitimately pass C1, and the shared continuation refusal is being patched directly. |
 
 ## Verification
 

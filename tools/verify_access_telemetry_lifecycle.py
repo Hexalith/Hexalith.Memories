@@ -2639,7 +2639,7 @@ def _canonical_c1_gate_ids() -> tuple[str, ...]:
     return tuple(f"C1.{index}" for index in range(1, 26))
 
 
-def _validate_predecessor(
+def _inspect_legacy_predecessor(
     predecessor: Mapping[str, Any],
     repository_root: Path | None = None,
     evidence_root: Path | None = None,
@@ -2795,6 +2795,44 @@ def _validate_predecessor(
             raise EvidenceValidationError(f"C1 {role} approval is bound to another profile")
         reviewers.add(reviewer)
         by_role[role] = approval
+
+
+def _validate_predecessor(
+    predecessor: Mapping[str, Any],
+    repository_root: Path | None = None,
+    evidence_root: Path | None = None,
+    *,
+    require_authorization_freshness: bool = True,
+) -> None:
+    """Refuse C1 execution until authenticated v2 authority is implemented.
+
+    The legacy reader above is retained for historical inspection only. A v2
+    summary and its structural reader cannot establish current I3-I5 authority,
+    session status, retained-reference custody, or the approved P7 time limits.
+    These arguments remain for the consumer interface and cannot opt out of the
+    authorization boundary.
+    """
+
+    from access_telemetry_c1_interchange import (
+        InterchangeFormatError,
+        JsonSnapshot,
+        parse_predecessor,
+    )
+
+    if not isinstance(predecessor, Mapping) or predecessor.get("schemaVersion") != (
+        "hexalith.access-telemetry.c1.predecessor/v2"
+    ):
+        raise EvidenceValidationError(
+            "C1 predecessor version refused: authenticated predecessor/v2 is required"
+        )
+    try:
+        parse_predecessor(JsonSnapshot(_canonical_json(predecessor).encode("utf-8")))
+    except (InterchangeFormatError, TypeError, ValueError) as exc:
+        raise EvidenceValidationError(f"C1 predecessor/v2 shape refused: {exc}") from exc
+    raise EvidenceValidationError(
+        "C1 predecessor/v2 current authority unavailable: authenticated I3-I5 "
+        "verdict, retained references, session status, and P7 time limits are unverified"
+    )
 
 
 def _validate_common_checkpoint(
@@ -3685,13 +3723,29 @@ def validate_story_27_4_checkpoint(
     evidence_root: Path | None = None,
     require_current_freshness: bool = True,
 ) -> None:
-    """Validate one complete, same-profile C2-C4 production checkpoint."""
+    """Require current C1 authority before validating a C2-C4 checkpoint."""
+
+    if checkpoint not in STORY_27_4_CHECKPOINTS:
+        raise EvidenceValidationError(f"unsupported Story 27.4 checkpoint: {checkpoint}")
+    _validate_predecessor(predecessor, repository_root, evidence_root)
+    _inspect_checkpoint_payload(
+        checkpoint, payload, repository_root,
+        require_current_freshness=require_current_freshness,
+    )
+
+
+def _inspect_checkpoint_payload(
+    checkpoint: str,
+    payload: Mapping[str, Any],
+    repository_root: Path | None = None,
+    *,
+    require_current_freshness: bool = True,
+) -> None:
+    """Inspect C2-C4 packet semantics without granting C1 execution authority."""
 
     if checkpoint not in STORY_27_4_CHECKPOINTS:
         raise EvidenceValidationError(f"unsupported Story 27.4 checkpoint: {checkpoint}")
     _validate_secret_safe(payload)
-    _validate_secret_safe(predecessor, "predecessor")
-    _validate_predecessor(predecessor, repository_root, evidence_root)
     _validate_common_checkpoint(
         checkpoint,
         payload,
@@ -3825,15 +3879,16 @@ def run_story_27_4_checkpoint(
         if repository_root is None or evidence_root is None:
             raise EvidenceValidationError("checkpoint validation requires repository and external evidence roots")
         approved_root = _validated_evidence_root(evidence_root, repository_root)
-        resolved_input = _require_evidence_path(input_path, approved_root, "input", must_exist=True)
         resolved_predecessor = _require_evidence_path(
             predecessor_path, approved_root, "predecessor", must_exist=True
         )
         resolved_evidence = _require_evidence_path(
             evidence_path, approved_root, "evidence output", must_exist=False
         )
-        payload = _read_bounded_json(resolved_input, approved_root=approved_root)
         predecessor = _read_bounded_json(resolved_predecessor, approved_root=approved_root)
+        _validate_predecessor(predecessor, repository_root, approved_root)
+        resolved_input = _require_evidence_path(input_path, approved_root, "input", must_exist=True)
+        payload = _read_bounded_json(resolved_input, approved_root=approved_root)
         validate_story_27_4_checkpoint(
             checkpoint,
             payload,
@@ -4083,9 +4138,6 @@ def run_story_27_4_producer_checkpoint(
         command_id, relative_producer = registered
         root = repository_root.resolve(strict=True)
         approved_root = _validated_evidence_root(evidence_root, root)
-        resolved_input = _require_evidence_path(
-            scenario_input_path, approved_root, "scenario input", must_exist=True
-        )
         resolved_predecessor = _require_evidence_path(
             predecessor_path, approved_root, "predecessor", must_exist=True
         )
@@ -4094,10 +4146,6 @@ def run_story_27_4_producer_checkpoint(
         )
         if resolved_evidence.exists() or resolved_evidence.is_symlink():
             raise EvidenceValidationError("immutable evidence output already exists")
-        if _git_checked(root, "status", "--porcelain=v1", "--untracked-files=all"):
-            raise EvidenceValidationError(
-                "controlled producers require a clean tracked and untracked source worktree"
-            )
         predecessor, predecessor_bytes = _read_bounded_json_snapshot(
             resolved_predecessor, approved_root=approved_root
         )
@@ -4107,6 +4155,13 @@ def run_story_27_4_producer_checkpoint(
             approved_root,
             require_authorization_freshness=True,
         )
+        resolved_input = _require_evidence_path(
+            scenario_input_path, approved_root, "scenario input", must_exist=True
+        )
+        if _git_checked(root, "status", "--porcelain=v1", "--untracked-files=all"):
+            raise EvidenceValidationError(
+                "controlled producers require a clean tracked and untracked source worktree"
+            )
         platform_operations_reviewer = next(
             _require_nonempty_string(item.get("reviewer"), "C1 platform-operations reviewer")
             for item in _require_sequence(predecessor.get("approvals"), "C1.approvals")
@@ -4538,6 +4593,30 @@ def _validate_terminal_bundle(
     expected = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "terminal"}
     if set(checkpoints) != expected:
         raise EvidenceValidationError("terminal bundle must contain exactly C0-C6 and terminal validation")
+    # C1 is the authorization gate for the entire chain. Read its exact retained
+    # snapshot first, before C0 or any other bundled artifact can be inspected.
+    c1_item = _require_mapping(checkpoints["C1"], "terminal bundle C1")
+    _require_exact_fields(
+        c1_item,
+        frozenset({"status", "profile_sha256", "artifact_path", "artifact_sha256"}),
+        "terminal bundle C1",
+    )
+    c1_relative = _require_nonempty_string(
+        c1_item["artifact_path"], "C1.artifact_path", maximum=512
+    )
+    if (
+        "\\" in c1_relative
+        or Path(c1_relative).is_absolute()
+        or any(part in {"", ".", ".."} for part in c1_relative.split("/"))
+    ):
+        raise EvidenceValidationError("C1 artifact path must be evidence-root relative")
+    c1_artifact = aggregate_budget.account(evidence_root / c1_relative, "terminal artifact C1")
+    c1_payload, c1_bytes = _read_bounded_json_snapshot(c1_artifact, approved_root=evidence_root)
+    if hashlib.sha256(c1_bytes).hexdigest() != _require_hex64(
+        c1_item["artifact_sha256"], "C1.artifact_sha256"
+    ):
+        raise EvidenceValidationError("terminal bundle checkpoint C1 artifact hash mismatch")
+    _validate_predecessor(c1_payload, repository_root, evidence_root)
     c1_artifact_payload: Mapping[str, Any] | None = None
     behavioral_artifacts: dict[str, Mapping[str, Any]] = {}
     behavioral_capture_ms: dict[str, int] = {}
@@ -4585,26 +4664,6 @@ def _validate_terminal_bundle(
         if artifact_payload.get("profile_sha256") != STORY_27_4_PROFILE_SHA256:
             raise EvidenceValidationError(f"terminal artifact {name} profile differs by content")
         if name == "C1":
-            _validate_predecessor(artifact_payload, repository_root, evidence_root)
-            gate_items: Sequence[Any]
-            if isinstance(artifact_payload.get("gates"), Mapping):
-                gate_items = list(artifact_payload["gates"].values())
-            else:
-                gate_items = _require_sequence(
-                    artifact_payload.get("successors"),
-                    "C1.successors",
-                )
-            for index, gate_value in enumerate(gate_items):
-                gate = _require_mapping(gate_value, f"C1 artifact[{index}]")
-                relative = _require_nonempty_string(
-                    gate.get("artifact_path"),
-                    f"C1 artifact[{index}].artifact_path",
-                    maximum=512,
-                ).replace("\\", "/")
-                aggregate_budget.account(
-                    evidence_root / relative,
-                    f"C1 artifact[{index}]",
-                )
             c1_artifact_payload = artifact_payload
         elif name in {"C2", "C3", "C4"}:
             _require_exact_fields(
@@ -4932,6 +4991,8 @@ def run_close_out_preflight(
         root = repository_root.resolve(strict=True)
         approved_root = _validated_evidence_root(evidence_root, root)
         resolved_bundle = _require_evidence_path(bundle_path, approved_root, "terminal bundle", must_exist=True)
+        bundle = _read_bounded_json(resolved_bundle, approved_root=approved_root)
+        _validate_terminal_bundle(bundle, root, approved_root)
         resolved_manifest = _require_evidence_path(
             mutation_manifest_path, approved_root, "mutation manifest", must_exist=True
         )
@@ -4940,9 +5001,7 @@ def run_close_out_preflight(
         if resolved_snapshot.exists() or resolved_snapshot.is_symlink():
             raise EvidenceValidationError("recoverable snapshot path already exists")
         head = _assert_clean_repository(root)
-        bundle = _read_bounded_json(resolved_bundle, approved_root=approved_root)
         manifest = _read_bounded_json(resolved_manifest, approved_root=approved_root)
-        _validate_terminal_bundle(bundle, root, approved_root)
         _validate_mutation_manifest(manifest)
         normalized_branch = _require_nonempty_string(branch, "branch", maximum=256)
         if normalized_branch != _git_checked(root, "branch", "--show-current"):
@@ -4996,8 +5055,6 @@ def _authenticate_preflight(
     evidence_root: Path,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any], str]:
     preflight = _read_bounded_json(preflight_path, approved_root=evidence_root)
-    manifest = _read_bounded_json(manifest_path, approved_root=evidence_root)
-    _validate_mutation_manifest(manifest)
     _validate_close_out_packet_hash(preflight, "preflight")
     _require_exact_fields(
         preflight,
@@ -5034,6 +5091,17 @@ def _authenticate_preflight(
         or preflight.get("profile_sha256") != STORY_27_4_PROFILE_SHA256
     ):
         raise EvidenceValidationError("preflight packet is not authentic or passing")
+    # The packet carries only a bundle hash. It cannot re-establish current C1
+    # authority, so no retained preflight can authorize postflight or publish.
+    raise EvidenceValidationError(
+        "close-out C1 current authority unavailable: preflight bundle hash "
+        "cannot establish authenticated predecessor/v2 authorization"
+    )
+    resolved_manifest = _require_evidence_path(
+        manifest_path, evidence_root, "mutation manifest", must_exist=True
+    )
+    manifest = _read_bounded_json(resolved_manifest, approved_root=evidence_root)
+    _validate_mutation_manifest(manifest)
     if preflight.get("a41_status") != "open" or preflight.get("production_lifecycle_writes") != "disabled":
         raise EvidenceValidationError("preflight packet altered A41 or Production state")
     if preflight.get("allowed_mutations") != list(A41_ALLOWED_MUTATION_PATHS):
@@ -5043,7 +5111,7 @@ def _authenticate_preflight(
         raise EvidenceValidationError("preflight inventory hash mismatch")
     _require_nonempty_string(preflight.get("remote"), "preflight.remote", maximum=128)
     _require_hex64(preflight.get("remote_url_sha256"), "preflight.remote_url_sha256")
-    manifest_sha = hashlib.sha256(_safe_input_path(manifest_path, approved_root=evidence_root).read_bytes()).hexdigest()
+    manifest_sha = hashlib.sha256(resolved_manifest.read_bytes()).hexdigest()
     if preflight.get("mutation_manifest_sha256") != manifest_sha:
         raise EvidenceValidationError("mutation manifest differs from the preflight-approved bytes")
     preflight_sha = hashlib.sha256(_safe_input_path(preflight_path, approved_root=evidence_root).read_bytes()).hexdigest()
@@ -5141,16 +5209,13 @@ def run_close_out_postflight(
         resolved_preflight = _require_evidence_path(
             preflight_path, approved_root, "preflight", must_exist=True
         )
-        resolved_manifest = _require_evidence_path(
-            mutation_manifest_path, approved_root, "mutation manifest", must_exist=True
-        )
-        resolved_snapshot = _require_evidence_path(snapshot_path, approved_root, "snapshot", must_exist=True)
         resolved_evidence = _require_evidence_path(
             evidence_path, approved_root, "postflight output", must_exist=False
         )
         preflight, manifest, preflight_sha = _authenticate_preflight(
-            resolved_preflight, resolved_manifest, approved_root
+            resolved_preflight, mutation_manifest_path, approved_root
         )
+        resolved_snapshot = _require_evidence_path(snapshot_path, approved_root, "snapshot", must_exist=True)
         _authenticate_snapshot(resolved_snapshot, preflight, approved_root)
         head = _git_checked(root, "rev-parse", "--verify", "HEAD^{commit}")
         if head != preflight.get("source_head"):
@@ -5223,6 +5288,8 @@ def _authenticate_postflight(
     preflight, manifest, preflight_sha = _authenticate_preflight(
         preflight_path, manifest_path, evidence_root
     )
+    snapshot_path = _require_evidence_path(snapshot_path, evidence_root, "snapshot", must_exist=True)
+    postflight_path = _require_evidence_path(postflight_path, evidence_root, "postflight", must_exist=True)
     _authenticate_snapshot(snapshot_path, preflight, evidence_root)
     postflight = _read_bounded_json(postflight_path, approved_root=evidence_root)
     _validate_close_out_packet_hash(postflight, "postflight")
@@ -5286,24 +5353,17 @@ def run_publish_verification(
     try:
         root = repository_root.resolve(strict=True)
         approved_root = _validated_evidence_root(evidence_root, root)
-        resolved_postflight = _require_evidence_path(
-            postflight_path, approved_root, "postflight", must_exist=True
-        )
         resolved_preflight = _require_evidence_path(
             preflight_path, approved_root, "preflight", must_exist=True
         )
-        resolved_manifest = _require_evidence_path(
-            mutation_manifest_path, approved_root, "mutation manifest", must_exist=True
-        )
-        resolved_snapshot = _require_evidence_path(snapshot_path, approved_root, "snapshot", must_exist=True)
         resolved_evidence = _require_evidence_path(
             evidence_path, approved_root, "publish output", must_exist=False
         )
         postflight, preflight, manifest, postflight_sha = _authenticate_postflight(
-            resolved_postflight,
+            postflight_path,
             resolved_preflight,
-            resolved_manifest,
-            resolved_snapshot,
+            mutation_manifest_path,
+            snapshot_path,
             approved_root,
         )
         commit_id = _require_nonempty_string(commit, "commit", maximum=64)

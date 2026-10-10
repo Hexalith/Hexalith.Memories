@@ -51,6 +51,8 @@ from verify_access_telemetry_lifecycle import (  # noqa: E402
     _sha256,
     _validated_evidence_root,
     _validate_mutation_manifest,
+    _inspect_checkpoint_payload,
+    _inspect_legacy_predecessor,
     _validate_predecessor,
     _write_json_exclusive,
     collect_a41_inventory,
@@ -184,6 +186,8 @@ def predecessor() -> dict[str, object]:
         }
         for index in range(1, 26)
     }
+
+
     return {
         "checkpoint": "C1",
         "status": "passed",
@@ -207,6 +211,38 @@ def predecessor() -> dict[str, object]:
             },
         ],
     }
+
+
+def v2_predecessor() -> dict[str, object]:
+    def reference(name: str, digest: str) -> dict[str, object]:
+        return {"path": name, "sha256": digest, "byteLength": 1}
+
+    return {
+        "schemaVersion": "hexalith.access-telemetry.c1.predecessor/v2",
+        "manifest": reference("c1/manifest.json", "a" * 64),
+        "approvals": [
+            reference("c1/operations.json", "b" * 64),
+            reference("c1/security.json", "c" * 64),
+        ],
+        "status": "passed",
+        "productionLifecycleWrites": "disabled",
+        "qualificationAuthorized": True,
+    }
+
+
+def inspect_historical_checkpoint(
+    checkpoint: str,
+    payload: dict[str, object],
+    retained: dict[str, object],
+    *,
+    require_current_freshness: bool = True,
+) -> None:
+    """Inspect retained legacy and C2-C4 packet structure without authority."""
+
+    _inspect_legacy_predecessor(retained)
+    _inspect_checkpoint_payload(
+        checkpoint, payload, require_current_freshness=require_current_freshness
+    )
 
 
 def common(checkpoint: str) -> dict[str, object]:
@@ -545,7 +581,7 @@ class RetentionVerificationTests(unittest.TestCase):
         writer["acknowledged"] -= 125
         writer["persisted"] -= 125
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint(
+            inspect_historical_checkpoint(
                 "c2-production-replacement", payload, predecessor()
             )
 
@@ -1190,46 +1226,46 @@ class RetentionVerificationTests(unittest.TestCase):
                     stdin_bytes=None,
                 )
 
-    def test_complete_c2_c3_and_c4_packets_validate(self) -> None:
+    def test_complete_c2_c3_and_c4_packets_are_inspectable_without_authorization(self) -> None:
         for checkpoint, payload in (
             ("c2-production-replacement", c2_payload()),
             ("c3-retention-reclamation", c3_payload()),
             ("c4-failure-privacy-observability", c4_payload()),
         ):
-            validate_story_27_4_checkpoint(checkpoint, payload, predecessor())
+            inspect_historical_checkpoint(checkpoint, payload, predecessor())
 
     def test_exact_types_freshness_and_scenario_inventories_fail_closed(self) -> None:
         stale = c2_payload()
         stale["finished_utc"] = now_ms() - (16 * 60 * 1000)
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c2-production-replacement", stale, predecessor())
+            inspect_historical_checkpoint("c2-production-replacement", stale, predecessor())
         future = c2_payload()
         future["started_utc"] = now_ms() + 2_000
         future["finished_utc"] = future["started_utc"]
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c2-production-replacement", future, predecessor())
+            inspect_historical_checkpoint("c2-production-replacement", future, predecessor())
         boolean_count = c2_payload()
         boolean_count["result_count"] = True
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c2-production-replacement", boolean_count, predecessor())
+            inspect_historical_checkpoint("c2-production-replacement", boolean_count, predecessor())
         float_horizon = c3_payload()
         float_horizon["results"]["cohorts"][0]["retention_hours"] = 1.0
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c3-retention-reclamation", float_horizon, predecessor())
+            inspect_historical_checkpoint("c3-retention-reclamation", float_horizon, predecessor())
         missing = c4_payload()
         del missing["results"]["failure_scenarios"]["application-outage"]
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c4-failure-privacy-observability", missing, predecessor())
+            inspect_historical_checkpoint("c4-failure-privacy-observability", missing, predecessor())
         labels = c4_payload()
         labels["results"]["observability"]["labels"].append("tenant_id")
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c4-failure-privacy-observability", labels, predecessor())
+            inspect_historical_checkpoint("c4-failure-privacy-observability", labels, predecessor())
         otlp = c2_payload()
         otlp["results"]["otlp_continuity"] = False
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c2-production-replacement", otlp, predecessor())
+            inspect_historical_checkpoint("c2-production-replacement", otlp, predecessor())
 
-    def test_c1_freshness_is_authorization_only_and_retained_evidence_stays_valid(self) -> None:
+    def test_legacy_retained_evidence_remains_inspectable_with_explicit_freshness(self) -> None:
         retained = predecessor()
         finished = now_ms() - (8 * 24 * 60 * 60 * 1000)
         for gate in retained["gates"].values():
@@ -1237,7 +1273,7 @@ class RetentionVerificationTests(unittest.TestCase):
             gate["finished_utc_ms"] = finished
             gate["command"]["started_utc_ms"] = finished - 1000
             gate["command"]["finished_utc_ms"] = finished
-        validate_story_27_4_checkpoint(
+        inspect_historical_checkpoint(
             "c2-production-replacement", c2_payload(), retained
         )
         retained_checkpoint = c2_payload()
@@ -1246,26 +1282,26 @@ class RetentionVerificationTests(unittest.TestCase):
         for command in retained_checkpoint["commands"]:
             command["started_utc_ms"] = finished - 1000
             command["finished_utc_ms"] = finished
-        validate_story_27_4_checkpoint(
+        inspect_historical_checkpoint(
             "c2-production-replacement",
             retained_checkpoint,
             retained,
             require_current_freshness=False,
         )
         with self.assertRaises(ValueError):
-            _validate_predecessor(retained, require_authorization_freshness=True)
+            _inspect_legacy_predecessor(retained, require_authorization_freshness=True)
 
     def test_c3_horizons_use_emission_time_and_bind_the_final_newer_control(self) -> None:
         wrong_horizon = c3_payload()
         wrong_horizon["results"]["cohorts"][0]["emitted_utc_ms"] += 1
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint(
+            inspect_historical_checkpoint(
                 "c3-retention-reclamation", wrong_horizon, predecessor()
             )
 
         acceptance_jitter = c3_payload()
         acceptance_jitter["results"]["cohorts"][0]["accepted_utc_ms"] += 200
-        validate_story_27_4_checkpoint(
+        inspect_historical_checkpoint(
             "c3-retention-reclamation", acceptance_jitter, predecessor()
         )
 
@@ -1274,13 +1310,13 @@ class RetentionVerificationTests(unittest.TestCase):
             "newer-control-999"
         ]
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint(
+            inspect_historical_checkpoint(
                 "c3-retention-reclamation", mismatched_control, predecessor()
             )
 
     def test_c1_owner_exception_does_not_authorize_label_only_legacy_predecessor(self) -> None:
         retained = predecessor()
-        lifecycle_verifier._validate_predecessor(retained)
+        lifecycle_verifier._inspect_legacy_predecessor(retained)
         validate_bundle_principal_separation(
             OWNER_GITHUB_PRINCIPAL, OWNER_GITHUB_PRINCIPAL, frozenset({"github:user:1003"})
         )
@@ -1288,32 +1324,32 @@ class RetentionVerificationTests(unittest.TestCase):
             approval["reviewer"] = OWNER_GITHUB_PRINCIPAL
         # AdapterProfileTests reload this module; use its current exception type.
         with self.assertRaisesRegex(lifecycle_verifier.EvidenceValidationError, "independent reviewers"):
-            lifecycle_verifier._validate_predecessor(retained)
+            lifecycle_verifier._inspect_legacy_predecessor(retained)
 
-    def test_c1_requires_unique_25_gate_artifacts_disabled_production_and_authorization(self) -> None:
+    def test_legacy_inspection_requires_unique_25_gate_artifacts_and_disabled_production(self) -> None:
         reused = predecessor()
         reused["gates"]["C1.2"]["artifact_path"] = reused["gates"]["C1.1"]["artifact_path"]
         reused["gates"]["C1.2"]["artifact_sha256"] = reused["gates"]["C1.1"]["artifact_sha256"]
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c2-production-replacement", c2_payload(), reused)
+            inspect_historical_checkpoint("c2-production-replacement", c2_payload(), reused)
         reused_hash = predecessor()
         reused_hash["gates"]["C1.2"]["artifact_sha256"] = reused_hash["gates"]["C1.1"]["artifact_sha256"]
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c2-production-replacement", c2_payload(), reused_hash)
+            inspect_historical_checkpoint("c2-production-replacement", c2_payload(), reused_hash)
         enabled = predecessor()
         enabled["production_lifecycle_writes"] = "enabled"
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c2-production-replacement", c2_payload(), enabled)
+            inspect_historical_checkpoint("c2-production-replacement", c2_payload(), enabled)
         unauthorized = predecessor()
         unauthorized["qualification_authorized"] = False
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c2-production-replacement", c2_payload(), unauthorized)
+            inspect_historical_checkpoint("c2-production-replacement", c2_payload(), unauthorized)
 
     def test_secret_alias_duplicate_nonfinite_and_oversized_output_fail_closed(self) -> None:
         unsafe = c4_payload()
         unsafe["results"]["privacy"]["api_key"] = "opaque-value"
         with self.assertRaises(ValueError):
-            validate_story_27_4_checkpoint("c4-failure-privacy-observability", unsafe, predecessor())
+            inspect_historical_checkpoint("c4-failure-privacy-observability", unsafe, predecessor())
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name, content in (
@@ -1660,259 +1696,153 @@ class RetentionVerificationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 budget.account(overflow, "overflow")
 
-    def test_registered_producers_and_complete_close_out_chain(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            base = Path(directory)
-            repository = base / "repository"
-            evidence = base / "evidence"
-            remote = base / "remote.git"
-            fake_bin = base / "bin"
-            repository.mkdir()
-            evidence.mkdir()
-            fake_bin.mkdir()
-            self._run("git", "init", "-q", "-b", "main", str(repository))
-            self._run("git", "init", "-q", "--bare", str(remote))
-            self._run("git", "-C", str(repository), "config", "user.email", "test@example.invalid")
-            self._run("git", "-C", str(repository), "config", "user.name", "Test")
-            self._run("git", "-C", str(repository), "remote", "add", "origin", str(remote))
-            install_tools(repository)
-            install_a41_files(repository, "A41 open\n")
-            install_fake_kubectl(fake_bin)
-            self._run("git", "-C", str(repository), "add", ".")
-            self._run("git", "-C", str(repository), "commit", "-q", "-m", "test: create source baseline")
-            commit = self._run("git", "-C", str(repository), "rev-parse", "HEAD", capture=True)
-            c1_path = write_c1(evidence, repository, commit)
-            scenario_input = evidence / "scenario-input.json"
-            scenario_input.write_text(json.dumps({"schema_version": 1, "target": {
-                "kind": "non-production-qualification", "kube_context": "operator@local",
-                "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
-            }}), encoding="utf-8")
-            bearer = evidence / "business-bearer.jwt"
-            write_business_bearer(bearer)
-            artifacts: dict[str, Path] = {"C1": c1_path}
-            with patch.dict(os.environ, qualification_test_env(
-                fake_bin,
-                HEXALITH_STORY_27_4_BUSINESS_BEARER_FILE=str(bearer),
-            )):
-                adapter_result = self._cli(
-                    repository,
-                    "--checkpoint", "adapter-profile",
-                    "--kube-context", "operator@local",
-                    "--namespace", "hexalith-memories",
-                    "--deployment-id", "deployment-27-4-test",
-                    "--profile-id", "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2",
-                    "--workload-profile", "adr-27.1-two-writer-500eps",
-                    "--steady-state-minutes", "30",
-                    "--purge-backlog-records", "150000",
-                    "--declared-single-component-fault", "postgresql-pod-replacement",
-                    "--evidence-root", str(evidence),
-                    "--evidence", str(evidence / "adapter-cli.md"))
-                self.assertEqual(1, adapter_result.returncode)
-                c2_source = repository / STORY_27_4_PRODUCERS["c2-production-replacement"][1]
-                reviewed_source = c2_source.read_bytes()
-                c2_source.write_bytes(reviewed_source + b"\n# unreviewed drift\n")
-                drift_result = self._cli(
-                    repository,
-                    "--checkpoint", "c2-production-replacement",
-                    "--scenario-input", str(scenario_input),
-                    "--predecessor", str(c1_path),
-                    "--owner", "operator",
-                    "--evidence-root", str(evidence),
-                    "--evidence", str(evidence / "C2-source-drift.json"))
-                self.assertEqual(1, drift_result.returncode)
-                c2_source.write_bytes(reviewed_source)
-                for name, checkpoint in (("C2", "c2-production-replacement"),
-                                         ("C3", "c3-retention-reclamation"),
-                                         ("C4", "c4-failure-privacy-observability")):
-                    output = evidence / f"{name}.json"
-                    result = self._cli(
-                        repository,
-                        "--checkpoint", checkpoint,
-                        "--scenario-input", str(scenario_input),
-                        "--predecessor", str(c1_path),
-                        "--owner", "operator",
-                        "--evidence-root", str(evidence),
-                        "--evidence", str(output))
-                    self.assertEqual(
-                        0,
-                        result.returncode,
-                        result.stderr + (output.read_text(encoding="utf-8") if output.exists() else ""),
-                    )
-                    artifacts[name] = output
-                adapter_path = evidence / "adapter-profile.json"
-                c0_path = evidence / "C0.json"
-                c0_result = self._cli(
-                    repository,
-                    "--checkpoint", "adapter-profile",
-                    "--kube-context", "operator@local",
-                    "--namespace", "hexalith-memories-qualification",
-                    "--deployment-id", "deployment-27-4-test",
-                    "--profile-id", "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2",
-                    "--workload-profile", "adr-27.1-two-writer-500eps",
-                    "--steady-state-minutes", "30",
-                    "--purge-backlog-records", "150000",
-                    "--declared-single-component-fault", "postgresql-pod-replacement",
-                    "--evidence-root", str(evidence),
-                    "--evidence", str(adapter_path),
-                    "--c0-wrapper", str(c0_path))
-                self.assertEqual(
-                    0,
-                    c0_result.returncode,
-                    f"stdout: {c0_result.stdout}\nstderr: {c0_result.stderr}",
-                )
-                self.assertEqual("passed", json.loads(adapter_path.read_text(encoding="utf-8"))["status"])
-                self.assertEqual("C0", json.loads(c0_path.read_text(encoding="utf-8"))["checkpoint"])
-                artifacts["C0"] = c0_path
-            offline_input = evidence / "offline-C2-input.json"
-            offline_input.write_text(json.dumps(c2_payload()), encoding="utf-8")
-            offline_result = self._cli(
-                repository,
-                "--checkpoint", "c2-production-replacement",
-                "--input", str(offline_input),
-                "--predecessor", str(c1_path),
-                "--owner", "operator",
-                "--evidence-root", str(evidence),
-                "--evidence", str(evidence / "offline-C2-rejection.json"))
-            self.assertEqual(1, offline_result.returncode)
-            artifacts.update(write_terminal_artifacts(evidence, repository, commit, artifacts))
-            bundle_path = evidence / "bundle.json"
-            bundle = {"profile_sha256": STORY_27_4_PROFILE_SHA256,
-                "checkpoints": {name: {"status": "passed", "profile_sha256": STORY_27_4_PROFILE_SHA256,
-                    "artifact_path": str(path.relative_to(evidence)),
-                    "artifact_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-                    for name, path in artifacts.items()}}
-            bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
-            desired = {path: "\n".join(A41_SEMANTIC_TRANSITIONS[path]["required"]) + "\n"
-                       for path in A41_ALLOWED_MUTATION_PATHS}
-            manifest_path = evidence / "manifest.json"
-            manifest_path.write_text(json.dumps(manifest({path: hashlib.sha256(content.encode()).hexdigest()
-                                                          for path, content in desired.items()})), encoding="utf-8")
-            snapshot_path = evidence / "snapshot.json"
-            preflight_path = evidence / "preflight.json"
-            inventory_path = evidence / "inventory.json"
-            inventory_result = self._cli(
-                repository,
-                "--checkpoint", "a41-inventory",
-                "--evidence-root", str(evidence),
-                "--evidence", str(inventory_path))
-            self.assertEqual(0, inventory_result.returncode, inventory_result.stderr)
-            tampered_bundle = deepcopy(bundle)
-            tampered_bundle["checkpoints"]["C2"]["artifact_sha256"] = SHA
-            tampered_bundle_path = evidence / "tampered-bundle.json"
-            tampered_bundle_path.write_text(json.dumps(tampered_bundle), encoding="utf-8")
-            tampered_result = self._cli(
-                repository,
-                "--checkpoint", "close-out-preflight",
-                "--bundle", str(tampered_bundle_path),
-                "--mutation-manifest", str(manifest_path),
-                "--snapshot", str(evidence / "tampered-snapshot.json"),
-                "--evidence-root", str(evidence),
-                "--evidence", str(evidence / "tampered-preflight.json"),
-                "--remote", "origin",
-                "--branch", "main")
-            self.assertEqual(1, tampered_result.returncode)
-            dirty_path = repository / "dirty.txt"
-            dirty_path.write_text("untracked\n", encoding="utf-8")
-            dirty_result = self._cli(
-                repository,
-                "--checkpoint", "close-out-preflight",
-                "--bundle", str(bundle_path),
-                "--mutation-manifest", str(manifest_path),
-                "--snapshot", str(evidence / "dirty-snapshot.json"),
-                "--evidence-root", str(evidence),
-                "--evidence", str(evidence / "dirty-preflight.json"),
-                "--remote", "origin",
-                "--branch", "main")
-            self.assertEqual(1, dirty_result.returncode)
-            dirty_path.unlink()
-            preflight_result = self._cli(
-                repository,
-                "--checkpoint", "close-out-preflight",
-                "--bundle", str(bundle_path),
-                "--mutation-manifest", str(manifest_path),
-                "--snapshot", str(snapshot_path),
-                "--evidence-root", str(evidence),
-                "--evidence", str(preflight_path),
-                "--remote", "origin",
-                "--branch", "main")
-            self.assertEqual(0, preflight_result.returncode, preflight_result.stderr)
-            for relative, content in desired.items():
-                (repository / relative).write_text(content, encoding="utf-8")
-            self._run("git", "-C", str(repository), "add", *A41_ALLOWED_MUTATION_PATHS)
-            postflight_path = evidence / "postflight.json"
-            postflight_result = self._cli(
-                repository,
-                "--checkpoint", "close-out-postflight",
-                "--preflight", str(preflight_path),
-                "--mutation-manifest", str(manifest_path),
-                "--snapshot", str(snapshot_path),
-                "--evidence-root", str(evidence),
-                "--evidence", str(postflight_path))
-            self.assertEqual(0, postflight_result.returncode, postflight_result.stderr)
-            self._run("git", "-C", str(repository), "commit", "-q", "-m", "test: close residual")
-            close_out_commit = self._run("git", "-C", str(repository), "rev-parse", "HEAD", capture=True)
-            (repository / "descendant.txt").write_text("advanced remote tip\n", encoding="utf-8")
-            self._run("git", "-C", str(repository), "add", "descendant.txt")
-            self._run("git", "-C", str(repository), "commit", "-q", "-m", "test: advance remote")
-            unpublished_path = evidence / "unpublished.json"
-            unpublished_result = self._cli(
-                repository,
-                "--checkpoint", "publish-verification",
-                "--preflight", str(preflight_path),
-                "--postflight", str(postflight_path),
-                "--mutation-manifest", str(manifest_path),
-                "--snapshot", str(snapshot_path),
-                "--commit", close_out_commit,
-                "--remote", "origin",
-                "--branch", "main",
-                "--evidence-root", str(evidence),
-                "--evidence", str(unpublished_path))
-            self.assertEqual(1, unpublished_result.returncode)
-            self._run("git", "-C", str(repository), "push", "-q", "origin", "main")
-            publish_path = evidence / "publish.json"
-            publish_result = self._cli(
-                repository,
-                "--checkpoint", "publish-verification",
-                "--preflight", str(preflight_path),
-                "--postflight", str(postflight_path),
-                "--mutation-manifest", str(manifest_path),
-                "--snapshot", str(snapshot_path),
-                "--commit", close_out_commit,
-                "--remote", "origin",
-                "--branch", "main",
-                "--evidence-root", str(evidence),
-                "--evidence", str(publish_path))
-            self.assertEqual(0, publish_result.returncode, publish_result.stderr)
-            packet = json.loads(publish_path.read_text(encoding="utf-8"))
-            self.assertEqual("published-close-out-verified", packet["a41_status"])
+    def test_c1_authorization_refuses_legacy_and_unverified_v2_before_payload_validation(self) -> None:
+        legacy = predecessor()
+        successors = deepcopy(legacy)
+        successors["successors"] = [
+            {"gate_id": gate_id, **gate} for gate_id, gate in successors.pop("gates").items()
+        ]
+        for packet in (legacy, successors):
+            with self.subTest(version="legacy", keys=tuple(packet)):
+                with patch.object(lifecycle_verifier, "_inspect_checkpoint_payload", side_effect=AssertionError("payload read")):
+                    with self.assertRaisesRegex(lifecycle_verifier.EvidenceValidationError, "version refused"):
+                        lifecycle_verifier.validate_story_27_4_checkpoint(
+                            "c2-production-replacement", c2_payload(), packet,
+                            require_current_freshness=False,
+                        )
 
-            wrong_branch_result = self._cli(
-                repository,
-                "--checkpoint", "publish-verification",
-                "--preflight", str(preflight_path),
-                "--postflight", str(postflight_path),
-                "--mutation-manifest", str(manifest_path),
-                "--snapshot", str(snapshot_path),
-                "--commit", close_out_commit,
-                "--remote", "origin",
-                "--branch", "other",
-                "--evidence-root", str(evidence),
-                "--evidence", str(evidence / "wrong-branch.json"))
-            self.assertEqual(1, wrong_branch_result.returncode)
-            self._run("git", "-C", str(repository), "remote", "set-url", "origin", str(base / "remapped.git"))
-            remapped_result = self._cli(
-                repository,
-                "--checkpoint", "publish-verification",
-                "--preflight", str(preflight_path),
-                "--postflight", str(postflight_path),
-                "--mutation-manifest", str(manifest_path),
-                "--snapshot", str(snapshot_path),
-                "--commit", close_out_commit,
-                "--remote", "origin",
-                "--branch", "main",
-                "--evidence-root", str(evidence),
-                "--evidence", str(evidence / "remapped-remote.json"))
-            self.assertEqual(1, remapped_result.returncode)
+        for freshness in (True, False):
+            with self.subTest(version="v2", freshness=freshness):
+                with patch.object(lifecycle_verifier, "_inspect_checkpoint_payload", side_effect=AssertionError("payload read")):
+                    with self.assertRaisesRegex(lifecycle_verifier.EvidenceValidationError, "current authority unavailable"):
+                        lifecycle_verifier.validate_story_27_4_checkpoint(
+                            "c2-production-replacement", c2_payload(), v2_predecessor(),
+                            require_current_freshness=freshness,
+                        )
+
+    def test_c1_cli_routes_and_close_out_refuse_before_dependency_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory)
+            for name, packet in (("legacy", predecessor()), ("v2", v2_predecessor())):
+                with self.subTest(packet=name):
+                    c1_path = evidence / f"{name}-C1.json"
+                    c1_path.write_text(json.dumps(packet), encoding="utf-8")
+                    for route, flag in (("offline", "--input"), ("producer", "--scenario-input")):
+                        output = evidence / f"{name}-{route}.json"
+                        result = subprocess.run(
+                            [sys.executable, "-B", str(TOOLS_DIR / "verify-access-telemetry-lifecycle.py"),
+                             "--checkpoint", "c2-production-replacement", flag, str(evidence / "missing-input.json"),
+                             "--predecessor", str(c1_path), "--owner", "operator",
+                             "--evidence-root", str(evidence), "--evidence", str(output)],
+                            check=False, capture_output=True, text=True,
+                        )
+                        self.assertEqual(1, result.returncode, result.stderr)
+                        rejection = json.loads(output.read_text(encoding="utf-8"))
+                        self.assertEqual("rejected", rejection["status"])
+                        self.assertIn(
+                            "version refused" if name == "legacy" else "current authority unavailable",
+                            rejection["reason"],
+                        )
+
+                    bundle = {"profile_sha256": STORY_27_4_PROFILE_SHA256,
+                              "checkpoints": {key: {
+                                  "status": "passed", "profile_sha256": STORY_27_4_PROFILE_SHA256,
+                                  "artifact_path": c1_path.name if key == "C1" else "missing.json",
+                                  "artifact_sha256": hashlib.sha256(c1_path.read_bytes()).hexdigest() if key == "C1" else SHA,
+                              } for key in ("C0", "C1", "C2", "C3", "C4", "C5", "C6", "terminal")}}
+                    bundle_path = evidence / f"{name}-bundle.json"
+                    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+                    with patch.object(lifecycle_verifier, "_assert_clean_repository", side_effect=AssertionError("git accessed")):
+                        with patch.object(lifecycle_verifier, "_run_bounded_process", side_effect=AssertionError("target accessed")):
+                            result = lifecycle_verifier.run_close_out_preflight(
+                                repository_root=REPO_ROOT, bundle_path=bundle_path,
+                                mutation_manifest_path=evidence / "missing-manifest.json",
+                                snapshot_path=evidence / f"{name}-snapshot.json",
+                                evidence_path=evidence / f"{name}-preflight.json",
+                                evidence_root=evidence, remote="origin", branch="main",
+                            )
+                    self.assertEqual(1, result)
+                    preflight = json.loads((evidence / f"{name}-preflight.json").read_text(encoding="utf-8"))
+                    self.assertEqual("rejected", preflight["status"])
+                    self.assertIn(
+                        "version refused" if name == "legacy" else "current authority unavailable",
+                        preflight["reason"],
+                    )
+
+    def test_producer_refuses_c1_before_git_or_target_dependency(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory)
+            for name, packet in (("legacy", predecessor()), ("v2", v2_predecessor())):
+                c1_path = evidence / f"{name}-C1.json"
+                c1_path.write_text(json.dumps(packet), encoding="utf-8")
+                for checkpoint in (
+                    "c2-production-replacement",
+                    "c3-retention-reclamation",
+                    "c4-failure-privacy-observability",
+                ):
+                    with self.subTest(packet=name, checkpoint=checkpoint):
+                        output = evidence / f"{name}-{checkpoint}-producer-rejection.json"
+                        with patch.object(lifecycle_verifier, "_git_checked", side_effect=AssertionError("git accessed")):
+                            with patch.object(lifecycle_verifier, "_run_bounded_process", side_effect=AssertionError("target accessed")):
+                                result = lifecycle_verifier.run_story_27_4_producer_checkpoint(
+                                    checkpoint=checkpoint,
+                                    scenario_input_path=evidence / "missing-scenario.json",
+                                    predecessor_path=c1_path, evidence_path=output,
+                                    owner="operator", repository_root=REPO_ROOT,
+                                    evidence_root=evidence,
+                                )
+                        self.assertEqual(1, result)
+                        rejection = json.loads(output.read_text(encoding="utf-8"))
+                        self.assertEqual("rejected", rejection["status"])
+                        self.assertIn(
+                            "version refused" if name == "legacy" else "current authority unavailable",
+                            rejection["reason"],
+                        )
+
+    def test_postflight_and_publish_refuse_self_hashed_preflight_before_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory)
+            inventory = {"references": []}
+            preflight = lifecycle_verifier._close_out_packet(
+                "close-out-preflight", "passed", "retained preflight claim",
+                source_head="a" * 40, branch="main", remote="origin",
+                remote_url_sha256=SHA, bundle_sha256=SHA,
+                mutation_manifest_sha256=SHA,
+                inventory_sha256=_sha256(_canonical_json(inventory)),
+                inventory=inventory, snapshot_sha256=SHA,
+                allowed_mutations=list(A41_ALLOWED_MUTATION_PATHS),
+            )
+            preflight_path = evidence / "preflight.json"
+            preflight_path.write_text(json.dumps(preflight), encoding="utf-8")
+            lifecycle_verifier._validate_close_out_packet_hash(preflight, "preflight")
+
+            for name, runner in (
+                ("postflight", lambda output: lifecycle_verifier.run_close_out_postflight(
+                    repository_root=REPO_ROOT, preflight_path=preflight_path,
+                    mutation_manifest_path=evidence / "missing-manifest.json",
+                    snapshot_path=evidence / "missing-snapshot.json",
+                    evidence_path=output, evidence_root=evidence,
+                )),
+                ("publish", lambda output: lifecycle_verifier.run_publish_verification(
+                    repository_root=REPO_ROOT, commit="b" * 40,
+                    mutation_manifest_path=evidence / "missing-manifest.json",
+                    evidence_path=output, preflight_path=preflight_path,
+                    postflight_path=evidence / "missing-postflight.json",
+                    snapshot_path=evidence / "missing-snapshot.json",
+                    remote="origin", branch="main", evidence_root=evidence,
+                )),
+            ):
+                with self.subTest(consumer=name):
+                    output = evidence / f"{name}-rejection.json"
+                    with patch.object(lifecycle_verifier, "_git_checked", side_effect=AssertionError("git accessed")):
+                        with patch.object(lifecycle_verifier, "_authenticate_snapshot", side_effect=AssertionError("snapshot accessed")):
+                            with patch.object(lifecycle_verifier, "_path_hash", side_effect=AssertionError("A41 accessed")):
+                                result = runner(output)
+                    self.assertEqual(1, result)
+                    packet = json.loads(output.read_text(encoding="utf-8"))
+                    self.assertEqual("rejected", packet["status"])
+                    self.assertIn("C1 current authority unavailable", packet["reason"])
+            self.assertFalse((evidence / "missing-snapshot.json").exists())
 
     @staticmethod
     def _run(*args: str, capture: bool = False) -> str:

@@ -1047,3 +1047,46 @@ Post-review repository checks for the 2026-10-10 recheck: `git diff --check`
 exited `0`; the same exact two architecture selectors passed all 17 tests with
 zero errors, failures, skips or not-run cases. The post-review XML SHA-256 is
 `00df7991291658d2521c46fd63ea76920a4f8db8244633c2881061b99d6d2ceb`.
+
+### 2026-10-10 strict C1 predecessor consumer refusal receipt
+
+This offline implementation pass moved every Story 27.4 C1 authorizing route to a
+single strict version dispatch. Legacy `gates` and `successors` packets, including
+complete-looking twenty-five-gate claims, refuse with `version refused`. A
+structurally valid `hexalith.access-telemetry.c1.predecessor/v2` packet refuses
+with `current authority unavailable` because the authenticated I3-I5 verdict,
+retained-reference custody, current session status and approved P7 time limits
+are not yet available. The legacy parser remains available for historical
+inspection only; its structural result cannot authorize a checkpoint.
+
+The C2-C4 producer test installs forbidden Git and process dependencies and
+observes zero calls for both legacy and unverified v2 predecessors. CLI tests
+cover both `--input` and `--scenario-input` refusal, even with missing scenario
+input. Direct validation with `require_current_freshness=False` also refuses.
+Terminal bundle and close-out preflight tests refuse C1 before reading any
+other bundled artifact, querying Git, creating a recovery snapshot or emitting
+a passing checkpoint. Rejection packets are bounded and retain no gate credit.
+
+| Offline command | Result |
+| :-------------- | :----- |
+| `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p 'test_*.py' -v` | 82 tests; `OK`, zero failures, errors or skips. |
+| `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v` | 242 tests; `OK`, zero failures, errors or skips. |
+| `git diff --check` | Exit 0, no whitespace errors. |
+
+No live producer or target was contacted. The canonical C0-C6 verdicts above
+remain unchanged, Production lifecycle writes remain disabled, and A41 and its
+sprint action remain open. This receipt grants no C1 acceptance or Story 27.4
+completion. Acceptance still requires the authenticated verifier and approved
+operational P1-P7 inputs.
+
+### 2026-10-10 postflight and publish continuation refusal addendum
+
+Review found that a self-hashed passing-looking preflight packet could reach
+postflight or publish verification without rechecking current C1 authority. The
+shared preflight-consumption boundary now refuses that packet before manifest,
+snapshot, Git or A41 access. A focused dependency-sentinel test exercises both
+continuations with missing downstream artifacts and a self-hashed preflight.
+
+The complete lifecycle suite passed 83 tests, the unchanged interchange suite
+passed 242 tests, and `git diff --check` exited 0 after the patch. This is an
+offline refusal receipt only; no close-out or Production permission is granted.
