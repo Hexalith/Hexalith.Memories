@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Deployment;
 
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -294,6 +295,32 @@ public sealed class ProductionDeploymentArtifactsTests
 
         GetDocument(rendered, "Deployment", "memories-access-telemetry").ShouldContain("replicas: 0");
         GetDocument(rendered, "Deployment", "memories-access-telemetry-clock").ShouldContain("replicas: 0");
+    }
+
+    [Fact]
+    public void ProductionOverlay_ClockAndTelemetryAttestationBindingsMatch()
+    {
+        string root = GetRepoRoot();
+        string rendered = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/production");
+        string clock = GetDocument(rendered, "Deployment", "memories-access-telemetry-clock");
+        string telemetry = GetDocument(rendered, "Deployment", "memories-access-telemetry");
+
+        string signerEpoch = ReadScalar(ReadComponentMetadataItem(clock, "Clock__SignerKeyEpoch"), "value:");
+        string clockVerifierEpoch = ReadScalar(
+            ReadComponentMetadataItem(clock, "AccessTelemetryLifecycle__ClockSignerKeyEpoch"), "value:");
+        string telemetryVerifierEpoch = ReadScalar(
+            ReadComponentMetadataItem(telemetry, "AccessTelemetryLifecycle__ClockSignerKeyEpoch"), "value:");
+        signerEpoch.ShouldBe(clockVerifierEpoch);
+        signerEpoch.ShouldBe(telemetryVerifierEpoch);
+
+        (string clockSecret, string clockKey) = ReadComponentMetadataSecretRef(
+            clock, "AccessTelemetryLifecycle__AttestationVerificationKey");
+        (string telemetrySecret, string telemetryKey) = ReadComponentMetadataSecretRef(
+            telemetry, "AccessTelemetryLifecycle__AttestationVerificationKey");
+        clockSecret.ShouldBe(ReadScalar(ReadComponentMetadataItem(clock, "Clock__SigningKeySecretName"), "value:"));
+        telemetrySecret.ShouldBe(clockSecret);
+        clockKey.ShouldBe("verification-public-key");
+        telemetryKey.ShouldBe(clockKey);
     }
 
     [Fact]
@@ -825,7 +852,7 @@ public sealed class ProductionDeploymentArtifactsTests
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
     [Fact]
-    public void QualificationOverlay_AdoptsExactApprovedBytesAndKeepsDerivedEvidenceDisabled()
+    public void QualificationOverlay_PreservesApprovedBytesWithClockVerifierDeltaAndKeepsDerivedEvidenceDisabled()
     {
         string root = GetRepoRoot();
         const string candidateRoot = "_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/profile-candidate/";
@@ -834,13 +861,34 @@ public sealed class ProductionDeploymentArtifactsTests
         [
             ("openbao-values.candidate.yaml", "deploy/openbao/values.yaml"),
             ("postgresql.candidate.yaml", "deploy/kubernetes/base/access-telemetry-postgresql.yaml"),
-            ("lifecycle-deployments.candidate.yaml", "deploy/kubernetes/base/access-telemetry-deployments.yaml"),
             ("physical-reporter.candidate.yaml", "deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml"),
         ];
         foreach ((string candidate, string active) in copies)
         {
             File.ReadAllBytes(Path.Combine(root, active)).ShouldBe(File.ReadAllBytes(Path.Combine(root, candidateRoot + candidate)));
         }
+
+        // Story 1.5 adds exactly two clock verifier bindings to the adopted lifecycle bytes.
+        // Keep every original byte and the insertion point fixed; the candidate and its hash remain historical.
+        byte[] lifecycleCandidate = File.ReadAllBytes(Path.Combine(root, candidateRoot + "lifecycle-deployments.candidate.yaml"));
+        byte[] clockSourcesAnchor = Encoding.UTF8.GetBytes("            - name: Clock__Sources__0__Id\n");
+        int insertionIndex = lifecycleCandidate.AsSpan().IndexOf(clockSourcesAnchor);
+        insertionIndex.ShouldBeGreaterThanOrEqualTo(0);
+        lifecycleCandidate.AsSpan(insertionIndex + clockSourcesAnchor.Length).IndexOf(clockSourcesAnchor).ShouldBe(-1);
+        byte[] verifierBindings = Encoding.UTF8.GetBytes(
+            "            - name: AccessTelemetryLifecycle__AttestationVerificationKey\n" +
+            "              valueFrom:\n" +
+            "                secretKeyRef:\n" +
+            "                  name: access-telemetry-clock-key\n" +
+            "                  key: verification-public-key\n" +
+            "            - name: AccessTelemetryLifecycle__ClockSignerKeyEpoch\n" +
+            "              value: unconfigured\n");
+        byte[] expectedLifecycle = new byte[lifecycleCandidate.Length + verifierBindings.Length];
+        lifecycleCandidate.AsSpan(0, insertionIndex).CopyTo(expectedLifecycle);
+        verifierBindings.AsSpan().CopyTo(expectedLifecycle.AsSpan(insertionIndex));
+        lifecycleCandidate.AsSpan(insertionIndex).CopyTo(expectedLifecycle.AsSpan(insertionIndex + verifierBindings.Length));
+        File.ReadAllBytes(Path.Combine(root, "deploy/kubernetes/base/access-telemetry-deployments.yaml"))
+            .ShouldBe(expectedLifecycle);
 
         string qualification = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/qualification");
         qualification.ShouldContain("ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH: " + currentHash);

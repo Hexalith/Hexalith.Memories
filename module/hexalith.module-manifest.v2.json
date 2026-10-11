@@ -200,6 +200,26 @@
                 "reference": "accesstelemetrylifecycle-enabled"
               },
               {
+                "key": "AccessTelemetryLifecycle:CapabilityEvidence",
+                "source": "configuration",
+                "reference": "capabilityevidence"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:CapabilityEvidence:ExactVersionPinned",
+                "source": "configuration",
+                "reference": "exactversionpinned"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:CapabilityEvidence:ValidUntilUtc",
+                "source": "configuration",
+                "reference": "validuntilutc"
+              },
+              {
+                "key": "WorkflowReplaySafety:Enabled",
+                "source": "configuration",
+                "reference": "workflowreplaysafety-enabled"
+              },
+              {
                 "key": "AccessTelemetryLifecycle:ClockSignerKeyEpoch",
                 "source": "configuration",
                 "reference": "clocksignerkeyepoch"
@@ -268,6 +288,31 @@
                 "key": "Memories:DaprApiToken",
                 "source": "secret",
                 "reference": "dapr-api-token"
+              },
+              {
+                "key": "EmbeddingProviders:Google:ApiBaseUrl",
+                "source": "configuration",
+                "reference": "apibaseurl"
+              },
+              {
+                "key": "EmbeddingProviders:Ollama:BaseUrl",
+                "source": "configuration",
+                "reference": "baseurl"
+              },
+              {
+                "key": "EmbeddingProviders:Ollama:OidcTokenEndpoint",
+                "source": "configuration",
+                "reference": "oidctokenendpoint"
+              },
+              {
+                "key": "EmbeddingProviders:Ollama:OidcClientId",
+                "source": "configuration",
+                "reference": "oidcclientid"
+              },
+              {
+                "key": "EmbeddingProviders:Ollama:OidcScope",
+                "source": "configuration",
+                "reference": "oidcscope"
               }
             ]
           }
@@ -486,6 +531,21 @@
             "name": "conversation-provider",
             "protocol": "https",
             "destination": "Memories:LlmComponentPath -> conversation.openai provider endpoint"
+          },
+          {
+            "name": "embedding-google-provider",
+            "protocol": "tcp",
+            "destination": "EmbeddingProviders:Google:ApiBaseUrl"
+          },
+          {
+            "name": "embedding-ollama-provider",
+            "protocol": "tcp",
+            "destination": "EmbeddingProviders:Ollama:BaseUrl"
+          },
+          {
+            "name": "embedding-ollama-oidc-token",
+            "protocol": "https",
+            "destination": "EmbeddingProviders:Ollama:OidcTokenEndpoint (OIDC client-credential mode only)"
           }
         ],
         "providers": [
@@ -536,6 +596,22 @@
             "kind": "destructive-retention",
             "disableControl": {
               "configurationKey": "AccessTelemetryLifecycle:Enabled",
+              "disabledValue": false
+            }
+          },
+          {
+            "name": "telemetry-capability-probe",
+            "kind": "external-effect",
+            "disableControl": {
+              "configurationKey": "AccessTelemetryLifecycle:Enabled",
+              "disabledValue": false
+            }
+          },
+          {
+            "name": "workflow-replay-safety",
+            "kind": "external-effect",
+            "disableControl": {
+              "configurationKey": "WorkflowReplaySafety:Enabled",
               "disabledValue": false
             }
           },

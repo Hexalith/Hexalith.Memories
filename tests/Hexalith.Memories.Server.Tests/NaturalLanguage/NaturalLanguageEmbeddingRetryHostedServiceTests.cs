@@ -77,6 +77,56 @@ public class NaturalLanguageEmbeddingRetryHostedServiceTests
         await registry.DidNotReceiveWithAnyArgs().IncrementAttemptsAsync(default!, default, default);
     }
 
+    [Fact]
+    public async Task TickAsync_DisabledAfterFirstScheduleStarts_DoesNotScheduleOrFinalizeSecondRecord()
+    {
+        var registry = Substitute.For<IFailedNaturalLanguageEmbeddingRegistry>();
+        var workflowClient = Substitute.For<IDaprWorkflowClient>();
+        var options = Substitute.For<IOptionsMonitor<NaturalLanguageDescriptionOptions>>();
+        bool enabled = true;
+        options.CurrentValue.Returns(_ => new NaturalLanguageDescriptionOptions { RetryWorkerEnabled = enabled });
+        registry.ListTenantsWithBacklogAsync(Arg.Any<CancellationToken>()).Returns(_ => OneTenant());
+        registry.GetBacklogCountAsync("tenant-a", Arg.Any<CancellationToken>()).Returns(2L);
+        FailedNaturalLanguageEmbeddingRecord[] records = [Record("first"), Record("second")];
+        registry.DequeueBatchAsync("tenant-a", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<FailedNaturalLanguageEmbeddingRecord>>(records));
+        var firstScheduleStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstSchedule = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        workflowClient.ScheduleNewWorkflowAsync(
+                Arg.Any<string>(),
+                "retry-nl-tenant-a-first",
+                Arg.Any<NaturalLanguageEmbeddingRetryInput>())
+            .Returns(_ =>
+            {
+                enabled = false;
+                firstScheduleStarted.TrySetResult();
+                return releaseFirstSchedule.Task;
+            });
+        var worker = new NaturalLanguageEmbeddingRetryHostedService(
+            registry,
+            workflowClient,
+            options,
+            NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance);
+
+        Task tick = worker.TickAsync(new NaturalLanguageDescriptionOptions(), TestContext.Current.CancellationToken);
+        await firstScheduleStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        enabled.ShouldBeFalse();
+        releaseFirstSchedule.SetResult("retry-nl-tenant-a-first");
+        await tick;
+
+        _ = await workflowClient.Received(1).ScheduleNewWorkflowAsync(
+            Arg.Any<string>(),
+            "retry-nl-tenant-a-first",
+            Arg.Any<NaturalLanguageEmbeddingRetryInput>());
+        _ = await workflowClient.DidNotReceive().ScheduleNewWorkflowAsync(
+            Arg.Any<string>(),
+            "retry-nl-tenant-a-second",
+            Arg.Any<NaturalLanguageEmbeddingRetryInput>());
+        await registry.DidNotReceive().CompleteAsync(records[1], Arg.Any<CancellationToken>());
+        _ = await registry.DidNotReceive().IncrementAttemptsAsync(
+            records[1], Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
     private static FailedNaturalLanguageEmbeddingRecord Record(string memoryUnitId)
         => new("tenant-a", memoryUnitId, "{}", "event", null, "case-a", "provider", "model", 3, 1, 0);
 

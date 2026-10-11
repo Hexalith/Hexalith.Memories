@@ -112,6 +112,39 @@ public sealed class AccessTelemetryRetentionDisableTests
         store.Remaining.ShouldBe(0);
     }
 
+    [Fact]
+    public async Task ExistingReminder_DisabledAfterFirstDelete_PreservesRemainingDueRecord()
+    {
+        DateTimeOffset now = new(2026, 10, 11, 10, 0, 0, TimeSpan.Zero);
+        IConfigurationRoot configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AccessTelemetryLifecycle:Enabled"] = "true",
+            })
+            .Build();
+        var store = new ScriptedRetentionStateStore(
+            now.AddMinutes(-1),
+            () => configuration["AccessTelemetryLifecycle:Enabled"] = "false");
+        var options = new AccessTelemetryOptions();
+        var actor = new AccessTelemetryLifecycleActor(
+            ActorHost.CreateForTest<AccessTelemetryLifecycleActor>(
+                new ActorTestOptions { ActorId = new ActorId("global") }),
+            new AccessTelemetryLifecycleProcessor(store, new FakeTimeProvider(now), options),
+            new FixedClockGate(now),
+            null!,
+            new AccessTelemetryRuntimeOptionsProvider(options),
+            new FixedEvidenceProvider(),
+            TimeProvider.System,
+            configuration);
+
+        // The test actor has no Dapr state provider, so post-purge bookkeeping fails.
+        _ = await Should.ThrowAsync<InvalidOperationException>(() =>
+            actor.ReceiveReminderAsync("bounded-purge", [], TimeSpan.Zero, TimeSpan.FromMinutes(1)));
+
+        AccessTelemetryLifecycleActor.IsPurgeEnabled(configuration).ShouldBeFalse();
+        store.Remaining.ShouldBe(1);
+    }
+
     private sealed class DueRecordStore(AccessTelemetryExpiryEntry due) : IAccessTelemetryStateStore
     {
         public int DeleteCount { get; private set; }

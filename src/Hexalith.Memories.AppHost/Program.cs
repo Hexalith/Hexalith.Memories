@@ -24,6 +24,7 @@ builder.Services.AddHostedService<OpenBaoSessionLifetimeGuard>();
 
 AccessTelemetryDevelopmentSecrets accessTelemetryDevelopmentSecrets = AccessTelemetryDevelopmentSecrets.Create(
     builder.Configuration["Parameters:openbao-access-telemetry-seeds"]);
+const string accessTelemetryClockSignerKeyEpoch = "development-clock-key";
 builder.Configuration["Parameters:openbao-runtime-seeds"] ??= "{}";
 builder.Configuration["Parameters:openbao-access-telemetry-seeds"] ??= accessTelemetryDevelopmentSecrets.SeedJson;
 IResourceBuilder<ParameterResource> runtimeSeedParameter = builder.AddParameterFromConfiguration(
@@ -393,7 +394,7 @@ server = server
     .WithEnvironment("AccessTelemetryLifecycle__ConfigurationEpoch", "01J00000000000000000000000")
     .WithEnvironment("AccessTelemetryLifecycle__ComponentProfileHash", new string('a', 64))
     .WithEnvironment("AccessTelemetryLifecycle__AttestationVerificationKey", accessTelemetryDevelopmentSecrets.VerificationPublicKey)
-    .WithEnvironment("AccessTelemetryLifecycle__ClockSignerKeyEpoch", "development-clock-key")
+    .WithEnvironment("AccessTelemetryLifecycle__ClockSignerKeyEpoch", accessTelemetryClockSignerKeyEpoch)
     .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyReference", "access-telemetry-marker-key")
     .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyGeneration", "development-key-1")
     .WithEnvironment("AccessTelemetryLifecycle__CapacityEvidenceId", "development-capacity-probe")
@@ -419,7 +420,9 @@ IResourceBuilder<ProjectResource> accessTelemetryClock = builder
     .WithEnvironment("DOTNET_ENVIRONMENT", "Development")
     .WithEnvironment("Clock__SecretStoreName", "access-telemetry-secrets")
     .WithEnvironment("Clock__SigningKeySecretName", "access-telemetry-clock-key")
-    .WithEnvironment("Clock__SignerKeyEpoch", "development-clock-key")
+    .WithEnvironment("Clock__SignerKeyEpoch", accessTelemetryClockSignerKeyEpoch)
+    .WithEnvironment("AccessTelemetryLifecycle__AttestationVerificationKey", accessTelemetryDevelopmentSecrets.VerificationPublicKey)
+    .WithEnvironment("AccessTelemetryLifecycle__ClockSignerKeyEpoch", accessTelemetryClockSignerKeyEpoch)
     .WithEnvironment("Clock__AllowDevelopmentSources", "true")
     .WaitFor(openBao)
     .WaitFor(accessTelemetrySecrets);
@@ -450,7 +453,7 @@ IResourceBuilder<ProjectResource> accessTelemetry = builder
     .WithEnvironment("AccessTelemetryLifecycle__ConfigurationEpoch", "01J00000000000000000000000")
     .WithEnvironment("AccessTelemetryLifecycle__ComponentProfileHash", new string('a', 64))
     .WithEnvironment("AccessTelemetryLifecycle__AttestationVerificationKey", accessTelemetryDevelopmentSecrets.VerificationPublicKey)
-    .WithEnvironment("AccessTelemetryLifecycle__ClockSignerKeyEpoch", "development-clock-key")
+    .WithEnvironment("AccessTelemetryLifecycle__ClockSignerKeyEpoch", accessTelemetryClockSignerKeyEpoch)
     .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyReference", "access-telemetry-marker-key")
     .WithEnvironment("AccessTelemetryLifecycle__MarkerKeyGeneration", "development-key-1")
     .WithEnvironment("AccessTelemetryLifecycle__CapacityEvidenceId", "development-capacity-probe")
