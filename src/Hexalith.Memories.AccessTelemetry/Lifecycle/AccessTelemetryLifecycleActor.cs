@@ -11,6 +11,8 @@ using Hexalith.Memories.AccessTelemetry.Capability;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Observability;
 
+using Microsoft.Extensions.Configuration;
+
 /// <summary>Dapr actor hosted only as <c>AccessTelemetryLifecycleActor/global</c>.</summary>
 internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLifecycleActor, IRemindable
 {
@@ -22,6 +24,7 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
     private readonly AccessTelemetryRuntimeOptionsProvider _optionsProvider;
     private readonly ILifecycleClockEvidenceProvider _clockEvidence;
     private readonly TimeProvider _timeProvider;
+    private readonly IConfiguration _configuration;
 
     /// <summary>Initializes the fixed lifecycle actor.</summary>
     public AccessTelemetryLifecycleActor(
@@ -31,7 +34,8 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         IAccessTelemetryRuntimeGate runtimeGate,
         AccessTelemetryRuntimeOptionsProvider optionsProvider,
         ILifecycleClockEvidenceProvider clockEvidence,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IConfiguration configuration)
         : base(host)
     {
         _processor = processor;
@@ -40,6 +44,7 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         _optionsProvider = optionsProvider;
         _clockEvidence = clockEvidence;
         _timeProvider = timeProvider;
+        _configuration = configuration;
     }
 
     /// <inheritdoc/>
@@ -239,7 +244,17 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
     public async Task PurgeAsync()
     {
         EnsureGlobalActor();
+        if (!IsPurgeEnabled(_configuration))
+        {
+            return;
+        }
+
         DateTimeOffset trustedNow = await GetTrustedNowAsync().ConfigureAwait(false);
+        if (!IsPurgeEnabled(_configuration))
+        {
+            return;
+        }
+
         AccessTelemetryPurgeResult result = await _processor.PurgeAsync(trustedNow, CancellationToken.None).ConfigureAwait(false);
         AccessTelemetryLifecycleMetrics.RecordReminder(succeeded: true);
         AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
@@ -269,6 +284,9 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             result.HasMore ? TimeSpan.FromMilliseconds(Random.Shared.Next(25, 101)) : options.PurgeInterval,
             options.PurgeInterval).ConfigureAwait(false);
     }
+
+    internal static bool IsPurgeEnabled(IConfiguration configuration)
+        => configuration.GetValue<bool>("AccessTelemetryLifecycle:Enabled");
 
     /// <inheritdoc/>
     public async Task<AccessTelemetryInspectionResponse> InspectAsync()

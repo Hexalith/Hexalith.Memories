@@ -23,13 +23,13 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
     internal static readonly TimeSpan WorkflowCompletionWaitTimeout = TimeSpan.FromSeconds(30);
 
     private readonly IFailedNaturalLanguageEmbeddingRegistry _registry;
-    private readonly DaprWorkflowClient _workflowClient;
+    private readonly IDaprWorkflowClient _workflowClient;
     private readonly IOptionsMonitor<NaturalLanguageDescriptionOptions> _options;
     private readonly ILogger<NaturalLanguageEmbeddingRetryHostedService> _logger;
 
     public NaturalLanguageEmbeddingRetryHostedService(
         IFailedNaturalLanguageEmbeddingRegistry registry,
-        DaprWorkflowClient workflowClient,
+        IDaprWorkflowClient workflowClient,
         IOptionsMonitor<NaturalLanguageDescriptionOptions> options,
         ILogger<NaturalLanguageEmbeddingRetryHostedService> logger)
     {
@@ -78,9 +78,23 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
 
     internal async Task TickAsync(NaturalLanguageDescriptionOptions opts, CancellationToken cancellationToken)
     {
+        if (!_options.CurrentValue.RetryWorkerEnabled)
+        {
+            return;
+        }
+
         await foreach (string tenantId in _registry.ListTenantsWithBacklogAsync(cancellationToken).ConfigureAwait(false))
         {
+            if (!_options.CurrentValue.RetryWorkerEnabled)
+            {
+                return;
+            }
+
             long backlog = await _registry.GetBacklogCountAsync(tenantId, cancellationToken).ConfigureAwait(false);
+            if (!_options.CurrentValue.RetryWorkerEnabled)
+            {
+                return;
+            }
             if (backlog == 0)
             {
                 continue;
@@ -101,6 +115,11 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
 
             foreach (FailedNaturalLanguageEmbeddingRecord record in batch)
             {
+                if (!_options.CurrentValue.RetryWorkerEnabled)
+                {
+                    return;
+                }
+
                 await ScheduleRetryAsync(record, opts, cancellationToken).ConfigureAwait(false);
             }
         }

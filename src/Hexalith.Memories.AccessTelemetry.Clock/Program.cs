@@ -7,6 +7,8 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.ServiceDefaults;
 using Hexalith.Memories.ServiceDefaults.Security;
 
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults(configureRedisInstrumentation: false);
@@ -72,6 +74,11 @@ if (!builder.Environment.IsProduction() && builder.Configuration.GetValue<bool>(
 }
 
 builder.Services.AddSingleton<ClockAttestationService>();
+builder.Services.AddHealthChecks().AddCheck<ClockSigningReadinessHealthCheck>(
+    "clock-attestation",
+    failureStatus: HealthStatus.Unhealthy,
+    tags: ["ready"],
+    timeout: TimeSpan.FromSeconds(5));
 
 WebApplication app = builder.Build();
 
