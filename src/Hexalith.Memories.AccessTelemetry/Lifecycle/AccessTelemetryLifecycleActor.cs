@@ -255,7 +255,10 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             return;
         }
 
-        AccessTelemetryPurgeResult result = await _processor.PurgeAsync(trustedNow, CancellationToken.None).ConfigureAwait(false);
+        AccessTelemetryPurgeResult result = await _processor.PurgeAsync(
+            trustedNow,
+            CancellationToken.None,
+            () => IsPurgeEnabled(_configuration)).ConfigureAwait(false);
         AccessTelemetryLifecycleMetrics.RecordReminder(succeeded: true);
         AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
         AccessTelemetryLifecycleActorState updated = state with

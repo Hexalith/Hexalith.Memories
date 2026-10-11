@@ -176,6 +176,13 @@ internal sealed class AccessTelemetryLifecycleProcessor
 
     /// <summary>Executes one bounded logical-purge turn using actor-verified trusted time.</summary>
     public async Task<AccessTelemetryPurgeResult> PurgeAsync(DateTimeOffset now, CancellationToken cancellationToken)
+        => await PurgeAsync(now, cancellationToken, null).ConfigureAwait(false);
+
+    /// <summary>Executes one purge turn while honoring a live disable control before each deletion.</summary>
+    internal async Task<AccessTelemetryPurgeResult> PurgeAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken,
+        Func<bool>? isEnabled)
     {
         long purgeStarted = Stopwatch.GetTimestamp();
         long dueMinute = AccessTelemetryExpiryIndex.GetExpiryMinute(now);
@@ -188,8 +195,15 @@ internal sealed class AccessTelemetryLifecycleProcessor
         int purged = 0;
         int verified = 0;
         AccessTelemetryExpiryEntry? last = null;
+        bool stoppedByDisable = false;
         foreach (AccessTelemetryExpiryEntry entry in due.Take((_optionsProvider?.Current ?? _testOptions!).PurgeRecordLimit))
         {
+            if (isEnabled is not null && !isEnabled())
+            {
+                stoppedByDisable = true;
+                break;
+            }
+
             if (processed > 0 && stopwatch.Elapsed >= TurnBudget)
             {
                 break;
@@ -235,7 +249,7 @@ internal sealed class AccessTelemetryLifecycleProcessor
             processed,
             purged,
             verified,
-            hasMoreDueEntries || due.Count > processed,
+            stoppedByDisable || hasMoreDueEntries || due.Count > processed,
             last?.ExpiryMinute,
             last?.Shard);
     }

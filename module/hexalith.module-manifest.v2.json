@@ -143,6 +143,131 @@
                 "key": "IsStubBackfill:Enabled",
                 "source": "configuration",
                 "reference": "is-stub-backfill"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:DeploymentId",
+                "source": "configuration",
+                "reference": "deploymentid"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:ConfigurationEpoch",
+                "source": "configuration",
+                "reference": "configurationepoch"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:ComponentProfileHash",
+                "source": "configuration",
+                "reference": "componentprofilehash"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:AttestationVerificationKey",
+                "source": "configuration",
+                "reference": "attestationverificationkey"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:MarkerKeyGeneration",
+                "source": "configuration",
+                "reference": "markerkeygeneration"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:CapacityEvidenceId",
+                "source": "configuration",
+                "reference": "capacityevidenceid"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:PhysicalReclamationEvidenceId",
+                "source": "configuration",
+                "reference": "physicalreclamationevidenceid"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:PhysicalReclamationReporterImageDigest",
+                "source": "configuration",
+                "reference": "physicalreclamationreporterimagedigest"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:RetentionSource",
+                "source": "configuration",
+                "reference": "retentionsource"
+              },
+              {
+                "key": "retentionSeconds",
+                "source": "configuration",
+                "reference": "access-telemetry-config"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:Enabled",
+                "source": "configuration",
+                "reference": "accesstelemetrylifecycle-enabled"
+              },
+              {
+                "key": "AccessTelemetryLifecycle:ClockSignerKeyEpoch",
+                "source": "configuration",
+                "reference": "clocksignerkeyepoch"
+              },
+              {
+                "key": "Clock:SignerKeyEpoch",
+                "source": "configuration",
+                "reference": "signerkeyepoch"
+              },
+              {
+                "key": "TenantEventRouting:AutoProvisionRoutedTenants",
+                "source": "configuration",
+                "reference": "autoprovisionroutedtenants"
+              },
+              {
+                "key": "Clock:SourceAuthenticationTokens",
+                "source": "dynamic-secret",
+                "reference": "clock-source-authentication-tokens"
+              },
+              {
+                "key": "Conversation:ProviderApiKey",
+                "source": "secret",
+                "reference": "conversation-provider-api-key"
+              },
+              {
+                "key": "Authentication:JwtBearer:Authority",
+                "source": "configuration",
+                "reference": "authority"
+              },
+              {
+                "key": "Authentication:JwtBearer:Issuer",
+                "source": "configuration",
+                "reference": "issuer"
+              },
+              {
+                "key": "Authentication:JwtBearer:Audience",
+                "source": "configuration",
+                "reference": "audience"
+              },
+              {
+                "key": "Authentication:JwtBearer:RequireHttpsMetadata",
+                "source": "configuration",
+                "reference": "requirehttpsmetadata"
+              },
+              {
+                "key": "Authentication:JwtBearer:TenantClaimName",
+                "source": "configuration",
+                "reference": "tenantclaimname"
+              },
+              {
+                "key": "Authentication:JwtBearer:ValidAlgorithms",
+                "source": "configuration",
+                "reference": "validalgorithms"
+              },
+              {
+                "key": "Authentication:JwtBearer:SigningKey",
+                "source": "secret",
+                "reference": "server-jwt-signing-key"
+              },
+              {
+                "key": "Memories:AppChannelToken",
+                "source": "secret",
+                "reference": "app-channel-token"
+              },
+              {
+                "key": "Memories:DaprApiToken",
+                "source": "secret",
+                "reference": "dapr-api-token"
               }
             ]
           }
@@ -310,6 +435,22 @@
           {
             "name": "telemetry-marker-key",
             "configurationKey": "AccessTelemetryLifecycle:MarkerKeyReference"
+          },
+          {
+            "name": "conversation-provider-api-key",
+            "configurationKey": "Conversation:ProviderApiKey"
+          },
+          {
+            "name": "server-jwt-signing-key",
+            "configurationKey": "Authentication:JwtBearer:SigningKey"
+          },
+          {
+            "name": "app-channel-token",
+            "configurationKey": "Memories:AppChannelToken"
+          },
+          {
+            "name": "dapr-api-token",
+            "configurationKey": "Memories:DaprApiToken"
           }
         ],
         "dynamicSecretNamespaces": [
@@ -317,10 +458,36 @@
             "name": "embedding-credentials",
             "owner": "memories",
             "configurationKey": "Embedding:CredentialNamespace"
+          },
+          {
+            "name": "clock-source-authentication-tokens",
+            "owner": "memories",
+            "configurationKey": "Clock:SourceAuthenticationTokens"
           }
         ],
         "identityNeeds": [],
-        "egress": [],
+        "egress": [
+          {
+            "name": "authenticated-utc",
+            "protocol": "https",
+            "destination": "Clock:Sources:<index>:Endpoint"
+          },
+          {
+            "name": "server-oidc-metadata",
+            "protocol": "https",
+            "destination": "Authentication:JwtBearer:Authority/.well-known/openid-configuration"
+          },
+          {
+            "name": "server-oidc-jwks",
+            "protocol": "https",
+            "destination": "Authentication:JwtBearer:Authority -> metadata.jwks_uri"
+          },
+          {
+            "name": "conversation-provider",
+            "protocol": "https",
+            "destination": "Memories:LlmComponentPath -> conversation.openai provider endpoint"
+          }
+        ],
         "providers": [
           {
             "name": "redis-search",
