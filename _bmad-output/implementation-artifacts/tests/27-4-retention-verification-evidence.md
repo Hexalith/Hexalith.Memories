@@ -1102,3 +1102,9 @@ At root commit `4167ce3fdcffd0923bc9f5d8960025492a279608`, no authenticated Plat
 | `git diff --check` | Exit 0 before this entry. |
 
 No live target was contacted and no checkpoint was advanced. C0-C6, Production lifecycle writes, A41 and its sprint action retain their held states. The protected Story 20.5, sprint, Production overlay, project-context and telemetry bytes matched the prior recorded SHA-256 values. This note is offline verification, not an authenticated packet, reviewer decision, custody receipt or publication proof.
+
+### 2026-10-12 P1 v1 infeasibility and C1.15 packet blocker
+
+Independent retrieval of Platform `e229df9a58ee6899f2b24ba51f652435bc36dc62:docs/implementation/pg2-p1-v1-feasibility-2026-10-12.md` matched SHA-256 `b879819874934937cea19b406edd66c2657ded9527348ce4a8b626227865dd6e`. P1 v1 is accepted as not currently feasible. No adoption manifest was created. The C1.15-only signed packet is not enrolled.
+
+The blocker record is `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/c1-15-only-signed-evidence-packet-decision.md`, SHA-256 `d85537fbbf3a50eeff913a6c3363fbd3f0046ae112b0ce3d1f2b37cbce36eb04`. The owner choice of that packet and its signer is absent, and so are the authenticated status, trusted-time, fresh read-only grant, source and command binding, producer, independent reviewer, and external custody records. C1.16 eligibility, the other twenty-three gates, P5–P7, and later C2–C4 grants remain separate. The canonical C0–C6 rows, Production disablement, and open A41 state are unchanged. No live target was contacted.
