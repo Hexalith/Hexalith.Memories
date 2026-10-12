@@ -30,6 +30,9 @@ _IMAGE_DIGEST_PINS = frozenset({
     "sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
     "sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b",
 })
+_POD_IDENTITY_OUTPUT = "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}"
+_METADATA_PROBE = 'if [ -z "${DAPR_API_TOKEN:-}" ]; then echo "required runtime credential unavailable" >&2; exit 72; fi; metadata="$(wget -qO- --timeout=5 --header="dapr-api-token: ${DAPR_API_TOKEN}" http://127.0.0.1:3500/v1.0/metadata)" || exit $?; case "$metadata" in *"$DAPR_API_TOKEN"*) echo "secret-shaped-output" >&2; exit 73;; esac; printf "%s" "$metadata"'
+_ALPHA_PROBE = 'printf "%s\\n%s\\n" "${AccessTelemetryLifecycle__ComponentIsAlpha-__MISSING__}" "${AccessTelemetryLifecycle__AllowAlphaComponent-__MISSING__}"'
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +46,24 @@ class C115ObservationInspection:
     capture: JsonSnapshot = field(repr=False)
     pod_count: int
     pod_names: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class C115CommandInspection:
+    """Exact declaration snapshot and derived command data; no authority.
+
+    Pod names and command data preserve observation/receipt order. Arguments
+    are immutable tuples, including each complete fixed probe as one argument.
+    ``capture`` retains the caller's identical snapshot and excludes its content
+    from this result's representation.
+    """
+
+    capture: JsonSnapshot = field(repr=False)
+    pod_count: int
+    pod_names: tuple[str, ...]
+    command_count: int
+    command_purposes: tuple[str, ...]
+    command_arguments: tuple[tuple[str, ...], ...] = field(repr=False)
 
 
 def inspect_c115_observation_pins(snapshot: JsonSnapshot) -> C115ObservationInspection:
@@ -68,3 +89,38 @@ def inspect_c115_observation_pins(snapshot: JsonSnapshot) -> C115ObservationInsp
             _refuse("c115-image-pin-mismatch")
     names = tuple(pod["pod"] for pod in pods)
     return C115ObservationInspection(capture, len(pods), names)
+
+
+def inspect_c115_command_declarations(snapshot: JsonSnapshot) -> C115CommandInspection:
+    """Compare pinned declarations to the producer's exact read-only grammar.
+
+    Reuse pin inspection, including unchanged structural producer arguments,
+    command hashes, purpose sets and chronology. Compare argv without parsing,
+    executing, normalizing or consulting ambient configuration. Require context,
+    selection, version/metadata/alpha for each Pod in observation order, recheck.
+    A match establishes declaration consistency only, never actual execution.
+    """
+    observation = inspect_c115_observation_pins(snapshot)
+    value = observation.capture.value
+    target = value["target"]
+    scope = ("--context", target["context"], "-n", target["namespace"])
+    selection = scope + ("get", "pods", "-l", target["selector"], "-o", _POD_IDENTITY_OUTPUT)
+    expected = [("current-context", ("config", "current-context")),
+                ("lifecycle-pods", selection)]
+    for name in observation.pod_names:
+        execute = scope + ("exec", name, "-c")
+        expected.extend((
+            ("daprd-version:" + name, execute + ("daprd", "--", "/daprd", "--version")),
+            ("metadata:" + name, execute + ("lifecycle", "--", "/bin/sh", "-ec", _METADATA_PROBE)),
+            ("alpha-opt-in:" + name, execute + ("lifecycle", "--", "/bin/sh", "-ec", _ALPHA_PROBE)),
+        ))
+    expected.append(("lifecycle-pods-recheck", selection))
+    commands = value["commands"]
+    purposes = tuple(command["purpose"] for command in commands)
+    if purposes != tuple(purpose for purpose, arguments in expected):
+        _refuse("c115-command-sequence-mismatch")
+    arguments = tuple(command["arguments"] for command in commands)
+    if arguments != tuple(arguments for purpose, arguments in expected):
+        _refuse("c115-command-arguments-mismatch")
+    return C115CommandInspection(observation.capture, observation.pod_count,
+                                 observation.pod_names, len(commands), purposes, arguments)

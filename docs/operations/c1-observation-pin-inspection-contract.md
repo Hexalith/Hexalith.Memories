@@ -113,6 +113,25 @@ Publication of the separately prepared Platform authority corrections and an
 authorized root gitlink advance remain outstanding. Fixtures make no operational
 grants, live calls, gate disposition, checkpoint credit or status transition.
 
+## Separate strict command declaration API
+
+The additive `inspect_c115_command_declarations` API is documented in the
+[command declaration inspection contract](c1-command-declaration-inspection-contract.md).
+It reuses this unchanged pin inspector, then compares exact producer child argv
+and receipt sequence: current context, initial Pod selection, version/metadata/
+alpha probes for every Pod in observation order, and final selection recheck.
+Its immutable derived command count is `3 * pod_count + 3`; purposes and argument
+tuples preserve receipt order and its snapshot retains the exact supplied bytes.
+
+The original `inspect_c115_observation_pins` API and its output/refusals keep
+their prior behavior. A simplified structural fixture or a correctly rehashed
+command aimed at another scope can still satisfy this pin API; the separate
+strict API refuses the changed command meaning. Neither API executes commands
+or proves source provenance, stream content, custody, authority, registration or
+gate acceptance. Strict declaration matching adds no operational grant and
+changes no integrated prerequisite, Production hold, parent Story 27.4 state,
+A41 state or historical disposition.
+
 ## Reproducible offline verification
 
 From the repository root:
