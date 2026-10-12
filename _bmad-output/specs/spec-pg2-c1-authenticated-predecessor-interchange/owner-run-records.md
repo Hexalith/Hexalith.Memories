@@ -141,6 +141,76 @@ immutable `OwnerRunInspection`, labelled `sole-owner/self-reviewed`. They create
 no execution handle, accepted gate, checkpoint, publication or A41 close-out.
 The pure `inspect_owner_run` remains free of I/O, and live consumers remain closed.
 
+## Offline current-record and private-custody wrapper
+
+[`dispatch_owner_run_files`](../../../tools/access_telemetry_c1_owner_custody.py)
+has the API `dispatch_owner_run_files(plan_path, approved_plan_sha256, *,
+custody_root, now, action)`. Supply absolute canonical POSIX strings for
+`plan_path` and `custody_root`, the exact plan digest retained outside the files,
+and the same aware UTC `now` and single `action` used by the byte dispatcher.
+This wrapper freshly reads all three files on every call. It returns only the
+existing immutable `OwnerRunInspection`; it adds no execution flag or authority.
+
+The wrapper requires the plan's additional `recordPath` binding. The existing
+`dispatch_owner_run` byte API still consumes its original seven bindings and
+requires callers to provide current record bytes. The wrapper's plan path and
+its approved `recordPath` and `statusPath` must be distinct canonical paths
+strictly below the caller's custody root. The retained plan's `custodyRoot` must
+match that caller root exactly. The wrapper pins the plan's exact file bytes to
+`approved_plan_sha256` before reading its record or status locations, recomputes
+the record digest, and reuses the byte dispatcher's plan/status, policy, PG2,
+self-review, action and window checks. Other full-plan fields still grant nothing.
+
+The three named artifacts and their directory chains at/below the custody root,
+including that root, must belong to the effective OS user and have no group/other
+permission bits. The wrapper does not enumerate other custody descendants. Typical
+private modes are `0700` for directories and `0600` for files. The named files must
+be regular and single-link and have distinct device/inode identities. Every path
+component, including ancestors above custody, is opened without following
+symlinks. Ancestors above custody need not be private, but their named identities
+are still held and checked. OS ownership establishes local custody only; it does
+not authenticate `github:user:6775094` or replace retained owner approval.
+
+The initial read and final readback each consume at most `MAX_ARTIFACT_BYTES + 1`
+bytes per artifact; only documents of at most `MAX_ARTIFACT_BYTES` are accepted.
+The wrapper checks stable size, ownership, permissions and file link count; file
+modification/change times and private-directory change times must be available as
+integer nanoseconds. Missing/wrong-type required timestamps refuse. It keeps the
+plan, record, status and ancestor descriptors through dispatch. Before returning,
+it seeks and rereads the held plan, record and finally status, comparing each
+bounded exact-byte readback to its originally inspected bytes while revalidating
+the named file and ancestor metadata. The byte comparison detects same-size
+rewrites even when timestamps repeat; checking status last detects withdrawal
+during the plan or record final checks. Replacement, removal,
+rewrite, custody permission/owner changes or ancestor movement observed during
+reading or dispatch refuses with no inspection. Unrelated file/directory creation
+or removal above custody does not invalidate unchanged custody inputs. Directory
+identity checks compare device/inode, mode and UID/GID without directory link-count
+churn; the named files still require a single link. Filesystem
+operations that cannot provide these checks refuse. `OwnerRunCustodyError`
+exposes only a content-free `owner-custody-...` code after cleanup and internal
+handlers finish, without an internal cause/context chain. Existing inspector
+refusals retain their `OwnerRunInspectionError` type and code with the same
+sanitization.
+
+Writers prepare complete private files separately and atomically replace the
+named file; never rewrite current files in place. A concurrent dispatch may
+refuse, and any retry must perform a new complete call. Changed plan or record
+bytes require their updated exact approved plan binding and matching status.
+No bytes or withdrawal value survive between wrapper calls; a prior inspection
+cannot authorize a later use. These sequential byte and metadata checks establish
+local point-in-time evidence ending with status readback/validation. They do not
+provide a simultaneous filesystem snapshot, filesystem immutability or a
+continuing lock after return.
+
+Complete gate-specific registry/semantic acceptance, collectors, consumer
+migration, approved target/resource actions, lifecycle/Lease/clock evidence,
+bounded failure restoration, result acceptance and terminal/publication checks
+remain required before live admission. This wrapper contacts no target,
+registers no collector, completes no gate or checkpoint, publishes nothing and
+does not close Story 27.4 or A41. Production configuration and live consumers
+remain unchanged.
+
 ## Ordered owner acceptance
 
 Preserve the already selected acyclic parent sets from the P4 decision packet:

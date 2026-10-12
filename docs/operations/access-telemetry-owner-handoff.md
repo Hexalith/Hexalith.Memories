@@ -69,6 +69,50 @@ private custody root, and atomically replace `statusPath`. A concurrent dispatch
 fresh read; never rewrite the current status in place. The full contract is in
 [owner run records](../../_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/owner-run-records.md#offline-owner-plan-dispatcher).
 
+The offline [file wrapper](../../tools/access_telemetry_c1_owner_custody.py)
+provides `dispatch_owner_run_files(plan_path, approved_plan_sha256, *,
+custody_root, now, action)`. It reads the plan, its current record and its current
+status anew for each call. The plan adds `recordPath`; the existing byte API
+keeps its original seven required bindings. The caller's custody root must
+exactly equal the approved plan's `custodyRoot`. Plan, record and status must be
+distinct canonical paths strictly below that root; the outside approval digest
+pins exact plan bytes before the other locations are read.
+
+The wrapper checks effective OS-user ownership and no group/other permissions on
+the three named artifacts and their directory chains at/below the custody root,
+including that root. It checks regular single-link files and distinct file
+device/inode identities; it does not enumerate other custody descendants. Private
+directory/file modes such as
+`0700`/`0600` satisfy the permission condition. All ancestors are traversed
+without following symlinks; public ancestors above custody retain identity checks
+without the private-mode requirement. OS ownership proves local custody only;
+it does not authenticate the GitHub policy principal. The initial read and final
+readback each consume at most `MAX_ARTIFACT_BYTES + 1` per artifact; oversized
+documents refuse. File modification/change times and private-directory change
+times must be available as integer nanoseconds; missing/wrong-type values refuse.
+
+All file and ancestor descriptors remain held through dispatch. Before returning,
+the wrapper seeks and rereads the held plan and record, then status last, and
+compares each bounded readback with its originally inspected exact bytes. Each
+readback also revalidates named identities and required metadata. This detects
+same-size rewrites even when timestamps repeat; withdrawal during the plan or
+record final checks is included in the final status readback. Observed replacement,
+removal, rewrite, owner/mode changes or ancestor movement refuses with no
+inspection. Unrelated file/directory creation or removal above custody does not
+invalidate unchanged private inputs; directory identity excludes link-count churn.
+File/parse/unsupported-filesystem failures expose only a
+content-free `OwnerRunCustodyError` code after internal handlers and cleanup;
+existing `OwnerRunInspectionError` refusals keep their type and code. Write
+complete private replacement files and atomically replace the named files;
+never rewrite them in place. After any refusal, retry only with a fresh complete
+call and current approved bindings. These sequential checks establish local
+point-in-time evidence ending with status readback/validation. They do not provide
+a simultaneous filesystem snapshot, immutability or a continuing lock after return.
+The [file-wrapper contract](../../_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/owner-run-records.md#offline-current-record-and-private-custody-wrapper)
+documents the remaining execution requirements. The result remains only the
+requested `OwnerRunInspection`, labelled `sole-owner/self-reviewed`; it grants
+no execution, gate, checkpoint, publication or A41 authority.
+
 Tools implement and run the collectors, retain secret-safe command/results and
 SHA-256 manifests, verify each of the twenty-five technical gates, and report
 failures. Missing collectors are development tasks assigned to the agent. Old
