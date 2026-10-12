@@ -201,13 +201,6 @@ spec:
               value: access-telemetry-clock-key
             - name: Clock__SignerKeyEpoch
               value: unconfigured
-            - name: AccessTelemetryLifecycle__AttestationVerificationKey
-              valueFrom:
-                secretKeyRef:
-                  name: access-telemetry-clock-key
-                  key: verification-public-key
-            - name: AccessTelemetryLifecycle__ClockSignerKeyEpoch
-              value: unconfigured
             - name: Clock__Sources__0__Id
               value: utc-source-a
             - name: Clock__Sources__0__Endpoint

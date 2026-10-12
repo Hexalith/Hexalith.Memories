@@ -454,8 +454,52 @@
                 "authorizationPolicy": "authenticated"
               },
               {
+                "name": "validate",
+                "kind": "query",
+                "authorizationPolicy": "authenticated"
+              }
+            ]
+          },
+          {
+            "name": "telemetry-inspection",
+            "server": "telemetry",
+            "protocol": "http",
+            "routePrefix": "/v1/access-telemetry/inspect",
+            "exposure": "internal-only",
+            "surfaceClass": "service",
+            "authorization": {
+              "policy": "authenticated",
+              "permissions": []
+            },
+            "callers": [
+              "memories-access-telemetry-inspector"
+            ],
+            "operations": [
+              {
                 "name": "inspect",
                 "kind": "query",
+                "authorizationPolicy": "authenticated"
+              }
+            ]
+          },
+          {
+            "name": "telemetry-reclamation-evidence",
+            "server": "telemetry",
+            "protocol": "http",
+            "routePrefix": "/v1/access-telemetry/physical-reclamation-evidence",
+            "exposure": "internal-only",
+            "surfaceClass": "service",
+            "authorization": {
+              "policy": "authenticated",
+              "permissions": []
+            },
+            "callers": [
+              "access-telemetry-adapter"
+            ],
+            "operations": [
+              {
+                "name": "physical-reclamation-evidence",
+                "kind": "command",
                 "authorizationPolicy": "authenticated"
               }
             ]

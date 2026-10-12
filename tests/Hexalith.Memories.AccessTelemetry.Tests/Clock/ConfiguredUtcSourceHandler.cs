@@ -2,6 +2,7 @@ namespace Hexalith.Memories.AccessTelemetry.Tests.Clock;
 
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
 using Hexalith.Memories.AccessTelemetry.Clock;
@@ -27,8 +28,9 @@ internal sealed class ConfiguredUtcSourceHandler : HttpMessageHandler
         uri.AbsolutePath.ShouldBe("/utc");
         string sourceId = uri.Host.Split('.')[0];
         new[] { "clock-a", "clock-b", "clock-c" }.ShouldContain(sourceId);
-        request.Headers.Authorization?.Scheme.ShouldBe("Bearer");
-        request.Headers.Authorization?.Parameter.ShouldBe($"token-{sourceId}");
+        AuthenticationHeaderValue authorization = request.Headers.Authorization.ShouldNotBeNull();
+        authorization.Scheme.ShouldBe("Bearer");
+        authorization.Parameter.ShouldBe($"token-{sourceId}");
         _requestedSourceIds.Add(sourceId);
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
