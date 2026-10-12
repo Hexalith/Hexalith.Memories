@@ -1,7 +1,47 @@
 # Fail-closed verification matrix
 
+## Current policy: sole-owner qualification, adopted 2026-10-12
+
+The owner approved `sole-owner-qualification/2026-10-12`, including disclosed
+self-review and private local hashed/readback evidence for non-Production
+qualification. The owner is accountable for development, Operations and Security;
+producer/reviewer overlap is permitted for this revision. C1.25 means owner
+security risk acceptance; C5/C6 and both bundle roles retain distinct records
+without claiming independent human review. A separate P1 receipt service,
+external immutable archive, 365-day/off-site custody and independent grant issuers
+are not prerequisites for this mode. The older protocol material below remains
+history or the stronger version's contract; it cannot override this revision or
+be used as a permissive fallback.
+
+A concrete owner-approved run still binds the actual observed target, exact PG2
+profile/workload, source, actions, window and evidence root. All 25 technical
+checks, source/command verification, privacy, runtime clock and cleanup remain.
+No collector is implemented or gate passed by this policy change. Existing
+execution consumers remain closed until the new verifier/dispatch and missing
+registrations are implemented. Production activation and publication need their
+own approved scopes. See [owner handoff](../../../docs/operations/access-telemetry-owner-handoff.md)
+and [approved proposal](../../planning-artifacts/sprint-change-proposal-2026-10-12-sole-owner-qualification.md).
+
 These are required **future tests**, not implemented or passing evidence.
 The new focused lane is proposed in `implementation-tasks.md`.
+
+## Active owner-mode verification
+
+The first implemented slice is record inspection, not complete predecessor
+admission. `tests/tooling/access_telemetry_c1_interchange/test_owner_run.py` supplies
+23 executed positive/negative inspection tests, including exact raw-byte anchors,
+the named self-reviewed owner, scope/types, action-specific timing, withdrawal,
+secret safety, immutable results and zero dependencies. Subsequent regression
+counts are recorded in the inspection spec after execution.
+
+Full owner-mode I3/I5 must additionally prove a complete semantically verified
+owner-produced 25-gate set, ordered C1.24/C1.23/C1.25 records, distinct derived role
+records and owner-accepted C5/C6 without independent-human claims. Negative cases
+must refuse absent disclosure, changed/reused/mixed evidence, unsupported bindings,
+unapproved plan/resources, expiry/withdrawal, cycles, missing restoration and
+legacy/version bypass. Those full-pipeline cases are required future work, not
+claimed by the pure inspection tests. The older issuer/separation matrix below
+continues to govern its historical stronger version.
 
 For each negative case, assert: nonzero refusal / rejected result; no accepted
 artifact published; no collector or downstream target/dependency invocation;

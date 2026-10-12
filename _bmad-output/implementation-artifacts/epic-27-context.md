@@ -43,3 +43,17 @@ Use “access telemetry.” Label status, cause, impact and next action; colour/
 - I1 structural readers, named-owner policy, GitHub authority preparation, source-receipt label/digest correction, offline I2 registry/source inspection, and offline C1.15 declared-observation pin inspection are complete. Isolated fixture contracts and declared pins grant no registration, deployed accepting entry, or operational authority. Closed I2 registration and provenance, I3–I6 semantic verification, custody/session, assembly and consumer migration remain incomplete. P1–P7 still need actual operational grants, time/precision, custody/session, delegation/topology, registrations, C1.16 eligibility/renewal and consumer-dispatch decisions. Fresh live evidence and inherited producer maintenance remain outstanding.
 - Story 27.4 repository machinery may be `awaiting-operator`; its remaining live draft is held. Separate prerequisites need their own approved scopes. Completion/Production writes/A41 require qualified 27.3, registered successors done, all C1 passed on one unchanged eligible profile/session, deployment-shaped C2–C6, terminal validation and publish verification. Keep sprint/history bytes unchanged; live faults, purge and publication need their scoped authority.
 - Keep `20.5-A41-ACCESS-TELEMETRY-RETENTION` carried forward and its action open until close-out. Reconcile architecture/A41 to canonical evidence; Epic 20/20.5 remain historically done. Tenant enforcement, erased-tenant restore and other Production blockers retain their owners/evidence.
+
+### Sole-owner qualification policy, adopted 2026-10-12
+
+The owner explicitly approved `sole-owner-qualification/2026-10-12`. For
+non-Production qualification the same owner may produce and accept evidence,
+labelled `sole-owner/self-reviewed`. C1.25 records owner security risk acceptance;
+C5/C6 and Operations/Security roles retain distinct records without independent
+review claims. Owner-approved bounded run records and private local hashed/readback
+evidence replace separate institutional issuers and external immutable custody
+for this version. Actual target/action approval and all 25 technical gate passes
+remain required. Production activation, runtime identity/security and publication
+remain separately governed. Earlier institutional policy wording is retained as
+history for the stronger/legacy protocol. Policy adoption does not implement a
+collector, register a successor, pass a gate, complete 27.4 or close A41.

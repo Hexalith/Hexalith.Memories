@@ -206,6 +206,20 @@ Rules below are the adopted target architecture. Where current code differs, the
 
 - **Retained principal token:** AD-17 owns one tenant-keyed mapping from authenticated issuer-plus-subject to a random opaque principal token, stable while the tenant is active and collision-checked on issuance. Retained access telemetry carries that token, never raw issuer, subject, email, or a reversible encoding of them. The mapping is not exported or served through a product surface and is physically purged and verified under AD-16 on tenant erasure; the token may remain in bounded retained telemetry after the mapping is gone but cannot be resolved there. A token whose mapping is unavailable is omitted rather than rebuilt from a guess, and the omitted-record consequence is included in telemetry qualification evidence.
 
+### Sole-owner qualification policy, adopted 2026-10-12
+
+The owner explicitly approved `sole-owner-qualification/2026-10-12`. For
+non-Production qualification the same owner may produce and accept evidence,
+labelled `sole-owner/self-reviewed`. C1.25 records owner security risk acceptance;
+C5/C6 and Operations/Security roles retain distinct records without independent
+review claims. Owner-approved bounded run records and private local hashed/readback
+evidence replace separate institutional issuers and external immutable custody
+for this version. Actual target/action approval and all 25 technical gate passes
+remain required. Production activation, runtime identity/security and publication
+remain separately governed. Earlier institutional policy wording is retained as
+history for the stronger/legacy protocol. Policy adoption does not implement a
+collector, register a successor, pass a gate, complete 27.4 or close A41.
+
 ### AD-18 — Partition capacity, fairness, and backpressure by tenant [ADOPTED]
 
 - **Binds:** NFR1-NFR7, NFR12-NFR14, NFR36, ingestion, batch work, embedding, query, repair, migration, and provider throttling.

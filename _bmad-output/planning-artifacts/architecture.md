@@ -1770,3 +1770,17 @@ tests/
 6. Register workflows and actors in `Program.cs` via `AddDaprWorkflow()` + `AddActors()` + `MapActorsHandlers()`
 7. Begin Gate 1 critical path: `FusionAlgorithm.cs` + `Bm25Normalizer.cs` + unit tests
 8. Implement `IngestionWorkflow` + activities for end-to-end ingestion pipeline
+
+### Sole-owner qualification policy, adopted 2026-10-12
+
+The owner explicitly approved `sole-owner-qualification/2026-10-12`. For
+non-Production qualification the same owner may produce and accept evidence,
+labelled `sole-owner/self-reviewed`. C1.25 records owner security risk acceptance;
+C5/C6 and Operations/Security roles retain distinct records without independent
+review claims. Owner-approved bounded run records and private local hashed/readback
+evidence replace separate institutional issuers and external immutable custody
+for this version. Actual target/action approval and all 25 technical gate passes
+remain required. Production activation, runtime identity/security and publication
+remain separately governed. Earlier institutional policy wording is retained as
+history for the stronger/legacy protocol. Policy adoption does not implement a
+collector, register a successor, pass a gate, complete 27.4 or close A41.

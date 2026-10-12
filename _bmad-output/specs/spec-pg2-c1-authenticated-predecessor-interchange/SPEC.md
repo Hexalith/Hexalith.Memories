@@ -7,84 +7,75 @@ companions:
   - implementation-tasks.md
   - failure-modes.md
   - brownfield.md
+  - owner-run-records.md
   - ../../planning-artifacts/c1-security-prerequisites-2026-10-04/predecessor-interchange-contract.md
   - ../../implementation-artifacts/epic-27-context.md
   - ../../../docs/operations/access-telemetry-c1-pg2-c1-15-contract.md
   - ../../implementation-artifacts/27-22-component-and-backend-identity.md
+  - ../../../docs/operations/access-telemetry-owner-handoff.md
 sources: []
 ---
 
-# Authenticated PG2 C1 predecessor interchange prerequisite
+# PG2 C1 predecessor interchange under sole-owner qualification
 
-Review state: **proposed; unresolved prerequisites; not implementation-ready**.
-Authored 2026-10-07 against `14bb1c17`. This folder tracks the prerequisite
-separately; it grants no successor registration, reviewer authority or gate credit.
-This kernel and its companions are the proposed implementation contract, derived
-from the append-only memory and cited source contracts.
+Policy adopted 2026-10-12: `sole-owner-qualification/2026-10-12`. Implementation remains incomplete;
+this policy decision creates no live grant, accepted gate or predecessor.
+Older authentication/provider protocols remain separate versioned history.
 
 ## Why
 
-The current predecessor validator can accept hash-correct artifacts without
-reading their meaning and treats different reviewer labels as independent
-approvals. PG2 C1.15 now supplies a neutral provenance capture, but no implemented
-authenticated disposition contract connects it to the twenty-five-gate C1
-predecessor. Operations and Security need a verifiable interchange that refuses
-unsupported producers, ineligible sessions and unauthenticated decisions before
-downstream qualification can use them.
+The sole owner needs a practical way to qualify access telemetry. Institution-style
+receipt-service, independent-reviewer and external-custody prerequisites prevent
+progress without adding implemented behavioral proof. The owner explicitly approved
+self-review and private local evidence. Tools must collect and verify actual facts
+and report that assurance honestly before downstream qualification can proceed.
 
 ## Capabilities
 
 - **CAP-1**
   - **intent:** Validate each current-profile capture as attributable evidence for its literal gate.
-  - **success:** The capture matches its registered schema, complete source/helper set, command ledger, observations and required cleanup; changed, unrelated or unsupported artifacts refuse.
+  - **success:** Exact registered schema, source/helper set, command ledger, observations and cleanup pass; altered, unrelated or unsupported artifacts refuse.
 - **CAP-2**
-  - **intent:** Establish that an independent authorized reviewer decided on the exact retained capture.
-  - **success:** Verified authority binds producer/reviewer identities, role, scope, decision, capture bytes and validity; labels, self-approval, expired or revoked authority refuse.
+  - **intent:** Establish accountable owner decisions on exact retained captures.
+  - **success:** The explicitly selected owner policy binds the named owner's approvals to exact evidence, scope and current validity. Self-review is disclosed; absent, changed, expired or withdrawn decisions refuse. Older independent-review rules remain strict for their own versions.
 - **CAP-3**
   - **intent:** Establish one complete C1 predecessor eligible for its approved session.
-  - **success:** Exactly twenty-five separately accepted gates and genuine Operations/Security bundle decisions bind one approved profile, workload, target and eligible session; every missing prerequisite refuses.
+  - **success:** Exactly 25 separately attributable passed gates and distinct Operations/Security role records bind one approved profile, workload, target and eligible session; no missing collector, observation or approval can be counted as passed.
 - **CAP-4**
   - **intent:** Prevent invalid interchange from reaching downstream qualification.
-  - **success:** Negative fixtures refuse before downstream launch or target dependencies, publish no accepted artifact, and leave protected lifecycle and tracking states unchanged.
+  - **success:** Invalid or unsupported versions refuse before launch/target dependencies, publish no accepted artifact, and preserve lifecycle and tracking states.
 
 ## Constraints
 
-- Bind exact `PG-ONPREM-2` profile SHA-256 `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` and workload SHA-256 `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f`.
-- Preserve Story 27.4 `in-progress` and incomplete, A41 and its sprint action open, and Production lifecycle writes disabled.
-- Captures, fixtures, advertised capabilities, Git identities and reviewer labels supply no acceptance or authority. Preserve historical PG1 decisions and the C1.16 closed-window acceptance without enlarging their scope.
-- Require fresh versioned evidence where facts are missing. Never synthesize provenance, re-label v1 packets, default missing authority policy, or treat a context name as authenticated cluster identity.
-- Require approved implemented producer bindings and genuine independent receipts; missing bindings or unresolved authority/session decisions fail closed.
-- C1.23, C1.24 and C1.25 stay individually attributable; aggregate approvals and post-evidence C5/C6 cannot substitute for them.
-- This slice consumes evidence and authorization; it does not execute collectors or targets. Its dependency-injection test seam cannot authorize a deployed consumer.
+- Bind `PG-ONPREM-2`, profile SHA-256 `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` and workload SHA-256 `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f`.
+- Select only named owner `github:user:6775094` under `sole-owner-qualification/2026-10-12`; that selected identifier is not a new GitHub authentication claim. Label decisions `sole-owner/self-reviewed` and C1.25 `owner security risk acceptance`.
+- For the new qualification version, replace P1 external issuer/status services and separate human grants with retained owner-approved policy/run records, local current withdrawal/expiry checks and private hashed/readback evidence. Disclose the owner-controlled trust boundary; claim no independently immutable or certified custody.
+- A run needs explicit observed-target/action/window approval. Context labels do not prove identity. Local approval time is not a substitute for qualified runtime clock evidence. A policy approval is not live action authority.
+- Preserve all technical predicates, gate identifiers, exact source/command bindings, safe file traversal, bounds, cleanup and acyclic approval dependencies. Retain distinct gate, role and C5/C6 records; one approval cannot make a missing technical observation pass.
+- Strictly dispatch versions. Do not relabel legacy capture/disposition bytes, backfill historical execution or weaken legacy consumers. New checked policy/run records alone cannot authorize a downstream producer.
+- Keep 27.4 incomplete, A41/action open and Production lifecycle writes disabled until actual required evidence and governed publication verification pass. Production custody/activation are separate owner decisions.
 
 ## Non-goals
 
-- Registering held successors, renewing other gate producers, provisioning an identity/receipt service, or selecting a trust root on an owner's behalf.
-- Running live targets or C0/C2-C6, enabling qualification or Production, publishing close-out, or completing Story 27.4/A41.
-- Extending product authentication into reviewer authority, changing deployment inputs, or claiming tamper-evident/compliant audit retention or node/site HA.
+- Executing a live target, fault, purge, publication or Production activation from this contract or policy approval.
+- Fabricating gate registrations/evidence or changing historical PG1 and closed-window C1.16 acceptance.
+- Provisioning a new proprietary receipt issuer, MCP server or module CLI.
 
 ## Success signal
 
-One offline verifier accepts a complete, independently authenticated fixture under
-an isolated test trust policy, and rejects every specified negative before any
-downstream dependency call. With today's missing bindings and authority policy,
-real assembly remains refused. Fixture success creates no operational acceptance.
+The complete versioned verifier accepts an eligible same-session owner-approved
+predecessor with actual gate semantics and refuses every negative before downstream
+calls. Isolated fixtures prove mechanics only; deployed acceptance remains closed
+while implementation, registrations or a scoped run approval are missing.
 
 ## Assumptions
 
-- The new wire schemas, J1 encoding, parser budgets and proposed implementation paths are engineering proposals for review. Their approval does not appoint reviewers or adopt a receipt mechanism.
-- Capabilities are predicates of one interchange verdict. Independently shippable authority-provider, producer-renewal and registration work remains outside this slice.
+- Wire/parser engineering decisions retained in companions remain bounded implementation proposals. The approved owner model supersedes institutional authority assumptions only for its explicit version.
 
-## Open Questions
+## Remaining work
 
-- **P1:** Security must name the supported producer/reviewer identity mechanism, receipt issuer, trust roots, verification/retrieval/revocation adapter and accountable maintainer.
-- **P2:** Security with Operations must approve numeric capture, review, approval, session and revocation-status windows, trusted time and key-rotation rules.
-- **P3:** Operations must provide authenticated target/session authority and approved archive custody, retention, access and cleanup policy.
-- **P4:** Security and the gate approvers must settle role authorization, delegation/quorum and the C1.23/C1.24/C1.25 evidence dependencies without approval cycles.
-- **P5:** The Deployment Adapter Developer and gate owners must supply exact approved producer/schema/verifier registrations and done owner evidence for all twenty-five gates.
-- **P6:** Architecture, Security and Operations must decide C1.16 closed-window eligibility or require fresh versioned evidence, preserving its existing acceptance and limitations.
-- **P7:** The interchange and Story 27.4 owners must approve consumer migration and separately resolve the legacy runtime qualification-gate profile pin.
-
-Ownership, consequences and objective reopen evidence are in
-[implementation-tasks.md](implementation-tasks.md). No named assignee or approval
-is inferred from a role label.
+- P1–P4 governance is resolved for sole-owner qualification. Implement the local owner policy/run/decision verifier and strict consumer dispatch; no external grant issuer or second reviewer is required for this mode.
+- P5: agent implements/registers missing collectors and semantic verifiers with the owner accountable; absent bindings still refuse.
+- P6: agent proves current same-session C1.16 eligibility or prepares fresh authorized capture. Historical acceptance is preserved.
+- P7: consumer migration is approved in principle and must be implemented/tested, including runtime profile compatibility and denial before dependencies.
+- Before live use, prepare a concrete read/action plan and obtain the owner's approval. Actual target, evidence root, time window and result acceptance are run inputs, not facts to invent or prerequisites the user must manually manufacture.

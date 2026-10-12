@@ -1,5 +1,15 @@
 # PG-ONPREM-2 C1 I2 registration and live-evidence request
 
+## Current handoff, adopted 2026-10-12
+
+The owner approved sole-owner qualification. The institutional request below is
+retained as historical context for the older protocol. A new Platform P1 adoption
+manifest, independent human reviewer or external immutable custody service is not
+required for the new mode. The owner approves the prepared target/action plan and
+accepts measured results; the agent owns record preparation, collectors and
+verifier implementation. See [the owner handoff](../../docs/operations/access-telemetry-owner-handoff.md).
+Actual scoped run approval and complete technical evidence are still required.
+
 **State:** request prepared 2026-10-10; no execution grant or approval recorded. This is the next separately tracked prerequisite for Story 27.4. It does not change the owner-approved P1–P4 directions, the deployed refusal, or any C1 gate state.
 
 **Ownership clarification (2026-10-10):** `Hexalith.Platform` owns the deployment target and operational access boundary. Memories must consume authoritative Platform-produced target, namespace, custody, credential-path and grant evidence; the sole contributor is not expected to invent or manually restate those runtime facts. Jérôme Piquot is the sole project contributor and Operations/Security policy authority, so no second policy co-signer is requested. Existing distinct producer/reviewer principal rules, C1.25 author/reviewer separation and post-evidence C5/C6 separation remain unresolved unless separately corrected by an approved policy change. A single contributor or this clarification alone cannot satisfy them. Track the response in [issue #57](https://github.com/Hexalith/Hexalith.Memories/issues/57).
@@ -70,3 +80,28 @@ Platform commit `e229df9a58ee6899f2b24ba51f652435bc36dc62`, file `docs/implement
 The reviewable blocker record is [`c1-15-only-signed-evidence-packet-decision.md`](../specs/spec-pg2-c1-authenticated-predecessor-interchange/c1-15-only-signed-evidence-packet-decision.md), SHA-256 `d85537fbbf3a50eeff913a6c3363fbd3f0046ae112b0ce3d1f2b37cbce36eb04`. The owner has not selected that packet, an independently pinned signer, or a bounded custody replacement. No authenticated status, trusted-time, fresh read-only target/session grant, exact source and command binding, actual producer, independent reviewer, or external custody record was supplied. `NO_SESSION_ID`, `NO_GRANT_REF`, and `NO_TARGET_DIGEST` remain in force.
 
 C1.16 eligibility, the other twenty-three gates, P5–P7, and later C2–C4 grants stay separate obligations. Disposition remains `RECHECK_ONLY`. This audit contacted no live target and did not accept a C1 binding, enable Production writes, complete Story 27.4, or mutate A41.
+
+
+## 2026-10-12 current-pin response audit for Story 27.4 spec 14
+
+At Memories HEAD `f4c7d68f619f376debca440387428139a61080cc`, the root-recorded and checked-out Platform pin is `977f2e01347226ac727b707aee4f140f5dc8b010`. Local Git-object and exact worktree readback of `docs/implementation/pg2-p1-v1-feasibility-2026-10-12.md` matches SHA-256 `b879819874934937cea19b406edd66c2657ded9527348ce4a8b626227865dd6e`. The cited P1 contract and qualification record still match `968316ab6801c7d9f84c9a5fc2bd7b85d8f905b05a1fea32b90f7a490eed3ab2` and `cf7fa72152234133e468c965ea5d87b085ae607ed056f8cd1ba189203c0c4b3e`. The updated pin contains the same infeasibility finding; the earlier dated observations remain intact.
+
+No authenticated adoption, current status/revocation, trusted time, target/session, custody, source/command, producer/reviewer or separate fault/purge grant was supplied to this run. The signed-packet blocker remains unchanged and the proposed packet remains unenrolled. This is a local repository and task-input audit, not proof about records outside the workspace or an authenticated operational status check. Unknown current authority therefore denies execution. Platform Operations owns the missing target/session, custody and action records; Security owns receipt trust, current status, policy and principal grants. Those are provider prerequisites, with no requirement for the user to reconstruct runtime facts. The accepted same-session 25-gate predecessor and two authenticated bundle decisions remain absent; closed-window C1.16 acceptance grants no new eligibility.
+
+Disposition remains `RECHECK_ONLY`. The [spec 14 offline verification receipt](tests/27-4-retention-verification-evidence.md#2026-10-12-spec-14-current-pin-readiness-hold) records both required passing Python suites. No live target, gate, Lease or workload was contacted or mutated; C0–C6 states, A41/action and Production disablement stay unchanged. All six live execution tasks remain open.
+
+### Sole-owner qualification policy, adopted 2026-10-12
+
+The owner explicitly approved `sole-owner-qualification/2026-10-12`. For
+non-Production qualification the same owner may produce and accept evidence,
+labelled `sole-owner/self-reviewed`. C1.25 records owner security risk acceptance;
+C5/C6 and Operations/Security roles retain distinct records without independent
+review claims. Owner-approved bounded run records and private local hashed/readback
+evidence replace separate institutional issuers and external immutable custody
+for this version. Actual target/action approval and all 25 technical gate passes
+remain required. Production activation, runtime identity/security and publication
+remain separately governed. Earlier institutional policy wording is retained as
+history for the stronger/legacy protocol. Policy adoption does not implement a
+collector, register a successor, pass a gate, complete 27.4 or close A41.
+
+The institutional I2 request above is superseded for owner-mode qualification. The current handoff is [the owner guide](../../docs/operations/access-telemetry-owner-handoff.md). Missing collectors and verifier migration are development work; the owner supplies plan and result approval. No new Platform P1 response is required to implement this mode.

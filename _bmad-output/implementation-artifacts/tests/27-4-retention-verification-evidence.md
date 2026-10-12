@@ -1108,3 +1108,95 @@ No live target was contacted and no checkpoint was advanced. C0-C6, Production l
 Independent retrieval of Platform `e229df9a58ee6899f2b24ba51f652435bc36dc62:docs/implementation/pg2-p1-v1-feasibility-2026-10-12.md` matched SHA-256 `b879819874934937cea19b406edd66c2657ded9527348ce4a8b626227865dd6e`. P1 v1 is accepted as not currently feasible. No adoption manifest was created. The C1.15-only signed packet is not enrolled.
 
 The blocker record is `_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/c1-15-only-signed-evidence-packet-decision.md`, SHA-256 `d85537fbbf3a50eeff913a6c3363fbd3f0046ae112b0ce3d1f2b37cbce36eb04`. The owner choice of that packet and its signer is absent, and so are the authenticated status, trusted-time, fresh read-only grant, source and command binding, producer, independent reviewer, and external custody records. C1.16 eligibility, the other twenty-three gates, P5–P7, and later C2–C4 grants remain separate. The canonical C0–C6 rows, Production disablement, and open A41 state are unchanged. No live target was contacted.
+
+
+### 2026-10-12 spec 14 current-pin readiness hold
+
+The [current response audit](../pg2-c1-i2-operations-security-request.md#2026-10-12-current-pin-response-audit-for-story-274-spec-14) rechecked Memories HEAD `f4c7d68f619f376debca440387428139a61080cc` and its root-recorded Platform pin `977f2e01347226ac727b707aee4f140f5dc8b010`. The same P1 v1 infeasibility report and supporting contract/qualification blobs match their previously recorded digests. No authenticated operational response or accepted eligible C1 predecessor was supplied. The signed-packet blocker remains unenrolled; current authority, status and revocation cannot be authenticated from these local bytes. Disposition remains `RECHECK_ONLY`.
+
+The two commands required by spec 14 ran sequentially from the repository root between `2026-10-12T14:03:58Z` and `2026-10-12T14:06:00Z`. Retained local receipt: `/tmp/story-27-4-spec14-oo85qkwd`. It contains the verification script, exact command arrays, stdout/stderr, exits, execution-time source revision/status/diff, nonrecursive dependency revisions, current-pin readback and tracked-file hashes. It is offline verification output, not an approved evidence root or custody archive.
+
+| Executed command | Result |
+| :--------------- | :----- |
+| `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v` | 242 tests in 85.213s; bare `OK`, exit 0, zero failures/errors/skips. |
+| `env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p 'test_*.py' -v` | 83 tests in 34.426s; bare `OK`, exit 0, zero failures/errors/skips. |
+| `git diff --check` | Exit 0 before these audit notes were appended. |
+
+| Receipt item | SHA-256 |
+| :----------- | :------ |
+| Execution-time tracked diff | `76e398c511aac59ee662bbaaba7b399bb6c58dc967e8d78dfded17ceadc5d88c` |
+| Nonrecursive dependency revisions | `f8a2bd8315332d8171227c317b7e0fe643c65e914c3771ac20221cb3639b8385` |
+| Interchange stderr | `a5454d458662abe3cee2f0720e6ef713e1f5e05fb5530556598d3ea443c0c0b2` |
+| Lifecycle stderr | `ff6402859eb07aa72845001876b0886f808dc19e50252f1b3f12936b08e93e57` |
+| Current-pin readback JSON | `932cbcdd2c280851e9f2b165549a36520a3e8c0ca0e819eb878db6c4317738cd` |
+| Tracked-file baseline | `6c893c2707edcba36b448c311b82e62e27b38dab365a384e9490d90ed3da1980` |
+
+The execution-time diff contained only the parent workflow's spec 14 status change to `in-progress`. Every tracked file stayed byte-identical during the checks. The blocker SHA-256 `d85537fbbf3a50eeff913a6c3363fbd3f0046ae112b0ce3d1f2b37cbce36eb04` identifies its checked-out CRLF bytes; its LF Git blob SHA-256 is `e5783bb1b45a80ef716e313fe1fa31cead3d3c6ff7c3c1f8d10bdf3b2002440e`. Both were checked without rewriting either representation.
+
+The logs record `ok` for `test_matching_claim_and_fixture_receipt_refuse_without_provider_or_target_calls`, `test_deployed_lookup_always_refuses_for_empty_fixture_and_opaque_inputs`, `test_c1_authorization_refuses_legacy_and_unverified_v2_before_payload_validation`, `test_producer_refuses_c1_before_git_or_target_dependency`, and `test_postflight_and_publish_refuse_self_hashed_preflight_before_dependencies`. These cover the held-state refusal before provider, target, Git, snapshot or A41 dependencies. `test_complete_c2_c3_and_c4_packets_are_inspectable_without_authorization` and `test_producer_restores_disabled_state_when_body_fails_after_enable` also passed as offline packet/cleanup fixtures. They confer no live qualification or publication credit. The authorized qualification and close-out rows remain unexecuted.
+
+All six spec 14 live tasks remain open. Accepted PG2 C1.15 renewal, C1.16 session eligibility or fresh capture, the twenty-three other gate successors, 25 distinct same-session passes and authenticated bundle decisions remain required. Separate fault/purge grants, independent C5/C6 decisions, terminal proof and A41 publication authority/proof remain absent. No live target was contacted. The canonical C0–C6 states, open A41/action, Production-disabled and qualification zero-replica overlays, sprint and historical bytes are unchanged. These dated notes were appended after verification; they do not complete Story 27.4.
+
+### 2026-10-12 owner policy adoption
+
+The owner explicitly approved `sole-owner-qualification/2026-10-12`, including
+self-review and private local hashed/readback evidence for non-Production
+qualification. Institutional receipt-service, separate human-reviewer and external
+archive requirements above are historical for the older protocol. The current
+[owner handoff](../../../docs/operations/access-telemetry-owner-handoff.md) replaces
+them for this mode. Actual run approval, implemented collectors/verifiers and all
+required same-session technical evidence remain outstanding. No live target was
+contacted, C0–C6 row was advanced, Production write enabled or A41 action closed by
+this policy adoption. The earlier 325 passing tests remain their recorded offline
+evidence; any new verifier results must be recorded after execution.
+
+
+### 2026-10-12 sole-owner record-inspection verification
+
+The approved policy is reflected in planning, architecture, the operations
+runbook and the re-derived interchange contract. The new pure
+`tools/access_telemetry_c1_owner_run.py` inspects an exact bounded record against
+externally supplied approved-plan anchors and current caller facts. It discloses
+self-review; it performs no target or custody operation and returns no accepted
+gate, predecessor or execution handle. Existing deployed consumers are unchanged.
+
+All three review layers were triaged and concrete findings corrected, including
+refusal of caller-defined mutable/throwing timezones and canonical immutable UTC
+retention. The implementation agent's corrected focused lane passed 25 tests in
+0.092s. Parent's full affected interchange lane passed 267 tests in 84.285s,
+exit 0, bare `OK`, zero failures/errors/skips:
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v
+```
+
+Retained offline receipt: `/tmp/pg2-owner-run-final-58o8_ync`; stderr SHA-256
+`431e213837cb8a158561b3bd461cc6ce0184f496e97dc788e0ac4315f23364e2`. Nineteen existing code/test files, the
+five protected status/A41/Production-related files and the historical signed
+packet blocker preserve their pre-adoption raw-byte hashes. This is offline
+record inspection evidence only. Missing collectors, full owner-mode I3/I5,
+scoped live approval and actual C0–C6/terminal/publication evidence remain
+outstanding. All six Story 27.4 live tasks remain open; no target was contacted,
+Production enabled or A41 action resolved.
+
+
+### 2026-10-12 owner acceptance and bounded readiness continuation
+
+The owner's **“I approve and accept”** accepts the presented sole-owner approach
+and the 25 focused / 267 full offline test results. The
+[acceptance record](../27-4-owner-approval-and-acceptance-2026-10-12.md) binds
+retained source/contract/log bytes, with acceptance SHA-256
+`c509977473f5b817c107e232da2f06774cfa1b74c41337d54bb9b97317fcac40`. Private archive mode `0700`, file mode
+`0600` and exact-byte readback were verified. This is local owner acceptance,
+not independent authentication or complete C1 evidence.
+
+After that approval, bounded read-only readiness queries observed the existing
+telemetry namespace/deployment/Pod and matching Dapr OCI index identity. The
+Deployment already had one desired/ready replica. The isolated
+`hexalith-memories-qualification` namespace lookup returned NotFound. Exact
+commands, exits, projections and UTC observations are retained in the archive.
+No Secret/credential value, logs, Pod exec, fault, mutation or live qualification
+collector was invoked. The earlier no-target-contact statements describe their
+earlier offline phases; this continuation contacted the API only for readiness.
+The canonical C0–C6 verdicts, open A41/action and Production configuration remain
+unchanged. Missing tooling and isolated test setup remain implementation work.

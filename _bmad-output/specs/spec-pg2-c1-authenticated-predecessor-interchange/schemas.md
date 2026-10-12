@@ -1,5 +1,27 @@
 # Wire schemas and validation contract
 
+## Current policy: sole-owner qualification, adopted 2026-10-12
+
+The owner approved `sole-owner-qualification/2026-10-12`, including disclosed
+self-review and private local hashed/readback evidence for non-Production
+qualification. The owner is accountable for development, Operations and Security;
+producer/reviewer overlap is permitted for this revision. C1.25 means owner
+security risk acceptance; C5/C6 and both bundle roles retain distinct records
+without claiming independent human review. A separate P1 receipt service,
+external immutable archive, 365-day/off-site custody and independent grant issuers
+are not prerequisites for this mode. The older protocol material below remains
+history or the stronger version's contract; it cannot override this revision or
+be used as a permissive fallback.
+
+A concrete owner-approved run still binds the actual observed target, exact PG2
+profile/workload, source, actions, window and evidence root. All 25 technical
+checks, source/command verification, privacy, runtime clock and cleanup remain.
+No collector is implemented or gate passed by this policy change. Existing
+execution consumers remain closed until the new verifier/dispatch and missing
+registrations are implemented. Production activation and publication need their
+own approved scopes. See [owner handoff](../../../docs/operations/access-telemetry-owner-handoff.md)
+and [approved proposal](../../planning-artifacts/sprint-change-proposal-2026-10-12-sole-owner-qualification.md).
+
 Existing C1.15 capture/disposition shapes are adopted from the operations contract.
 The accepted-gate, manifest, bundle-approval and predecessor shapes below are
 **proposed**, with no registered producer or implemented authority implied.

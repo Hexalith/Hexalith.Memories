@@ -1,6 +1,28 @@
-# Draft: sole-owner PG2/C1 review policy revision
+# Historical draft: sole-owner PG2/C1 review policy revision
 
-**Status:** Proposed for owner review; not adopted or operational.  
+## Current policy: sole-owner qualification, adopted 2026-10-12
+
+The owner approved `sole-owner-qualification/2026-10-12`, including disclosed
+self-review and private local hashed/readback evidence for non-Production
+qualification. The owner is accountable for development, Operations and Security;
+producer/reviewer overlap is permitted for this revision. C1.25 means owner
+security risk acceptance; C5/C6 and both bundle roles retain distinct records
+without claiming independent human review. A separate P1 receipt service,
+external immutable archive, 365-day/off-site custody and independent grant issuers
+are not prerequisites for this mode. The older protocol material below remains
+history or the stronger version's contract; it cannot override this revision or
+be used as a permissive fallback.
+
+A concrete owner-approved run still binds the actual observed target, exact PG2
+profile/workload, source, actions, window and evidence root. All 25 technical
+checks, source/command verification, privacy, runtime clock and cleanup remain.
+No collector is implemented or gate passed by this policy change. Existing
+execution consumers remain closed until the new verifier/dispatch and missing
+registrations are implemented. Production activation and publication need their
+own approved scopes. See [owner handoff](../../../docs/operations/access-telemetry-owner-handoff.md)
+and [approved proposal](../../planning-artifacts/sprint-change-proposal-2026-10-12-sole-owner-qualification.md).
+
+**Historical status:** The earlier external-provider/issue-comment transport proposal below was not adopted. The approved 2026-10-12 revision instead uses local owner-controlled qualification records.  
 **Scope:** Story 27.4 review decisions for the exact PG-ONPREM-2 profile SHA-256 `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` and workload SHA-256 `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f`.  
 **Proposed accountable owner:** Jérôme Piquot, authenticated as `github:user:6775094` at each decision. This identifier is selected by the existing policy; this draft does not authenticate a future decision.
 
