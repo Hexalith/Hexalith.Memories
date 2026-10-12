@@ -41,6 +41,34 @@ inspection record carries only its documented subset. The plan binds its exact
 bytes, and later execution consumers must verify both artifacts.
 Context labels alone never prove target identity.
 
+The offline [owner-plan dispatcher](../../tools/access_telemetry_c1_owner_dispatch.py)
+checks the retained plan's exact bytes against its outside approved digest and
+binds the current inspection record. Its seven required plan fields are
+`recordSha256`, `policySha256`, `sessionId`, `sourceCommit`, `targetSha256`,
+`custodyRoot` and `statusPath`. The status path must already be canonical and
+strictly inside the custody root. Other plan fields grant no authority in this
+slice. The caller re-reads the current record before each dispatch; the dispatcher
+receives the record bytes and cannot establish their freshness from a record path.
+
+The fresh status document contains exactly `planSha256`, `recordSha256`,
+`sessionId` and boolean `withdrawn`. Its three keys must match this plan, record
+and session. Missing, unreadable, malformed or mismatched status refuses; no
+cached `withdrawn: false` substitutes for a current read. A matching false yields
+only the requested action's `OwnerRunInspection` after its window checks, with
+the `sole-owner/self-reviewed` disclosure. It grants no execution, gate acceptance,
+checkpoint, publication or A41 close-out.
+
+The dispatcher requires a filesystem supporting POSIX directory descriptors,
+non-following opens and descriptor-relative metadata checks, and nonblocking
+opens of a regular status file. Symlink components and unsupported operations
+refuse. It bounds the read, checks stable file metadata and revalidates the named
+file and ancestor chain; concurrent replacement, removal, in-place rewrite or
+ancestor movement refuses without following an outside target. Status writers
+write a complete separate file in the same directory as `statusPath`, under the
+private custody root, and atomically replace `statusPath`. A concurrent dispatch may refuse and must retry with a
+fresh read; never rewrite the current status in place. The full contract is in
+[owner run records](../../_bmad-output/specs/spec-pg2-c1-authenticated-predecessor-interchange/owner-run-records.md#offline-owner-plan-dispatcher).
+
 Tools implement and run the collectors, retain secret-safe command/results and
 SHA-256 manifests, verify each of the twenty-five technical gates, and report
 failures. Missing collectors are development tasks assigned to the agent. Old

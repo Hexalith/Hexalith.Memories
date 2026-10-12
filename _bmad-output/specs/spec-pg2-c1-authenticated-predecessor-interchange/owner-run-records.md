@@ -98,12 +98,48 @@ must verify that plan approval and its record reference before deriving the six
 `OwnerRunAnchors` fields; never derive them from the candidate alone. The current
 pure inspector does not implement that plan reader or complete execution admission.
 
-The later local-status reader must use the private current-state location selected
-by the approved plan, keyed to the exact plan digest, record digest and session.
-Re-read it immediately before every use; no cached `False` is current proof.
-Missing, mismatched or unavailable state is unknown and must refuse, rather than
-being passed as `withdrawn=False`. The pure inspector accepts an already checked
-caller fact; it does not claim to have performed this filesystem/status verification.
+## Offline owner-plan dispatcher
+
+[`dispatch_owner_run`](../../../tools/access_telemetry_c1_owner_dispatch.py) accepts
+the current record `JsonSnapshot`, exact retained `plan_bytes`, the outside
+`approved_plan_sha256`, aware UTC `now` and one `action`. The caller must re-read
+the current record before every dispatch; the dispatcher receives bytes and has
+no record-file location from which to establish their freshness. It recomputes
+the record digest and derives `OwnerRunAnchors` only after the outside plan digest
+matches the retained plan bytes.
+
+The plan requires seven bindings: `recordSha256`, `policySha256`, `sessionId`,
+`sourceCommit`, `targetSha256`, `custodyRoot` and `statusPath`. The first six use
+the closed types and canonical spellings defined above. `statusPath` must already
+be an absolute canonical POSIX path strictly below `custodyRoot`; resolving to a
+different path is refused. Other plan fields, including resource selectors,
+verbs and cleanup, are ignored as non-authority by this dispatcher.
+
+The status object has exactly four fields: `planSha256`, `recordSha256`,
+`sessionId` and `withdrawn`. Its first three values must match the retained plan
+digest, bound record digest and session; `withdrawn` must be a real JSON boolean.
+Every dispatch reads this file anew immediately before inspection. Missing,
+unreadable, malformed, mismatched or non-boolean state refuses with no inspection
+and no cached `False`. A matching `true` preserves the inspector's withdrawal
+refusal; a matching `false` still requires that action's record and time checks.
+
+The filesystem must support POSIX directory descriptors, non-following opens,
+non-following descriptor-relative metadata checks and nonblocking file opens.
+Unavailable or unsupported operations refuse. Every ancestor and the status file
+must be free of symlinks, and the status file must be regular. Reads consume at
+most `MAX_ARTIFACT_BYTES + 1` bytes. The reader checks stable file metadata before
+and after reading, then revalidates the named file and its ancestor chain without
+following an outside target. Removal, replacement, in-place modification or
+ancestor movement observed during reading refuses. Refusals expose only a code,
+without internal filesystem/parser exception cause or context data.
+
+Status writers must write a complete document to a separate file in the same
+directory as `statusPath`, under the private custody root, and atomically replace
+`statusPath`; do not truncate or rewrite the current file in place. A replacement overlapping a dispatch refuses;
+the next dispatch reads the new named file. These checks produce only the existing
+immutable `OwnerRunInspection`, labelled `sole-owner/self-reviewed`. They create
+no execution handle, accepted gate, checkpoint, publication or A41 close-out.
+The pure `inspect_owner_run` remains free of I/O, and live consumers remain closed.
 
 ## Ordered owner acceptance
 
