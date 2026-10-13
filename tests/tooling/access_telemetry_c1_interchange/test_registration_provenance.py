@@ -26,6 +26,10 @@ import access_telemetry_c1_source_provenance as provenance  # noqa: E402
 from test_producer_bindings import (  # noqa: E402
     PATHS, fixture_capture, fixture_sources, registry_entry, snapshot,
 )
+from test_capture_commands import rehash, serial_times  # noqa: E402
+from test_registration_commands import (  # noqa: E402
+    V2, registration_capture, registration_denials, registration_fixture,
+)
 
 
 def git(root, *args):
@@ -119,6 +123,147 @@ class RegistrationProvenanceTests(unittest.TestCase):
         with self.assertRaises(InterchangeFormatError) as caught:
             lookup_deployed_binding("C1.15", "PG-ONPREM-2", self.registry)
         self.assertEqual(str(caught.exception), "deployed-producer-binding-unavailable")
+
+    def test_v2_one_two_three_pods_reach_clean_local_corroboration_with_exact_bytes(self):
+        real_popen = subprocess.Popen
+        local_calls = []
+        forbidden_calls = {}
+        prefix = ("git", "--no-optional-locks", "-c", "core.fsmonitor=false",
+                  "-c", "core.attributesFile=/dev/null", "-c", "protocol.allow=never",
+                  "-c", "submodule.recurse=false")
+        environment = {"PATH": os.defpath, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
+                       "GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1",
+                       "GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0"}
+        allowed = {("rev-parse", "--show-toplevel"), ("rev-parse", "--verify", "HEAD^{commit}"),
+                   ("ls-files", "-v", "-z"),
+                   ("status", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=none")}
+        for path in (*PATHS, self.entry["registeredStory"], self.entry["verifierPath"]):
+            oid = git(self.root, "rev-parse", f"{self.commit}:{path}")
+            allowed.update({("ls-files", "-v", "-z", "--", path),
+                            ("ls-tree", "-z", self.commit, "--", path),
+                            ("cat-file", "blob", oid),
+                            ("check-attr", "-z", "text", "eol", "filter", "ident", "working-tree-encoding", "--", path)})
+
+        def guarded_child(command, **kwargs):
+            local_calls.append(tuple(command))
+            try:
+                self.assertEqual(tuple(command[:len(prefix)]), prefix)
+                self.assertIn(tuple(command[len(prefix):]), allowed)
+                self.assertEqual(set(kwargs), {"cwd", "pass_fds", "env", "stdout", "stderr"})
+                self.assertEqual(kwargs["env"], environment)
+                self.assertEqual(kwargs["stdout"], subprocess.PIPE)
+                self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+                self.assertEqual(len(kwargs["pass_fds"]), 1)
+                root_fd = kwargs["pass_fds"][0]
+                self.assertIs(type(root_fd), int)
+                self.assertEqual(kwargs["cwd"], f"/proc/self/fd/{root_fd}")
+                self.assertEqual(os.readlink(kwargs["cwd"]), str(self.root))
+            except AssertionError:
+                forbidden_calls["process"] = forbidden_calls.get("process", 0) + 1
+                raise
+            return real_popen(command, **kwargs)
+
+        def forbidden(name):
+            def call(*args, **kwargs):
+                forbidden_calls[name] = forbidden_calls.get(name, 0) + 1
+                raise AssertionError(name + " was called")
+            return call
+
+        for names in (("lifecycle-1",), ("lifecycle-2", "lifecycle-1"),
+                      ("lifecycle-3", "lifecycle-2", "lifecycle-1")):
+            with self.subTest(pods=names):
+                self.capture_value = registration_capture(self.sources, names)
+                self.capture = snapshot(self.capture_value)
+                self._refresh(command_update={"schemaVersion": V2})
+                with patch.object(provenance.subprocess, "Popen", side_effect=guarded_child), \
+                        patch("socket.socket", side_effect=forbidden("network")), \
+                        patch("urllib.request.urlopen", side_effect=forbidden("http")), \
+                        patch("os.system", side_effect=forbidden("target")):
+                    result = self.verify()
+                self.assertEqual(result.source_commit, self.commit)
+                self.assertEqual(result.paths, tuple(sorted(PATHS)))
+                self.assertEqual(len(result.git_blob_oids), 19)
+                registration = result.registration
+                self.assertIs(registration.source.capture, self.capture)
+                self.assertEqual(registration.source.capture.raw, self.capture.raw)
+                self.assertEqual(registration.source.capture.sha256, hashlib.sha256(self.capture.raw).hexdigest())
+                for original, retained, digest in ((self.statement, registration.statement, registration.registration_sha256),
+                                                   (self.command, registration.command_contract, registration.command_sha256),
+                                                   (self.role, registration.review_role_policy, registration.role_policy_sha256)):
+                    self.assertIs(retained, original)
+                    self.assertEqual(retained.raw, original.raw)
+                    self.assertEqual(digest, hashlib.sha256(original.raw).hexdigest())
+                self.assertEqual(tuple(pod["pod"] for pod in self.capture.value["observations"]["pods"]), names)
+                self.assertFalse(self.capture.value["productionGatePassed"])
+                for name in ("accepted", "passed", "authority", "execution_handle"):
+                    self.assertFalse(hasattr(result, name))
+                    self.assertFalse(hasattr(registration, name))
+                with self.assertRaises(FrozenInstanceError):
+                    result.registration = None
+                with registration_denials() as calls:
+                    with self.assertRaises(InterchangeFormatError) as caught:
+                        lookup_deployed_binding("C1.15", "PG-ONPREM-2", self.registry)
+                    self.assertEqual(str(caught.exception), "deployed-producer-binding-unavailable")
+                    self.assertEqual(calls, {})
+        self.assertGreater(len(local_calls), 60)
+        self.assertEqual(forbidden_calls, {})
+
+    def test_v2_rehashed_later_pod_commands_refuse_before_every_local_dependency(self):
+        original = registration_capture(self.sources, ("lifecycle-1", "lifecycle-2", "lifecycle-3"))
+        self._refresh(command_update={"schemaVersion": V2})
+        for number in range(5, len(original["commands"])):
+            for position in range(len(original["commands"][number]["arguments"])):
+                with self.subTest(command=number, argument=position):
+                    value = deepcopy(original)
+                    value["commands"][number]["arguments"][position] = "foreign-tenant-or-pod"
+                    rehash(value["commands"][number])
+                    self.capture = snapshot(value)
+                    with registration_denials() as calls:
+                        self.refuse("c115-command-arguments-mismatch")
+                        self.assertEqual(calls, {})
+        value = deepcopy(original)
+        value["commands"][2:8] = value["commands"][5:8] + value["commands"][2:5]
+        self.capture = snapshot(serial_times(value))
+        with registration_denials() as calls:
+            self.refuse("c115-command-sequence-mismatch")
+            self.assertEqual(calls, {})
+
+    def test_v2_binding_drifts_refuse_before_filesystem_git_network_config_or_clock(self):
+        original = registration_capture(self.sources)
+        cases = (
+            {"command_update": {"schemaVersion": V2 + " "}},
+            {"command_update": {"purposes": ["current-context"]}},
+            {"command_update": {"readOnly": False}},
+            {"role_update": {"producerExcluded": False}},
+            {"role_update": {"reviewerRole": "sole-owner/self-reviewed"}},
+            {"statement_update": {"sourceCommit": "f" * 40}},
+            {"entry_update": {"cleanupRequired": True}},
+            {"entry_update": {"commandContract": {"path": "fixtures/command.json", "sha256": "f" * 64, "byteLength": 1}}},
+        )
+        for updates in cases:
+            with self.subTest(updates=updates):
+                inputs = registration_fixture(capture=original, sources=self.sources, **updates)
+                with registration_denials() as calls:
+                    with self.assertRaises(InterchangeFormatError) as caught:
+                        corroborate_local_sources(*inputs, str(self.root))
+                    self.assertLess(len(str(caught.exception)), 80)
+                    self.assertNotIn("ISOLATED", str(caught.exception))
+                    self.assertTrue(caught.exception.__suppress_context__)
+                    self.assertEqual(calls, {})
+        for change in ("source", "schema", "namespace"):
+            value = deepcopy(original)
+            if change == "source":
+                value["producerSources"][-1]["trackedAtHead"] = False
+            elif change == "schema":
+                value["schemaVersion"] = "hexalith.access-telemetry.c1.evidence/v1"
+            else:
+                value["commands"][-1]["arguments"][3] = "foreign-namespace"
+                rehash(value["commands"][-1])
+            inputs = registration_fixture(capture=value, sources=self.sources)
+            with registration_denials() as calls:
+                with self.assertRaises(InterchangeFormatError):
+                    corroborate_local_sources(*inputs, str(self.root))
+                self.assertEqual(calls, {})
 
     def test_statement_and_material_drift_refuse_before_any_git_or_file_call(self):
         for update in ({"registeredStory": "fixtures/other.md"}, {"gate": "C1.16"},

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import hashlib
 from typing import Any
 
+from access_telemetry_c1_capture_semantics import inspect_c115_command_declarations
 from access_telemetry_c1_interchange import (
     EvidenceReference, JsonSnapshot, MAX_AGGREGATE_BYTES, MAX_ARTIFACT_BYTES,
     _array, _artifact_ref, _boolean, _commit, _gate, _literal, _object, _path,
@@ -29,6 +30,7 @@ _C115_HELPERS = frozenset({
 })
 _REGISTRATION_SCHEMA = "hexalith.access-telemetry.c1.fixture-registration/v1"
 _COMMAND_SCHEMA = "hexalith.access-telemetry.c1.fixture-command-contract/v1"
+_COMMAND_SCHEMA_V2 = "hexalith.access-telemetry.c1.fixture-command-contract/v2"
 _ROLE_SCHEMA = "hexalith.access-telemetry.c1.fixture-review-role-policy/v1"
 _REGISTRATION_FIELDS = (_ENTRY_FIELDS - {"registrationReceipt"}) | {"schemaVersion", "sourceCommit"}
 _COMMAND_FIELDS = frozenset("schemaVersion gate profileId producerPath executable purposes readOnly".split())
@@ -363,16 +365,24 @@ def inspect_registration(
         if actual != expected:
             _refuse("registration-entry-mismatch")
     command = _object(command_contract.value, _COMMAND_FIELDS)
-    for name, expected in (("schemaVersion", _COMMAND_SCHEMA), ("gate", entry.gate),
+    schema = command["schemaVersion"]
+    if schema != _COMMAND_SCHEMA_V2:
+        _literal(schema, _COMMAND_SCHEMA)
+    for name, expected in (("gate", entry.gate),
                            ("profileId", entry.profile_id), ("producerPath", entry.producer_path),
                            ("executable", "kubectl"), ("readOnly", True)):
         _literal(command[name], expected)
     purposes = _array(command["purposes"])
     if purposes != _C115_PURPOSES:
         _refuse("command-contract-unsupported")
-    observed = tuple(item["purpose"].split(":", 1)[0] for item in capture.value["commands"])
-    if observed != purposes or entry.cleanup_required:
-        _refuse("command-contract-unsupported")
+    if schema == _COMMAND_SCHEMA_V2:
+        if entry.cleanup_required:
+            _refuse("command-contract-unsupported")
+        inspect_c115_command_declarations(capture)
+    else:
+        observed = tuple(item["purpose"].split(":", 1)[0] for item in capture.value["commands"])
+        if observed != purposes or entry.cleanup_required:
+            _refuse("command-contract-unsupported")
     policy = _object(review_role_policy.value, _ROLE_FIELDS)
     for name, expected in (("schemaVersion", _ROLE_SCHEMA), ("gate", entry.gate),
                            ("profileId", entry.profile_id), ("reviewerRole", "independent-security-reviewer"),

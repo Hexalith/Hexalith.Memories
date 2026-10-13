@@ -12,6 +12,8 @@ This is the separately authorized preparation described by
 [`spec-pg2-c1-offline-producer-bindings.md`](../../_bmad-output/implementation-artifacts/spec-pg2-c1-offline-producer-bindings.md)
 and its bounded
 [`registration/source follow-on`](../../_bmad-output/implementation-artifacts/spec-pg2-c1-i2-registration-source-provenance.md).
+Explicit v2 command selection is defined by the bounded
+[`multi-Pod registration command spec`](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-20.md).
 The integrated I2–I6 tasks and P1–P7 prerequisites remain incomplete. Story 27.4,
 A41, prior history, sprint holds and the disabled Production configuration retain
 their existing state.
@@ -146,19 +148,47 @@ The registration check also charges all three material snapshots against the
 same deduplicated 32 MiB retained-byte budget as registry, capture and sources.
 
 The proposed fixture command material has exactly `schemaVersion`, `gate`,
-`profileId`, `producerPath`, `executable`, `purposes`, and `readOnly`. Its schema
-is `hexalith.access-telemetry.c1.fixture-command-contract/v1`; executable is
-`kubectl`, `readOnly` is `true`, and purposes are the C1.15 capture's six ordered
-purpose kinds: `current-context`, `lifecycle-pods`, `daprd-version`, `metadata`,
-`alpha-opt-in`, `lifecycle-pods-recheck`. The proposed fixture role material has
+`profileId`, `producerPath`, `executable`, `purposes`, and `readOnly` in both
+supported versions. Select the version explicitly in `schemaVersion`; unknown
+versions refuse, and the inspector never infers a version from Pod count or
+retries with another version. Executable is `kubectl`, `readOnly` is `true`, and
+`purposes` always contains exactly these six ordered grammar kinds:
+`current-context`, `lifecycle-pods`, `daprd-version`, `metadata`, `alpha-opt-in`,
+`lifecycle-pods-recheck`. It contains neither Pod suffixes nor repeated kinds.
+Both versions require the registry and matching statement to declare
+`cleanupRequired: false`.
+
+| Explicit command schema | Receipt inspection |
+| --- | --- |
+| `hexalith.access-telemetry.c1.fixture-command-contract/v1` | Preserves the legacy six-receipt comparison of flattened purpose kinds. Existing simplified one-Pod fixtures remain inspectable; multi-Pod captures still refuse `command-contract-unsupported`. This version does not inspect exact argv or published observation pins. |
+| `hexalith.access-telemetry.c1.fixture-command-contract/v2` | Calls `inspect_c115_command_declarations` to inspect the unchanged C1.15 capture against the existing pinned target, runtime and image declarations and exact argv grammar. |
+
+For v2, receipts are context, selection, then version/metadata/alpha for each
+observed Pod in its supplied observation order, followed by recheck. The receipt
+count is `3 * Pod count + 3`: six, nine and twelve for one, two and three Pods.
+Reversed Pod order is valid when the complete receipt blocks follow that same
+order. Each scoped argv must use the pinned context, namespace, selector,
+projection, Pod and container; the metadata and alpha probes each remain one
+exact fixed argument. Recomputed hashes cannot admit changed argv, a later-Pod
+substitution, an unsafe verb or reordered blocks. Structural receipt, source and
+hash/chronology checks still run first. All nineteen retained source snapshots,
+clean/unchanged receipt labels, three exact Ref byte bindings and the shared byte
+budgets remain required before local Git/filesystem corroboration can begin.
+
+The proposed fixture role material has
 exactly `schemaVersion`, `gate`, `profileId`, `reviewerRole`, and
 `producerExcluded`; schema is
 `hexalith.access-telemetry.c1.fixture-review-role-policy/v1`, role label is
 `independent-security-reviewer`, and producer exclusion is `true`. These
-closed declarations check format and consistency only. They do not prove that
-commands ran as declared, captured argv matched a safe grammar, or that a
-reviewer, role policy or registration was approved. The proposed format is not
-an adopted owner registration format and does not establish command safety.
+closed declarations check format and consistency only. V2 additionally compares
+declared argv to the existing strict grammar; it does not prove those commands
+ran, authenticate source custody or target observations, or approve a reviewer,
+role policy or registration. The registration and independent role-policy
+schemas are unchanged, including `producerExcluded: true`; version selection
+does not reinterpret producer exclusion or owner policy. Both command versions
+are offline fixture declarations, with no owner-registration claim or adopted
+owner registration format. They return the unchanged frozen
+`RegistrationInspection`, without a gate verdict or execution authority.
 
 The local corroborator first repeats the retained source/registration checks,
 before any filesystem or Git access. It traverses the supplied root and each
@@ -187,7 +217,7 @@ a physical `.git` directory at the supplied root; linked worktrees with a
 Run the new focused offline lane from the repository root:
 
 ```bash
-env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_registration_provenance.py' -v
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_registration*.py' -v
 ```
 
 Current deployed lookup remains an unconditional refusal. P1/P5 must supply a
