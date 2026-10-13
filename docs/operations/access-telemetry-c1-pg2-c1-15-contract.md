@@ -2,7 +2,9 @@
 
 Repository producer preparation: **2026-10-07**. This contract describes the
 implemented offline-testable producer and the required future independent
-disposition. Live capture, archive custody and independent acceptance are pending.
+disposition. Live capture, independently approved archive custody and independent acceptance
+are pending. The bounded private stream-retention addition was prepared on
+**2026-10-13**.
 It does not register a successor or implement an authority verifier, all-gate
 assembler, C1.17 qualification or aggregate C1 credit. Production stays disabled;
 Story 27.4/A41 and historical Story 27.21/27.22 dispositions retain their states.
@@ -189,6 +191,44 @@ during capture still block. An observed capture has a
 nonzero overall `resultCount` equal to observed Pod count, zero failures/skips and
 no blockers. A blocked capture has zero overall results, empty observation arrays,
 null alpha values and neutral stable blockers. No partial observations are published.
+
+Observed PG2 C1.15 packets now have a fresh private `<packet filename>.streams/`
+sidecar with exactly `manifest.json` and four-digit zero-based `.stdout`/`.stderr`
+pairs in packet command order. Every validated original byte is retained,
+including whitespace, final newlines and zero-length stderr. The closed manifest
+has `schemaVersion: hexalith.access-telemetry.c1.retained-streams/v1`,
+`captureSha256` over original packet bytes and `receipts`; each receipt has exactly
+`index`, `purpose`, `stdoutSha256` and `stderrSha256`, matching packet order and
+original-byte stream hashes. Git source-provenance streams are not retained.
+The packet's closed v2 field set is unchanged.
+
+The evidence root and its sidecar require effective-user ownership and no
+group/other permissions. Missing directories are created privately; existing
+unsafe roots and symlink ancestors refuse. Packet, manifest and stream files
+are exclusively created, regular and single-link, without following symlinks.
+Descriptors bind stable named identities; bounded exact readback verifies the
+complete sidecar before observed packet publication and again before return.
+Artifacts finish with owner-only read permission; directories stay owner-only.
+The Linux writer refuses when required descriptor-relative operations or `statx`
+metadata are unavailable. It never overwrites existing artifacts. Incomplete
+retention or custody failure publishes no new observed inspectable pair. A safe
+private orphan sidecar can remain after a failure; raw unsafe output is never
+written. Blocked capture behavior remains neutral and has no new sidecar.
+
+Each stream and packet is capped at 1 MiB, with packet plus every stream occurrence
+capped at 32 MiB. The manifest has its own 1 MiB cap. Repeated identical streams
+are charged for every occurrence. The offline
+`inspect_c115_retained_files(packet_path, *, custody_root)` reader enforces the
+private layout, closed manifest, receipt binding, budgets and final readback,
+then calls the unchanged pure `inspect_c115_retained_streams`. It returns only a
+frozen consistency inspection and contacts no target. Content-free refusals
+return no inspection; matching bytes establish no execution, acquisition,
+source provenance, freshness, authenticated authority, registration or gate
+acceptance. Keep raw streams private and never print or stage them. Full layout,
+API and refusal details are in the
+[retained-output inspection contract](c1-retained-output-inspection-contract.md).
+PG1 C1.15 and C1.16 retain their existing output behavior and acquire no sidecar
+requirement.
 
 Packets use a fresh exclusive file, UTF-8 without BOM, and read-only finalization.
 They never overwrite existing packets. All captures keep `gateStatus:

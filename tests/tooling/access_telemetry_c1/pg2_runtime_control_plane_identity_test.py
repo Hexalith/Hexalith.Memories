@@ -18,6 +18,7 @@ from runtime_control_plane_identity_test import FIXTURE, REPO_ROOT, TOKEN_CANARY
 
 sys.path.insert(0, str(REPO_ROOT / 'tools'))
 from access_telemetry_c1_interchange import InterchangeFormatError, JsonSnapshot, parse_capture
+from access_telemetry_c1_retained_files import inspect_c115_retained_files, STREAM_MANIFEST_SCHEMA
 
 RUNNER = REPO_ROOT / 'tools/verify-access-telemetry-c1.ps1'
 PROFILE_HELPER = REPO_ROOT / 'tools/access-telemetry-c1-profile.ps1'
@@ -76,7 +77,7 @@ class Pg2RuntimeControlPlaneIdentityTests(unittest.TestCase):
 
     def run_gate(self, scenario=None, *, session=SESSION, gate='C1.15', profile='PG-ONPREM-2',
                  opt_in=False, timeout=30, runner=RUNNER, repeat=1, extra=(),
-                 cwd=REPO_ROOT, evidence_argument=None, git_hook=None):
+                 cwd=REPO_ROOT, evidence_argument=None, git_hook=None, evidence_setup=None):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -97,9 +98,34 @@ elif "/v1.0/metadata" in args[-1]:
     purpose = "metadata"
 else:
     purpose = "alpha"
+if scenario.get("largeSafeStreams"):
+    import atexit, io
+    original_stdout, original_stderr = sys.stdout, sys.stderr
+    sys.stdout = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", write_through=True)
+    sys.stderr = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", write_through=True)
+    def emit_large_safe_streams():
+        stdout = sys.stdout.buffer.getvalue()
+        size = scenario.get("largeSafeStreamBytes", 1024 * 1024)
+        original_stdout.buffer.write(stdout + b" " * (size - len(stdout)))
+        original_stderr.buffer.write(b"x" * size)
+        original_stdout.buffer.flush()
+        original_stderr.buffer.flush()
+    atexit.register(emit_large_safe_streams)
 if scenario.get("mutateSource") and purpose == "pods-recheck":
     changed = Path(scenario["mutateSource"])
     changed.write_bytes(changed.read_bytes() + b"\\n# mutation during capture\\n")
+if scenario.get("custodyMutation") and purpose == "pods-recheck":
+    evidence = Path(os.environ["C1_EVIDENCE"])
+    mutation = scenario["custodyMutation"]
+    if mutation == "permissions":
+        evidence.chmod(0o750)
+    elif mutation == "extra":
+        (evidence / "unrelated-safe-file").write_text("safe")
+    else:
+        moved = evidence.with_name("moved-evidence")
+        evidence.rename(moved)
+        if mutation == "symlink":
+            evidence.symlink_to(moved, target_is_directory=True)
 if scenario.get("hangPurpose") == purpose:
     time.sleep(5)
 if scenario.get("rawBytesPurpose") == purpose:
@@ -128,9 +154,14 @@ if scenario.get("failPurpose") == purpose:
         scenario_path.write_text(json.dumps(self.base if scenario is None else scenario))
         log = root / 'calls.jsonl'
         evidence = root / 'evidence'
+        if callable(evidence_argument):
+            evidence = evidence_argument(evidence)
+            evidence_argument = str(evidence)
+        if evidence_setup is not None:
+            evidence_setup(evidence)
         environment = os.environ | {'PATH': str(fake_bin) + os.pathsep + os.environ.get('PATH', ''),
                                     'C1_SCENARIO': str(scenario_path), 'C1_KUBECTL_LOG': str(log),
-                                    'DAPR_API_TOKEN': TOKEN_CANARY}
+                                    'DAPR_API_TOKEN': TOKEN_CANARY, 'C1_EVIDENCE': str(evidence)}
         command = ['pwsh', str(runner), '-Gate', gate, '-ProfileId', profile,
                    '-EvidenceDirectory', str(evidence) if evidence_argument is None else evidence_argument,
                    '-CommandTimeoutSeconds', str(timeout)]
@@ -169,6 +200,7 @@ if scenario.get("failPurpose") == purpose:
         self.assertEqual('pending', packet['independentDisposition'])
         self.assertEqual(1, packet['producer']['exitCode'])
         self.assertTrue(all(not path.stat().st_mode & stat.S_IWUSR for path in evidence.glob('*.json')))
+        self.assertEqual([], list(evidence.glob('*.streams')))
         return packet, calls
 
     def test_index_child_bare_and_two_pods_are_immutable_neutral_v2_captures(self):
@@ -307,6 +339,12 @@ if scenario.get("failPurpose") == purpose:
                 self.assertEqual('not-evaluated', snapshot.value['gateStatus'])
                 self.assertEqual('pending', snapshot.value['independentDisposition'])
                 self.assertEqual(3 + count * 3, len(calls))
+                inspection = inspect_c115_retained_files(str(next(evidence.glob('*.json'))), custody_root=str(evidence))
+                self.assertEqual(raw, inspection.capture.raw)
+                self.assertEqual(count, inspection.pod_count)
+                self.assertEqual(len(calls), inspection.command_count)
+                self.assertEqual(tuple(command['purpose'] for command in packet['commands']),
+                                 tuple(stream.purpose for stream in inspection.streams))
                 for purpose in ('lifecycle-pods', 'lifecycle-pods-recheck'):
                     for receipt in ('identity', 'command'):
                         with self.subTest(purpose=purpose, mutated_receipt=receipt):
@@ -400,10 +438,10 @@ if scenario.get("failPurpose") == purpose:
                 command = packet['commands'][-1]
                 self.assertEqual(purpose, command['purpose'])
                 self.assertEqual(0, command['exitCode'])
-                self.assertEqual('validated', command['streamSafety'])
-                self.assertEqual(digest(b'{\n'), command['stdoutSha256'])
-                self.assertEqual(digest(b''), command['stderrSha256'])
-                self.assertEqual((1, 0, 0), (command['resultCount'], command['failureCount'], command['skipCount']))
+                self.assertEqual('not-validated', command['streamSafety'])
+                self.assertIsNone(command['stdoutSha256'])
+                self.assertIsNone(command['stderrSha256'])
+                self.assertEqual((0, 1, 0), (command['resultCount'], command['failureCount'], command['skipCount']))
                 self.assertEqual([], packet['observations']['pods'])
                 self.assertEqual({'componentIsAlpha': None, 'allowAlphaComponent': None},
                                  packet['observations']['alphaOptIn'])
@@ -812,9 +850,10 @@ if scenario.get("failPurpose") == purpose:
         scenario.update(stderrPurpose='current-context', stderr='offline legacy diagnostic')
         scenario['podsAfter'] = copy.deepcopy(scenario['pods'])
         scenario['podsAfter']['items'][0]['metadata']['resourceVersion'] = 'safe-legacy-recheck'
-        result, packets, _, _ = self.run_gate(scenario, profile='PG-ONPREM-1', session=None, timeout=90)
+        result, packets, _, evidence = self.run_gate(scenario, profile='PG-ONPREM-1', session=None, timeout=90)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual('hexalith.access-telemetry.c1.evidence/v1', packets[0]['schemaVersion'])
+        self.assertEqual([], list(evidence.glob('*.streams')))
         self.assertNotIn('qualificationSessionId', packets[0])
         self.assertNotIn('producerSources', packets[0])
         self.assertEqual({'purpose', 'sha256'}, set(packets[0]['commands'][0]))
@@ -826,6 +865,355 @@ if scenario.get("failPurpose") == purpose:
                              for pod in scenario[key]['items']).encode()
             self.assertEqual(digest(output.strip()), sources['kubectl:' + purpose + ':identity'])
             self.assertNotEqual(digest(output), sources['kubectl:' + purpose + ':identity'])
+
+
+    def test_private_sidecars_retain_exact_original_pairs_and_empty_stderr_for_three_pods(self):
+        scenario = copy.deepcopy(self.base)
+        for number in (2, 3):
+            pod = copy.deepcopy(scenario['pods']['items'][0])
+            name = self.pod + '-extra-' + str(number)
+            pod['metadata'].update(name=name, uid='retention-pod-' + str(number))
+            scenario['pods']['items'].append(pod)
+            for field in ('metadata', 'daprdVersions', 'alphaOptIn'):
+                scenario[field][name] = copy.deepcopy(scenario[field][self.pod])
+        scenario['context'] = '\u2003jpiquot@local\u0085'
+        scenario['stderrPurpose'] = 'metadata'
+        scenario['stderr'] = 'safe exact diagnostic\r'
+        result, packets, _, evidence = self.run_gate(scenario, repeat=2)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(2, len(packets))
+        self.assertEqual(evidence.stat().st_mode & 0o077, 0)
+        for packet_path in evidence.glob('*.json'):
+            packet = json.loads(packet_path.read_bytes())
+            sidecar = Path(str(packet_path) + '.streams')
+            manifest = json.loads((sidecar / 'manifest.json').read_bytes())
+            self.assertEqual({'schemaVersion', 'captureSha256', 'receipts'}, set(manifest))
+            self.assertEqual(STREAM_MANIFEST_SCHEMA, manifest['schemaVersion'])
+            self.assertEqual(digest(packet_path.read_bytes()), manifest['captureSha256'])
+            self.assertEqual(sidecar.stat().st_mode & 0o077, 0)
+            expected_names = {'manifest.json'}
+            for index, (receipt, command) in enumerate(zip(manifest['receipts'], packet['commands'], strict=True)):
+                self.assertEqual({'index', 'purpose', 'stdoutSha256', 'stderrSha256'}, set(receipt))
+                self.assertEqual(index, receipt['index'])
+                self.assertEqual(command['purpose'], receipt['purpose'])
+                for suffix in ('stdout', 'stderr'):
+                    name = f'{index:04d}.{suffix}'
+                    expected_names.add(name)
+                    path = sidecar / name
+                    raw = path.read_bytes()
+                    self.assertEqual(digest(raw), receipt[suffix + 'Sha256'])
+                    self.assertEqual(digest(raw), command[suffix + 'Sha256'])
+                    self.assertEqual(path.stat().st_nlink, 1)
+                    self.assertEqual(path.stat().st_mode & 0o277, 0)
+                    if suffix == 'stderr':
+                        self.assertEqual(b'safe exact diagnostic\r\n' if command['purpose'].startswith('metadata:') else b'', raw)
+            self.assertEqual(expected_names, {path.name for path in sidecar.iterdir()})
+            self.assertEqual(('\u2003jpiquot@local\u0085\n').encode(), (sidecar / '0000.stdout').read_bytes())
+            result = inspect_c115_retained_files(str(packet_path), custody_root=str(evidence))
+            self.assertEqual(3, result.pod_count)
+            self.assertEqual('not-evaluated', result.capture.value['gateStatus'])
+            self.assertFalse(result.capture.value['productionGatePassed'])
+
+    def test_unsafe_custody_root_refuses_before_target_and_existing_bytes_are_preserved(self):
+        for kind in ('permissions', 'symlink', 'file'):
+            def setup(evidence):
+                if kind == 'permissions':
+                    evidence.mkdir(mode=0o750)
+                elif kind == 'symlink':
+                    outside = evidence.parent / 'outside'
+                    outside.mkdir(mode=0o700)
+                    evidence.symlink_to(outside, target_is_directory=True)
+                else:
+                    evidence.write_text('safe existing root')
+
+            with self.subTest(kind=kind):
+                result, packets, calls, evidence = self.run_gate(evidence_setup=setup)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual('retained-stream-custody-unavailable', result.stderr.strip())
+                self.assertEqual([], packets)
+                self.assertEqual([], calls)
+                if kind == 'file':
+                    self.assertEqual('safe existing root', evidence.read_text())
+
+    def test_custody_changed_during_capture_never_publishes_observed_packet(self):
+        for mutation in ('permissions', 'extra', 'move', 'symlink'):
+            scenario = copy.deepcopy(self.base)
+            scenario['custodyMutation'] = mutation
+            with self.subTest(mutation=mutation):
+                result, packets, _, evidence = self.run_gate(scenario)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual('retained-stream-publication-failed', result.stderr.strip())
+                self.assertEqual([], packets)
+                self.assertEqual([], list(evidence.parent.rglob('*.json.streams')))
+                self.assertEqual([], list((evidence.parent / 'moved-evidence').glob('*.json')))
+
+    def test_sidecar_and_packet_exclusive_creation_preserve_preexisting_artifacts(self):
+        for kind in ('sidecar', 'packet'):
+            root = self.temporary_repository()
+            runner = root / SOURCE_PATHS[0]
+            text = runner.read_text().replace("$timestamp = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssfffZ')",
+                                             "$timestamp = '20261013T000000000Z'", 1)
+            text = text.replace("$captureId = [Guid]::NewGuid().ToString('N')", "$captureId = 'fixedfixture'", 1)
+            runner.write_bytes(text.replace('\n', '\r\n').encode())
+            filename = 'c1.15-runtime-control-plane-identity-20261013T000000000Z-fixedfixture.json'
+
+            def setup(evidence):
+                evidence.mkdir(mode=0o700)
+                if kind == 'sidecar':
+                    folder = evidence / (filename + '.streams')
+                    folder.mkdir(mode=0o700)
+                    (folder / 'sentinel').write_bytes(b'safe existing sidecar')
+                else:
+                    (evidence / filename).write_bytes(b'{"sentinel":true}')
+
+            with self.subTest(kind=kind):
+                completed, packets, _, evidence = self.run_gate(runner=runner, evidence_setup=setup)
+                self.assertNotEqual(0, completed.returncode)
+                self.assertEqual('retained-stream-publication-failed', completed.stderr.strip())
+                if kind == 'sidecar':
+                    self.assertEqual([], packets)
+                    self.assertEqual(b'safe existing sidecar', (evidence / (filename + '.streams') / 'sentinel').read_bytes())
+                    self.assertEqual({'sentinel'}, {path.name for path in (evidence / (filename + '.streams')).iterdir()})
+                else:
+                    self.assertEqual([{'sentinel': True}], packets)
+                    self.assertEqual(b'{"sentinel":true}', (evidence / filename).read_bytes())
+
+    def test_incomplete_sidecar_write_refuses_without_an_observed_packet(self):
+        root = self.temporary_repository()
+        runner = root / SOURCE_PATHS[0]
+        text = runner.read_text().replace('Write(_sidecar, "manifest.json", manifest);',
+                                          'if (manifest.Length > 0) throw new IOException("fixture retention failure");', 1)
+        runner.write_bytes(text.replace('\n', '\r\n').encode())
+        completed, packets, _, evidence = self.run_gate(runner=runner)
+        self.assertNotEqual(0, completed.returncode)
+        self.assertEqual('retained-stream-publication-failed', completed.stderr.strip())
+        self.assertEqual([], packets)
+        sidecar = next(evidence.glob('*.streams'))
+        self.assertFalse((sidecar / 'manifest.json').exists())
+        self.assertTrue(all(path.stat().st_mode & 0o077 == 0 for path in sidecar.iterdir()))
+
+    def test_c1_16_retains_legacy_packet_behavior_without_private_sidecars(self):
+        import gate_c1_16_test as legacy
+        harness = legacy.ComponentBackendCaptureTests()
+        harness.setUp()
+        self.addCleanup(harness.doCleanups)
+        completed, packets, _, evidence = harness.run_gate(harness.successor_scenario(), profile='PG-ONPREM-2', opt_in=False)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual('hexalith.access-telemetry.c1.evidence/v1', packets[0]['schemaVersion'])
+        self.assertEqual('C1.16', packets[0]['gate'])
+        self.assertEqual([], list(evidence.glob('*.streams')))
+        self.assertFalse(packets[0]['productionGatePassed'])
+
+
+
+    def test_producer_exact_stream_limit_and_aggregate_occurrences_are_bounded(self):
+        scenario = copy.deepcopy(self.base)
+        scenario['context'] += ' ' * (1024 * 1024 - len(scenario['context']) - 1)
+        scenario.update(stderrPurpose='current-context', stderr='x' * (1024 * 1024 - 1))
+        completed, packets, _, evidence = self.run_gate(scenario)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        packet = next(evidence.glob('*.json'))
+        result = inspect_c115_retained_files(str(packet), custody_root=str(evidence))
+        self.assertEqual(1024 * 1024, len(result.streams[0].stdout))
+        self.assertEqual(1024 * 1024, len(result.streams[0].stderr))
+        scenario = copy.deepcopy(self.base)
+        for number in range(2, 7):
+            pod = copy.deepcopy(scenario['pods']['items'][0])
+            name = self.pod + '-extra-' + str(number)
+            pod['metadata'].update(name=name, uid='budget-pod-' + str(number))
+            scenario['pods']['items'].append(pod)
+            for field in ('metadata', 'daprdVersions', 'alphaOptIn'):
+                scenario[field][name] = copy.deepcopy(scenario[field][self.pod])
+        scenario['largeSafeStreams'] = True
+        packet, _ = self.assert_blocked(scenario, 'retained-stream-aggregate-byte-budget-exceeded', timeout=90)
+        self.assertEqual(17, len(packet['commands']))
+        self.assertEqual('not-evaluated', packet['gateStatus'])
+
+
+
+    def test_retention_safety_covers_broader_raw_decoded_and_named_credentials(self):
+        unsafe = ('bearer private-value', '-----BEGIN PRIVATE KEY-----', 'api_key=private-value',
+                  'credential=private-value', 'refresh_token=private-value', 'id-token=private-value',
+                  '{"\\u0061pi_key":"private-value"}',
+                  'notice {"name":"API_KEY","value":"private-value"}',
+                  '{"discarded":"{\\"name\\":\\"credential\\",\\"value\\":[]}"}')
+        for raw in unsafe:
+            with self.subTest(raw=raw[:28]):
+                scenario = copy.deepcopy(self.base)
+                scenario.update(stderrPurpose='metadata', stderr=raw)
+                packet, _ = self.assert_blocked(scenario, 'secret-shaped-output')
+                command = packet['commands'][-1]
+                self.assertEqual('not-validated', command['streamSafety'])
+                self.assertIsNone(command['stdoutSha256'])
+                self.assertIsNone(command['stderrSha256'])
+                self.assertNotIn('private-value', json.dumps(packet))
+
+
+    def test_retention_json_safety_refuses_failed_fragments_and_preserves_safe_diagnostics(self):
+        # Exercise the exact production safety type in one isolated pwsh run;
+        # report labels/codes without printing supplied diagnostic bytes.
+        text = RUNNER.read_text()
+        start = text.index("using System;", text.index('function Initialize-C1RetentionCustody'))
+        end = text.index("\n'@", start)
+        source = text[start:end]
+        unsafe = (
+            ('malformed', 'notice {"bad":}', 'c115-stream-invalid-json'),
+            ('deep', 'notice ' + '[' * 31 + '0' + ']' * 31, 'c115-stream-json-depth-exceeded'),
+            ('duplicate-decoded', 'notice {"a":0,"\\u0061":1}', 'c115-stream-duplicate-json-field'),
+            ('overflow', 'notice {"value":1e9999}', 'c115-stream-nonfinite-json-number'),
+            ('array-nan', '[NaN]', 'c115-stream-nonfinite-json-number'),
+            ('object-infinity', 'notice {"number":Infinity}', 'c115-stream-nonfinite-json-number'),
+            ('scalar-nan', 'NaN', 'c115-stream-nonfinite-json-number'),
+            ('scalar-infinity', '-Infinity', 'c115-stream-nonfinite-json-number'),
+            ('scalar-overflow', '1e9999', 'c115-stream-nonfinite-json-number'),
+            ('integer-positive', '9' * 381, 'c115-stream-integer-lexeme-too-long'),
+            ('integer-negative', '-' + '9' * 380, 'c115-stream-integer-lexeme-too-long'),
+            ('later-fragment', 'notice "unmatched {} {"bad":}', 'c115-stream-invalid-json'),
+            ('standalone-opening', '{', 'c115-stream-invalid-json'),
+        ) + tuple(('separator-' + str(ord(separator)), 'bearer' + separator + 'private-value', 'secret-shaped-output')
+                  for separator in '\x1c\x1d\x1e\x1f')
+        safe = ('[INFO] harmless diagnostics {"reason":"safe","duration":0.125}',
+                'NaN was unavailable', 'value 1e9999 is untrusted text', 'notice "path\\q" {} "[INFO]"',
+                'notice "literal {" and "plain prose"', 'notice "{" and "ordinary text"',
+                '9' * 380, '-' + '9' * 379, '{"finite":1e20}',
+                '[' * 30 + '0' + ']' * 30, 'ordinary\x1cseparator')
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        definition = root / 'retention-type.cs'
+        definition.write_text(source)
+        inputs = root / 'diagnostics.json'
+        inputs.write_text(json.dumps([raw for _, raw, _ in unsafe] + list(safe)))
+        script = root / 'check.ps1'
+        script.write_text("""param([string]$Definition, [string]$Inputs)
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition ([System.IO.File]::ReadAllText($Definition))
+$answers = @()
+foreach ($text in (ConvertFrom-Json ([System.IO.File]::ReadAllText($Inputs)))) {
+    try { [C1PrivateStreamWriter]::AssertSafe($text); $answers += 'safe' }
+    catch { $answers += $_.Exception.InnerException.Message }
+}
+ConvertTo-Json -InputObject $answers -Compress
+""")
+        completed = subprocess.run(['pwsh', str(script), str(definition), str(inputs)], text=True, capture_output=True, check=False)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual([code for _, _, code in unsafe] + ['safe'] * len(safe), json.loads(completed.stdout))
+        for _, raw, code in (case for case in unsafe if case[0] in ('malformed', 'scalar-nan')):
+            scenario = copy.deepcopy(self.base)
+            scenario.update(stderrPurpose='metadata', stderr=raw)
+            packet, _ = self.assert_blocked(scenario, code)
+            self.assertIsNone(packet['commands'][-1]['stdoutSha256'])
+            self.assertIsNone(packet['commands'][-1]['stderrSha256'])
+        scenario = copy.deepcopy(self.base)
+        scenario.update(stderrPurpose='metadata', stderr='notice "path\\q" {"finite":1e20}\x1c')
+        completed, _, _, evidence = self.run_gate(scenario)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        inspected = inspect_c115_retained_files(str(next(evidence.glob('*.json'))), custody_root=str(evidence))
+        self.assertEqual((scenario['stderr'] + '\n').encode(), inspected.streams[3].stderr)
+
+    def test_generated_packet_path_budget_is_checked_before_target_calls(self):
+        filename_length = len('c1.15-runtime-control-plane-identity-00000000T000000000Z-' + '0' * 32 + '.json')
+        for packet_length in (512, 513):
+            def long_path(evidence):
+                root_length = packet_length - filename_length - 1
+                first = evidence.parent / ('a' * 180)
+                return first / ('b' * (root_length - len(str(first)) - 1))
+
+            with self.subTest(packet_length=packet_length):
+                completed, packets, calls, evidence = self.run_gate(evidence_argument=long_path)
+                if packet_length == 512:
+                    self.assertEqual(0, completed.returncode, completed.stderr)
+                    path = next(evidence.glob('*.json'))
+                    self.assertEqual(512, len(str(path)))
+                    self.assertEqual(1, inspect_c115_retained_files(str(path), custody_root=str(evidence)).pod_count)
+                else:
+                    self.assertNotEqual(0, completed.returncode)
+                    self.assertEqual('retained-stream-custody-unavailable', completed.stderr.strip())
+                    self.assertEqual([], packets)
+                    self.assertEqual([], calls)
+                    self.assertFalse(evidence.exists())
+
+    def test_post_packet_failure_removes_owned_packet_and_preserves_substituted_name(self):
+        for substitute in (False, True):
+            root = self.temporary_repository()
+            runner = root / SOURCE_PATHS[0]
+            if substitute:
+                injection = '''
+            string path = Path.Combine(Environment.GetEnvironmentVariable("C1_EVIDENCE"), name);
+            File.Move(path, path + ".owned-original");
+            File.WriteAllText(path, "{\\"sentinel\\":true}");
+'''
+            else:
+                injection = ''
+            injection += '            if (packet.Length > 0) throw new IOException("private-cleanup-canary");\n'
+            text = runner.read_text().replace('            _publicationRoot = root;\n', '            _publicationRoot = root;\n' + injection, 1)
+            runner.write_bytes(text.replace('\n', '\r\n').encode())
+            with self.subTest(substitute=substitute):
+                completed, packets, _, evidence = self.run_gate(runner=runner)
+                self.assertNotEqual(0, completed.returncode)
+                self.assertEqual('retained-stream-publication-failed', completed.stderr.strip())
+                self.assertEqual('', completed.stdout)
+                self.assertEqual([{'sentinel': True}] if substitute else [], packets)
+                self.assertEqual(1, len(list(evidence.glob('*.streams'))))
+                if substitute:
+                    self.assertEqual(b'{"sentinel":true}', next(evidence.glob('*.json')).read_bytes())
+                    self.assertEqual(1, len(list(evidence.glob('*.owned-original'))))
+
+    def test_disposal_failure_attempts_all_owned_cleanup_and_rolls_back_packet(self):
+        for failure in ('first-before-release', 'packet-after-release'):
+            root = self.temporary_repository()
+            runner = root / SOURCE_PATHS[0]
+            before = ('if (artifact.Name == "0000.stdout") throw new IOException("private-cleanup-canary");'
+                      if failure == 'first-before-release' else '')
+            after = ('if (artifact == _published) throw new IOException("private-cleanup-canary");'
+                     if failure == 'packet-after-release' else '')
+            injection = '''
+            try {
+                File.AppendAllText(Path.Combine(Environment.GetEnvironmentVariable("C1_EVIDENCE"), "cleanup-attempts"), "artifact\\n");
+                ''' + before + '''
+                artifact.Stream.Dispose();
+                ''' + after + '''
+            }'''
+            text = runner.read_text().replace('            try { artifact.Stream.Dispose(); }', injection, 1)
+            text = text.replace('                try { artifact.Handle.Dispose(); }', '''
+                try {
+                    artifact.Handle.Dispose();
+                    if (artifact.Handle.IsClosed)
+                        File.AppendAllText(Path.Combine(Environment.GetEnvironmentVariable("C1_EVIDENCE"), "cleanup-attempts"), "handle\\n");
+                }''', 1)
+            text = text.replace('                if (close(_directories[index].Descriptor) != 0) { failed = true; Rollback(_publicationRoot, _published); }',
+                                '''                if (close(_directories[index].Descriptor) != 0) { failed = true; Rollback(_publicationRoot, _published); }
+                File.AppendAllText(Path.Combine(Environment.GetEnvironmentVariable("C1_EVIDENCE"), "cleanup-attempts"), "directory\\n");''', 1)
+            runner.write_bytes(text.replace('\n', '\r\n').encode())
+            with self.subTest(failure=failure):
+                completed, packets, _, evidence = self.run_gate(runner=runner)
+                self.assertNotEqual(0, completed.returncode)
+                self.assertEqual('retained-stream-publication-failed', completed.stderr.strip())
+                self.assertEqual('', completed.stdout)
+                self.assertEqual([], packets)
+                attempted = (evidence / 'cleanup-attempts').read_text().splitlines()
+                self.assertEqual(14, attempted.count('artifact'))  # Six pairs, manifest and owned packet.
+                self.assertEqual(14, attempted.count('handle'))
+                self.assertEqual(len(evidence.parts) + 1, attempted.count('directory'))  # '/' ancestors plus sidecar.
+
+    def test_packet_bytes_are_charged_at_publication_after_streams_fit_collection(self):
+        scenario = copy.deepcopy(self.base)
+        for number in range(2, 6):
+            pod = copy.deepcopy(scenario['pods']['items'][0])
+            name = self.pod + '-publication-' + str(number)
+            pod['metadata'].update(name=name, uid='publication-pod-' + str(number))
+            scenario['pods']['items'].append(pod)
+            for field in ('metadata', 'daprdVersions', 'alphaOptIn'):
+                scenario[field][name] = copy.deepcopy(scenario[field][self.pod])
+        scenario.update(largeSafeStreams=True, largeSafeStreamBytes=32 * 1024 * 1024 // 36)
+        self.assertLessEqual(scenario['largeSafeStreamBytes'] * 36, 32 * 1024 * 1024)
+        self.assertLess(32 * 1024 * 1024 - scenario['largeSafeStreamBytes'] * 36, 100)
+        completed, packets, calls, evidence = self.run_gate(scenario, timeout=90)
+        self.assertNotEqual(0, completed.returncode)
+        self.assertEqual('retained-stream-publication-failed', completed.stderr.strip())
+        self.assertEqual(18, len(calls))  # All five Pods and the final stable recheck completed.
+        self.assertEqual([], packets)
+        self.assertEqual([], list(evidence.glob('*.streams')))
 
 
 if __name__ == '__main__':

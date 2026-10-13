@@ -1,8 +1,9 @@
 # Offline PG2 C1.15 retained output inspection
 
 Prepared on **2026-10-13** for the bounded Story 27.4 retained output slice.
-The pure inspector binds caller-supplied stdout/stderr bytes to every exact
-command receipt, then derives the declared observations from those outputs.
+The PG2 C1.15 producer retains validated exact stdout/stderr bytes in a private,
+packet-bound sidecar. The file reader safely loads that pair and calls the pure
+inspector to bind each command receipt and derive the declared observations.
 It returns frozen consistency data. Production remains disabled, parent Story
 27.4 stays in-progress and A41 stays open. Historical dispositions and integrated
 I2–I6 / P1–P7 holds remain unchanged.
@@ -43,6 +44,106 @@ The result is a frozen, slotted dataclass:
 
 Pair representations omit purpose and both streams, including for refused input.
 The result has no acceptance flag, pass verdict, authority or execution handle.
+
+## Private layout and file reader
+
+An observed PG2 C1.15 capture has this exact layout beneath its owner-only
+`EvidenceDirectory` (the evidence root is created with mode `0700` when absent):
+
+```text
+private-evidence/
+  c1.15-runtime-control-plane-identity-TIMESTAMP-ID.json
+  c1.15-runtime-control-plane-identity-TIMESTAMP-ID.json.streams/
+    manifest.json
+    0000.stdout
+    0000.stderr
+    0001.stdout
+    0001.stderr
+    ...
+```
+
+The sidecar name is the entire packet filename plus `.streams`. Indexes have
+four decimal digits and start at zero in packet `commands` order. Every command
+has both files, including a zero-length stderr file. The sidecar contains only
+`manifest.json` and those pairs: missing files, surplus files and alternate
+numbering are refused. Git `sourceCommands` are excluded.
+
+The closed manifest has exactly `schemaVersion`, `captureSha256` and `receipts`.
+`schemaVersion` is `hexalith.access-telemetry.c1.retained-streams/v1`.
+`captureSha256` binds the packet's original bytes, including its final newline.
+Each receipt has exactly `index`, `purpose`, `stdoutSha256` and `stderrSha256`;
+its integer index, purpose and original-byte hashes must match the packet's
+receipt at that position. No fields are added to the closed v2 packet.
+
+The producer retains only streams that passed its existing strict UTF-8 and
+credential scans. It keeps original bytes through parsing, exclusively creates
+a fresh sidecar and its single-link regular files, writes the manifest, and
+checks exact bounded readback before creating the packet. Artifacts finish with
+mode `0400`; the sidecar has mode `0700`. Exclusive creation never overwrites an
+existing packet, sidecar or stream. Packet publication failure removes only the
+writer's own packet identity when still named; a private incomplete safe sidecar
+may remain for operator handling. Blocked packets have no new sidecar and cannot
+be read as an observed retained pair. Unsafe streams are never written to disk.
+
+After a failed capture, identify a possible orphan by its `.json.streams`
+directory name and the absence of the matching packet filename; inspect names
+and private filesystem metadata without printing stream contents. Confirm that
+no capture still owns the directory. Keep complete packet/sidecar pairs together
+and unchanged. A present packet whose readback refuses needs private quarantine
+of the entire pair and investigation, not automatic deletion or repair. Under
+the existing custody owner's authorization, an inactive unpaired incomplete
+sidecar may be kept privately for investigation or removed using non-following
+operations after confirming owner-only custody and the exact intended directory.
+Never copy orphan files into another capture or relabel them as complete evidence.
+Orphan handling grants no gate credit and changes neither parent Story 27.4 nor
+A41 status or authority.
+
+`tools/access_telemetry_c1_retained_files.py` exposes:
+
+```python
+inspect_c115_retained_files(
+    packet_path: str,
+    *,
+    custody_root: str,
+) -> C115StreamInspection
+```
+
+Both paths must be canonical absolute paths. The packet must be strictly below
+the supplied custody root. The reader opens every component without following
+symlinks, including ancestors above the root. Directories at/below the root and
+all artifacts must be owned by the effective OS user with no group/other
+permissions. Files must be regular and have one link. Descriptors stay held
+through inspection; final named identities, change metadata, exact byte
+readback, complete sidecar enumeration and effective-user checks must all remain
+stable before the frozen inspection escapes. Every invocation reads current
+files again; it caches no successful result. Owner permissions demonstrate local
+custody only and do not authenticate an operator.
+
+The current writer requires Linux descriptor-relative filesystem operations and
+`statx` metadata; the reader requires POSIX effective-user and non-following
+open/stat operations. Unsupported platforms or unavailable safety operations
+refuse rather than weakening custody. Neither readback nor its pure inspector
+starts a process, contacts a target, consults configuration or reads a clock.
+Do not print, paste, stage or upload raw streams. Keep the whole packet/sidecar
+pair private, and pass only the returned inspection to authorized callers.
+
+The packet and each stream are capped at 1 MiB. The manifest has its own separate
+1 MiB cap. The reader and producer charge packet bytes plus every stream
+occurrence against 32 MiB, with no discount for repeated identical bytes. The
+producer also refuses collection once retained stream occurrences exceed 32 MiB.
+
+File refusals use `InterchangeFormatError` with no partial inspection or raw
+exception chain. Custody/IO failures use bounded `c115-files-*` codes, including
+`filesystem-unavailable`, `path-not-canonical`, `packet-outside-custody`,
+`not-private`, `single-link-required`, `current-status-drifted`,
+`artifact-bytes-drifted` and `effective-user-drifted`. Layout/binding failures use
+`sidecar-set-mismatch`, `distinct-files-required`, `manifest-schema-mismatch`,
+`capture-hash-mismatch` and `manifest-receipts-mismatch`. File size failures use
+`artifact-byte-budget-exceeded` or `aggregate-byte-budget-exceeded`. Existing
+JSON, declaration and pure-stream refusals remain content-free and are preserved.
+Producer custody/publication failures print only
+`retained-stream-custody-unavailable` or `retained-stream-publication-failed` and
+publish no new observed inspectable pair.
 
 ## Bytes, limits and credential safety
 
@@ -129,9 +230,9 @@ Boolean parsing permits case and boundary whitespace, including .NET
 `Boolean.TryParse` boundary NUL behavior. It refuses missing values, numeric
 booleans and extra internal lines. Output trimming never changes stored bytes.
 
-The offline compatibility test runs the unchanged producer against its existing
-fake kubectl harness, instrumenting only that disposable transport to retain the
-actual bytes. It covers one/two/three Pods, adjacent and separated frames,
+The offline compatibility tests run the producer against fake kubectl and
+independently compare its private sidecar with the transport originals. The
+private-file tests also author packet/manifest/pair fixtures independently. It covers one/two/three Pods, adjacent and separated frames,
 Unicode trimming, safe stderr diagnostics, extra finite numbers, array sorting,
 boolean spellings, true/true and false/true alpha successes, signed integer
 boundaries, quoted prose with non-JSON backslashes and reordered rechecks with
@@ -177,9 +278,11 @@ independent authority, registration, gate acceptance or C1 credit. The complete
 Running comparison concerns the supplied output. A fabricated or incomplete
 output that is internally consistent remains untrusted.
 
-The API performs no filesystem, process, network, configuration or clock access.
-No producer, consumer, registry or deployed refusal changes. No capture is
-published and no target is contacted. Producer/verifier/command/cleanup
+The pure API performs no filesystem, process, network, configuration or clock
+access. The file API performs only private filesystem readback. The producer
+retains validated bytes only for PG2 C1.15; consumers, registry, deployed refusals,
+PG1 and C1.16 behavior are unchanged. Offline inspection publishes no capture
+and contacts no target. Producer/verifier/command/cleanup
 registration, trusted stream acquisition, source/archive custody, integrated
 authority and all-gate acceptance remain separate work. Any separate owner
 inspection reuses `dispatch_owner_run_files` and grants no execution authority.
@@ -200,6 +303,11 @@ clock barriers, including known prebound aliases. Deliberate barrier probes
 verify detection; inspector cases require zero dependency attempts. Exact
 per-stream/aggregate boundaries, repeated occurrence charging, immutable results,
 all later Pods, completeness and unsafe discarded fields on stderr are covered.
+Private-file tests cover the closed manifest/set, custody, symlink/hardlink/FIFO
+refusals, mutation/substitution during reads and inspection, exact final readback,
+fresh calls and cleanup failures. Fake producer cases prove private exact
+sidecars, empty stderr, exclusive creation, incomplete-retention refusal, custody
+drift, budgets and unchanged PG1/C1.16 behavior.
 The affected lane retains its existing isolated fixtures and contacts no live
 authority or target. Phase and review receipts belong to the bounded slice's
-[specification](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-18.md).
+[specification](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-19.md).
