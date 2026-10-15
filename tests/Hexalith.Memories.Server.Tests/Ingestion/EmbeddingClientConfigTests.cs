@@ -26,6 +26,24 @@ public class EmbeddingClientConfigTests
     private const string TenantId = "test-tenant";
 
     [Fact]
+    public async Task GenerateAsync_ShouldReadCredentialsFromAssignedSecretStore()
+    {
+        float[] vector = CreateVector(768);
+        IHttpClientFactory factory = CreateSimpleHttpClientFactory(HttpStatusCode.OK, CreateEmbeddingResponse(vector));
+        DaprClient daprClient = CreateDaprClientWithSecret("google-embedding-api-key");
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Memories:SecretStoreName"] = "assigned-secrets" })
+            .Build();
+        TenantEmbeddingConfig config = EmbeddingProviderDefaults.Google();
+        EmbeddingClient client = new(factory, daprClient, configuration, CreateHostEnvironment());
+
+        await client.GenerateAsync("test text", TenantId, config, CancellationToken.None);
+
+        await daprClient.Received(1).GetSecretAsync("assigned-secrets", config.ApiSecretKeyName, Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+        await daprClient.DidNotReceive().GetSecretAsync("secretstore", Arg.Any<string>(), Arg.Any<Dictionary<string, string>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GenerateAsync_ShouldIncludeOutputDimensionalityInRequest()
     {
         // Arrange

@@ -15,6 +15,19 @@ using Shouldly;
 [Collection("EnvironmentVariableSerialized")]
 public sealed class ResolveConfiguredTopicTests
 {
+    [Theory]
+    [InlineData(null, "pubsub")]
+    [InlineData("assigned-events", "assigned-events")]
+    public void SubscriptionMetadata_UsesAssignedComponentOrIsolatedDefault(string? assignment, string expected)
+    {
+        using var scope = new EnvScope(("EventStoreIntegration__Routing__PubSubName", assignment), (EventIngestionController.TopicEnvVar, "memories-events"));
+        Dapr.ITopicMetadata metadata = typeof(EventIngestionController).GetMethod(nameof(EventIngestionController.OnEvent))!
+            .GetCustomAttributes(inherit: true).OfType<Dapr.ITopicMetadata>().Single();
+
+        metadata.PubsubName.ShouldBe(expected);
+        metadata.Name.ShouldBe("memories-events");
+    }
+
     [Fact]
     public void ResolveConfiguredTopic_FromEnvironmentVariablesProvider_SurfacesAppHostInjectedValue()
     {

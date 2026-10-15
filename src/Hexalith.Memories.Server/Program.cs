@@ -60,7 +60,10 @@ app.UseAuthorization();
 app.UseMiddleware<TenantAuthorizationMiddleware>();
 app.UseRateLimiter();
 app.MapControllers();
-app.MapSubscribeHandler().AllowAnonymous();
+if (!app.Configuration.GetValue<bool>("Dapr:DeclarativeSubscriptions"))
+{
+    app.MapSubscribeHandler().AllowAnonymous();
+}
 
 TelemetrySnapshotCache telemetrySnapshotCache = app.Services.GetRequiredService<TelemetrySnapshotCache>();
 MemoriesMeter.EnsureObservableGaugesCreated(

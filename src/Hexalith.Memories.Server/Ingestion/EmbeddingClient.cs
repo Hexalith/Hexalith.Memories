@@ -73,7 +73,7 @@ public class EmbeddingClient
         // spec-infrastructure-dependency-abstraction (F2, Decision D30; review P5): Google base URL
         // comes from the single Configure()-seeded options seam — no parallel IConfiguration re-bind.
         string googleApiBaseUrl = NormalizeApiBaseUrl(EmbeddingProviderDefaults.CurrentOptions.Google.ApiBaseUrl);
-        EmbeddingSecretStore secretStore = new(daprClient);
+        EmbeddingSecretStore secretStore = new(daprClient, configuration);
         _transport = new EmbeddingProviderTransport(httpClientFactory);
         _providerRegistry = new EmbeddingProviderRegistry(
             new GoogleEmbeddingProvider(secretStore, googleApiBaseUrl),

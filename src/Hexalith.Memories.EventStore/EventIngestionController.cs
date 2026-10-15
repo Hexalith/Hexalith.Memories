@@ -36,7 +36,7 @@ public sealed class EventIngestionController : ControllerBase
 {
     /// <summary>The DAPR pub/sub component name this subscription binds to. Keep in sync with the
     /// <c>metadata.name</c> of <c>deploy/dapr/components/pubsub.yaml</c> and the AppHost wiring.</summary>
-    public const string PubSubName = "pubsub";
+    public static string PubSubName => Environment.GetEnvironmentVariable("EventStoreIntegration__Routing__PubSubName") ?? "pubsub";
 
     /// <summary>The environment-variable name the subscription metadata attribute resolves at startup.
     /// Operators must set <c>MEMORIES_EVENTSTORE_TOPIC</c> to the topic name configured in
@@ -56,7 +56,7 @@ public sealed class EventIngestionController : ControllerBase
     /// <returns>An HTTP response that drives DAPR's retry / drop behavior.</returns>
     [HttpPost("ingest")]
     [AllowAnonymous]
-    [EnvironmentTopic(PubSubName, TopicEnvVar)]
+    [EnvironmentTopic(TopicEnvVar)]
     [ProducesResponseType(typeof(EventIngestionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]

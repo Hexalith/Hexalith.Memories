@@ -14,17 +14,19 @@ using Dapr.Client;
 /// tenant's <c>ApiSecretKeyName</c> rather than the tenant id so distinct tenants with distinct secret keys never collide.</summary>
 internal sealed class EmbeddingSecretStore
 {
-    private const string SecretStoreName = "secretstore";
+    private readonly string _secretStoreName;
 
     private readonly ConcurrentDictionary<string, string> _cache = new();
     private readonly DaprClient _daprClient;
 
     /// <summary>Initializes a new instance of the <see cref="EmbeddingSecretStore"/> class.</summary>
     /// <param name="daprClient">The DAPR client for secret retrieval.</param>
-    public EmbeddingSecretStore(DaprClient daprClient)
+    /// <param name="configuration">The assigned component name, or isolated defaults when absent.</param>
+    public EmbeddingSecretStore(DaprClient daprClient, IConfiguration? configuration = null)
     {
         ArgumentNullException.ThrowIfNull(daprClient);
         _daprClient = daprClient;
+        _secretStoreName = configuration?["Memories:SecretStoreName"] ?? "secretstore";
     }
 
     /// <summary>Gets the cached secret for the supplied key name, reading it from the DAPR secret store on a cache miss.</summary>
@@ -42,7 +44,7 @@ internal sealed class EmbeddingSecretStore
         try
         {
             Dictionary<string, string> secret = await _daprClient
-                .GetSecretAsync(SecretStoreName, apiSecretKeyName, cancellationToken: ct)
+                .GetSecretAsync(_secretStoreName, apiSecretKeyName, cancellationToken: ct)
                 .ConfigureAwait(false);
             string apiKey = secret[apiSecretKeyName];
             _cache.TryAdd(apiSecretKeyName, apiKey);
@@ -51,7 +53,7 @@ internal sealed class EmbeddingSecretStore
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             throw new EmbeddingApiException(
-                $"Failed to retrieve embedding credential secret from DAPR secret store '{SecretStoreName}'. " +
+                $"Failed to retrieve embedding credential secret from DAPR secret store '{_secretStoreName}'. " +
                 "Ensure the DAPR sidecar is running and deploy/dapr/components/secretstore.yaml is configured.",
                 tenantId,
                 ex);

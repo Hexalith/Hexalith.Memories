@@ -25,6 +25,13 @@ using Dapr;
 internal sealed class EnvironmentTopicAttribute : Attribute, ITopicMetadata
 {
     /// <summary>Initializes a new instance of the <see cref="EnvironmentTopicAttribute"/> class.</summary>
+    /// <param name="topicEnvironmentVariable">The environment variable containing the topic name.</param>
+    public EnvironmentTopicAttribute(string topicEnvironmentVariable)
+        : this(EventIngestionController.PubSubName, topicEnvironmentVariable)
+    {
+    }
+
+    /// <summary>Initializes explicit component metadata for isolated use.</summary>
     /// <param name="pubsubName">The Dapr pub/sub component name.</param>
     /// <param name="topicEnvironmentVariable">The environment variable containing the topic name.</param>
     public EnvironmentTopicAttribute(string pubsubName, string topicEnvironmentVariable)
