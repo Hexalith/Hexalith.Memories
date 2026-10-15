@@ -52,6 +52,34 @@ def inspect_owner_c115_from_plan_files(
     a simultaneous snapshot, target authority or complete evidence custody.
     ``now`` is caller-supplied aware UTC; no ambient clock or Git is consulted.
     """
+    return _compose_owner_c115_plan_files(
+        plan_path, approved_plan_sha256, custody_root=custody_root,
+        registry=registry, capture=capture, sources=sources, streams=streams,
+        statement=statement, command_contract=command_contract,
+        review_role_policy=review_role_policy, now=now,
+    )
+
+
+def _compose_owner_c115_plan_files(
+    plan_path: str,
+    approved_plan_sha256: str,
+    *,
+    custody_root: str,
+    registry: JsonSnapshot,
+    capture: JsonSnapshot,
+    sources: tuple[SourceSnapshot, ...],
+    streams: tuple[C115CommandStreams, ...],
+    statement: JsonSnapshot,
+    command_contract: JsonSnapshot,
+    review_role_policy: JsonSnapshot,
+    now: datetime,
+    checked_inspection=None,
+):
+    """Continue after full inspection, within held custody and final readback.
+
+    The private callback receives only the completed detached inspection. Its
+    result cannot escape until the existing status-last readback and cleanup.
+    """
     refusal = None
     try:
         supplied = (registry, capture, statement, command_contract, review_role_policy)
@@ -63,7 +91,7 @@ def inspect_owner_c115_from_plan_files(
             JsonSnapshot(item.raw) for item in supplied
         )
 
-        def inspection(plan: JsonSnapshot, run: JsonSnapshot, withdrawn: bool) -> OwnerC115Inspection:
+        def inspection(plan: JsonSnapshot, run: JsonSnapshot, withdrawn: bool):
             value = plan.value
             if "registrySha256" not in value:
                 _refuse("owner-c115-plan-files-registry-binding-required")
@@ -72,11 +100,12 @@ def inspect_owner_c115_from_plan_files(
                 value["recordSha256"], value["policySha256"], value["sessionId"],
                 value["sourceCommit"], value["targetSha256"], value["custodyRoot"],
             )
-            return inspect_owner_c115(
+            inspected = inspect_owner_c115(
                 registry, capture, sources, streams, run, anchors, statement,
                 command_contract, review_role_policy, value["registrySha256"],
                 now=now, withdrawn=withdrawn,
             )
+            return inspected if checked_inspection is None else checked_inspection(inspected)
 
         result = _compose_owner_run_files(
             plan_path, approved_plan_sha256, custody_root=custody_root,

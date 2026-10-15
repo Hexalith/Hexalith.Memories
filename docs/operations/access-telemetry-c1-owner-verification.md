@@ -442,14 +442,87 @@ rereads provide point-in-time checks; concurrent changes can still occur between
 reads. They do not lock the repository or authenticate its
 custody, a producer execution or a target observation. Caller approval anchors
 remain assertions obtained outside candidate materials. Complete retained
-custody, combining local checkout corroboration with current-plan acquisition,
-concrete live plans, live collection and
-technical gate/result acceptance remain separate work. Spec 14 live tasks,
-Story 27.4, A41 and Production activation remain open.
+custody, concrete live plans, live collection and technical gate/result
+acceptance remain separate work. The current-plan API below composes local
+checkout corroboration within held plan/run/status acquisition. Spec 14 live
+tasks, Story 27.4, A41 and Production activation remain open.
+
+## Current-plan local checkout corroboration
+
+`tools/access_telemetry_c1_owner_c115_provenance.py` also provides
+`corroborate_owner_c115_sources_from_plan_files`. Supply the same inputs as
+`inspect_owner_c115_from_plan_files`, plus `repository_root`. There are no
+caller-supplied run, anchors, withdrawal value or approved registry digest:
+those come solely from current files bound to the outside-approved plan bytes.
+The existing owner policy approval persists; this composition adds no approval
+or acceptance authority.
+
+```python
+from access_telemetry_c1_owner_c115_provenance import corroborate_owner_c115_sources_from_plan_files
+
+corroboration = corroborate_owner_c115_sources_from_plan_files(
+    plan_path="/absolute/private-custody/plan.json",
+    approved_plan_sha256=outside_approved_raw_plan_sha256,
+    custody_root="/absolute/private-custody",
+    registry=registry_snapshot,
+    capture=capture_snapshot,
+    sources=retained_source_tuple,
+    streams=retained_command_stream_tuple,
+    statement=owner_registration_snapshot,
+    command_contract=owner_command_snapshot,
+    review_role_policy=owner_role_snapshot,
+    repository_root="/absolute/canonical/standalone-checkout",
+    now=caller_supplied_aware_utc_datetime,
+)
+```
+
+The call completes these steps before returning:
+
+1. Check closed supplied containers, explicit UTC `now` and occurrence budgets;
+   detach source/stream records and rebuild all five supplied snapshots before
+   filesystem callbacks.
+2. Acquire the private approved plan, its run record and its current status,
+   preserving the existing outside digest, exact bindings, owner/PG2/self-review
+   checks, `observe` requirement and withdrawal/expiry refusals.
+3. Run exactly one full C1.15 inspection, charging the acquired run in the
+   six-artifact 32 MiB budget. All current-file and evidence validation precedes
+   checkout access and Git. Only the detached inspected sources feed comparison.
+4. Hold all plan/run/status and ancestor descriptors through the existing owner
+   safety preflight and enforced bounded local Git lane described above. The
+   existing standalone clean-checkout, local-object, deadline, output budget,
+   syscall enforcement and child-cleanup requirements apply unchanged.
+5. Rewind and reread exact bounded plan bytes, run bytes and status bytes in
+   that order, with status last. Revalidate named file/ancestor identities and
+   metadata, check the effective user, and close all held descriptors before
+   releasing the result.
+
+Success returns the existing frozen `OwnerC115LocalSourceCorroboration`, with
+its detached inspection, local identities and `sole-owner/self-reviewed`
+disclosure. It contains no gate verdict. Withdrawal or file/ancestor drift
+during Git or final readback discards a computed result. Cleanup failures also
+refuse. `OwnerC115PlanSourceCorroborationError` carries a bounded content-free
+`owner-c115-plan-source-...` code after descriptor and child cleanup, without an
+original cause/context or partial result. Existing inspection, explicit-anchor
+corroboration and deployed-binding refusal contracts remain unchanged.
+
+This workspace's initialized submodules are unsupported by the owner checkout
+lane. Corroboration needs an existing clean standalone checkout with a real
+`.git` directory and all matching local objects. Creating that checkout remains
+later preparation; this API performs no clone, fetch, dependency update or Git
+mutation and never contacts the target or runs candidate code/collectors.
+
+Held custody covers only the acquired plan/run/status files. Source pairs,
+streams and declarations still receive consistency checks without complete
+acquisition custody. Sequential acquisition and final readback establish no
+simultaneous snapshot or continuing lock; local correspondence proves no
+producer execution, target observation, registration, technical gate pass or
+acceptance. Spec 14 live tasks, Story 27.4, A41 close-out and Production
+activation remain open.
 
 ## Reproducible offline verification
 
 ```bash
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115_plan_provenance.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115_plan_files.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*provenance.py' -v
@@ -480,6 +553,22 @@ negative evidence is named in
 `test_rehashed_foreign_later_pod_arguments_and_outputs_refuse`, and
 `test_foreign_source_ref_and_raw_output_consistency_refuse`.
 
+The current-plan provenance fixtures compose those private files with real
+disposable standalone checkouts. They assert exactly one full inspection,
+held file/ancestor lifetime throughout all Git children, status-last final
+readback, fresh approved replacements, detached sources and occurrence budgets.
+Counted barriers prove invalid containers precede file reads and invalid
+current files/evidence precede checkout/Git access; successful calls permit only
+the existing bounded local Git lane. Cross-scope negative evidence is named in
+`test_rehashed_foreign_tenant_and_namespace_refuse_before_git`,
+`test_rehashed_foreign_session_and_commit_refuse_before_git`, and
+`test_rehashed_later_pod_foreign_argv_outputs_and_recheck_refuse_before_git`.
+`test_mid_git_withdrawal_discards_result_after_cleaning_held_files_and_children`
+and `test_final_readback_withdrawal_after_successful_git_discards_computed_result`
+prove withdrawal discards computed results. Same-size/coarse-timestamp drift,
+ancestor movement, OS cleanup faults and Git deadline failures retain bounded
+refusals and descriptor/child cleanup.
+
 The owner-provenance fixtures create actual disposable standalone Git
 checkouts. They cover one/two/three Pods, exact local command ordering and
 environment and safety preflight, raw-cache forgery and caller mutation, rehashed foreign
@@ -509,7 +598,8 @@ checkout paths retain their clean-status refusal. Includes, helpers,
 unsupported layouts, config/metadata drift and disabled fsmonitor are covered.
 Counted barriers around invalid retained inputs deny ambient dependencies and
 known aliases across both APIs and their composed inspectors. Discovery counts
-are recorded separately from executed test results in the standalone Spec 22.
+are recorded separately from executed test results in the respective standalone
+specs.
 
 These results remain offline verification. Approval of a run, matching owner
 materials and passing fixtures supply no deployed registration, gate acceptance,
