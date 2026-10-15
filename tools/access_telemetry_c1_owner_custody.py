@@ -45,6 +45,25 @@ def dispatch_owner_run_files(
     validation finish with status last before any result escapes.
     Nothing is cached across calls. ``now`` is explicit aware UTC caller data.
     """
+    return _compose_owner_run_files(plan_path, approved_plan_sha256,
+                                   custody_root=custody_root, now=now, action=action)
+
+
+def _compose_owner_run_files(
+    plan_path: str,
+    approved_plan_sha256: str,
+    *,
+    custody_root: str,
+    now: datetime,
+    action: str,
+    inspection=None,
+):
+    """Compose offline inspection within the complete private descriptor lifetime.
+
+    An optional inspector receives only the approved plan snapshot, validated
+    freshly acquired run and validated withdrawal boolean. It runs after owner
+    run refusal checks and before exact readback, with status checked last.
+    """
     refusal = None
     inspection_refusal = None
     try:
@@ -60,7 +79,8 @@ def dispatch_owner_run_files(
             held_plan = _open_held_file(plan_path, descriptors, custody_root=custody_root,
                                        effective_uid=effective_uid)
             plan_bytes = held_plan.read()
-            plan = _validated_plan(plan_bytes, approved_plan_sha256).value
+            retained_plan = _validated_plan(plan_bytes, approved_plan_sha256)
+            plan = retained_plan.value
             if plan["custodyRoot"] != custody_root:
                 _refuse("owner-custody-root-mismatch")
             if "recordPath" not in plan:
@@ -89,6 +109,9 @@ def dispatch_owner_run_files(
 
             result = _dispatch_owner_run(record, plan_bytes, approved_plan_sha256,
                                          now=now, action=action, status_reader=read_status)
+            if inspection is not None:
+                result = inspection(retained_plan, result.snapshot,
+                                    JsonSnapshot(status_bytes).value["withdrawn"])
             # Metadata can repeat on a coarse-timestamp filesystem. Compare exact
             # bounded bytes too, and finish with withdrawal state after the other
             # artifacts' final checks. Each read revalidates its full named chain.

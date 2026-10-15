@@ -17,9 +17,9 @@ refuse unconditionally.
 
 ## Pure API and outside approval anchors
 
-Put the repository's `tools` directory on the Python import path. All snapshot
-acquisition and status acquisition belong to the caller. The inspector has no
-filesystem, process, network, configuration or clock dependencies. Local
+Put the repository's `tools` directory on the Python import path. For the pure
+API, all snapshot acquisition and status acquisition belong to the caller.
+The inspector has no filesystem, process, network, configuration or clock dependencies. Local
 checkout corroboration is a separate API described below; neither API writes an
 acceptance record.
 
@@ -188,6 +188,95 @@ Missing required fields on exact dataclass inputs also refuse with
 preflight. Forged stream purposes must be exact built-in strings before any
 comparison, so caller equality callbacks cannot run.
 
+## Current approved plan files
+
+`tools/access_telemetry_c1_owner_c115_plan_files.py` provides
+`inspect_owner_c115_from_plan_files` for complete offline C1.15 inspection while
+the current approved plan, run record and withdrawal status remain held.
+
+```python
+from access_telemetry_c1_owner_c115_plan_files import inspect_owner_c115_from_plan_files
+
+inspection = inspect_owner_c115_from_plan_files(
+    plan_path="/absolute/private-custody/plan.json",
+    approved_plan_sha256=outside_approved_raw_plan_sha256,
+    custody_root="/absolute/private-custody",
+    registry=registry_snapshot,
+    capture=capture_snapshot,
+    sources=retained_source_tuple,
+    streams=retained_command_stream_tuple,
+    statement=owner_registration_snapshot,
+    command_contract=owner_command_snapshot,
+    review_role_policy=owner_role_snapshot,
+    now=caller_supplied_aware_utc_datetime,
+)
+```
+
+The outside approved digest pins the exact raw plan bytes. The plan retains the
+byte dispatcher's seven required bindings: `recordSha256`, `policySha256`,
+`sessionId`, `sourceCommit`, `targetSha256`, `custodyRoot`, and `statusPath`.
+This API also requires `recordPath` and a canonical lowercase raw
+`registrySha256`. Other approved plan fields remain open; there is no new
+acceptance schema. `registrySha256` binds the supplied registry's exact raw
+bytes, including whitespace, rather than its canonical inventory digest.
+The six `OwnerRunAnchors` come solely from these outside-digest-approved plan
+bytes. Callers supply neither a run snapshot nor anchors nor withdrawal state
+to this API. The existing byte dispatcher still requires only its seven fields;
+the existing private-file dispatcher still requires `recordPath` without
+requiring `registrySha256`.
+
+Before filesystem callbacks, the wrapper checks the closed supplied snapshot,
+source and stream types and occurrence budgets, copies source/stream records,
+and reparses all five supplied JSON snapshots from immutable bytes. Forged
+cached trees/hashes are discarded; caller mutations during filesystem callbacks
+cannot substitute for those detached inputs. `now` must be explicit aware UTC.
+The acquired run participates in the full inspector's six-artifact 32 MiB
+occurrence budget; the plan/status are separately bounded to 1 MiB each and do
+not become supplied C1.15 evidence occurrences.
+
+Acquisition and completion proceed in this order:
+
+1. Open and read the canonical private plan, verify its outside digest and
+   seven bindings, require `recordPath`, and match its custody root to the caller.
+2. Open and read the plan-named run record, then the plan-named current status.
+   Status has exactly `planSha256`, `recordSha256`, `sessionId`, and `withdrawn`,
+   with matching bindings and a built-in boolean withdrawal value.
+3. Inspect the current run for `observe` with that validated status. Withdrawal,
+   expiry, phase/policy/owner/PG2 drift and invalid current files reject before
+   full C1.15 inspection.
+4. Run the complete existing C1.15 inspector against the detached evidence,
+   acquired run, approved-plan anchors and approved raw registry digest.
+5. Rewind and reread bounded exact plan bytes, then run bytes, then status bytes,
+   checking named file/ancestor identities and metadata with every read. Check
+   the effective OS user again and close all descriptors before returning.
+
+The three canonical distinct paths must lie strictly below the exact approved
+custody root. Files and directories at/below that root must be owned by the
+effective OS user and deny group/other permissions. Files must be regular and
+single-link. Descriptor-relative no-follow acquisition rejects symlinks and
+unsafe named ancestors; identity checks also reject aliased artifacts and
+ancestor movement. All file and ancestor descriptors survive the full offline
+inspection and final readback. Exact-byte readback detects observed same-size
+rewrites even when coarse timestamps repeat. Any final drift discards even a
+computed valid inspection. Every call reacquires current files without caches.
+
+Success returns the existing frozen `OwnerC115Inspection`, including exact
+detached evidence, `observe`, and `sole-owner/self-reviewed`. Refusals raise
+bounded content-free `OwnerC115PlanFilesError` codes beginning
+`owner-c115-plan-files-`, after descriptor cleanup and without an original
+exception cause/context or partial result. No process, producer, Git, network
+or ambient clock runs during this wrapper.
+
+Held-descriptor custody covers only the acquired plan/run/status files.
+Supplied source pairs, streams and declaration materials receive byte
+consistency checks; their acquisition custody is not established here. OS-user
+ownership does not authenticate the GitHub owner. Sequential acquisition and
+final checks provide no simultaneous snapshot, complete evidence custody or
+continuing lock after return. Current-plan acquisition now has this offline
+composition; concrete live plans, live collection, complete retained custody
+and technical gate/result acceptance remain separate work. Spec 14 live tasks,
+Story 27.4, Production activation and A41 close-out remain open.
+
 ## Owner-compatible local checkout corroboration
 
 `tools/access_telemetry_c1_owner_c115_provenance.py` adds
@@ -352,14 +441,16 @@ read paths to an immutable checkout. Metadata/attribute/config checks and final
 rereads provide point-in-time checks; concurrent changes can still occur between
 reads. They do not lock the repository or authenticate its
 custody, a producer execution or a target observation. Caller approval anchors
-remain assertions obtained outside candidate materials. Retained custody,
-current run/withdrawal acquisition, concrete live plans, live collection and
+remain assertions obtained outside candidate materials. Complete retained
+custody, combining local checkout corroboration with current-plan acquisition,
+concrete live plans, live collection and
 technical gate/result acceptance remain separate work. Spec 14 live tasks,
 Story 27.4, A41 and Production activation remain open.
 
 ## Reproducible offline verification
 
 ```bash
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115_plan_files.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*provenance.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_*.py' -v
@@ -377,6 +468,17 @@ identity for closed-type validation. Cross-scope negative evidence is named expl
 `test_rehashed_foreign_session_and_source_commit_refuse`,
 `test_rehashed_later_pod_argv_scope_and_fixed_probe_substitutions_refuse`, and
 `test_rehashed_later_pod_output_swap_and_final_recheck_drift_refuse`.
+
+The current-plan fixtures reuse the existing private-files and multi-Pod
+fixtures without rediscovering their TestCase classes. They verify every-call
+fresh acquisition, approved-plan bindings, descriptor lifetime/cleanup,
+detachment before filesystem callbacks, invalid-container refusal before I/O,
+run/status refusal before C1.15, exact acquired-run occurrence budgets, and
+withdrawal or coarse-timestamp byte drift after a valid inspection. Cross-scope
+negative evidence is named in
+`test_rehashed_foreign_namespace_tenant_session_commit_refuse`,
+`test_rehashed_foreign_later_pod_arguments_and_outputs_refuse`, and
+`test_foreign_source_ref_and_raw_output_consistency_refuse`.
 
 The owner-provenance fixtures create actual disposable standalone Git
 checkouts. They cover one/two/three Pods, exact local command ordering and
