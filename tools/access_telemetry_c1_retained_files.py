@@ -50,6 +50,16 @@ def inspect_c115_retained_files(packet_path: str, *, custody_root: str) -> C115S
     stdout/stderr occurrence is capped at 32 MiB, with each artifact at 1 MiB.
     No process, network, target, configuration or clock dependency is used.
     """
+    return _compose_c115_retained_files(packet_path, custody_root=custody_root)
+
+
+def _compose_c115_retained_files(packet_path: str, *, custody_root: str,
+                                 inspection=None, reader=None):
+    """Keep packet/stream descriptors through a private callback and readback.
+
+    A composing reader may own a longer-lived descriptor stack and shared
+    identity/budget accounting. The public wrapper keeps its original behavior.
+    """
     refusal = None
     try:
         custody_root = _canonical_path(custody_root)
@@ -66,6 +76,10 @@ def inspect_c115_retained_files(packet_path: str, *, custody_root: str) -> C115S
 
             def read(path: str, *, manifest: bool = False):
                 nonlocal total
+                if reader is not None:
+                    held, raw = reader(path, manifest=manifest)
+                    artifacts.append((held, raw))
+                    return held, raw
                 held = _open_held_file(path, descriptors, custody_root=custody_root,
                                        effective_uid=effective_uid)
                 identity = (held.before.st_dev, held.before.st_ino)
@@ -103,7 +117,6 @@ def inspect_c115_retained_files(packet_path: str, *, custody_root: str) -> C115S
                 expected.update((f"{index:04d}.stdout", f"{index:04d}.stderr"))
             sidecar_descriptor = held_manifest.ancestors[-1][0]
             _entries(sidecar_descriptor, expected)
-            pairs = []
             for index, (receipt, command) in enumerate(zip(receipts, capture.value["commands"])):
                 receipt = _object(receipt, _RECEIPT_FIELDS)
                 if (type(receipt["index"]) is not int or receipt["index"] != index
@@ -113,10 +126,13 @@ def inspect_c115_retained_files(packet_path: str, *, custody_root: str) -> C115S
                     _digest(receipt[name])
                     if receipt[name] != command[name]:
                         _refuse("c115-files-manifest-receipts-mismatch")
+            pairs = []
+            for index, command in enumerate(capture.value["commands"]):
                 _, stdout = read(sidecar + f"/{index:04d}.stdout")
                 _, stderr = read(sidecar + f"/{index:04d}.stderr")
                 pairs.append(C115CommandStreams(command["purpose"], stdout, stderr))
-            result = inspect_c115_retained_streams(capture, tuple(pairs))
+            result = (inspect_c115_retained_streams(capture, tuple(pairs))
+                      if inspection is None else inspection(capture, tuple(pairs)))
             # A valid semantic result never escapes if bytes/names/custody changed
             # during inspection. Recheck the packet last, then every held name.
             for held, original in artifacts[1:] + artifacts[:1]:

@@ -519,9 +519,172 @@ producer execution, target observation, registration, technical gate pass or
 acceptance. Spec 14 live tasks, Story 27.4, A41 close-out and Production
 activation remain open.
 
+## Approved retained-evidence files
+
+`tools/access_telemetry_c1_owner_c115_retained.py` provides
+`corroborate_owner_c115_retained_files` to acquire the evidence inside the held
+approved-plan composition. Its five arguments are the complete public input:
+
+```python
+from access_telemetry_c1_owner_c115_retained import corroborate_owner_c115_retained_files
+
+corroboration = corroborate_owner_c115_retained_files(
+    plan_path="/absolute/private-custody/plan.json",
+    approved_plan_sha256=outside_approved_raw_plan_sha256,
+    custody_root="/absolute/private-custody",
+    repository_root="/absolute/canonical/standalone-checkout",
+    now=caller_supplied_aware_utc_datetime,
+)
+```
+
+The approved plan retains its existing bindings, including `recordPath` and
+`registrySha256`, and must also contain `evidenceManifestPath` and
+`evidenceManifestSha256`. The latter digest binds the exact raw evidence
+manifest bytes before parsing or following any manifest reference. The registry
+continues to match both its manifest reference and the approved plan's raw
+`registrySha256`. The existing owner policy approval persists.
+
+The evidence manifest uses the closed schema
+`hexalith.access-telemetry.c1.owner-retained-evidence/v1`. It has exactly these
+seven fields:
+
+| Field | Required value |
+| :---- | :------------- |
+| `schemaVersion` | `hexalith.access-telemetry.c1.owner-retained-evidence/v1` |
+| `registry` | Exact private-file reference to registry JSON |
+| `capture` | Exact private-file reference to capture JSON |
+| `statement` | Exact private-file reference to owner registration JSON |
+| `commandContract` | Exact private-file reference to owner command JSON |
+| `reviewRolePolicy` | Exact private-file reference to owner role policy JSON |
+| `sources` | Exactly nineteen complete source descriptors |
+
+Each file reference has exactly `path` and `sha256`: `path` is a canonical
+absolute path strictly below the exact custody root, and `sha256` is the
+lowercase 64-hex digest of the exact bytes. This acquisition reference is
+separate from the existing relative declaration Refs inside registry materials;
+those retain their existing format and byte-length bindings.
+
+Every source descriptor has exactly nine fields, retaining all
+`SourceSnapshot` metadata while replacing its two byte slots with file
+references:
+
+```json
+{
+  "path": "tools/example.ps1",
+  "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+  "executedBytes": {
+    "path": "/absolute/private-custody/evidence/source-00.executed",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "blobBytes": {
+    "path": "/absolute/private-custody/evidence/source-00.blob",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "normalization": "utf8-crlf-to-lf",
+  "gitMode": "100644",
+  "cleanFilter": null,
+  "workingTreeEncoding": null,
+  "ident": false
+}
+```
+
+These illustrative paths/digests are placeholders. The nineteen real semantic
+source paths must match the existing registry and capture inventory. Git mode
+may also be `100755`. Both byte forms require their own distinct retained file,
+even when their bytes are identical. All five JSON refs, nineteen descriptors,
+metadata, canonical file paths, digests and duplicate names are validated as a
+complete inventory before any evidence reference is followed.
+
+A suitable layout is:
+
+```text
+private-custody/                         owner-only directory
+  plan.json                             outside-approved exact bytes
+  record.json                           plan-named owner run
+  status.json                           fresh plan-bound withdrawal state
+  evidence/
+    evidence.json                       plan-bound evidence manifest
+    registry.json
+    capture.json
+    capture.json.streams/
+      manifest.json                     existing retained-streams/v1 format
+      0000.stdout
+      0000.stderr
+      ...                               one ordered pair per capture command
+    statement.json
+    command_contract.json
+    review_role_policy.json
+    source-00.executed
+    source-00.blob
+    ...                                 nineteen distinct byte pairs
+```
+
+The capture reuses the unchanged ordered stream sidecar: exactly
+`manifest.json` and the four-digit `stdout`/`stderr` pairs bound to the capture's
+receipts. Its schema, exact directory inventory, receipt order, hashes and
+stream semantics remain required. Inventory refs cannot alias these fixed
+sidecar files. Every control/evidence artifact path and device/inode must be
+distinct. All files must be regular, single-link, owned by the effective OS
+user and have no group/other permissions. Every directory at/below custody
+must meet the same ownership/privacy requirements. Acquisition follows no
+symlink, including in ancestors.
+
+The call completes in this order:
+
+1. Validate explicit aware UTC `now`, acquire approved plan/run/status, and
+   perform the existing current `observe`, owner/PG2/self-review, phase, expiry
+   and fresh withdrawal checks before acquiring any evidence.
+2. Acquire and authenticate the plan-bound manifest; validate its complete
+   inventory before following refs. Acquire the exact referenced JSON/source
+   bytes and the capture's ordered streams with shared identity tracking.
+3. Run exactly one complete `inspect_owner_c115` using only acquired bytes and
+   plan-derived anchors. Any invalid schema, scope, identity, hash, byte budget
+   or semantic input refuses before checkout access or Git.
+4. Corroborate the detached inspection through the existing enforced local Git
+   lane, preserving all checkout safety, per-child deadlines and cleanup rules.
+5. Reread bounded exact evidence bytes and revalidate their named ancestor
+   chains while every evidence/control descriptor remains held. Complete outer
+   plan/run/status readback in that order, finishing with status last; close all
+   descriptors before releasing the existing frozen corroboration result.
+
+Each artifact is limited to 1 MiB. An incremental 32 MiB semantic occurrence
+budget charges the acquired run, all five JSON materials, both byte forms of
+every source and every stdout/stderr occurrence. Equal bytes still count each
+time. Newly acquired evidence, including both manifests, receives a size
+preflight before reading or hashing; an evidence occurrence that would exceed
+the aggregate budget also refuses before its read. The existing plan/run/status
+readers instead use bounded reads of at most 1 MiB plus one overflow-detection
+byte, then reject oversized control artifacts. Plan, status, evidence manifest
+and stream manifest have separate 1 MiB caps and do not consume the semantic
+occurrence budget.
+
+OS descriptor capacity is another resource requirement: every held artifact
+retains its own complete ancestor chain. Larger or deeper valid evidence sets
+can exhaust descriptor capacity below the byte budgets. Acquisition failure
+unwinds the registered descriptor stacks and any owned children before a
+content-free refusal; cleanup faults also discard results. The API does not
+change OS descriptor limits.
+
+Same-size byte drift, changed names/ancestors/permissions, withdrawal during
+Git or final readback, and cleanup faults discard computed results. Failures
+raise `OwnerC115RetainedFilesError` with bounded content-free
+`owner-c115-retained-...` codes after descriptor/child cleanup and exception
+handlers, without original cause/context or a partial result.
+
+The returned detached inspection discloses `sole-owner/self-reviewed`. Local
+OS ownership authenticates no GitHub principal. Sequential checks provide no
+simultaneous snapshot or continuing lock. This API does not execute candidate
+code/collectors, contact targets, register evidence, accept gates or mutate Git
+or dependencies. Preparing a clean standalone checkout with a real `.git`
+directory and matching local objects remains later work; the initialized
+submodule workspace remains unsupported for corroboration. Live tasks,
+Story 27.4's deployment verification, Production activation and A41 close-out
+remain open; A41 remains partially closed.
+
 ## Reproducible offline verification
 
 ```bash
+env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115_retained.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115_plan_provenance.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115_plan_files.py' -v
 env PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_interchange -p 'test_owner_c115.py' -v

@@ -27,6 +27,23 @@ def _refuse(code: str) -> NoReturn:
     raise OwnerRunCustodyError(code) from None
 
 
+class _ArtifactIdentities:
+    """One composition's control/evidence names and physical file identities."""
+
+    def __init__(self) -> None:
+        self.paths = set()
+        self.identities = set()
+
+    def claim(self, path, held) -> None:
+        if path in self.paths:
+            _refuse("owner-custody-distinct-paths-required")
+        identity = (held.before.st_dev, held.before.st_ino)
+        if identity in self.identities:
+            _refuse("owner-custody-distinct-files-required")
+        self.paths.add(path)
+        self.identities.add(identity)
+
+
 def dispatch_owner_run_files(
     plan_path: str,
     approved_plan_sha256: str,
@@ -57,6 +74,7 @@ def _compose_owner_run_files(
     now: datetime,
     action: str,
     inspection=None,
+    artifacts=None,
 ):
     """Compose offline inspection within the complete private descriptor lifetime.
 
@@ -75,9 +93,11 @@ def _compose_owner_run_files(
         if not hasattr(os, "geteuid"):
             _refuse("owner-custody-filesystem-unavailable")
         effective_uid = os.geteuid()
+        artifacts = _ArtifactIdentities() if artifacts is None else artifacts
         with ExitStack() as descriptors:
             held_plan = _open_held_file(plan_path, descriptors, custody_root=custody_root,
                                        effective_uid=effective_uid)
+            artifacts.claim(plan_path, held_plan)
             plan_bytes = held_plan.read()
             retained_plan = _validated_plan(plan_bytes, approved_plan_sha256)
             plan = retained_plan.value
@@ -93,6 +113,7 @@ def _compose_owner_run_files(
                 _refuse("owner-custody-distinct-paths-required")
             held_record = _open_held_file(record_path, descriptors, custody_root=custody_root,
                                          effective_uid=effective_uid)
+            artifacts.claim(record_path, held_record)
             record = JsonSnapshot(held_record.read())
             held_status = None
             status_bytes = None
@@ -101,9 +122,7 @@ def _compose_owner_run_files(
                 nonlocal held_status, status_bytes
                 held_status = _open_held_file(path, descriptors, custody_root=custody_root,
                                              effective_uid=effective_uid)
-                files = (held_plan, held_record, held_status)
-                if len({(held.before.st_dev, held.before.st_ino) for held in files}) != 3:
-                    _refuse("owner-custody-distinct-files-required")
+                artifacts.claim(path, held_status)
                 status_bytes = held_status.read()
                 return status_bytes
 
