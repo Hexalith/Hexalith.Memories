@@ -1,3 +1,179 @@
+# Story 27.4 — consolidated retention results
+
+## Current Platform preparation — approved 2026-10-16
+
+The owner replied **“approve”** to the Platform ownership correction in the [existing proposal](../../planning-artifacts/sprint-change-proposal-2026-10-16.md). [Existing Spec 14](../spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) governs. **Preparation is blocked by the existing Platform/Builds contract, and no functional run has executed.** Standing owner policy and `sole-owner/self-reviewed` persist; no further policy approval or premature operational approval is requested.
+
+Platform owns infrastructure and lifecycle. Memories consumes its supported runner descriptor/result and owns retention assertions. The existing public `functional-retention` entry reports recorded implementation blockers with the 14:34:55 UTC inspection provenance and mandatory reinspection, rather than current-source readiness. It returns exit 1 before reading any caller plan/decision/status, creating a bundle, spawning a process or contacting a target. Both historical operational callables immediately refuse; the original VM implementation remains recognizable in place, and historical sequence tests require explicit offline doubles. No VM budget, approval, disk, credential or active permission is changed.
+
+The one writer / two 125-record cohorts / at least 1,800 real seconds separation / 3,600-second retention / 900-second purge grace and positive per-record attribution remain required. Normal logger acknowledgements, strong reads, signed clock/nonce/profile/expiry validation, actual startup probes, PostgreSQL verify-full TLS and immutable Dapr 1.18.1 / PostgreSQL 18.6 identities remain. Local file-backed secrets, development UTC and Debug source evidence cannot qualify OpenBao/Kubernetes security, independent UTC, CI candidates, full C1/C0–C6, Production or A41. KVM `95aa…` is retained historical full-profile material, never the new local profile identity.
+
+### Actual source binding and preservation
+
+Read-only observation at **2026-10-16T14:34:55.614735Z**:
+
+| Selected owning checkout | Observed full revision |
+| :--- | :--- |
+| This Memories worktree | `61074e981bd92019488db19da0c8572bd4bf8b97`, with existing uncommitted preparation preserved |
+| Standalone Platform | `cafa3f0db528af66a03b542eb4f26fd1ef06433b` |
+| Platform’s directly declared Builds | `63dda8fc14882aba383888afd7e6505afab1f345` |
+| Platform’s directly declared Memories | `c285b84fddac7dda1efaf4435b8de18694282583` |
+| This worktree’s Platform gitlink | `55bee680e6901a45946dd8bf1e4a4060952bd7ea`, not updated |
+
+Platform/Builds advanced independently after the approval-time observations. Exact source/status observations and 14 selected owning source-file SHA-256 values are retained in `/home/administrator/.local/state/hexalith/memories/access-telemetry/platform-preparation-20261016T145211Z-review-fixes-6gwly3kt/recorded-inspection/inspection.json`, SHA-256 `4e3476249245ac80f8725112ba4ce5c1251d24cffddfa9d2c221210a960f4943`. This is a preparation snapshot, never an executed-source claim. Recheck before future integration. Platform’s direct Memories lacks `tools/access_telemetry_functional_retention.py` and has the older CLI; this worktree has not run as that candidate. No sibling, ancestor, nested dependency or package fallback is used. No checkout/gitlink/dependency was changed by this implementation.
+
+### Demonstrated blockers and reopen checks
+
+Builds paths below are relative to `src/libraries/Hexalith.Builds.Tooling/` in Platform’s direct Builds checkout. Platform C# filenames are under `src/Hexalith.Platform.Composition/`; component paths are Platform-root relative. The Memories workload gate is under `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/`. These are verified code gaps, not missing forms for the owner to fill.
+
+| Blocker / owner | Actual source and consequence | Reopen check |
+| :--- | :--- | :--- |
+| V2 test profile — Builds | `Runtime/ModuleCommandExecutionService.cs:ExecutePlatformAsync` returns **HXR028** for v2 `Test`, before environment start. A declaration/readiness alone cannot run this test. | Existing runner selects and executes the module-owned test through a supported v2 profile. |
+| Descriptor/result/lifecycle — Builds with Platform | `Runtime/NativeTestHandoff.cs` supplies EventStore/UI endpoints, tenant/resource/run IDs and a development token. `CompositionRunPlan`, `CompositionReadiness`, `CompositionRunState`, `RunEvidence/ModuleRunEvidence` do not encode the required loaded Memories/backend identities, finite test lifetime, attachment/withdrawal and outcome-aware retention/cleanup result. `CompositionRunStatus` has only Starting/Ready/Failed/Cancelled; existing failures tear down. | Extend and test these existing contracts under FR4/AD10; the consumer must validate their real supported encoding. No Memories replacement schema or fake accepting fixture. |
+| Lifetime — Builds | `Runtime/NativeTestExecutor.cs:_timeout` is **15 minutes**, and token lifetime derives from it. A real one-hour retention observation cannot fit. | Add a bounded module-selected lifetime and matching credential handling in the existing runner; preserve unrelated tests’ limits. |
+| PostgreSQL profile — Platform | `PlatformDaprBindings.cs:Type` forces state bindings to `state.redis`; `DaprComponents/reference/telemetry-state.yaml` is Redis. Existing options expose generic configuration/component directories, but the runner cannot select/describe a real PostgreSQL test profile. | Existing runner-selected composition describes run-owned PostgreSQL 18.6, verify-full TLS, immutable Dapr/backend identities, real resources/readiness and safe observations. Other consumers keep Redis defaults. |
+| Local capability/workload binding — Platform and Memories | `Declarations/local-profile.json` disables lifecycle with placeholder hash/evidence; Memories’ `AccessTelemetryQualificationGate` requires `Qualification` and KVM `95aa…`. Setting Enabled or copying that hash would not establish a truthful local profile. | Supported local binding runs real capability probes and clock validation through the normal workload/acknowledgement path, with no public test endpoint, bypass or Production weakening. |
+| Tool/source alignment — Platform and Memories | `.config/dotnet-tools.json` is absent; the direct candidate lacks the new helper and has older CLI bytes. | Pin a supported tool through the existing owner workflow, align the explicit direct candidate and bind actually loaded source/artifacts. No dependency update is authorized here. |
+
+Verification commands for the gap observations: `sed -n '930,1048p' <Builds>/src/libraries/Hexalith.Builds.Tooling/Runtime/ModuleCommandExecutionService.cs`; `cat` the named handoff/plan/readiness/state/status/evidence classes; `rg -n 'FromMinutes\(15\)' <Builds>/src/libraries/Hexalith.Builds.Tooling/Runtime/NativeTestExecutor.cs`; `rg -n state.redis <Platform>/src/Hexalith.Platform.Composition/PlatformDaprBindings.cs`; `cat <Platform>/DaprComponents/reference/telemetry-state.yaml`; inspect the named local profile and workload gate. These inspections contact no service. Existing owning runner/composition tests were inspected; their presence is not a completed FR4 contract.
+
+No Platform backend branch or Builds runner/schema is added: HXR028, missing evidence and unsupported lifetime make such a branch unusable here. The spec explicitly requires a precise blocker in that case. The next implementation action belongs in Builds’ **existing v2 test/profile and descriptor/result boundary**, coordinated with Platform’s supported PostgreSQL/local-capability profile. Recheck actual inputs, resources, actions/retries/window and source alignment only after that boundary exists, then prepare its one operational request. Do not invent a smaller RAM requirement or substitute VM/hosted/Redis infrastructure.
+
+### Completion and evidence posture
+
+- [x] Adopt the approved ownership correction in current story, epics, architecture/ADR, runbooks/handoff and interchange kernel; preserve four capability IDs and append-only memory.
+- [x] Inspect and bind actual owning sources, proving the source/tool/runner/profile/lifetime/local gate gaps above.
+- [x] Remove VM preparation/execution from the current public entry, preserve semantic validators and strict full consumers, and add refusal/preservation tests.
+- [ ] Supported Platform PostgreSQL test/profile/descriptor/result consumer and complete operational bundle — blocked by the owning gaps above.
+- [ ] Real A/B retention, resource use, current authority/withdrawal and Platform outcome/cleanup observations — unexecuted under the no-workload hold.
+- [ ] Full C1/C0–C6/terminal/publication and A41 — unchanged, open.
+
+The new refusal tests cover missing/foreign/stale/malformed/wrong-candidate/backend/lifetime/ownership/partial-startup/withdrawal/cleanup/claimed-success objects at this unsupported boundary. They prove no file/process/target side effects and no acceptance; they do **not** prove an implemented live descriptor validator, withdrawal mechanism or retention/cleanup policy. Historical VM tests and semantic fixtures likewise earn no live credit. Earlier offline commands/results follow below; the three completed reviews and their focused corrections are recorded in Spec 14’s current Review Triage Log.
+
+### Earlier offline verification — not source-bound to corrected bytes
+
+The earlier four-lane run reported **328 tests**, zero failures/errors/skips. Its receipt did not capture tested source hashes; it is retained as earlier offline evidence and is not attributed to the corrected current bytes. No workload, daemon, target or hosted service was started/contacted by these tests; retained local process/render doubles are offline evidence only.
+
+| Exact command | Measured result |
+| :--- | :--- |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -B -m unittest discover -s tests/tooling/access_telemetry_functional_retention -p test_*.py -v` | 79 tests in 16.169 seconds; exit 0, zero failures/errors/skips. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -B -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p test_*.py -v` | 85 tests in 18.588 seconds; exit 0, zero failures/errors/skips. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -B -m unittest discover -s tests/tooling/production_deployment_evidence -p *_test.py -v` | 123 tests in 237.036 seconds; exit 0, zero failures/errors/skips. |
+| `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -B -m unittest discover -s tests/tooling/tenant_isolation_evidence -p *_test.py -v` | 41 tests in 2.191 seconds; exit 0, zero failures/errors/skips. |
+
+Raw logs, command vectors/environment, wall times, exits and SHA-256 values are retained at `/home/administrator/.local/state/hexalith/memories/access-telemetry/platform-preparation-20261016T145211Z-review-fixes-6gwly3kt/earlier-offline-tests/commands-results.json`, SHA-256 `65a564c2280f374019764d2cfa610375a1ee87f46f057ef36a4706c60a40a544`. After diagnostic source paths were clarified, the six new boundary tests were repeated with `PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -B -m unittest discover -s tests/tooling/access_telemetry_functional_retention -p test_platform_boundary.py -v`: six passed in 0.033 seconds, exit 0, no skips.
+
+The earlier temporary preservation checker passed historical report/dated-plan/proposal/bootstrap body preservation, all original memory entries/four CAP IDs and protected A41/sprint/D0 hashes. `GIT_OPTIONAL_LOCKS=0 git diff --check` passed. No C# or owning Platform/Builds implementation changed, so no runtime build/test or live FR4 boundary is claimed. The three configured reviews are recorded in Spec 14’s current Review Triage Log; post-review functional verification is recorded separately below.
+
+### Focused review corrections and durable verification — 2026-10-16
+
+The public preparation output labels its fixed inventory **recorded implementation blockers**, includes the exact 14:34:55 UTC inspection timestamp/revisions/receipt hash, and requires reinspection. It does not inspect or bind a supplied source root. The insufficient readiness negative sample now follows the owning contract’s camelCase shape; it is explicitly not a serialized interoperability test. Fresh helper/CLI imports execute under an active historical-import restriction, whose rejection is independently demonstrated. These remain unconditional refusal tests, not implemented descriptor/withdrawal/outcome/cleanup validation.
+
+Only the affected functional suite was rerun after these fixes:
+
+`PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -B -m unittest discover -s tests/tooling/access_telemetry_functional_retention -p 'test_*.py' -v`
+
+**79 tests passed in 13.188 seconds**, exit 0, zero failures/errors/skips. The new receipt captures SHA-256 values for all seven affected functional source/test files before and after the run; both inventories are identical. It binds the exact command/environment/result and raw log SHA-256 `8f0d87ead48a4c78870dedce9c07ad0716963aa201541421776dfe9c0bf2f107`. Unchanged lifecycle/deployment/privacy suites were not rerun. The earlier 328-test receipt is preserved honestly as earlier offline evidence without source attribution to these corrected bytes.
+
+All new preparation evidence is retained in the **new private directory outside every old VM bundle**:
+
+`/home/administrator/.local/state/hexalith/memories/access-telemetry/platform-preparation-20261016T145211Z-review-fixes-6gwly3kt`
+
+- `recorded-inspection/inspection.json`: original exact inspection bytes and SHA-256 `4e3476249245ac80f8725112ba4ce5c1251d24cffddfa9d2c221210a960f4943`.
+- `earlier-offline-tests/`: original four logs and `commands-results.json`, whose raw SHA-256 remains `65a564c2280f374019764d2cfa610375a1ee87f46f057ef36a4706c60a40a544`; its internal historical paths are preserved verbatim.
+- `review/reviewed-preparation.diff`: original 26-file **pre-fix** diff read by the three reviewers, SHA-256 `2bd81031c373550983629df5dcf0838e4b4879653a201e599bdbfd5382bd249b`. Subsequent corrections and the later triage annotation are not claimed within those reviewed bytes.
+- `post-fix-functional/verification-receipt.json`: source-bound verification of the **subsequent corrections**, SHA-256 `5a97f15fa3ab83ae1fd2fbeefad046017db81213895d9d7bbcb6c3284f7311d8`; retained source bytes, before/after inventories and raw log are alongside it.
+- `preservation/`: exact original checker plus a rerunnable checker and its retained baseline dependencies. Run `python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/platform-preparation-20261016T145211Z-review-fixes-6gwly3kt/preservation/checker.py /home/administrator/projects/hexalith/memories`; it has no `/tmp` dependency. The original temporary checker bytes remain separately preserved.
+- `checks/`: exact scope input, scope/preservation logs and command/results. The required `python3 tools/check-story-slice-scope.py --changed-files-file /tmp/story-27-4-doc-scope.txt --story-key 27-4-retention-verification-operations-runbook-and-a41-close-out --require-record` passed: one story checked, exit 0. The canonical Source/Classification/Permitted-use rows and separate Slice Proof now satisfy its required shape. Durable preservation checks also passed.
+
+New evidence files/directories were created privately and exclusively, with byte readback; no existing file permissions, credentials, approvals, status, budgets, disks or workloads changed. The original full checkpoint table remains current deferred technical obligations, with historical VM context excluded; actual supported contract validation, operational preparation, live behavior, A41/sprint and Production remain pending.
+
+### Final preparation review disposition
+
+All three configured reviews completed: edge-case and verification-gap reported no findings; blind review’s ten findings were individually triaged and corrected, together with the scope-record formatting failure. Parent inspection verified the corrections and matched the retained post-fix source/log/diff hashes. The scope and historical-preservation checks pass; no review finding is deferred. Full qualified-environment parity remains required. This completes the independent correction work only: the supported Platform test/profile/descriptor/result consumer, actual operational bundle and live observed behavior remain pending. Story 27.4 stays `in-progress`; A41 stays open. No workload/server contact, active permission/credential change, disk action or Git mutation was performed by this correction.
+
+## Previous VM report and all dated receipts — retained verbatim
+
+<details>
+<summary>Historical VM-based preparation, decisions, attempts and earlier evidence</summary>
+
+# Story 27.4 — consolidated retention results
+
+## Current authority and evidence posture — 2026-10-16
+
+The owner approved implementation of the [simplification correction](../../planning-artifacts/sprint-change-proposal-2026-10-16.md) with “yes”. [Existing Spec 14](../spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) is the sole current execution plan. This is the sole human results report; raw packets, manifests and transcripts are supporting evidence.
+
+| Field | Current value |
+| :--- | :--- |
+| Owner and assurance | Jérôme Piquot / `github:user:6775094`; `sole-owner/self-reviewed` |
+| Base profile | `PG-ONPREM-2`, KVM qualification target, `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb` |
+| Full workload hash | `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f` |
+| Functional scope | One writer; cohorts A/B, 125 records each; actual 3,600-second retention; B about 30 minutes after A |
+| Functional limitations | Development UTC sources and source-built Debug images by digest; no independent UTC, CI/package/Production, full capacity, recovery, allocator or long-duration credit |
+| Current authorization | Corrected manifest approved at 2026-10-16T13:10:04Z; execution held for native RAM admission, budget unused |
+| Story / A41 / Production | Story 27.4 `in-progress`; A41/action open; repository Production overlay disabled |
+
+## Corrected bundle — approved, held for resource admission
+
+The closed run exposed a transport defect: hashing the full retained OS through WSL exceeded the existing 120-second preflight limit. The original implementation agent applied the narrow correction in `tools/access_telemetry_functional_target.py` and its existing offline test file. The fixed, already pinned native Windows PowerShell/.NET command opens only the exact OS file read-only with write/delete sharing refused, hashes all 42,949,672,960 bytes, and requires the same expected SHA-256, native host/size/full-read/unchanged metadata and Linux no-follow descriptor/path identity before and after. The command is bounded to 90 seconds inside the unchanged 120-second whole preflight bound. No tool, dependency, disk, resource/retry limit, retention assertion, image, full qualification requirement or technical coverage was reduced.
+
+The exact corrected command was exercised as a **read-only local preparation diagnostic** and verified the complete expected hash and unchanged metadata in **38.722 seconds**. It did not activate a VM or qualification authority. The 7 new offline cases cover full acceptance, immutable command/time bounds, partial/truncated data, wrong host/hash, native/Linux identity drift and fresh authority denial. The complete affected suite passed **73 tests**; repeat existing lifecycle **85**, deployment **12**, tenant/privacy **17** all passed: **187 total, zero failures/skips**. Earlier three-layer review findings remain resolved; the measured OP1 correction was checked after the original implementation agent returned.
+
+The sole next operational candidate is `/home/administrator/.local/state/hexalith/memories/access-telemetry/isolated-target-20261016T064337Z-506bfc/evidence/functional-preparation-20261016T130434Z-native/plan.json`, SHA-256 **`2cabeebf35b309bcf68adb4e12a71951af85d1c0daf2078954f848577b9f49b9`**. It has **36 prepared inputs**, **393,338,698 bytes** and **4,812 source files**. All source/input/private-custody checks and a fresh re-render passed. Target, disks, tool/image pins, actions, resource/retry limits and functional assertions match the closed plan; only the target-helper source hash and derived fresh preparation inputs/window change. No images were rebuilt. The owner replied “approve” to this exact corrected manifest. The actual decision was recorded at **2026-10-16T13:10:04Z** and its source/input/tool bytes were checked again. Approval is recorded while executable authority remains false and the budget unused pending resource admission. The earlier preapproval held invocation rejected with zero target calls/spawns and no status/claim change. The previous consumed budget stays closed.
+
+Absolute UTC window: **2026-10-16T13:04:37Z** through **2026-10-18T13:04:36Z**, latest start **2026-10-18T08:49:36Z**. The actual recorded owner decision binds this exact manifest; it does not reuse the closed decision. No further approval is needed for this unchanged manifest within its current window, provided source/inputs/identity remain exact, status is not withdrawn and resource admission passes before its unused budget is claimed. The scope is the same one functional setup/two 125-record cohorts/real one-hour retention/owned restoration run, on existing 40/600-GiB disks with 8 vCPUs/40 GiB RAM, 20-GiB staging, four-hour execution plus 15-minute restoration, and at most two eligible launch attempts.
+
+**Runtime admission is presently blocked:** the fresh pre-budget observation at **2026-10-16T13:10:22.028055Z** reports **19.22 GiB native Windows available RAM**, below the unchanged **56-GiB** start floor. Linux headroom and native disk allocation/free-space are separately checked; none authorizes bypassing native RAM admission. A scoped read-cache advisory on the unchanged task-owned OS file did not restore headroom; no global cache flush, host permission/configuration change or storage mutation was performed. Do not consume another run budget while the floor is unsatisfied. Resource admission must be observed again before the replacement is launched; preparation `ready: true` means inputs are ready only.
+
+A second local observation at **2026-10-16T13:12:12.596381Z** still measured only **18.69 GiB native available RAM**. Its `admission-confirmation.json` confirms the budget remains unused.
+
+The corrected invocation has **not started** and has no `run.claim` or `run` directory. Before claiming its budget, the local admission check verified unchanged retained disk identities, 40/600-GiB sizes and full native allocation; NTFS free space was **165.39 GiB**, and Linux available RAM **60.01 GiB**. Native RAM alone failed the unchanged 56-GiB start floor. No downloads, guest launch, formatting, workload, cleanup mutation, host configuration change, A41/sprint transition or Git mutation occurred. Approval, original held-status snapshot and the fresh `admission-before-budget.json` remain in the same private bundle; its budget is preserved for a later in-window start after headroom is restored.
+
+Raw correction tests, corrected native full-hash observation, held denial, resource observation and validation hashes are retained under `/home/administrator/.local/state/hexalith/memories/access-telemetry/isolated-target-20261016T064337Z-506bfc/evidence/functional-preparation-20261016T130434Z-native/preparation-verification`. The exact invocation is retained in `/home/administrator/.local/state/hexalith/memories/access-telemetry/isolated-target-20261016T064337Z-506bfc/evidence/functional-preparation-20261016T130434Z-native/invocation.json`. No live retention or terminal API/full qualification/A41 pass is claimed.
+
+## Approved operational run — 2026-10-16
+
+The owner replied “I approve” to the exact operational request for manifest `fdbbd399e9cf25689f0c71c3e37a94cd9a8454187bf04fbd6a5a65d35c8510f4`. The actual decision was recorded at **2026-10-16T12:51:48Z** in the prepared private bundle. Source, prepared input and tool hashes were checked again before admission. The single bounded invocation ended rejected before boot; this grants no full qualification, A41, Production or Git authority. The preparation-only hold described in the retained preparation observations below is superseded only for this exact run.
+
+Evidence root: `/home/administrator/.local/state/hexalith/memories/access-telemetry/isolated-target-20261016T064337Z-506bfc/evidence/functional-preparation-20261016T124615Z`. Preserve the original plan, preparation denials, owner receipt, decision, status history and raw execution outputs. The observed result is recorded below; no live retention assertion passed.
+
+**Observed outcome:** The exact prepared command ran from **2026-10-16T12:52:07.661128Z** to **12:54:16.628250Z**, exit **1**, `status: rejected`, reason **`functional-target-os-read-deadline`**. Full-disk read through WSL exceeded the 120-second preflight limit. This is a verifier preparation defect, not evidence against retention behavior. The exclusive claim is retained; status now has `budgetConsumed: true`, `executableAuthority: false`. It must not be reopened. No transport assets were downloaded, VM launched, data disk formatted, guest credential activated or cohort emitted. Fresh local checks found both retained disk identities/size/mtime/ctime unchanged and no owned QEMU process. No gate/Lease/replica cleanup is claimed because no guest/API setup occurred.
+
+A separate **read-only local preparation diagnostic**, not a second qualification run, verified the unchanged full 40-GiB OS SHA-256 `074502ca51d9cb20a79cdabd715f5e06afbbbec298e19b84a6770104da6361de` through the already pinned native Windows PowerShell/.NET path in **37.596 seconds**. Its file stream denies writes/deletes while hashing. The first native diagnostic found `Get-FileHash` unavailable; its failed observation is retained. A narrow source correction will use the successful full-hash transport within the same existing time/resource limits; any replacement exact manifest remains inactive pending approval. Raw records are in the same evidence root (`execution-exit.json`, `functional-result.json`, approval/status history and `post-failure-native-*-diagnostic.json`).
+
+## Current checkpoint matrix
+
+| Checkpoint | State | Measured evidence or required next observation |
+| :--- | :--- | :--- |
+| Functional preparation | corrected bundle prepared and approved; resource hold | Fixed route/guest setup and source/image bindings implemented; 73 affected offline tests and 114 repeated lifecycle/deployment/privacy checks passed. Three earlier preparation reviews completed; 21 findings fixed. Measured OP1 correction verified with the actual read-only native command. Replacement bundle compiled/validated and approved; native RAM floor unsatisfied, budget unused. |
+| Functional live retention | held before launch; budget unused | Actual guest identity, A/B acknowledgement and strong reads, real expiry/reminder/index progress, unchanged B and observed cleanup. |
+| C0 | repository-validated | Existing offline exact-profile machinery only; live exact-profile execution pending. |
+| C1 | operator-pending | 25 distinct eligible same-session technical gate passes and distinct owner role records. Checkpoint ownership is in Spec 14; more story files are not evidence. |
+| C2 | operator-pending | Full two-writer throughput, acknowledgement and all required replacement/fault observations. |
+| C3 | operator-pending | Actual 1/24/168-hour cohorts and attributable allocator reuse within the unchanged bounds. |
+| C4 | operator-pending | Full failure/privacy/tenant/console/configured-OTLP continuity inventory. |
+| C5 | operator-pending | Owner Operations acceptance of actual full evidence, risk and runbooks. |
+| C6 | operator-pending | Distinct owner Security result record over the same full evidence; self-review disclosed. |
+| Full terminal/publication | operator-pending | Authenticated full evidence, actual disabled/empty/zero state and separately authorized exact A41 publication/remote verification. |
+
+The [recovery record](../27-4-bootstrap-recovery-result-2026-10-16.md) reports both disks allocated and QEMU stopped before an observed running guest because serial was passed to a raw backend. Both consumed attempts remain closed; the corrected boot-only proposal remains unapproved. These are bootstrap observations, not gate/Lease/replica cleanup or live retention evidence.
+
+The current table supersedes the former profile and independent-review wording in the dated material below for the adopted owner mode. Original verdicts, failed captures, closed windows, source pins, review limitations and command receipts remain historical evidence; they cannot be relabelled into a current pass.
+
+The fixed functional setup uses pinned K3s and real Dapr/PostgreSQL with private static Retain volumes and TLS/scoped file-backed OpenBao. Its declared PVC reservations are 400 + 20 + 10 + 60 + (3 × 17) = 541 GiB within the existing 600-GiB data disk; actual observed filesystem headroom is separately required at runtime. Static provisioning and this disposable OpenBao setup do not qualify OpenEBS, the approved OpenBao chart/platform, at-rest security or HA. Existing profile inputs are preserved. Missing or ambiguous deletion attribution rejects the functional result; positive expired physical tuples can corroborate TTL-filtered absence.
+
+Local SDK Debug archive builds completed for Server, lifecycle and clock; source/build/output/image digests are retained in `/tmp/story-27-4-functional-source-build/source-image-build.json` and will be copied into the exact private bundle. Their qualification credit is false. The full C4 curl pin was not changed; the functional archive excludes that full-lane tool and cannot pass C4.
+
+The affected suite passed 66 tests in 13.698 seconds after review fixes, with no skips. It is registered in the existing CI workflow; no CI run or live target pass is claimed. Source-image provenance now binds resolved dependency/shared build inputs as well as Memories. Previous image receipts/archives are preserved separately before refresh.
+
+The final repeat verification passed 180 tests (66 functional, 85 lifecycle, 12 deployment, 17 tenant/privacy), with zero failures/skips. All 21 review findings are fixed; none is deferred. Raw logs and hash summary are in `/home/administrator/.local/state/hexalith/memories/access-telemetry/isolated-target-20261016T064337Z-506bfc/evidence/functional-preparation-20261016T124615Z/preparation-verification`. Actual source re-render/input/custody validation passed. A held invocation of the actual bundle refused with zero target spawns/calls and no status or budget change.
+
+The derived operational manifest is `/home/administrator/.local/state/hexalith/memories/access-telemetry/isolated-target-20261016T064337Z-506bfc/evidence/functional-preparation-20261016T124615Z/plan.json`, SHA-256 `fdbbd399e9cf25689f0c71c3e37a94cd9a8454187bf04fbd6a5a65d35c8510f4`; 36 prepared inputs, 393,338,669 bytes. At preparation time executable authority was false, decision absent and budget unused; that bundle was then approved, rejected and closed as recorded above. Its original proposed UTC admission started 2026-10-16T12:46:18Z, latest start 2026-10-18T08:31:17Z, expires 2026-10-18T12:46:17Z. The complete bounded boot/setup/one-hour test/restoration actions are listed in the existing Spec 14. No live retention, terminal API cleanup, full qualification or A41 completion is claimed.
+
+The final local volume check added `fsGroup: 1000` and `fsGroupChangePolicy: OnRootMismatch` to the functional Redis/FalkorDB pods, preserving their seccomp/capability controls and requiring no privileged init. The affected 66-test suite passed again. The earlier inactive bundle `functional-preparation-20261016T123800Z` and its verification remain preserved; that regenerated bundle was subsequently approved and rejected before boot. The corrected native-read bundle above is now approved and held for resource admission. The earlier corrected boot-only draft remains unapproved historical evidence and is not reactivated.
+
+## Historical report and dated receipts — preserved body
+
 # Story 27.4 Retention Verification Evidence
 
 ## Evidence posture
@@ -1200,3 +1376,5 @@ collector was invoked. The earlier no-target-contact statements describe their
 earlier offline phases; this continuation contacted the API only for readiness.
 The canonical C0–C6 verdicts, open A41/action and Production configuration remain
 unchanged. Missing tooling and isolated test setup remain implementation work.
+
+</details>

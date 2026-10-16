@@ -100,7 +100,17 @@
     <Error Text="Release builds must use NuGet package references for external Hexalith libraries. Remove -p:UseHexalithProjectReferences=true or build Debug for source-debugging." />
   </Target>
 
-  <Target Name="FailPackWithHexalithProjectReferences" BeforeTargets="GenerateNuspec;Pack;Publish" Condition="'$(UseHexalithProjectReferences)' == 'true'">
+  <Target Name="FailPackWithHexalithProjectReferences" BeforeTargets="GenerateNuspec;Pack" Condition="'$(UseHexalithProjectReferences)' == 'true'">
     <Error Text="Package publication must not use external Hexalith project references. Run pack/publish with UseHexalithProjectReferences=false." />
+  </Target>
+
+  <!-- Source assets may be prepared for the explicitly approved non-Production
+       functional run as a local SDK container archive. This opt-in cannot enable
+       NuGet packaging, Release/source output or registry/daemon publication. -->
+  <Target Name="GuardSourceContainerArchive"
+          BeforeTargets="Publish;PublishContainer;_PublishSingleContainer;_PublishMultiArchContainers"
+          Condition="'$(UseHexalithProjectReferences)' == 'true' or '$(LocalSourceContainerArchive)' == 'true' or '$(FunctionalRetentionArchive)' == 'true'">
+    <Error Condition="'$(UseHexalithProjectReferences)' != 'true' or '$(LocalSourceContainerArchive)' != 'true' or '$(Configuration)' != 'Debug' or '$(EnableContainer)' != 'true' or '$(ContainerArchiveOutputPath)' == '' or !$([System.IO.Path]::IsPathRooted('$(ContainerArchiveOutputPath)')) or '$(ContainerRegistry)' != '' or '$(RegistryUrl)' != ''"
+           Text="Source publication requires an explicitly selected local Debug SDK container archive with an absolute ContainerArchiveOutputPath and no output registry." />
   </Target>
 </Project>

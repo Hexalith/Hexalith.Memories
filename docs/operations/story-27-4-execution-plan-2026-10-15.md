@@ -1,5 +1,10 @@
 # Story 27.4 bounded operational execution plan
 
+**Platform correction, approved 2026-10-16:** Future functional preparation uses the Platform-owned local run described by [Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md). This entire VM/discovery plan is historical; its decisions, budgets and evidence are preserved, never consumed, withdrawn or transferred by this correction.
+
+
+**Archived execution guidance, 2026-10-16:** The owner approved consolidation into [existing Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md). Follow that file for current instructions and the [canonical report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md) for results. The dated body below is retained unchanged; none of its old windows, failed budgets or proposed decisions grants a new action.
+
 Prepared 2026-10-15; updated 2026-10-16. Bounded discovery is complete. The owner
 selected a separate qualification target; current concrete preparation and the
 remaining scoped decision are in the [isolated target plan](story-27-4-isolated-target-plan-2026-10-16.md).

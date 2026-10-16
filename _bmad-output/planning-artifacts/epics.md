@@ -869,6 +869,8 @@ Production deployment artifacts, backup/restore, integration-stub closure, cover
 **FR71 scope note (historical):** This epic covers backup/restore and disaster-recovery readiness. **Dated 2026-10-05 correction:** application-facing portable export was completed early as non-MVP Story 8.3; it is not rescheduled. Current custody-transfer, staging-purge, and tombstone/restore obligations remain in successor Epic 34.
 
 ### Epic 27: Access Telemetry Lifecycle Hardening
+
+**Current 2026-10-16 course correction:** Story 27.4 reuses Spec 14 and one report, with the owner-approved per-gate checkpoint table replacing further story-file registration as an administrative prerequisite. The earlier registration programme below is historical. All 25 technical C1 checks, adapter/remediation obligations, same-profile evidence and full close-out gates remain. Functional feedback is a separate, explicitly limited checkpoint and supplies no Production/A41 credit. See the [approved correction](sprint-change-proposal-2026-10-16.md).
 Operators can configure and verify a bounded lifecycle for access telemetry through one explicitly owned write-only sink/store without weakening audit emission, tenant/privacy boundaries, or the PRD compliance boundary.
 **Lifecycle label:** Operational Readiness / Security and Observability Hardening
 **Driven by:** Sprint Change Proposal 2026-07-16 (Access-Telemetry Retention Implementation)
@@ -5326,6 +5328,24 @@ So that future compliantly authored running-target C1 stories can start from a r
 
 ### Story 27.4: Retention Verification, Operations Runbook, and A41 Close-Out
 
+#### Current Platform execution ownership — approved 2026-10-16
+
+The owner replied “approve” to the Platform correction in [the existing proposal](sprint-change-proposal-2026-10-16.md). [Existing Spec 14](../implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) and [one report](../implementation-artifacts/tests/27-4-retention-verification-evidence.md) govern. Platform owns the local run-owned environment and Builds’ existing descriptor/result/lifecycle; Memories consumes it and verifies real PostgreSQL retention. VM boot, raw disks and fixed 40/56-GiB host/guest requirements leave the functional critical path; prior approvals and unused/closed budgets remain history. Hosted attachment to 192.168.1.30 is refused.
+
+**Given** supported, operationally approved Platform local inputs, **when** 125+125 normally acknowledged records are emitted at least 1800 real seconds apart, **then** A remains readable before 3600 seconds expiry and is strongly absent with due-index cleanup/reminder progress by +900 seconds, B stays unchanged, and positive record-level attribution plus UTC/monotonic observations support only functional evidence. Platform’s actual outcome-aware result governs success cleanup, retained local failure and withdrawn outcomes. Missing runner/profile/source/capability evidence refuses before effects. Existing HXR028/descriptor/15-minute lifetime/Redis/local binding/tool-source gaps currently block live preparation.
+
+All 25 C1/C0–C6/terminal/publication requirements remain unchanged; the KVM profile is retained history until an exact full Platform target/profile is adopted. Local file-backed secrets/development UTC/Debug never count as OpenBao/Kubernetes/independent UTC/CI candidate/full/Production/A41 evidence. Keep Story 27.4 in progress and A41 open; no additional story registration is required.
+
+#### Previous execution wording — historical 2026-10-16
+
+The owner approved [the course correction](sprint-change-proposal-2026-10-16.md) with “yes”. [Existing Spec 14](../implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) is the sole current execution specification and owns the explicitly approved per-gate checkpoint table. Jérôme Piquot owns each checkpoint; the table names evidence, review and completion state. The [existing report](../implementation-artifacts/tests/27-4-retention-verification-evidence.md) is the sole consolidated human results report.
+
+Full completion requires Story 27.3's applicable completed adapter/remediation obligations, all 25 distinct eligible same-session C1 gate passes and C0–C6/terminal/publication evidence under the current approved KVM profile. **Separate Story 27.7–27.31 file registration is no longer a qualification predicate.** Implemented gate-specific bindings, semantic verifiers, distinct attributable evidence and review remain required; this administrative change passes no gate. The old predecessor wording below is retained as dated history.
+
+**Given** one operationally approved isolated functional plan with explicit source/configuration deltas, **when** two 125-record cohorts traverse the real one-writer pipeline across actual one-hour expiry, **then** strong reads, due-index/reminder progress and unchanged newer controls prove only functional retention, with actual disabled/empty/zero cleanup. Development UTC sources and source-built Debug images are explicitly limited functional evidence; they supply no full C1, capacity, independent UTC, long-duration, Production, release or A41 credit.
+
+Implementation/preparation is authorized; live execution remains held for its one complete exact-plan approval. No new story or numbered implementation spec is registered. Story 27.4 remains in progress and A41 open.
+
 ### Sole-owner qualification policy, adopted 2026-10-12
 
 The owner explicitly approved `sole-owner-qualification/2026-10-12`. For
@@ -5345,7 +5365,7 @@ As a security reviewer,
 I want executable lifecycle evidence and one coordinated close-out against the approved Production profile,
 So that A41 closes only after the policy works in the deployment shape.
 
-**Predecessor Gate:**
+**Historical predecessor gate (superseded 2026-10-16; preserved as evidence):**
 
 - Story 27.3 is `done` with C0 and C2-C4 complete against the immutable `PG-ONPREM-1` profile and with all its remediation, review, and ledger obligations closed. Its administratively transferred C1 umbrella is not qualification evidence and does not advance this story by itself.
 - Actual Story 27.7 through Story 27.31 files must exist, pass their creation guards, be registered by approved changes, and be `done`. Story 27.21 is currently the only registered successor and is `in-progress`, so this predecessor gate remains unsatisfied.

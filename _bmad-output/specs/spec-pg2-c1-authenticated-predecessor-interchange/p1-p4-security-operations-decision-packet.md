@@ -1,4 +1,10 @@
+## Current Platform ownership applicability — approved 2026-10-16
+
+The owner approved Platform-owned local functional infrastructure and the existing Builds runner boundary in [Spec 14](../../implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md); its [single report](../../implementation-artifacts/tests/27-4-retention-verification-evidence.md) records current blockers. No supported functional descriptor/result consumer exists yet. No replacement schema, VM/hosted fallback or KVM-hash reuse is admitted. Full/legacy wire contracts below remain strict; local functional evidence supplies no C1/C0–C6, full terminal or A41 credit. Prior approvals/budgets remain unchanged history.
+
 # PG-ONPREM-2 C1 I3: Security and Operations decision packet
+
+**Historical institutional decision material:** The sole-owner policy is already adopted. The [current execution plan](../../implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) implements the owner-approved 2026-10-16 consolidation; do not reopen receipt-service, independent-reviewer or policy-adoption cycles from the dated text below. Technical gate meanings/dependencies and original decisions remain evidence; this document grants no action.
 
 ## Current policy: sole-owner qualification, adopted 2026-10-12
 

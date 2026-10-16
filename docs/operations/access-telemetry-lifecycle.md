@@ -1,5 +1,20 @@
 # Access Telemetry Lifecycle Operations
 
+**Platform ownership correction, approved 2026-10-16:** Platform owns the local environment and Builds its existing runner lifecycle; Memories owns retention assertions. Functional preparation currently refuses before input reads/writes, spawn or contact. VM boot/disks and fixed 40/56-GiB requirements are historical. Follow [Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) and [the report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md) for owning gaps and reopen checks. No operational approval is ready; full/Production gates and old budgets remain unchanged. Earlier VM wording below is historical for this functional route.
+
+
+## Qualification tiers — approved 2026-10-16
+
+[Existing Story 27.4 Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) owns current execution instructions; the [canonical report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md) owns results. This runbook owns procedures, not additional run approvals.
+
+| Tier | Required behavior and claim limit |
+| :--- | :--- |
+| Functional | One writer, two 125-record cohorts, actual one-hour expiry, strong Dapr reads, actor/index purge progress, newer controls and actual cleanup. Development UTC sources and source-built Debug images are explicit execution deltas. No full gate, independent UTC, signed CI/package/Production, capacity, allocator or long-duration claim. |
+| Full non-Production qualification | All 25 C1 checks and C0–C6, exact approved profile/session/source, independent authenticated UTC, full image provenance, capacity, faults/recovery, actual 1/24/168-hour cohorts and allocator reuse, bounded cleanup and owner result acceptance. The same owner may produce and accept with disclosed self-review; distinct gate/role/C5/C6 records remain. |
+| Production | Separate explicit activation and custody decision on Production target/security/configuration evidence after the applicable full assurance gates. Functional or story status alone cannot enable it. |
+
+One exact operational plan covers allowed setup/test/restoration and bounded retries. Full C1 and final result acceptances follow measured evidence; they cannot be replaced by advance permission. Existing full-mode time/freshness limits remain; multi-day continuation must be implemented and verified before a full campaign. Older institutional/independent-review procedures below are historical or the stronger legacy protocol, not the adopted owner mode.
+
 ### Sole-owner qualification policy, adopted 2026-10-12
 
 The owner explicitly approved `sole-owner-qualification/2026-10-12`. For

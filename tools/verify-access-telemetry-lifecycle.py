@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import subprocess
 import sys
 
 
@@ -65,6 +66,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--commit")
     parser.add_argument("--remote")
     parser.add_argument("--branch")
+    parser.add_argument("--functional-plan", help="Historical VM plan, refused by the current Platform-owned functional route.")
+    parser.add_argument("--approved-plan-sha256", help="Outside owner-approved SHA-256 of the functional plan.")
+    parser.add_argument("--prepare-functional-bundle", help="Check Platform preparation gaps; the historical VM destination is never written.")
     return parser
 
 
@@ -79,6 +83,25 @@ def _required(args: argparse.Namespace, *names: str) -> bool:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     repository_root = Path(args.repository_root)
+    if args.checkpoint == "functional-retention":
+        if args.prepare_functional_bundle:
+            from access_telemetry_functional_retention import prepare_local_bundle, FunctionalRetentionError
+            import json
+
+            try:
+                print(json.dumps(prepare_local_bundle(Path(args.prepare_functional_bundle), repository_root), sort_keys=True))
+                return 1
+            except (FunctionalRetentionError, ValueError, OSError, KeyError, IndexError, TypeError, AttributeError, subprocess.SubprocessError):
+                print("functional-preparation-refused", file=sys.stderr)
+                return 1
+        from access_telemetry_functional_retention import run_functional_retention
+
+        return run_functional_retention(
+            plan_path=Path(args.functional_plan) if args.functional_plan else None,
+            approved_plan_sha256=args.approved_plan_sha256,
+            source_root=repository_root,
+            custody_root=Path(args.evidence_root),
+        )
     if args.checkpoint in STORY_27_4_CHECKPOINTS:
         if not _required(args, "predecessor", "evidence", "evidence-root", "owner"):
             return 2

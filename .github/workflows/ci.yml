@@ -293,6 +293,11 @@ jobs:
         # sibling steps' "*_test.py"), so a future fixture file added here is also discovered.
         run: PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p "test_*.py"
 
+      - name: Run access-telemetry functional-retention safety fixtures
+        # Offline only; uses the initialized kubectl client, .NET SDK, OpenSSL,
+        # and local PyYAML already required by deployment fixtures.
+        run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_functional_retention -p "test_*.py"
+
       - name: Run access-telemetry C1 producer fixtures
         run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1 -p "*_test.py"
 

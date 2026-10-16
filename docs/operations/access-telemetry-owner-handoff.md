@@ -1,3 +1,25 @@
+# Access-telemetry qualification: owner handoff
+
+**Platform ownership correction, approved 2026-10-16:** Platform owns the local environment and Builds its existing runner lifecycle; Memories owns retention assertions. Functional preparation currently refuses before input reads/writes, spawn or contact. VM boot/disks and fixed 40/56-GiB requirements are historical. Follow [Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) and [the report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md) for owning gaps and reopen checks. No operational approval is ready; full/Production gates and old budgets remain unchanged. Earlier VM wording below is historical for this functional route.
+
+
+The owner approved the sole-owner policy on 2026-10-12 and the simplified delivery plan on 2026-10-16. Use `github:user:6775094` and disclose `sole-owner/self-reviewed`. No repeat policy or presented-offline-result approval is needed.
+
+- **Current specification and execution plan:** [existing Story 27.4 Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md).
+- **One consolidated results report:** [retention verification evidence](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md).
+- **Operating procedures:** [lifecycle runbook](access-telemetry-lifecycle.md) and [PostgreSQL appendix](access-telemetry-adapter-production.md).
+
+The agent implements and verifies the fixed functional path, prepares its exact source/image/setup bindings and finite resource/action/window/retry/restoration plan, then presents **one operational approval**. That approval covers the enumerated setup, test and cleanup, including permitted transient retries. A changed or exhausted scope requires a new decision; an unchanged step does not. Do not approve an unfinished setup or fixture as if it were a runnable target plan.
+
+The first run uses one writer and two 125-record cohorts at real one-hour retention. It deliberately uses the existing development UTC sources and source-built Debug image digests; signed attestation validation and real Dapr/PostgreSQL/actor behavior remain. These are disclosed functional limitations, not independent UTC, full image provenance, capacity, fault, seven-day, Production or A41 qualification.
+
+After a run, accept its measured report. For later full qualification, accept the completed C1 batch before downstream tests, then the final C0–C6/cleanup result set. Tools generate distinct gate/role/C5/C6 records from those actual decisions in dependency order. The owner does not manually write gate packets or pre-accept future outcomes.
+
+The original and recovery attempts remain closed. The separate boot-only proposal is unapproved; consolidation does not execute it. Existing policy/profile decisions persist. Current implementation approval grants no workload/VM start, active permission/status change, storage mutation, A41/sprint transition, Production action or Git/publication authority.
+
+<details>
+<summary>Historical owner guide and inspection contracts, retained in place</summary>
+
 # Access-telemetry qualification for the sole owner
 
 Status: Owner-approved policy, 2026-10-12, under the
@@ -156,3 +178,5 @@ The qualification plan includes bounded failure restoration separately from test
 actions. If approval expires or is withdrawn, tests stop; only previously approved
 restoration of resources still owned by that run may finish. Cleanup retains the
 private evidence archive through result, terminal and publication checks.
+
+</details>

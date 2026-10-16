@@ -1,5 +1,16 @@
 # ADR 27.1-001: Access Telemetry Lifecycle
 
+**Platform ownership correction, approved 2026-10-16:** Platform owns the local environment and Builds its existing runner lifecycle; Memories owns retention assertions. Functional preparation currently refuses before input reads/writes, spawn or contact. VM boot/disks and fixed 40/56-GiB requirements are historical. Follow [Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) and [the report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md) for owning gaps and reopen checks. No operational approval is ready; full/Production gates and old budgets remain unchanged. Earlier VM wording below is historical for this functional route.
+
+
+## Current execution and evidence tiers — approved 2026-10-16
+
+The owner approved [the simplification correction](../../_bmad-output/planning-artifacts/sprint-change-proposal-2026-10-16.md). [Existing Spec 14](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) is the sole execution plan and holds the approved checkpoint ownership table. The current KVM base manifest is [pg2-kvm-approved-profile-2026-10-16.json](../operations/qualification/pg2-kvm-approved-profile-2026-10-16.json), SHA-256 `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb`; old profile/capture definitions below are dated history where superseded.
+
+A first functional run observes real one-hour expiry, actor purge/index progress and newer-record preservation with one writer and two 125-record cohorts. It uses real signed attestations backed by the existing non-Production development UTC sources and source-built Debug image digests; these execution deltas are recorded and excluded from full-profile eligibility. It supplies no independent UTC, CI/package/Production image, full-capacity, recovery, seven-day, physical-reclamation, release or A41 credit.
+
+Full qualification retains all 25 C1 technical gates, C0–C6, exact source/profile/session identity, independent authenticated UTC, capacity, fault/recovery/privacy, all real 1/24/168-hour cohorts and attributable allocator reuse within 24 hours of active purge. Production remains a separate activation/custody decision. Registering more story files is replaced by the existing story's per-gate owner/evidence/review/completion table; actual collectors, semantic checks and distinct gate/role/C5/C6 results remain mandatory. No assurance gate is passed by this amendment.
+
 ## Status and Decision Metadata
 
 | Field | Accepted value |

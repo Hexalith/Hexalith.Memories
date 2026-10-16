@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup Condition="'$(EnableContainer)' == 'true'">
     <ContainerBaseImage>mcr.microsoft.com/dotnet/aspnet:10.0-alpine</ContainerBaseImage>
-    <ContainerRegistry Condition="'$(ContainerRegistry)' == ''">registry.hexalith.com</ContainerRegistry>
+    <ContainerRegistry Condition="'$(ContainerRegistry)' == '' and '$(LocalSourceContainerArchive)' != 'true'">registry.hexalith.com</ContainerRegistry>
     <ContainerImageTag Condition="'$(ContainerImageTag)' == ''">$(Version)</ContainerImageTag>
     <ContainerUser>1654</ContainerUser>
   </PropertyGroup>
