@@ -1063,7 +1063,7 @@ def _historical_run_vm_retention(*, plan_path: Path, approved_plan_sha256: str, 
     return 0 if result["status"] == "functional-passed" else 1
 
 
-def platform_preparation_status() -> dict:
+def _recorded_platform_preparation_status() -> dict:
     """Report demonstrated owner gaps without reading a grant or touching a target.
 
     This is preparation output in the existing format, never an environment
@@ -1131,6 +1131,38 @@ def platform_preparation_status() -> dict:
     }
 
 
+def platform_preparation_status() -> dict:
+    """Keep historical inspection facts while naming current unobserved prerequisites.
+
+    This side-effect-free diagnostic does not inspect a checkout or issue an
+    operational approval. The selected entry separately validates real runner
+    observations; declarations and offline tests cannot establish readiness.
+    """
+    result = _recorded_platform_preparation_status()
+    result["recordedBlockers"] = result.pop("blockers")
+    result["blockerStatus"] = "prepared-source; actual startup and tool/artifact alignment unverified"
+    result["blockers"] = [
+        {"id": "platform-tool-source-alignment", "owner": "Hexalith.Platform / Hexalith.Builds",
+         "source": ".config/dotnet-tools.json; src/libraries/Hexalith.Builds.Tooling/Runtime/CompositionPrerequisiteProbe.cs",
+         "gap": "The selected Platform checkout has no supported tool pin; a complete Platform build is blocked by the existing JwtBearer 10.0.13/10.0.12 CS1705 mismatch.",
+         "reopen": "Use the owner tool/provenance workflow and resolve the existing dependency alignment under separate authorization; build the actual selected source without changing dependencies in preparation."},
+        {"id": "platform-runtime-artifact", "owner": "Hexalith.Platform / Hexalith.Builds",
+         "source": "PlatformRetentionProfile.ObserveAsync; CompositionRuntimeArtifactVerifier.Verify; <DaprHome>/.dapr/runtime-image.oci.tar",
+         "gap": "No retained immutable Dapr 1.18.1 OCI archive links the configured native daprd to the approved image and amd64 manifest.",
+         "reopen": "Retain the exact digest-verified OCI index, manifest and layers through the authorized artifact workflow; verify the actually running daprd inode against their executable."},
+        {"id": "platform-startup-observations", "owner": "Hexalith.Platform / Hexalith.Memories",
+         "source": "PlatformRetentionProfile; PlatformPostgresqlHealthCheck; RunReadiness; AccessTelemetryCapabilityProbeRunner",
+         "gap": "The prepared PostgreSQL/TLS/local-capability/3600-second profile has never been started. Resource fit, actual app/runtime/backend identities, all three retention configurations and actual startup probes remain unobserved.",
+         "reopen": "After prerequisites and exact operational approval, obtain complete fresh matching runner-owned observations; refuse missing/foreign mappings, unavailable proc mappings, failed TLS/probes and partial startup."},
+        {"id": "platform-real-functional-outcome", "owner": "Hexalith.Builds / Hexalith.Memories",
+         "source": "NativeTestExecutor; CompositionSelectedTestGate; CompositionEngine.RecordTestOutcomeAsync; tools/verify-access-telemetry-lifecycle.py",
+         "gap": "The fixed selected entry and native TRX consumer are prepared, but no real retention run, owner withdrawal or outcome-aware cleanup has occurred.",
+         "reopen": "Complete the approved two-cohort observation and retain the actual Platform terminal outcome and cleanup disposition; offline doubles grant no interoperability or qualification credit."},
+    ]
+    result["nextAction"] = "Complete focused source review and offline validation, align the supported tool and immutable runtime artifact, then prepare a usable exact operational approval. No workload authority or readiness is asserted."
+    return result
+
+
 def prepare_local_bundle(bundle_root: Path, source_root: Path) -> dict:
     """Refuse legacy VM preparation without creating files or changing authority."""
     return platform_preparation_status()
@@ -1144,3 +1176,208 @@ def run_functional_retention(*, plan_path: Path | None = None, approved_plan_sha
     """
     print(json.dumps(platform_preparation_status(), sort_keys=True))
     return 1
+
+def run_selected_platform_retention() -> int:
+    """Consume the existing selected-test handoff; own no environment lifecycle."""
+    import xml.etree.ElementTree as xml
+    result = {"checkpoint": "functional-retention", "status": "rejected", "qualificationCredit": False, "assuranceMode": ASSURANCE}
+    report = None
+    try:
+        _require(os.environ.get("HEXALITH_G4_TEST_NAME") == "functional-retention" and os.environ.get("HEXALITH_G4_TEST_OWNER") == "memories" and os.environ.get("HEXALITH_G4_TEST_MODE") == "source", "selected-test-required")
+        plan_path = Path(os.environ["HEXALITH_G4_PLAN_PATH"])
+        root = plan_path.parent
+        _require(plan_path.is_absolute() and plan_path.name == "plan.json", "selected-plan-path")
+        candidate_report = Path(os.environ["HEXALITH_G4_TEST_REPORT_PATH"])
+        _require(candidate_report == root / "native-tests" / "native.trx", "selected-report-path")
+        _canonical_path(str(candidate_report.parent))
+        report = candidate_report
+        plan_bytes = _private(str(plan_path), str(root))
+        plan = json.loads(plan_bytes)
+        selection = plan["selectedTest"]
+        _require(plan["schema"] == "hexalith.g4-run-plan.v1" and plan["runId"] == os.environ["HEXALITH_G4_RUN_ID"], "selected-plan-identity")
+        _require(selection["moduleId"] == "memories" and selection["name"] == "functional-retention" and selection["entry"] == "tools/verify-access-telemetry-lifecycle.py" and selection["mode"] == "source" and selection["daprRuntimeVersion"] == "1.18.1", "selected-entry")
+        _require(selection["executionTimeoutSeconds"] == 14400 and selection["stopTimeoutSeconds"] == 900, "selected-lifetime")
+        candidate = Path(plan["sourceMapping"]["root"]) / "references" / "Hexalith.Memories"
+        _require(candidate == Path(__file__).resolve().parent.parent, "selected-direct-candidate")
+        for relative, key, envelope in (("module/hexalith.module-manifest.v2.json", "manifestHash", "HEXALITH_G4_TEST_MANIFEST_HASH"), (selection["entry"], "entryHash", "HEXALITH_G4_TEST_ENTRY_HASH")):
+            digest = _sha((candidate / relative).read_bytes())
+            _require(digest == selection[key].lower() == os.environ[envelope].lower(), "selected-source-drift")
+        readiness_path = root / "readiness.json"
+        _require(os.environ["HEXALITH_G4_READINESS_PATH"] == str(readiness_path), "selected-readiness-path")
+        readiness_bytes = _private(str(readiness_path), str(root))
+        readiness = json.loads(readiness_bytes)
+        _require(readiness["schema"] == "hexalith.g4-run-readiness.v1" and readiness["runId"] == plan["runId"] and readiness["selectedTest"] == selection, "selected-readiness-identity")
+        _require(readiness["resources"] and all(resource["state"] == "Healthy" for resource in readiness["resources"]), "partial-startup")
+        observation = readiness["testObservation"]
+        _require(observation["isComplete"] is True and observation["runId"] == plan["runId"] and observation["moduleId"] == "memories" and observation["runtimeArtifactVerified"] is True, "selected-observations-unavailable")
+        profile = json.loads(observation["profileJson"])
+        _require(_sha(observation["profileJson"].encode()) == observation["profileHash"] and profile["purpose"] == "local-functional-retention" and profile["runId"] == plan["runId"] and profile["sourceMappingHash"] == plan["sourceMappingHash"] and profile["retentionSeconds"] == 3600 and profile["sslMode"] == "verify-full" and profile["qualificationCredit"] is False, "selected-profile")
+        _require(profile["runtimeImage"] == next(image["reference"] for image in artifact_catalog()["images"] if image["id"] == "daprd") and profile["postgresqlImage"] == next(image["reference"] for image in artifact_catalog()["images"] if image["id"] == "postgresql") and observation["observedBackendIdentity"].startswith(profile["postgresqlImage"] + "/180006|t|TLSv1."), "selected-backend")
+        _require(_HEX.fullmatch(observation["observedCandidateHash"]) and _HEX.fullmatch(observation["observedRuntimeHash"]) and observation["loadedArtifactHashes"], "selected-loaded-artifacts")
+        _require(observation["serviceRetentionSeconds"] == {name: 3600 for name in ("memories", "memories-access-telemetry", "memories-access-telemetry-clock")}, "selected-observed-retention")
+        mapping_path = root / "source-mapping" / "mapping.json"
+        mapping = json.loads(_private(str(mapping_path), str(root)))
+        mapping_payload = {key: mapping[key] for key in ("Mode", "Root", "ActiveModule", "Entries", "HasGit", "PlatformIdentity", "IdentityFindings")}
+        _require(_sha(json.dumps(mapping_payload, separators=(",", ":"), ensure_ascii=True).encode()) == plan["sourceMappingHash"] == os.environ["HEXALITH_SOURCE_MAPPING_HASH"], "selected-mapping-hash")
+        _require(mapping["Root"] == str(candidate.parent.parent) and mapping["Mode"] == 0 and [entry for entry in mapping["Entries"] if entry["Identity"] == "Hexalith.Memories"] == [{"Identity": "Hexalith.Memories", "Origin": "source", "Path": str(candidate)}], "selected-direct-mapping")
+        aggregate = [{"Key": key, "Value": value} for key, value in sorted(observation["loadedArtifactHashes"].items())]
+        _require(_sha(json.dumps(aggregate, separators=(",", ":")).encode()) == observation["observedCandidateHash"], "selected-loaded-aggregate")
+        required_entries = {"memories": "Hexalith.Memories.Server.dll", "memories-access-telemetry": "Hexalith.Memories.AccessTelemetry.dll", "memories-access-telemetry-clock": "Hexalith.Memories.AccessTelemetry.Clock.dll"}
+        _require(all(any(key.startswith(resource + "/") and Path(key).name == assembly for key in observation["loadedArtifactHashes"]) for resource, assembly in required_entries.items()), "selected-required-loaded-entry")
+        for relative, digest in observation["loadedArtifactHashes"].items():
+            parts = relative.split("/")
+            _require(len(parts) >= 3 and not any(part in {"", ".", ".."} for part in parts), "selected-loaded-artifact-path")
+            path = candidate.joinpath(*parts[1:])
+            _require(path.resolve().is_relative_to(candidate.resolve()) and not any(parent.is_symlink() for parent in (path, *path.parents)), "selected-loaded-artifact-path")
+            with ExitStack() as descriptors:
+                held = _open_held_file(str(path), descriptors)
+                _require(_sha(held.read()) == digest, "selected-loaded-artifact-drift")
+                held.revalidate()
+        deadline = datetime.fromisoformat(selection["executionDeadlineUtc"].replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        observed_at = datetime.fromisoformat(observation["observedAtUtc"].replace("Z", "+00:00"))
+        _require(timedelta(0) <= now - observed_at <= timedelta(seconds=60) and deadline - now >= timedelta(seconds=4501), "selected-stale-or-short-lifetime")
+        access_path = root / "platform-components" / "retention" / "access.json"
+        _require(observation["accessPath"] == str(access_path) and observation["gatePath"] == str(access_path.with_name("gate.json")), "selected-access-path")
+        access = json.loads(_private(str(access_path), str(root)))
+        consumer = _PlatformRetentionConsumer(root, plan, plan_bytes, readiness_bytes, observation, access, deadline)
+        result.update(consumer.execute())
+        _exclusive_json(root / "native-tests" / "functional-observations.json", result)
+    except _SEMANTIC_FAILURES as error:
+        result["reason"] = str(error) if isinstance(error, FunctionalRetentionError) else "functional-selected-input-refused"
+    print(json.dumps(result, sort_keys=True))
+    if report is not None:
+        try:
+            # A native report is a test outcome. Platform's subsequent real
+            # cleanup/retention outcome remains authoritative for integration.
+            passed = result["status"] == "functional-observations-passed"
+            document = xml.Element("TestRun", xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010")
+            results = xml.SubElement(document, "Results")
+            xml.SubElement(results, "UnitTestResult", testName="PostgreSQL functional retention", outcome="Passed" if passed else "Failed")
+            summary = xml.SubElement(document, "ResultSummary", outcome="Completed" if passed else "Failed")
+            xml.SubElement(summary, "Counters", total="1", executed="1", passed="1" if passed else "0", failed="0" if passed else "1", notExecuted="0")
+            _canonical_path(str(report.parent))
+            with report.open("xb") as output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write(xml.tostring(document, encoding="utf-8", xml_declaration=True))
+        except _SEMANTIC_FAILURES:
+            return 1
+    return 0 if result["status"] == "functional-observations-passed" else 1
+
+
+class _PlatformRetentionConsumer:
+    """Fixed workload and observation access only; Platform owns gate/lifecycle."""
+
+    def __init__(self, root, plan, plan_bytes, readiness_bytes, observation, access, deadline):
+        self.root, self.plan, self.plan_bytes, self.readiness_bytes = root, plan, plan_bytes, readiness_bytes
+        self.observation, self.access, self.deadline = observation, access, deadline
+        self.started = time.monotonic()
+        self.wall = time.time()
+        self.segments = {}
+        self.ttl_absent = set()
+        self.before_sequence = 0
+        endpoints = observation["endpoints"]
+        _require(set(endpoints) == {name + suffix for name in ("memories", "memories-access-telemetry", "memories-access-telemetry-clock") for suffix in ("", "/dapr")}, "selected-endpoints")
+        for address in endpoints.values():
+            uri = urllib.parse.urlsplit(address)
+            _require(uri.scheme == "http" and uri.hostname in {"localhost", "127.0.0.1", "::1"} and uri.port and not uri.username and not uri.password and uri.path in {"", "/"} and not uri.query and not uri.fragment, "selected-endpoint-scope")
+        _require(re.fullmatch(r"[0-9a-f]{64}", observation["postgresqlContainerId"]) is not None, "selected-backend-container")
+
+    def check(self):
+        _require(datetime.now(timezone.utc) < self.deadline and abs(time.time() - self.wall - (time.monotonic() - self.started)) <= 1, "selected-expiry-or-clock-step")
+        _require(_private(str(self.root / "plan.json"), str(self.root)) == self.plan_bytes and _private(str(self.root / "readiness.json"), str(self.root)) == self.readiness_bytes, "selected-descriptor-drift")
+        gate = json.loads(_private(self.observation["gatePath"], str(self.root)))
+        now_ms = int(time.time() * 1000)
+        _require(set(gate) == {"schemaVersion", "state", "profileSha256", "expiresUtcMs"} and gate["schemaVersion"] == 1 and gate["state"] == "enabled" and gate["profileSha256"] == self.observation["profileHash"] and now_ms < gate["expiresUtcMs"] <= min(now_ms + 905000, int(self.deadline.timestamp() * 1000)), "selected-gate-withdrawn-or-expired")
+
+    def request(self, resource, path, *, data=None, headers=None, missing=False):
+        self.check()
+        credentials = self.access[resource.removesuffix("/dapr")]
+        token = credentials["DAPR_API_TOKEN" if resource.endswith("/dapr") else "APP_API_TOKEN"]
+        request = urllib.request.Request(self.observation["endpoints"][resource].rstrip("/") + path, data=data, headers={"dapr-api-token": token, **(headers or {})})
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *args, **kwargs):
+                return None
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        try:
+            with opener.open(request, timeout=120 if data is not None else 5) as response:
+                raw = response.read(1048577)
+                _require(len(raw) <= 1048576, "selected-output-limit")
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as error:
+            if missing and error.code in {204, 404}:
+                return None
+            raise FunctionalRetentionError("functional-selected-request-failed") from None
+        except urllib.error.URLError:
+            raise TransportUncertain("functional-selected-transport-uncertain") from None
+
+    def states(self, run_id, segment, buckets=False):
+        emitted = self.segments[segment]
+        keys = fixed_record_keys(run_id, segment)
+        if buckets:
+            keys = tuple(sorted({f"expiry-bucket/{(emitted + ordinal + 3600000) // 60000:012d}/{int(key.split('/')[1]):02d}" for ordinal, key in enumerate(keys)}))
+        return [{"key": key, "value": self.request("memories-access-telemetry/dapr", "/v1.0/state/access-telemetry-store/" + urllib.parse.quote(key, safe="") + "?consistency=strong&metadata.partitionKey=access-telemetry", missing=True)} for key in keys]
+
+    def cohort(self, run_id, segment):
+        records = []
+        for item in self.states(run_id, segment):
+            record = item["value"]
+            _require(type(record) is dict, "selected-record-missing")
+            records.append({"recordId": record["recordId"], "envelopeHash": record["envelopeHash"], **{output: int(datetime.fromisoformat(record[source].replace("Z", "+00:00")).timestamp() * 1000) for output, source in (("emittedUtcMs", "emittedAtUtc"), ("expiresUtcMs", "expiresAtUtc"), ("acceptedUtcMs", "acceptedAtUtc"))}})
+        return {"consistency": "strong", "records": records}
+
+    def actor(self):
+        value = self.request("memories-access-telemetry/dapr", "/v1.0/actors/AccessTelemetryLifecycleActor/global/state/lifecycle-control")
+        _require(type(value) is dict, "selected-actor-state")
+        return {name: value.get(name, value.get(name[0].lower() + name[1:])) for name in ("ReminderSequence", "LastPurgeUnixMilliseconds")}
+
+    def wait(self, wall_ms, monotonic_deadline):
+        while int(time.time() * 1000) < wall_ms or time.monotonic() < monotonic_deadline:
+            self.check()
+            time.sleep(min(30, max(0.01, max((wall_ms - time.time() * 1000) / 1000, monotonic_deadline - time.monotonic()))))
+        self.check()
+
+    def execute(self):
+        run_id = self.plan["runId"]
+        _require(_IDENTITY.fullmatch(run_id) is not None, "selected-run-id")
+        self.before_sequence = self.actor()["ReminderSequence"]
+        cohorts, clocks = {}, {}
+        writer = None
+        for segment in ("cohort-a", "cohort-b"):
+            if segment == "cohort-b":
+                self.wait(self.segments["cohort-a"] + 1800000, clocks["cohort-a"] + 1800)
+            self.segments[segment], clocks[segment] = int(time.time() * 1000), time.monotonic()
+            for attempt in range(2):
+                try:
+                    accounting = self.request("memories", "/operations/access-telemetry/qualification/fixed-workload", data=b"", headers={"X-Hexalith-Qualification-Run": run_id, "X-Hexalith-Qualification-Segment": segment, "X-Hexalith-Qualification-Emitted-Utc-Ms": str(self.segments[segment])})
+                    break
+                except TransportUncertain:
+                    _require(attempt == 0, "selected-emit-budget")
+            observed_writer = validate_accounting(accounting, run_id, segment, self.segments[segment])
+            _require(writer is None or observed_writer == writer, "selected-writer-drift")
+            writer = observed_writer
+            cohorts[segment] = validate_cohort(self.cohort(run_id, segment), run_id=run_id, segment=segment, emitted_ms=self.segments[segment])
+        self.wait(self.segments["cohort-a"] + 3590000, clocks["cohort-a"] + 3590)
+        validate_cohort(self.cohort(run_id, "cohort-a"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
+        self.wait(self.segments["cohort-a"] + 3600124, clocks["cohort-a"] + 3600.124)
+        while True:
+            from access_telemetry_producer_common import _qualification_record_ids
+            ids = _qualification_record_ids(run_id, "cohort-a")
+            absent = [record_id for record_id, item in zip(ids, self.states(run_id, "cohort-a")) if item["value"] is None]
+            self.check()
+            # Fixed SELECT only, against the actual run-labelled container. No
+            # shell, SQL, executable, endpoint or database comes from caller input.
+            argv = ["docker", "exec", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/run/retention/ca.pem", "--env", "PGPASSFILE=/run/retention/pgpass", self.observation["postgresqlContainerId"], "psql", "-w", "-XAt", "-U", "telemetry_observer", "-d", "telemetry", "-c", fixed_expired_physical_query(run_id, "cohort-a")]
+            physical = subprocess.run(argv, capture_output=True, timeout=10, check=True)
+            _require(len(physical.stdout) + len(physical.stderr) <= 1048576, "selected-postgres-output-limit")
+            expired = json.loads(physical.stdout)["expiredRecordIds"]
+            _require(type(expired) is list and set(expired) <= set(ids), "selected-physical-attribution")
+            self.ttl_absent.update(set(absent) & set(expired))
+            indexed = {entry["recordId"] for bucket in self.states(run_id, "cohort-a", buckets=True) if bucket["value"] is not None for entry in bucket["value"]["entries"]}
+            actor = self.actor()
+            observation = {"consistency": "strong", "absentRecordIds": absent, "removedIndexIds": [record_id for record_id in ids if record_id not in indexed], "reminderSequenceBefore": self.before_sequence, "reminderSequenceAfter": actor["ReminderSequence"], "progressObservedUtcMs": actor["LastPurgeUnixMilliseconds"] or 0, "actorDeletedRecordIds": [], "ttlAbsentRecordIds": sorted(self.ttl_absent)}
+            passed = validate_purge(observation, cohorts["cohort-a"], now_ms=int(time.time() * 1000))
+            validate_cohort(self.cohort(run_id, "cohort-b"), run_id=run_id, segment="cohort-b", emitted_ms=self.segments["cohort-b"], expected=cohorts["cohort-b"])
+            if passed:
+                return {"status": "functional-observations-passed", "runId": run_id, "profileSha256": self.observation["profileHash"], "cohorts": cohorts, "purge": observation, "lifecycleOutcome": "pending-real-Platform-outcome"}
+            self.wait(int(time.time() * 1000) + 30000, time.monotonic() + 30)

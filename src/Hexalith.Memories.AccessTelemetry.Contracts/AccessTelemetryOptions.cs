@@ -56,6 +56,12 @@ public sealed record AccessTelemetryOptions
     /// <summary>Maximum retry age measured from source emission.</summary>
     public static readonly TimeSpan MaximumRetryAge = TimeSpan.FromMinutes(5);
 
+    /// <summary>Gets the Platform run identity for the Development-only functional startup proof, or empty for full proof.</summary>
+    public string LocalFunctionalRunId { get; init; } = string.Empty;
+
+    /// <summary>Gets the canonical Platform local profile bytes; full-profile identities cannot select local proof.</summary>
+    public string LocalFunctionalProfileJson { get; init; } = string.Empty;
+
     /// <summary>Gets whether the lifecycle copy is enabled.</summary>
     public bool Enabled { get; init; }
 

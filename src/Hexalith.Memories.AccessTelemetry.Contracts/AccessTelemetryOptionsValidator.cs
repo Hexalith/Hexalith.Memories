@@ -33,6 +33,12 @@ public static partial class AccessTelemetryOptionsValidator
 
         bool production = string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
         List<string> errors = [];
+        if (!string.IsNullOrEmpty(options.LocalFunctionalRunId) &&
+            (!string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase) ||
+             options.LocalFunctionalRunId != options.DeploymentId || options.Retention != TimeSpan.FromHours(1)))
+        {
+            errors.Add("Local functional startup proof requires Development, the same run/deployment identity and one-hour retention.");
+        }
         if (!Enum.IsDefined(options.RetentionSource))
         {
             errors.Add("RetentionSource is invalid.");

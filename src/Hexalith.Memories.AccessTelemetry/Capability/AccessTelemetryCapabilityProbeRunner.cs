@@ -26,6 +26,17 @@ internal sealed class AccessTelemetryCapabilityProbeRunner
         nameof(AccessTelemetryCapabilityProfile.ReclamationEvidenceHooks),
     ]);
 
+    /// <summary>The actual startup probes required by the local functional experiment; no capacity, durability or throughput proof is claimed.</summary>
+    internal static readonly IReadOnlyList<string> LocalFunctionalCapabilities = Array.AsReadOnly(new[]
+    {
+        nameof(AccessTelemetryCapabilityProfile.StrongCrudAndEtags),
+        nameof(AccessTelemetryCapabilityProfile.MultiKeyTransactionsAndConflicts),
+        nameof(AccessTelemetryCapabilityProfile.ActorReactivationFailoverAndReminders),
+        nameof(AccessTelemetryCapabilityProfile.EffectivePerRecordTtl),
+        nameof(AccessTelemetryCapabilityProfile.RecordAndRequestBounds),
+        nameof(AccessTelemetryCapabilityProfile.TenantIsolationAndEncryption),
+    });
+
     private readonly IReadOnlyList<IAccessTelemetryCapabilityProbe> _probes;
     private readonly AccessTelemetryRuntimeGate _runtimeGate;
     private readonly TimeProvider _timeProvider;
@@ -84,6 +95,20 @@ internal sealed class AccessTelemetryCapabilityProbeRunner
         AccessTelemetryCapabilityProbeContext context,
         IReadOnlyList<AccessTelemetryCapabilityProbeResult> results)
     {
+        if (context.LocalFunctional)
+        {
+            using System.Text.Json.JsonDocument localProfile = System.Text.Json.JsonDocument.Parse(context.LocalFunctionalProfileJson);
+            bool localIdentity = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(context.LocalFunctionalProfileJson))) == context.ComponentProfileHash &&
+                localProfile.RootElement.GetProperty("purpose").GetString() == "local-functional-retention" &&
+                localProfile.RootElement.GetProperty("qualificationCredit").ValueKind == System.Text.Json.JsonValueKind.False;
+            bool localPassed = localIdentity && !context.Production && context.ExactVersionPinned && context.DaprOnlyBoundary && context.ValidUntilUtc > _timeProvider.GetUtcNow() &&
+                results.Count == CapabilityNames.Count && results.All(result => result is not null && CapabilityNames.Contains(result.Capability)) && results.Select(result => result.Capability).Distinct(StringComparer.Ordinal).Count() == CapabilityNames.Count &&
+                LocalFunctionalCapabilities.All(name => results.Count(result => result.Capability == name && result.Passed) == 1);
+            return localPassed
+                ? new AccessTelemetryCapabilityGateResult(true, true, AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None, context.ValidUntilUtc)
+                : FailedDecision();
+        }
+
         if (results.Count != CapabilityNames.Count ||
             results.Any(result => result is null || !result.Passed || !CapabilityNames.Contains(result.Capability)) ||
             results.Select(result => result.Capability).Distinct(StringComparer.Ordinal).Count() != CapabilityNames.Count)

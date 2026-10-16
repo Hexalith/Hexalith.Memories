@@ -8,6 +8,12 @@ namespace Hexalith.Memories.AccessTelemetry.Capability;
 /// <summary>Immutable deployment evidence bound to one exact behavioral-probe run.</summary>
 internal sealed record AccessTelemetryCapabilityProbeContext
 {
+    /// <summary>Gets whether this is solely a Development/run-owned functional startup evaluation.</summary>
+    public bool LocalFunctional { get; init; }
+
+    /// <summary>Gets the canonical local-purpose profile; empty for full qualification.</summary>
+    public string LocalFunctionalProfileJson { get; init; } = string.Empty;
+
     /// <summary>Gets the exact lowercase component-profile SHA-256.</summary>
     public required string ComponentProfileHash { get; init; }
 

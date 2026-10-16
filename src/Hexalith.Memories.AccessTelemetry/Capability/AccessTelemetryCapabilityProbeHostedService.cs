@@ -29,6 +29,8 @@ internal sealed class AccessTelemetryCapabilityProbeHostedService(
                     : evidence.ValidUntilUtc;
                 var context = new AccessTelemetryCapabilityProbeContext
                 {
+                    LocalFunctional = environment.IsDevelopment() && !string.IsNullOrEmpty(options.LocalFunctionalRunId) && options.LocalFunctionalRunId == options.DeploymentId,
+                    LocalFunctionalProfileJson = options.LocalFunctionalProfileJson,
                     ComponentProfileHash = options.ComponentProfileHash,
                     ExactVersionPinned = evidence.ExactVersionPinned || !environment.IsProduction(),
                     DaprOnlyBoundary = true,

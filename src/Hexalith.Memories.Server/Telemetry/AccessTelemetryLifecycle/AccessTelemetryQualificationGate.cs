@@ -25,7 +25,13 @@ internal sealed class AccessTelemetryQualificationGate(
     /// <returns><see langword="true"/> only for a current exact-profile Qualification gate.</returns>
     public bool TryValidate(out string reason)
     {
-        if (!environment.IsEnvironment("Qualification"))
+        string? localRun = configuration["AccessTelemetryLifecycle:LocalFunctionalRunId"];
+        string? runnerRun = configuration["HEXALITH_G4_RUN_ID"];
+        string? localProfile = configuration["AccessTelemetryQualification:LocalProfileHash"];
+        bool local = environment.IsDevelopment() && !string.IsNullOrWhiteSpace(localRun) && localRun == runnerRun &&
+            localRun == configuration["AccessTelemetryLifecycle:DeploymentId"] && localProfile?.Length == 64 &&
+            localProfile == configuration["AccessTelemetryLifecycle:ComponentProfileHash"] && localProfile != ApprovedProfileSha256;
+        if (!environment.IsEnvironment("Qualification") && !local)
         {
             reason = "qualification_environment_required";
             return false;
@@ -74,7 +80,7 @@ internal sealed class AccessTelemetryQualificationGate(
             if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 4 ||
                 !root.TryGetProperty("schemaVersion", out JsonElement schemaVersion) || schemaVersion.GetInt32() != 1 ||
                 !root.TryGetProperty("state", out JsonElement state) || state.GetString() != "enabled" ||
-                !root.TryGetProperty("profileSha256", out JsonElement profile) || profile.GetString() != ApprovedProfileSha256 ||
+                !root.TryGetProperty("profileSha256", out JsonElement profile) || profile.GetString() != (local ? localProfile : ApprovedProfileSha256) ||
                 !root.TryGetProperty("expiresUtcMs", out JsonElement expires) || !expires.TryGetInt64(out long expiresUtcMs) ||
                 expiresUtcMs <= timeProvider.GetUtcNow().ToUnixTimeMilliseconds() ||
                 expiresUtcMs > timeProvider.GetUtcNow().Add(MaximumGateLifetime).Add(GateExpirySkew).ToUnixTimeMilliseconds())

@@ -91,6 +91,43 @@ public sealed class CapabilityAndObservabilityCheckpointTests
         runtimeGate.Current.ShouldBe(result);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LocalFunctionalStartup_RequiresRealProbeSetAndNeverSatisfiesFullOrProduction(bool production)
+    {
+        var gate = new AccessTelemetryRuntimeGate();
+        var runner = new AccessTelemetryCapabilityProbeRunner(
+            AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(name => new StubCapabilityProbe(name,
+                AccessTelemetryCapabilityProbeRunner.LocalFunctionalCapabilities.Contains(name))), gate, TimeProvider.System);
+        AccessTelemetryCapabilityProbeContext context = ProbeContext(DateTimeOffset.UtcNow.AddMinutes(1)) with
+        {
+            LocalFunctional = true, Production = production,
+            LocalFunctionalProfileJson = "{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}",
+            ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}"))),
+        };
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBe(!production);
+        (await runner.RunAsync(context with { LocalFunctional = false }, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(nameof(AccessTelemetryCapabilityProfile.StrongCrudAndEtags))]
+    [InlineData(nameof(AccessTelemetryCapabilityProfile.MultiKeyTransactionsAndConflicts))]
+    [InlineData(nameof(AccessTelemetryCapabilityProfile.ActorReactivationFailoverAndReminders))]
+    [InlineData(nameof(AccessTelemetryCapabilityProfile.EffectivePerRecordTtl))]
+    [InlineData(nameof(AccessTelemetryCapabilityProfile.RecordAndRequestBounds))]
+    [InlineData(nameof(AccessTelemetryCapabilityProfile.TenantIsolationAndEncryption))]
+    public async Task LocalFunctionalStartup_MissingActualProbeFailsClosed(string missing)
+    {
+        var gate = new AccessTelemetryRuntimeGate();
+        var runner = new AccessTelemetryCapabilityProbeRunner(
+            AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(name => new StubCapabilityProbe(name, name != missing)), gate, TimeProvider.System);
+        AccessTelemetryCapabilityGateResult result = await runner.RunAsync(
+            ProbeContext(DateTimeOffset.UtcNow.AddMinutes(1)) with { LocalFunctional = true, Production = false, LocalFunctionalProfileJson = "{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}", ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}"))) }, CancellationToken.None);
+        result.AllowsWrites.ShouldBeFalse();
+        gate.Current.AllowsWrites.ShouldBeFalse();
+    }
+
     [Fact]
     public void RuntimeGate_ClosesImmediatelyWhenPublishedEvidenceExpires()
     {

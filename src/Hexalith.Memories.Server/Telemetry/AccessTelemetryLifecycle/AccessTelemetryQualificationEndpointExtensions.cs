@@ -35,7 +35,10 @@ internal static class AccessTelemetryQualificationEndpointExtensions
     public static WebApplication MapAccessTelemetryQualificationEndpoint(this WebApplication app)
     {
         ArgumentNullException.ThrowIfNull(app);
-        if (!app.Environment.IsEnvironment("Qualification"))
+        bool local = app.Environment.IsDevelopment() &&
+            !string.IsNullOrWhiteSpace(app.Configuration["AccessTelemetryLifecycle:LocalFunctionalRunId"]) &&
+            app.Configuration["AccessTelemetryLifecycle:LocalFunctionalRunId"] == app.Configuration["HEXALITH_G4_RUN_ID"];
+        if (!app.Environment.IsEnvironment("Qualification") && !local)
         {
             return app;
         }

@@ -81,6 +81,11 @@ def _required(args: argparse.Namespace, *names: str) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv and os.environ.get("HEXALITH_G4_TEST_NAME") == "functional-retention" and os.environ.get("HEXALITH_G4_TEST_OWNER") == "memories":
+        from access_telemetry_functional_retention import run_selected_platform_retention
+        return run_selected_platform_retention()
     args = _parser().parse_args(argv)
     repository_root = Path(args.repository_root)
     if args.checkpoint == "functional-retention":

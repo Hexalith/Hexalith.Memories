@@ -834,7 +834,19 @@
           "reason": "Declare Memories core and access telemetry services with explicit provider exceptions."
         },
         "recoveryInventory": []
-      }
+      },
+      "tests": [
+        {
+          "name": "functional-retention",
+          "executor": "python3",
+          "entry": "tools/verify-access-telemetry-lifecycle.py",
+          "reportFormat": "trx",
+          "executionTimeoutSeconds": 14400,
+          "stopTimeoutSeconds": 900,
+          "mode": "source",
+          "daprRuntimeVersion": "1.18.1"
+        }
+      ]
     }
   ]
 }

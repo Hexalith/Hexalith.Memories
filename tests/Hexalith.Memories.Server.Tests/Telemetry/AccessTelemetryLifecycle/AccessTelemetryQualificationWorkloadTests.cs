@@ -875,6 +875,39 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         }
     }
 
+    [Theory]
+    [InlineData("Development", false, false, 10, true)]
+    [InlineData("Production", false, false, 10, false)]
+    [InlineData("Qualification", false, false, 10, false)]
+    [InlineData("Development", true, false, 10, false)]
+    [InlineData("Development", false, true, 10, false)]
+    [InlineData("Development", false, false, 16, false)]
+    [InlineData("Development", false, false, -1, false)]
+    public void LocalGateRequiresOwnedRunAndShortLocalProfile(string environmentName, bool foreignRun, bool fullProfile, int minutes, bool expected)
+    {
+        string profile = fullProfile ? Pg2ProfileSha256 : new string('a', 64);
+        string path = WriteGate(Now.AddMinutes(minutes), profile);
+        try
+        {
+            IHostEnvironment environment = Substitute.For<IHostEnvironment>();
+            environment.EnvironmentName.Returns(environmentName);
+            IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AccessTelemetryQualification:GatePath"] = path,
+                ["AccessTelemetryQualification:LocalProfileHash"] = profile,
+                ["AccessTelemetryLifecycle:ComponentProfileHash"] = profile,
+                ["AccessTelemetryLifecycle:LocalFunctionalRunId"] = "owned-run",
+                ["AccessTelemetryLifecycle:DeploymentId"] = "owned-run",
+                ["HEXALITH_G4_RUN_ID"] = foreignRun ? "foreign-run" : "owned-run",
+            }).Build();
+            new AccessTelemetryQualificationGate(environment, configuration, new FakeTimeProvider(Now)).TryValidate(out _).ShouldBe(expected);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     private static AccessTelemetryQualificationGate CreateGate(
         string path,
         string environmentName,
