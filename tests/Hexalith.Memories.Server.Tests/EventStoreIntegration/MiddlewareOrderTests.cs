@@ -104,12 +104,30 @@ public sealed class MiddlewareOrderTests : System.IDisposable
         body!.Status.ShouldBe(EventIngestionResponse.StatusAccepted);
     }
 
-    [Fact]
-    public async Task SubscribeHandler_ExposesEventStoreTopicBinding()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SubscribeHandler_ExposesEventStoreTopicBindingOnlyOutsideDeclarativeMode(bool? declarativeSubscriptions)
     {
+        if (declarativeSubscriptions.HasValue)
+        {
+            _factory.ConfigurationOverrides["Dapr:DeclarativeSubscriptions"] = declarativeSubscriptions.Value ? "true" : "false";
+        }
+
         using HttpClient client = _factory.CreateClient();
+        if (declarativeSubscriptions is true)
+        {
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ServerTestBearerToken.Create());
+        }
 
         HttpResponseMessage response = await client.GetAsync("/dapr/subscribe");
+
+        if (declarativeSubscriptions is true)
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+            return;
+        }
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
