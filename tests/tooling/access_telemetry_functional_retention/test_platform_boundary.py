@@ -54,19 +54,25 @@ class PlatformBoundaryTests(unittest.TestCase):
 
     def test_current_readiness_names_owning_contract_gaps_without_inputs(self):
         result = self.invoke_without_effects([])
+        self.assertCountEqual(
+            [item["id"] for item in result["blockers"]],
+            ["platform-v2-test-profile", "platform-descriptor-result",
+             "platform-test-lifetime", "platform-postgresql-profile",
+             "platform-local-capability-binding", "platform-tool-source-alignment"],
+        )
         blockers = {item["id"]: item for item in result["blockers"]}
         self.assertIn("HXR028", blockers["platform-v2-test-profile"]["gap"])
         self.assertIn("15 minutes", blockers["platform-test-lifetime"]["gap"])
         self.assertIn("state.redis", blockers["platform-postgresql-profile"]["gap"])
         self.assertIn("KVM profile", blockers["platform-local-capability-binding"]["gap"])
         self.assertIn("directly declared candidate", blockers["platform-tool-source-alignment"]["gap"])
-        self.assertTrue(all(item["owner"] and item["source"] and item["reopen"] for item in blockers.values()))
+        self.assertTrue(all(item["owner"] and item["source"] and item["implementationConstraint"] and item["nextImplementation"] and item["reopen"] for item in blockers.values()))
         observation = result["blockerObservation"]
-        self.assertEqual("2026-10-16T14:34:55.614735Z", observation["observedUtc"])
-        self.assertEqual("cafa3f0db528af66a03b542eb4f26fd1ef06433b", observation["platformRevision"])
+        self.assertEqual("2026-10-16T15:26:54.112019Z", observation["observedUtc"])
+        self.assertEqual("b2890d20575356239555df5b113e3100c1d594c1", observation["platformRevision"])
         self.assertEqual("63dda8fc14882aba383888afd7e6505afab1f345", observation["buildsRevision"])
         self.assertEqual("c285b84fddac7dda1efaf4435b8de18694282583", observation["directMemoriesRevision"])
-        self.assertEqual("4e3476249245ac80f8725112ba4ce5c1251d24cffddfa9d2c221210a960f4943", observation["inspectionReceiptSha256"])
+        self.assertEqual("286d4907d2a8701c42b8cebfa2b664e28608b941708a21323038e623a36b9be6", observation["inspectionReceiptSha256"])
         self.assertTrue(observation["reinspectionRequired"])
         self.assertIn("recorded-implementation-blockers", result["blockerStatus"])
         foreign = self.invoke_without_effects(["--repository-root", "/foreign/uninspected-source"])
