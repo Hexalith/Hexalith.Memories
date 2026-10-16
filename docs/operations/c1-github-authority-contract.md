@@ -85,8 +85,12 @@ scope. This adapter requires these exact published current identities:
 
 | Identity | SHA-256 |
 | --- | --- |
-| `PG-ONPREM-2` profile | `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` |
+| `PG-ONPREM-2` profile | `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb` |
 | Approved two-writer workload | `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f` |
+
+The current profile is the [isolated KVM target adopted on 2026-10-16](qualification/pg2-kvm-approved-profile-2026-10-16.json).
+This changes the selected identity only; it supplies no live target or session
+authority and does not adopt the earlier institutional protocol for owner mode.
 
 Historical or inexact profile/workload hashes refuse at construction; arbitrary
 hashes cannot acquire a PG2 label. Target SHA-256 remains an independently

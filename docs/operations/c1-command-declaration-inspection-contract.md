@@ -66,9 +66,13 @@ folding, Unicode normalization, shell parsing, equivalent-option substitution,
 option reordering or acceptance of additional arguments. The fixed scope is:
 
 ```text
-SCOPE = ["--context", "jpiquot@local", "-n", "hexalith-memories"]
+SCOPE = ["--context", "owner@memories-qualification-27-4", "-n", "hexalith-memories"]
 PROJECTION = "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}"
 ```
+
+This scope follows the [current declared pins](c1-observation-pin-inspection-contract.md#exact-declared-pins)
+adopted for the isolated KVM target on 2026-10-16. Earlier verification archives
+retain their original context and confer no current-target evidence.
 
 The required receipts are, in order:
 

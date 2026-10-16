@@ -43,14 +43,19 @@ per-Pod digest. No mismatching input content is included in the message.
 These constants are local to the gate-specific library; no operational verifier,
 collector, configuration or deployed registry is imported or consulted.
 
+The table reflects the [isolated KVM profile adopted on 2026-10-16](qualification/pg2-kvm-approved-profile-2026-10-16.json).
+The dated D0 discovery collector and its completed old-target archive retain their
+original pins; they cannot supply current qualification authority. Exact matches
+here remain untrusted declarations, not observed KVM identity.
+
 | Capture field | Required literal |
 | --- | --- |
 | `profileId` | `PG-ONPREM-2` |
-| `profileIdentity` | `postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2` |
-| `profileSha256` | `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` |
+| `profileIdentity` | `postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3` |
+| `profileSha256` | `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb` |
 | `workloadId` | `adr-27.1-two-writer-500eps` |
 | `workloadSha256` | `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f` |
-| `target.context` | `jpiquot@local` |
+| `target.context` | `owner@memories-qualification-27-4` |
 | `target.namespace` | `hexalith-memories` |
 | `target.selector` | `app.kubernetes.io/name=memories-access-telemetry` |
 | `target.appId` | `memories-access-telemetry` |
