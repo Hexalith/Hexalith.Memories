@@ -7,7 +7,7 @@ metadata:
     hexalith.io/qualification-default: disabled
 data:
   gate.json: >-
-    {"schemaVersion":1,"state":"disabled","profileSha256":"7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe","expiresUtcMs":0}
+    {"schemaVersion":1,"state":"disabled","profileSha256":"95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb","expiresUtcMs":0}
 ---
 apiVersion: coordination.k8s.io/v1
 kind: Lease

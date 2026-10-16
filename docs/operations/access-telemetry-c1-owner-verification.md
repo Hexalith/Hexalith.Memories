@@ -9,8 +9,12 @@ registration, technical gate pass, target/action authorization or acceptance.
 Story 27.4, A41, sprint holds and the Spec 14 live tasks remain open.
 
 The fixed policy is `sole-owner-qualification/2026-10-12`, and the owner is
-`github:user:6775094`. The existing profile/workload, target, Dapr 1.18.1 and image
-pins are unchanged. The owner materials have separate schemas; the legacy
+`github:user:6775094`. The current profile is the
+[isolated-target manifest adopted 2026-10-16](qualification/pg2-kvm-approved-profile-2026-10-16.json),
+SHA-256 `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb`, with context
+`owner@memories-qualification-27-4`. Workload, Dapr 1.18.1 and all technical
+image/configuration pins are unchanged. Former PG2 and PG1 captures remain
+historical and cannot satisfy current-profile inspection. The owner materials have separate schemas; the legacy
 fixture registration APIs retain their stronger independent-review declarations
 and their existing version selection. `lookup_deployed_binding` continues to
 refuse unconditionally.
@@ -60,7 +64,7 @@ obtained those assertions. Re-read the run and withdrawal state before later use
 The run must pass the existing closed `owner-run/v1` inspector for `observe`.
 Its status must be approved, its policy/owner/assurance and non-Production scope
 must match the adopted constants, and its profile/workload pins must match the
-unchanged values. Its collection phase must be active at `now`; `fault`, `purge`,
+current adopted values. Its collection phase must be active at `now`; `fault`, `purge`,
 `reclaim`, `close-out` or `publish` permission alone cannot substitute for
 `observe`. Withdrawal, expiry and use outside the run's collection phase refuse.
 

@@ -23,7 +23,7 @@ from test_artifact_readers import blocked_fixture, capture_fixture, fixture_ps_b
 PROJECTION = "jsonpath-as-json={range .items[*]}{['metadata','status']}{end}"
 METADATA = 'if [ -z "${DAPR_API_TOKEN:-}" ]; then echo "required runtime credential unavailable" >&2; exit 72; fi; metadata="$(wget -qO- --timeout=5 --header="dapr-api-token: ${DAPR_API_TOKEN}" http://127.0.0.1:3500/v1.0/metadata)" || exit $?; case "$metadata" in *"$DAPR_API_TOKEN"*) echo "secret-shaped-output" >&2; exit 73;; esac; printf "%s" "$metadata"'
 ALPHA = r'printf "%s\n%s\n" "${AccessTelemetryLifecycle__ComponentIsAlpha-__MISSING__}" "${AccessTelemetryLifecycle__AllowAlphaComponent-__MISSING__}"'
-SCOPE = ("--context", "jpiquot@local", "-n", "hexalith-memories")
+SCOPE = ("--context", "owner@memories-qualification-27-4", "-n", "hexalith-memories")
 
 
 def declared_argv(pod_names):
@@ -178,7 +178,7 @@ class CaptureCommandTests(unittest.TestCase):
     def test_rehashed_verb_option_addition_removal_split_and_option_reorder_refuse(self):
         mutations = (
             lambda argv: argv.__setitem__(4, "delete"),
-            lambda argv: argv.__setitem__(slice(0, 2), ["--context=jpiquot@local"]),
+            lambda argv: argv.__setitem__(slice(0, 2), ["--context=owner@memories-qualification-27-4"]),
             lambda argv: argv.__setitem__(slice(0, 4), argv[2:4] + argv[:2]),
             lambda argv: argv.__setitem__(2, "--namespace"),
         )

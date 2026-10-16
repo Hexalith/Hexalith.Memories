@@ -39,7 +39,7 @@ elseif ($Gate -ieq 'C1.16') {
 }
 
 $namespace = 'hexalith-memories'
-$expectedContext = 'jpiquot@local'
+$expectedContext = $(if ($ProfileId -ceq 'PG-ONPREM-2') { 'owner@memories-qualification-27-4' } else { 'jpiquot@local' })
 $targetSelector = 'app.kubernetes.io/name=memories-access-telemetry'
 $expectedAppId = 'memories-access-telemetry'
 $expectedActorType = 'AccessTelemetryLifecycleActor'
@@ -1687,8 +1687,8 @@ $packet = [ordered]@{
 
 if ($script:pg2RuntimeCapture) {
     $packet.schemaVersion = 'hexalith.access-telemetry.c1.evidence/v2'
-    $packet.profileIdentity = 'postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2'
-    $packet.profileSha256 = '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe'
+    $packet.profileIdentity = 'postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3'
+    $packet.profileSha256 = '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb'
     $packet.workloadId = 'adr-27.1-two-writer-500eps'
     $packet.workloadSha256 = '71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f'
     $packet.qualificationSessionId = $QualificationSessionId

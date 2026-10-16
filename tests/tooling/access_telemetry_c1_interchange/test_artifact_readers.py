@@ -33,7 +33,7 @@ START = "2026-10-08T10:00:00.0000001+00:00"
 FINISH = "2026-10-08T10:00:01.0000001+00:00"
 SCOPE = {
     "profileId": "PG-ONPREM-2",
-    "profileSha256": "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe",
+    "profileSha256": "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb",
     "workloadSha256": "71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f",
     "qualificationSessionId": "pg2-c1-15-fixture01",
     "targetSha256": "1" * 64,
@@ -93,7 +93,7 @@ def receipt(arguments, *, purpose=None, empty=False):
 
 
 def capture_fixture():
-    target = {"context": "jpiquot@local", "namespace": "hexalith-memories",
+    target = {"context": "owner@memories-qualification-27-4", "namespace": "hexalith-memories",
               "selector": "app.kubernetes.io/name=memories-access-telemetry",
               "appId": "memories-access-telemetry", "actorType": "AccessTelemetryLifecycleActor"}
     pods = []
@@ -162,7 +162,7 @@ def capture_fixture():
         "targetSelector": target["selector"], "producerStatus": "observed", "gateStatus": "not-evaluated",
         "productionGatePassed": False, "productionLifecycleWrites": "not-evaluated",
         "observations": observations, "blockers": [], "sources": sources, "commands": commands,
-        "profileIdentity": "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2",
+        "profileIdentity": "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3",
         "workloadId": "adr-27.1-two-writer-500eps", "target": target,
         "targetSha256": digest(fixture_ps_bytes(target)),
         "producer": {"path": SOURCE_PATHS[0], "identity": "repository-collector",
@@ -342,7 +342,7 @@ class ArtifactReaderTests(unittest.TestCase):
         dirty["worktreeDirty"] = False
         dirty["producerSources"][0]["modified"] = False
         parse_capture(snapshot(dirty))
-        for context in (None, "different-context", "jpiquot@local"):
+        for context in (None, "different-context", "owner@memories-qualification-27-4"):
             blocked = blocked_fixture()
             blocked["context"] = context
             self.assertIs(parse_capture(original := snapshot(blocked)), original)
@@ -766,9 +766,9 @@ class PowerShellEncodingTests(unittest.TestCase):
              ('["quote\\"back\\\\slash\\u0000\\b\\t\\n\\f\\r café雪😀\\u0085\\u2028\\u2029","<>&\'","\\\\u0085"]').encode("utf-8")),
             ({"z": [True, None, -(2**63), 2**63 - 1], "a": {"B": 1, "b": 2}},
              b'{"z":[true,null,-9223372036854775808,9223372036854775807],"a":{"B":1,"b":2}}'),
-            ({"context": "jpiquot@local", "namespace": "hexalith-memories", "selector": "app=x",
+            ({"context": "owner@memories-qualification-27-4", "namespace": "hexalith-memories", "selector": "app=x",
               "appId": "memories", "actorType": "Actor"},
-             b'{"context":"jpiquot@local","namespace":"hexalith-memories","selector":"app=x","appId":"memories","actorType":"Actor"}'),
+             b'{"context":"owner@memories-qualification-27-4","namespace":"hexalith-memories","selector":"app=x","appId":"memories","actorType":"Actor"}'),
             ([], b"[]"), (None, b"null"), (False, b"false"),
         ]
         script = r'''

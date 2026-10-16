@@ -7,6 +7,7 @@ namespace Hexalith.Memories.Server.Tests.Architecture;
 
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 
 using Hexalith.Memories.TestHelpers.Documentation;
 
@@ -47,7 +48,7 @@ public sealed class AccessTelemetryA41CloseOutTests
     }
 
     [Fact]
-    public void CanonicalMatrix_UsesCurrentVerifierProfileAndRejectsHistoricalIdentity()
+    public void CanonicalMatrix_PreservesFormerIdentityWhileVerifierUsesAdoptedTarget()
     {
         var document = new MarkdownContractDocument(ReadRepoFile(EvidenceMatrix));
         IReadOnlyList<IReadOnlyList<string>> identity = document.GetTableRows("Immutable decision identity");
@@ -55,8 +56,15 @@ public sealed class AccessTelemetryA41CloseOutTests
         string profileHash = identity.Single(row => row[0] == "Profile SHA-256")[1].Trim('`');
         string verifier = ReadRepoFile("tools/verify_access_telemetry_lifecycle.py");
 
-        verifier.ShouldContain($"EXPECTED_PROFILE_ID = '{profileId}'", Case.Sensitive);
-        verifier.ShouldContain($"CURRENT_PROFILE_SHA256 = '{profileHash}'", Case.Sensitive);
+        profileId.ShouldBe("postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2");
+        profileHash.ShouldBe("7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe");
+        using JsonDocument adopted = JsonDocument.Parse(ReadRepoFile("docs/operations/qualification/pg2-kvm-approved-profile-2026-10-16.json"));
+        string currentId = adopted.RootElement.GetProperty("canonical_profile").GetProperty("identity").GetProperty("profileId").GetString()!;
+        string currentHash = adopted.RootElement.GetProperty("profile_sha256").GetString()!;
+        currentHash.ShouldBe("95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb");
+        verifier.ShouldContain($"EXPECTED_PROFILE_ID = '{currentId}'", Case.Sensitive);
+        verifier.ShouldContain($"CURRENT_PROFILE_SHA256 = '{currentHash}'", Case.Sensitive);
+        verifier.ShouldContain("def canonical_previous_pg_onprem_2_profile()", Case.Sensitive);
         profileId.ShouldNotBe("postgresql-v2-dapr-1.18.1-postgresql-18.4-onprem-k8s1-openebs-local-retain-400g-v1");
         profileHash.ShouldNotBe("dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14");
 
@@ -65,8 +73,8 @@ public sealed class AccessTelemetryA41CloseOutTests
         c0.ShouldNotContain("`PG-ONPREM-1`", Case.Sensitive);
 
         string runbook = ReadRepoFile("docs/operations/access-telemetry-lifecycle.md");
-        runbook.ShouldContain($"\"profile_sha256\":\"{profileHash}\"", Case.Sensitive);
-        runbook.ShouldContain($"--profile-id {profileId}", Case.Sensitive);
+        runbook.ShouldContain($"\"profile_sha256\":\"{currentHash}\"", Case.Sensitive);
+        runbook.ShouldContain($"--profile-id {currentId}", Case.Sensitive);
     }
 
     [Fact]

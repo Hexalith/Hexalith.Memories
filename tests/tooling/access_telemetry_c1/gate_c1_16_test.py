@@ -42,7 +42,7 @@ def write_fake_kubectl(directory: Path) -> None:
         after = False
         if args == ['config', 'current-context']:
             purpose = 'context'
-        elif args[:4] != ['--context', 'jpiquot@local', '-n', 'hexalith-memories']:
+        elif args[:4] != ['--context', scenario.get('expectedContext', 'jpiquot@local'), '-n', 'hexalith-memories']:
             raise SystemExit(99)
         elif args[4:7] == ['get', 'component', 'access-telemetry-store']:
             assert len(args) == 9 and args[7] == '-o'
@@ -636,6 +636,8 @@ class ComponentBackendCaptureTests(unittest.TestCase):
 
     def successor_scenario(self):
         scenario = copy.deepcopy(self.base)
+        scenario['context'] = 'owner@memories-qualification-27-4'
+        scenario['expectedContext'] = 'owner@memories-qualification-27-4'
         for metadata in scenario['metadata'].values():
             metadata['components'][0]['capabilities'].append('ACTOR')
         scenario['server']['serverVersion'] = '18.6 (Debian 18.6-1.pgdg13+1)'
@@ -662,7 +664,7 @@ class ComponentBackendCaptureTests(unittest.TestCase):
                 self.assertEqual(18, len(calls))
                 for packet in packets:
                     self.assertEqual('PG-ONPREM-2', packet['profileId'])
-                    self.assertEqual('7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe', packet['profileSha256'])
+                    self.assertEqual('95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb', packet['profileSha256'])
                     self.assertFalse(packet['historicalProfileCapture'])
                     self.assertEqual('approved-current', packet['profileDisposition'])
                     self.assertEqual('observed', packet['producerStatus'])

@@ -19,7 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 RUNNER = REPO_ROOT / 'tools/verify-access-telemetry-c1-linkage.ps1'
 HELPER = REPO_ROOT / 'tools/access-telemetry-c1-component-backend.ps1'
 FIXTURE = Path(__file__).parent / 'fixtures/c1_16_complete.json'
-PROFILE_HASH = '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe'
+PROFILE_HASH = '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb'
 CANARY = 'C1_SECRET_CANARY_DO_NOT_EMIT_7429'
 
 
@@ -51,7 +51,7 @@ def write_fake_kubectl(directory):
         if args == ['config', 'current-context']:
             purpose = 'context'
         else:
-            assert args[:4] == ['--context', 'jpiquot@local', '-n', 'hexalith-memories']
+            assert args[:4] == ['--context', 'owner@memories-qualification-27-4', '-n', 'hexalith-memories']
             if args[4:7] == ['get', 'component', 'access-telemetry-store']:
                 purpose = 'component'
                 after = any(call[4:7] == args[4:7] for call in prior)
@@ -184,6 +184,7 @@ def write_fake_kubectl(directory):
 class ConnectionLinkageTests(unittest.TestCase):
     def setUp(self):
         self.base = json.loads(FIXTURE.read_text())
+        self.base['context'] = 'owner@memories-qualification-27-4'
         for metadata in self.base['metadata'].values():
             metadata['components'][0]['capabilities'].append('ACTOR')
         self.pod = self.base['pods']['items'][0]['metadata']['name']
@@ -216,7 +217,7 @@ class ConnectionLinkageTests(unittest.TestCase):
             (binary / 'grep').chmod(0o755)
         now = datetime.now(timezone.utc)
         scope = {'schemaVersion': 'hexalith.access-telemetry.c1.linkage.scope/v1', 'gate': 'C1.16',
-                 'profileId': 'PG-ONPREM-2', 'profileSha256': PROFILE_HASH, 'context': 'jpiquot@local',
+                 'profileId': 'PG-ONPREM-2', 'profileSha256': PROFILE_HASH, 'context': 'owner@memories-qualification-27-4',
                  'namespace': 'hexalith-memories', 'lifecyclePod': self.pod, 'evidenceDirectory': str(evidence),
                  'authorizedFromUtc': utc(now - timedelta(minutes=1)), 'authorizedUntilUtc': utc(now + timedelta(minutes=4)),
                  'authorizationReference': 'synthetic-offline-authorization', 'independentReviewer': 'synthetic-reviewer',
@@ -308,7 +309,9 @@ class ConnectionLinkageTests(unittest.TestCase):
                 self.assertFalse(evidence.exists())
 
     def test_scope_and_source_mismatches_precede_calls_and_directory_creation(self):
-        for changes in [{'profileSha256': 'a' * 64}, {'context': 'other'}, {'namespace': 'another-tenant'},
+        for changes in [{'profileSha256': 'a' * 64},
+                        {'profileSha256': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe'},
+                        {'context': 'jpiquot@local'}, {'context': 'other'}, {'namespace': 'another-tenant'},
                         {'lifecyclePod': 'another-pod'}, {'exclusiveReadWindow': False},
                         {'collectorSha256': 'a' * 64}, {'identityHelperSha256': 'a' * 64},
                         {'authorizedUntilUtc': '2026-01-01T00:00:00Z'}, {'evidenceDirectory': '/different'},

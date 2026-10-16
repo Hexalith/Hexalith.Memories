@@ -22,7 +22,7 @@ from access_telemetry_c1_interchange import (
 _SCHEMA = "hexalith.access-telemetry.c1.owner-run/v1"
 _POLICY = "sole-owner-qualification/2026-10-12"
 _ASSURANCE = "sole-owner/self-reviewed"
-_PROFILE = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"
+_PROFILE = "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb"
 _WORKLOAD = "71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f"
 _FIELDS = frozenset((
     "schemaVersion policyId policySha256 ownerPrincipal assuranceMode environment "

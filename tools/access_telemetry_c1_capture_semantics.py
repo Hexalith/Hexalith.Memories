@@ -13,13 +13,13 @@ from access_telemetry_c1_interchange import JsonSnapshot, _literal, _refuse, par
 
 _IDENTITY_PINS = (
     ("profileId", "PG-ONPREM-2"),
-    ("profileIdentity", "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2"),
-    ("profileSha256", "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"),
+    ("profileIdentity", "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3"),
+    ("profileSha256", "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb"),
     ("workloadId", "adr-27.1-two-writer-500eps"),
     ("workloadSha256", "71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f"),
 )
 _TARGET_PINS = (
-    ("context", "jpiquot@local"),
+    ("context", "owner@memories-qualification-27-4"),
     ("namespace", "hexalith-memories"),
     ("selector", "app.kubernetes.io/name=memories-access-telemetry"),
     ("appId", "memories-access-telemetry"),

@@ -17,7 +17,7 @@ class AdapterProfileTests(unittest.TestCase):
     def test_environment_identity_is_complete(self):
         identity = adapter_profile.EnvironmentIdentity.from_mapping(
             {
-                "KUBE_CONTEXT": "jpiquot@local",
+                "KUBE_CONTEXT": "owner@memories-qualification-27-4",
                 "KUBE_NAMESPACE": "hexalith-memories",
                 "DEPLOYMENT_ID": "deployment-27-3",
                 "PROFILE_ID": adapter_profile.EXPECTED_PROFILE_ID,
@@ -26,7 +26,7 @@ class AdapterProfileTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual("jpiquot@local", identity.kube_context)
+        self.assertEqual("owner@memories-qualification-27-4", identity.kube_context)
         self.assertEqual("hexalith-memories", identity.kube_namespace)
         self.assertEqual("deployment-27-3", identity.deployment_id)
         self.assertEqual(adapter_profile.EXPECTED_PROFILE_ID, identity.profile_id)
@@ -43,7 +43,7 @@ class AdapterProfileTests(unittest.TestCase):
         type/version) are what bind the target.
         """
 
-        self.assertEqual("jpiquot@local", adapter_profile.DEFAULT_REVIEWED_KUBE_CONTEXT)
+        self.assertEqual("owner@memories-qualification-27-4", adapter_profile.DEFAULT_REVIEWED_KUBE_CONTEXT)
 
         previous = os.environ.get("REVIEWED_KUBE_CONTEXT")
         os.environ["REVIEWED_KUBE_CONTEXT"] = "another-operator@local"

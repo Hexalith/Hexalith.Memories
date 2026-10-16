@@ -60,7 +60,7 @@ SESSION_SCHEMA = "hexalith.access-telemetry.c1.github-session/v1"
 GATE_SCHEMA = "hexalith.access-telemetry.c1.github-gate-review/v1"
 # Approved current identities, independently published by the PG2 contract.
 # Keep this read-only adapter independent of the legacy accepting verifier.
-PG2_PROFILE_SHA256 = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"
+PG2_PROFILE_SHA256 = "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb"
 PG2_WORKLOAD_SHA256 = "71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f"
 _SCOPE_FIELDS = frozenset({"profileId", "profileSha256", "workloadSha256", "targetSha256",
                            "tenantId", "sessionId", "sourceCommit"})

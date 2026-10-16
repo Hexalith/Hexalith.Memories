@@ -128,7 +128,7 @@ values. The example below uses the approved PG-ONPREM-2 identity; historical
 PG-ONPREM-1 captures cannot discharge current-profile gates. For example:
 
 ```json
-{"schema_version":1,"target":{"kind":"non-production-qualification","kube_context":"operator@qualification","namespace":"hexalith-memories-qualification","profile_sha256":"7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"}}
+{"schema_version":1,"target":{"kind":"non-production-qualification","kube_context":"owner@memories-qualification-27-4","namespace":"hexalith-memories-qualification","profile_sha256":"95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb"}}
 ```
 
 Set `EVIDENCE_ROOT` to
@@ -141,7 +141,7 @@ python3 tools/verify-access-telemetry-lifecycle.py \
   --kube-context "$KUBE_CONTEXT" \
   --namespace hexalith-memories-qualification \
   --deployment-id "$DEPLOYMENT_ID" \
-  --profile-id postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2 \
+  --profile-id postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3 \
   --workload-profile adr-27.1-two-writer-500eps \
   --steady-state-minutes 30 \
   --purge-backlog-records 150000 \

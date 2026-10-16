@@ -418,7 +418,7 @@ function Invoke-C1ComponentBackendCapture {
         profileId = $ProfileId
         historicalProfileCapture = ($ProfileId -ceq 'PG-ONPREM-1')
         profileDisposition = $(if ($ProfileId -ceq 'PG-ONPREM-1') { 'closed-historical' } else { 'approved-current' })
-        profileSha256 = $(if ($ProfileId -ceq 'PG-ONPREM-1') { 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14' } else { '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe' })
+        profileSha256 = $(if ($ProfileId -ceq 'PG-ONPREM-1') { 'dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14' } else { '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb' })
         connectionLinkage = 'not-evaluated'
         capturedAtUtc = $capturedAtUtc
         context = $context

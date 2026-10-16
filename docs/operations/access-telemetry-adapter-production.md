@@ -2,10 +2,14 @@
 
 ## Scope and immutable profile
 
-Adopted **2026-10-04** from the exact approved PG-ONPREM-2 candidate. This is
+The technical PG2 configuration was adopted **2026-10-04**. The owner adopted
+the isolated KVM target and replacement profile on **2026-10-16**; see the
+[approved canonical manifest](qualification/pg2-kvm-approved-profile-2026-10-16.json). This is
 repository configuration adoption; no target was contacted and no capture,
 security requalification, Production activation, Story 27.4 advancement or A41
-closure is credited. The closed PG-ONPREM-1 constructor/hash and historical
+closure is credited. The former PG2 profile remains recoverable through
+`canonical_previous_pg_onprem_2_profile()` and grants no current credit. The
+closed PG-ONPREM-1 constructor/hash and historical
 operator packets retain their original identity and have no successor credit.
 
 
@@ -16,13 +20,13 @@ runbook or certify the profile.
 
 | Field | Exact value |
 | :---- | :---------- |
-| Profile ID | `postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2` |
-| Profile SHA-256 | `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` |
+| Profile ID | `postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3` |
+| Profile SHA-256 | `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb` |
 | Dapr component | `access-telemetry-store`, `state.postgresql/v2`, actor state store |
 | PostgreSQL | 18.6, one raw StatefulSet replica, digest pinned by ADR 27.1-001 |
 | Database/schema | `memories_access_telemetry` / `access_telemetry` |
-| Storage | 400 GiB OpenEBS local retained volume on `node1`; request is not a reservation |
-| Compute | request 4 CPU/8 GiB; limit 8 CPU/16 GiB |
+| Storage | 400 GiB OpenEBS local retained volume in the isolated guest; request is not a reservation |
+| Compute | PostgreSQL request 4 CPU/8 GiB, limit 8 CPU/16 GiB; approved single guest 8 vCPUs/40 GiB |
 | Connection pool | `maxConns: "40"`; two sidecars plus reserved/evidence sessions fit `max_connections=100` |
 | Cleanup | `cleanupInterval: 5m`; actor purge remains normative |
 | Network | ClusterIP only, TCP 5432 from approved identities, TLS 1.2+, `sslmode=verify-full` |

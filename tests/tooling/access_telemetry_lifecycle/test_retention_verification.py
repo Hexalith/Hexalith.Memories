@@ -2049,14 +2049,14 @@ if 'get' in args and args[-1] == 'json':
         if name == 'access-telemetry-qualification-gate':
             enabled = op not in {'qualification-target-identity', 'qualification-final-state'}
             gate = {'schemaVersion': 1, 'state': 'enabled' if enabled else 'disabled',
-                'profileSha256': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
+                'profileSha256': '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb',
                 'expiresUtcMs': int(time.time() * 1000) + 900000 if enabled else 0}
             print(json.dumps({'metadata': {'name': name, 'namespace': namespace},
                 'data': {'gate.json': json.dumps(gate, separators=(',', ':'))}}, separators=(',', ':')))
             raise SystemExit(0)
         if op == 'cohort-168h-report' and os.environ.get('QUALIFICATION_COMPLETED_REPORTER') == '1':
             evidence = {'evidenceId': 'story-27-4-c3',
-                'componentProfileHash': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
+                'componentProfileHash': '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb',
                 'artifactSha256': os.environ['QUALIFICATION_ARTIFACT'],
                 'reporterImageDigest': 'd' * 64,
                 'observedAtUnixMilliseconds': int(os.environ['QUALIFICATION_RECLAIMED'])}
@@ -2339,7 +2339,7 @@ if '/operations/access-telemetry/qualification/fixed-workload' in command_text:
     raise SystemExit(0)
 if 'cat /var/run/hexalith/access-telemetry-qualification/gate.json' in command_text:
     print(json.dumps({'schemaVersion': 1, 'state': 'disabled',
-        'profileSha256': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
+        'profileSha256': '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb',
         'expiresUtcMs': 0}, separators=(',', ':')))
     raise SystemExit(0)
 if '--header="Authorization: Bearer' in command_text or 'Bearer $bearer' in command_text:
@@ -2402,7 +2402,7 @@ if 'logs' in args:
         aggregate = {'stage': 'reclamation', 'reclaimed_utc_ms': int(os.environ.get('QUALIFICATION_RECLAIMED', ((now // 3600000) * 3600000 - (8 * 24 * 3600000)) + 168 * 3600000 + 120000)),
             'allocator_free_bytes': 700}
         print(json.dumps({'status': 'accepted', 'evidenceId': 'story-27-4-c3',
-            'componentProfileHash': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
+            'componentProfileHash': '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb',
             'artifactSha256': os.environ['HEXALITH_STORY_27_4_PHYSICAL_ARTIFACT_SHA256'],
             'reporterImageDigest': 'd' * 64,
             'observedAtUnixMilliseconds': aggregate['reclaimed_utc_ms']}, separators=(',', ':')))
@@ -2464,7 +2464,7 @@ if 'psql' in command_text and op.startswith('cohort-'):
     raise SystemExit(0)
 if op == 'qualification-target-identity':
     value = {'kind': 'non-production-qualification', 'namespace': 'memories-qualification',
-        'profile_sha256': '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe',
+        'profile_sha256': '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb',
         'writes_state': 'disabled'}
 elif op in {'qualification-enable', 'qualification-disable', 'qualification-final-state'}:
     value = {'state': 'enabled' if op == 'qualification-enable' else 'disabled'}

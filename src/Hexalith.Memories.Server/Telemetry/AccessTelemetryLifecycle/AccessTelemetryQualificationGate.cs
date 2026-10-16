@@ -14,7 +14,7 @@ internal sealed class AccessTelemetryQualificationGate(
     TimeProvider timeProvider)
 {
     /// <summary>The sole approved PG-ONPREM-2 Story 27.4 profile hash.</summary>
-    public const string ApprovedProfileSha256 = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe";
+    public const string ApprovedProfileSha256 = "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb";
 
     private const string DefaultGatePath = "/var/run/hexalith/access-telemetry-qualification/gate.json";
     private static readonly TimeSpan MaximumGateLifetime = TimeSpan.FromMinutes(15);

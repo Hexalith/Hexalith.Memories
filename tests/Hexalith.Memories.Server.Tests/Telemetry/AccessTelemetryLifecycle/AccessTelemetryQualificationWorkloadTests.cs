@@ -40,9 +40,10 @@ using Shouldly;
 [Collection("DaprTokenEnvironment")]
 public sealed class AccessTelemetryQualificationWorkloadTests
 {
-    // Independently pin the published ADR 27.1-001 profile identities. Gate fixtures must
-    // not read the runtime constant, which previously hid its historical PG1 pin.
-    private const string Pg2ProfileSha256 = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe";
+    // Independently pin the adopted isolated-target identity and historical profiles.
+    // Gate fixtures must not derive their inputs from the runtime constant.
+    private const string Pg2ProfileSha256 = "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb";
+    private const string FormerPg2ProfileSha256 = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe";
     private const string Pg1ProfileSha256 = "dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14";
     private static readonly DateTimeOffset Now = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
 
@@ -158,6 +159,9 @@ public sealed class AccessTelemetryQualificationWorkloadTests
 
     [Theory]
     [InlineData(Pg1ProfileSha256)]
+    [InlineData(FormerPg2ProfileSha256)]
+    [InlineData("95AA36E8ABA8D9914566F6DF894C33098739251040DD0CC4B2917F76A994CCDB")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
     [InlineData("7F9F69322353CB22EC1254F1D486EE12337C9A9D579DBC80D6D842D32B339EFE")]
     public void Gate_RejectsHistoricalOrInexactProfile(string profileSha256)
     {
@@ -206,9 +210,12 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             reason.ShouldBe("qualification_gate_invalid_or_expired");
 
             DateTimeOffset renewedExpiry = time.GetUtcNow().AddMinutes(15).AddSeconds(5);
-            WriteGate(path, renewedExpiry, Pg1ProfileSha256);
-            gate.TryValidate(out reason).ShouldBeFalse();
-            reason.ShouldBe("qualification_gate_invalid_or_expired");
+            foreach (string historicalProfile in new[] { Pg1ProfileSha256, FormerPg2ProfileSha256 })
+            {
+                WriteGate(path, renewedExpiry, historicalProfile);
+                gate.TryValidate(out reason).ShouldBeFalse();
+                reason.ShouldBe("qualification_gate_invalid_or_expired");
+            }
 
             WriteGate(path, renewedExpiry);
             gate.TryValidate(out reason).ShouldBeTrue(reason);

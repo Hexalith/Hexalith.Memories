@@ -1,6 +1,7 @@
 """Offline successor identity, configuration and qualification refusal checks."""
 
 import json
+from copy import deepcopy
 import os
 from pathlib import Path
 import shutil
@@ -21,7 +22,9 @@ from test_retention_verification import common, predecessor, install_fake_kubect
 
 CANDIDATE = REPO_ROOT / "_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/profile-candidate"
 HISTORICAL_HASH = "dc19485835a050395cf73238524d98d735dd84540cdb7cb938512e73c2a63d14"
-CURRENT_HASH = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"
+FORMER_PG2_HASH = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"
+CURRENT_HASH = "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb"
+APPROVED = REPO_ROOT / "docs/operations/qualification/pg2-kvm-approved-profile-2026-10-16.json"
 COPIES = {
     "openbao-values.candidate.yaml": "deploy/openbao/values.yaml",
     "postgresql.candidate.yaml": "deploy/kubernetes/base/access-telemetry-postgresql.yaml",
@@ -46,13 +49,34 @@ class ApprovedProfileAdoptionTests(unittest.TestCase):
         proposal = json.loads((CANDIDATE / "candidate-profile.json").read_text())
         current = lifecycle.canonical_pg_onprem_2_profile().manifest()
         historical = lifecycle.canonical_pg_onprem_profile().manifest()
-        self.assertEqual(proposal["manifest"], current)
+        former = lifecycle.canonical_previous_pg_onprem_2_profile().manifest()
+        approved = json.loads(APPROVED.read_text())
+        self.assertEqual(proposal["manifest"], former)
+        self.assertEqual(approved, current)
+        self.assertEqual(FORMER_PG2_HASH, former["profile_sha256"])
         self.assertEqual(HISTORICAL_HASH, historical["profile_sha256"])
         self.assertEqual(CURRENT_HASH, current["profile_sha256"])
         self.assertEqual(CURRENT_HASH, lifecycle.STORY_27_4_PROFILE_SHA256)
         self.assertEqual(historical["canonical_profile"]["capabilities"], current["canonical_profile"]["capabilities"])
         self.assertEqual(historical["canonical_profile"]["workload"], current["canonical_profile"]["workload"])
         self.assertEqual(500, current["canonical_profile"]["workload"]["total_events_per_second"])
+        old_identity = deepcopy(former["canonical_profile"]["identity"])
+        new_identity = deepcopy(current["canonical_profile"]["identity"])
+        self.assertEqual("jpiquot@local", old_identity.pop("kubeContext"))
+        self.assertEqual("owner@memories-qualification-27-4", new_identity.pop("kubeContext"))
+        self.assertEqual("postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2",
+                         old_identity.pop("profileId"))
+        self.assertEqual("postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3",
+                         new_identity.pop("profileId"))
+        self.assertEqual({"apiEndpoint": "https://127.0.0.1:16443", "dataDiskBytes": 644245094400,
+                          "hypervisorHost": "DESKTOP-VIOG240", "kind": "single-node-kvm",
+                          "memoryBytes": 42949672960, "nodeHa": False,
+                          "nodeName": "memories-qualification-27-4", "osDiskBytes": 42949672960,
+                          "sourceClusterContact": False, "vcpus": 8},
+                         new_identity.pop("qualificationEnvironment"))
+        self.assertEqual(old_identity, new_identity)
+        self.assertEqual(former["canonical_profile"]["capabilities"], current["canonical_profile"]["capabilities"])
+        self.assertEqual(former["canonical_profile"]["workload"], current["canonical_profile"]["workload"])
         profile = lifecycle.canonical_pg_onprem_2_profile()
         profile.identity["securityPlatform"]["chartVersion"] = "drift"
         self.assertEqual(current, lifecycle.canonical_pg_onprem_2_profile().manifest())
@@ -60,13 +84,52 @@ class ApprovedProfileAdoptionTests(unittest.TestCase):
     def test_drifted_current_selectors_are_refused_without_changing_either_manifest(self):
         current = lifecycle.canonical_pg_onprem_2_profile().manifest()
         historical = lifecycle.canonical_pg_onprem_profile().manifest()
-        for name in ("EXPECTED_PROFILE_ID", "EXPECTED_POSTGRESQL_IMAGE", "EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST",
+        for name in ("DEFAULT_REVIEWED_KUBE_CONTEXT", "EXPECTED_PROFILE_ID", "EXPECTED_POSTGRESQL_IMAGE", "EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST",
                      "EXPECTED_RUNTIME_IMAGE", "EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST"):
             with self.subTest(name=name), patch.object(lifecycle, name, "unapproved-selector"):
                 with self.assertRaisesRegex(ValueError, "selector identity drifted"):
                     lifecycle.validate_current_profile_inputs(REPO_ROOT)
                 self.assertEqual(current, lifecycle.canonical_pg_onprem_2_profile().manifest())
                 self.assertEqual(historical, lifecycle.canonical_pg_onprem_profile().manifest())
+
+    def test_each_target_or_resource_envelope_change_refuses_before_input_or_target_access(self):
+        expected = lifecycle.canonical_pg_onprem_2_profile().manifest()
+        identity = expected["canonical_profile"]["identity"]
+        changes = [("kubeContext", "jpiquot@local"), ("kubeNamespace", "foreign-namespace"),
+                   ("profileId", "foreign-profile")]
+        changes += [("qualificationEnvironment", {**identity["qualificationEnvironment"], key: replacement})
+                    for key, replacement in (("apiEndpoint", "https://127.0.0.1:26443"),
+                        ("dataDiskBytes", 644245094401), ("hypervisorHost", "foreign-host"),
+                        ("kind", "foreign-hypervisor"), ("memoryBytes", 42949672961),
+                        ("nodeHa", True), ("nodeName", "foreign-guest"),
+                        ("osDiskBytes", 42949672961), ("sourceClusterContact", True), ("vcpus", 9))]
+        for key, replacement in changes:
+            with self.subTest(key=key, replacement=replacement):
+                profile = lifecycle.canonical_pg_onprem_2_profile()
+                profile.identity[key] = replacement
+                with patch.object(lifecycle, "canonical_pg_onprem_2_profile", return_value=profile), \
+                        patch.object(Path, "read_bytes", side_effect=AssertionError("input dependency reached")), \
+                        patch.object(subprocess, "run", side_effect=AssertionError("target reached")):
+                    with self.assertRaisesRegex(ValueError, "canonical identity drifted"):
+                        lifecycle.validate_current_profile_inputs(REPO_ROOT)
+
+    def test_former_and_foreign_profiles_refuse_checkpoint_and_target_admission(self):
+        for profile_hash in (HISTORICAL_HASH, FORMER_PG2_HASH, "a" * 64):
+            with self.subTest(profile=profile_hash):
+                for checkpoint in ("C0", "c2-production-replacement", "c3-retention-reclamation", "c4-failure-privacy-observability"):
+                    packet = common(checkpoint)
+                    packet["profile_sha256"] = profile_hash
+                    packet["results"] = {}
+                    with self.assertRaisesRegex(ValueError, "profile"):
+                        lifecycle._validate_common_checkpoint(checkpoint, packet, None)
+                with tempfile.TemporaryDirectory() as temporary:
+                    path = Path(temporary) / "target.json"
+                    path.write_text(json.dumps({"schema_version": 1, "target": {
+                        "kind": "non-production-qualification", "kube_context": "owner@memories-qualification-27-4",
+                        "namespace": "memories-qualification", "profile_sha256": profile_hash}}))
+                    with patch.object(subprocess, "run", side_effect=AssertionError("target reached")):
+                        with self.assertRaisesRegex(ValueError, "PG-ONPREM-2"):
+                            producer._load_target(path)
 
     def test_exact_approved_copies_and_all_bound_inputs_reject_each_drift(self):
         for candidate, active in COPIES.items():

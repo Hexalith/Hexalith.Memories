@@ -846,7 +846,7 @@ public sealed class ProductionDeploymentArtifactsTests
     {
         string root = GetRepoRoot();
         const string candidateRoot = "_bmad-output/planning-artifacts/c1-security-prerequisites-2026-10-04/profile-candidate/";
-        const string currentHash = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe";
+        const string currentHash = "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb";
         (string Candidate, string Active)[] copies =
         [
             ("openbao-values.candidate.yaml", "deploy/openbao/values.yaml"),
@@ -861,6 +861,14 @@ public sealed class ProductionDeploymentArtifactsTests
 
         string qualification = Run(root, "kubectl", "kustomize", "deploy/kubernetes/overlays/qualification");
         qualification.ShouldContain("ACCESS_TELEMETRY_COMPONENT_PROFILE_HASH: " + currentHash);
+        qualification.ShouldContain("hexalith.io/profile-id: postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3");
+        Match gate = Regex.Match(qualification, @"(?m)^  gate\.json: '(?<json>\{[^\r\n]+\})'$");
+        gate.Success.ShouldBeTrue();
+        using JsonDocument gateDocument = JsonDocument.Parse(gate.Groups["json"].Value);
+        gateDocument.RootElement.EnumerateObject().Count().ShouldBe(4);
+        gateDocument.RootElement.GetProperty("profileSha256").GetString().ShouldBe(currentHash);
+        gateDocument.RootElement.GetProperty("state").GetString().ShouldBe("disabled");
+        gateDocument.RootElement.GetProperty("expiresUtcMs").GetInt64().ShouldBe(0);
         Match evidence = Regex.Match(qualification, @"(?m)^  evidence\.json: '(?<json>\{[^\r\n]+\})'$");
         evidence.Success.ShouldBeTrue();
         using JsonDocument report = JsonDocument.Parse(evidence.Groups["json"].Value);

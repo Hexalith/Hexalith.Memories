@@ -234,7 +234,8 @@ ADR_TWO_WRITER_WORKLOAD = WorkloadEnvelope(
 # overridable so another operator can run the checkpoint from their own kubeconfig, while
 # the gates that actually bind identity are server-side - the namespace, the pinned
 # PostgreSQL image digest, and the component type/version.
-DEFAULT_REVIEWED_KUBE_CONTEXT = "jpiquot@local"
+HISTORICAL_REVIEWED_KUBE_CONTEXT = "jpiquot@local"
+DEFAULT_REVIEWED_KUBE_CONTEXT = "owner@memories-qualification-27-4"
 EXPECTED_KUBE_CONTEXT = os.environ.get(
     "REVIEWED_KUBE_CONTEXT",
     DEFAULT_REVIEWED_KUBE_CONTEXT,
@@ -249,14 +250,14 @@ HISTORICAL_POSTGRESQL_IMAGE = (
     "docker.io/library/postgres:18.4-trixie@"
     "sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a"
 )
-# Exact approved PG-ONPREM-2 identity, adopted 2026-10-04. Keep the closed
-# PG-ONPREM-1 constructor independent of these current selectors.
-EXPECTED_PROFILE_ID = 'postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2'
+# Exact isolated-target PG-ONPREM-2 identity adopted 2026-10-16. Historical
+# PG1 and former PG2 constructors remain independent of current selectors.
+EXPECTED_PROFILE_ID = 'postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3'
 EXPECTED_POSTGRESQL_IMAGE = 'docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722'
 EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST = 'sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04'
 EXPECTED_RUNTIME_IMAGE = 'ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8'
 EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST = 'sha256:edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b'
-CURRENT_PROFILE_SHA256 = '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe'
+CURRENT_PROFILE_SHA256 = '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb'
 
 # Shared by `canonical_pg_onprem_profile` and `EnvironmentIdentity.to_profile_identity`
 # so the reviewed profile and the runtime profile cannot drift apart silently.
@@ -364,7 +365,7 @@ def canonical_pg_onprem_profile() -> AdapterProfile:
     return AdapterProfile(
         identity={
             "profileId": HISTORICAL_PROFILE_ID,
-            "kubeContext": DEFAULT_REVIEWED_KUBE_CONTEXT,
+            "kubeContext": HISTORICAL_REVIEWED_KUBE_CONTEXT,
             "kubeNamespace": EXPECTED_KUBE_NAMESPACE,
             "postgresqlImage": HISTORICAL_POSTGRESQL_IMAGE,
             "componentType": EXPECTED_COMPONENT_TYPE,
@@ -380,8 +381,8 @@ def canonical_pg_onprem_profile() -> AdapterProfile:
     )
 
 
-# Copy of the approved canonical identity, never reconstructed from live output.
-# Candidate receipt envelopes remain immutable historical evidence.
+# Former PG2 identity, retained exactly as approved on 2026-10-04. This
+# historical object and its candidate receipts grant no current target credit.
 _PG_ONPREM_2_IDENTITY_JSON = r"""{
     "capacityBoundary": {
         "capacityBytes": 429496729600,
@@ -442,14 +443,37 @@ _PG_ONPREM_2_IDENTITY_JSON = r"""{
 }"""
 
 
-def canonical_pg_onprem_2_profile() -> AdapterProfile:
-    """Return the exact approved current profile without granting capability credit."""
+def canonical_previous_pg_onprem_2_profile() -> AdapterProfile:
+    """Recover the former PG2 manifest for historical inspection only."""
 
     return AdapterProfile(
         identity=json.loads(_PG_ONPREM_2_IDENTITY_JSON),
         capabilities=canonical_pg_onprem_profile().capabilities.copy(),
         workload=ADR_TWO_WRITER_WORKLOAD.to_dict(),
     )
+
+
+def canonical_pg_onprem_2_profile() -> AdapterProfile:
+    """Return the exact adopted isolated-target profile, without gate credit."""
+
+    profile = canonical_previous_pg_onprem_2_profile()
+    profile.identity.update({
+        "kubeContext": "owner@memories-qualification-27-4",
+        "profileId": "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3",
+        "qualificationEnvironment": {
+            "apiEndpoint": "https://127.0.0.1:16443",
+            "dataDiskBytes": 644245094400,
+            "hypervisorHost": "DESKTOP-VIOG240",
+            "kind": "single-node-kvm",
+            "memoryBytes": 42949672960,
+            "nodeHa": False,
+            "nodeName": "memories-qualification-27-4",
+            "osDiskBytes": 42949672960,
+            "sourceClusterContact": False,
+            "vcpus": 8,
+        },
+    })
+    return profile
 
 
 def validate_current_profile_inputs(repository_root: Path | None = None) -> None:
@@ -461,6 +485,7 @@ def validate_current_profile_inputs(repository_root: Path | None = None) -> None
         raise EvidenceValidationError("approved PG-ONPREM-2 canonical identity drifted")
     identity = profile.identity
     current_selectors = {
+        "kubeContext": DEFAULT_REVIEWED_KUBE_CONTEXT,
         "profileId": EXPECTED_PROFILE_ID,
         "postgresqlImage": EXPECTED_POSTGRESQL_IMAGE,
         "postgresqlLinuxAmd64Manifest": EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST,

@@ -116,7 +116,7 @@ class CaptureRetainedFilesTests(unittest.TestCase):
             with self.subTest(count=count):
                 self.value, self.streams = fixture(tuple("lifecycle-" + str(index + 1) for index in range(count)))
                 self.value, self.streams = changed(self.value, self.streams, 0,
-                                                   stdout=b"\xe2\x80\x83jpiquot@local\r\n\xc2\x85", stderr=b"notice \r\n")
+                                                   stdout=b"\xe2\x80\x83owner@memories-qualification-27-4\r\n\xc2\x85", stderr=b"notice \r\n")
                 self.prepare()
                 result = self.inspect()
                 self.assertIs(type(result), C115StreamInspection)

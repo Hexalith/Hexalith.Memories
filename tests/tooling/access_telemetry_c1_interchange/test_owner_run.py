@@ -44,7 +44,7 @@ def record():
         "assuranceMode": "sole-owner/self-reviewed",
         "environment": "non-production",
         "profileId": "PG-ONPREM-2",
-        "profileSha256": "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe",
+        "profileSha256": "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb",
         "workloadSha256": "71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f",
         "sessionId": "pg2-owner.2026-10-12_1",
         "sourceCommit": "b" * 40,
@@ -108,6 +108,13 @@ class OwnerRunInspectionTests(unittest.TestCase):
         for action in LATER_ACTIONS:
             with self.subTest(action=action):
                 self.assertEqual(action, self.inspect(now=COLLECTION, action=action).requested_action)
+
+    def test_former_and_foreign_profile_hashes_refuse_even_with_rebound_approval_digest(self):
+        for profile_hash in ("7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe",
+                             "d" * 64):
+            with self.subTest(profile=profile_hash):
+                self.refuses({**self.value, "profileSha256": profile_hash},
+                             code="owner-run-artifact-literal-mismatch")
 
     def test_one_action_never_implies_another(self):
         for included in ACTIONS:

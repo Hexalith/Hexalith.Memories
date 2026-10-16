@@ -27,11 +27,11 @@ SOURCE_PATHS = ('tools/verify-access-telemetry-c1.ps1', 'tools/access-telemetry-
 INPUT_PATHS = re.findall(r"'([^']+)' = '[0-9a-f]{64}'", PROFILE_HELPER.read_text())
 WORKLOAD_ID = 'adr-27.1-two-writer-500eps'
 WORKLOAD_HASH = '71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f'
-PROFILE_IDENTITY = 'postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2'
-TARGET = {'context': 'jpiquot@local', 'namespace': 'hexalith-memories',
+PROFILE_IDENTITY = 'postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-qualification-kvm-v3'
+TARGET = {'context': 'owner@memories-qualification-27-4', 'namespace': 'hexalith-memories',
           'selector': 'app.kubernetes.io/name=memories-access-telemetry',
           'appId': 'memories-access-telemetry', 'actorType': 'AccessTelemetryLifecycleActor'}
-PROFILE_HASH = '7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe'
+PROFILE_HASH = '95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb'
 INDEX = 'b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8'
 CHILD = 'edbe3fc30d7efc90869411666fd03b70bb89eafed382bb37ff9a6de2fcab914b'
 SESSION = 'pg2-offline-20261007'
@@ -48,6 +48,7 @@ def json_digest(value):
 class Pg2RuntimeControlPlaneIdentityTests(unittest.TestCase):
     def setUp(self):
         self.base = json.loads(FIXTURE.read_text())
+        self.base['context'] = 'owner@memories-qualification-27-4'
         self.pod = self.base['pods']['items'][0]['metadata']['name']
 
     def temporary_repository(self):
@@ -86,6 +87,8 @@ class Pg2RuntimeControlPlaneIdentityTests(unittest.TestCase):
         write_fake_kubectl(fake_bin)
         fake = fake_bin / 'fake_kubectl.py'
         source = fake.read_text()
+        if profile == 'PG-ONPREM-2':
+            source = source.replace('jpiquot@local', 'owner@memories-qualification-27-4')
         # Reuse the existing exact argument checks and add bounded transport/source-race controls.
         hook = '''
 if args == ["config", "current-context"]:
@@ -561,6 +564,14 @@ if scenario.get("failPurpose") == purpose:
                     scenario['metadataRaw'] = {self.pod: '{' if kind == 'malformed' else '{"id":"x","id":"y"}'}
                 self.assert_blocked(scenario, failure)
 
+    def test_former_target_context_refuses_before_pod_or_exec_queries(self):
+        scenario = copy.deepcopy(self.base)
+        scenario['context'] = 'jpiquot@local'
+        packet, calls = self.assert_blocked(scenario, 'profile-context-mismatch')
+        self.assertEqual([['config', 'current-context']], calls)
+        self.assertEqual(PROFILE_HASH, packet['profileSha256'])
+        self.assertEqual(TARGET, packet['target'])
+
     def test_secret_fields_and_encoded_or_stderr_credentials_have_no_unsafe_hashes(self):
         for kind in ('field', 'encoded', 'stderr', 'quoted-double', 'quoted-single', 'url',
                      'escaped-url', 'escaped-stderr-url', 'escaped-assignment', 'authorization',
@@ -847,6 +858,7 @@ if scenario.get("failPurpose") == purpose:
 
     def test_legacy_c1_15_stays_v1_without_session_and_cannot_consume_v2_session(self):
         scenario = copy.deepcopy(self.base)
+        scenario['context'] = 'jpiquot@local'
         scenario.update(stderrPurpose='current-context', stderr='offline legacy diagnostic')
         scenario['podsAfter'] = copy.deepcopy(scenario['pods'])
         scenario['podsAfter']['items'][0]['metadata']['resourceVersion'] = 'safe-legacy-recheck'
@@ -876,7 +888,7 @@ if scenario.get("failPurpose") == purpose:
             scenario['pods']['items'].append(pod)
             for field in ('metadata', 'daprdVersions', 'alphaOptIn'):
                 scenario[field][name] = copy.deepcopy(scenario[field][self.pod])
-        scenario['context'] = '\u2003jpiquot@local\u0085'
+        scenario['context'] = '\u2003owner@memories-qualification-27-4\u0085'
         scenario['stderrPurpose'] = 'metadata'
         scenario['stderr'] = 'safe exact diagnostic\r'
         result, packets, _, evidence = self.run_gate(scenario, repeat=2)
@@ -908,7 +920,7 @@ if scenario.get("failPurpose") == purpose:
                     if suffix == 'stderr':
                         self.assertEqual(b'safe exact diagnostic\r\n' if command['purpose'].startswith('metadata:') else b'', raw)
             self.assertEqual(expected_names, {path.name for path in sidecar.iterdir()})
-            self.assertEqual(('\u2003jpiquot@local\u0085\n').encode(), (sidecar / '0000.stdout').read_bytes())
+            self.assertEqual(('\u2003owner@memories-qualification-27-4\u0085\n').encode(), (sidecar / '0000.stdout').read_bytes())
             result = inspect_c115_retained_files(str(packet_path), custody_root=str(evidence))
             self.assertEqual(3, result.pod_count)
             self.assertEqual('not-evaluated', result.capture.value['gateStatus'])

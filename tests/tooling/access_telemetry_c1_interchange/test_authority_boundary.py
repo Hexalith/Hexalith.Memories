@@ -113,8 +113,9 @@ class AuthorityBoundaryTests(unittest.TestCase):
         self.refuse("authority-review-before-capture-finish", value=value)
 
     def test_unpinned_profile_and_missing_scope_refuse(self):
-        self.refuse("authority-current-pg2-identity-required",
-                    scope={**self.scope, "profileSha256": "a" * 64})
+        for profile_hash in ("7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe", "a" * 64):
+            self.refuse("authority-current-pg2-identity-required",
+                        scope={**self.scope, "profileSha256": profile_hash})
         missing = dict(self.scope)
         del missing["sourceCommit"]
         self.refuse("authority-boundary-input-invalid", scope=missing)

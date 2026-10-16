@@ -103,7 +103,7 @@ public sealed class AccessTelemetryOperationsContractTests
         IReadOnlyList<IReadOnlyList<string>> profile = document.GetTableRows("Scope and immutable profile");
         profile.Single(row => row[0] == "PostgreSQL")[1].ShouldStartWith("18.6");
         profile.Single(row => row[0] == "Profile SHA-256")[1].ShouldBe(
-            "`7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe`");
+            "`95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb`");
         profile.Single(row => row[0] == "HA boundary")[1].ShouldContain("no node, disk, zone, control-plane, or site", Case.Sensitive);
 
         string capacity = NormalizeWhitespace(document.GetSection("Retention, capacity, and cost admission"));

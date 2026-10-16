@@ -138,8 +138,8 @@ qualification-specific institutional approval requirement only after the policy
 and consumers are migrated. It does not impersonate an authenticated third-party
 receipt, prove external immutable custody or grant unspecified target actions.
 
-For a run, approve the exact prepared plan after the agent shows it. The candidate
-context is `jpiquot@local`; C1's historical namespace is `hexalith-memories`, while
+For a run, approve the exact prepared plan after the agent shows it. The adopted
+context is `owner@memories-qualification-27-4`; C1 uses `hexalith-memories`, while
 C2–C4 require an isolated namespace ending `-qualification`. These are candidate
 labels to resolve and approve, not permission to contact or mutate them.
 

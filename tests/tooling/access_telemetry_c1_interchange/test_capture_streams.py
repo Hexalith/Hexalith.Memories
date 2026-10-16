@@ -68,7 +68,7 @@ def bind(value, streams):
 def fixture(names=("lifecycle-1", "lifecycle-2")):
     value = command_fixtures.command_fixture(names)
     selection = b"\n".join(encoded(pod_frame(pod)) for pod in value["observations"]["pods"]) + b"\n"
-    outputs = {"current-context": b"jpiquot@local\n", "lifecycle-pods": selection,
+    outputs = {"current-context": b"owner@memories-qualification-27-4\n", "lifecycle-pods": selection,
                "lifecycle-pods-recheck": selection}
     for pod in value["observations"]["pods"]:
         name = pod["pod"]
@@ -116,7 +116,7 @@ def many_fixture(count):
     command_fixtures.serial_times(value)
     semantic_fixtures.refresh_declarations(value)
     selection = b"".join(encoded(pod_frame(pod)) for pod in pods)
-    outputs = {"current-context": b"jpiquot@local\n", "lifecycle-pods": selection,
+    outputs = {"current-context": b"owner@memories-qualification-27-4\n", "lifecycle-pods": selection,
                "lifecycle-pods-recheck": selection}
     for pod in pods:
         for stem, output in (("daprd-version", b"1.18.1\n"), ("metadata", encoded(metadata_output(pod))),
@@ -258,11 +258,11 @@ class CaptureStreamTests(unittest.TestCase):
         self.assertEqual(result.capture.sha256, hashlib.sha256(raw).hexdigest())
         self.assertNotIn("café", repr(result))
         self.assertNotIn("café", repr(result.streams))
-        self.assertNotIn("jpiquot@local", repr(result))
+        self.assertNotIn("owner@memories-qualification-27-4", repr(result))
 
     def test_rehashed_foreign_context_and_runtime_outputs_refuse(self):
         value, streams = fixture()
-        for number, output in ((0, b"other@cluster\n"), (0, b"JPIQUOT@LOCAL\n"), (0, b"jpiquot@local\x1c"),
+        for number, output in ((0, b"other@cluster\n"), (0, b"OWNER@MEMORIES-QUALIFICATION-27-4\n"), (0, b"owner@memories-qualification-27-4\x1c"),
                                (2, b"1.18.2\n"), (5, b"1.18.1+build\n"), (5, b"diagnostic\n1.18.1\n")):
             with self.subTest(command=number):
                 self.contradiction(*changed(value, streams, number, stdout=output))
@@ -725,7 +725,7 @@ atexit.register(retain_outputs)
                 scenario["pods"]["items"].append(additional)
                 for field in ("metadata", "daprdVersions", "alphaOptIn"):
                     scenario[field][name] = deepcopy(scenario[field][harness.pod])
-            scenario["context"] = "\u2003jpiquot@local\u0085"
+            scenario["context"] = "\u2003owner@memories-qualification-27-4\u0085"
             for name, metadata in scenario["metadata"].items():
                 metadata["actors"] += [{"type": "zActor", "count": 2.5}, {"type": "aActor", "count": 0.125}]
                 metadata["enabledFeatures"] += ["z.Feature", "AFeature", "a-feature"]

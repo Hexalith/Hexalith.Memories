@@ -269,6 +269,18 @@ class CaptureSemanticTests(unittest.TestCase):
                          (INDEX, CHILD))
         self.assertTrue(result.capture.raw.endswith(b"\r\n"))
 
+    def test_former_profile_and_target_are_historical_only_even_when_self_consistent(self):
+        for field, replacement in (
+            ("profileSha256", "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"),
+            ("profileIdentity", "postgresql-v2-dapr-1.18.1-postgresql-18.6-onprem-k8s1-openebs-local-retain-400g-v2"),
+            ("profileSha256", "a" * 64),
+        ):
+            with self.subTest(field=field, replacement=replacement):
+                value = capture_fixture()
+                value[field] = replacement
+                self.semantic_refusal(value)
+        self.semantic_refusal(changed_target("context", "jpiquot@local"))
+
     def test_single_pod_captures_derive_nonconstant_count_and_selected_name(self):
         for number in (0, 1):
             value = capture_fixture()

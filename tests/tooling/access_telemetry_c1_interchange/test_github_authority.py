@@ -32,7 +32,7 @@ from hexalith_github_reviews import _elapsed
 ROOT_REVIEWER = "github:user:1001"
 SESSION_REVIEWER = "github:user:1002"
 # Independent published identity literals, never read from the implementation.
-PROFILE = "7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe"
+PROFILE = "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb"
 WORKLOAD = "71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f"
 
 

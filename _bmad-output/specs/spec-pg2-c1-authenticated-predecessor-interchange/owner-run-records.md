@@ -36,7 +36,7 @@ All these fields are required; no extra field is allowed:
 | `assuranceMode` | `sole-owner/self-reviewed` |
 | `environment` | `non-production` |
 | `profileId` | `PG-ONPREM-2` |
-| `profileSha256` | `7f9f69322353cb22ec1254f1d486ee12337c9a9d579dbc80d6d842d32b339efe` |
+| `profileSha256` | `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb` |
 | `workloadSha256` | `71903bb8cc1889a015e066b0276fba2c7f073b2bdfc4d3b11225fc79ec6f091f` |
 | `sessionId` | Non-secret ASCII identifier, 1–128 characters from letters, digits, dot, underscore or hyphen, first character alphanumeric; equals the approved plan |
 | `sourceCommit` | Exact full lower-case 40-hex commit in the approved plan |
