@@ -5,7 +5,9 @@
 
 namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 
-using System.Text.Json;
+using System.Globalization;
+
+using Hexalith.Memories.AccessTelemetry.Contracts;
 
 /// <summary>Reads the short-lived, file-mounted non-Production qualification gate.</summary>
 internal sealed class AccessTelemetryQualificationGate(
@@ -16,118 +18,51 @@ internal sealed class AccessTelemetryQualificationGate(
     /// <summary>The sole approved PG-ONPREM-2 Story 27.4 profile hash.</summary>
     public const string ApprovedProfileSha256 = "95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb";
 
-    private const string DefaultGatePath = "/var/run/hexalith/access-telemetry-qualification/gate.json";
-    private static readonly TimeSpan MaximumGateLifetime = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan GateExpirySkew = TimeSpan.FromSeconds(5);
+    /// <summary>Gets whether any local selected binding was supplied, including partial intent.</summary>
+    public bool HasLocalIntent =>
+        !string.IsNullOrEmpty(configuration["AccessTelemetryLifecycle:LocalFunctionalRunId"]) ||
+        !string.IsNullOrEmpty(configuration["AccessTelemetryLifecycle:LocalFunctionalProfileJson"]) ||
+        !string.IsNullOrEmpty(configuration["AccessTelemetryLifecycle:LocalFunctionalSourceMappingHash"]) ||
+        !string.IsNullOrEmpty(configuration["AccessTelemetryQualification:LocalProfileHash"]);
 
     /// <summary>Validates the current gate without caching a past authorization.</summary>
     /// <param name="reason">A bounded reason when the gate is closed.</param>
     /// <returns><see langword="true"/> only for a current exact-profile Qualification gate.</returns>
     public bool TryValidate(out string reason)
     {
-        string? localRun = configuration["AccessTelemetryLifecycle:LocalFunctionalRunId"];
-        string? runnerRun = configuration["HEXALITH_G4_RUN_ID"];
-        string? localProfile = configuration["AccessTelemetryQualification:LocalProfileHash"];
-        bool local = environment.IsDevelopment() && !string.IsNullOrWhiteSpace(localRun) && localRun == runnerRun &&
-            localRun == configuration["AccessTelemetryLifecycle:DeploymentId"] && localProfile?.Length == 64 &&
-            localProfile == configuration["AccessTelemetryLifecycle:ComponentProfileHash"] && localProfile != ApprovedProfileSha256;
-        if (!environment.IsEnvironment("Qualification") && !local)
+        if (HasLocalIntent)
+        {
+            _ = bool.TryParse(configuration["AccessTelemetryLifecycle:Enabled"], out bool lifecycleEnabled);
+            _ = TimeSpan.TryParse(configuration["AccessTelemetryLifecycle:Retention"], CultureInfo.InvariantCulture, out TimeSpan retention);
+            var options = new AccessTelemetryOptions
+            {
+                Enabled = lifecycleEnabled,
+                Retention = retention,
+                DeploymentId = configuration["AccessTelemetryLifecycle:DeploymentId"] ?? string.Empty,
+                ComponentProfileHash = configuration["AccessTelemetryLifecycle:ComponentProfileHash"] ?? string.Empty,
+                LocalFunctionalRunId = configuration["AccessTelemetryLifecycle:LocalFunctionalRunId"] ?? string.Empty,
+                LocalFunctionalProfileJson = configuration["AccessTelemetryLifecycle:LocalFunctionalProfileJson"] ?? string.Empty,
+                LocalFunctionalSourceMappingHash = configuration["AccessTelemetryLifecycle:LocalFunctionalSourceMappingHash"] ?? string.Empty,
+            };
+            _ = DateTimeOffset.TryParse(configuration["AccessTelemetryLifecycle:CapabilityEvidence:ValidUntilUtc"], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTimeOffset deadline);
+            bool enabled = AccessTelemetryQualificationGateFile.IsLocalEnabled(
+                options, environment.EnvironmentName, configuration["HEXALITH_G4_RUN_ID"], configuration["HEXALITH_SOURCE_MAPPING_HASH"],
+                configuration["AccessTelemetryQualification:LocalProfileHash"], configuration["AccessTelemetryQualification:GatePath"],
+                deadline, timeProvider.GetUtcNow());
+            reason = enabled ? "none" : "qualification_gate_invalid_or_expired";
+            return enabled;
+        }
+
+        if (!environment.IsEnvironment("Qualification"))
         {
             reason = "qualification_environment_required";
             return false;
         }
 
-        string? configuredPath = configuration["AccessTelemetryQualification:GatePath"];
-        if (configuredPath is not null && string.IsNullOrWhiteSpace(configuredPath))
-        {
-            reason = "qualification_gate_unavailable";
-            return false;
-        }
-
-        FileInfo? file;
-        try
-        {
-            file = ResolveMountedGate(configuredPath ?? DefaultGatePath);
-        }
-        catch (Exception exception) when (exception is ArgumentException or IOException)
-        {
-            reason = "qualification_gate_unavailable";
-            return false;
-        }
-
-        if (file is null || file.Length is <= 0 or > 4096)
-        {
-            reason = "qualification_gate_unavailable";
-            return false;
-        }
-
-        try
-        {
-            using FileStream stream = file.Open(FileMode.Open, FileAccess.Read, FileShare.Read);
-            if (stream.Length is <= 0 or > 4096)
-            {
-                reason = "qualification_gate_unavailable";
-                return false;
-            }
-
-            using JsonDocument document = JsonDocument.Parse(stream, new JsonDocumentOptions
-            {
-                AllowTrailingCommas = false,
-                CommentHandling = JsonCommentHandling.Disallow,
-                MaxDepth = 4,
-            });
-            JsonElement root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 4 ||
-                !root.TryGetProperty("schemaVersion", out JsonElement schemaVersion) || schemaVersion.GetInt32() != 1 ||
-                !root.TryGetProperty("state", out JsonElement state) || state.GetString() != "enabled" ||
-                !root.TryGetProperty("profileSha256", out JsonElement profile) || profile.GetString() != (local ? localProfile : ApprovedProfileSha256) ||
-                !root.TryGetProperty("expiresUtcMs", out JsonElement expires) || !expires.TryGetInt64(out long expiresUtcMs) ||
-                expiresUtcMs <= timeProvider.GetUtcNow().ToUnixTimeMilliseconds() ||
-                expiresUtcMs > timeProvider.GetUtcNow().Add(MaximumGateLifetime).Add(GateExpirySkew).ToUnixTimeMilliseconds())
-            {
-                reason = "qualification_gate_invalid_or_expired";
-                return false;
-            }
-
-            reason = "none";
-            return true;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or FormatException)
-        {
-            reason = "qualification_gate_invalid_or_expired";
-            return false;
-        }
-    }
-
-    private static FileInfo? ResolveMountedGate(string gatePath)
-    {
-        string fullPath = Path.GetFullPath(gatePath);
-        var requested = new FileInfo(fullPath);
-        if (!requested.Exists)
-        {
-            return null;
-        }
-
-        if (requested.LinkTarget is null)
-        {
-            return requested;
-        }
-
-        FileSystemInfo? resolved = requested.ResolveLinkTarget(returnFinalTarget: true);
-        if (resolved is not FileInfo resolvedFile || !resolvedFile.Exists)
-        {
-            return null;
-        }
-
-        string mountRoot = Path.GetFullPath(requested.DirectoryName ?? string.Empty);
-        string resolvedPath = Path.GetFullPath(resolvedFile.FullName);
-        string relative = Path.GetRelativePath(mountRoot, resolvedPath);
-        if (Path.IsPathRooted(relative) || relative == ".." ||
-            relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-        {
-            return null;
-        }
-
-        return resolvedFile;
+        return AccessTelemetryQualificationGateFile.TryValidate(
+            configuration["AccessTelemetryQualification:GatePath"],
+            ApprovedProfileSha256,
+            timeProvider.GetUtcNow(),
+            out reason);
     }
 }

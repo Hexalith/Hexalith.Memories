@@ -62,6 +62,9 @@ public sealed record AccessTelemetryOptions
     /// <summary>Gets the canonical Platform local profile bytes; full-profile identities cannot select local proof.</summary>
     public string LocalFunctionalProfileJson { get; init; } = string.Empty;
 
+    /// <summary>Gets the selected runner source mapping identity; never a full qualification grant.</summary>
+    public string LocalFunctionalSourceMappingHash { get; init; } = string.Empty;
+
     /// <summary>Gets whether the lifecycle copy is enabled.</summary>
     public bool Enabled { get; init; }
 

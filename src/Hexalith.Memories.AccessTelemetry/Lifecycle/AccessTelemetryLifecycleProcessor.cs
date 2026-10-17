@@ -184,6 +184,11 @@ internal sealed class AccessTelemetryLifecycleProcessor
         CancellationToken cancellationToken,
         Func<bool>? isEnabled)
     {
+        if (isEnabled is not null && !isEnabled())
+        {
+            return new AccessTelemetryPurgeResult(0, 0, 0, true);
+        }
+
         long purgeStarted = Stopwatch.GetTimestamp();
         long dueMinute = AccessTelemetryExpiryIndex.GetExpiryMinute(now);
         (IReadOnlyList<AccessTelemetryExpiryEntry> due, bool hasMoreDueEntries) = await _store.GetDueEntriesAsync(

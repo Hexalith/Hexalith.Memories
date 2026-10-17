@@ -14,7 +14,8 @@ internal sealed class AccessTelemetryHeartbeatWorker(
     AccessTelemetryWriterIdentity identity,
     BoundedAccessTelemetryQueue queue,
     AccessTelemetryLifecycleStatus status,
-    TimeProvider timeProvider) : BackgroundService
+    TimeProvider timeProvider,
+    AccessTelemetryQualificationGate? gate = null) : BackgroundService
 {
     /// <summary>Gets the fixed writer heartbeat cadence.</summary>
     public static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(10);
@@ -25,6 +26,14 @@ internal sealed class AccessTelemetryHeartbeatWorker(
     /// <summary>Sends one heartbeat for focused verification.</summary>
     internal async Task SendOnceAsync(CancellationToken cancellationToken)
     {
+        bool localIntent = !string.IsNullOrEmpty(options.LocalFunctionalRunId) ||
+            !string.IsNullOrEmpty(options.LocalFunctionalProfileJson) ||
+            !string.IsNullOrEmpty(options.LocalFunctionalSourceMappingHash);
+        if ((localIntent || gate?.HasLocalIntent == true) && gate?.TryValidate(out _) != true)
+        {
+            return;
+        }
+
         DateTimeOffset now = timeProvider.GetUtcNow();
         WriterHeartbeatResponse response = await client.SendAsync(
             new WriterHeartbeat

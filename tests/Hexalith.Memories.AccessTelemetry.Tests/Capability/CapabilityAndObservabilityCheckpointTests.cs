@@ -6,6 +6,12 @@
 namespace Hexalith.Memories.AccessTelemetry.Tests.Capability;
 
 using System.Diagnostics.Metrics;
+using Dapr;
+using Dapr.Client;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting.Internal;
+using Hexalith.Memories.AccessTelemetry.Lifecycle;
 
 using Hexalith.Memories.AccessTelemetry.Capability;
 using Hexalith.Memories.AccessTelemetry.Contracts;
@@ -13,6 +19,8 @@ using Hexalith.Memories.AccessTelemetry.Observability;
 using Hexalith.Memories.AccessTelemetry.Tests.Observability;
 
 using Microsoft.Extensions.Time.Testing;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -103,8 +111,8 @@ public sealed class CapabilityAndObservabilityCheckpointTests
         AccessTelemetryCapabilityProbeContext context = ProbeContext(DateTimeOffset.UtcNow.AddMinutes(1)) with
         {
             LocalFunctional = true, Production = production,
-            LocalFunctionalProfileJson = "{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}",
-            ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}"))),
+            CurrentRunId = "offline-run", CurrentSourceMappingHash = new string('a', 64), LocalFunctionalProfileJson = LocalCanonicalProfile(),
+            ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(LocalCanonicalProfile()))),
         };
         (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBe(!production);
         (await runner.RunAsync(context with { LocalFunctional = false }, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
@@ -123,9 +131,217 @@ public sealed class CapabilityAndObservabilityCheckpointTests
         var runner = new AccessTelemetryCapabilityProbeRunner(
             AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(name => new StubCapabilityProbe(name, name != missing)), gate, TimeProvider.System);
         AccessTelemetryCapabilityGateResult result = await runner.RunAsync(
-            ProbeContext(DateTimeOffset.UtcNow.AddMinutes(1)) with { LocalFunctional = true, Production = false, LocalFunctionalProfileJson = "{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}", ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}"))) }, CancellationToken.None);
+            ProbeContext(DateTimeOffset.UtcNow.AddMinutes(1)) with { LocalFunctional = true, Production = false, CurrentRunId = "offline-run", CurrentSourceMappingHash = new string('a', 64), LocalFunctionalProfileJson = LocalCanonicalProfile(), ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(LocalCanonicalProfile()))) }, CancellationToken.None);
         result.AllowsWrites.ShouldBeFalse();
         gate.Current.AllowsWrites.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("foreign")]
+    [InlineData("missing")]
+    [InlineData("partial")]
+    [InlineData("expired")]
+    [InlineData("default-expiry")]
+    [InlineData("valid")]
+    [InlineData("full")]
+    public async Task HostedLocalIntentNeverFallsThroughAndExpiredIntentRunsNoProbes(string variant)
+    {
+        int probes = 0;
+        var gate = new AccessTelemetryRuntimeGate();
+        var runner = new AccessTelemetryCapabilityProbeRunner(AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(name => new StubCapabilityProbe(name, true, observe: () => probes++)), gate, TimeProvider.System);
+        string canonical = LocalCanonicalProfile();
+        var options = new AccessTelemetryOptions
+        {
+            LocalFunctionalRunId = variant is "partial" or "full" ? string.Empty : "offline-run", DeploymentId = "offline-run", Retention = TimeSpan.FromHours(1),
+            LocalFunctionalSourceMappingHash = variant == "full" ? string.Empty : new string('a', 64), LocalFunctionalProfileJson = variant == "full" ? string.Empty : canonical,
+            ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical))),
+            CapacityEvidenceId = "capacity-development", PhysicalReclamationEvidenceId = "pending-story-27-3",
+        };
+        var provider = new AccessTelemetryRuntimeOptionsProvider(options);
+        provider.Publish(options);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["HEXALITH_G4_RUN_ID"] = variant == "missing" ? null : variant == "foreign" ? "foreign-run" : "offline-run", ["HEXALITH_SOURCE_MAPPING_HASH"] = new string('a', 64) }).Build();
+        DateTimeOffset expiry = variant == "default-expiry" ? default : DateTimeOffset.UtcNow.AddMinutes(variant == "expired" ? -1 : 1);
+        using var hosted = new AccessTelemetryCapabilityProbeHostedService(runner, provider, new AccessTelemetryCapabilityEvidenceOptions { ExactVersionPinned = true, ValidUntilUtc = expiry }, new HostingEnvironment { EnvironmentName = "Development" }, configuration, TimeProvider.System);
+        AccessTelemetryCapabilityGateResult result = (await hosted.ProbeCurrentAsync(CancellationToken.None)).ShouldNotBeNull();
+        bool allowed = variant is "valid" or "full";
+        result.AllowsWrites.ShouldBe(allowed);
+        probes.ShouldBe(allowed ? 10 : 0);
+        if (variant == "partial") AccessTelemetryOptionsValidator.Validate(options, "Development").IsValid.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HostedLocalStartupProof_IsAttemptedOnceWithInitiallyClosedGateAndNoWithdrawalRetry(bool failed)
+    {
+        DateTimeOffset now = new(2026, 10, 16, 12, 0, 0, TimeSpan.Zero);
+        var time = new FakeTimeProvider(now);
+        int probes = 0;
+        var gate = new AccessTelemetryRuntimeGate(time);
+        var runner = new AccessTelemetryCapabilityProbeRunner(AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(
+            name => new StubCapabilityProbe(name, !failed, observe: () => probes++)), gate, time);
+        string canonical = LocalCanonicalProfile();
+        var options = new AccessTelemetryOptions
+        {
+            LocalFunctionalRunId = "offline-run", DeploymentId = "offline-run", Retention = TimeSpan.FromHours(1),
+            LocalFunctionalSourceMappingHash = new string('a', 64), LocalFunctionalProfileJson = canonical,
+            ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical))),
+            CapacityEvidenceId = "capacity-development", PhysicalReclamationEvidenceId = "pending-story-27-3",
+        };
+        var provider = new AccessTelemetryRuntimeOptionsProvider(options);
+        provider.Publish(options);
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "{\"schemaVersion\":1,\"state\":\"disabled\",\"profileSha256\":\"" + options.ComponentProfileHash + "\",\"expiresUtcMs\":" + now.AddMinutes(10).ToUnixTimeMilliseconds() + "}");
+            IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["HEXALITH_G4_RUN_ID"] = "offline-run", ["HEXALITH_SOURCE_MAPPING_HASH"] = new string('a', 64),
+                ["AccessTelemetryQualification:GatePath"] = path,
+            }).Build();
+            using var hosted = new AccessTelemetryCapabilityProbeHostedService(runner, provider,
+                new AccessTelemetryCapabilityEvidenceOptions { ExactVersionPinned = true, ValidUntilUtc = now.AddHours(2) },
+                new HostingEnvironment { EnvironmentName = "Development" }, configuration, time);
+            (await hosted.ProbeCurrentAsync(CancellationToken.None)).ShouldNotBeNull().AllowsWrites.ShouldBe(!failed);
+            probes.ShouldBe(10);
+            time.Advance(TimeSpan.FromSeconds(30));
+            (await hosted.ProbeCurrentAsync(CancellationToken.None)).ShouldNotBeNull().AllowsWrites.ShouldBe(!failed);
+            File.Delete(path);
+            (await hosted.ProbeCurrentAsync(CancellationToken.None)).ShouldNotBeNull().AllowsWrites.ShouldBe(!failed);
+            probes.ShouldBe(10);
+            configuration["HEXALITH_G4_RUN_ID"] = "foreign-run";
+            (await hosted.ProbeCurrentAsync(CancellationToken.None)).ShouldNotBeNull().AllowsWrites.ShouldBeFalse();
+            configuration["HEXALITH_G4_RUN_ID"] = "offline-run";
+            (await hosted.ProbeCurrentAsync(CancellationToken.None)).ShouldNotBeNull().AllowsWrites.ShouldBeFalse();
+            time.Advance(TimeSpan.FromHours(2));
+            (await hosted.ProbeCurrentAsync(CancellationToken.None)).ShouldNotBeNull().AllowsWrites.ShouldBeFalse();
+            probes.ShouldBe(10);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData("source")]
+    [InlineData("run")]
+    [InlineData("profile")]
+    [InlineData("expiry")]
+    [InlineData("mode")]
+    public async Task LocalStartupProof_ChangedBindingNeverStartsAnotherProbeAttempt(string changed)
+    {
+        DateTimeOffset now = new(2026, 10, 16, 12, 0, 0, TimeSpan.Zero);
+        var time = new FakeTimeProvider(now);
+        int probes = 0;
+        var runner = new AccessTelemetryCapabilityProbeRunner(AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(
+            name => new StubCapabilityProbe(name, true, observe: () => probes++)), new AccessTelemetryRuntimeGate(time), time);
+        AccessTelemetryCapabilityProbeContext context = ProbeContext(now.AddHours(1)) with
+        {
+            LocalFunctional = true, Production = false, CurrentRunId = "offline-run", CurrentSourceMappingHash = new string('a', 64),
+            LocalFunctionalProfileJson = LocalCanonicalProfile(),
+            ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(LocalCanonicalProfile()))),
+        };
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeTrue();
+        AccessTelemetryCapabilityProbeContext drifted = changed switch
+        {
+            "source" => context with { CurrentSourceMappingHash = new string('b', 64) },
+            "run" => context with { CurrentRunId = "foreign-run" },
+            "profile" => context with { ComponentProfileHash = new string('b', 64) },
+            "expiry" => context with { ValidUntilUtc = now.AddHours(2) },
+            _ => context with { LocalFunctional = false },
+        };
+        (await runner.RunAsync(drifted, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
+        probes.ShouldBe(10);
+    }
+
+    [Fact]
+    public async Task FullStartupProof_ContinuesItsExistingRepeatedBehavior()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        int probes = 0;
+        var runner = new AccessTelemetryCapabilityProbeRunner(AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(
+            name => new StubCapabilityProbe(name, true, observe: () => probes++)), new AccessTelemetryRuntimeGate(), TimeProvider.System);
+        AccessTelemetryCapabilityProbeContext context = ProbeContext(now.AddHours(1));
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeTrue();
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeTrue();
+        probes.ShouldBe(20);
+    }
+
+    [Theory]
+    [InlineData(120, 30)]
+    [InlineData(5, 5)]
+    public async Task LocalStartupTimeout_IsRetainedFailureAndLateSdkCompletionStartsNoMoreOperations(int lifetimeSeconds, int timeoutSeconds)
+    {
+        DateTimeOffset now = new(2026, 10, 16, 12, 0, 0, TimeSpan.Zero);
+        var time = new FakeTimeProvider(now);
+        DaprClient client = NSubstitute.Substitute.For<DaprClient>();
+        var sdk = new TaskCompletionSource<(string Value, string Etag)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken admittedToken = default;
+        client.GetStateAndETagAsync<string>(NSubstitute.Arg.Any<string>(), NSubstitute.Arg.Any<string>(),
+            ConsistencyMode.Strong, NSubstitute.Arg.Any<IReadOnlyDictionary<string, string>>(), NSubstitute.Arg.Any<CancellationToken>())
+            .Returns(call => { admittedToken = call.ArgAt<CancellationToken>(4); return sdk.Task; });
+        var options = new AccessTelemetryRuntimeOptionsProvider(new AccessTelemetryOptions());
+        var actual = new DaprAccessTelemetryCapabilityProbe(nameof(AccessTelemetryCapabilityProfile.StrongCrudAndEtags), client,
+            options, new MonotonicRecordIdGenerator(), time, NullLogger<DaprAccessTelemetryCapabilityProbe>.Instance);
+        Task<AccessTelemetryCapabilityProbeResult>? active = null;
+        var gate = new AccessTelemetryRuntimeGate(time);
+        var runner = new AccessTelemetryCapabilityProbeRunner(
+            [new StubCapabilityProbe(nameof(AccessTelemetryCapabilityProfile.StrongCrudAndEtags), false,
+                execute: token => active = actual.ProbeAsync(token))], gate, time);
+        AccessTelemetryCapabilityProbeContext context = ProbeContext(now.AddSeconds(lifetimeSeconds)) with
+        {
+            LocalFunctional = true, Production = false, CurrentRunId = "offline-run", CurrentSourceMappingHash = new string('a', 64),
+            LocalFunctionalProfileJson = LocalCanonicalProfile(),
+            ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(LocalCanonicalProfile()))),
+        };
+
+        Task<AccessTelemetryCapabilityGateResult> attempt = runner.RunAsync(context, CancellationToken.None);
+        attempt.IsCompleted.ShouldBeFalse();
+        time.Advance(TimeSpan.FromSeconds(timeoutSeconds - 1));
+        attempt.IsCompleted.ShouldBeFalse();
+        time.Advance(TimeSpan.FromSeconds(1));
+        AccessTelemetryCapabilityGateResult result = await attempt.WaitAsync(TimeSpan.FromSeconds(5));
+        result.AllowsWrites.ShouldBeFalse();
+        admittedToken.IsCancellationRequested.ShouldBeTrue();
+        gate.Current.AllowsWrites.ShouldBeFalse();
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
+        sdk.SetResult((null!, "etag"));
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => active!);
+        client.ReceivedCalls().Count().ShouldBe(1);
+    }
+
+    private static string LocalCanonicalProfile() => System.Text.Json.JsonSerializer.Serialize(new
+    {
+        purpose = "local-functional-retention", runId = "offline-run", sourceMappingHash = new string('a', 64), componentType = "state.postgresql/v2",
+        runtimeImage = "ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+        postgresqlImage = "docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+        sslMode = "verify-full", retentionSeconds = 3600, qualificationCredit = false,
+    });
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("foreign-run")]
+    [InlineData("foreign-source")]
+    [InlineData("backend")]
+    [InlineData("runtime")]
+    [InlineData("retention")]
+    public async Task LocalFunctionalStartup_RejectsSelfHashedIncompleteOrForeignProfile(string drift)
+    {
+        var gate = new AccessTelemetryRuntimeGate();
+        var runner = new AccessTelemetryCapabilityProbeRunner(AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(name => new StubCapabilityProbe(name, true)), gate, TimeProvider.System);
+        string profile = drift switch
+        {
+            "missing" => "{\"purpose\":\"local-functional-retention\",\"qualificationCredit\":false}",
+            "foreign-run" => LocalCanonicalProfile().Replace("offline-run", "foreign-run", StringComparison.Ordinal),
+            "foreign-source" => LocalCanonicalProfile().Replace(new string('a', 64), new string('b', 64), StringComparison.Ordinal),
+            "backend" => LocalCanonicalProfile().Replace("18.6-trixie", "18.5-trixie", StringComparison.Ordinal),
+            "runtime" => LocalCanonicalProfile().Replace("1.18.1@", "1.18.2@", StringComparison.Ordinal),
+            _ => LocalCanonicalProfile().Replace("3600", "86400", StringComparison.Ordinal),
+        };
+        var context = ProbeContext(DateTimeOffset.UtcNow.AddMinutes(1)) with { LocalFunctional = true, CurrentRunId = "offline-run", CurrentSourceMappingHash = new string('a', 64), LocalFunctionalProfileJson = profile, ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(profile))) };
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
     }
 
     [Fact]
@@ -454,12 +670,15 @@ public sealed class CapabilityAndObservabilityCheckpointTests
             ValidUntilUtc = validUntilUtc,
         };
 
-    private sealed class StubCapabilityProbe(string capability, bool passed, bool throws = false)
+    private sealed class StubCapabilityProbe(string capability, bool passed, bool throws = false, Action? observe = null,
+        Func<CancellationToken, Task<AccessTelemetryCapabilityProbeResult>>? execute = null)
         : IAccessTelemetryCapabilityProbe
     {
         public Task<AccessTelemetryCapabilityProbeResult> ProbeAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            observe?.Invoke();
+            if (execute is not null) return execute(cancellationToken);
             return throws
                 ? Task.FromException<AccessTelemetryCapabilityProbeResult>(new InvalidOperationException("probe failed"))
                 : Task.FromResult(new AccessTelemetryCapabilityProbeResult(capability, passed));

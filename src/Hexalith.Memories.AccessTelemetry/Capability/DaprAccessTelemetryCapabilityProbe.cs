@@ -37,6 +37,7 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             bool passed = capability switch
             {
                 nameof(AccessTelemetryCapabilityProfile.StrongCrudAndEtags) => await ProbeStrongCrudAsync(cancellationToken).ConfigureAwait(false),
@@ -74,6 +75,7 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
         string key = ProbeKey("etag");
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             (string? absent, string initialEtag) = await daprClient.GetStateAndETagAsync<string>(
                 optionsProvider.Current.StateStoreName,
                 key,
@@ -85,11 +87,13 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
                 return false;
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             await daprClient.ExecuteStateTransactionAsync(
                 optionsProvider.Current.StateStoreName,
                 [new StateTransactionRequest(key, JsonSerializer.SerializeToUtf8Bytes("probe"), StateOperationType.Upsert, EmptyToNull(initialEtag), PartitionMetadata, StrongFirstWrite)],
                 PartitionMetadata,
                 cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             (string? stored, string etag) = await daprClient.GetStateAndETagAsync<string>(
                 optionsProvider.Current.StateStoreName,
                 key,
@@ -101,6 +105,7 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
                 return false;
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             await daprClient.ExecuteStateTransactionAsync(
                 optionsProvider.Current.StateStoreName,
                 [new StateTransactionRequest(key, JsonSerializer.SerializeToUtf8Bytes("updated"), StateOperationType.Upsert, etag, PartitionMetadata, StrongFirstWrite)],
@@ -108,6 +113,7 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
                 cancellationToken).ConfigureAwait(false);
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await daprClient.ExecuteStateTransactionAsync(
                     optionsProvider.Current.StateStoreName,
                     [new StateTransactionRequest(key, JsonSerializer.SerializeToUtf8Bytes("conflict"), StateOperationType.Upsert, etag, PartitionMetadata, StrongFirstWrite)],
@@ -132,6 +138,7 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
         string second = ProbeKey("tx-b");
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await daprClient.ExecuteStateTransactionAsync(
                 optionsProvider.Current.StateStoreName,
                 [
@@ -140,7 +147,9 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
                 ],
                 PartitionMetadata,
                 cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             string? firstValue = await daprClient.GetStateAsync<string>(optionsProvider.Current.StateStoreName, first, ConsistencyMode.Strong, PartitionMetadata, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             string? secondValue = await daprClient.GetStateAsync<string>(optionsProvider.Current.StateStoreName, second, ConsistencyMode.Strong, PartitionMetadata, cancellationToken).ConfigureAwait(false);
             return firstValue == "a" && secondValue == "b";
         }
@@ -153,6 +162,7 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
 
     private async Task<bool> ProbeActorMetadataAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         DaprMetadata metadata = await daprClient.GetMetadataAsync(cancellationToken).ConfigureAwait(false);
         return metadata.Actors.Any(actor => string.Equals(actor.Type, nameof(AccessTelemetryLifecycleActor), StringComparison.Ordinal));
     }
@@ -167,8 +177,10 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
         };
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await daprClient.SaveStateAsync(optionsProvider.Current.StateStoreName, key, "ttl", StrongFirstWrite, metadata, cancellationToken).ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromMilliseconds(1250), timeProvider, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             string? remaining = await daprClient.GetStateAsync<string>(optionsProvider.Current.StateStoreName, key, ConsistencyMode.Strong, PartitionMetadata, cancellationToken).ConfigureAwait(false);
             return remaining is null;
         }
@@ -185,11 +197,13 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
         Random.Shared.NextBytes(value);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await daprClient.ExecuteStateTransactionAsync(
                 optionsProvider.Current.StateStoreName,
                 [new StateTransactionRequest(key, value, StateOperationType.Upsert, null, PartitionMetadata, StrongFirstWrite)],
                 PartitionMetadata,
                 cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             ReadOnlyMemory<byte> stored = await daprClient.GetByteStateAsync(
                 optionsProvider.Current.StateStoreName,
                 key,
@@ -211,7 +225,10 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
         try
         {
             await Task.WhenAll(WriteProbeAsync(first, cancellationToken), WriteProbeAsync(second, cancellationToken)).ConfigureAwait(false);
-            return !string.IsNullOrWhiteSpace(await daprClient.GetStateAsync<string>(optionsProvider.Current.StateStoreName, first, ConsistencyMode.Strong, PartitionMetadata, cancellationToken).ConfigureAwait(false)) &&
+            cancellationToken.ThrowIfCancellationRequested();
+            string? firstValue = await daprClient.GetStateAsync<string>(optionsProvider.Current.StateStoreName, first, ConsistencyMode.Strong, PartitionMetadata, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return !string.IsNullOrWhiteSpace(firstValue) &&
                 !string.IsNullOrWhiteSpace(await daprClient.GetStateAsync<string>(optionsProvider.Current.StateStoreName, second, ConsistencyMode.Strong, PartitionMetadata, cancellationToken).ConfigureAwait(false));
         }
         finally
@@ -223,6 +240,7 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
 
     private async Task<bool> ProbeComponentMetadataAsync(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         DaprMetadata metadata = await daprClient.GetMetadataAsync(cancellationToken).ConfigureAwait(false);
         return metadata.Components.Any(component =>
             string.Equals(component.Name, optionsProvider.Current.StateStoreName, StringComparison.Ordinal) &&
@@ -236,18 +254,22 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
             optionsProvider.Current.ConfigurationStoreName == AccessTelemetryOptions.RequiredConfigurationStoreName;
 
     private Task WriteProbeAsync(string key, CancellationToken cancellationToken)
-        => daprClient.SaveStateAsync(
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return daprClient.SaveStateAsync(
             optionsProvider.Current.StateStoreName,
             key,
             "writer",
             StrongFirstWrite,
             PartitionMetadata,
             cancellationToken);
+    }
 
     private async Task DeleteProbeKeyAsync(string key, CancellationToken cancellationToken)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             await daprClient.DeleteStateAsync(
                 optionsProvider.Current.StateStoreName,
                 key,

@@ -7,6 +7,7 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Lifecycle;
 
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting.Internal;
 using Microsoft.Extensions.Time.Testing;
 
 using Shouldly;
@@ -33,7 +34,8 @@ public sealed class AccessTelemetryRetentionDisableTests
             null!,
             null!,
             null!,
-            configuration);
+            configuration,
+            new HostingEnvironment());
 
         await actor.ReceiveReminderAsync("bounded-purge", [], TimeSpan.Zero, TimeSpan.FromMinutes(1));
         AccessTelemetryLifecycleActor.IsPurgeEnabled(configuration).ShouldBeFalse();
@@ -66,7 +68,8 @@ public sealed class AccessTelemetryRetentionDisableTests
             new AccessTelemetryRuntimeOptionsProvider(options),
             new FixedEvidenceProvider(),
             TimeProvider.System,
-            configuration);
+            configuration,
+            new HostingEnvironment());
 
         await actor.ReceiveReminderAsync("bounded-purge", [], TimeSpan.Zero, TimeSpan.FromMinutes(1));
         store.DeleteCount.ShouldBe(0);
@@ -135,7 +138,8 @@ public sealed class AccessTelemetryRetentionDisableTests
             new AccessTelemetryRuntimeOptionsProvider(options),
             new FixedEvidenceProvider(),
             TimeProvider.System,
-            configuration);
+            configuration,
+            new HostingEnvironment());
 
         // The test actor has no Dapr state provider, so post-purge bookkeeping fails.
         _ = await Should.ThrowAsync<InvalidOperationException>(() =>

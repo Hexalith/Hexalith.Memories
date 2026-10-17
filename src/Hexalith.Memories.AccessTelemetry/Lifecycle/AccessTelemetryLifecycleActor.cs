@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.AccessTelemetry.Lifecycle;
 
+using System.Globalization;
+
 using Dapr.Actors.Runtime;
 
 using Hexalith.Memories.AccessTelemetry.Capability;
@@ -25,6 +27,8 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
     private readonly ILifecycleClockEvidenceProvider _clockEvidence;
     private readonly TimeProvider _timeProvider;
     private readonly IConfiguration _configuration;
+    private readonly IHostEnvironment _environment;
+    private bool _localActivationPending;
 
     /// <summary>Initializes the fixed lifecycle actor.</summary>
     public AccessTelemetryLifecycleActor(
@@ -35,7 +39,8 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         AccessTelemetryRuntimeOptionsProvider optionsProvider,
         ILifecycleClockEvidenceProvider clockEvidence,
         TimeProvider timeProvider,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IHostEnvironment environment)
         : base(host)
     {
         _processor = processor;
@@ -45,6 +50,7 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         _clockEvidence = clockEvidence;
         _timeProvider = timeProvider;
         _configuration = configuration;
+        _environment = environment;
     }
 
     /// <inheritdoc/>
@@ -53,6 +59,16 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         EnsureGlobalActor();
         ArgumentNullException.ThrowIfNull(request);
         IReadOnlyList<AccessTelemetryRecord> records = request.Records;
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return new AccessTelemetryWriteBatchResponse { Accepted = 0, Rejected = records.Count, Reason = AccessTelemetryReason.ConfigurationInvalid };
+        }
+
+        await EnsureLocalActivationAsync().ConfigureAwait(false);
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return new AccessTelemetryWriteBatchResponse { Accepted = 0, Rejected = records.Count, Reason = AccessTelemetryReason.ConfigurationInvalid };
+        }
         if (!_optionsProvider.IsReady || !_runtimeGate.Current.AllowsWrites)
         {
             return new AccessTelemetryWriteBatchResponse { Accepted = 0, Rejected = records.Count, Reason = _runtimeGate.Current.Reason };
@@ -115,13 +131,28 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             clock.TrustedUnixMilliseconds ?? request.ClockAttestation.NotBeforeUnixMilliseconds);
         foreach (AccessTelemetryRecord record in records)
         {
+            if (!IsLocalBackgroundWorkEnabled())
+            {
+                reason = AccessTelemetryReason.ConfigurationInvalid;
+                break;
+            }
+
             if (_timeProvider.GetUtcNow().ToUnixTimeMilliseconds() >= request.ClockAttestation.ExpiresAtUnixMilliseconds)
             {
                 reason = AccessTelemetryReason.ClockUntrusted;
                 break;
             }
 
-            AccessTelemetryPersistenceResult result = await _processor.PersistAsync(record, trustedNow, CancellationToken.None).ConfigureAwait(false);
+            AccessTelemetryPersistenceResult result;
+            try
+            {
+                result = await _processor.PersistAsync(record, trustedNow, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (AccessTelemetryContractException) when (!IsLocalBackgroundWorkEnabled())
+            {
+                reason = AccessTelemetryReason.ConfigurationInvalid;
+                break;
+            }
             if (result.Status is AccessTelemetryPersistenceStatus.Inserted or AccessTelemetryPersistenceStatus.Idempotent)
             {
                 accepted++;
@@ -137,6 +168,11 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             }
         }
 
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return new AccessTelemetryWriteBatchResponse { Accepted = accepted, Rejected = records.Count - accepted, Reason = AccessTelemetryReason.ConfigurationInvalid };
+        }
+
         AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
         AccessTelemetryLifecycleActorState updated = state with
         {
@@ -144,6 +180,11 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             Health = reason == AccessTelemetryReason.RecordIdConflict ? AccessTelemetryHealthState.Unhealthy : state.Health,
             HealthReason = reason == AccessTelemetryReason.RecordIdConflict ? reason : state.HealthReason,
         };
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return new AccessTelemetryWriteBatchResponse { Accepted = accepted, Rejected = records.Count - accepted, Reason = AccessTelemetryReason.ConfigurationInvalid };
+        }
+
         await StateManager.SetStateAsync(StateName, updated).ConfigureAwait(false);
         AccessTelemetryLifecycleMetrics.RecordCapacity(updated.RetainedRecordCount, AdmittedCapacity());
         return new AccessTelemetryWriteBatchResponse { Accepted = accepted, Rejected = records.Count - accepted, Reason = reason };
@@ -154,6 +195,17 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
     {
         EnsureGlobalActor();
         ArgumentNullException.ThrowIfNull(request);
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return new WriterHeartbeatResponse
+            {
+                Accepted = false,
+                Reason = AccessTelemetryReason.ConfigurationInvalid,
+                ActiveGeneration = _optionsProvider.Current.MarkerKeyGeneration,
+            };
+        }
+
+        await EnsureLocalActivationAsync().ConfigureAwait(false);
         WriterHeartbeat heartbeat = request.Heartbeat;
         AccessTelemetryOptions options = _optionsProvider.Current;
         AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
@@ -230,6 +282,17 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             ActiveMarkerKeyGeneration = rotation?.ActiveGeneration ?? activeGeneration,
             StagedMarkerKeyGeneration = rotation?.StagedGeneration,
         };
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return new WriterHeartbeatResponse
+            {
+                Accepted = false,
+                Reason = AccessTelemetryReason.ConfigurationInvalid,
+                ActiveGeneration = activeGeneration,
+                StagedGeneration = state.StagedMarkerKeyGeneration,
+            };
+        }
+
         await StateManager.SetStateAsync(StateName, updated).ConfigureAwait(false);
         return new WriterHeartbeatResponse
         {
@@ -244,13 +307,14 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
     public async Task PurgeAsync()
     {
         EnsureGlobalActor();
-        if (!IsPurgeEnabled(_configuration))
+        if (!IsPurgeEnabled(_configuration, _timeProvider, _environment.EnvironmentName))
         {
             return;
         }
 
+        await EnsureLocalActivationAsync().ConfigureAwait(false);
         DateTimeOffset trustedNow = await GetTrustedNowAsync().ConfigureAwait(false);
-        if (!IsPurgeEnabled(_configuration))
+        if (!IsPurgeEnabled(_configuration, _timeProvider, _environment.EnvironmentName))
         {
             return;
         }
@@ -258,7 +322,12 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
         AccessTelemetryPurgeResult result = await _processor.PurgeAsync(
             trustedNow,
             CancellationToken.None,
-            () => IsPurgeEnabled(_configuration)).ConfigureAwait(false);
+            () => IsPurgeEnabled(_configuration, _timeProvider, _environment.EnvironmentName)).ConfigureAwait(false);
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return;
+        }
+
         AccessTelemetryLifecycleMetrics.RecordReminder(succeeded: true);
         AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
         AccessTelemetryLifecycleActorState updated = state with
@@ -272,6 +341,11 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             Health = _processor.Health,
             HealthReason = _processor.HealthReason,
         };
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return;
+        }
+
         await StateManager.SetStateAsync(StateName, updated).ConfigureAwait(false);
         AccessTelemetryLifecycleMetrics.RecordCapacity(updated.RetainedRecordCount, AdmittedCapacity());
         AccessTelemetryLifecycleMetrics.RecordExpiryState(
@@ -281,6 +355,11 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
                 ? null
                 : DateTimeOffset.FromUnixTimeMilliseconds(updated.LastPurgeUnixMilliseconds.Value));
         AccessTelemetryOptions options = _optionsProvider.Current;
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return;
+        }
+
         _ = await RegisterReminderAsync(
             PurgeReminderName,
             [],
@@ -288,8 +367,46 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
             options.PurgeInterval).ConfigureAwait(false);
     }
 
-    internal static bool IsPurgeEnabled(IConfiguration configuration)
-        => configuration.GetValue<bool>("AccessTelemetryLifecycle:Enabled");
+    /// <summary>Checks live disable control and, only for local selected intent, the existing run-bound gate.</summary>
+    internal static bool IsPurgeEnabled(
+        IConfiguration configuration,
+        TimeProvider? timeProvider = null,
+        string? environmentName = null)
+    {
+        if (!bool.TryParse(configuration["AccessTelemetryLifecycle:Enabled"], out bool enabled) || !enabled)
+        {
+            return false;
+        }
+
+        string localRun = configuration["AccessTelemetryLifecycle:LocalFunctionalRunId"] ?? string.Empty;
+        string localProfile = configuration["AccessTelemetryLifecycle:LocalFunctionalProfileJson"] ?? string.Empty;
+        string localSource = configuration["AccessTelemetryLifecycle:LocalFunctionalSourceMappingHash"] ?? string.Empty;
+        string gateProfile = configuration["AccessTelemetryQualification:LocalProfileHash"] ?? string.Empty;
+        if (localRun.Length == 0 && localProfile.Length == 0 && localSource.Length == 0 && gateProfile.Length == 0)
+        {
+            return true;
+        }
+
+        _ = TimeSpan.TryParse(configuration["AccessTelemetryLifecycle:Retention"], CultureInfo.InvariantCulture, out TimeSpan retention);
+        _ = DateTimeOffset.TryParse(configuration["AccessTelemetryLifecycle:CapabilityEvidence:ValidUntilUtc"], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTimeOffset deadline);
+        var options = new AccessTelemetryOptions
+        {
+            Enabled = true,
+            LocalFunctionalRunId = localRun,
+            LocalFunctionalProfileJson = localProfile,
+            LocalFunctionalSourceMappingHash = localSource,
+            ComponentProfileHash = configuration["AccessTelemetryLifecycle:ComponentProfileHash"] ?? string.Empty,
+            DeploymentId = configuration["AccessTelemetryLifecycle:DeploymentId"] ?? string.Empty,
+            Retention = retention,
+        };
+        return AccessTelemetryQualificationGateFile.IsLocalEnabled(
+            options, environmentName, configuration["HEXALITH_G4_RUN_ID"], configuration["HEXALITH_SOURCE_MAPPING_HASH"],
+            gateProfile, configuration["AccessTelemetryQualification:GatePath"], deadline, (timeProvider ?? TimeProvider.System).GetUtcNow());
+    }
+
+    /// <summary>Shares local mutation admission with the adapter's later transaction boundaries.</summary>
+    internal static bool IsLocalBackgroundWorkEnabled(IConfiguration configuration, TimeProvider timeProvider, string? environmentName)
+        => !HasLocalGateIntent(configuration) || IsPurgeEnabled(configuration, timeProvider, environmentName);
 
     /// <inheritdoc/>
     public async Task<AccessTelemetryInspectionResponse> InspectAsync()
@@ -512,6 +629,12 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
     protected override async Task OnActivateAsync()
     {
         EnsureGlobalActor();
+        _localActivationPending = HasLocalGateIntent(_configuration);
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return;
+        }
+
         DateTimeOffset trustedNow = await GetTrustedNowAsync().ConfigureAwait(false);
         AccessTelemetryOptions options = _optionsProvider.Current;
         AccessTelemetryLifecycleActorState state = await GetStateAsync().ConfigureAwait(false);
@@ -542,6 +665,11 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
                 trustedNow.ToUnixTimeMilliseconds());
         }
 
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return;
+        }
+
         await StateManager.SetStateAsync(
             StateName,
             state with
@@ -555,12 +683,35 @@ internal sealed class AccessTelemetryLifecycleActor : Actor, IAccessTelemetryLif
                 HealthReason = configurationChanged ? AccessTelemetryReason.None : state.HealthReason,
             }).ConfigureAwait(false);
 
+        if (!IsLocalBackgroundWorkEnabled())
+        {
+            return;
+        }
+
         _ = await RegisterReminderAsync(
             PurgeReminderName,
             [],
             options.PurgeInterval,
             options.PurgeInterval).ConfigureAwait(false);
+        _localActivationPending = false;
     }
+
+    private async Task EnsureLocalActivationAsync()
+    {
+        if (_localActivationPending && IsLocalBackgroundWorkEnabled())
+        {
+            await OnActivateAsync().ConfigureAwait(false);
+        }
+    }
+
+    private bool IsLocalBackgroundWorkEnabled()
+        => IsLocalBackgroundWorkEnabled(_configuration, _timeProvider, _environment.EnvironmentName);
+
+    private static bool HasLocalGateIntent(IConfiguration configuration)
+        => !string.IsNullOrEmpty(configuration["AccessTelemetryLifecycle:LocalFunctionalRunId"]) ||
+            !string.IsNullOrEmpty(configuration["AccessTelemetryLifecycle:LocalFunctionalProfileJson"]) ||
+            !string.IsNullOrEmpty(configuration["AccessTelemetryLifecycle:LocalFunctionalSourceMappingHash"]) ||
+            !string.IsNullOrEmpty(configuration["AccessTelemetryQualification:LocalProfileHash"]);
 
     private void EnsureGlobalActor()
     {

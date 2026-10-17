@@ -10,6 +10,29 @@ using System.Text.RegularExpressions;
 /// <summary>Strict validator for the bounded lifecycle configuration contract.</summary>
 public static partial class AccessTelemetryOptionsValidator
 {
+    /// <summary>Checks the complete canonical local profile against the current run and source identity.</summary>
+    /// <param name="profile">The canonical profile bytes.</param>
+    /// <param name="hash">The bound profile digest.</param>
+    /// <param name="runId">The current runner identity.</param>
+    /// <param name="sourceHash">The current source mapping digest.</param>
+    /// <returns>True only for the exact scoped local PostgreSQL/runtime profile.</returns>
+    public static bool IsLocalFunctionalProfileValid(string profile, string hash, string runId, string sourceHash)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(runId) || !LowerHex64Regex().IsMatch(sourceHash)) return false;
+            string expected = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                purpose = "local-functional-retention", runId, sourceMappingHash = sourceHash, componentType = "state.postgresql/v2",
+                runtimeImage = "ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+                postgresqlImage = "docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+                sslMode = "verify-full", retentionSeconds = 3600, qualificationCredit = false,
+            });
+            return profile == expected && hash == Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(expected)));
+        }
+        catch (ArgumentException) { return false; }
+    }
+
     /// <summary>Validates options for the named host environment.</summary>
     /// <param name="options">Lifecycle options.</param>
     /// <param name="environmentName">Host environment.</param>
@@ -20,6 +43,13 @@ public static partial class AccessTelemetryOptionsValidator
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(environmentName);
+
+        bool localIntent = !string.IsNullOrEmpty(options.LocalFunctionalRunId) || !string.IsNullOrEmpty(options.LocalFunctionalProfileJson) || !string.IsNullOrEmpty(options.LocalFunctionalSourceMappingHash);
+        if (localIntent && (!string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase) || options.LocalFunctionalRunId != options.DeploymentId || options.Retention != TimeSpan.FromHours(1)
+            || !IsLocalFunctionalProfileValid(options.LocalFunctionalProfileJson, options.ComponentProfileHash, options.LocalFunctionalRunId, options.LocalFunctionalSourceMappingHash)))
+        {
+            return new AccessTelemetryOptionsValidationResult { IsValid = false, AllowsLifecycleWrites = false, Reason = AccessTelemetryReason.ConfigurationInvalid, Errors = ["Local profile requires complete matching Development run/source/pin/retention binding."] };
+        }
 
         if (!options.Enabled)
         {
@@ -33,6 +63,11 @@ public static partial class AccessTelemetryOptionsValidator
 
         bool production = string.Equals(environmentName, "Production", StringComparison.OrdinalIgnoreCase);
         List<string> errors = [];
+        if (!string.IsNullOrEmpty(options.LocalFunctionalRunId) && !IsLocalFunctionalProfileValid(options.LocalFunctionalProfileJson, options.ComponentProfileHash, options.LocalFunctionalRunId, options.LocalFunctionalSourceMappingHash))
+        {
+            errors.Add("Local functional profile must match the current run, source, immutable pins and one-hour retention.");
+        }
+
         if (!string.IsNullOrEmpty(options.LocalFunctionalRunId) &&
             (!string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase) ||
              options.LocalFunctionalRunId != options.DeploymentId || options.Retention != TimeSpan.FromHours(1)))

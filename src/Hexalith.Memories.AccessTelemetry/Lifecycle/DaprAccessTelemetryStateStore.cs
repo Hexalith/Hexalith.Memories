@@ -14,7 +14,11 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.AccessTelemetry.Observability;
 
 /// <summary>Dapr state adapter with strong reads and explicit transactional expiry buckets.</summary>
-internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeProvider timeProvider) : IAccessTelemetryStateStore
+internal sealed class DaprAccessTelemetryStateStore(
+    DaprClient daprClient,
+    TimeProvider timeProvider,
+    IConfiguration? configuration = null,
+    IHostEnvironment? environment = null) : IAccessTelemetryStateStore
 {
     private const string ExpiryCatalogKey = "expiry-catalog";
     private const int MaxMinutesPerDueScan = 3;
@@ -128,6 +132,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
             metadata: PartitionMetadata,
             options: StrongFirstWrite));
 
+        EnsureLocalMutationEnabled();
         await daprClient.ExecuteStateTransactionAsync(
             StoreName,
             operations,
@@ -136,6 +141,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
         AccessTelemetryLifecycleMetrics.RecordStateOperations(operations.Count);
         return AccessTelemetryStoreWriteStatus.Inserted;
     }
+
 
     /// <inheritdoc/>
     public async Task<(IReadOnlyList<AccessTelemetryExpiryEntry> Entries, bool HasMoreDueEntries)> GetDueEntriesAsync(
@@ -420,6 +426,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
             PartitionMetadata,
             StrongFirstWrite));
 
+        EnsureLocalMutationEnabled();
         await daprClient.ExecuteStateTransactionAsync(
             StoreName,
             operations,
@@ -457,6 +464,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
         }
     }
 
+
     private async Task<(AccessTelemetryExpiryCatalog Catalog, string ETag)> GetOrCreateCatalogAsync(
         CancellationToken cancellationToken)
     {
@@ -468,6 +476,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
             cancellationToken).ConfigureAwait(false);
         if (catalog is null)
         {
+            EnsureLocalMutationEnabled();
             await daprClient.ExecuteStateTransactionAsync(
                 StoreName,
                 [new StateTransactionRequest(
@@ -496,6 +505,7 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
 
         return (catalog, catalogEtag);
     }
+
 
     private async Task RemoveBucketEntryAsync(
         AccessTelemetryExpiryBucket bucket,
@@ -541,6 +551,14 @@ internal sealed class DaprAccessTelemetryStateStore(DaprClient daprClient, TimeP
             PartitionMetadata,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         AccessTelemetryLifecycleMetrics.RecordStateOperations(1);
+    }
+
+    private void EnsureLocalMutationEnabled()
+    {
+        if (configuration is not null && !AccessTelemetryLifecycleActor.IsLocalBackgroundWorkEnabled(configuration, timeProvider, environment?.EnvironmentName))
+        {
+            throw new AccessTelemetryContractException("selected_local_gate_closed");
+        }
     }
 
     private static string GetBucketKey(long expiryMinute, int shard)

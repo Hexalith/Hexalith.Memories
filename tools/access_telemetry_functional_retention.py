@@ -10,6 +10,7 @@ and semantic validators confer no live or full qualification credit.
 from __future__ import annotations
 
 from contextlib import ExitStack
+from concurrent.futures import ThreadPoolExecutor
 import configparser
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -347,6 +348,20 @@ def fixed_expired_physical_query(run_id: str, segment: str) -> str:
     )
 
 
+def fixed_physical_bound_query(run_id: str) -> str:
+    """Read actual A-row contents/expiry and authenticated PostgreSQL session time only."""
+    keys = fixed_record_keys(run_id, "cohort-a")
+    values = ",".join("'memories-access-telemetry||" + key + "'" for key in keys)
+    return ("SELECT json_build_object('serverVersionNum',current_setting('server_version_num'),"
+            "'ssl',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),"
+            "'tlsVersion',(SELECT version FROM pg_stat_ssl WHERE pid=pg_backend_pid()),"
+            "'role',current_user,'readOnly',current_setting('default_transaction_read_only'),"
+            "'observedUtcMs',floor(extract(epoch FROM clock_timestamp())*1000)::bigint,"
+            "'rows',(SELECT coalesce(json_agg(json_build_object('recordId',convert_from(value,'UTF8')::jsonb->>'recordId',"
+            "'record',convert_from(value,'UTF8')::jsonb,'expiresUtcMs',floor(extract(epoch FROM expires_at)*1000)::bigint) ORDER BY key),'[]'::json) "
+            "FROM access_telemetry.lifecycle_state WHERE key IN (" + values + ")));")
+
+
 def fixed_workload_script(run_id: str, segment: str, emitted_ms: int) -> str:
     """Use the existing bodyless logger endpoint with stable retry headers."""
     fixed_record_keys(run_id, segment)
@@ -584,7 +599,12 @@ def current_authority(plan_path: Path, approved_sha256: str, *, source_root: Pat
 
 def _exclusive_json(path: Path, value: dict) -> bytes:
     raw = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
-    _require(len(raw) <= 1048576 and not path.parent.is_symlink(), "output-path")
+    return _exclusive_bytes(path, raw)
+
+
+def _exclusive_bytes(path: Path, raw: bytes) -> bytes:
+    """Use held, non-link directory descriptors for every native output type."""
+    _require(path.is_absolute() and len(raw) <= 1048576 and not path.parent.is_symlink(), "output-path")
     with ExitStack() as descriptors:
         parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         descriptors.callback(os.close, parent)
@@ -1212,14 +1232,14 @@ def run_selected_platform_retention() -> int:
         _require(observation["isComplete"] is True and observation["runId"] == plan["runId"] and observation["moduleId"] == "memories" and observation["runtimeArtifactVerified"] is True, "selected-observations-unavailable")
         profile = json.loads(observation["profileJson"])
         _require(_sha(observation["profileJson"].encode()) == observation["profileHash"] and profile["purpose"] == "local-functional-retention" and profile["runId"] == plan["runId"] and profile["sourceMappingHash"] == plan["sourceMappingHash"] and profile["retentionSeconds"] == 3600 and profile["sslMode"] == "verify-full" and profile["qualificationCredit"] is False, "selected-profile")
-        _require(profile["runtimeImage"] == next(image["reference"] for image in artifact_catalog()["images"] if image["id"] == "daprd") and profile["postgresqlImage"] == next(image["reference"] for image in artifact_catalog()["images"] if image["id"] == "postgresql") and observation["observedBackendIdentity"].startswith(profile["postgresqlImage"] + "/180006|t|TLSv1."), "selected-backend")
+        _require(profile["runtimeImage"] == next(image["reference"] for image in artifact_catalog()["images"] if image["id"] == "daprd") and profile["postgresqlImage"] == next(image["reference"] for image in artifact_catalog()["images"] if image["id"] == "postgresql") and re.fullmatch(re.escape(profile["postgresqlImage"]) + r"/180006\|t\|TLSv1\.[23]\|telemetry_observer\|on/sha256:[a-f0-9]{64}", observation["observedBackendIdentity"]) is not None, "selected-backend")
         _require(_HEX.fullmatch(observation["observedCandidateHash"]) and _HEX.fullmatch(observation["observedRuntimeHash"]) and observation["loadedArtifactHashes"], "selected-loaded-artifacts")
         _require(observation["serviceRetentionSeconds"] == {name: 3600 for name in ("memories", "memories-access-telemetry", "memories-access-telemetry-clock")}, "selected-observed-retention")
         mapping_path = root / "source-mapping" / "mapping.json"
         mapping = json.loads(_private(str(mapping_path), str(root)))
         mapping_payload = {key: mapping[key] for key in ("Mode", "Root", "ActiveModule", "Entries", "HasGit", "PlatformIdentity", "IdentityFindings")}
         _require(_sha(json.dumps(mapping_payload, separators=(",", ":"), ensure_ascii=True).encode()) == plan["sourceMappingHash"] == os.environ["HEXALITH_SOURCE_MAPPING_HASH"], "selected-mapping-hash")
-        _require(mapping["Root"] == str(candidate.parent.parent) and mapping["Mode"] == 0 and [entry for entry in mapping["Entries"] if entry["Identity"] == "Hexalith.Memories"] == [{"Identity": "Hexalith.Memories", "Origin": "source", "Path": str(candidate)}], "selected-direct-mapping")
+        _require(mapping["Root"] == str(candidate.parent.parent) and mapping["Mode"] == "source" and [entry for entry in mapping["Entries"] if entry["Identity"] == "Hexalith.Memories"] == [{"Identity": "Hexalith.Memories", "Origin": "source", "Path": str(candidate)}], "selected-direct-mapping")
         aggregate = [{"Key": key, "Value": value} for key, value in sorted(observation["loadedArtifactHashes"].items())]
         _require(_sha(json.dumps(aggregate, separators=(",", ":")).encode()) == observation["observedCandidateHash"], "selected-loaded-aggregate")
         required_entries = {"memories": "Hexalith.Memories.Server.dll", "memories-access-telemetry": "Hexalith.Memories.AccessTelemetry.dll", "memories-access-telemetry-clock": "Hexalith.Memories.AccessTelemetry.Clock.dll"}
@@ -1244,8 +1264,8 @@ def run_selected_platform_retention() -> int:
         result.update(consumer.execute())
         _exclusive_json(root / "native-tests" / "functional-observations.json", result)
     except _SEMANTIC_FAILURES as error:
+        result["status"] = "rejected"
         result["reason"] = str(error) if isinstance(error, FunctionalRetentionError) else "functional-selected-input-refused"
-    print(json.dumps(result, sort_keys=True))
     if report is not None:
         try:
             # A native report is a test outcome. Platform's subsequent real
@@ -1256,12 +1276,11 @@ def run_selected_platform_retention() -> int:
             xml.SubElement(results, "UnitTestResult", testName="PostgreSQL functional retention", outcome="Passed" if passed else "Failed")
             summary = xml.SubElement(document, "ResultSummary", outcome="Completed" if passed else "Failed")
             xml.SubElement(summary, "Counters", total="1", executed="1", passed="1" if passed else "0", failed="0" if passed else "1", notExecuted="0")
-            _canonical_path(str(report.parent))
-            with report.open("xb") as output:
-                os.fchmod(output.fileno(), 0o600)
-                output.write(xml.tostring(document, encoding="utf-8", xml_declaration=True))
+            _exclusive_bytes(report, xml.tostring(document, encoding="utf-8", xml_declaration=True))
         except _SEMANTIC_FAILURES:
-            return 1
+            result["status"] = "rejected"
+            result["reason"] = "functional-selected-native-output-refused"
+    print(json.dumps(result, sort_keys=True))
     return 0 if result["status"] == "functional-observations-passed" else 1
 
 
@@ -1276,6 +1295,7 @@ class _PlatformRetentionConsumer:
         self.segments = {}
         self.ttl_absent = set()
         self.before_sequence = 0
+        self.full_records = {}
         endpoints = observation["endpoints"]
         _require(set(endpoints) == {name + suffix for name in ("memories", "memories-access-telemetry", "memories-access-telemetry-clock") for suffix in ("", "/dapr")}, "selected-endpoints")
         for address in endpoints.values():
@@ -1316,15 +1336,37 @@ class _PlatformRetentionConsumer:
         keys = fixed_record_keys(run_id, segment)
         if buckets:
             keys = tuple(sorted({f"expiry-bucket/{(emitted + ordinal + 3600000) // 60000:012d}/{int(key.split('/')[1]):02d}" for ordinal, key in enumerate(keys)}))
-        return [{"key": key, "value": self.request("memories-access-telemetry/dapr", "/v1.0/state/access-telemetry-store/" + urllib.parse.quote(key, safe="") + "?consistency=strong&metadata.partitionKey=access-telemetry", missing=True)} for key in keys]
+        def read(key):
+            self.check()
+            return {"key": key, "value": self.request("memories-access-telemetry/dapr", "/v1.0/state/access-telemetry-store/" + urllib.parse.quote(key, safe="") + "?consistency=strong&metadata.partitionKey=access-telemetry", missing=True)}
+        observed = []
+        with ThreadPoolExecutor(max_workers=16) as reads:
+            for offset in range(0, len(keys), 16):
+                self.check()
+                observed.extend(reads.map(read, keys[offset:offset + 16]))
+        return observed
 
     def cohort(self, run_id, segment):
         records = []
+        full = {}
         for item in self.states(run_id, segment):
             record = item["value"]
             _require(type(record) is dict, "selected-record-missing")
+            full[record["recordId"]] = json.loads(json.dumps(record, sort_keys=True))
             records.append({"recordId": record["recordId"], "envelopeHash": record["envelopeHash"], **{output: int(datetime.fromisoformat(record[source].replace("Z", "+00:00")).timestamp() * 1000) for output, source in (("emittedUtcMs", "emittedAtUtc"), ("expiresUtcMs", "expiresAtUtc"), ("acceptedUtcMs", "acceptedAtUtc"))}})
+        _require(segment not in self.full_records or self.full_records[segment] == full, "selected-canonical-cohort-changed")
+        self.full_records.setdefault(segment, full)
         return {"consistency": "strong", "records": records}
+
+    def physical(self, run_id):
+        self.check()
+        argv = ["docker", "exec", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/run/retention/ca.pem", "--env", "PGPASSFILE=/run/retention/pgpass", self.observation["postgresqlContainerId"], "psql", "-h", "127.0.0.1", "-w", "-XAt", "-U", "telemetry_observer", "-d", "telemetry", "-c", fixed_physical_bound_query(run_id)]
+        physical = subprocess.run(argv, capture_output=True, timeout=10, check=True)
+        _require(len(physical.stdout) + len(physical.stderr) <= 1048576, "selected-postgres-output-limit")
+        value = json.loads(physical.stdout)
+        _require(value["serverVersionNum"] == "180006" and value["ssl"] is True and value["tlsVersion"] in {"TLSv1.2", "TLSv1.3"} and value["role"] == "telemetry_observer" and value["readOnly"] == "on", "selected-postgres-session")
+        _require(type(value["observedUtcMs"]) is int and abs(value["observedUtcMs"] - int(time.time() * 1000)) <= 1000 and type(value["rows"]) is list, "selected-postgres-clock")
+        return value
 
     def actor(self):
         value = self.request("memories-access-telemetry/dapr", "/v1.0/actors/AccessTelemetryLifecycleActor/global/state/lifecycle-control")
@@ -1340,6 +1382,8 @@ class _PlatformRetentionConsumer:
     def execute(self):
         run_id = self.plan["runId"]
         _require(_IDENTITY.fullmatch(run_id) is not None, "selected-run-id")
+        preflight = self.physical(run_id)
+        _require(not preflight["rows"], "selected-preflight-rows-present")
         self.before_sequence = self.actor()["ReminderSequence"]
         cohorts, clocks = {}, {}
         writer = None
@@ -1357,6 +1401,14 @@ class _PlatformRetentionConsumer:
             _require(writer is None or observed_writer == writer, "selected-writer-drift")
             writer = observed_writer
             cohorts[segment] = validate_cohort(self.cohort(run_id, segment), run_id=run_id, segment=segment, emitted_ms=self.segments[segment])
+        self.wait(self.segments["cohort-a"] + 3540000, clocks["cohort-a"] + 3540)
+        validate_cohort(self.cohort(run_id, "cohort-a"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
+        bound = self.physical(run_id)
+        bound_rows = {row["recordId"]: row for row in bound["rows"]}
+        _require(len(bound["rows"]) == len(bound_rows) == 125 and set(bound_rows) == set(cohorts["cohort-a"]), "selected-ttl-bound-missing")
+        for identity, row in bound_rows.items():
+            expiry = cohorts["cohort-a"][identity]["expiresUtcMs"]
+            _require(row["record"] == self.full_records["cohort-a"][identity] and type(row["expiresUtcMs"]) is int and expiry <= row["expiresUtcMs"] <= expiry + 900000 and bound["observedUtcMs"] < expiry, "selected-ttl-bound-drift")
         self.wait(self.segments["cohort-a"] + 3590000, clocks["cohort-a"] + 3590)
         validate_cohort(self.cohort(run_id, "cohort-a"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
         self.wait(self.segments["cohort-a"] + 3600124, clocks["cohort-a"] + 3600.124)
@@ -1365,19 +1417,18 @@ class _PlatformRetentionConsumer:
             ids = _qualification_record_ids(run_id, "cohort-a")
             absent = [record_id for record_id, item in zip(ids, self.states(run_id, "cohort-a")) if item["value"] is None]
             self.check()
-            # Fixed SELECT only, against the actual run-labelled container. No
-            # shell, SQL, executable, endpoint or database comes from caller input.
-            argv = ["docker", "exec", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/run/retention/ca.pem", "--env", "PGPASSFILE=/run/retention/pgpass", self.observation["postgresqlContainerId"], "psql", "-w", "-XAt", "-U", "telemetry_observer", "-d", "telemetry", "-c", fixed_expired_physical_query(run_id, "cohort-a")]
-            physical = subprocess.run(argv, capture_output=True, timeout=10, check=True)
-            _require(len(physical.stdout) + len(physical.stderr) <= 1048576, "selected-postgres-output-limit")
-            expired = json.loads(physical.stdout)["expiredRecordIds"]
-            _require(type(expired) is list and set(expired) <= set(ids), "selected-physical-attribution")
-            self.ttl_absent.update(set(absent) & set(expired))
+            physical = self.physical(run_id)
+            for row in physical["rows"]:
+                _require(row["recordId"] in bound_rows and row == bound_rows[row["recordId"]], "selected-ttl-bound-drift")
+            # Local evidence proves actual pre-expiry stored-row/TTL binding,
+            # elapsed PostgreSQL expiry and strong absence. It does not identify
+            # a physical deletion mechanism or claim full reclamation proof.
+            self.ttl_absent.update(identity for identity in absent if physical["observedUtcMs"] >= bound_rows[identity]["expiresUtcMs"])
             indexed = {entry["recordId"] for bucket in self.states(run_id, "cohort-a", buckets=True) if bucket["value"] is not None for entry in bucket["value"]["entries"]}
             actor = self.actor()
             observation = {"consistency": "strong", "absentRecordIds": absent, "removedIndexIds": [record_id for record_id in ids if record_id not in indexed], "reminderSequenceBefore": self.before_sequence, "reminderSequenceAfter": actor["ReminderSequence"], "progressObservedUtcMs": actor["LastPurgeUnixMilliseconds"] or 0, "actorDeletedRecordIds": [], "ttlAbsentRecordIds": sorted(self.ttl_absent)}
             passed = validate_purge(observation, cohorts["cohort-a"], now_ms=int(time.time() * 1000))
             validate_cohort(self.cohort(run_id, "cohort-b"), run_id=run_id, segment="cohort-b", emitted_ms=self.segments["cohort-b"], expected=cohorts["cohort-b"])
             if passed:
-                return {"status": "functional-observations-passed", "runId": run_id, "profileSha256": self.observation["profileHash"], "cohorts": cohorts, "purge": observation, "lifecycleOutcome": "pending-real-Platform-outcome"}
+                return {"status": "functional-observations-passed", "runId": run_id, "profileSha256": self.observation["profileHash"], "cohorts": cohorts, "canonicalRecords": self.full_records, "cohortClocks": {segment: {"utcMs": self.segments[segment], "monotonicSeconds": clocks[segment]} for segment in clocks}, "ttlEvidence": {"claim": "local-pre-expiry-row-and-ttl-bound-plus-elapsed-postgresql-clock-and-strong-absence", "preflight": preflight, "preExpiry": bound, "lastObservation": physical}, "purge": observation, "lifecycleOutcome": "pending-real-Platform-outcome"}
             self.wait(int(time.time() * 1000) + 30000, time.monotonic() + 30)

@@ -11,6 +11,12 @@ internal sealed record AccessTelemetryCapabilityProbeContext
     /// <summary>Gets whether this is solely a Development/run-owned functional startup evaluation.</summary>
     public bool LocalFunctional { get; init; }
 
+    /// <summary>Gets the current runner identity, independently of the profile bytes.</summary>
+    public string CurrentRunId { get; init; } = string.Empty;
+
+    /// <summary>Gets the current runner source mapping digest.</summary>
+    public string CurrentSourceMappingHash { get; init; } = string.Empty;
+
     /// <summary>Gets the canonical local-purpose profile; empty for full qualification.</summary>
     public string LocalFunctionalProfileJson { get; init; } = string.Empty;
 

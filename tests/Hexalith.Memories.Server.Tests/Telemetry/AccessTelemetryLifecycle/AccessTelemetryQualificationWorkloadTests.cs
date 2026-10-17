@@ -883,9 +883,17 @@ public sealed class AccessTelemetryQualificationWorkloadTests
     [InlineData("Development", false, true, 10, false)]
     [InlineData("Development", false, false, 16, false)]
     [InlineData("Development", false, false, -1, false)]
-    public void LocalGateRequiresOwnedRunAndShortLocalProfile(string environmentName, bool foreignRun, bool fullProfile, int minutes, bool expected)
+    public async Task LocalGateRequiresOwnedRunAndShortLocalProfile(string environmentName, bool foreignRun, bool fullProfile, int minutes, bool expected)
     {
-        string profile = fullProfile ? Pg2ProfileSha256 : new string('a', 64);
+        string sourceHash = new('a', 64);
+        string canonical = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            purpose = "local-functional-retention", runId = "owned-run", sourceMappingHash = sourceHash, componentType = "state.postgresql/v2",
+            runtimeImage = "ghcr.io/dapr/daprd:1.18.1@sha256:b7f7d296f01f0b4b82bf3c5f087ecf26165ce08caf3e87f94b8c72b9e11873f8",
+            postgresqlImage = "docker.io/library/postgres:18.6-trixie@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+            sslMode = "verify-full", retentionSeconds = 3600, qualificationCredit = false,
+        });
+        string profile = fullProfile ? Pg2ProfileSha256 : Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical)));
         string path = WriteGate(Now.AddMinutes(minutes), profile);
         try
         {
@@ -896,11 +904,53 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 ["AccessTelemetryQualification:GatePath"] = path,
                 ["AccessTelemetryQualification:LocalProfileHash"] = profile,
                 ["AccessTelemetryLifecycle:ComponentProfileHash"] = profile,
+                ["AccessTelemetryLifecycle:Enabled"] = "true",
+                ["AccessTelemetryLifecycle:Retention"] = "01:00:00",
+                ["AccessTelemetryLifecycle:LocalFunctionalProfileJson"] = canonical,
+                ["AccessTelemetryLifecycle:LocalFunctionalSourceMappingHash"] = sourceHash,
+                ["HEXALITH_SOURCE_MAPPING_HASH"] = sourceHash,
+                ["AccessTelemetryLifecycle:CapabilityEvidence:ValidUntilUtc"] = Now.AddHours(2).ToString("O", CultureInfo.InvariantCulture),
                 ["AccessTelemetryLifecycle:LocalFunctionalRunId"] = "owned-run",
                 ["AccessTelemetryLifecycle:DeploymentId"] = "owned-run",
                 ["HEXALITH_G4_RUN_ID"] = foreignRun ? "foreign-run" : "owned-run",
             }).Build();
-            new AccessTelemetryQualificationGate(environment, configuration, new FakeTimeProvider(Now)).TryValidate(out _).ShouldBe(expected);
+            var time = new FakeTimeProvider(Now);
+            var gate = new AccessTelemetryQualificationGate(environment, configuration, time);
+            gate.TryValidate(out _).ShouldBe(expected);
+            IAccessTelemetryHeartbeatClient client = Substitute.For<IAccessTelemetryHeartbeatClient>();
+            client.SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>()).Returns(new WriterHeartbeatResponse
+            {
+                Accepted = true, Reason = AccessTelemetryReason.None, ActiveGeneration = "mk-a",
+            });
+            var worker = new AccessTelemetryHeartbeatWorker(
+                client, configuration.GetSection("AccessTelemetryLifecycle").Get<AccessTelemetryOptions>()!,
+                new AccessTelemetryWriterIdentity(new MonotonicRecordIdGenerator()), new BoundedAccessTelemetryQueue(8, 8192),
+                new AccessTelemetryLifecycleStatus(enabled: true), time, gate);
+            await worker.SendOnceAsync(CancellationToken.None);
+            await client.Received(expected ? 1 : 0).SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>());
+            if (expected)
+            {
+                WriteGate(path, Now.AddMinutes(10), profile, "disabled");
+                await worker.SendOnceAsync(CancellationToken.None);
+                await client.Received(1).SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>());
+                WriteGate(path, Now.AddMinutes(10), profile);
+                await worker.SendOnceAsync(CancellationToken.None);
+                await client.Received(2).SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>());
+                time.Advance(TimeSpan.FromMinutes(10));
+                await worker.SendOnceAsync(CancellationToken.None);
+                await client.Received(2).SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>());
+                WriteGate(path, time.GetUtcNow().AddMinutes(10), profile);
+                await worker.SendOnceAsync(CancellationToken.None);
+                await client.Received(3).SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>());
+                File.Delete(path);
+                await worker.SendOnceAsync(CancellationToken.None);
+                await client.Received(3).SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>());
+                WriteGate(path, time.GetUtcNow().AddMinutes(10), profile);
+                time.Advance(TimeSpan.FromHours(2));
+                WriteGate(path, time.GetUtcNow().AddMinutes(10), profile);
+                await worker.SendOnceAsync(CancellationToken.None);
+                await client.Received(3).SendAsync(Arg.Any<WriterHeartbeat>(), Arg.Any<CancellationToken>());
+            }
         }
         finally
         {
