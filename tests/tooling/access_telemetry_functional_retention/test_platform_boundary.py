@@ -56,11 +56,18 @@ class PlatformBoundaryTests(unittest.TestCase):
         result = self.invoke_without_effects([])
         self.assertCountEqual(
             [item["id"] for item in result["blockers"]],
+            ["platform-tool-source-alignment", "platform-runtime-artifact",
+             "platform-startup-observations", "platform-real-functional-outcome"],
+        )
+        self.assertTrue(all(item["owner"] and item["source"] and item["gap"] and item["reopen"] for item in result["blockers"]))
+        self.assertEqual("functional-platform-runner-integration-required", result["reason"])
+        self.assertCountEqual(
+            [item["id"] for item in result["recordedBlockers"]],
             ["platform-v2-test-profile", "platform-descriptor-result",
              "platform-test-lifetime", "platform-postgresql-profile",
              "platform-local-capability-binding", "platform-tool-source-alignment"],
         )
-        blockers = {item["id"]: item for item in result["blockers"]}
+        blockers = {item["id"]: item for item in result["recordedBlockers"]}
         self.assertIn("HXR028", blockers["platform-v2-test-profile"]["gap"])
         self.assertIn("15 minutes", blockers["platform-test-lifetime"]["gap"])
         self.assertIn("state.redis", blockers["platform-postgresql-profile"]["gap"])
@@ -74,8 +81,10 @@ class PlatformBoundaryTests(unittest.TestCase):
         self.assertEqual("c285b84fddac7dda1efaf4435b8de18694282583", observation["directMemoriesRevision"])
         self.assertEqual("286d4907d2a8701c42b8cebfa2b664e28608b941708a21323038e623a36b9be6", observation["inspectionReceiptSha256"])
         self.assertTrue(observation["reinspectionRequired"])
-        self.assertIn("recorded-implementation-blockers", result["blockerStatus"])
+        self.assertEqual("prepared-source; actual startup and tool/artifact alignment unverified", result["blockerStatus"])
         foreign = self.invoke_without_effects(["--repository-root", "/foreign/uninspected-source"])
+        for field in ("blockers", "reason", "blockerStatus"):
+            self.assertEqual(result[field], foreign[field])
         self.assertEqual(observation, foreign["blockerObservation"])
         self.assertIn("no supplied source root", foreign["blockerObservation"]["scope"])
 
