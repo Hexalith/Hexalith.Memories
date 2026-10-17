@@ -101,10 +101,13 @@ class PlatformBoundaryTests(unittest.TestCase):
         self.assertEqual("2a2daacaf39f08503a3f8bd93c665912a68d4abd", observation["directMemoriesRevision"])
         self.assertEqual("6b46089d0dcee22e802d3f10d3a5a46206c54b65319ddf75510efd34653277f6", observation["inspectionReceiptSha256"])
         self.assertTrue(observation["reinspectionRequired"])
-        self.assertIn("actual startup", result["blockerStatus"])
+        self.assertEqual("prepared-source; actual startup and tool/artifact alignment unverified", result["blockerStatus"])
         self.assertCountEqual([item["id"] for item in result["blockers"]], ["platform-tool-source-alignment", "platform-runtime-artifact", "platform-startup-observations", "platform-real-functional-outcome"])
         self.assertTrue(all(item["owner"] and item["source"] and item["gap"] and item["reopen"] for item in result["blockers"]))
+        self.assertEqual("functional-platform-runner-integration-required", result["reason"])
         foreign = self.invoke_without_effects(["--repository-root", "/foreign/uninspected-source"])
+        for field in ("blockers", "reason", "blockerStatus"):
+            self.assertEqual(result[field], foreign[field])
         self.assertEqual(observation, foreign["blockerObservation"])
         self.assertIn("no supplied source root", foreign["blockerObservation"]["scope"])
 
