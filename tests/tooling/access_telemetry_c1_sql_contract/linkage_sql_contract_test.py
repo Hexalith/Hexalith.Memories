@@ -537,7 +537,11 @@ class LinkageSqlContractTests(ReceiptOutcomeCase):
                   'observerOverrides': overrides or {}}
         config_path = self.work / 'adapter.json'
         config_path.write_text(json.dumps(config))
-        result = self.run_command([self.pwsh, '-NoProfile', '-File', str(self.driver), str(config_path)])
+        # Shared runners can spend longer than the 15-second default inside the
+        # disposable collector. The bound is a hang guard, not a latency contract.
+        result = self.run_command(
+            [self.pwsh, '-NoProfile', '-File', str(self.driver), str(config_path)],
+            timeout=60)
         value = json.loads(result['stdout'])
         arguments = json.loads(Path(config['arguments']).read_text())
         raw = json.loads(Path(config['rawLog']).read_text())
