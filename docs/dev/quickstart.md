@@ -49,6 +49,8 @@ Skip the step with `--skip-prereq-check` when you know the environment is fine (
 
 Always prints `Run in a dedicated terminal: dotnet run --project src/Hexalith.Memories.AppHost`. Does NOT spawn the subprocess (ADR-7.4-001 — print-then-poll semantics).
 
+`src/Hexalith.Memories.AppHost` serves only this repository's own tests and walkthroughs such as this one, and a run of it is never Platform evidence; running and debugging Memories as a module happens from the Platform workspace (see [Run and debug from the Platform workspace](../../README.md#run-and-debug-from-the-platform-workspace)).
+
 ### [3/6] Probing server health
 
 Polls `GET /health` every 1 second for up to 60 seconds. On success, reports the elapsed time. On timeout, the suggestion line names the likely cause: the AppHost is not running OR it is running on a different port (Aspire Testing fixtures randomize ports).

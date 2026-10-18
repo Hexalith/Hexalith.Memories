@@ -93,13 +93,15 @@ dotnet tool run hexalith-module -- debug --manifest references/Hexalith.Memories
 dotnet tool run hexalith-module -- down --manifest references/Hexalith.Memories/module/hexalith.module-manifest.v2.json
 ```
 
-Pass the owner manifest under `references/`, never the Platform's copy in `src/Hexalith.Platform.Composition/Declarations/`. `debug` builds this checkout and `references/Hexalith.EventStore` in Debug and starts the declared selection, Memories and EventStore with no Tenants: the `memories`, `memories-access-telemetry-clock`, `memories-access-telemetry` and `eventstore` servers with their Dapr sidecars, plus Redis Stack (`memories-vectors`) and FalkorDB (`memories-graph`). It waits for each server's `/ready` endpoint and reports one `dotnet run` launcher process id per server. Each application is its launcher's child process:
+Pass the owner manifest under `references/`, never the Platform's copy in `src/Hexalith.Platform.Composition/Declarations/`. `debug` builds this checkout and the Platform workspace's `references/Hexalith.EventStore` in Debug and starts the declared selection, Memories and EventStore with no Tenants: the `memories`, `memories-access-telemetry-clock`, `memories-access-telemetry` and `eventstore` servers with their Dapr sidecars, plus Redis Stack (`memories-vectors`) and FalkorDB (`memories-graph`). It waits for each server's `/ready` endpoint and reports one `dotnet run` launcher process id per server. Each application is its launcher's child process:
 
 ```bash
 ps --ppid <launcher-pid> -o pid,args
 ```
 
 Attach to the child running the server's `bin/Debug/net10.0/<Assembly>` executable, for example with VS Code ("Attach to a .NET process"). Breakpoints in this checkout's sources bind. When you finish, `down` stops only that run.
+
+`debug` does not print the run id: it is the file name of the run state `<runId>.json` under `${XDG_DATA_HOME:-$HOME/.local/share}/hexalith-builds/g4-runs/` on Linux (newest: `ls -t "${XDG_DATA_HOME:-$HOME/.local/share}"/hexalith-builds/g4-runs/*.json | head -1`). When an earlier run used the same manifest, `down --manifest` refuses with `HXR024`; add `--run-id <runId>`.
 
 ## Useful endpoints
 
