@@ -83,7 +83,8 @@ Memories runs and debugs as a module from the [Hexalith.Platform](https://github
 - Aspire CLI `13.6.1` exactly; the tool refuses any other version with `HXR015`.
 - A running Docker engine.
 - `HEXALITH_DAPR_HOME` set to an absolute, isolated Dapr home: Dapr CLI `1.18.0` at `tools/dapr` and runtime `1.18.2` at `.dapr/bin/{daprd,placement,scheduler}`. The Platform README shows how to prepare one from the official release assets.
-- The `references/Hexalith.Memories` and `references/Hexalith.EventStore` checkouts at the gitlinks staged in the Platform repository. After a local commit here, run `git add references/Hexalith.Memories` in the Platform root before starting a run.
+- The Platform workspace's direct `references/Hexalith.Builds`, `references/Hexalith.EventStore`, `references/Hexalith.Tenants` and `references/Hexalith.Memories` checkouts, initialized without `--recursive`, with each `HEAD` matching its staged Platform gitlink. The tool reads all three declaration owners even though Memories does not run Tenants. After a local commit here, run `git add references/Hexalith.Memories` in the Platform root before starting a run.
+- The local Aspire orchestration and dashboard packages at `13.6.1`: run `dotnet restore apphost.cs` from Platform once before the first `debug` run. Tool restore alone does not install these SDK packages. If NuGet uses a custom `globalPackagesFolder`, set `NUGET_PACKAGES` to that absolute folder for both restore and `debug`; otherwise the tool checks `~/.nuget/packages` and reports `HXR016` when packages are missing.
 
 From the Platform root:
 
@@ -99,7 +100,7 @@ Pass the owner manifest under `references/`, never the Platform's copy in `src/H
 ps --ppid <launcher-pid> -o pid,args
 ```
 
-Attach to the child running the server's `bin/Debug/net10.0/<Assembly>` executable, for example with VS Code ("Attach to a .NET process"). Breakpoints in this checkout's sources bind. When you finish, `down` stops only that run.
+Attach to the child running the server's `bin/Debug/net10.0/<Assembly>` executable, for example with VS Code ("Attach to a .NET process"). Breakpoints in this checkout's sources bind. Stay attached until you finish, then stop only that run with `down`.
 
 `debug` does not print the run id: it is the file name of the run state `<runId>.json` under `${XDG_DATA_HOME:-$HOME/.local/share}/hexalith-builds/g4-runs/` on Linux. Inspect the state files and select the one whose `projectProcessIds` contains the launcher id reported by this `debug` invocation. Confirm its `manifestHash` matches `sha256sum references/Hexalith.Memories/module/hexalith.module-manifest.v2.json` (ignoring hexadecimal letter case), then use its `runId`. File modification time alone cannot identify your run. When an earlier run used the same manifest, `down --manifest` refuses with `HXR024`; add `--run-id <runId>`. An explicit `--run-id` is not cross-checked against the manifest, so verify both fields before stopping it.
 
