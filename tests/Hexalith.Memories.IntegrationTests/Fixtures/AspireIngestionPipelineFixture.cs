@@ -382,6 +382,9 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
     /// <summary>Gets the DAPR HTTP sidecar endpoint used by the Memories Server resource.</summary>
     public Uri DaprSidecarHttpEndpoint { get; private set; } = new("http://127.0.0.1:3500");
 
+    /// <summary>Gets how many times primary Dapr clients were rebound to the current sidecar endpoint.</summary>
+    internal int PrimaryDaprClientGeneration { get; private set; }
+
     /// <summary>Gets the tenant id bound to the default integration-test EventStore source prefix.</summary>
     public string EventStoreMappedTenantId => _eventStoreMappedTenantId;
 
@@ -624,6 +627,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
             cts.Token).ConfigureAwait(false);
 
         bool identitiesRotated = false;
+        bool primaryDaprClientsRebound = false;
         while (!cts.IsCancellationRequested)
         {
             try
@@ -639,9 +643,12 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
                     Uri currentDaprEndpoint = ResolveDaprSidecarHttpEndpoint(
                         "memories-dapr-cli",
                         _logProvider.GetEntriesSince(_topologyLogStartIndex));
-                    if (currentDaprEndpoint != DaprSidecarHttpEndpoint)
+                    // Aspire reuses the allocated daprd port across in-place restarts. Rebind once
+                    // for that stable port, and again if a later listen line publishes a new port.
+                    if (!primaryDaprClientsRebound || currentDaprEndpoint != DaprSidecarHttpEndpoint)
                     {
                         ReconnectPrimaryDaprClients(currentDaprEndpoint);
+                        primaryDaprClientsRebound = true;
                     }
 
                     if (await CanReadOpenBaoRuntimeCanaryAsync().ConfigureAwait(false) &&
@@ -1218,6 +1225,7 @@ public sealed class AspireIngestionPipelineFixture : IAsyncLifetime
         _actorHttpMessageHandler?.Dispose();
 
         DaprSidecarHttpEndpoint = endpoint;
+        PrimaryDaprClientGeneration++;
         _daprStateClient = nextStateClient;
         _actorProxyOptions = nextActorOptions;
         _actorHttpMessageHandler = nextActorHttpMessageHandler;

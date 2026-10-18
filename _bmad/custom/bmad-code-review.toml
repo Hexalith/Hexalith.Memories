@@ -4,6 +4,7 @@
 [workflow]
 
 persistent_facts = [
+  "file:{project-root}/**/project-context.md",
   "file:{project-root}/_bmad/custom/story-scope-guard.md",
   "file:{project-root}/_bmad-output/process-notes/story-creation-lessons.md",
   "file:{project-root}/_bmad/custom/story-phase-ledger.md",

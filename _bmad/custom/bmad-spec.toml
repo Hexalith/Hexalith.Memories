@@ -6,13 +6,15 @@
 # A spec is a story-authoring route for multi-stage non-epic work, so the same
 # slice discipline binds it.
 #
-# DELIBERATE ASYMMETRY: unlike the other three authoring routes, this file adds
-# NO persistent_facts entry. The cross-tenant project-context delivery contract
+# DELIBERATE ASYMMETRY: unlike the other authoring routes, this file's only
+# persistent fact is the project-context bridge. Generated bmad-spec defaults
+# leave persistent_facts empty and tell the team file to opt in. The
+# cross-tenant delivery contract
 # (tests/tooling/bmad_customization/bmad_customization_test.py, bmad-spec subtest)
-# pins this skill's resolved persistent_facts to exactly the project-context
-# bridge fact, so that the bridge's fail-closed control cannot be diluted by
-# additional facts. That contract is not weakened here. The policy is delivered
-# through the activation directive instead, which names the file to read.
+# pins this skill's resolved persistent_facts to exactly that one bridge fact,
+# so the bridge's fail-closed control cannot be diluted by additional facts.
+# The story-scope and epic-AC policies are delivered through the activation
+# directive instead, which names the files to read.
 #
 # Extended 2026-07-28 by approved Sprint Change Proposal
 # sprint-change-proposal-2026-07-28-epic-ac-verification-route-and-binding-coverage.md
@@ -21,6 +23,10 @@
 # the route-coverage defect this file's slice guard had just cured.
 
 [workflow]
+
+persistent_facts = [
+  "file:{project-root}/project-context.md",
+]
 
 activation_steps_append = [
   "HISTORICAL_SLICE_GUARD: This route authors work items. Read {project-root}/_bmad/custom/story-scope-guard.md and {project-root}/_bmad-output/process-notes/story-creation-lessons.md, then apply the team story-scope policy before freezing intent. Classify every prior story or spec influence as current-narrow-pattern, historical-reference-only, or anti-template, and ignore numeric adjacency as a relevance signal. A spec covering multiple independently demonstrable outcomes must be split into separate specs or stories, or must carry an explicitly approved checkpoint table with one row per gate carrying owner, evidence command or artifact, review state, and completion state. Record the classification and slice proof in the spec whenever a prior artifact influences it. The policy binds at authoring, not at selection: a spec is bound the moment it is written, not when its work is later picked up, and backlog status grants no exemption. Fail closed before approval while any anti-template reuse or required split is unresolved.",

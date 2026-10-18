@@ -310,10 +310,9 @@ class BMadCustomizationTests(unittest.TestCase):
                 defaults = tomllib.loads(
                     (skill_dir / "customize.toml").read_text(encoding="utf-8")
                 )["workflow"]
-                self.assertEqual(
-                    defaults["persistent_facts"],
-                    [SPEC_PROJECT_CONTEXT_FACT],
-                )
+                # Generated defaults are empty. The team override owns the single
+                # bridge fact so a skill refresh cannot drop the delivery contract.
+                self.assertEqual(defaults["persistent_facts"], [])
                 self.assertEqual(
                     resolve_workflow("bmad-spec", surface)["persistent_facts"],
                     [SPEC_PROJECT_CONTEXT_FACT],
