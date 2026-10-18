@@ -30,15 +30,15 @@ using Shouldly;
 /// Proving the positive wiring (each returned project/sidecar genuinely references and waits for the
 /// supplied <c>secretStore</c>, not merely that the source text mentions it) would need a full Aspire model
 /// build, mirroring <c>DomainModuleAspireExtensionTests</c> in <c>Hexalith.EventStore.AppHost.Tests</c>.
-/// That pattern does not work here: unlike the EventStore extension it mirrors, both
-/// <c>AddHexalithMemoriesSearchIndexServer</c> and <c>AddHexalithMemoriesAccessTelemetry</c> call
+/// Both <c>AddHexalithMemoriesSearchIndexServer</c> and <c>AddHexalithMemoriesAccessTelemetry</c> call
 /// <c>AddProject&lt;T&gt;(name, launchProfileName: "http")</c> with an explicit launch profile for their
 /// internal cross-repo <c>MemoriesServerProjectMetadata</c>/<c>MemoriesAccessTelemetry*ProjectMetadata</c>
-/// types, which eagerly reads the resolved project's launch settings and throws
-/// <see cref="Aspire.Hosting.DistributedApplicationException"/> when the file does not exist --
-/// <c>RepositoryProjectPaths.GetReferencedModuleProjectPath("Hexalith.Memories", ...)</c> has no candidate
-/// for "this repo's own checkout" (only for a *consumer* repo with <c>Hexalith.Memories</c> under
-/// <c>references/</c>), so it never resolves inside this repository's own test run. The structural checks
+/// types, which eagerly reads the resolved project's launch settings.
+/// <c>RepositoryProjectPaths.GetReferencedModuleProjectPath("Hexalith.Memories", ...)</c> follows the workspace
+/// source mapping (this repository when its root holds <c>Hexalith.Memories.slnx</c>, otherwise the direct
+/// <c>references/Hexalith.Memories</c> submodule) and throws for any other layout (see
+/// <c>RepositoryProjectPathsTests</c>), so such a model build would couple these tests to the launch settings of
+/// whichever checkout resolves rather than to the wiring under test. The structural checks
 /// below instead assert on the exact call-syntax occurrence counts of <c>.WithReference(secretStore)</c> and
 /// <c>.WaitFor(secretStore)</c> (anchored on the real invocation syntax with parentheses, not a bare class
 /// or parameter name that could also appear in prose/XML-doc), so removing any wiring call -- sidecar-level,

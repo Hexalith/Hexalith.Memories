@@ -7,8 +7,8 @@ namespace Hexalith.Memories.Aspire;
 
 /// <summary>
 /// Resolves on-disk paths to project files within a Hexalith mono-repo working tree, where the platform
-/// modules (<c>Hexalith.Memories</c>, <c>Hexalith.EventStore</c>, …) are checked out as Git submodules under
-/// the consuming repository root's <c>references/</c> directory.
+/// modules (<c>Hexalith.Memories</c>, <c>Hexalith.EventStore</c>, …) are either the current repository or checked
+/// out as direct Git submodules under the consuming repository root's <c>references/</c> directory.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,46 +28,55 @@ namespace Hexalith.Memories.Aspire;
 internal static class RepositoryProjectPaths
 {
     /// <summary>
-    /// Resolves the on-disk path to a project file inside a sibling Hexalith platform module, probing every
-    /// checkout layout in the same order as the <c>$(Hexalith*Root)</c> auto-detection in
-    /// <c>Directory.Build.props</c>, so the launched project path matches the build-time
-    /// <c>&lt;ProjectReference&gt;</c> the AppHost uses to force a Debug build of the same project. Returns the
-    /// first candidate that exists; otherwise the standalone <c>&lt;root&gt;/references/&lt;module&gt;/…</c> path.
+    /// Resolves the on-disk path to a project file inside a Hexalith platform module the consuming repository
+    /// depends on, with the same rule as the workspace source mapping. When <c>&lt;root&gt;/&lt;module&gt;.slnx</c>
+    /// exists, the dependency is the consuming repository itself and the project resolves under <c>&lt;root&gt;</c>.
+    /// Otherwise it resolves under the direct submodule <c>&lt;root&gt;/references/&lt;module&gt;</c>. No sibling,
+    /// ancestor or root-level checkout is ever used, so the launched project path matches the build-time
+    /// <c>&lt;ProjectReference&gt;</c> the AppHost uses to force a Debug build of the same project.
     /// Mirrors the equivalent helper in <c>Hexalith.EventStore.Aspire</c> (duplicated on purpose to avoid a
     /// dependency on the EventStore platform package).
     /// </summary>
     /// <param name="moduleDirectory">The dependency module's directory name (e.g. <c>Hexalith.Memories</c>).</param>
     /// <param name="moduleRelativePath">Path segments inside the module, ending in the target project file.</param>
     /// <returns>The absolute path to the resolved project file.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// The project file does not exist at the mapped location. The message names the dependency and the expected path.
+    /// </exception>
     public static string GetReferencedModuleProjectPath(string moduleDirectory, params string[] moduleRelativePath)
+        => ResolveReferencedModuleProjectPath(GetRepositoryRoot(), moduleDirectory, moduleRelativePath);
+
+    /// <summary>
+    /// Applies the <see cref="GetReferencedModuleProjectPath"/> rule to an explicit consuming repository root.
+    /// </summary>
+    /// <param name="root">The consuming repository root.</param>
+    /// <param name="moduleDirectory">The dependency module's directory name (e.g. <c>Hexalith.Memories</c>).</param>
+    /// <param name="moduleRelativePath">Path segments inside the module, ending in the target project file.</param>
+    /// <returns>The absolute path to the resolved project file.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// The project file does not exist at the mapped location. The message names the dependency and the expected path.
+    /// </exception>
+    public static string ResolveReferencedModuleProjectPath(string root, string moduleDirectory, params string[] moduleRelativePath)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(root);
         ArgumentException.ThrowIfNullOrWhiteSpace(moduleDirectory);
         if (moduleRelativePath is null || moduleRelativePath.Length == 0)
         {
             throw new ArgumentException("At least one module-relative path segment is required.", nameof(moduleRelativePath));
         }
 
-        string root = GetRepositoryRoot();
+        string fullRoot = Path.GetFullPath(root);
         string relative = Path.Combine(moduleRelativePath);
-        string standalone = Path.GetFullPath(Path.Combine(root, "references", moduleDirectory, relative));
-        string[] candidates =
-        [
-            Path.GetFullPath(Path.Combine(root, "..", relative)),
-            Path.GetFullPath(Path.Combine(root, "..", "..", relative)),
-            standalone,
-            Path.GetFullPath(Path.Combine(root, "..", moduleDirectory, relative)),
-            Path.GetFullPath(Path.Combine(root, "..", "references", moduleDirectory, relative)),
-        ];
+        bool isCurrentRepository = File.Exists(Path.Combine(fullRoot, moduleDirectory + ".slnx"));
+        string expected = isCurrentRepository
+            ? Path.GetFullPath(Path.Combine(fullRoot, relative))
+            : Path.GetFullPath(Path.Combine(fullRoot, "references", moduleDirectory, relative));
 
-        foreach (string candidate in candidates)
-        {
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return standalone;
+        return File.Exists(expected)
+            ? expected
+            : throw new InvalidOperationException(isCurrentRepository
+                ? $"Dependency '{moduleDirectory}' is the repository at '{fullRoot}', but its project '{expected}' does not exist."
+                : $"Dependency '{moduleDirectory}' must be checked out as the direct submodule 'references/{moduleDirectory}' of '{fullRoot}', but its project '{expected}' does not exist. Sibling, ancestor and root-level checkouts are not used. Initialize the submodule with 'git submodule update --init -- references/{moduleDirectory}'.");
     }
 
     /// <summary>
