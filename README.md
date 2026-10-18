@@ -101,7 +101,7 @@ ps --ppid <launcher-pid> -o pid,args
 
 Attach to the child running the server's `bin/Debug/net10.0/<Assembly>` executable, for example with VS Code ("Attach to a .NET process"). Breakpoints in this checkout's sources bind. When you finish, `down` stops only that run.
 
-`debug` does not print the run id: it is the file name of the run state `<runId>.json` under `${XDG_DATA_HOME:-$HOME/.local/share}/hexalith-builds/g4-runs/` on Linux (newest: `ls -t "${XDG_DATA_HOME:-$HOME/.local/share}"/hexalith-builds/g4-runs/*.json | head -1`). When an earlier run used the same manifest, `down --manifest` refuses with `HXR024`; add `--run-id <runId>`.
+`debug` does not print the run id: it is the file name of the run state `<runId>.json` under `${XDG_DATA_HOME:-$HOME/.local/share}/hexalith-builds/g4-runs/` on Linux. Inspect the state files and select the one whose `projectProcessIds` contains the launcher id reported by this `debug` invocation. Confirm its `manifestHash` matches `sha256sum references/Hexalith.Memories/module/hexalith.module-manifest.v2.json` (ignoring hexadecimal letter case), then use its `runId`. File modification time alone cannot identify your run. When an earlier run used the same manifest, `down --manifest` refuses with `HXR024`; add `--run-id <runId>`. An explicit `--run-id` is not cross-checked against the manifest, so verify both fields before stopping it.
 
 ## Useful endpoints
 
