@@ -286,6 +286,18 @@ jobs:
         with:
           version: ${{ env.KUBECTL_VERSION }}
 
+      - name: Publish pinned kubectl at the owner-discovery path
+        run: |
+          installed="$(command -v kubectl)"
+          test -n "$installed"
+          if [ "$installed" != "/usr/local/bin/kubectl" ]; then
+            sudo ln -sfn "$installed" /usr/local/bin/kubectl
+          fi
+          test -x /usr/local/bin/kubectl
+
+      - name: Run access-telemetry owner discovery fixtures
+        run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_owner_discovery -p "test_*.py"
+
       - name: Run access-telemetry lifecycle C1 fixtures
         # Story 27.3's mandatory C1 inventory. PYTHONHASHSEED=0 matches the story's exact
         # discovery command so the recorded sorted-case identity is reproducible here. The
@@ -539,3 +551,19 @@ jobs:
             artifacts/production-deployment-verification/**
           if-no-files-found: error
           retention-days: 14
+
+  access-telemetry-sql-contract:
+    name: access-telemetry-sql-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+
+      - name: Pull approved PostgreSQL contract image
+        run: docker pull docker.io/library/postgres@sha256:0377e72c5289ed2f98cf61b1a9c2db9eb9d300317fe14244492fbc94343b3d04
+
+      - name: Run access-telemetry C1 SQL contract fixtures
+        run: PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 python3 -m unittest discover -s tests/tooling/access_telemetry_c1_sql_contract -p "*_test.py"
