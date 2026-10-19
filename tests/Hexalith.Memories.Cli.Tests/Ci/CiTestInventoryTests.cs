@@ -550,6 +550,16 @@ public sealed partial class CiTestInventoryTests
 
         step.Run.ShouldBe("npx semantic-release");
         step.Uses.ShouldBeNull();
+        step.Environment["NUGET_API_KEY"].ShouldBe("${{ steps.nuget-login.outputs.NUGET_API_KEY }}");
+
+        string workflow = File.ReadAllText(Path.Combine(GetRepoRoot(), ".github", "workflows", "release.yml"));
+        workflow.ShouldContain("id-token: write");
+        workflow.ShouldContain("environment: production");
+        workflow.ShouldContain("NuGet/login@v1");
+        workflow.ShouldContain("user: ${{ vars.NUGET_USER }}");
+        workflow.ShouldNotContain("secrets.NUGET_API_KEY");
+        workflow.IndexOf("Exchange GitHub OIDC token for a temporary NuGet key", StringComparison.Ordinal)
+            .ShouldBeLessThan(workflow.IndexOf("name: Run semantic-release", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1032,11 +1042,12 @@ public sealed partial class CiTestInventoryTests
     {
         IDictionary<string, string> permissions = GetReleaseWorkflowTopLevelMapping("permissions");
 
-        // Locked to exactly the permissions audited by Story 14.2 (AC1 'preserve least privilege').
-        // Adding a write scope must come with a documented reason and an updated test, not a silent
-        // workflow edit.
-        permissions.Count.ShouldBe(3, $"unexpected permissions block contents: {string.Join(", ", permissions.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
+        // Locked to the permissions audited by Story 14.2, plus id-token: write so NuGet Trusted
+        // Publishing can exchange the job OIDC token for a one-hour key. Adding another write
+        // scope must come with a documented reason and an updated test, not a silent workflow edit.
+        permissions.Count.ShouldBe(4, $"unexpected permissions block contents: {string.Join(", ", permissions.Select(kvp => $"{kvp.Key}={kvp.Value}"))}");
         permissions.ShouldContainKeyAndValue("contents", "write");
+        permissions.ShouldContainKeyAndValue("id-token", "write");
         permissions.ShouldContainKeyAndValue("issues", "write");
         permissions.ShouldContainKeyAndValue("pull-requests", "write");
     }

@@ -20,9 +20,12 @@ env:
 # - issues: write - Alert partial release publish step opens / comments on the
 #   PARTIAL PUBLISH reconciliation issue.
 # - pull-requests: write - @semantic-release/github comments on the PR that triggered
-#   the release. No additional write scopes are added without a documented justification.
+#   the release.
+# - id-token: write - NuGet Trusted Publishing exchanges this job's OIDC token for a
+#   one-hour publication key. No stored NuGet API key is used.
 permissions:
   contents: write
+  id-token: write
   issues: write
   pull-requests: write
 
@@ -30,8 +33,20 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    environment: production
 
     steps:
+      - name: Require the Trusted Publishing account
+        shell: bash
+        env:
+          NUGET_USER: ${{ vars.NUGET_USER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NUGET_USER//[[:space:]]/}" ]; then
+            echo "The repository variable NUGET_USER must name the individual nuget.org account that created the Trusted Publishing policy." >&2
+            exit 1
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
@@ -114,11 +129,18 @@ jobs:
         shell: bash
         run: git tag --points-at HEAD --list 'v*' | sort | sha256sum | sed 's/ .*//' | xargs -I{} echo 'fingerprint={}' >> "$GITHUB_OUTPUT"
 
+      # Mint the one-hour key only after tests and preflight, immediately before publication.
+      - name: Exchange GitHub OIDC token for a temporary NuGet key
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Run semantic-release
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
           HEXALITH_ZOT_REGISTRY: ${{ vars.HEXALITH_ZOT_REGISTRY || 'registry.hexalith.com' }}
           HEXALITH_ZOT_USERNAME: ${{ secrets.HEXALITH_ZOT_USERNAME }}
           HEXALITH_ZOT_API_KEY: ${{ secrets.HEXALITH_ZOT_API_KEY }}

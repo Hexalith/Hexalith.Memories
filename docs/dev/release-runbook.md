@@ -62,8 +62,11 @@ artifacts from a workstation.
 - The current inventory contains nine approved packages: Aspire, Contracts, Client.Rest, Redis,
   Cli, Mcp, ServiceDefaults, EventStore, and Telemetry. The historical `v1.2.0` evidence below
   remains a record of the seven packages published by that release.
-- `NUGET_API_KEY` is provided only through `secrets.NUGET_API_KEY` in GitHub Actions and is forwarded
-  to the release job as an environment variable; it is never written to a file in the repo.
+- NuGet.org publication uses Trusted Publishing. The release job exchanges its GitHub OIDC
+  token through `NuGet/login` for a one-hour key immediately before semantic-release. The
+  repository variable `NUGET_USER` names the individual nuget.org account that owns the policy
+  for `Hexalith` / `Hexalith.Memories` / `release.yml` / `production`. No stored NuGet API key
+  is read, and the temporary key is never written to a file in the repo.
 
 The required-check names mapping to `.github/workflows/ci.yml` job IDs is documented in
 [`branch-protection.md`](./branch-protection.md).
