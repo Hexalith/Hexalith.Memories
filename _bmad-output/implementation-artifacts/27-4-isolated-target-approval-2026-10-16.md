@@ -12,7 +12,7 @@ Standing `sole-owner-qualification/2026-10-12` approval persists.
   `0ced06b1c116de9f9155aba832150f69172fecd17d3e938d01aad36bb512160a`.
 - Adopt the specific isolated-target PG2 profile SHA-256
   `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb`. Canonical profile and three-path delta are in the
-  [target plan](../../docs/operations/story-27-4-isolated-target-plan-2026-10-16.md)
+  target plan (superseded document removed; [current contract](spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md))
   and [approved manifest](../../docs/operations/qualification/pg2-kvm-approved-profile-2026-10-16.json).
 - One new local guest: 8 vCPUs, 40 GiB RAM, 40 GiB OS plus 600 GiB data;
   planned instance `2fe71a5c-bdda-4767-8780-8f27f5bcd520` on `DESKTOP-VIOG240`.
@@ -64,16 +64,4 @@ Read exact argv/times/streams/hashes in private `bootstrap-execution/`, includin
 plan. Prepare any bounded recovery from measured allocation state and the failed
 step, then obtain only the genuinely missing changed execution scope.
 
-## Implementation and live holds
-
-Named implementation blocker **QT1-P**: current C1 owner/profile consumers,
-qualification gate and tooling still bind the previous profile. Migrate those
-active selectors to the exact adopted manifest without broadening admission or
-rewriting historical artifacts. Verify current-profile equality and old/foreign
-profile refusal, unchanged technical capabilities/workload/inputs, closed live
-registration and default disabled/empty/zero qualification state.
-
-The [target plan](../../docs/operations/story-27-4-isolated-target-plan-2026-10-16.md)
-is dated preparation and is superseded by this actual decision/result for approval
-and execution status. No C1/C0-C6/terminal/A41/Production pass exists. The six
-live tasks, sprint holds and protected history remain open/unchanged.
+Current execution follows the [Platform functional contract](spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md). This expired bootstrap decision is retained only for the actual result and resource ownership; it grants no new action.

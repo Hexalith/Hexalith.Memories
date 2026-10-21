@@ -81,33 +81,4 @@ The repository advanced externally to
 no stage, commit, push, branch or dependency update. The bootstrap claims no
 qualification-source eligibility for that revision.
 
-## Corrected boot-only preparation
-
-The installed binary's read-only `-device virtio-blk-pci,help` lists `drive`
-and `serial` properties. The corrected proposal uses `if=none,id=...` raw
-backends and explicit `virtio-blk-pci,drive=...,serial=...` frontends. Its two
-disk sizes, UUID, CPU/memory, restricted network, seed and twelve guest reads
-remain unchanged. No allocation vector remains.
-
-New private files:
-
-- `evidence/proposal/bootstrap-boot-only-plan.json`, SHA-256
-  `66f2ce2ffc32cee4538a9ebf9b1bdcbb4baef20609bd0002291ea214805f8778`.
-- `evidence/proposal/bootstrap-boot-only-commands.json`, SHA-256
-  `d7ff8714fc26fad00b56a39e5bd44e80a8ffd7e25e5e93868dbf2beb19bb52f0`.
-- `control/boot-only-supervision.py`, SHA-256
-  `a21738954ec9a40650c2bf101cc02409ec390a9923c239510292fa15085fc91c`.
-
-Preparation checks bind those exact bytes, retained disk identities and prior
-receipts. Missing outside plan digest and missing actual approval both deny
-before process spawn. The new status has no actual decision, no executable
-authority and no consumed attempt. Built-in help verifies property availability;
-complete QEMU acceptance and guest boot remain unexecuted.
-
-The proposal reuses both disks, permits removal only of the exact retained
-refused socket after fresh identity/no-process checks, rereads the full OS,
-and retains the one-hour/one-attempt limit. No Kubernetes installation,
-external guest egress, data formatting, gate acceptance or Production action
-is included. The owner, Jérôme Piquot, must approve this changed boot-only
-execution scope before launch; technical qualification remains blocked until
-actual eligible target evidence exists.
+Current execution uses the [Platform functional contract](spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md). The superseded boot-only proposal is removed; this result grants no retry or resource disposal.
