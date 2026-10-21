@@ -12,6 +12,7 @@ import threading
 import types
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.parse import unquote, urlsplit
 import xml.etree.ElementTree as xml
 
@@ -96,6 +97,10 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                         records[key] = {"recordId": identity, "envelopeHash": "e" * 64, "emittedAtUtc": iso(start + ordinal), "expiresAtUtc": iso(start + ordinal + 3600000), "acceptedAtUtc": iso(start), "payload": {"message": "original"}}
                     value = {"runId": "offline-run", "segmentId": segment, "writer": "writer-1", "recordIds": ids, "startedUtcMs": start, "finishedUtcMs": start, "emitFinishedUtcMs": start, "acknowledgedUtcMs": start, "resultCount": 1, **{key: 125 for key in ("attempted", "enqueued", "acknowledged", "persisted", "transactionAcknowledgements")}, **{key: 0 for key in ("conflicted", "rejected", "dropped")}}
                 elif "/actors/" in path:
+                    if variant == "fresh-actor" and not emitted:
+                        response = io.BytesIO(b"")
+                        response.status = 204
+                        return response
                     purged = "cohort-a" in emitted and clock.seconds * 1000 >= emitted["cohort-a"] + 3600124
                     value = {"ReminderSequence": 2 if purged else 1, "LastPurgeUnixMilliseconds": int(clock.seconds * 1000) if purged else 0}
                 else:
@@ -107,7 +112,9 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     if key in record_keys["cohort-b"] and a_expired:
                         if variant == "b-loss": value = None
                         if variant == "b-mutation": value = {**value, "payload": {"message": "mutated"}}
-                return io.BytesIO(json.dumps(value).encode())
+                response = io.BytesIO(json.dumps(value).encode())
+                response.status = 200
+                return response
             sql_calls = []
             def sql(argv, **kwargs):
                 sql_calls.append(argv)
@@ -142,7 +149,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             self.assertNotIn("fixture-app-secret", output.getvalue())
             self.assertNotIn("fixture-dapr-secret", output.getvalue())
             status = json.loads(output.getvalue())
-            if variant in {"pass", "sql-latency"}:
+            if variant in {"pass", "sql-latency", "fresh-actor"}:
                 self.assertEqual(0, result, status)
                 self.assertEqual("functional-observations-passed", status["status"])
                 detail = json.loads(report.with_name("functional-observations.json").read_text())
@@ -153,6 +160,12 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 self.assertGreaterEqual(detail["cohortClocks"]["cohort-b"]["monotonicSeconds"] - detail["cohortClocks"]["cohort-a"]["monotonicSeconds"], 1800)
                 self.assertTrue(calls and len(sql_calls) >= 3)
                 self.assertEqual([], detail["ttlEvidence"]["preflight"]["rows"])
+                absent = variant == "fresh-actor"
+                self.assertEqual({"httpStatus": 204 if absent else 200, "statePresent": not absent, "reminderSequence": 0 if absent else 1,
+                                  "sequenceSource": "state-contract-initial-zero" if absent else "stored-state"}, detail["initialActorState"])
+                self.assertEqual(0 if absent else 1, detail["purge"]["reminderSequenceBefore"])
+                self.assertGreater(detail["purge"]["reminderSequenceAfter"], detail["purge"]["reminderSequenceBefore"])
+                self.assertGreater(detail["purge"]["progressObservedUtcMs"], 0)
                 first_expiry = min(row["record"]["expiresAtUtc"] for row in detail["ttlEvidence"]["preExpiry"]["rows"])
                 self.assertLess(detail["ttlEvidence"]["preExpiry"]["observedUtcMs"], int(datetime.fromisoformat(first_expiry).timestamp() * 1000))
             else:
@@ -163,7 +176,9 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             if variant == "symlink-output": self.assertEqual([], list(outside.iterdir()))
             else:
                 counters = xml.parse(report).find("{*}ResultSummary/{*}Counters")
-                self.assertEqual("1" if variant in {"pass", "sql-latency"} else "0", counters.attrib["passed"])
+                self.assertEqual("1" if variant in {"pass", "sql-latency", "fresh-actor"} else "0", counters.attrib["passed"])
+                if result:
+                    self.assertEqual(status["reason"], xml.parse(report).find("{*}Results/{*}UnitTestResult/{*}Output/{*}ErrorInfo/{*}Message").text)
             return status
 
     def test_real_selected_sequence_reconciles_cleanup_before_first_poll(self):
@@ -171,6 +186,43 @@ class SelectedActiveSequenceTests(unittest.TestCase):
 
     def test_real_selected_sequence_captures_ttl_before_sql_latency_crosses_last_checkpoint(self):
         self.run_sequence("sql-latency")
+
+    def test_real_selected_sequence_records_fresh_http_204_baseline_and_later_real_progress(self):
+        self.run_sequence("fresh-actor")
+
+    def test_actor_absence_requires_initial_http_204_with_empty_body(self):
+        consumer = object.__new__(f._PlatformRetentionConsumer)
+        consumer.check = lambda: None
+        consumer.access = {"memories-access-telemetry": {"DAPR_API_TOKEN": "fixture-dapr-secret"}}
+        consumer.observation = {"endpoints": {"memories-access-telemetry/dapr": "http://127.0.0.1:12345"}}
+        for status, body, initial, accepted in ((204, b"", True, True), (204, b"", False, False),
+                                                (200, b"", True, False), (200, b"null", True, False),
+                                                (204, b"null", True, False), (200, b"{}", True, False)):
+            response = io.BytesIO(body)
+            response.status = status
+            with self.subTest(status=status, body=body, initial=initial), patch("urllib.request.OpenerDirector.open", return_value=response):
+                if accepted:
+                    self.assertIsNone(consumer.actor(initial=initial))
+                else:
+                    with self.assertRaisesRegex(f.FunctionalRetentionError, "functional-selected-actor-state"):
+                        consumer.actor(initial=initial)
+        with HTTPError("http://127.0.0.1:12345", 404, "Not Found", {}, None) as failure, patch("urllib.request.OpenerDirector.open", side_effect=failure):
+            with self.assertRaisesRegex(f.FunctionalRetentionError, "functional-selected-request-failed"):
+                consumer.actor(initial=True)
+
+    def test_initial_zero_does_not_supply_later_sequence_or_purge_progress(self):
+        consumer = object.__new__(f._PlatformRetentionConsumer)
+        records = {"record-a": {"expiresUtcMs": 1000}}
+        for sequence, progress, expected in ((0, 1000, False), (1, 0, False), (1, 1000, True)):
+            with self.subTest(sequence=sequence, progress=progress), patch.object(consumer, "request", return_value=(200, json.dumps({"ReminderSequence": sequence, "LastPurgeUnixMilliseconds": progress}).encode())):
+                state = consumer.actor()
+                observation = {"consistency": "strong", "absentRecordIds": ["record-a"], "removedIndexIds": ["record-a"],
+                               "reminderSequenceBefore": 0, "reminderSequenceAfter": state["ReminderSequence"],
+                               "progressObservedUtcMs": state["LastPurgeUnixMilliseconds"], "actorDeletedRecordIds": [], "ttlAbsentRecordIds": ["record-a"]}
+                self.assertEqual(expected, f.validate_purge(observation, records, now_ms=1000))
+                if not expected:
+                    with self.assertRaisesRegex(f.FunctionalRetentionError, "functional-purge-deadline"):
+                        f.validate_purge(observation, records, now_ms=901000)
 
     def test_active_sql_uses_pinned_postgresql_v2_column_and_schema_contract(self):
         # Dapr v1.18.1/go.mod pins components-contrib v1.18.0. Its

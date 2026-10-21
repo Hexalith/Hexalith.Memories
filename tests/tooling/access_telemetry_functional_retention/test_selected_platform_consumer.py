@@ -60,12 +60,14 @@ class SelectedConsumerTests(unittest.TestCase):
                 path = workspace / name
                 path.write_text(json.dumps(value))
                 path.chmod(0o600)
-            self.invoke(candidate, environment)
+            result = self.invoke(candidate, environment)
             report = xml.parse(environment["HEXALITH_G4_TEST_REPORT_PATH"])
             counters = report.find("{*}ResultSummary/{*}Counters")
             self.assertEqual("1", counters.attrib["total"])
             self.assertEqual("1", counters.attrib["failed"])
             self.assertEqual("0", counters.attrib["passed"])
+            self.assertEqual(result["reason"], report.find("{*}Results/{*}UnitTestResult/{*}Output/{*}ErrorInfo/{*}Message").text)
+            self.assertEqual("PostgreSQL functional retention / " + result["reason"], report.find("{*}Results/{*}UnitTestResult").attrib["testName"])
             self.assertNotIn("fixture-secret-never-retained", Path(environment["HEXALITH_G4_TEST_REPORT_PATH"]).read_text())
 
     def test_foreign_partial_malformed_source_and_short_lifetime_refuse_before_access(self):

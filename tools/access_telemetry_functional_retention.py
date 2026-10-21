@@ -1275,7 +1275,17 @@ def run_selected_platform_retention() -> int:
             passed = result["status"] == "functional-observations-passed"
             document = xml.Element("TestRun", xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010")
             results = xml.SubElement(document, "Results")
-            xml.SubElement(results, "UnitTestResult", testName="PostgreSQL functional retention", outcome="Passed" if passed else "Failed")
+            reason = result.get("reason", "functional-selected-assertion-failed")
+            safe_reason = reason if isinstance(reason, str) and re.fullmatch(r"functional-[a-z0-9-]{1,100}", reason) else "functional-selected-assertion-failed"
+            # Identify the failed assertion in native test metadata. The runner
+            # inspects this value for secrets and retains names, but removes all
+            # captured Output, including ErrorInfo, from both passing and failed TRX.
+            test_name = "PostgreSQL functional retention" + (" / " + safe_reason if not passed else "")
+            native_result = xml.SubElement(results, "UnitTestResult", testName=test_name, outcome="Passed" if passed else "Failed")
+            if not passed:
+                output = xml.SubElement(native_result, "Output")
+                error_info = xml.SubElement(output, "ErrorInfo")
+                xml.SubElement(error_info, "Message").text = safe_reason
             summary = xml.SubElement(document, "ResultSummary", outcome="Completed" if passed else "Failed")
             xml.SubElement(summary, "Counters", total="1", executed="1", passed="1" if passed else "0", failed="0" if passed else "1", notExecuted="0")
             _exclusive_bytes(report, xml.tostring(document, encoding="utf-8", xml_declaration=True))
@@ -1312,7 +1322,7 @@ class _PlatformRetentionConsumer:
         now_ms = int(time.time() * 1000)
         _require(set(gate) == {"schemaVersion", "state", "profileSha256", "expiresUtcMs"} and gate["schemaVersion"] == 1 and gate["state"] == "enabled" and gate["profileSha256"] == self.observation["profileHash"] and now_ms < gate["expiresUtcMs"] <= min(now_ms + 905000, int(self.deadline.timestamp() * 1000)), "selected-gate-withdrawn-or-expired")
 
-    def request(self, resource, path, *, data=None, headers=None, missing=False):
+    def request(self, resource, path, *, data=None, headers=None, missing=False, raw_response=False):
         self.check()
         credentials = self.access[resource.removesuffix("/dapr")]
         token = credentials["DAPR_API_TOKEN" if resource.endswith("/dapr") else "APP_API_TOKEN"]
@@ -1325,7 +1335,7 @@ class _PlatformRetentionConsumer:
             with opener.open(request, timeout=120 if data is not None else 5) as response:
                 raw = response.read(1048577)
                 _require(len(raw) <= 1048576, "selected-output-limit")
-                return json.loads(raw) if raw else None
+                return (response.status, raw) if raw_response else json.loads(raw) if raw else None
         except urllib.error.HTTPError as error:
             if missing and error.code in {204, 404}:
                 return None
@@ -1370,10 +1380,17 @@ class _PlatformRetentionConsumer:
         _require(type(value["observedUtcMs"]) is int and abs(value["observedUtcMs"] - int(time.time() * 1000)) <= 1000 and type(value["rows"]) is list, "selected-postgres-clock")
         return value
 
-    def actor(self):
-        value = self.request("memories-access-telemetry/dapr", "/v1.0/actors/AccessTelemetryLifecycleActor/global/state/lifecycle-control")
+    def actor(self, *, initial=False):
+        status, raw = self.request("memories-access-telemetry/dapr", "/v1.0/actors/AccessTelemetryLifecycleActor/global/state/lifecycle-control", raw_response=True)
+        if initial and status == 204 and raw == b"":
+            return None
+        _require(status == 200 and bool(raw), "selected-actor-state")
+        value = json.loads(raw)
         _require(type(value) is dict, "selected-actor-state")
-        return {name: value.get(name, value.get(name[0].lower() + name[1:])) for name in ("ReminderSequence", "LastPurgeUnixMilliseconds")}
+        state = {name: value.get(name, value.get(name[0].lower() + name[1:])) for name in ("ReminderSequence", "LastPurgeUnixMilliseconds")}
+        _require(type(state["ReminderSequence"]) is int and state["ReminderSequence"] >= 0
+                 and (state["LastPurgeUnixMilliseconds"] is None or type(state["LastPurgeUnixMilliseconds"]) is int and state["LastPurgeUnixMilliseconds"] >= 0), "selected-actor-state")
+        return state
 
     def wait(self, wall_ms, monotonic_deadline):
         while int(time.time() * 1000) < wall_ms or time.monotonic() < monotonic_deadline:
@@ -1386,7 +1403,13 @@ class _PlatformRetentionConsumer:
         _require(_IDENTITY.fullmatch(run_id) is not None, "selected-run-id")
         preflight = self.physical(run_id)
         _require(not preflight["rows"], "selected-preflight-rows-present")
-        self.before_sequence = self.actor()["ReminderSequence"]
+        initial_actor = self.actor(initial=True)
+        # GetStateAsync uses a new AccessTelemetryLifecycleActorState when the durable
+        # control state is absent. Its long ReminderSequence starts at zero; this is
+        # an explicit absent baseline, never evidence of a reminder or purge.
+        self.before_sequence = 0 if initial_actor is None else initial_actor["ReminderSequence"]
+        initial_actor_observation = {"httpStatus": 204 if initial_actor is None else 200, "statePresent": initial_actor is not None,
+                                     "reminderSequence": self.before_sequence, "sequenceSource": "state-contract-initial-zero" if initial_actor is None else "stored-state"}
         cohorts, clocks = {}, {}
         writer = None
         for segment in ("cohort-a", "cohort-b"):
@@ -1432,5 +1455,5 @@ class _PlatformRetentionConsumer:
             passed = validate_purge(observation, cohorts["cohort-a"], now_ms=int(time.time() * 1000))
             validate_cohort(self.cohort(run_id, "cohort-b"), run_id=run_id, segment="cohort-b", emitted_ms=self.segments["cohort-b"], expected=cohorts["cohort-b"])
             if passed:
-                return {"status": "functional-observations-passed", "runId": run_id, "profileSha256": self.observation["profileHash"], "cohorts": cohorts, "canonicalRecords": self.full_records, "cohortClocks": {segment: {"utcMs": self.segments[segment], "monotonicSeconds": clocks[segment]} for segment in clocks}, "ttlEvidence": {"claim": "local-pre-expiry-row-and-ttl-bound-plus-elapsed-postgresql-clock-and-strong-absence", "preflight": preflight, "preExpiry": bound, "lastObservation": physical}, "purge": observation, "lifecycleOutcome": "pending-real-Platform-outcome"}
+                return {"status": "functional-observations-passed", "runId": run_id, "profileSha256": self.observation["profileHash"], "initialActorState": initial_actor_observation, "cohorts": cohorts, "canonicalRecords": self.full_records, "cohortClocks": {segment: {"utcMs": self.segments[segment], "monotonicSeconds": clocks[segment]} for segment in clocks}, "ttlEvidence": {"claim": "local-pre-expiry-row-and-ttl-bound-plus-elapsed-postgresql-clock-and-strong-absence", "preflight": preflight, "preExpiry": bound, "lastObservation": physical}, "purge": observation, "lifecycleOutcome": "pending-real-Platform-outcome"}
             self.wait(int(time.time() * 1000) + 30000, time.monotonic() + 30)
