@@ -5,7 +5,11 @@
 
 namespace Hexalith.Memories.AccessTelemetry.Contracts;
 
+using System.Runtime.Serialization;
+using System.Text.Json.Serialization;
+
 /// <summary>Internal canonical V1 lifecycle persistence record.</summary>
+[KnownType(typeof(Dictionary<string, object>))]
 public sealed record AccessTelemetryRecord
 {
     /// <summary>Gets the accepted timestamp.</summary>
@@ -42,6 +46,7 @@ public sealed record AccessTelemetryRecord
     public required string Outcome { get; init; }
 
     /// <summary>Gets the bounded operation parameters.</summary>
+    [JsonConverter(typeof(AccessTelemetryQueryParamsJsonConverter))]
     public IReadOnlyDictionary<string, object?> QueryParams { get; init; } = new Dictionary<string, object?>(0, StringComparer.Ordinal);
 
     /// <summary>Gets the monotonic ULID record identifier.</summary>

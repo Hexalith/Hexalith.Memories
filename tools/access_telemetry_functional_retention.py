@@ -1251,10 +1251,9 @@ def run_selected_platform_retention() -> int:
             _require(len(parts) >= 3 and not any(part in {"", ".", ".."} for part in parts), "selected-loaded-artifact-path")
             path = candidate.joinpath(*parts[1:])
             _require(path.resolve().is_relative_to(candidate.resolve()) and not any(parent.is_symlink() for parent in (path, *path.parents)), "selected-loaded-artifact-path")
-            with ExitStack() as descriptors:
-                held = _open_held_file(str(path), descriptors)
-                _require(_sha(held.read()) == digest, "selected-loaded-artifact-drift")
-                held.revalidate()
+            # Executables exceed the strict JSON reader's 1-MiB evidence cap.
+            # Keep complete streaming, byte bounds and held identity checks.
+            _require(_hash_file(path)[0] == digest, "selected-loaded-artifact-drift")
         deadline = datetime.fromisoformat(selection["executionDeadlineUtc"].replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
         observed_at = datetime.fromisoformat(observation["observedAtUtc"].replace("Z", "+00:00"))

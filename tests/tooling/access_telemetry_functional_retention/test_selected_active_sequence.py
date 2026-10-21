@@ -57,8 +57,11 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             names = {"memories": "Hexalith.Memories.Server.dll", "memories-access-telemetry": "Hexalith.Memories.AccessTelemetry.dll", "memories-access-telemetry-clock": "Hexalith.Memories.AccessTelemetry.Clock.dll"}
             for resource, assembly in names.items():
                 path = candidate / "bin" / assembly
-                path.write_bytes(b"offline mapped fixture bytes")
+                payload = b"a" * 1048576 + b"checked binary tail" if variant in {"large-artifact", "large-tail-drift"} else b"offline mapped fixture bytes"
+                path.write_bytes(payload)
                 loaded[resource + "/bin/" + assembly] = f._sha(path.read_bytes())
+            if variant == "large-tail-drift":
+                path.write_bytes(payload[:-1] + b"!")
             selection = {"moduleId": "memories", "name": "functional-retention", "entry": "tools/verify-access-telemetry-lifecycle.py", "mode": "source", "daprRuntimeVersion": "1.18.1", "executionTimeoutSeconds": 14400, "stopTimeoutSeconds": 900, "executionDeadlineUtc": (now() + timedelta(hours=4)).isoformat(), "manifestHash": f._sha(manifest.read_bytes()).upper(), "entryHash": f._sha(entry.read_bytes()).upper()}
             plan = {"schema": "hexalith.g4-run-plan.v1", "runId": "offline-run", "selectedTest": selection, "sourceMapping": {"root": str(candidate.parent.parent)}, "sourceMappingHash": mapping_hash}
             gate_path = root / "platform-components/retention/gate.json"
@@ -149,7 +152,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             self.assertNotIn("fixture-app-secret", output.getvalue())
             self.assertNotIn("fixture-dapr-secret", output.getvalue())
             status = json.loads(output.getvalue())
-            if variant in {"pass", "sql-latency", "fresh-actor"}:
+            if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact"}:
                 self.assertEqual(0, result, status)
                 self.assertEqual("functional-observations-passed", status["status"])
                 detail = json.loads(report.with_name("functional-observations.json").read_text())
@@ -171,15 +174,19 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             else:
                 self.assertEqual(1, result, status)
                 self.assertEqual("rejected", status["status"])
-                reasons = {"b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
+                reasons = {"large-tail-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
                 self.assertEqual(reasons[variant], status["reason"])
             if variant == "symlink-output": self.assertEqual([], list(outside.iterdir()))
             else:
                 counters = xml.parse(report).find("{*}ResultSummary/{*}Counters")
-                self.assertEqual("1" if variant in {"pass", "sql-latency", "fresh-actor"} else "0", counters.attrib["passed"])
+                self.assertEqual("1" if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact"} else "0", counters.attrib["passed"])
                 if result:
                     self.assertEqual(status["reason"], xml.parse(report).find("{*}Results/{*}UnitTestResult/{*}Output/{*}ErrorInfo/{*}Message").text)
             return status
+
+    def test_loaded_binary_over_json_limit_is_fully_hashed_and_tail_drift_refused(self):
+        self.run_sequence("large-artifact")
+        self.run_sequence("large-tail-drift")
 
     def test_real_selected_sequence_reconciles_cleanup_before_first_poll(self):
         self.run_sequence()

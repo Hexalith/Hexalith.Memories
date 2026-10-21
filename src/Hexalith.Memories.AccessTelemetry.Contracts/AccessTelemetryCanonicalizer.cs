@@ -213,7 +213,7 @@ public static partial class AccessTelemetryCanonicalizer
     private static string? GetNullableString(Dictionary<string, JsonElement> properties, string name)
         => properties[name].ValueKind == JsonValueKind.Null ? null : GetRequiredString(properties, name);
 
-    private static IReadOnlyDictionary<string, object?> ReadQueryParams(JsonElement element)
+    internal static IReadOnlyDictionary<string, object?> ReadQueryParams(JsonElement element)
     {
         if (element.ValueKind != JsonValueKind.Object)
         {
@@ -546,7 +546,7 @@ public static partial class AccessTelemetryCanonicalizer
         }
     }
 
-    private static void WriteScalar(Utf8JsonWriter writer, string name, object? value)
+    internal static void WriteScalar(Utf8JsonWriter writer, string name, object? value)
     {
         switch (value)
         {

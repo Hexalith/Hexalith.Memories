@@ -312,6 +312,73 @@ public sealed class CapabilityAndObservabilityCheckpointTests
         client.ReceivedCalls().Count().ShouldBe(1);
     }
 
+    [Fact]
+    public async Task ActorMetadataProbe_InitiallyAbsentThenRegistered_UsesActualMetadataProof()
+    {
+        var time = new FakeTimeProvider();
+        DaprClient client = Substitute.For<DaprClient>();
+        client.GetMetadataAsync(Arg.Any<CancellationToken>()).Returns(
+            Task.FromResult(new DaprMetadata("telemetry", [new DaprActorMetadata("UnrelatedActor", 1)], new Dictionary<string, string>(), [])),
+            Task.FromResult(new DaprMetadata("telemetry", [new DaprActorMetadata(nameof(AccessTelemetryLifecycleActor), 0)], new Dictionary<string, string>(), [])));
+        DaprAccessTelemetryCapabilityProbe probe = ActorMetadataProbe(client, time);
+
+        Task<AccessTelemetryCapabilityProbeResult> attempt = probe.ProbeAsync(CancellationToken.None);
+        attempt.IsCompleted.ShouldBeFalse();
+        time.Advance(TimeSpan.FromMilliseconds(499));
+        attempt.IsCompleted.ShouldBeFalse();
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        AccessTelemetryCapabilityProbeResult result = await attempt.WaitAsync(TimeSpan.FromSeconds(5));
+
+        result.Passed.ShouldBeTrue();
+        await client.Received(2).GetMetadataAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ActorMetadataProbe_PersistentlyAbsent_ExhaustsBoundAndFailsClosed()
+    {
+        DaprClient client = Substitute.For<DaprClient>();
+        client.GetMetadataAsync(Arg.Any<CancellationToken>()).Returns(
+            Task.FromResult(new DaprMetadata("telemetry", [], new Dictionary<string, string>(), [])));
+        DaprAccessTelemetryCapabilityProbe probe = ActorMetadataProbe(client, TimeProvider.System);
+
+        AccessTelemetryCapabilityProbeResult result = await probe.ProbeAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(25));
+
+        result.Passed.ShouldBeFalse();
+        await client.Received(30).GetMetadataAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ActorMetadataProbe_CancellationStopsPollingAndRejectsLateRegistration(bool lateMetadata)
+    {
+        var time = new FakeTimeProvider();
+        DaprClient client = Substitute.For<DaprClient>();
+        using var cancellation = new CancellationTokenSource();
+        var pending = new TaskCompletionSource<DaprMetadata>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.GetMetadataAsync(Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            call.Arg<CancellationToken>().ShouldBe(cancellation.Token);
+            return lateMetadata ? pending.Task : Task.FromResult(new DaprMetadata("telemetry", [], new Dictionary<string, string>(), []));
+        });
+        DaprAccessTelemetryCapabilityProbe probe = ActorMetadataProbe(client, time);
+
+        Task<AccessTelemetryCapabilityProbeResult> attempt = probe.ProbeAsync(cancellation.Token);
+        attempt.IsCompleted.ShouldBeFalse();
+        await cancellation.CancelAsync();
+        if (lateMetadata)
+            pending.SetResult(new DaprMetadata("telemetry", [new DaprActorMetadata(nameof(AccessTelemetryLifecycleActor), 1)], new Dictionary<string, string>(), []));
+        _ = await Should.ThrowAsync<OperationCanceledException>(() => attempt.WaitAsync(TimeSpan.FromSeconds(5)));
+        time.Advance(TimeSpan.FromMinutes(1));
+
+        await client.Received(1).GetMetadataAsync(Arg.Any<CancellationToken>());
+    }
+
+    private static DaprAccessTelemetryCapabilityProbe ActorMetadataProbe(DaprClient client, TimeProvider time)
+        => new(nameof(AccessTelemetryCapabilityProfile.ActorReactivationFailoverAndReminders), client,
+            new AccessTelemetryRuntimeOptionsProvider(new AccessTelemetryOptions()), new MonotonicRecordIdGenerator(), time,
+            NullLogger<DaprAccessTelemetryCapabilityProbe>.Instance);
+
     private static string LocalCanonicalProfile() => System.Text.Json.JsonSerializer.Serialize(new
     {
         purpose = "local-functional-retention", runId = "offline-run", sourceMappingHash = new string('a', 64), componentType = "state.postgresql/v2",

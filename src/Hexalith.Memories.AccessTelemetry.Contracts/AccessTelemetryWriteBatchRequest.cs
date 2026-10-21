@@ -5,7 +5,10 @@
 
 namespace Hexalith.Memories.AccessTelemetry.Contracts;
 
+using System.Runtime.Serialization;
+
 /// <summary>Dapr invocation request containing one bounded record batch.</summary>
+[KnownType(typeof(List<AccessTelemetryRecord>))]
 public sealed record AccessTelemetryWriteBatchRequest
 {
     /// <summary>Gets the configuration epoch.</summary>

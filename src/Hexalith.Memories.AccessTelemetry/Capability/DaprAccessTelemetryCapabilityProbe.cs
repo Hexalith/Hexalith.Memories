@@ -22,6 +22,8 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
     TimeProvider timeProvider,
     ILogger<DaprAccessTelemetryCapabilityProbe> logger) : IAccessTelemetryCapabilityProbe
 {
+    private const int ActorMetadataAttempts = 30;
+    private static readonly TimeSpan ActorMetadataRetryDelay = TimeSpan.FromMilliseconds(500);
     private static readonly StateOptions StrongFirstWrite = new()
     {
         Concurrency = ConcurrencyMode.FirstWrite,
@@ -162,9 +164,25 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
 
     private async Task<bool> ProbeActorMetadataAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        DaprMetadata metadata = await daprClient.GetMetadataAsync(cancellationToken).ConfigureAwait(false);
-        return metadata.Actors.Any(actor => string.Equals(actor.Type, nameof(AccessTelemetryLifecycleActor), StringComparison.Ordinal));
+        for (int attempt = 0; attempt < ActorMetadataAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            DaprMetadata metadata = await daprClient.GetMetadataAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (metadata.Actors.Any(actor => string.Equals(actor.Type, nameof(AccessTelemetryLifecycleActor), StringComparison.Ordinal)))
+            {
+                return true;
+            }
+
+            if (attempt + 1 < ActorMetadataAttempts)
+            {
+                // Actor registration can follow the first healthy metadata response. Poll only
+                // within this probe attempt; the runner's original overall budget still applies.
+                await Task.Delay(ActorMetadataRetryDelay, timeProvider, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return false;
     }
 
     private async Task<bool> ProbeTtlAsync(CancellationToken cancellationToken)

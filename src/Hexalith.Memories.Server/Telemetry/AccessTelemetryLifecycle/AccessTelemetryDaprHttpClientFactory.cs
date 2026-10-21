@@ -14,16 +14,9 @@ internal static class AccessTelemetryDaprHttpClientFactory
     public static HttpClient Create(string appId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appId);
-        HttpClient client = DaprClient.CreateInvokeHttpClient(appId);
-        if (string.Equals(Environment.GetEnvironmentVariable("DAPR_API_TOKEN_MODE"), "enabled", StringComparison.OrdinalIgnoreCase))
-        {
-            string? token = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
-            if (!string.IsNullOrWhiteSpace(token))
-            {
-                client.DefaultRequestHeaders.Add("dapr-api-token", token);
-            }
-        }
-
-        return client;
+        string? token = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
+        return DaprClient.CreateInvokeHttpClient(
+            appId,
+            daprApiToken: string.IsNullOrWhiteSpace(token) ? null : token);
     }
 }
