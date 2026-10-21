@@ -464,6 +464,7 @@ development_status:
   27-3-production-adapter-and-deployment-profile: done
   27-21-runtime-and-control-plane-identity: done
   27-22-component-and-backend-identity: done
+  # 2026-10-21: short Spec 14 governs the independently finishable local functional run; full qualification/A41 separately scheduled.
   27-4-retention-verification-operations-runbook-and-a41-close-out: in-progress
   # Corrected 2026-08-03 by approved Sprint Change Proposal 2026-08-03: Story 27.21 owns only
   # C1.15 as backlog; producer existence does not pass that gate. The remaining twenty-four C1

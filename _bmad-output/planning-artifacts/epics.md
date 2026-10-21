@@ -5328,23 +5328,16 @@ So that future compliantly authored running-target C1 stories can start from a r
 
 ### Story 27.4: Retention Verification, Operations Runbook, and A41 Close-Out
 
-#### Current Platform execution ownership — approved 2026-10-16
+#### Current functional execution contract — approved 2026-10-21
 
-The owner replied “approve” to the Platform correction in [the existing proposal](sprint-change-proposal-2026-10-16.md). [Existing Spec 14](../implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) and [one report](../implementation-artifacts/tests/27-4-retention-verification-evidence.md) govern. Platform owns the local run-owned environment and Builds’ existing descriptor/result/lifecycle; Memories consumes it and verifies real PostgreSQL retention. VM boot, raw disks and fixed 40/56-GiB host/guest requirements leave the functional critical path; prior approvals and unused/closed budgets remain history. Hosted attachment to 192.168.1.30 is refused.
+The owner said **“do recommended”** to the [functional-path simplification](sprint-change-proposal-2026-10-21.md). [Active Spec 14](../implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) now supplies the short contract and existing selected-test command. Bind relevant build/runtime inputs; unrelated planning files do not invalidate the run. Use the supported Platform tool, one bounded operational authorization and one short results report. Earlier exact-digest/source-census/review-loop directions are historical.
 
-**Given** supported, operationally approved Platform local inputs, **when** 125+125 normally acknowledged records are emitted at least 1800 real seconds apart, **then** A remains readable before 3600 seconds expiry and is strongly absent with due-index cleanup/reminder progress by +900 seconds, B stays unchanged, and positive record-level attribution plus UTC/monotonic observations support only functional evidence. Platform’s actual outcome-aware result governs success cleanup, retained local failure and withdrawn outcomes. Missing runner/profile/source/capability evidence refuses before effects. Existing HXR028/descriptor/15-minute lifetime/Redis/local binding/tool-source gaps currently block live preparation.
+The existing two-cohort behavioral acceptance criterion below is retained: real one-hour expiry, strong absence, due-index/reminder progress and unchanged newer records. A passing native report plus actual Platform terminal/disposition evidence completes **local functional retention** independently. Full qualification and A41 have their own separately scheduled campaign and retained per-gate inventory; they do not gate that functional result. Overall Story 27.4 remains in progress and A41 open. The proposal's verification table records current source/test checks; live compatibility and retention remain unproved until execution.
 
-All 25 C1/C0–C6/terminal/publication requirements remain unchanged; the KVM profile is retained history until an exact full Platform target/profile is adopted. Local file-backed secrets/development UTC/Debug never count as OpenBao/Kubernetes/independent UTC/CI candidate/full/Production/A41 evidence. Keep Story 27.4 in progress and A41 open; no additional story registration is required.
 
-#### Previous execution wording — historical 2026-10-16
+**Functional acceptance:** With supported, operationally approved Platform local inputs, emit 125+125 normally acknowledged records at least 1800 real seconds apart. A stays strongly readable before 3600-second expiry, then becomes strongly absent with due-index cleanup/reminder progress within 900 seconds; B stays unchanged. Require actual Platform terminal/disposition evidence. Local Debug, file secrets and development UTC provide functional evidence only.
 
-The owner approved [the course correction](sprint-change-proposal-2026-10-16.md) with “yes”. [Existing Spec 14](../implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) is the sole current execution specification and owns the explicitly approved per-gate checkpoint table. Jérôme Piquot owns each checkpoint; the table names evidence, review and completion state. The [existing report](../implementation-artifacts/tests/27-4-retention-verification-evidence.md) is the sole consolidated human results report.
-
-Full completion requires Story 27.3's applicable completed adapter/remediation obligations, all 25 distinct eligible same-session C1 gate passes and C0–C6/terminal/publication evidence under the current approved KVM profile. **Separate Story 27.7–27.31 file registration is no longer a qualification predicate.** Implemented gate-specific bindings, semantic verifiers, distinct attributable evidence and review remain required; this administrative change passes no gate. The old predecessor wording below is retained as dated history.
-
-**Given** one operationally approved isolated functional plan with explicit source/configuration deltas, **when** two 125-record cohorts traverse the real one-writer pipeline across actual one-hour expiry, **then** strong reads, due-index/reminder progress and unchanged newer controls prove only functional retention, with actual disabled/empty/zero cleanup. Development UTC sources and source-built Debug images are explicitly limited functional evidence; they supply no full C1, capacity, independent UTC, long-duration, Production, release or A41 credit.
-
-Implementation/preparation is authorized; live execution remains held for its one complete exact-plan approval. No new story or numbered implementation spec is registered. Story 27.4 remains in progress and A41 open.
+**Full campaign:** Preserve all requirements in the [current per-gate checklist](../../docs/operations/access-telemetry-full-qualification.md). Adopt an exact full Platform target/profile; previous captures cannot substitute. All technical gates, terminal verification and publication remain required for overall completion/A41. Additional successor-story registration is not a qualification predicate.
 
 ### Sole-owner qualification policy, adopted 2026-10-12
 
@@ -5356,8 +5349,7 @@ review claims. Owner-approved bounded run records and private local hashed/readb
 evidence replace separate institutional issuers and external immutable custody
 for this version. Actual target/action approval and all 25 technical gate passes
 remain required. Production activation, runtime identity/security and publication
-remain separately governed. Earlier institutional policy wording is retained as
-history for the stronger/legacy protocol. Policy adoption does not implement a
+remain separately governed. Policy adoption does not implement a
 collector, register a successor, pass a gate, complete 27.4 or close A41.
 
 
@@ -5365,16 +5357,7 @@ As a security reviewer,
 I want executable lifecycle evidence and one coordinated close-out against the approved Production profile,
 So that A41 closes only after the policy works in the deployment shape.
 
-**Historical predecessor gate (superseded 2026-10-16; preserved as evidence):**
-
-- Story 27.3 is `done` with C0 and C2-C4 complete against the immutable `PG-ONPREM-1` profile and with all its remediation, review, and ledger obligations closed. Its administratively transferred C1 umbrella is not qualification evidence and does not advance this story by itself.
-- Actual Story 27.7 through Story 27.31 files must exist, pass their creation guards, be registered by approved changes, and be `done`. Story 27.21 is currently the only registered successor and is `in-progress`, so this predecessor gate remains unsatisfied.
-- All twenty-five C1 child gates (C1.1-C1.25) are `passed` on their own required running-target evidence. A held, unregistered, pending, stale, skipped, or shared-discharge row fails this predecessor gate.
-- Story 27.3, all twenty-five C1 successors, and Story 27.4 use the same immutable profile hash. Any mismatch keeps Production lifecycle writes disabled, Story 27.4 incomplete, and A41 open.
-
-**Repository vs close-out (corrected 2026-09-06 by approved Sprint Change Proposal `sprint-change-proposal-2026-09-06-story-27-4-live-producer-contract.md`):** The Predecessor Gate binds Story 27.4 *completion*, Production lifecycle writes, and A41 mutation. Repository-owned producers, validators, runbooks, dashboard, and close-out guards may be implemented and reviewed as `awaiting-operator` while this gate is unsatisfied. That work does not pass any C1 gate, enable Production writes, mark this story `done`, or close A41.
-
-**Acceptance Criteria:**
+**Full campaign acceptance criteria:**
 
 **Given** the approved immutable profile, a short test retention window, and a production-shaped deployment,
 **When** old and new access events cross the expiry boundary across at least two Server writers and controlled workload, sidecar, actor, Placement, Scheduler, and backend-fault recovery,
