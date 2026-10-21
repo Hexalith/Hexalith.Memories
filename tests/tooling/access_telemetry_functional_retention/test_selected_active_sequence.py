@@ -147,7 +147,14 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 (root / "native-tests").rmdir()
                 (root / "native-tests").symlink_to(outside, target_is_directory=True)
             env = {"HEXALITH_G4_TEST_NAME": "functional-retention", "HEXALITH_G4_TEST_OWNER": "memories", "HEXALITH_G4_TEST_MODE": "source", "HEXALITH_G4_RUN_ID": "offline-run", "HEXALITH_G4_PLAN_PATH": str(root / "plan.json"), "HEXALITH_G4_READINESS_PATH": str(root / "readiness.json"), "HEXALITH_G4_TEST_REPORT_PATH": str(report), "HEXALITH_G4_TEST_MANIFEST_HASH": selection["manifestHash"], "HEXALITH_G4_TEST_ENTRY_HASH": selection["entryHash"], "HEXALITH_SOURCE_MAPPING_HASH": mapping_hash}
-            with patch.dict(os.environ, env, clear=True), patch.object(f, "__file__", str(candidate / "tools/access_telemetry_functional_retention.py")), patch.object(f, "datetime", Utc), patch.object(f.time, "time", lambda: clock.seconds), patch.object(f.time, "monotonic", lambda: clock.monotonic), patch.object(f.time, "sleep", sleep), patch("urllib.request.OpenerDirector.open", http), patch.object(f.subprocess, "run", sql), redirect_stdout(io.StringIO()) as output:
+            original_execute = f._PlatformRetentionConsumer.execute
+            def execute(consumer):
+                observed = original_execute(consumer)
+                if variant == "final-return-drift":
+                    artifact = Path("/", *consumer.loaded_inputs[0].parts)
+                    artifact.write_bytes(artifact.read_bytes() + b"changed-after-observation-return")
+                return observed
+            with patch.dict(os.environ, env, clear=True), patch.object(f, "__file__", str(candidate / "tools/access_telemetry_functional_retention.py")), patch.object(f, "datetime", Utc), patch.object(f.time, "time", lambda: clock.seconds), patch.object(f.time, "monotonic", lambda: clock.monotonic), patch.object(f.time, "sleep", sleep), patch("urllib.request.OpenerDirector.open", http), patch.object(f.subprocess, "run", sql), patch.object(f._PlatformRetentionConsumer, "execute", execute), redirect_stdout(io.StringIO()) as output:
                 result = f.run_selected_platform_retention()
             self.assertNotIn("fixture-app-secret", output.getvalue())
             self.assertNotIn("fixture-dapr-secret", output.getvalue())
@@ -174,8 +181,10 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             else:
                 self.assertEqual(1, result, status)
                 self.assertEqual("rejected", status["status"])
-                reasons = {"large-tail-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
+                reasons = {"large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
                 self.assertEqual(reasons[variant], status["reason"])
+                if variant == "final-return-drift":
+                    self.assertFalse(report.with_name("functional-observations.json").exists())
             if variant == "symlink-output": self.assertEqual([], list(outside.iterdir()))
             else:
                 counters = xml.parse(report).find("{*}ResultSummary/{*}Counters")
@@ -196,6 +205,9 @@ class SelectedActiveSequenceTests(unittest.TestCase):
 
     def test_real_selected_sequence_records_fresh_http_204_baseline_and_later_real_progress(self):
         self.run_sequence("fresh-actor")
+
+    def test_final_observation_return_rechecks_loaded_inputs_before_success_is_recorded(self):
+        self.run_sequence("final-return-drift")
 
     def test_actor_absence_requires_initial_http_204_with_empty_body(self):
         consumer = object.__new__(f._PlatformRetentionConsumer)

@@ -44,7 +44,7 @@ Functional completion requires passing native TRX and `functional-observations.j
 
 | Track | Owner | Evidence | Review state | Completion state |
 | :--- | :--- | :--- | :--- | :--- |
-| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Command above; native report, observations and terminal result | Focused blocker checks passed; real failed runs preserved | In progress; no passing retention result; current run/disposition in report |
+| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Command above; authentic failed native TRX, partial real cohort observations and actual terminal/disposal result | Focused source/preparation checks passed; real failures and executable drift preserved | In progress: latest native run failed before expiry; all nine new environments removed/verified empty; no further complete run fits original ceiling |
 | Full qualification / A41 | Jérôme Piquot; Platform Operations and Security roles | Current per-gate inventory linked below | Pending | Deferred to a separately scheduled campaign; open |
 
 ## Full qualification and close-out checkpoints
