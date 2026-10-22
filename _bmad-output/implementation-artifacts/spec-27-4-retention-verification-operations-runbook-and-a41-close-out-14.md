@@ -27,13 +27,13 @@ Prove local retention with the existing `functional-retention` test: one writer 
 4. Obtain one operational authorization for that complete plan. It covers setup, test and normal stopping/disposition; no separate approval for unchanged steps, passing results or evidence-file hashes. Default: one launch, no automatic restart; uncertain cohort submission may reconcile the same identity once. Any startup retry must be explicitly bounded in that plan. Material changes to target, actions, permissions or resource/time limits require a new decision. The current approval implements this contract; it is not an approval of an as-yet-unprepared live plan.
 5. Run the existing command below. Keep a failed result and fix the concrete failing input; do not restart the preparation ceremony. Old retained resources are outside this run's disposal authority.
 
-From `/home/administrator/projects/hexalith/platform`, with `RETENTION_EVIDENCE` set to the plan's fresh absolute output path:
+From `/home/administrator/projects/hexalith/platform`, with `RETENTION_EVIDENCE` set to a fresh canonical repository-relative JSON path under the declared Memories owner (the supported tool refuses absolute evidence paths):
 
 ```bash
 dotnet tool run hexalith-module -- test \
   --manifest references/Hexalith.Memories/module/hexalith.module-manifest.v2.json \
   --profile functional-retention --mode source \
-  --evidence "${RETENTION_EVIDENCE:?set the approved fresh absolute output path}" --output json
+  --evidence "${RETENTION_EVIDENCE:?set the fresh owner-relative JSON evidence path}" --output json
 ```
 
 The runner invokes `tools/verify-access-telemetry-lifecycle.py` through its selected-test handoff. Do not invoke the historical VM checkpoint or construct a handoff manually. Version/help checks establish CLI availability only; model/startup compatibility must still pass.
@@ -44,7 +44,7 @@ Functional completion requires passing native TRX and `functional-observations.j
 
 | Track | Owner | Evidence | Review state | Completion state |
 | :--- | :--- | :--- | :--- | :--- |
-| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Command above; native report, observations and terminal result | Offline checks only; live review pending | Pending real run; independently finishable |
+| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Command above; authentic failed native TRX, partial real cohort observations and actual terminal/disposal result | Focused source/preparation checks passed; real failures and executable drift preserved | In progress: latest native run failed before expiry; all nine new environments removed/verified empty; no further complete run fits original ceiling |
 | Full qualification / A41 | Jérôme Piquot; Platform Operations and Security roles | Current per-gate inventory linked below | Pending | Deferred to a separately scheduled campaign; open |
 
 ## Full qualification and close-out checkpoints
