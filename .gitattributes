@@ -31,3 +31,6 @@ Dockerfile text eol=lf
 _bmad-output/**/*.patch whitespace=-trailing-space
 _bmad-output/**/*.diff whitespace=-trailing-space
 _bmad-output/implementation-artifacts/review-7-2/bundle.txt whitespace=-trailing-space
+
+# Preserve the authentic selected-run mapping regression bytes.
+tests/tooling/access_telemetry_functional_retention/fixtures/native-selected-source-mapping.json -text
