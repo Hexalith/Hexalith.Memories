@@ -29,7 +29,6 @@ Exit 0 on pass or a documented no-op, exit 1 on violation. All output to stdout.
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import re
 import subprocess
 import sys
@@ -481,8 +480,6 @@ def parse_tables(text: str) -> list[tuple[list[str], list[list[str]]]]:
                 continue
             pending_header = cells
             continue
-        if is_separator_row(cells):
-            continue
         current[1].append(cells)
 
     if current:
@@ -498,14 +495,14 @@ def find_ledger(text: str) -> list[list[str]] | None:
     return None
 
 
-def find_evidence_tables(text: str) -> list[tuple[int, list[list[str]]]]:
-    """Return (status column index, rows) for each evidence/checkpoint table."""
-    found: list[tuple[int, list[list[str]]]] = []
+def find_evidence_tables(text: str) -> list[tuple[int, int, list[list[str]]]]:
+    """Return (status column index, header width, rows) for each evidence table."""
+    found: list[tuple[int, int, list[list[str]]]] = []
     for header, rows in parse_tables(text):
         normalized = [normalize_cell(cell) for cell in header]
         for index, cell in enumerate(normalized):
             if cell in EVIDENCE_STATUS_HEADERS:
-                found.append((index, rows))
+                found.append((index, len(header), rows))
                 break
     return found
 
@@ -570,7 +567,7 @@ def parse_exclusions(text: str) -> list[Exclusion]:
         if not path:
             raise ValidationError(f"File List Exclusions entry has no backticked path: {stripped}")
         owner_match = re.search(r"owner\s*:\s*([^;]+)", stripped, re.IGNORECASE)
-        if not owner_match:
+        if not owner_match or not owner_match.group(1).strip():
             raise ValidationError(f"File List Exclusions entry names no owner: {stripped}")
         remainder = stripped[owner_match.end():].strip(" ;—-")
         if not remainder:
@@ -600,26 +597,6 @@ def parse_sprint_status(path: Path) -> dict[str, str]:
         if value in VALID_STATUSES:
             statuses[key] = value
     return statuses
-
-
-def matches_glob(path: str, pattern: str) -> bool:
-    return _glob_match(path.split("/"), normalize_path(pattern).split("/"))
-
-
-def _glob_match(parts: list[str], pat: list[str]) -> bool:
-    if not pat:
-        return not parts
-    head, *rest = pat
-    if head == "**":
-        for i in range(len(parts) + 1):
-            if _glob_match(parts[i:], rest):
-                return True
-        return False
-    if not parts:
-        return False
-    if fnmatch.fnmatchcase(parts[0], head):
-        return _glob_match(parts[1:], rest)
-    return False
 
 
 def to_posix(path: Path) -> str:
@@ -735,9 +712,16 @@ def check_evidence_rows(text: str, status: str) -> tuple[list[str], int]:
     if status not in C6_STATUSES:
         return failures, len(tables)
 
-    for status_index, rows in tables:
+    for status_index, header_width, rows in tables:
         for cells in rows:
-            if status_index >= len(cells):
+            if len(cells) < header_width:
+                label = cells[0].strip() if cells else "?"
+                failures.append(
+                    f"C6: evidence row '{label}' is truncated "
+                    f"({len(cells)} cells, expected {header_width}); "
+                    "its review-status cell cannot be verified "
+                    f"while the story status is '{status}'."
+                )
                 continue
             value = normalize_cell(cells[status_index])
             if value not in PENDING_CELLS:
@@ -829,7 +813,11 @@ def validate(args: argparse.Namespace) -> int:
         failures.extend(check_ledger(ledger, status))
 
     # C1 - File List completeness against the story's diff.
-    if file_list is None:
+    # Exclusion syntax remains enforceable even when cumulative comparison skips.
+    exclusion_paths = {exclusion.path for exclusion in parse_exclusions(text)}
+    if not file_list and status in C1_STATUSES:
+        failures.append("C1: a non-empty File List is required for this governed artifact.")
+    elif file_list is None:
         notes.append("C1: artifact carries no File List; completeness check skipped.")
     elif status not in C1_STATUSES:
         notes.append(
@@ -859,18 +847,15 @@ def validate(args: argparse.Namespace) -> int:
                 "closed rather than pass vacuously."
             )
         else:
-            exclusion_paths = {exclusion.path for exclusion in parse_exclusions(text)}
-            unlisted = sorted(
-                path
-                for path in set(changed)
-                if path not in file_list
-                and path not in exclusion_paths
-                and not any(matches_glob(path, entry) for entry in file_list)
-            )
+            changed_paths = set(changed) - exclusion_paths
+            unlisted = sorted(changed_paths - file_list)
+            stale = sorted(file_list - changed_paths)
             for path in unlisted:
                 failures.append(f"C1: '{path}' changed but is not in the File List.")
-            if not unlisted:
-                print(f"C1: all {len(set(changed))} changed paths are declared.")
+            for path in stale:
+                failures.append(f"C1: '{path}' is in the File List but not in the in-scope changed set.")
+            if not unlisted and not stale:
+                print(f"C1: File List exactly matches all {len(changed_paths)} in-scope changed paths.")
 
     # C6 - evidence-row status.
     evidence_failures, table_count = check_evidence_rows(text, status or "")

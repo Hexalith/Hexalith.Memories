@@ -4536,21 +4536,27 @@ status: open
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: The readiness gate silently ignores evidence rows whose review-status cell is absent. evidence: `check_evidence_rows` continues when `status_index` exceeds the row length instead of reporting the missing status required by policy.
-status: open
+status: resolved 2026-10-22
+resolution: `spec-five-deferred-readiness-checks.md` implements the existing story-phase-ledger contract in `tools/check-story-review-readiness.py`; `test_missing_status_cell_fails_at_review_and_done` covers the refusal and fails against baseline `779db8694087c4459174429287ee07c1caff1a84`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 62/62 methods after independent review patches.
+reopen_trigger: A change to readiness parsing or reconciliation lets the covered invalid artifact pass again.
 
 ### DW-605: Readiness File List reconciliation checks changed-but-unlisted paths but not listed-but-unchanged paths.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: Readiness File List reconciliation checks changed-but-unlisted paths but not listed-but-unchanged paths. evidence: C1 builds only an `unlisted` set even though the phase-ledger policy requires the cumulative File List and changed set to contain identical entries.
-status: open
+status: resolved 2026-10-22
+resolution: `spec-five-deferred-readiness-checks.md` implements the existing story-phase-ledger contract in `tools/check-story-review-readiness.py`; `test_listed_but_unchanged_fails` covers the refusal and fails against baseline `779db8694087c4459174429287ee07c1caff1a84`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 62/62 methods after independent review patches.
+reopen_trigger: A change to readiness parsing or reconciliation lets the covered invalid artifact pass again.
 
 ### DW-606: Readiness File List entries are treated as globs instead of exact historical paths.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: Readiness File List entries are treated as globs instead of exact historical paths. evidence: C1 calls `matches_glob` for File List entries, allowing a broad entry such as `src/**` to replace the policy-required path-level inventory.
-status: open
+status: resolved 2026-10-22
+resolution: `spec-five-deferred-readiness-checks.md` implements the existing story-phase-ledger contract in `tools/check-story-review-readiness.py`; `test_wildcards_cannot_replace_exact_paths` covers the refusal and fails against baseline `779db8694087c4459174429287ee07c1caff1a84`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 62/62 methods after independent review patches.
+reopen_trigger: A change to readiness parsing or reconciliation lets the covered invalid artifact pass again.
 
 ### DW-607: Cumulative readiness diff collection loses the source path of renames.
 
@@ -4585,7 +4591,9 @@ status: open
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: An in-progress or review artifact can omit its File List and still pass readiness. evidence: When `parse_section_paths` returns none, validation emits a skipped note instead of enforcing the core cumulative completeness input.
-status: open
+status: resolved 2026-10-22
+resolution: `spec-five-deferred-readiness-checks.md` implements the existing story-phase-ledger contract in `tools/check-story-review-readiness.py`; `test_missing_file_list_fails_for_active_governed_artifacts` covers the refusal and fails against baseline `779db8694087c4459174429287ee07c1caff1a84`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 62/62 methods after independent review patches.
+reopen_trigger: A change to readiness parsing or reconciliation lets the covered invalid artifact pass again.
 
 ### DW-612: The readiness gate does not enforce chronological order of canonical ledger phases.
 
@@ -4606,7 +4614,9 @@ status: open
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: A whitespace-only exclusion owner is accepted by the readiness parser. evidence: `parse_exclusions` checks only that the owner regex matched and strips the captured value without rejecting an empty result.
-status: open
+status: resolved 2026-10-22
+resolution: `spec-five-deferred-readiness-checks.md` implements the existing story-phase-ledger contract in `tools/check-story-review-readiness.py`; `test_blank_exclusion_owner_fails` covers the refusal and fails against baseline `779db8694087c4459174429287ee07c1caff1a84`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 62/62 methods after independent review patches.
+reopen_trigger: A change to readiness parsing or reconciliation lets the covered invalid artifact pass again.
 
 ### DW-615: Readiness hook and CI adoption lack an executable entry-point contract test.
 

@@ -65,7 +65,7 @@ def story(
     frontmatter: str = "---\nbaseline_commit: abc1234\n---\n",
 ) -> str:
     ledger_rows = default_ledger(status) if ledger_rows is None else ledger_rows
-    listed = "".join(f"- `{path}`\n" for path in (file_list or ["docs/a.md"]))
+    listed = "".join(f"- `{path}`\n" for path in (["docs/a.md"] if file_list is None else file_list))
     return (
         f"{frontmatter}\n# Story 99.9: Fixture\n\nStatus: {status}\n\n"
         f"## Change Log\n\n{LEDGER_HEADER}{ledger_rows}\n"
@@ -77,7 +77,10 @@ def story(
 class VerifierTestCase(unittest.TestCase):
     """Writes a story artifact into a throwaway artifacts root and runs the CLI."""
 
-    def run_cli(self, *args: str, artifacts: dict[str, str] | None = None, sprint: str | None = None):
+    def run_cli(
+        self, *args: str, artifacts: dict[str, str] | None = None,
+        sprint: str | None = None, cwd: Path | None = None,
+    ):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "artifacts"
             root.mkdir()
@@ -98,7 +101,7 @@ class VerifierTestCase(unittest.TestCase):
                     str(sprint_path),
                     *args,
                 ],
-                cwd=REPO_ROOT,
+                cwd=REPO_ROOT if cwd is None else cwd,
                 text=True,
                 capture_output=True,
                 check=False,
@@ -348,6 +351,37 @@ class C6EvidenceRowTests(VerifierTestCase):
         self.assertIn("C6", out)
         self.assertIn("skipped", out)
 
+    def test_missing_status_cell_fails_at_review_and_done(self):
+        for status in ("review", "done"):
+            for evidence in (
+                self.VERIFIED.replace(
+                    "| A9 current-state proof | Dev | Test or code proof | Verified | 2026-07-05 |",
+                    "| Truncated proof | Dev | Test or code proof |",
+                ),
+                self.VERIFIED.replace(
+                    "| A9 current-state proof | Dev | Test or code proof | Verified | 2026-07-05 |",
+                    "| Truncated proof | Dev | Test or code proof | 2026-10-22 |",
+                ),
+                "| Gate | Review state |\n|---|---|\n| Truncated proof |\n",
+            ):
+                with self.subTest(status=status, evidence=evidence):
+                    out = self.assert_story(status, evidence, 1)
+                    self.assertIn("C6: evidence row 'Truncated proof' is truncated", out)
+
+    def test_placeholder_only_rows_are_not_discarded_as_separators(self):
+        for status in ("review", "done"):
+            for row in ("| - |", "| - | - | - | - | - |"):
+                with self.subTest(status=status, row=row):
+                    evidence = self.VERIFIED.rstrip() + "\n" + row + "\n"
+                    out = self.assert_story(status, evidence, 1)
+                    self.assertIn("C6: evidence row '-'", out)
+
+    def test_missing_status_cell_is_allowed_below_review(self):
+        evidence = "| Gate | Review status |\n|---|---|\n| Truncated proof |\n"
+        for status in ("in-progress", "ready-for-dev"):
+            with self.subTest(status=status):
+                self.assert_story(status, evidence, 0)
+
 
 class C6ParserTests(unittest.TestCase):
     """White-box checks against the live artifacts C6 was designed from."""
@@ -510,6 +544,136 @@ class C4SprintSyncTests(VerifierTestCase):
 
 
 class C1FileListTests(VerifierTestCase):
+    def test_listed_but_unchanged_fails(self):
+        code, out = self.run_cli(
+            "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+            artifacts={"99-9-fixture.md": story(file_list=["docs/a.md", "docs/stale.md"])},
+        )
+        self.assertEqual(code, 1, out)
+        self.assertIn("'docs/stale.md' is in the File List but not in the in-scope changed set", out)
+
+    def test_mismatch_reports_both_directions(self):
+        code, out = self.run_cli(
+            "--story-key", "99-9-fixture", "--changed-file", "docs/new.md",
+            artifacts={"99-9-fixture.md": story(file_list=["docs/old.md"])},
+        )
+        self.assertEqual(code, 1, out)
+        self.assertIn("'docs/new.md' changed but is not in the File List", out)
+        self.assertIn("'docs/old.md' is in the File List but not in the in-scope changed set", out)
+
+    def test_wildcards_cannot_replace_exact_paths(self):
+        for pattern in ("src/**", "src/*.cs", "src/file?.cs", "src/[ab].cs"):
+            changed = "src/a.cs" if "[ab]" in pattern else "src/file1.cs"
+            with self.subTest(pattern=pattern):
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture", "--changed-file", changed,
+                    artifacts={"99-9-fixture.md": story(file_list=[pattern])},
+                )
+                self.assertEqual(code, 1, out)
+                self.assertIn(f"'{changed}' changed but is not in the File List", out)
+                self.assertIn(f"'{pattern}' is in the File List but not in the in-scope changed set", out)
+
+    def test_literal_glob_metacharacters_match_identical_paths(self):
+        path = "src/literal[ab].cs"
+        code, out = self.run_cli(
+            "--story-key", "99-9-fixture", "--changed-file", path,
+            artifacts={"99-9-fixture.md": story(file_list=[path])},
+        )
+        self.assertEqual(code, 0, out)
+        self.assertIn("File List exactly matches all 1 in-scope changed paths", out)
+
+    def test_missing_file_list_fails_for_active_governed_artifacts(self):
+        for status in ("in-progress", "review"):
+            for governed_body in (
+                story(status=status).split("### File List", 1)[0],
+                f"Status: {status}\n\n{C6EvidenceRowTests.VERIFIED}",
+            ):
+                with self.subTest(status=status, body=governed_body):
+                    code, out = self.run_cli(
+                        "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+                        artifacts={"99-9-fixture.md": governed_body},
+                        sprint=f"development_status:\n  99-9-fixture: {status}\n",
+                    )
+                    self.assertEqual(code, 1, out)
+                    self.assertIn("C1: a non-empty File List is required", out)
+
+    def test_empty_file_list_fails_for_active_governed_artifacts(self):
+        for status in ("in-progress", "review"):
+            with self.subTest(status=status):
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+                    artifacts={"99-9-fixture.md": story(status=status, file_list=[])},
+                    sprint=f"development_status:\n  99-9-fixture: {status}\n",
+                )
+                self.assertEqual(code, 1, out)
+                self.assertIn("C1: a non-empty File List is required", out)
+
+    def test_prose_only_artifacts_remain_ungoverned(self):
+        for status in ("in-progress", "review", "done"):
+            with self.subTest(status=status):
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture",
+                    artifacts={"99-9-fixture.md": f"Status: {status}\n\nProse only.\n"},
+                )
+                self.assertEqual(code, 0, out)
+                self.assertIn("no-op", out)
+
+    def test_missing_file_list_outside_active_statuses_skips_c1(self):
+        for status in ("backlog", "ready-for-dev", "done"):
+            with self.subTest(status=status):
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture",
+                    artifacts={"99-9-fixture.md": story(status=status).split("### File List", 1)[0]},
+                    sprint=f"development_status:\n  99-9-fixture: {status}\n",
+                )
+                self.assertEqual(code, 0, out)
+                self.assertIn("C1: artifact carries no File List; completeness check skipped", out)
+
+    def test_blank_exclusion_owner_fails(self):
+        for owner in (" ", "   ", "\t"):
+            with self.subTest(owner=owner):
+                exclusions = (
+                    "### File List Exclusions\n\n"
+                    f"- `src/other.cs` — owner: {owner}; concurrent work\n"
+                )
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+                    "--changed-file", "src/other.cs",
+                    artifacts={"99-9-fixture.md": story(exclusions=exclusions)},
+                )
+                self.assertEqual(code, 1, out)
+                self.assertIn("File List Exclusions entry names no owner", out)
+
+    def test_named_exclusions_are_removed_before_exact_set_comparison(self):
+        exclusions = (
+            "### File List Exclusions\n\n"
+            "- `src/other.cs` — owner: Another Story; concurrent work\n"
+        )
+        code, out = self.run_cli(
+            "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+            "--changed-file", "src/other.cs",
+            artifacts={"99-9-fixture.md": story(
+                file_list=["./docs//a.md"], exclusions=exclusions,
+            )},
+        )
+        self.assertEqual(code, 0, out)
+        self.assertIn("File List exactly matches all 1 in-scope changed paths", out)
+
+    def test_excluded_path_cannot_also_be_credited_in_file_list(self):
+        exclusions = (
+            "### File List Exclusions\n\n"
+            "- `src/other.cs` — owner: Another Story; concurrent work\n"
+        )
+        code, out = self.run_cli(
+            "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+            "--changed-file", "src/other.cs",
+            artifacts={"99-9-fixture.md": story(
+                file_list=["docs/a.md", "src/other.cs"], exclusions=exclusions,
+            )},
+        )
+        self.assertEqual(code, 1, out)
+        self.assertIn("'src/other.cs' is in the File List but not in the in-scope changed set", out)
+
     def test_changed_but_unlisted_fails(self):
         code, out = self.run_cli(
             "--story-key",
@@ -590,6 +754,84 @@ class C1FileListTests(VerifierTestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("C1", out)
         self.assertIn("skipped", out)
+
+
+class C1CumulativeTests(VerifierTestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="readiness-git-")
+        self.addCleanup(temporary.cleanup)
+        self.repo = Path(temporary.name)
+        self.git("init", "--initial-branch=main")
+        (self.repo / "docs").mkdir()
+        self.write_file("docs/unchanged.md")
+        self.git("add", ".")
+        self.git("commit", "-m", "test: create readiness baseline fixture")
+        self.baseline = self.git("rev-parse", "HEAD").strip()
+
+    def git(self, *args):
+        result = subprocess.run(
+            ["git", "-c", "user.name=Readiness Fixture", "-c",
+             "user.email=readiness@example.invalid", "-c", "commit.gpgsign=false", *args],
+            cwd=self.repo, text=True, capture_output=True, check=True,
+        )
+        return result.stdout
+
+    def write_file(self, name):
+        (self.repo / name).write_text("fixture\n", encoding="utf-8")
+
+    def fixture_story(self, **kwargs):
+        return story(frontmatter=f"---\nbaseline_commit: {self.baseline}\n---\n", **kwargs)
+
+    def test_cumulative_comparison_includes_committed_staged_and_supplied_paths(self):
+        self.git("switch", "-c", "fix/99-9-fixture")
+        self.write_file("docs/committed.md")
+        self.git("add", ".")
+        self.git("commit", "-m", "test: record cumulative readiness fixture")
+        self.write_file("docs/staged.md")
+        self.git("add", ".")
+        self.write_file("docs/supplied.md")
+        paths = ["docs/committed.md", "docs/staged.md", "docs/supplied.md"]
+        for file_list, missing, stale in (
+            (paths, None, None),
+            (paths[1:], paths[0], None),
+            ([paths[0], paths[2]], paths[1], None),
+            (paths[:2], paths[2], None),
+            (paths + ["docs/unchanged.md"], None, "docs/unchanged.md"),
+        ):
+            with self.subTest(file_list=file_list):
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture", "--derive-cumulative",
+                    "--changed-file", "docs/supplied.md", cwd=self.repo,
+                    artifacts={"99-9-fixture.md": self.fixture_story(file_list=file_list)},
+                )
+                self.assertEqual(code, 1 if missing or stale else 0, out)
+                if missing:
+                    self.assertIn(f"'{missing}' changed but is not in the File List", out)
+                elif stale:
+                    self.assertIn(f"'{stale}' is in the File List but not in the in-scope changed set", out)
+                else:
+                    self.assertIn("File List exactly matches all 3 in-scope changed paths", out)
+
+    def test_default_branch_skips_only_cumulative_comparison(self):
+        code, out = self.run_cli(
+            "--story-key", "99-9-fixture", "--derive-cumulative", cwd=self.repo,
+            artifacts={"99-9-fixture.md": self.fixture_story(file_list=["docs/stale.md"])},
+        )
+        self.assertEqual(code, 0, out)
+        self.assertIn("C1 SKIPPED: HEAD is on default branch 'main'", out)
+        self.assertNotIn("File List exactly matches", out)
+
+    def test_default_branch_skip_cannot_hide_blank_exclusion_owner(self):
+        exclusions = (
+            "### File List Exclusions\n\n"
+            "- `src/other.cs` — owner:   ; concurrent work\n"
+        )
+        code, out = self.run_cli(
+            "--story-key", "99-9-fixture", "--derive-cumulative", cwd=self.repo,
+            artifacts={"99-9-fixture.md": self.fixture_story(exclusions=exclusions)},
+        )
+        self.assertEqual(code, 1, out)
+        self.assertIn("File List Exclusions entry names no owner", out)
 
 
 class BypassTests(VerifierTestCase):

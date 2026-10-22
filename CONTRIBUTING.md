@@ -232,7 +232,7 @@ Five checks run against the resolved artifact:
 
 | Check | Fails when |
 | :---- | :--------- |
-| C1 | a changed path is absent from the story's `### File List` |
+| C1 | a governed active artifact has no non-empty `### File List`, or that list differs from the in-scope changed set (exact paths in both directions; no wildcard matching) |
 | C2 | a required phase-ledger row is missing, a `Test count` or `File List reconciliation` cell holds a placeholder (`TBD`, `N/A`, `-`), or the newest row records neither `matched N/N` nor a blocked-evidence record |
 | C3 | the artifact declares no `Status:` line, or one outside `backlog`, `ready-for-dev`, `in-progress`, `review`, `done` |
 | C4 | the story's status disagrees with its `development_status` row in `sprint-status.yaml` (a `spec-*` artifact is not expected to carry a row) |
@@ -250,7 +250,9 @@ for a human reader but does not exempt a path:
 - `path/to/file` — owner: Another Story; concurrent work, not credited here
 ```
 
-Every bullet needs a backticked path, a named owner, and a reason.
+Every bullet needs a backticked path, a named owner, and a reason. Whitespace
+alone is not an owner. Excluded paths are removed from the changed set before
+comparison and must not also be credited in the File List.
 
 Run it yourself before moving a story to review:
 
