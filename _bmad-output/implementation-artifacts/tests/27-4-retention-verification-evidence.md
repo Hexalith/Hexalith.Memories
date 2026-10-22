@@ -12,6 +12,12 @@ The same observation counted **1,048,539** inotify watches against `fs.inotify.m
 
 Private snapshot: `/home/administrator/.local/state/hexalith/memories/access-telemetry/resume-spec14-20261022-admission/prelaunch-admission.json`. Local functional completion, full qualification, and A41 remain open. The earlier startup failure recorded below is unchanged.
 
+### Container memory floor — owner decision 2026-10-22
+
+The functional run stays on the existing container graph. It does not create a KVM or QEMU guest. The qualification guest profile remains a separate full-qualification record and is not started here.
+
+For the next container admission, Docker memory and Linux `MemAvailable` must each be at least **17,179,869,184** bytes (16 GiB). That is the PostgreSQL container `--memory` and `--memory-swap` cap in `PlatformRetentionProfile`. The 8 CPU floor and the 20 GiB staging and backing-disk floors stay. The 40 GiB and 56 GiB figures belong to the qualification guest and the retired host-before-guest check. This decision changes the next admission floor. It does not start a run, and it leaves the 07:32:14Z refusal above as the check that actually ran.
+
 
 **Failed during startup: no passing live retention result.** The owner approved the prepared one-launch plan with **“.approve”** on 2026-10-22. The supported command launched at **06:20:19.081832Z**, run `2397010f0d8da3011f1c7a1ead881586`, and returned **CLI exit 3 / failed / HXR025** at 06:20:45.441233Z (native terminal 06:20:45.2583461Z). Startup failed before the selected retention test: **no native TRX, no `functional-observations.json`, no cohorts and no retention/expiry proof**. No startup retry or second launch was attempted.
 

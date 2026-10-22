@@ -63,13 +63,16 @@ The owner approved the prepared plan on 2026-10-22; its one launch `2397010f0d8d
 - 900 seconds cumulative cleanup. Capture actual resource logs and failure details before cleanup.
 - Proceed within these bounds without further confirmation. No automatic restarts and no budget resets.
 - Reuse existing preparation and relevant input identities. Preserve source/Debug mode, Platform tool 4.35.1, immutable Dapr 1.18.1 and PostgreSQL 18.6 pins, security checks, user changes, and previously retained resources. Old retained resources stay outside this run's disposal authority.
+- Use the container graph only. Do not create a KVM or QEMU guest. The next container admission requires Docker memory and Linux `MemAvailable` of at least 17,179,869,184 bytes (16 GiB), the PostgreSQL container memory cap. Keep the 8 CPU floor and the 20 GiB disk floors. The qualification guest profile stays unused by this run.
 - Fix the demonstrated cause in its owning repository and run focused regressions there. Do not modify another repository's unrelated existing fixes.
 - Use supported Platform lifecycle commands. Verify removal of each new run's resources.
 - Update the single current report with authentic results. Local functional completion stays separate from full qualification and A41 closure.
 
 The earlier transport-edge repair remains historical preparation unless a later diagnosis shows it is the demonstrated cause. Do not restart the preparation ceremony, create another spec, or claim full qualification.
 
-This continuation's once-before-launch check at 2026-10-22T07:32:14.751678Z refused admission. Linux `MemAvailable` was 34,637,570,048 bytes, below the 42,949,672,960-byte floor. The shared 14400-second budget was not anchored. Zero of two diagnostic attempts and the one retention launch were used. No resources were created, and previously retained resources were not disposed. The HXR025 Sentry exit remains unexplained. This refusal does not authorize another launch.
+This continuation's once-before-launch check at 2026-10-22T07:32:14.751678Z refused admission. Linux `MemAvailable` was 34,637,570,048 bytes, below the 42,949,672,960-byte floor then in force. The shared 14400-second budget was not anchored. Zero of two diagnostic attempts and the one retention launch were used. No resources were created, and previously retained resources were not disposed. The HXR025 Sentry exit remains unexplained.
+
+Later on 2026-10-22 the owner directed the functional run to stay on containers and lowered that memory prerequisite to 17,179,869,184 bytes (16 GiB), the PostgreSQL container cap. The 07:32:14Z refusal remains the check that ran. The lowered floor applies to the next container admission and does not by itself start a run.
 
 ### Historical Context Classification
 
