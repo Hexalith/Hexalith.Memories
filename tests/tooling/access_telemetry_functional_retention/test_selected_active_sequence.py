@@ -99,6 +99,14 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     for ordinal, (key, identity) in enumerate(zip(record_keys[segment], ids)):
                         records[key] = {"recordId": identity, "envelopeHash": "e" * 64, "emittedAtUtc": iso(start + ordinal), "expiresAtUtc": iso(start + ordinal + 3600000), "acceptedAtUtc": iso(start), "payload": {"message": "original"}}
                     value = {"runId": "offline-run", "segmentId": segment, "writer": "writer-1", "recordIds": ids, "startedUtcMs": start, "finishedUtcMs": start, "emitFinishedUtcMs": start, "acknowledgedUtcMs": start, "resultCount": 1, **{key: 125 for key in ("attempted", "enqueued", "acknowledged", "persisted", "transactionAcknowledgements")}, **{key: 0 for key in ("conflicted", "rejected", "dropped")}}
+                    if variant == "accounting-loss":
+                        value.update(acknowledged=124, persisted=124, transactionAcknowledgements=124, rejected=1)
+                    elif variant == "accounting-private":
+                        value.update(persisted="fixture-response-secret", rawResponse={"credential": "fixture-response-secret"})
+                    elif variant == "accounting-bounds":
+                        value.update(attempted=True, enqueued=-1, acknowledged=126, persisted=10**100, transactionAcknowledgements=1.5, conflicted="fixture-response-secret")
+                    elif variant == "accounting-foreign":
+                        value["runId"] = "fixture-response-secret"
                 elif "/actors/" in path:
                     if variant == "fresh-actor" and not emitted:
                         response = io.BytesIO(b"")
@@ -141,6 +149,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 return types.SimpleNamespace(stdout=json.dumps(result).encode(), stderr=b"")
             report = root / "native-tests/native.trx"
             if variant == "persist-failure": write(report.with_name("functional-observations.json"), {"occupied": True})
+            if variant == "accounting-occupied": write(report.with_name("cohort-a-accounting.json"), {"occupied": True})
             outside = base / "outside"
             if variant == "symlink-output":
                 outside.mkdir(mode=0o700)
@@ -159,6 +168,32 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             self.assertNotIn("fixture-app-secret", output.getvalue())
             self.assertNotIn("fixture-dapr-secret", output.getvalue())
             status = json.loads(output.getvalue())
+            captures = sorted((root / "native-tests").glob("cohort-*-accounting.json"))
+            if variant == "accounting-occupied":
+                self.assertEqual({"occupied": True}, json.loads(captures[0].read_text()))
+            else:
+                self.assertEqual(0 if variant in {"large-tail-drift", "symlink-output"} else len(emitted), len(captures))
+                for capture in captures:
+                    raw = capture.read_text()
+                    self.assertNotIn("fixture-response-secret", raw)
+                    self.assertNotIn("fixture-app-secret", raw)
+                    self.assertNotIn("fixture-dapr-secret", raw)
+                    snapshot = json.loads(raw)
+                    self.assertEqual({"runId", "segmentId", "observedUtcMs", "counters"}, set(snapshot))
+                    self.assertEqual("offline-run", snapshot["runId"])
+                    self.assertEqual(capture.stem.removesuffix("-accounting"), snapshot["segmentId"])
+                    self.assertEqual(0o600, capture.stat().st_mode & 0o777)
+                    self.assertGreaterEqual(snapshot["observedUtcMs"], emitted[snapshot["segmentId"]])
+                    self.assertTrue(all(type(value) is int and 0 <= value <= 125 for value in snapshot["counters"].values()))
+                    if variant == "accounting-loss":
+                        self.assertEqual({"attempted": 125, "enqueued": 125, "acknowledged": 124, "persisted": 124, "transactionAcknowledgements": 124, "conflicted": 0, "rejected": 1, "dropped": 0}, snapshot["counters"])
+                    elif variant == "accounting-private":
+                        self.assertNotIn("persisted", snapshot["counters"])
+                        self.assertNotIn("rawResponse", raw)
+                    elif variant == "accounting-bounds":
+                        self.assertEqual({"rejected": 0, "dropped": 0}, snapshot["counters"])
+                    elif variant == "accounting-foreign":
+                        self.assertEqual({}, snapshot["counters"])
             if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact"}:
                 self.assertEqual(0, result, status)
                 self.assertEqual("functional-observations-passed", status["status"])
@@ -181,7 +216,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             else:
                 self.assertEqual(1, result, status)
                 self.assertEqual("rejected", status["status"])
-                reasons = {"large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
+                reasons = {"accounting-loss": "functional-accounting-loss", "accounting-private": "functional-accounting-schema", "accounting-bounds": "functional-accounting-loss", "accounting-foreign": "functional-accounting-identity", "accounting-occupied": "functional-selected-input-refused", "large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
                 self.assertEqual(reasons[variant], status["reason"])
                 if variant == "final-return-drift":
                     self.assertFalse(report.with_name("functional-observations.json").exists())
@@ -192,6 +227,17 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 if result:
                     self.assertEqual(status["reason"], xml.parse(report).find("{*}Results/{*}UnitTestResult/{*}Output/{*}ErrorInfo/{*}Message").text)
             return status
+
+    def test_accounting_failure_retains_bounded_rejection_counters_before_validation(self):
+        self.run_sequence("accounting-loss")
+
+    def test_accounting_capture_excludes_untrusted_fields_values_and_foreign_identities(self):
+        for variant in ("accounting-private", "accounting-bounds", "accounting-foreign"):
+            with self.subTest(variant=variant):
+                self.run_sequence(variant)
+
+    def test_accounting_capture_cannot_overwrite_an_existing_observation(self):
+        self.run_sequence("accounting-occupied")
 
     def test_loaded_binary_over_json_limit_is_fully_hashed_and_tail_drift_refused(self):
         self.run_sequence("large-artifact")

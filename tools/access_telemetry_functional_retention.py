@@ -410,6 +410,22 @@ def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _validate_selected_mapping(mapping: dict, plan_hash: str, handoff_hash: str) -> None:
+    """Recompute the producer mapping and retain both independent hash bindings."""
+    payload = {key: mapping[key] for key in ("Mode", "Root", "ActiveModule", "Entries", "HasGit", "PlatformIdentity", "IdentityFindings")}
+    encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+    # SourceMapping.ContentHash uses System.Text.Json's default encoder. Keep
+    # literal backslash sequences intact while matching its string escapes.
+    def escape(match):
+        value = match.group()
+        if value == '\\"':
+            return r"\u0022"
+        return value[:2] + value[2:].upper() if value.startswith(r"\u") else value
+    encoded = re.sub(r"\\(?:u[0-9a-fA-F]{4}|.)", escape, encoded)
+    encoded = encoded.translate({ord(char): rf"\u{ord(char):04X}" for char in "&'+<>`"})
+    _require(_sha(encoded.encode()) == plan_hash == handoff_hash, "selected-mapping-hash")
+
+
 def _utc(value: object) -> datetime:
     _require(isinstance(value, str) and value.endswith("Z"), "utc-required")
     try:
@@ -1242,8 +1258,7 @@ def run_selected_platform_retention() -> int:
         _require(observation["serviceRetentionSeconds"] == {name: 3600 for name in ("memories", "memories-access-telemetry", "memories-access-telemetry-clock")}, "selected-observed-retention")
         mapping_path = root / "source-mapping" / "mapping.json"
         mapping = json.loads(_private(str(mapping_path), str(root)))
-        mapping_payload = {key: mapping[key] for key in ("Mode", "Root", "ActiveModule", "Entries", "HasGit", "PlatformIdentity", "IdentityFindings")}
-        _require(_sha(json.dumps(mapping_payload, separators=(",", ":"), ensure_ascii=True).encode()) == plan["sourceMappingHash"] == os.environ["HEXALITH_SOURCE_MAPPING_HASH"], "selected-mapping-hash")
+        _validate_selected_mapping(mapping, plan["sourceMappingHash"], os.environ["HEXALITH_SOURCE_MAPPING_HASH"])
         _require(mapping["Root"] == str(candidate.parent.parent) and mapping["Mode"] == "source" and [entry for entry in mapping["Entries"] if entry["Identity"] == "Hexalith.Memories"] == [{"Identity": "Hexalith.Memories", "Origin": "source", "Path": str(candidate)}], "selected-direct-mapping")
         aggregate = [{"Key": key, "Value": value} for key, value in sorted(observation["loadedArtifactHashes"].items())]
         _require(_sha(json.dumps(aggregate, separators=(",", ":")).encode()) == observation["observedCandidateHash"], "selected-loaded-aggregate")
@@ -1460,6 +1475,20 @@ class _PlatformRetentionConsumer:
             time.sleep(min(30, max(0.01, max((wall_ms - time.time() * 1000) / 1000, monotonic_deadline - time.monotonic()))))
         self.check()
 
+    def record_accounting_observation(self, segment, accounting):
+        """Retain bounded response counters before validation can reject them."""
+        self.check()
+        run_id = self.plan["runId"]
+        _require(_IDENTITY.fullmatch(run_id) is not None and segment in {"cohort-a", "cohort-b"}, "selected-accounting-observation-scope")
+        counters = {}
+        if type(accounting) is dict and accounting.get("runId") == run_id and accounting.get("segmentId") == segment:
+            for name in ("attempted", "enqueued", "acknowledged", "persisted", "transactionAcknowledgements", "conflicted", "rejected", "dropped"):
+                value = accounting.get(name)
+                if type(value) is int and 0 <= value <= FUNCTIONAL["recordsPerCohort"]:
+                    counters[name] = value
+        _exclusive_json(self.root / "native-tests" / (segment + "-accounting.json"),
+                        {"runId": run_id, "segmentId": segment, "observedUtcMs": int(time.time() * 1000), "counters": counters})
+
     def execute(self):
         run_id = self.plan["runId"]
         _require(_IDENTITY.fullmatch(run_id) is not None, "selected-run-id")
@@ -1484,6 +1513,7 @@ class _PlatformRetentionConsumer:
                     break
                 except TransportUncertain:
                     _require(attempt == 0, "selected-emit-budget")
+            self.record_accounting_observation(segment, accounting)
             observed_writer = validate_accounting(accounting, run_id, segment, self.segments[segment])
             _require(writer is None or observed_writer == writer, "selected-writer-drift")
             writer = observed_writer
