@@ -44,7 +44,7 @@ Functional completion requires passing native TRX and `functional-observations.j
 
 | Track | Owner | Evidence | Review state | Completion state |
 | :--- | :--- | :--- | :--- | :--- |
-| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Command above; latest real startup refusal plus actual terminal/disposal result; previous failed native TRX and partial cohorts retained | Focused source/preparation checks passed; real failures and executable drift preserved | In progress: owner-approved 2026-10-22 launch failed during startup (HXR025), before cohorts/native test; all ten new environments removed/verified empty; one permitted launch consumed, no retry |
+| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Command above; latest real startup refusal plus actual terminal/disposal result; previous failed native TRX and partial cohorts retained | Focused source/preparation checks passed; real failures and executable drift preserved | In progress: owner-approved 2026-10-22 launch `2397010f0d8da3011f1c7a1ead881586` failed during startup (HXR025) and was removed/verified empty. The 2026-10-22 continuation admission at 07:32:14Z refused before launch because Linux available memory was below 40 GiB. No diagnostic attempt or retention launch was used. |
 | Full qualification / A41 | Jérôme Piquot; Platform Operations and Security roles | Current per-gate inventory linked below | Pending | Deferred to a separately scheduled campaign; open |
 
 ## Full qualification and close-out checkpoints
@@ -53,11 +53,23 @@ The [current per-gate inventory](../../docs/operations/access-telemetry-full-qua
 
 ## Dev Notes
 
-### Current resumption — 2026-10-21
+### Current resumption — 2026-10-22
 
-The owner approved the prepared plan on 2026-10-22; its one launch `2397010f0d8da3011f1c7a1ead881586` failed during startup and was removed/verified empty. The current report records the actual outcome; no retry is authorized. The previous operational budget ended at 2026-10-21T20:13:22.9004007Z. Prepare the next complete plan in the existing report for one launch, a fresh 14400-second execution budget (600-second startup included), and a separate 900-second stopping budget, within the unchanged outer window above. Obtain the owner's decision before starting resources; this invocation does not silently renew the expired budget. Preserve all prior retained resources and shared-checkout changes.
+The owner approved the prepared plan on 2026-10-22; its one launch `2397010f0d8da3011f1c7a1ead881586` failed during startup (HXR025; Dapr Sentry exited with code 1) and was removed/verified empty. The current report records that outcome. The previous operational budget ended at 2026-10-21T20:13:22.9004007Z. On 2026-10-22 the owner authorized this continuation inside the unchanged outer window (ends 2026-10-25T14:42:22Z; latest full-budget start 10:27:22Z) and existing resource limits:
 
-Repair one reproduced transport edge in `tools/access_telemetry_functional_retention.py`, `_PlatformRetentionConsumer.request`: raw response-body timeout/connection or HTTP stream failures must become sanitized `TransportUncertain` so `states()` applies its existing bounded read retry. Preserve immediate refusal of HTTP status errors, malformed data and output limits; write submission remains one attempt. Add focused real request-boundary regressions in `tests/tooling/access_telemetry_functional_retention/test_selected_read_retry.py`, run the existing selected-consumer suite, and record the result in the current report. The authentic failed run's cause remains unproved. Prepare supported tool/mapping/input identities and the fresh evidence path for the next plan without creating another spec or framework. Do not modify another repository's existing fixes or claim live validation.
+- Diagnose and fix that demonstrated startup failure, then run the existing `functional-retention` test.
+- Up to two diagnostic startup attempts and one retention-test launch.
+- One shared 14400-second execution budget, anchored to the first launch of this continuation. Startup stays bounded to 600 seconds per attempt and remains inside that shared budget.
+- 900 seconds cumulative cleanup. Capture actual resource logs and failure details before cleanup.
+- Proceed within these bounds without further confirmation. No automatic restarts and no budget resets.
+- Reuse existing preparation and relevant input identities. Preserve source/Debug mode, Platform tool 4.35.1, immutable Dapr 1.18.1 and PostgreSQL 18.6 pins, security checks, user changes, and previously retained resources. Old retained resources stay outside this run's disposal authority.
+- Fix the demonstrated cause in its owning repository and run focused regressions there. Do not modify another repository's unrelated existing fixes.
+- Use supported Platform lifecycle commands. Verify removal of each new run's resources.
+- Update the single current report with authentic results. Local functional completion stays separate from full qualification and A41 closure.
+
+The earlier transport-edge repair remains historical preparation unless a later diagnosis shows it is the demonstrated cause. Do not restart the preparation ceremony, create another spec, or claim full qualification.
+
+This continuation's once-before-launch check at 2026-10-22T07:32:14.751678Z refused admission. Linux `MemAvailable` was 34,637,570,048 bytes, below the 42,949,672,960-byte floor. The shared 14400-second budget was not anchored. Zero of two diagnostic attempts and the one retention launch were used. No resources were created, and previously retained resources were not disposed. The HXR025 Sentry exit remains unexplained. This refusal does not authorize another launch.
 
 ### Historical Context Classification
 
