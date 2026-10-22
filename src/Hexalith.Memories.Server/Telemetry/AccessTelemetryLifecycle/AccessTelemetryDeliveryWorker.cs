@@ -20,6 +20,7 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
     private readonly AccessTelemetryOptions _options;
     private readonly AccessTelemetryLifecycleStatus _status;
     private readonly AccessTelemetryQualificationAccounting? _qualificationAccounting;
+    private readonly SemaphoreSlim _drainGate = new(1, 1);
     private int _failureCount;
     private bool _terminal;
 
@@ -42,6 +43,19 @@ internal sealed class AccessTelemetryDeliveryWorker : BackgroundService
 
     /// <summary>Attempts one bounded delivery pass. Records remain queued unless fully acknowledged.</summary>
     public async Task DrainOnceAsync(CancellationToken cancellationToken)
+    {
+        await _drainGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await DrainPendingAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _drainGate.Release();
+        }
+    }
+
+    private async Task DrainPendingAsync(CancellationToken cancellationToken)
     {
         if (_terminal)
         {

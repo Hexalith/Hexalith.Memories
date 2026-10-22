@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 
+using System.Collections.Concurrent;
 using System.Globalization;
 
 using Hexalith.Memories.AccessTelemetry.Contracts;
@@ -12,11 +13,16 @@ using Hexalith.Memories.AccessTelemetry.Contracts;
 /// <summary>Nonblocking, process-local queue bounded by both record count and canonical bytes.</summary>
 internal sealed class BoundedAccessTelemetryQueue
 {
-    private readonly Queue<AccessTelemetryQueuedRecord> _records = [];
-    private readonly object _gate = new();
+    private const long RecordReservation = 1L << 32;
+    private readonly ConcurrentQueue<AccessTelemetryQueuedRecord> _incoming = new();
+    private readonly Queue<AccessTelemetryQueuedRecord> _pending = [];
+    private readonly ConcurrentDictionary<string, int> _markerCounts = new(StringComparer.Ordinal);
+    private readonly object _consumerGate = new();
     private readonly int _recordLimit;
     private readonly int _byteLimit;
-    private int _byteCount;
+    // One CAS reserves both bounds: upper 32 bits are records, lower 32 bits are bytes.
+    private long _reservedCapacity;
+    private AccessTelemetryQueuedRecord? _pendingHead;
 
     /// <summary>Initializes a queue with exact inclusive limits.</summary>
     public BoundedAccessTelemetryQueue(int recordLimit, int byteLimit)
@@ -27,84 +33,80 @@ internal sealed class BoundedAccessTelemetryQueue
         _byteLimit = byteLimit;
     }
 
-    /// <summary>Gets the queued record count.</summary>
-    public int Count
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _records.Count;
-            }
-        }
-    }
+    /// <summary>Gets the reserved record count, including pending delivery and publication.</summary>
+    public int Count => (int)(Volatile.Read(ref _reservedCapacity) >> 32);
 
-    /// <summary>Gets the queued canonical byte count.</summary>
-    public int ByteCount
-        => Volatile.Read(ref _byteCount);
+    /// <summary>Gets the reserved canonical byte count, including pending delivery and publication.</summary>
+    public int ByteCount => (int)(Volatile.Read(ref _reservedCapacity) & uint.MaxValue);
 
-    /// <summary>Gets the oldest queued emission time without exposing its record identity.</summary>
+    /// <summary>Gets the FIFO head emission time without acquiring the consumer gate.</summary>
     public DateTimeOffset? OldestEmittedAtUtc
     {
         get
         {
-            lock (_gate)
+            AccessTelemetryQueuedRecord? oldest = Volatile.Read(ref _pendingHead);
+            if (oldest is null)
             {
-                return _records.Count == 0 ? null : ParseEmittedAt(_records.Peek().Record);
+                _incoming.TryPeek(out oldest);
+                // A consumer may have moved that incoming head since the first read.
+                oldest = Volatile.Read(ref _pendingHead) ?? oldest;
             }
+
+            return oldest is null ? null : ParseEmittedAt(oldest.Record);
         }
     }
 
     /// <summary>Gets the non-negative age of the oldest queued record without exposing its identity.</summary>
     public double GetOldestAgeSeconds(DateTimeOffset observedAt)
-    {
-        lock (_gate)
-        {
-            if (_records.Count == 0)
-            {
-                return 0;
-            }
+        => OldestEmittedAtUtc is DateTimeOffset emittedAt
+            ? Math.Max(0, (observedAt - emittedAt).TotalSeconds)
+            : 0;
 
-            DateTimeOffset emittedAt = ParseEmittedAt(_records.Peek().Record);
-            return Math.Max(0, (observedAt - emittedAt).TotalSeconds);
-        }
-    }
-
-    private static DateTimeOffset ParseEmittedAt(AccessTelemetryRecord record)
-        => DateTimeOffset.ParseExact(
-                record.EmittedAtUtc,
-                "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-
-    /// <summary>Attempts to enqueue without waiting and drops the new record at either bound.</summary>
-    public bool TryEnqueue(AccessTelemetryRecord record, out AccessTelemetryReason reason)
+    /// <summary>Attempts admission without waiting for consumer work, backend I/O, or capacity.</summary>
+    /// <param name="record">The sanitized record.</param>
+    /// <param name="reason">The bounded admission result.</param>
+    /// <param name="onAdmitted">Optional admission accounting, completed before the record becomes deliverable.</param>
+    public bool TryEnqueue(AccessTelemetryRecord record, out AccessTelemetryReason reason, Action? onAdmitted = null)
     {
         ArgumentNullException.ThrowIfNull(record);
-        byte[] canonical = AccessTelemetryCanonicalizer.CanonicalizeRecord(record);
-        if (!Monitor.TryEnter(_gate))
+        int bytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(record).Length;
+        var queued = new AccessTelemetryQueuedRecord(record, bytes);
+        // Register ownership before reserving capacity so heartbeat drain checks cannot
+        // overlook an accepted record whose admission accounting has not yet returned.
+        _markerCounts.AddOrUpdate(record.MarkerKeyId, 1, static (_, count) => count + 1);
+        long capacity = Volatile.Read(ref _reservedCapacity);
+        while (true)
         {
-            reason = AccessTelemetryReason.QueueFull;
-            return false;
-        }
-
-        try
-        {
-            if (_records.Count >= _recordLimit || canonical.Length > _byteLimit - _byteCount)
+            if ((capacity >> 32) >= _recordLimit || bytes > _byteLimit - (capacity & uint.MaxValue))
             {
+                ReleaseMarker(record.MarkerKeyId);
                 reason = AccessTelemetryReason.QueueFull;
                 return false;
             }
 
-            _records.Enqueue(new AccessTelemetryQueuedRecord(record, canonical.Length));
-            _byteCount += canonical.Length;
-            reason = AccessTelemetryReason.None;
-            return true;
+            long updated = capacity + RecordReservation + bytes;
+            long observed = Interlocked.CompareExchange(ref _reservedCapacity, updated, capacity);
+            if (observed == capacity)
+            {
+                break;
+            }
+
+            capacity = observed;
         }
-        finally
+
+        try
         {
-            Monitor.Exit(_gate);
+            onAdmitted?.Invoke();
+            _incoming.Enqueue(queued);
         }
+        catch
+        {
+            Release(queued);
+            throw;
+        }
+
+        reason = AccessTelemetryReason.None;
+        return true;
     }
 
     /// <summary>Removes matching records while preserving the FIFO order of all survivors.</summary>
@@ -113,47 +115,51 @@ internal sealed class BoundedAccessTelemetryQueue
         Action<AccessTelemetryRecord>? removedRecord = null)
     {
         ArgumentNullException.ThrowIfNull(predicate);
-        lock (_gate)
+        lock (_consumerGate)
         {
+            CollectIncoming();
             int removed = 0;
-            int originalCount = _records.Count;
+            int originalCount = _pending.Count;
             for (int index = 0; index < originalCount; index++)
             {
-                AccessTelemetryQueuedRecord queued = _records.Dequeue();
-                if (predicate(queued.Record))
+                AccessTelemetryQueuedRecord queued = _pending.Peek();
+                bool remove = predicate(queued.Record);
+                _pending.Dequeue();
+                if (remove)
                 {
-                    _byteCount -= queued.CanonicalBytes;
+                    Release(queued);
                     removed++;
                     removedRecord?.Invoke(queued.Record);
                 }
                 else
                 {
-                    _records.Enqueue(queued);
+                    _pending.Enqueue(queued);
                 }
             }
 
+            RefreshPendingHead();
             return removed;
         }
     }
 
-    /// <summary>Counts records produced with the specified marker-key generation.</summary>
+    /// <summary>Conservatively counts marker-key ownership through admission, delivery, and release.</summary>
     public int CountByMarkerKey(string markerKeyId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(markerKeyId);
-        lock (_gate)
-        {
-            return _records.Count(record => string.Equals(record.Record.MarkerKeyId, markerKeyId, StringComparison.Ordinal));
-        }
+        // Attempts register before capacity admission; cap this conservative observation
+        // to the queue limit accepted by the heartbeat protocol.
+        return _markerCounts.TryGetValue(markerKeyId, out int count) ? Math.Min(count, _recordLimit) : 0;
     }
 
-    /// <summary>Peeks a bounded FIFO batch without removing records before acknowledgement.</summary>
+    /// <summary>Peeks a bounded FIFO batch; one delivery consumer owns it through acknowledgement.</summary>
     public IReadOnlyList<AccessTelemetryRecord> PeekBatch(int recordLimit, int byteLimit)
     {
-        lock (_gate)
+        lock (_consumerGate)
         {
+            CollectIncoming();
             List<AccessTelemetryRecord> batch = [];
             int bytes = 0;
-            foreach (AccessTelemetryQueuedRecord queued in _records)
+            foreach (AccessTelemetryQueuedRecord queued in _pending)
             {
                 if (batch.Count >= recordLimit || queued.CanonicalBytes > byteLimit - bytes)
                 {
@@ -168,21 +174,67 @@ internal sealed class BoundedAccessTelemetryQueue
         }
     }
 
-    /// <summary>Removes exactly the acknowledged FIFO prefix.</summary>
+    /// <summary>Removes exactly the acknowledged FIFO prefix and releases its reservations once.</summary>
     public void Acknowledge(int count)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(count);
-        lock (_gate)
+        lock (_consumerGate)
         {
-            if (count > _records.Count)
+            CollectIncoming();
+            if (count > _pending.Count)
             {
                 throw new InvalidOperationException("Cannot acknowledge more lifecycle records than are queued.");
             }
 
             for (int index = 0; index < count; index++)
             {
-                _byteCount -= _records.Dequeue().CanonicalBytes;
+                Release(_pending.Dequeue());
             }
+
+            RefreshPendingHead();
+        }
+    }
+
+    private static DateTimeOffset ParseEmittedAt(AccessTelemetryRecord record)
+        => DateTimeOffset.ParseExact(
+            record.EmittedAtUtc,
+            "yyyy-MM-dd'T'HH:mm:ss.fff'Z'",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+
+    private void CollectIncoming()
+    {
+        // Bound each consumer pass even while producers continue publishing.
+        int available = _incoming.Count;
+        if (_pending.Count == 0 && _incoming.TryPeek(out AccessTelemetryQueuedRecord? head))
+        {
+            // Publish the head before dequeueing it, preserving metric visibility during transfer.
+            Volatile.Write(ref _pendingHead, head);
+        }
+
+        for (int index = 0; index < available && _incoming.TryDequeue(out AccessTelemetryQueuedRecord? queued); index++)
+        {
+            _pending.Enqueue(queued);
+        }
+
+        RefreshPendingHead();
+    }
+
+    private void RefreshPendingHead()
+        => Volatile.Write(ref _pendingHead, _pending.TryPeek(out AccessTelemetryQueuedRecord? head) ? head : null);
+
+    private void Release(AccessTelemetryQueuedRecord queued)
+    {
+        Interlocked.Add(ref _reservedCapacity, -RecordReservation - queued.CanonicalBytes);
+        ReleaseMarker(queued.Record.MarkerKeyId);
+    }
+
+    private void ReleaseMarker(string markerKeyId)
+    {
+        if (_markerCounts.AddOrUpdate(markerKeyId, 0, static (_, count) => count - 1) == 0)
+        {
+            // Remove only the zero value; a concurrent admission may already own this key again.
+            ((ICollection<KeyValuePair<string, int>>)_markerCounts).Remove(new(markerKeyId, 0));
         }
     }
 }

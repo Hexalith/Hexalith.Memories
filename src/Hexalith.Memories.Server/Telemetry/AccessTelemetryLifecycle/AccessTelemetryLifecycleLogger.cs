@@ -93,10 +93,14 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
             if (source is not null && sanitizer is not null && sanitizer.TrySanitize(logLevel, eventId, source, out AccessTelemetryRecord? record, out _))
             {
                 ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Accepted, AccessTelemetryReason.None);
-                if (_queue.TryEnqueue(record!, out AccessTelemetryReason reason))
+                if (_queue.TryEnqueue(
+                    record!,
+                    out AccessTelemetryReason reason,
+                    _qualificationAccounting is null
+                        ? null
+                        : () => _qualificationAccounting.RecordEnqueued(record!, qualificationCorrelation)))
                 {
                     ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Enqueued, AccessTelemetryReason.None);
-                    _qualificationAccounting?.RecordEnqueued(record!, qualificationCorrelation);
                     ServerAccessTelemetryLifecycleMetrics.RecordQueue(
                         _queue.Count,
                         _queue.ByteCount,
