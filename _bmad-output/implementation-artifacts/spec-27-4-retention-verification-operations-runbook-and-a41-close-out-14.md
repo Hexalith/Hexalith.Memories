@@ -44,7 +44,7 @@ Functional completion requires passing native TRX and `functional-observations.j
 
 | Track | Owner | Evidence | Review state | Completion state |
 | :--- | :--- | :--- | :--- | :--- |
-| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Command above; authentic failed native TRX, partial real cohort observations and actual terminal/disposal result | Focused source/preparation checks passed; real failures and executable drift preserved | In progress: latest native run failed before expiry; all nine new environments removed/verified empty; no further complete run fits original ceiling |
+| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Command above; latest real startup refusal plus actual terminal/disposal result; previous failed native TRX and partial cohorts retained | Focused source/preparation checks passed; real failures and executable drift preserved | In progress: owner-approved 2026-10-22 launch failed during startup (HXR025), before cohorts/native test; all ten new environments removed/verified empty; one permitted launch consumed, no retry |
 | Full qualification / A41 | Jérôme Piquot; Platform Operations and Security roles | Current per-gate inventory linked below | Pending | Deferred to a separately scheduled campaign; open |
 
 ## Full qualification and close-out checkpoints
@@ -52,6 +52,12 @@ Functional completion requires passing native TRX and `functional-observations.j
 The [current per-gate inventory](../../docs/operations/access-telemetry-full-qualification.md) remains the full campaign's requirements/owner/state register, subject to adopting its exact current target/profile. Its workload, capacity, faults, backup/restore, long-duration, security, terminal and publication obligations do not gate local functional completion. Functional success earns no full-profile or Production credit and cannot close A41. Overall Story 27.4 stays in progress until its separate full close-out obligations are met.
 
 ## Dev Notes
+
+### Current resumption — 2026-10-21
+
+The owner approved the prepared plan on 2026-10-22; its one launch `2397010f0d8da3011f1c7a1ead881586` failed during startup and was removed/verified empty. The current report records the actual outcome; no retry is authorized. The previous operational budget ended at 2026-10-21T20:13:22.9004007Z. Prepare the next complete plan in the existing report for one launch, a fresh 14400-second execution budget (600-second startup included), and a separate 900-second stopping budget, within the unchanged outer window above. Obtain the owner's decision before starting resources; this invocation does not silently renew the expired budget. Preserve all prior retained resources and shared-checkout changes.
+
+Repair one reproduced transport edge in `tools/access_telemetry_functional_retention.py`, `_PlatformRetentionConsumer.request`: raw response-body timeout/connection or HTTP stream failures must become sanitized `TransportUncertain` so `states()` applies its existing bounded read retry. Preserve immediate refusal of HTTP status errors, malformed data and output limits; write submission remains one attempt. Add focused real request-boundary regressions in `tests/tooling/access_telemetry_functional_retention/test_selected_read_retry.py`, run the existing selected-consumer suite, and record the result in the current report. The authentic failed run's cause remains unproved. Prepare supported tool/mapping/input identities and the fresh evidence path for the next plan without creating another spec or framework. Do not modify another repository's existing fixes or claim live validation.
 
 ### Historical Context Classification
 

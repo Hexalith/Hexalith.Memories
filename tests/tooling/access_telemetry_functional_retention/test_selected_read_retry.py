@@ -1,6 +1,7 @@
 """Offline bounded read retries; no target calls or live retention credit."""
 
 from contextlib import ExitStack
+import http.client
 import io
 import json
 from pathlib import Path
@@ -165,6 +166,64 @@ class SelectedReadRetryTests(unittest.TestCase):
         with patch("urllib.request.OpenerDirector.open", return_value=io.BytesIO(b"{}")) as contact:
             self.assertEqual({}, self.consumer.request("memories-access-telemetry/dapr", "/fixed-read", read_deadline=120.0))
         self.assertEqual(0.25, contact.call_args.kwargs["timeout"])
+
+    def test_response_body_transport_failures_retry_the_same_strong_read(self):
+        failures = (
+            TimeoutError("offline-secret-timeout"),
+            ConnectionResetError("offline-secret-reset"),
+            ConnectionAbortedError("offline-secret-aborted"),
+            http.client.IncompleteRead(b"offline-secret-partial"),
+            http.client.RemoteDisconnected("offline-secret-disconnected"),
+            http.client.BadStatusLine("offline-secret-status"),
+        )
+        for failure in failures:
+            self.elapsed, self.sleeps = 0.0, []
+            response = io.BytesIO()
+            response.read = Mock(side_effect=failure)
+            with self.subTest(failure=type(failure).__name__), patch(
+                "urllib.request.OpenerDirector.open",
+                side_effect=(response, io.BytesIO(b'{"record": "first"}'), io.BytesIO(b'{"record": "second"}')),
+            ) as contact:
+                observed = self.consumer.states("offline-run", "cohort-a")
+            urls = [call.args[0].full_url for call in contact.call_args_list]
+            self.assertEqual([self.keys[0], self.keys[0], self.keys[1]], [self.key(url) for url in urls])
+            self.assertTrue(all(url.endswith("?consistency=strong&metadata.partitionKey=access-telemetry") for url in urls))
+            self.assertEqual([{"record": "first"}, {"record": "second"}], [item["value"] for item in observed])
+            self.assertEqual([2], self.sleeps)
+            self.assertTrue(response.closed)
+            response.read.assert_called_once_with(1048577)
+            self.assertEqual([5, 5, 5], [call.kwargs["timeout"] for call in contact.call_args_list])
+
+    def test_persistent_response_body_failure_exhausts_read_retries_with_sanitized_reason(self):
+        responses = [io.BytesIO() for _ in range(3)]
+        for response in responses:
+            response.read = Mock(side_effect=TimeoutError("offline-secret-and-private-url"))
+        with patch("urllib.request.OpenerDirector.open", side_effect=responses) as contact:
+            with self.assertRaisesRegex(f.TransportUncertain, "^functional-selected-state-read-transport-exhausted$") as rejected:
+                self.consumer.states("offline-run", "cohort-a")
+        self.assertTrue(rejected.exception.__suppress_context__)
+        self.assertEqual([self.keys[0]] * 3, [self.key(call.args[0].full_url) for call in contact.call_args_list])
+        self.assertEqual([2, 5], self.sleeps)
+        self.assertTrue(all(response.closed for response in responses))
+
+    def test_response_output_limit_is_refused_without_retry(self):
+        with patch("urllib.request.OpenerDirector.open", return_value=io.BytesIO(b"x" * 1048577)) as contact:
+            with self.assertRaisesRegex(f.FunctionalRetentionError, "^functional-selected-output-limit$"):
+                self.consumer.states("offline-run", "cohort-a")
+        self.assertEqual(1, contact.call_count)
+        self.assertEqual([], self.sleeps)
+
+    def test_write_response_body_failure_is_sanitized_and_never_resubmitted(self):
+        response = io.BytesIO()
+        response.read = Mock(side_effect=http.client.IncompleteRead(b"offline-secret-partial"))
+        with patch("urllib.request.OpenerDirector.open", return_value=response) as contact:
+            with self.assertRaisesRegex(f.TransportUncertain, "^functional-selected-transport-uncertain$") as rejected:
+                self.consumer.request("memories", "/fixed-write", data=b"")
+        self.assertTrue(rejected.exception.__suppress_context__)
+        self.assertEqual(1, contact.call_count)
+        self.assertEqual(120, contact.call_args.kwargs["timeout"])
+        self.assertEqual([], self.sleeps)
+        self.assertTrue(response.closed)
 
     def test_write_submission_is_single_attempt_with_unchanged_timeout_and_no_read_retry(self):
         with patch("urllib.request.OpenerDirector.open", side_effect=URLError("offline-transport")) as contact:

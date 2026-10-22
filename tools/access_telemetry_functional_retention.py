@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import configparser
 from datetime import datetime, timedelta, timezone
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -1377,7 +1378,7 @@ class _PlatformRetentionConsumer:
             if missing and error.code in {204, 404}:
                 return None
             raise FunctionalRetentionError("functional-selected-request-failed") from None
-        except urllib.error.URLError:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
             raise TransportUncertain("functional-selected-transport-uncertain") from None
 
     def states(self, run_id, segment, buckets=False):
