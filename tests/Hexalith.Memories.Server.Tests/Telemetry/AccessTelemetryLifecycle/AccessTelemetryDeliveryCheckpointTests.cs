@@ -9,7 +9,6 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
 using System.Net.Http.Json;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -261,33 +260,460 @@ public sealed class AccessTelemetryDeliveryCheckpointTests
     }
 
     [Fact]
-    public async Task Queue_AdmissionReturnsImmediatelyWhenAnotherThreadOwnsTheGate()
+    public async Task Queue_AdmissionAndLoggerMetricsCompleteWhileConsumerScanIsPaused()
     {
         var queue = new BoundedAccessTelemetryQueue(8, 8192);
-        object gate = typeof(BoundedAccessTelemetryQueue)
-            .GetField("_gate", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(queue)!;
-        using var entered = new ManualResetEventSlim();
-        using var release = new ManualResetEventSlim();
-        Task holder = Task.Run(() =>
+        AccessTelemetryRecord first = Reidentify(Sanitize(CreateSearchEvent()) with { EmittedAtUtc = Format(Now.AddSeconds(-20)) });
+        AccessTelemetryRecord second = Reidentify(first with { EmittedAtUtc = Format(Now.AddSeconds(-10)) });
+        queue.TryEnqueue(first, out _).ShouldBeTrue();
+        queue.OldestEmittedAtUtc.ShouldBe(Now.AddSeconds(-20));
+        var scanning = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var resume = new ManualResetEventSlim();
+        Task<int> consumer = Task.Run(() => queue.RemoveWhere(_ =>
         {
-            lock (gate)
+            scanning.SetResult();
+            resume.Wait(TimeSpan.FromSeconds(10)).ShouldBeTrue();
+            return false;
+        }));
+        using var provider = new AccessTelemetryLifecycleLoggerProvider(queue, CreateSanitizer());
+        ILogger logger = provider.CreateLogger(typeof(AccessTelemetryCategory).FullName!);
+        try
+        {
+            await scanning.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Run(() =>
             {
-                entered.Set();
-                release.Wait();
+                queue.TryEnqueue(second, out AccessTelemetryReason reason).ShouldBeTrue();
+                reason.ShouldBe(AccessTelemetryReason.None);
+                logger.Log(LogLevel.Information, new EventId(7501), CreateSearchEvent(), null, static (_, _) => "ignored");
+                queue.Count.ShouldBe(3);
+                queue.ByteCount.ShouldBe(3 * AccessTelemetryCanonicalizer.CanonicalizeRecord(first).Length);
+                queue.CountByMarkerKey(first.MarkerKeyId).ShouldBe(3);
+                queue.OldestEmittedAtUtc.ShouldBe(Now.AddSeconds(-20));
+                queue.GetOldestAgeSeconds(Now).ShouldBe(20);
+            }).WaitAsync(TimeSpan.FromSeconds(5));
+            consumer.IsCompleted.ShouldBeFalse();
+        }
+        finally
+        {
+            resume.Set();
+            await consumer.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        queue.CountByMarkerKey(first.MarkerKeyId).ShouldBe(3);
+        queue.PeekBatch(8, 8192)[0].RecordId.ShouldBe(first.RecordId);
+        queue.OldestEmittedAtUtc.ShouldBe(Now.AddSeconds(-20));
+        queue.Acknowledge(1);
+        queue.OldestEmittedAtUtc.ShouldBe(Now.AddSeconds(-10));
+        queue.GetOldestAgeSeconds(Now).ShouldBe(10);
+        queue.Acknowledge(1);
+        queue.OldestEmittedAtUtc.ShouldBe(Now.AddSeconds(-1));
+        queue.GetOldestAgeSeconds(Now).ShouldBe(1);
+        queue.Acknowledge(1);
+        queue.OldestEmittedAtUtc.ShouldBeNull();
+        queue.GetOldestAgeSeconds(Now).ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Queue_SimultaneousProducersRespectBothBoundsIncludingPendingDelivery(bool recordBound)
+    {
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        int bytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(template).Length;
+        var queue = new BoundedAccessTelemetryQueue(recordBound ? 3 : 16, recordBound ? bytes * 16 : (bytes * 4) - 1);
+        queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        queue.PeekBatch(2, bytes * 2).Count.ShouldBe(2);
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<bool>[] producers = Enumerable.Range(0, 16).Select(async _ =>
+        {
+            await start.Task;
+            bool accepted = queue.TryEnqueue(Reidentify(template), out AccessTelemetryReason reason);
+            reason.ShouldBe(accepted ? AccessTelemetryReason.None : AccessTelemetryReason.QueueFull);
+            queue.Count.ShouldBeLessThanOrEqualTo(3);
+            queue.ByteCount.ShouldBeLessThanOrEqualTo(bytes * 3);
+            queue.CountByMarkerKey(template.MarkerKeyId).ShouldBeInRange(0, recordBound ? 3 : 16);
+            return accepted;
+        }).ToArray();
+        start.SetResult();
+        bool[] admitted = await Task.WhenAll(producers).WaitAsync(TimeSpan.FromSeconds(5));
+
+        admitted.Count(static accepted => accepted).ShouldBe(1);
+        queue.Count.ShouldBe(3);
+        queue.ByteCount.ShouldBe(bytes * 3);
+        queue.Acknowledge(1);
+        queue.TryEnqueue(Reidentify(template), out _).ShouldBeTrue();
+        queue.RemoveWhere(static _ => true).ShouldBe(3);
+        queue.RemoveWhere(static _ => true).ShouldBe(0);
+        queue.Count.ShouldBe(0);
+        queue.ByteCount.ShouldBe(0);
+        queue.OldestEmittedAtUtc.ShouldBeNull();
+        Should.Throw<InvalidOperationException>(() => queue.Acknowledge(1));
+        queue.Count.ShouldBe(0);
+        queue.ByteCount.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Queue_PausedPublicationRetainsMarkerOwnershipAndRollsBackThrowingAdmission(bool throwOnAdmission)
+    {
+        AccessTelemetryRecord record = Sanitize(CreateSearchEvent());
+        int bytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(record).Length;
+        var queue = new BoundedAccessTelemetryQueue(1, bytes);
+        var admitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var publish = new ManualResetEventSlim();
+        Task<bool> producer = Task.Run(() => queue.TryEnqueue(record, out _, () =>
+        {
+            admitted.SetResult();
+            publish.Wait(TimeSpan.FromSeconds(10)).ShouldBeTrue();
+            if (throwOnAdmission)
+            {
+                throw new InvalidOperationException("admission-accounting-failed");
             }
+        }));
+        try
+        {
+            await admitted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            queue.Count.ShouldBe(1);
+            queue.ByteCount.ShouldBe(bytes);
+            queue.CountByMarkerKey(record.MarkerKeyId).ShouldBe(1);
+            var saturatedStart = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task[] saturatedProducers = Enumerable.Range(0, 16).Select(async _ =>
+            {
+                await saturatedStart.Task;
+                queue.CountByMarkerKey(record.MarkerKeyId).ShouldBeInRange(0, 1);
+                queue.TryEnqueue(record, out AccessTelemetryReason full).ShouldBeFalse();
+                full.ShouldBe(AccessTelemetryReason.QueueFull);
+                queue.CountByMarkerKey(record.MarkerKeyId).ShouldBeInRange(0, 1);
+            }).ToArray();
+            saturatedStart.SetResult();
+            await Task.WhenAll(saturatedProducers).WaitAsync(TimeSpan.FromSeconds(5));
+            queue.CountByMarkerKey(record.MarkerKeyId).ShouldBe(1);
+            queue.PeekBatch(1, bytes).ShouldBeEmpty();
+            queue.TryEnqueue(record, out AccessTelemetryReason reason).ShouldBeFalse();
+            reason.ShouldBe(AccessTelemetryReason.QueueFull);
+            queue.CountByMarkerKey(record.MarkerKeyId).ShouldBe(1);
+            queue.TryEnqueue(Reidentify(record with { MarkerKeyId = "mk-other" }), out _).ShouldBeFalse();
+            queue.CountByMarkerKey("mk-other").ShouldBe(0);
+            publish.Set();
+            if (throwOnAdmission)
+            {
+                InvalidOperationException exception = await Should.ThrowAsync<InvalidOperationException>(
+                    () => producer.WaitAsync(TimeSpan.FromSeconds(5)));
+                exception.Message.ShouldBe("admission-accounting-failed");
+                queue.Count.ShouldBe(0);
+                queue.ByteCount.ShouldBe(0);
+                queue.CountByMarkerKey(record.MarkerKeyId).ShouldBe(0);
+                queue.PeekBatch(1, bytes).ShouldBeEmpty();
+                // Rollback restores both bounds, including the same marker's ownership.
+                queue.TryEnqueue(record, out _).ShouldBeTrue();
+            }
+            else
+            {
+                (await producer.WaitAsync(TimeSpan.FromSeconds(5))).ShouldBeTrue();
+            }
+
+            queue.Count.ShouldBe(1);
+            queue.ByteCount.ShouldBe(bytes);
+            queue.CountByMarkerKey(record.MarkerKeyId).ShouldBe(1);
+            queue.PeekBatch(1, bytes).Single().RecordId.ShouldBe(record.RecordId);
+            queue.Acknowledge(1);
+            queue.Count.ShouldBe(0);
+            queue.ByteCount.ShouldBe(0);
+            queue.CountByMarkerKey(record.MarkerKeyId).ShouldBe(0);
+        }
+        finally
+        {
+            publish.Set();
+            try
+            {
+                await producer.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (InvalidOperationException) when (throwOnAdmission)
+            {
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Queue_ProducersReuseReleasedCapacityWhileExpiryRemovalIsPaused(bool recordBound)
+    {
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        AccessTelemetryRecord survivor = Reidentify(template with { UserMarker = null });
+        AccessTelemetryRecord expired = Reidentify(template with
+        {
+            CaseMarker = new string('c', 64),
+            ExpiresAtUtc = Format(Now.AddSeconds(-1)),
         });
-        entered.Wait();
+        AccessTelemetryRecord[] candidates =
+        [
+            Reidentify(template with { MarkerKeyId = "mk-2026b" }),
+            Reidentify(template with { MarkerKeyId = "mk-2026b", CaseMarker = new string('d', 64) }),
+        ];
+        int survivorBytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(survivor).Length;
+        int expiredBytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(expired).Length;
+        int[] candidateBytes = candidates.Select(record => AccessTelemetryCanonicalizer.CanonicalizeRecord(record).Length).ToArray();
+        survivorBytes.ShouldBeLessThan(candidateBytes[0]);
+        candidateBytes[0].ShouldBeLessThan(candidateBytes[1]);
+        int byteLimit = survivorBytes + expiredBytes + (recordBound ? candidateBytes[0] : 0);
+        int recordLimit = recordBound ? 2 : 8;
+        var queue = new BoundedAccessTelemetryQueue(recordLimit, byteLimit);
+        queue.TryEnqueue(survivor, out _).ShouldBeTrue();
+        queue.TryEnqueue(expired, out _).ShouldBeTrue();
+        queue.TryEnqueue(candidates[0], out _).ShouldBeFalse();
+        queue.CountByMarkerKey("mk-2026b").ShouldBe(0);
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var finishRemoval = new ManualResetEventSlim();
+        Task<bool>[] producers = candidates.Select(async record =>
+        {
+            await released.Task;
+            bool accepted = queue.TryEnqueue(record, out AccessTelemetryReason reason);
+            reason.ShouldBe(accepted ? AccessTelemetryReason.None : AccessTelemetryReason.QueueFull);
+            queue.Count.ShouldBeLessThanOrEqualTo(recordLimit);
+            queue.ByteCount.ShouldBeLessThanOrEqualTo(byteLimit);
+            return accepted;
+        }).ToArray();
+        var removedIds = new List<string>();
+        Task<int> consumer = Task.Run(() => queue.RemoveWhere(
+            record => string.Equals(record.RecordId, expired.RecordId, StringComparison.Ordinal),
+            record =>
+            {
+                removedIds.Add(record.RecordId);
+                released.SetResult();
+                finishRemoval.Wait(TimeSpan.FromSeconds(10)).ShouldBeTrue();
+            }));
+        try
+        {
+            bool[] admitted = await Task.WhenAll(producers).WaitAsync(TimeSpan.FromSeconds(5));
+            consumer.IsCompleted.ShouldBeFalse();
+            admitted.Count(static accepted => accepted).ShouldBe(1);
+            int winner = Array.FindIndex(admitted, static accepted => accepted);
+            queue.Count.ShouldBe(2);
+            queue.ByteCount.ShouldBe(survivorBytes + candidateBytes[winner]);
+            queue.CountByMarkerKey(template.MarkerKeyId).ShouldBe(1);
+            queue.CountByMarkerKey("mk-2026b").ShouldBe(1);
+            finishRemoval.Set();
+            (await consumer.WaitAsync(TimeSpan.FromSeconds(5))).ShouldBe(1);
+            removedIds.ShouldBe(new[] { expired.RecordId });
+            queue.PeekBatch(8, byteLimit).Select(static record => record.RecordId)
+                .ShouldBe(new[] { survivor.RecordId, candidates[winner].RecordId });
+            queue.Acknowledge(1);
+            queue.ByteCount.ShouldBe(candidateBytes[winner]);
+            queue.CountByMarkerKey(template.MarkerKeyId).ShouldBe(0);
+            queue.Acknowledge(1);
+            queue.Count.ShouldBe(0);
+            queue.ByteCount.ShouldBe(0);
+            queue.CountByMarkerKey("mk-2026b").ShouldBe(0);
+            queue.RemoveWhere(static _ => true).ShouldBe(0);
+        }
+        finally
+        {
+            finishRemoval.Set();
+            await consumer.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
 
-        var stopwatch = Stopwatch.StartNew();
-        bool accepted = queue.TryEnqueue(Sanitize(CreateSearchEvent()), out AccessTelemetryReason reason);
-        stopwatch.Stop();
-        release.Set();
-        await holder;
+    [Fact]
+    public async Task Worker_CancelledWaitAndActiveDeliveryPreservePendingRecordsForSubsequentDrain()
+    {
+        AccessTelemetryRecord first = Sanitize(CreateSearchEvent());
+        AccessTelemetryRecord second = Reidentify(first with { UserMarker = null });
+        int firstBytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(first).Length;
+        int secondBytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(second).Length;
+        var queue = new BoundedAccessTelemetryQueue(2, firstBytes + secondBytes);
+        queue.TryEnqueue(first, out _).ShouldBeTrue();
+        var sending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var heldResponse = new TaskCompletionSource<AccessTelemetryWriteBatchResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var batches = new List<string[]>();
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                IReadOnlyList<AccessTelemetryRecord> batch = call.Arg<IReadOnlyList<AccessTelemetryRecord>>();
+                batches.Add(batch.Select(static record => record.RecordId).ToArray());
+                if (batches.Count == 1)
+                {
+                    sending.SetResult();
+                    return heldResponse.Task.WaitAsync(call.Arg<CancellationToken>());
+                }
 
-        accepted.ShouldBeFalse();
-        reason.ShouldBe(AccessTelemetryReason.QueueFull);
-        stopwatch.Elapsed.ShouldBeLessThan(TimeSpan.FromMilliseconds(500));
+                return Task.FromResult(new AccessTelemetryWriteBatchResponse
+                {
+                    Accepted = batch.Count, Rejected = 0, Reason = AccessTelemetryReason.None,
+                });
+            });
+        var accounting = new AccessTelemetryQualificationAccounting();
+        var worker = new AccessTelemetryDeliveryWorker(queue, client, new FakeTimeProvider(Now),
+            new AccessTelemetryOptions(), new AccessTelemetryLifecycleStatus(true), accounting);
+        using var cancelActive = new CancellationTokenSource();
+        using var cancelWaiter = new CancellationTokenSource();
+        Task active = worker.DrainOnceAsync(cancelActive.Token);
+        await sending.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task waiter = worker.DrainOnceAsync(cancelWaiter.Token);
+        try
+        {
+            waiter.IsCompleted.ShouldBeFalse();
+            cancelWaiter.Cancel();
+            await Should.ThrowAsync<OperationCanceledException>(() => waiter.WaitAsync(TimeSpan.FromSeconds(5)));
+            active.IsCompleted.ShouldBeFalse();
+            heldResponse.Task.IsCompleted.ShouldBeFalse();
+            queue.TryEnqueue(second, out _).ShouldBeTrue();
+            queue.Count.ShouldBe(2);
+            queue.ByteCount.ShouldBe(firstBytes + secondBytes);
+            queue.CountByMarkerKey(first.MarkerKeyId).ShouldBe(2);
+            cancelActive.Cancel();
+            await Should.ThrowAsync<OperationCanceledException>(() => active.WaitAsync(TimeSpan.FromSeconds(5)));
+            heldResponse.Task.IsCompleted.ShouldBeFalse();
+            queue.Count.ShouldBe(2);
+            queue.ByteCount.ShouldBe(firstBytes + secondBytes);
+            accounting.Current.ShouldBe(new AccessTelemetryQualificationAccountingSnapshot(0, 0, 0, 0, 0, 0));
+            await worker.DrainOnceAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            batches[0].ShouldBe(new[] { first.RecordId });
+            batches[1].ShouldBe(new[] { first.RecordId, second.RecordId });
+            batches.Count.ShouldBe(2);
+            accounting.Current.ShouldBe(new AccessTelemetryQualificationAccountingSnapshot(0, 0, 2, 0, 0, 0));
+            queue.Count.ShouldBe(0);
+            queue.ByteCount.ShouldBe(0);
+            queue.CountByMarkerKey(first.MarkerKeyId).ShouldBe(0);
+        }
+        finally
+        {
+            cancelWaiter.Cancel();
+            cancelActive.Cancel();
+            heldResponse.TrySetResult(new AccessTelemetryWriteBatchResponse
+            {
+                Accepted = 1, Rejected = 0, Reason = AccessTelemetryReason.None,
+            });
+            try
+            {
+                await Task.WhenAll(active, waiter).WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Worker_ConcurrentDrainWaitsForAcknowledgementWithoutBlockingAdmission()
+    {
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        int bytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(template).Length;
+        var queue = new BoundedAccessTelemetryQueue(4, bytes * 4);
+        AccessTelemetryRecord first = Reidentify(template);
+        AccessTelemetryRecord second = Reidentify(template);
+        queue.TryEnqueue(first, out _).ShouldBeTrue();
+        queue.TryEnqueue(second, out _).ShouldBeTrue();
+        var sending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var acknowledge = new TaskCompletionSource<AccessTelemetryWriteBatchResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var batches = new List<string[]>();
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                IReadOnlyList<AccessTelemetryRecord> batch = call.Arg<IReadOnlyList<AccessTelemetryRecord>>();
+                batches.Add(batch.Select(static record => record.RecordId).ToArray());
+                if (batches.Count == 1)
+                {
+                    sending.SetResult();
+                    return acknowledge.Task;
+                }
+
+                return Task.FromResult(new AccessTelemetryWriteBatchResponse { Accepted = batch.Count, Rejected = 0, Reason = AccessTelemetryReason.None });
+            });
+        var accounting = new AccessTelemetryQualificationAccounting();
+        var worker = new AccessTelemetryDeliveryWorker(queue, client, new FakeTimeProvider(Now),
+            new AccessTelemetryOptions { BatchRecordLimit = 2 }, new AccessTelemetryLifecycleStatus(true), accounting);
+        Task firstDrain = worker.DrainOnceAsync(CancellationToken.None);
+        await sending.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task secondDrain = worker.DrainOnceAsync(CancellationToken.None);
+        try
+        {
+            secondDrain.IsCompleted.ShouldBeFalse();
+            AccessTelemetryRecord third = Reidentify(template);
+            queue.TryEnqueue(third, out _).ShouldBeTrue();
+            queue.Count.ShouldBe(3);
+            queue.ByteCount.ShouldBe(bytes * 3);
+            batches.Count.ShouldBe(1);
+            acknowledge.SetResult(new AccessTelemetryWriteBatchResponse { Accepted = 2, Rejected = 0, Reason = AccessTelemetryReason.None });
+            await Task.WhenAll(firstDrain, secondDrain).WaitAsync(TimeSpan.FromSeconds(5));
+            batches[0].ShouldBe(new[] { first.RecordId, second.RecordId });
+            batches[1].ShouldBe(new[] { third.RecordId });
+            accounting.Current.Persisted.ShouldBe(3);
+            queue.Count.ShouldBe(0);
+            queue.ByteCount.ShouldBe(0);
+        }
+        finally
+        {
+            acknowledge.TrySetResult(new AccessTelemetryWriteBatchResponse { Accepted = 2, Rejected = 0, Reason = AccessTelemetryReason.None });
+            await Task.WhenAll(firstDrain, secondDrain).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Worker_RetryPartialAcknowledgementAndExpiryReleaseEachReservationOnce(bool retryAge)
+    {
+        AccessTelemetryRecord template = Sanitize(CreateSearchEvent());
+        AccessTelemetryRecord first = Reidentify(template);
+        AccessTelemetryRecord expired = Reidentify(retryAge
+            ? template with { EmittedAtUtc = Format(Now.AddMinutes(-5).AddSeconds(1)) }
+            : template with { ExpiresAtUtc = Format(Now.AddSeconds(1)) });
+        AccessTelemetryRecord third = Reidentify(template);
+        int bytes = AccessTelemetryCanonicalizer.CanonicalizeRecord(template).Length;
+        var queue = new BoundedAccessTelemetryQueue(3, bytes * 3);
+        foreach (AccessTelemetryRecord record in new[] { first, expired, third })
+        {
+            queue.TryEnqueue(record, out _).ShouldBeTrue();
+        }
+
+        var batches = new List<string[]>();
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                IReadOnlyList<AccessTelemetryRecord> batch = call.Arg<IReadOnlyList<AccessTelemetryRecord>>();
+                batches.Add(batch.Select(static record => record.RecordId).ToArray());
+                return batches.Count switch
+                {
+                    1 => Task.FromException<AccessTelemetryWriteBatchResponse>(new HttpRequestException("unavailable")),
+                    2 => Task.FromResult(new AccessTelemetryWriteBatchResponse { Accepted = 1, Rejected = 2, Reason = AccessTelemetryReason.DependencyUnavailable }),
+                    _ => Task.FromResult(new AccessTelemetryWriteBatchResponse { Accepted = batch.Count, Rejected = 0, Reason = AccessTelemetryReason.None }),
+                };
+            });
+        var time = new FakeTimeProvider(Now);
+        var accounting = new AccessTelemetryQualificationAccounting();
+        var worker = new AccessTelemetryDeliveryWorker(queue, client, time, new AccessTelemetryOptions(),
+            new AccessTelemetryLifecycleStatus(true), accounting);
+        await worker.DrainOnceAsync(CancellationToken.None);
+        queue.Count.ShouldBe(3);
+        queue.ByteCount.ShouldBe(bytes * 3);
+        queue.TryEnqueue(Reidentify(template), out AccessTelemetryReason full).ShouldBeFalse();
+        full.ShouldBe(AccessTelemetryReason.QueueFull);
+        accounting.Current.ShouldBe(new AccessTelemetryQualificationAccountingSnapshot(0, 0, 0, 0, 0, 0));
+
+        await worker.DrainOnceAsync(CancellationToken.None);
+        queue.Count.ShouldBe(2);
+        queue.ByteCount.ShouldBe(bytes * 2);
+        AccessTelemetryRecord newest = Reidentify(template);
+        queue.TryEnqueue(newest, out _).ShouldBeTrue();
+        time.Advance(TimeSpan.FromSeconds(1));
+        await worker.DrainOnceAsync(CancellationToken.None);
+        await worker.DrainOnceAsync(CancellationToken.None);
+
+        batches.Count.ShouldBe(3);
+        batches[0].ShouldBe(new[] { first.RecordId, expired.RecordId, third.RecordId });
+        batches[1].ShouldBe(batches[0]);
+        batches[2].ShouldBe(new[] { third.RecordId, newest.RecordId });
+        accounting.Current.Persisted.ShouldBe(3);
+        accounting.Current.Dropped.ShouldBe(1);
+        accounting.Current.Rejected.ShouldBe(0);
+        queue.Count.ShouldBe(0);
+        queue.ByteCount.ShouldBe(0);
     }
 
     [Fact]

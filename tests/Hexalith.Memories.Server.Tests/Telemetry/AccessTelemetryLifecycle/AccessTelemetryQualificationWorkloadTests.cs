@@ -5,6 +5,7 @@
 
 namespace Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle;
 
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
@@ -308,6 +309,147 @@ public sealed class AccessTelemetryQualificationWorkloadTests
 
         accounting.Current.Since(before).ShouldBe(
             new AccessTelemetryQualificationAccountingSnapshot(1, 1, 1, 2, 1, 2));
+    }
+
+    [Fact]
+    public async Task Runner_OverlappingProducerAndWorkerPersistAll125RecordsWithExactSegmentAccounting()
+    {
+        var time = new FakeTimeProvider(Now);
+        var queue = new BoundedAccessTelemetryQueue(125, 125 * 1024);
+        var accounting = new AccessTelemetryQualificationAccounting();
+        var accessor = new AccessTelemetrySanitizerAccessor();
+        accessor.Publish(new AccessTelemetrySanitizer(
+            RandomNumberGenerator.GetBytes(32), "mk-qualification", time,
+            new MonotonicRecordIdGenerator(), TimeSpan.FromHours(1), qualificationMode: true));
+        var status = new AccessTelemetryLifecycleStatus(enabled: true);
+        using var provider = new AccessTelemetryLifecycleLoggerProvider(queue, accessor, status, time, accounting);
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(provider));
+        var firstPublished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lastPublished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var resumeProducer = new ManualResetEventSlim();
+        using var finishEmission = new ManualResetEventSlim();
+        int published = 0;
+        int producerThread = 0;
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, current) =>
+        {
+            if (instrument.Meter.Name == ServerAccessTelemetryLifecycleMetrics.MeterName &&
+                instrument.Name == AccessTelemetryMetricContract.Records)
+            {
+                current.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            // Scope this barrier to the one synchronous fixed-workload producer.
+            if (Environment.CurrentManagedThreadId != Volatile.Read(ref producerThread))
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, object?> tag in tags)
+            {
+                if (tag.Key == "state" && Equals(tag.Value, "enqueued"))
+                {
+                    published++;
+                    if (published == 1)
+                    {
+                        firstPublished.SetResult();
+                        resumeProducer.Wait(TimeSpan.FromSeconds(10)).ShouldBeTrue();
+                    }
+                    else if (published == 125)
+                    {
+                        lastPublished.SetResult();
+                        finishEmission.Wait(TimeSpan.FromSeconds(10)).ShouldBeTrue();
+                        // Delivery is complete before the runner observes the end of emission.
+                        time.Advance(TimeSpan.FromSeconds(1));
+                    }
+                }
+            }
+        });
+        listener.Start();
+        var persisted = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        IAccessTelemetryDeliveryClient client = Substitute.For<IAccessTelemetryDeliveryClient>();
+        client.SendAsync(Arg.Any<IReadOnlyList<AccessTelemetryRecord>>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                IReadOnlyList<AccessTelemetryRecord> batch = call.Arg<IReadOnlyList<AccessTelemetryRecord>>();
+                foreach (AccessTelemetryRecord record in batch)
+                {
+                    persisted.Add(record.RecordId, AccessTelemetryCanonicalizer.CanonicalizeRecord(record));
+                }
+
+                return new AccessTelemetryWriteBatchResponse { Accepted = batch.Count, Rejected = 0, Reason = AccessTelemetryReason.None };
+            });
+        var worker = new AccessTelemetryDeliveryWorker(queue, client, time, new AccessTelemetryOptions(), status, accounting);
+        string gatePath = WriteGate(Now.AddMinutes(5));
+        Task<AccessTelemetryQualificationWorkloadResult>? emitting = null;
+        try
+        {
+            var runner = new AccessTelemetryQualificationWorkloadRunner(
+                loggerFactory.CreateLogger<AccessTelemetryCategory>(), accounting,
+                CreateGate(gatePath, "Qualification", time), time);
+            emitting = Task.Run(() =>
+            {
+                Volatile.Write(ref producerThread, Environment.CurrentManagedThreadId);
+                return runner.RunAsync("run-overlap", "writer-1-segment-0001", Now.ToUnixTimeMilliseconds(),
+                    waitForAcknowledgement: false, CancellationToken.None);
+            });
+            await firstPublished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await worker.DrainOnceAsync(CancellationToken.None);
+            string correlation = "qualification-" + AccessTelemetryQualificationWorkloadRunner.QualificationCorrelation(
+                "run-overlap", "writer-1-segment-0001");
+            // The consumer acknowledges before the producer returns from its first Log call.
+            accounting.ForCorrelation(correlation).ShouldBe(new AccessTelemetryQualificationAccountingSnapshot(1, 1, 1, 0, 0, 0));
+            emitting.IsCompleted.ShouldBeFalse();
+            resumeProducer.Set();
+            await lastPublished.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            queue.Count.ShouldBe(124);
+            await worker.DrainOnceAsync(CancellationToken.None);
+            accounting.ForCorrelation(correlation).Persisted.ShouldBe(125);
+            emitting.IsCompleted.ShouldBeFalse();
+            finishEmission.Set();
+            AccessTelemetryQualificationWorkloadResult emitted = await emitting.WaitAsync(TimeSpan.FromSeconds(5));
+            emitted.Attempted.ShouldBe(125);
+            emitted.Enqueued.ShouldBe(125);
+            AccessTelemetryQualificationWorkloadResult result = await runner.RunAsync(
+                "run-overlap", "writer-1-segment-0001", Now.ToUnixTimeMilliseconds(), CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(5));
+
+            result.Attempted.ShouldBe(125);
+            result.Enqueued.ShouldBe(125);
+            result.Persisted.ShouldBe(125);
+            result.Acknowledged.ShouldBe(125);
+            result.Rejected.ShouldBe(0);
+            result.Dropped.ShouldBe(0);
+            result.Conflicted.ShouldBe(0);
+            persisted.Count.ShouldBe(125);
+            persisted.Keys.Order(StringComparer.Ordinal).ShouldBe(result.RecordIds.Order(StringComparer.Ordinal));
+            persisted.Values.ShouldAllBe(static bytes => bytes.Length <= 1024);
+            accounting.Current.ShouldBe(new AccessTelemetryQualificationAccountingSnapshot(125, 125, 125, 0, 0, 0));
+            accounting.ForCorrelation(correlation).ShouldBe(accounting.Current);
+            queue.Count.ShouldBe(0);
+            queue.ByteCount.ShouldBe(0);
+        }
+        finally
+        {
+            resumeProducer.Set();
+            finishEmission.Set();
+            time.Advance(TimeSpan.FromMinutes(6));
+            if (emitting is not null)
+            {
+                try
+                {
+                    await emitting.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch (InvalidOperationException)
+                {
+                    // Gate expiry releases a producer if an assertion failed before normal completion.
+                }
+            }
+
+            File.Delete(gatePath);
+        }
     }
 
     [Fact]
