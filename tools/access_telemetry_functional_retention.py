@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 import configparser
 from datetime import datetime, timedelta, timezone
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,7 @@ import re
 import io
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tarfile
@@ -1204,6 +1206,7 @@ def run_selected_platform_retention() -> int:
     import xml.etree.ElementTree as xml
     result = {"checkpoint": "functional-retention", "status": "rejected", "qualificationCredit": False, "assuranceMode": ASSURANCE}
     report = None
+    loaded_descriptors = ExitStack()
     try:
         _require(os.environ.get("HEXALITH_G4_TEST_NAME") == "functional-retention" and os.environ.get("HEXALITH_G4_TEST_OWNER") == "memories" and os.environ.get("HEXALITH_G4_TEST_MODE") == "source", "selected-test-required")
         plan_path = Path(os.environ["HEXALITH_G4_PLAN_PATH"])
@@ -1246,6 +1249,7 @@ def run_selected_platform_retention() -> int:
         _require(_sha(json.dumps(aggregate, separators=(",", ":")).encode()) == observation["observedCandidateHash"], "selected-loaded-aggregate")
         required_entries = {"memories": "Hexalith.Memories.Server.dll", "memories-access-telemetry": "Hexalith.Memories.AccessTelemetry.dll", "memories-access-telemetry-clock": "Hexalith.Memories.AccessTelemetry.Clock.dll"}
         _require(all(any(key.startswith(resource + "/") and Path(key).name == assembly for key in observation["loadedArtifactHashes"]) for resource, assembly in required_entries.items()), "selected-required-loaded-entry")
+        loaded_inputs = []
         for relative, digest in observation["loadedArtifactHashes"].items():
             parts = relative.split("/")
             _require(len(parts) >= 3 and not any(part in {"", ".", ".."} for part in parts), "selected-loaded-artifact-path")
@@ -1253,7 +1257,12 @@ def run_selected_platform_retention() -> int:
             _require(path.resolve().is_relative_to(candidate.resolve()) and not any(parent.is_symlink() for parent in (path, *path.parents)), "selected-loaded-artifact-path")
             # Executables exceed the strict JSON reader's 1-MiB evidence cap.
             # Keep complete streaming, byte bounds and held identity checks.
+            held = _open_held_file(str(path), loaded_descriptors)
             _require(_hash_file(path)[0] == digest, "selected-loaded-artifact-drift")
+            # Bind the identity on both sides of the hash read, then retain it
+            # throughout execution. Revalidation never substitutes a new hash.
+            held.revalidate()
+            loaded_inputs.append(held)
         deadline = datetime.fromisoformat(selection["executionDeadlineUtc"].replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
         observed_at = datetime.fromisoformat(observation["observedAtUtc"].replace("Z", "+00:00"))
@@ -1261,12 +1270,16 @@ def run_selected_platform_retention() -> int:
         access_path = root / "platform-components" / "retention" / "access.json"
         _require(observation["accessPath"] == str(access_path) and observation["gatePath"] == str(access_path.with_name("gate.json")), "selected-access-path")
         access = json.loads(_private(str(access_path), str(root)))
-        consumer = _PlatformRetentionConsumer(root, plan, plan_bytes, readiness_bytes, observation, access, deadline)
-        result.update(consumer.execute())
+        consumer = _PlatformRetentionConsumer(root, plan, plan_bytes, readiness_bytes, observation, access, deadline, loaded_inputs)
+        observed = consumer.execute()
+        consumer.check()
+        result.update(observed)
         _exclusive_json(root / "native-tests" / "functional-observations.json", result)
     except _SEMANTIC_FAILURES as error:
         result["status"] = "rejected"
         result["reason"] = str(error) if isinstance(error, FunctionalRetentionError) else "functional-selected-input-refused"
+    finally:
+        loaded_descriptors.close()
     if report is not None:
         try:
             # A native report is a test outcome. Platform's subsequent real
@@ -1295,12 +1308,28 @@ def run_selected_platform_retention() -> int:
     return 0 if result["status"] == "functional-observations-passed" else 1
 
 
+def _revalidate_selected_loaded_input(held):
+    """Check only the bound file metadata and the named ancestor identities."""
+    expected = _file_metadata(held.before)
+    named = os.stat(held.parts[-1], dir_fd=held.ancestors[-1][0], follow_symlinks=False)
+    _require(expected == _file_metadata(named) == _file_metadata(os.fstat(held.descriptor)), "selected-loaded-artifact-drift")
+
+    def directory_identity(metadata):
+        return metadata.st_dev, metadata.st_ino, stat.S_IFMT(metadata.st_mode)
+
+    for index, (descriptor, before) in enumerate(held.ancestors):
+        named = os.stat("/", follow_symlinks=False) if index == 0 else os.stat(
+            held.parts[index - 1], dir_fd=held.ancestors[index - 1][0], follow_symlinks=False)
+        _require(directory_identity(before) == directory_identity(named) == directory_identity(os.fstat(descriptor)), "selected-loaded-artifact-drift")
+
+
 class _PlatformRetentionConsumer:
     """Fixed workload and observation access only; Platform owns gate/lifecycle."""
 
-    def __init__(self, root, plan, plan_bytes, readiness_bytes, observation, access, deadline):
+    def __init__(self, root, plan, plan_bytes, readiness_bytes, observation, access, deadline, loaded_inputs):
         self.root, self.plan, self.plan_bytes, self.readiness_bytes = root, plan, plan_bytes, readiness_bytes
         self.observation, self.access, self.deadline = observation, access, deadline
+        self.loaded_inputs = tuple(loaded_inputs)
         self.started = time.monotonic()
         self.wall = time.time()
         self.segments = {}
@@ -1316,12 +1345,17 @@ class _PlatformRetentionConsumer:
 
     def check(self):
         _require(datetime.now(timezone.utc) < self.deadline and abs(time.time() - self.wall - (time.monotonic() - self.started)) <= 1, "selected-expiry-or-clock-step")
+        try:
+            for held in self.loaded_inputs:
+                _revalidate_selected_loaded_input(held)
+        except (ValueError, OSError):
+            raise FunctionalRetentionError("functional-selected-loaded-artifact-drift") from None
         _require(_private(str(self.root / "plan.json"), str(self.root)) == self.plan_bytes and _private(str(self.root / "readiness.json"), str(self.root)) == self.readiness_bytes, "selected-descriptor-drift")
         gate = json.loads(_private(self.observation["gatePath"], str(self.root)))
         now_ms = int(time.time() * 1000)
         _require(set(gate) == {"schemaVersion", "state", "profileSha256", "expiresUtcMs"} and gate["schemaVersion"] == 1 and gate["state"] == "enabled" and gate["profileSha256"] == self.observation["profileHash"] and now_ms < gate["expiresUtcMs"] <= min(now_ms + 905000, int(self.deadline.timestamp() * 1000)), "selected-gate-withdrawn-or-expired")
 
-    def request(self, resource, path, *, data=None, headers=None, missing=False, raw_response=False):
+    def request(self, resource, path, *, data=None, headers=None, missing=False, raw_response=False, read_deadline=None):
         self.check()
         credentials = self.access[resource.removesuffix("/dapr")]
         token = credentials["DAPR_API_TOKEN" if resource.endswith("/dapr") else "APP_API_TOKEN"]
@@ -1330,8 +1364,13 @@ class _PlatformRetentionConsumer:
             def redirect_request(self, *args, **kwargs):
                 return None
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        timeout = 120 if data is not None else 5
+        if read_deadline is not None:
+            remaining = read_deadline - time.monotonic()
+            _require(data is None and 0 < remaining <= LIMITS["readAggregateSeconds"], "selected-read-aggregate-deadline")
+            timeout = min(timeout, remaining)
         try:
-            with opener.open(request, timeout=120 if data is not None else 5) as response:
+            with opener.open(request, timeout=timeout) as response:
                 raw = response.read(1048577)
                 _require(len(raw) <= 1048576, "selected-output-limit")
                 return (response.status, raw) if raw_response else json.loads(raw) if raw else None
@@ -1339,22 +1378,46 @@ class _PlatformRetentionConsumer:
             if missing and error.code in {204, 404}:
                 return None
             raise FunctionalRetentionError("functional-selected-request-failed") from None
-        except urllib.error.URLError:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
             raise TransportUncertain("functional-selected-transport-uncertain") from None
 
     def states(self, run_id, segment, buckets=False):
+        # One budget covers all keys, batches and retries in this observation.
+        # Reuse the existing read-only attempt count/backoff; writes are unchanged.
+        deadline = time.monotonic() + LIMITS["readAggregateSeconds"]
         emitted = self.segments[segment]
         keys = fixed_record_keys(run_id, segment)
         if buckets:
             keys = tuple(sorted({f"expiry-bucket/{(emitted + ordinal + 3600000) // 60000:012d}/{int(key.split('/')[1]):02d}" for ordinal, key in enumerate(keys)}))
-        def read(key):
+        def check_read():
             self.check()
-            return {"key": key, "value": self.request("memories-access-telemetry/dapr", "/v1.0/state/access-telemetry-store/" + urllib.parse.quote(key, safe="") + "?consistency=strong&metadata.partitionKey=access-telemetry", missing=True)}
+            remaining = deadline - time.monotonic()
+            _require(remaining > 0, "selected-read-aggregate-deadline")
+            return remaining
+
+        def read(key):
+            path = "/v1.0/state/access-telemetry-store/" + urllib.parse.quote(key, safe="") + "?consistency=strong&metadata.partitionKey=access-telemetry"
+            for attempt in range(LIMITS["readAttempts"]):
+                check_read()
+                try:
+                    value = self.request("memories-access-telemetry/dapr", path, missing=True, read_deadline=deadline)
+                except TransportUncertain:
+                    remaining = check_read()
+                    if attempt == LIMITS["readAttempts"] - 1:
+                        raise TransportUncertain("functional-selected-state-read-transport-exhausted") from None
+                    delay = (2, 5)[attempt]
+                    _require(delay < remaining, "selected-read-aggregate-deadline")
+                    time.sleep(delay)
+                    check_read()
+                else:
+                    check_read()
+                    return {"key": key, "value": value}
         observed = []
         with ThreadPoolExecutor(max_workers=16) as reads:
             for offset in range(0, len(keys), 16):
-                self.check()
+                check_read()
                 observed.extend(reads.map(read, keys[offset:offset + 16]))
+        check_read()
         return observed
 
     def cohort(self, run_id, segment):
