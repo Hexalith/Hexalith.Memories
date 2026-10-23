@@ -31,6 +31,9 @@
     <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.EventStore\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)..\Hexalith.EventStore</HexalithEventStoreRoot>
     <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\Hexalith.EventStore.slnx') and Exists('$(MSBuildThisFileDirectory)..\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)..</HexalithEventStoreRoot>
     <HexalithEventStoreRoot Condition="'$(HexalithEventStoreRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\Hexalith.EventStore.slnx') and Exists('$(MSBuildThisFileDirectory)..\..\src\Hexalith.EventStore.Aspire')">$(MSBuildThisFileDirectory)..\..</HexalithEventStoreRoot>
+    <!-- In the supported Platform source workspace, this repository is the
+         references/Hexalith.Memories owner and Platform is the enclosing root. -->
+    <HexalithPlatformRoot Condition="'$(HexalithPlatformRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\Hexalith.Platform.slnx') and Exists('$(MSBuildThisFileDirectory)..\..\.git')">$(MSBuildThisFileDirectory)..\..</HexalithPlatformRoot>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -87,6 +90,7 @@
     </RequiredRootSubmodule>
     <RequiredRootSubmodule Include="references/Hexalith.Platform" Condition="'$(HexalithMemoriesHostedInFrontComposerRepo)' != 'true'">
       <RootName>Hexalith.Platform</RootName>
+      <ResolvedRoot>$(HexalithPlatformRoot)</ResolvedRoot>
     </RequiredRootSubmodule>
   </ItemGroup>
 
