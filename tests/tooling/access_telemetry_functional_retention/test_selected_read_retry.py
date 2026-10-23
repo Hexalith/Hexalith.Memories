@@ -1,11 +1,14 @@
 """Offline bounded read retries; no target calls or live retention credit."""
 
 from contextlib import ExitStack
+from concurrent.futures import ThreadPoolExecutor
 import http.client
 import io
 import json
 from pathlib import Path
 import sys
+import tempfile
+from threading import Barrier
 import unittest
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
@@ -41,6 +44,9 @@ class SelectedReadRetryTests(unittest.TestCase):
         self.elapsed = 0.0
         self.sleeps = []
         self.consumer = object.__new__(f._PlatformRetentionConsumer)
+        directory = self.stack.enter_context(tempfile.TemporaryDirectory())
+        self.consumer.root = Path(directory)
+        (self.consumer.root / "native-tests").mkdir(mode=0o700)
         self.consumer.segments = {"cohort-a": 0}
         self.consumer.check = Mock()
         self.consumer.access = {"memories-access-telemetry": {"DAPR_API_TOKEN": "offline-secret"}, "memories": {"APP_API_TOKEN": "offline-secret"}}
@@ -114,7 +120,10 @@ class SelectedReadRetryTests(unittest.TestCase):
         self.assertEqual(118, self.elapsed)
 
     def test_withdrawal_after_failure_or_during_backoff_admits_no_retry_or_later_key(self):
+        root = self.consumer.root
         for stage in ("failure", "backoff"):
+            self.consumer.root = root / stage
+            (self.consumer.root / "native-tests").mkdir(parents=True, mode=0o700)
             withdrawn = False
             self.elapsed, self.sleeps = 0.0, []
 
@@ -205,6 +214,83 @@ class SelectedReadRetryTests(unittest.TestCase):
         self.assertEqual([self.keys[0]] * 3, [self.key(call.args[0].full_url) for call in contact.call_args_list])
         self.assertEqual([2, 5], self.sleeps)
         self.assertTrue(all(response.closed for response in responses))
+
+    def test_failed_read_retains_only_bounded_private_transport_categories(self):
+        failure = URLError(ConnectionRefusedError("offline-secret-url-key-payload"))
+        with patch("urllib.request.OpenerDirector.open", side_effect=failure) as contact:
+            with self.assertRaisesRegex(f.TransportUncertain, "^functional-selected-state-read-transport-exhausted$"):
+                self.consumer.states("offline-run", "cohort-a")
+        path = self.consumer.root / "native-tests/state-read-transport-failure.json"
+        raw = path.read_text()
+        observed = json.loads(raw)
+        self.assertEqual(0o600, path.stat().st_mode & 0o777)
+        self.assertLess(len(raw), 1048576)
+        self.assertEqual({"runId", "segmentId", "kind", "attemptLimit", "aggregateLimitSeconds", "failures"}, set(observed))
+        self.assertEqual(("offline-run", "cohort-a", "record", 3, 120),
+                         tuple(observed[name] for name in ("runId", "segmentId", "kind", "attemptLimit", "aggregateLimitSeconds")))
+        self.assertEqual([1, 2, 3], [item["attempt"] for item in observed["failures"]])
+        self.assertEqual([0, 2000, 7000], [item["elapsedMilliseconds"] for item in observed["failures"]])
+        for item in observed["failures"]:
+            self.assertEqual({"ordinal", "attempt", "observedUtcMs", "elapsedMilliseconds", "category", "phase"}, set(item))
+            self.assertEqual((1, "connection-refused", "open"), (item["ordinal"], item["category"], item["phase"]))
+        for private in ("offline-secret", "12345", self.keys[0], "dapr-api-token", "payload", "http://"):
+            self.assertNotIn(private, raw)
+        self.assertEqual(3, contact.call_count)
+        self.assertEqual([2, 5], self.sleeps)
+
+    def test_body_failure_diagnostic_does_not_retain_partial_response_or_exception_values(self):
+        responses = [io.BytesIO() for _ in range(3)]
+        for response in responses:
+            response.read = Mock(side_effect=http.client.IncompleteRead(b"offline-secret-partial"))
+        with patch("urllib.request.OpenerDirector.open", side_effect=responses):
+            with self.assertRaises(f.TransportUncertain):
+                self.consumer.states("offline-run", "cohort-a")
+        raw = (self.consumer.root / "native-tests/state-read-transport-failure.json").read_text()
+        self.assertNotIn("offline-secret", raw)
+        self.assertEqual({("incomplete-read", "body")}, {(item["category"], item["phase"]) for item in json.loads(raw)["failures"]})
+
+    def test_recovered_read_creates_no_failure_artifact(self):
+        with patch("urllib.request.OpenerDirector.open", side_effect=(URLError("private-reason"), io.BytesIO(b"{}"), io.BytesIO(b"{}"))):
+            self.consumer.states("offline-run", "cohort-a")
+        self.assertFalse((self.consumer.root / "native-tests/state-read-transport-failure.json").exists())
+
+    def test_failure_artifact_is_exclusive_and_does_not_overwrite_previous_evidence(self):
+        path = self.consumer.root / "native-tests/state-read-transport-failure.json"
+        path.write_bytes(b"retained-authentic-evidence")
+        self.consumer.request = Mock(side_effect=f.TransportUncertain("private-reason"))
+        with self.assertRaises(FileExistsError):
+            self.consumer.states("offline-run", "cohort-a")
+        self.assertEqual(b"retained-authentic-evidence", path.read_bytes())
+        self.assertEqual(3, self.consumer.request.call_count)
+
+    def test_untrusted_exception_metadata_is_replaced_with_fixed_categories(self):
+        error = f.TransportUncertain("private-reason")
+        error.category = "http://private-token-and-key"
+        error.phase = "private-response"
+        self.consumer.request = Mock(side_effect=error)
+        with self.assertRaises(f.TransportUncertain):
+            self.consumer.states("offline-run", "cohort-a")
+        raw = (self.consumer.root / "native-tests/state-read-transport-failure.json").read_text()
+        self.assertNotIn("private", raw)
+        self.assertEqual({("unclassified", "unknown")}, {(item["category"], item["phase"]) for item in json.loads(raw)["failures"]})
+
+    def test_parallel_failure_is_bounded_to_the_existing_batch_and_sorted_without_keys(self):
+        self.keys = tuple("record/00/private-" + str(index) for index in range(125))
+        barrier = Barrier(16)
+        def request(*args, **kwargs):
+            barrier.wait(timeout=5)
+            raise f.TransportUncertain("private-reason")
+        self.consumer.request = Mock(side_effect=request)
+        with patch.object(f, "ThreadPoolExecutor", ThreadPoolExecutor), patch.object(f.time, "sleep", lambda seconds: None):
+            with self.assertRaises(f.TransportUncertain):
+                self.consumer.states("offline-run", "cohort-a")
+        raw = (self.consumer.root / "native-tests/state-read-transport-failure.json").read_text()
+        observed = json.loads(raw)
+        self.assertNotIn("private", raw)
+        self.assertEqual(48, self.consumer.request.call_count)
+        self.assertEqual([(ordinal, attempt) for ordinal in range(1, 17) for attempt in range(1, 4)],
+                         [(item["ordinal"], item["attempt"]) for item in observed["failures"]])
+        self.assertLess(len(raw), 1048576)
 
     def test_response_output_limit_is_refused_without_retry(self):
         with patch("urllib.request.OpenerDirector.open", return_value=io.BytesIO(b"x" * 1048577)) as contact:

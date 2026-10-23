@@ -26,6 +26,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+from threading import Lock
 import time
 import urllib.parse
 import urllib.request
@@ -396,6 +397,26 @@ class FunctionalRetentionError(ValueError):
 
 class TransportUncertain(FunctionalRetentionError):
     """Only transport/readiness uncertainty permits the enumerated retry."""
+
+
+def _selected_transport_category(error):
+    """Classify transport failures without retaining their messages or values."""
+    if isinstance(error, urllib.error.URLError) and isinstance(error.reason, BaseException):
+        error = error.reason
+    for kind, category in (
+        (TimeoutError, "timeout"),
+        (http.client.RemoteDisconnected, "remote-disconnected"),
+        (http.client.IncompleteRead, "incomplete-read"),
+        (http.client.BadStatusLine, "bad-status-line"),
+        (ConnectionRefusedError, "connection-refused"),
+        (ConnectionResetError, "connection-reset"),
+        (ConnectionAbortedError, "connection-aborted"),
+        (ConnectionError, "connection-error"),
+        (http.client.HTTPException, "http-protocol"),
+    ):
+        if isinstance(error, kind):
+            return category
+    return "unclassified"
 
 
 _SEMANTIC_FAILURES = (FunctionalRetentionError, OSError, ValueError, KeyError, IndexError, TypeError, AttributeError, subprocess.SubprocessError)
@@ -1384,8 +1405,10 @@ class _PlatformRetentionConsumer:
             remaining = read_deadline - time.monotonic()
             _require(data is None and 0 < remaining <= LIMITS["readAggregateSeconds"], "selected-read-aggregate-deadline")
             timeout = min(timeout, remaining)
+        phase = "open"
         try:
             with opener.open(request, timeout=timeout) as response:
+                phase = "body"
                 raw = response.read(1048577)
                 _require(len(raw) <= 1048576, "selected-output-limit")
                 return (response.status, raw) if raw_response else json.loads(raw) if raw else None
@@ -1393,13 +1416,19 @@ class _PlatformRetentionConsumer:
             if missing and error.code in {204, 404}:
                 return None
             raise FunctionalRetentionError("functional-selected-request-failed") from None
-        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
-            raise TransportUncertain("functional-selected-transport-uncertain") from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException) as error:
+            uncertain = TransportUncertain("functional-selected-transport-uncertain")
+            uncertain.category = _selected_transport_category(error)
+            uncertain.phase = phase
+            raise uncertain from None
 
     def states(self, run_id, segment, buckets=False):
         # One budget covers all keys, batches and retries in this observation.
         # Reuse the existing read-only attempt count/backoff; writes are unchanged.
-        deadline = time.monotonic() + LIMITS["readAggregateSeconds"]
+        started = time.monotonic()
+        deadline = started + LIMITS["readAggregateSeconds"]
+        failures = []
+        failure_lock = Lock()
         emitted = self.segments[segment]
         keys = fixed_record_keys(run_id, segment)
         if buckets:
@@ -1410,13 +1439,22 @@ class _PlatformRetentionConsumer:
             _require(remaining > 0, "selected-read-aggregate-deadline")
             return remaining
 
-        def read(key):
+        def read(item):
+            ordinal, key = item
             path = "/v1.0/state/access-telemetry-store/" + urllib.parse.quote(key, safe="") + "?consistency=strong&metadata.partitionKey=access-telemetry"
             for attempt in range(LIMITS["readAttempts"]):
                 check_read()
                 try:
                     value = self.request("memories-access-telemetry/dapr", path, missing=True, read_deadline=deadline)
-                except TransportUncertain:
+                except TransportUncertain as error:
+                    category = getattr(error, "category", "unclassified")
+                    phase = getattr(error, "phase", "unknown")
+                    with failure_lock:
+                        failures.append({"ordinal": ordinal, "attempt": attempt + 1,
+                                         "observedUtcMs": int(time.time() * 1000),
+                                         "elapsedMilliseconds": int((time.monotonic() - started) * 1000),
+                                         "category": category if type(category) is str and category in {"timeout", "remote-disconnected", "incomplete-read", "bad-status-line", "connection-refused", "connection-reset", "connection-aborted", "connection-error", "http-protocol"} else "unclassified",
+                                         "phase": phase if type(phase) is str and phase in {"open", "body"} else "unknown"})
                     remaining = check_read()
                     if attempt == LIMITS["readAttempts"] - 1:
                         raise TransportUncertain("functional-selected-state-read-transport-exhausted") from None
@@ -1428,11 +1466,23 @@ class _PlatformRetentionConsumer:
                     check_read()
                     return {"key": key, "value": value}
         observed = []
-        with ThreadPoolExecutor(max_workers=16) as reads:
-            for offset in range(0, len(keys), 16):
-                check_read()
-                observed.extend(reads.map(read, keys[offset:offset + 16]))
-        check_read()
+        try:
+            with ThreadPoolExecutor(max_workers=16) as reads:
+                for offset in range(0, len(keys), 16):
+                    check_read()
+                    observed.extend(reads.map(read, enumerate(keys[offset:offset + 16], start=offset + 1)))
+            check_read()
+        except _SEMANTIC_FAILURES:
+            if failures:
+                # At most 125 fixed keys * three attempts. Never retain keys,
+                # endpoints, credentials, exception text or response bytes.
+                _require(_IDENTITY.fullmatch(run_id) is not None and segment in {"cohort-a", "cohort-b"}
+                         and len(failures) <= FUNCTIONAL["recordsPerCohort"] * LIMITS["readAttempts"], "selected-transport-observation-scope")
+                _exclusive_json(self.root / "native-tests" / "state-read-transport-failure.json",
+                                {"runId": run_id, "segmentId": segment, "kind": "expiry-bucket" if buckets else "record",
+                                 "attemptLimit": LIMITS["readAttempts"], "aggregateLimitSeconds": LIMITS["readAggregateSeconds"],
+                                 "failures": sorted(failures, key=lambda failure: (failure["ordinal"], failure["attempt"]))})
+            raise
         return observed
 
     def cohort(self, run_id, segment):
