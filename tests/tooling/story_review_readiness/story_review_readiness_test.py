@@ -43,7 +43,7 @@ REVIEW_ROW = "| 2026-07-03 | code-review | reviewed | +0 methods | matched 1/1 v
 
 
 def default_ledger(status: str) -> str:
-    """C2 requires a dev-story row at review/done and a code-review row at done.
+    """C2 requires creation/development at review/done and final review at done.
 
     The fixture ledger therefore has to track the status it is paired with, or
     every done-status case fails on C2 instead of the check under test.
@@ -409,10 +409,214 @@ class C6ParserTests(unittest.TestCase):
 
 
 class C2LedgerTests(VerifierTestCase):
+    BLOCKED_RECORD = (
+        "command: `python3 tools/discover.py`; blocker: runner unavailable; "
+        "owner: Developer; consequence: count agreement remains open; "
+        "reopen trigger: runner restored"
+    )
+
+    def assert_ledger(self, rows, expected_code, status="review"):
+        code, out = self.run_cli(
+            "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+            artifacts={"99-9-fixture.md": story(status=status, ledger_rows=rows)},
+            sprint=f"development_status:\n  99-9-fixture: {status}\n",
+        )
+        self.assertEqual(code, expected_code, out)
+        return out
+
+    def test_review_and_done_without_create_story_row_fail(self):
+        for status in ("review", "done"):
+            with self.subTest(status=status):
+                rows = default_ledger(status).replace(CREATE_ROW, "")
+                out = self.assert_ledger(rows, 1, status)
+                self.assertIn("no create-story ledger row", out)
+
+    def test_governed_review_and_done_require_ledger(self):
+        for status in ("review", "done"):
+            for section in ("file-list", "evidence", "both"):
+                with self.subTest(status=status, section=section):
+                    body = f"# Fixture\n\nStatus: {status}\n\n"
+                    if section in ("file-list", "both"):
+                        body += "### File List\n\n- `docs/a.md`\n\n"
+                    if section in ("evidence", "both"):
+                        body += C6EvidenceRowTests.VERIFIED
+                    code, out = self.run_cli(
+                        "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+                        artifacts={"99-9-fixture.md": body},
+                        sprint=f"development_status:\n  99-9-fixture: {status}\n",
+                    )
+                    self.assertEqual(code, 1, out)
+                    self.assertIn("C2:", out)
+                    self.assertIn("phase ledger is required", out)
+
+    def test_missing_ledger_below_review_keeps_existing_behavior(self):
+        for status in ("backlog", "ready-for-dev", "in-progress"):
+            with self.subTest(status=status):
+                body = f"# Fixture\n\nStatus: {status}\n\n### File List\n\n- `docs/a.md`\n"
+                code, out = self.run_cli(
+                    "--story-key", "99-9-fixture", "--changed-file", "docs/a.md",
+                    artifacts={"99-9-fixture.md": body},
+                    sprint=f"development_status:\n  99-9-fixture: {status}\n",
+                )
+                self.assertEqual(code, 0, out)
+                self.assertIn("ledger checks skipped", out)
+
+    def test_empty_ledger_cannot_replace_canonical_rows(self):
+        out = self.assert_ledger("", 1)
+        self.assertIn("no ledger row carries a canonical phase", out)
+
+    def test_out_of_order_canonical_phases_fail(self):
+        qa = DEV_ROW.replace("dev-story", "qa-gap-closure")
+        correction = DEV_ROW.replace("dev-story", "correct-course")
+        for rows in (
+            DEV_ROW + CREATE_ROW,
+            CREATE_ROW + REVIEW_ROW + DEV_ROW,
+            CREATE_ROW + qa + DEV_ROW,
+            correction + CREATE_ROW + DEV_ROW,
+        ):
+            with self.subTest(rows=rows):
+                out = self.assert_ledger(rows, 1)
+                self.assertIn("C2: phase order", out)
+
+    def test_repeated_phases_and_late_course_corrections_pass(self):
+        qa = DEV_ROW.replace("dev-story", "qa-gap-closure")
+        correction = DEV_ROW.replace("dev-story", "correct-course")
+        rows = CREATE_ROW + CREATE_ROW + correction + DEV_ROW + qa + REVIEW_ROW
+        rows += DEV_ROW + correction + qa + REVIEW_ROW + REVIEW_ROW
+        self.assert_ledger(rows, 0, "done")
+
+    def test_date_and_change_placeholders_fail_on_every_canonical_phase(self):
+        for phase in V.CANONICAL_PHASES:
+            for column, label in ((0, "Date"), (2, "Change")):
+                for placeholder in ("", "-", "—", "**TBD**", "`N/A`", "todo"):
+                    with self.subTest(phase=phase, column=label, placeholder=placeholder):
+                        cells = ["2026-07-03", phase, "work recorded", "+0 methods", "matched 1/1"]
+                        cells[column] = placeholder
+                        row = "| " + " | ".join(cells) + " |\n"
+                        out = self.assert_ledger(CREATE_ROW + DEV_ROW + row, 1)
+                        self.assertIn(f"{phase} row leaves '{label}' as a placeholder", out)
+
+    def test_nonplaceholder_historical_date_format_is_preserved(self):
+        rows = (CREATE_ROW + DEV_ROW + REVIEW_ROW).replace("2026-07-03", "2026-09-02/03")
+        self.assert_ledger(rows, 0, "done")
+
+    def test_bare_blocker_markers_do_not_replace_accountable_records(self):
+        for value in ("blocker", "blocked", "not run", "could not run", "reopen trigger recorded"):
+            with self.subTest(value=value):
+                row = DEV_ROW.replace("matched 1/1 vs `abc1234`", value)
+                out = self.assert_ledger(CREATE_ROW + row, 1)
+                self.assertIn("blocked-evidence", out)
+
+    def test_blocked_record_requires_each_nonplaceholder_accountability_field(self):
+        fields = self.BLOCKED_RECORD.split("; ")
+        for field in fields:
+            label = field.split(":", 1)[0]
+            for replacement in (None, f"{label}: ", f"{label}: **TBD**", f"{label}: `N/A`"):
+                with self.subTest(label=label, replacement=replacement):
+                    record = "; ".join(
+                        item if item != field else replacement
+                        for item in fields if item != field or replacement is not None
+                    )
+                    row = DEV_ROW.replace("matched 1/1 vs `abc1234`", record)
+                    out = self.assert_ledger(CREATE_ROW + row, 1)
+                    self.assertIn("blocked-evidence", out)
+                    self.assertIn(label, out)
+
+    def test_duplicate_blocked_record_fields_are_rejected(self):
+        for field in self.BLOCKED_RECORD.split("; "):
+            with self.subTest(field=field):
+                record = self.BLOCKED_RECORD + "; " + field
+                row = DEV_ROW.replace("matched 1/1 vs `abc1234`", record)
+                out = self.assert_ledger(CREATE_ROW + row, 1)
+                self.assertIn("blocked-evidence", out)
+                self.assertIn(field.split(":", 1)[0], out)
+
+    def test_blocked_record_accepts_formatting_and_command_semicolons(self):
+        record = self.BLOCKED_RECORD.replace(
+            "command: `python3 tools/discover.py`",
+            "**Command**: `prepare; python3 tools/discover.py`",
+        ).replace("reopen trigger:", "Re-open trigger:")
+        row = DEV_ROW.replace("matched 1/1 vs `abc1234`", record)
+        self.assert_ledger(CREATE_ROW + row, 0)
+
+    def test_command_code_spans_cannot_create_metadata_fields(self):
+        for command in (
+            '`python3 -c \'print("; owner: diagnostic")\'`',
+            '``python3 -c \'print("`marker`; owner: diagnostic")\'``',
+        ):
+            with self.subTest(command=command):
+                record = self.BLOCKED_RECORD.replace("`python3 tools/discover.py`", command)
+                row = DEV_ROW.replace("matched 1/1 vs `abc1234`", record)
+                self.assert_ledger(CREATE_ROW + row, 0)
+
+    def test_command_code_spans_cannot_supply_missing_metadata(self):
+        record = (
+            'command: `python3 -c \'print("; owner: Developer; consequence: open; '
+            'reopen trigger: runner restored")\'`; blocker: unavailable'
+        )
+        row = DEV_ROW.replace("matched 1/1 vs `abc1234`", record)
+        out = self.assert_ledger(CREATE_ROW + row, 1)
+        for label in ("owner", "consequence", "reopen trigger"):
+            self.assertIn(label, out)
+
+    def test_matched_text_in_commands_or_negative_words_is_not_reconciliation(self):
+        for value in (
+            'command: echo "matched 1/1"; blocker: TBD',
+            'command: `echo "matched 1/1"`; blocker: TBD',
+            'unmatched 1/1; blocker: TBD',
+            'not matched 1/1; blocker: TBD',
+        ):
+            with self.subTest(value=value):
+                row = DEV_ROW.replace("matched 1/1 vs `abc1234`", value)
+                out = self.assert_ledger(CREATE_ROW + row, 1)
+                self.assertIn("blocked-evidence", out)
+
+    def test_affirmative_cumulative_and_code_formatted_reconciliations_pass(self):
+        for value in ("**Cumulative matched 1/1** paths", "`matched 1/1` paths"):
+            with self.subTest(value=value):
+                row = DEV_ROW.replace("matched 1/1 vs `abc1234`", value)
+                self.assert_ledger(CREATE_ROW + row, 0)
+
+    def test_explicit_template_markers_are_placeholders(self):
+        for placeholder in ("<name>", "<date>", "...", "…"):
+            for label in ("command", "blocker", "owner", "consequence", "reopen trigger"):
+                with self.subTest(placeholder=placeholder, label=label):
+                    fields = [
+                        f"{label}: {placeholder}" if field.startswith(label + ":") else field
+                        for field in self.BLOCKED_RECORD.split("; ")
+                    ]
+                    row = DEV_ROW.replace("matched 1/1 vs `abc1234`", "; ".join(fields))
+                    self.assertIn("blocked-evidence", self.assert_ledger(CREATE_ROW + row, 1))
+            for column in (0, 2):
+                with self.subTest(placeholder=placeholder, column=column):
+                    cells = ["2026-07-02", "dev-story", "work recorded", "+0 methods", "matched 1/1"]
+                    cells[column] = placeholder
+                    row = "| " + " | ".join(cells) + " |\n"
+                    self.assertIn("placeholder", self.assert_ledger(CREATE_ROW + row, 1))
+
+    def test_unknown_metadata_cannot_disguise_placeholder_required_values(self):
+        for label in ("command", "blocker", "owner", "consequence", "reopen trigger"):
+            with self.subTest(label=label):
+                fields = [
+                    f"{label}: TBD; note: follow up" if field.startswith(label + ":") else field
+                    for field in self.BLOCKED_RECORD.split("; ")
+                ]
+                row = DEV_ROW.replace("matched 1/1 vs `abc1234`", "; ".join(fields))
+                self.assertIn("blocked-evidence", self.assert_ledger(CREATE_ROW + row, 1))
+
+    def test_done_requires_review_after_latest_governed_work(self):
+        for phase in ("dev-story", "qa-gap-closure", "correct-course"):
+            with self.subTest(phase=phase):
+                latest = DEV_ROW.replace("dev-story", phase)
+                rows = CREATE_ROW + DEV_ROW + REVIEW_ROW + latest
+                out = self.assert_ledger(rows, 1, "done")
+                self.assertIn("final canonical ledger row is not code-review", out)
+                self.assert_ledger(rows + REVIEW_ROW, 0, "done")
+
     def test_bold_matched_cell_is_accepted(self):
         # Live cells write `Matched **27/27**`. A pattern anchored straight after
         # "matched" breaks on the bold markers; this is the regression guard.
-        rows = "| 2026-07-01 | code-review | did work | +0 | Matched **27/27** cumulative paths |\n"
+        rows = CREATE_ROW + DEV_ROW + "| 2026-07-03 | code-review | did work | +0 | Matched **27/27** cumulative paths |\n"
         code, out = self.run_cli(
             "--story-key",
             "99-9-fixture",
@@ -460,18 +664,12 @@ class C2LedgerTests(VerifierTestCase):
         self.assertIn("matched N/N", out)
 
     def test_blocked_evidence_record_is_accepted(self):
-        rows = (
-            "| 2026-07-01 | dev-story | did work | +2 | discovery blocked; owner named, "
-            "reopen trigger recorded |\n"
-        )
-        code, out = self.run_cli(
-            "--story-key",
-            "99-9-fixture",
-            "--changed-file",
-            "docs/a.md",
-            artifacts={"99-9-fixture.md": story(status="in-progress", ledger_rows=rows)},
-        )
-        self.assertEqual(code, 0, out)
+        for status in ("in-progress", "review", "done"):
+            with self.subTest(status=status):
+                final = REVIEW_ROW if status == "done" else DEV_ROW
+                row = final.replace("matched 1/1 vs `abc1234`", self.BLOCKED_RECORD)
+                rows = CREATE_ROW + DEV_ROW if status == "done" else CREATE_ROW
+                self.assert_ledger(rows + row, 0, status)
 
 
 class C3StatusTests(VerifierTestCase):

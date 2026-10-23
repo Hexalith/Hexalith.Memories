@@ -4570,21 +4570,27 @@ status: open
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: A review or done artifact can pass C2 without a create-story ledger row. evidence: `check_ledger` requires `dev-story` for review/done and `code-review` for done but never requires the creation baseline mandated by policy.
-status: open
+status: resolved 2026-10-23
+resolution: `spec-five-deferred-ledger-checks.md` implements the existing phase-ledger contract in `tools/check-story-review-readiness.py`; `test_review_and_done_without_create_story_row_fail` covers the refusal and fails against unchanged baseline `66c3c72b3814f2438603d2530a9c94d9b3110305`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 81/81 methods after independent review patches. Positive controls retain repeated development/review/course-correction work, complete blocked records and existing no-ops.
+reopen_trigger: A readiness parser or lifecycle-validation change lets the covered invalid ledger or governed artifact pass again.
 
 ### DW-609: The newest reconciliation cell accepts unstructured blocker substrings.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: The newest reconciliation cell accepts unstructured blocker substrings. evidence: C2 accepts any cell containing markers such as `not run` or `blocker` without validating the required command, owner, consequence, and reopen trigger.
-status: open
+status: resolved 2026-10-23
+resolution: `spec-five-deferred-ledger-checks.md` implements the existing phase-ledger contract in `tools/check-story-review-readiness.py`; `test_blocked_record_requires_each_nonplaceholder_accountability_field` covers the refusal and fails against unchanged baseline `66c3c72b3814f2438603d2530a9c94d9b3110305`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 81/81 methods after independent review patches. Positive controls retain repeated development/review/course-correction work, complete blocked records and existing no-ops.
+reopen_trigger: A readiness parser or lifecycle-validation change lets the covered invalid ledger or governed artifact pass again.
 
 ### DW-610: A review artifact can carry governed File List or evidence data but no phase ledger and still pass.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: A review artifact can carry governed File List or evidence data but no phase ledger and still pass. evidence: When `find_ledger` returns none, validation emits a skipped note instead of enforcing the ledger required at review or done.
-status: open
+status: resolved 2026-10-23
+resolution: `spec-five-deferred-ledger-checks.md` implements the existing phase-ledger contract in `tools/check-story-review-readiness.py`; `test_governed_review_and_done_require_ledger` covers the refusal and fails against unchanged baseline `66c3c72b3814f2438603d2530a9c94d9b3110305`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 81/81 methods after independent review patches. Positive controls retain repeated development/review/course-correction work, complete blocked records and existing no-ops.
+reopen_trigger: A readiness parser or lifecycle-validation change lets the covered invalid ledger or governed artifact pass again.
 
 ### DW-611: An in-progress or review artifact can omit its File List and still pass readiness.
 
@@ -4600,14 +4606,18 @@ reopen_trigger: A change to readiness parsing or reconciliation lets the covered
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: The readiness gate does not enforce chronological order of canonical ledger phases. evidence: `check_ledger` records phase presence but never compares canonical phase indices, so an impossible lifecycle order can pass.
-status: open
+status: resolved 2026-10-23
+resolution: `spec-five-deferred-ledger-checks.md` implements the existing phase-ledger contract in `tools/check-story-review-readiness.py`; `test_out_of_order_canonical_phases_fail` covers the refusal and fails against unchanged baseline `66c3c72b3814f2438603d2530a9c94d9b3110305`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 81/81 methods after independent review patches. Positive controls retain repeated development/review/course-correction work, complete blocked records and existing no-ops.
+reopen_trigger: A readiness parser or lifecycle-validation change lets the covered invalid ledger or governed artifact pass again.
 
 ### DW-613: Canonical ledger rows can retain placeholder Date or Change cells.
 
 origin: migrated from legacy ledger ("DW 27.3-CR24 - the deferred-work status verifier is wired to nothing"), 2026-09-01
 location: _bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md
 reason: - source_spec: `_bmad-output/implementation-artifacts/spec-resolve-story-gate-commit-path.md` summary: Canonical ledger rows can retain placeholder Date or Change cells. evidence: C2 checks placeholders only in Test count and File List reconciliation despite the canonical five-column record requiring Date and Change too.
-status: open
+status: resolved 2026-10-23
+resolution: `spec-five-deferred-ledger-checks.md` implements the existing phase-ledger contract in `tools/check-story-review-readiness.py`; `test_date_and_change_placeholders_fail_on_every_canonical_phase` covers the refusal and fails against unchanged baseline `66c3c72b3814f2438603d2530a9c94d9b3110305`. Focused discovery `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/tooling/story_review_readiness -p '*_test.py' -v` passes 81/81 methods after independent review patches. Positive controls retain repeated development/review/course-correction work, complete blocked records and existing no-ops.
+reopen_trigger: A readiness parser or lifecycle-validation change lets the covered invalid ledger or governed artifact pass again.
 
 ### DW-614: A whitespace-only exclusion owner is accepted by the readiness parser.
 

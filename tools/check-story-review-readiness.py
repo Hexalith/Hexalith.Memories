@@ -68,7 +68,7 @@ CANONICAL_PHASES = (
 
 # A cell that records nothing. `-` and the em dash read as "no value supplied",
 # which is exactly the placeholder this gate exists to reject.
-PLACEHOLDER_CELLS = {"", "-", "--", "—", "–", "tbd", "n/a", "na", "none", "todo"}
+PLACEHOLDER_CELLS = {"", "-", "--", "—", "–", "...", "…", "tbd", "n/a", "na", "none", "todo"}
 
 # Evidence/checkpoint tables are identified by their status column, not by
 # their first column, because the first column varies across story generations
@@ -89,8 +89,13 @@ C6_STATUSES = ("review", "done")
 DEFAULT_BRANCHES = ("main", "master")
 BYPASS_TRAILER_KEY = "story-review-readiness-bypass"
 
-MATCHED_PATTERN = re.compile(r"matched\s+(\d+)\s*/\s*(\d+)", re.IGNORECASE)
-BLOCKED_EVIDENCE_MARKERS = ("blocker", "blocked", "could not run", "not run", "reopen trigger")
+MATCHED_PATTERN = re.compile(r"^(?:cumulative\s+)?matched\s+(\d+)\s*/\s*(\d+)\b", re.IGNORECASE)
+BLOCKED_EVIDENCE_FIELDS = ("command", "blocker", "owner", "consequence", "reopen trigger")
+BLOCKED_EVIDENCE_FIELD_PATTERN = re.compile(
+    r"(?:^|;)\s*([a-z][a-z0-9 -]*?)\s*:",
+    re.IGNORECASE,
+)
+INLINE_CODE_PATTERN = re.compile(r"(?<!`)(`+)(?!`)(.*?)(?<!`)\1(?!`)")
 
 
 @dataclass(frozen=True)
@@ -647,6 +652,34 @@ def derive_cumulative_changed(baseline: str, supplied: list[str]) -> tuple[list[
     return [normalized for value in values if (normalized := normalize_path(value))], None
 
 
+def is_ledger_placeholder(value: str) -> bool:
+    """Recognise empty values and explicit unfinished template markers."""
+    normalized = normalize_cell(value)
+    return normalized in PLACEHOLDER_CELLS or re.fullmatch(r"<[^<>]+>", normalized) is not None
+
+
+def invalid_blocked_evidence_fields(value: str) -> list[str]:
+    """Return missing, duplicate or placeholder fields in a labelled blocker record.
+
+    Labels start the cell or follow semicolons outside Markdown code spans.
+    Unknown labels also delimit values, so a note cannot disguise a placeholder.
+    Code-span and emphasis masking preserves offsets into the original values.
+    """
+    masked = INLINE_CODE_PATTERN.sub(lambda match: " " * len(match.group()), value)
+    masked = re.sub(r"[*_]", " ", masked)
+    matches = list(BLOCKED_EVIDENCE_FIELD_PATTERN.finditer(masked))
+    fields: dict[str, list[str]] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(value)
+        label = match.group(1).strip().lower().replace("re-open", "reopen")
+        fields.setdefault(label, []).append(value[match.end():end].strip().rstrip(";"))
+    return [
+        label for label in BLOCKED_EVIDENCE_FIELDS
+        if len(fields.get(label, [])) != 1
+        or is_ledger_placeholder(fields[label][0])
+    ]
+
+
 def check_ledger(rows: list[list[str]], status: str) -> list[str]:
     """C2 - required rows present, cells non-placeholder, newest row reconciled."""
     failures: list[str] = []
@@ -666,10 +699,22 @@ def check_ledger(rows: list[list[str]], status: str) -> list[str]:
         )
         return failures
 
-    if status in ("review", "done") and "dev-story" not in phases:
-        failures.append(f"C2: status is '{status}' but no dev-story ledger row exists.")
+    if status in ("review", "done"):
+        for required in ("create-story", "dev-story"):
+            if required not in phases:
+                failures.append(f"C2: status is '{status}' but no {required} ledger row exists.")
     if status == "done" and "code-review" not in phases:
         failures.append("C2: status is 'done' but no code-review ledger row exists.")
+    if status == "done" and phases[-1] != "code-review":
+        failures.append("C2: status is 'done' but the final canonical ledger row is not code-review.")
+
+    if phases[0] != "create-story":
+        failures.append("C2: phase order requires create-story as the first canonical ledger row.")
+    seen: set[str] = set()
+    for phase in phases:
+        if phase in ("qa-gap-closure", "code-review") and "dev-story" not in seen:
+            failures.append(f"C2: phase order requires {phase} to follow dev-story.")
+        seen.add(phase)
 
     for cells in rows:
         if len(cells) < 5:
@@ -677,8 +722,8 @@ def check_ledger(rows: list[list[str]], status: str) -> list[str]:
         phase = normalize_cell(cells[1])
         if phase not in CANONICAL_PHASES:
             continue
-        for label, index in (("Test count", 3), ("File List reconciliation", 4)):
-            if normalize_cell(cells[index]) in PLACEHOLDER_CELLS:
+        for label, index in (("Date", 0), ("Change", 2), ("Test count", 3), ("File List reconciliation", 4)):
+            if is_ledger_placeholder(cells[index]):
                 failures.append(
                     f"C2: {phase} row leaves '{label}' as a placeholder: "
                     f"'{cells[index].strip()}'."
@@ -691,14 +736,17 @@ def check_ledger(rows: list[list[str]], status: str) -> list[str]:
     if newest is not None:
         # Strip emphasis first: live cells write `Matched **27/27**`, and a
         # pattern anchored straight after "matched" breaks on the bold markers.
-        reconciliation = re.sub(r"[`*_]", "", newest[4])
-        if not MATCHED_PATTERN.search(reconciliation) and not any(
-            marker in reconciliation.lower() for marker in BLOCKED_EVIDENCE_MARKERS
-        ):
-            failures.append(
-                "C2: newest ledger row records neither 'matched N/N' nor a blocked-evidence "
-                "record in its File List reconciliation cell."
-            )
+        reconciliation = re.sub(r"[`*_]", "", newest[4]).strip()
+        if not MATCHED_PATTERN.match(reconciliation):
+            invalid_fields = invalid_blocked_evidence_fields(newest[4])
+            if invalid_fields:
+                failures.append(
+                    "C2: newest ledger row records neither 'matched N/N' nor a complete "
+                    "blocked-evidence record in its File List reconciliation cell; "
+                    "required non-placeholder fields (once each): "
+                    f"{', '.join(invalid_fields)}. Use 'command: ...; blocker: ...; "
+                    "owner: ...; consequence: ...; reopen trigger: ...'."
+                )
     return failures
 
 
@@ -808,7 +856,10 @@ def validate(args: argparse.Namespace) -> int:
 
     # C2 - phase ledger.
     if ledger is None:
-        notes.append("C2: artifact carries no phase ledger; ledger checks skipped.")
+        if status in ("review", "done"):
+            failures.append(f"C2: a phase ledger is required for this governed '{status}' artifact.")
+        else:
+            notes.append("C2: artifact carries no phase ledger; ledger checks skipped.")
     elif status in VALID_STATUSES:
         failures.extend(check_ledger(ledger, status))
 

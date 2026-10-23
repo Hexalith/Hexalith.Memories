@@ -233,13 +233,32 @@ Five checks run against the resolved artifact:
 | Check | Fails when |
 | :---- | :--------- |
 | C1 | a governed active artifact has no non-empty `### File List`, or that list differs from the in-scope changed set (exact paths in both directions; no wildcard matching) |
-| C2 | a required phase-ledger row is missing, a `Test count` or `File List reconciliation` cell holds a placeholder (`TBD`, `N/A`, `-`), or the newest row records neither `matched N/N` nor a blocked-evidence record |
+| C2 | a governed review/done artifact lacks its ledger or status-required creation/development/review rows; canonical phases violate lifecycle dependencies; a Date, Change, Test count or File List reconciliation cell is a placeholder; or the newest row lacks `matched N/N` or a complete labelled blocked-evidence record |
 | C3 | the artifact declares no `Status:` line, or one outside `backlog`, `ready-for-dev`, `in-progress`, `review`, `done` |
 | C4 | the story's status disagrees with its `development_status` row in `sprint-status.yaml` (a `spec-*` artifact is not expected to carry a row) |
 | C6 | a row in any table with a `Review status`/`Review state` column is still `pending` or dateless once the story reads `review` or `done` |
 
 C1 evaluates only while the story is `in-progress` or `review`, since a
 cumulative diff is not meaningful outside that window.
+
+C2 requires `create-story` first and development before QA or review. Repeated
+phases, including development after review and later `correct-course` rows,
+remain valid; `done` requires a final `code-review` row after that work. Date,
+Change and blocker fields must not contain explicit template markers such as
+`<name>` or `...`. An affirmative reconciliation starts with `matched N/N` or
+`Cumulative matched N/N`; matched text inside a command is not a result.
+A blocked reconciliation uses semicolon-separated labels with one
+non-placeholder value each, for example:
+
+```text
+command: python3 tools/discover.py; blocker: runner unavailable; owner: Developer; consequence: count agreement remains open; reopen trigger: runner restored
+```
+
+Use Markdown code spans around commands containing semicolons followed by
+metadata-like labels; those labels then remain part of the command. A bare
+`blocked` or `not run` is insufficient. Recording a blocker does not
+prove count agreement or that the command ran. Ungoverned prose remains a
+no-op; missing-ledger enforcement starts at review/done.
 
 Exclusions must be machine-readable. Free prose in the File List records intent
 for a human reader but does not exempt a path:
