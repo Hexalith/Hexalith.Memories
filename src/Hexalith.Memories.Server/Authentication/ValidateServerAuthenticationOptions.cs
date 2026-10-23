@@ -44,7 +44,7 @@ public sealed class ValidateServerAuthenticationOptions : IValidateOptions<Memor
             return ValidateOptionsResult.Fail("Authentication:JwtBearer:TenantClaimName must be configured.");
         }
 
-        if (options.ValidAlgorithms.Count == 0 || options.ValidAlgorithms.Any(string.IsNullOrWhiteSpace))
+        if (options.ValidAlgorithms is null || options.ValidAlgorithms.Count == 0 || options.ValidAlgorithms.Any(string.IsNullOrWhiteSpace))
         {
             return ValidateOptionsResult.Fail("Authentication:JwtBearer:ValidAlgorithms must contain at least one algorithm name.");
         }

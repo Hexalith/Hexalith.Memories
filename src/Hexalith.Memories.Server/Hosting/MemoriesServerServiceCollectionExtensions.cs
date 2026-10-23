@@ -70,6 +70,18 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.TryAddTransient<TenantIdValidationEndpointFilter>();
         builder.Services.AddOptions<MemoriesServerAuthenticationOptions>()
             .BindConfiguration("Authentication:JwtBearer")
+            .Configure<IConfiguration>((options, configuration) =>
+            {
+                IConfigurationSection section = configuration.GetSection("Authentication:JwtBearer");
+                IConfigurationSection algorithms = section.GetSection(nameof(options.ValidAlgorithms));
+                // ConfigurationBinder appends to initialized collections. Capture the explicit
+                // list separately so an asymmetric-only policy cannot retain the HS256 default.
+                string[]? configuredAlgorithms = algorithms.Get<string[]>();
+                if (algorithms.Exists())
+                {
+                    options.ReplaceConfiguredAlgorithms(configuredAlgorithms ?? []);
+                }
+            })
             .ValidateOnStart();
         builder.Services.AddSingleton<IValidateOptions<MemoriesServerAuthenticationOptions>, ValidateServerAuthenticationOptions>();
         builder.Services.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureServerJwtBearerOptions>();

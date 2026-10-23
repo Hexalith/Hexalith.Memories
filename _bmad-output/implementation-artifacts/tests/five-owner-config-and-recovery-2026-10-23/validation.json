@@ -1,0 +1,33 @@
+{
+  "owner": "Hexalith.Memories",
+  "baselineCommit": "b55db82c060caf917a142fdb6585fa7340b01647",
+  "proofKind": "Candidate source verification; final reviewed source commit is recorded by the parent adoption receipt.",
+  "suites": {
+    "memoriesAlgorithms": {
+      "total": 7,
+      "errors": 0,
+      "failed": 0,
+      "skipped": 0,
+      "rawLogSha256": "08184e59b5547e149b3358633451171567a8ff94e3ca97c349c7e253beb02392",
+      "workingDirectory": "references/Hexalith.Memories",
+      "command": "dotnet tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -class '*ServerRegisteredAlgorithmPolicyTests'",
+      "buildCommand": "dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -m:1 -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0"
+    },
+    "memoriesServerFull": {
+      "total": 3016,
+      "errors": 0,
+      "failed": 2,
+      "skipped": 1,
+      "rawLogSha256": "e280336a862bf64243b5d55264d42a3483869fb99717af637eadbeb0f7f59c54",
+      "blockers": [
+        "BuildsCatalog_PinsEventStoreFamilyAt31000 requires absent forbidden nested references/Hexalith.Builds/Props/Directory.Packages.props",
+        "ProjectAssets_RestoreEventStorePackagesAtCatalogVersion expects 3.126.0 instead of the actual root-selected restore graph"
+      ],
+      "workingDirectory": "references/Hexalith.Memories",
+      "command": "dotnet tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll",
+      "buildCommand": "dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -m:1 -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0"
+    }
+  },
+  "packagePublicationQualified": false,
+  "deploymentQualified": false
+}
