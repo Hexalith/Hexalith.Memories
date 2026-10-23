@@ -64,8 +64,6 @@ public sealed class ServerRegisteredAlgorithmPolicyTests
         // Retain the init-only setter required by already compiled programmatic consumers.
         typeof(MemoriesServerAuthenticationOptions).GetProperty(nameof(MemoriesServerAuthenticationOptions.ValidAlgorithms))!
             .SetMethod!.ReturnParameter.GetRequiredCustomModifiers().ShouldContain(typeof(System.Runtime.CompilerServices.IsExternalInit));
-        var programmatic = new MemoriesServerAuthenticationOptions { ValidAlgorithms = ["RS256"] };
-        programmatic.ValidAlgorithms.ShouldBe(["RS256"]);
     }
 
     [Fact]
@@ -76,10 +74,35 @@ public sealed class ServerRegisteredAlgorithmPolicyTests
         IServiceProvider services = factory.Services;
         IOptionsMonitor<MemoriesServerAuthenticationOptions> monitor = services.GetRequiredService<IOptionsMonitor<MemoriesServerAuthenticationOptions>>();
         monitor.CurrentValue.ValidAlgorithms.ShouldBe(["RS256"]);
+        IOptionsMonitor<JwtBearerOptions> bearer = services.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>();
+        bearer.Get(JwtBearerDefaults.AuthenticationScheme).TokenValidationParameters.ValidAlgorithms.ShouldBe(["RS256"]);
         IConfiguration configuration = services.GetRequiredService<IConfiguration>();
         configuration["Authentication:JwtBearer:ValidAlgorithms:0"] = "ES256";
         ((IConfigurationRoot)configuration).Reload();
         monitor.CurrentValue.ValidAlgorithms.ShouldBe(["ES256"]);
+        // The registered bearer configurator deliberately consumes cached IOptions.
+        // Domain options reload; changing the effective authentication policy requires restart.
+        bearer.Get(JwtBearerDefaults.AuthenticationScheme).TokenValidationParameters.ValidAlgorithms.ShouldBe(["RS256"]);
+    }
+
+    [Fact]
+    public void RegisteredProgrammaticAlgorithmsApplyWhenExplicitConfigurationIsAbsent()
+    {
+        using var factory = new EventStoreWebAppFactory();
+        using var configured = factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddTransient<IOptionsFactory<MemoriesServerAuthenticationOptions>, ProgrammaticServerAuthenticationOptionsFactory>();
+            services.Configure<MemoriesServerAuthenticationOptions>(options =>
+            {
+                var algorithms = (IList<string>)options.ValidAlgorithms;
+                algorithms.Clear();
+                algorithms.Add("RS256");
+            });
+        }));
+        configured.Services.GetRequiredService<IConfiguration>().GetSection("Authentication:JwtBearer:ValidAlgorithms").Exists().ShouldBeFalse();
+        configured.Services.GetRequiredService<IOptionsMonitor<MemoriesServerAuthenticationOptions>>().CurrentValue.ValidAlgorithms.ShouldBe(["RS256"]);
+        configured.Services.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>().Get(JwtBearerDefaults.AuthenticationScheme)
+            .TokenValidationParameters.ValidAlgorithms.ShouldBe(["RS256"]);
     }
 
     [Theory]
