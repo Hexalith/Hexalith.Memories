@@ -60,9 +60,12 @@ public sealed class ValidateMcpAuthenticationOptions(IHostEnvironment environmen
             return ValidateOptionsResult.Fail("Authentication:JwtBearer:TenantClaimName must be configured.");
         }
 
-        if (options.ValidAlgorithms.Count == 0 || options.ValidAlgorithms.Any(string.IsNullOrWhiteSpace))
+        if (options.ValidAlgorithms is null || options.ValidAlgorithms.Count == 0
+            || options.ValidAlgorithms.Any(algorithm => algorithm is not
+                ("HS256" or "HS384" or "HS512" or "RS256" or "RS384" or "RS512"
+                or "PS256" or "PS384" or "PS512" or "ES256" or "ES384" or "ES512")))
         {
-            return ValidateOptionsResult.Fail("Authentication:JwtBearer:ValidAlgorithms must contain at least one algorithm name.");
+            return ValidateOptionsResult.Fail("Authentication:JwtBearer:ValidAlgorithms must contain only supported signing algorithm names and at least one entry.");
         }
 
         return ValidateOptionsResult.Success;

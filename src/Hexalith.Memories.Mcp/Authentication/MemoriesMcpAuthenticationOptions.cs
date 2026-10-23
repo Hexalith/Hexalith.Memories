@@ -26,8 +26,18 @@ public sealed record MemoriesMcpAuthenticationOptions
     /// <summary>Gets the raw JWT claim name that carries the primary authorized tenant identifier.</summary>
     public string TenantClaimName { get; init; } = "tenant_id";
 
+    private IReadOnlyList<string> _validAlgorithms = ["HS256", "RS256", "ES256"];
+
     /// <summary>Gets accepted JWT signing algorithms.</summary>
-    public IReadOnlyList<string> ValidAlgorithms { get; init; } = ["HS256", "RS256", "ES256"];
+    public IReadOnlyList<string> ValidAlgorithms
+    {
+        get => _validAlgorithms;
+        init => _validAlgorithms = value;
+    }
+
+    /// <summary>Replaces an explicit configuration list while preserving the public init-only contract.</summary>
+    /// <param name="algorithms">The configured algorithms without initialized defaults.</param>
+    internal void ReplaceConfiguredAlgorithms(IReadOnlyList<string> algorithms) => _validAlgorithms = algorithms;
 
     /// <summary>Gets claim names whose values may be included in security logs.</summary>
     public IReadOnlyList<string> LoggableClaimAllowlist { get; init; } =

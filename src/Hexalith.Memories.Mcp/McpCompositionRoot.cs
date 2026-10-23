@@ -43,6 +43,16 @@ internal static class McpCompositionRoot
 
         services.AddOptions<MemoriesMcpAuthenticationOptions>()
             .BindConfiguration("Authentication:JwtBearer")
+            .Configure<IConfiguration>((options, configuration) =>
+            {
+                IConfigurationSection section = configuration.GetSection("Authentication:JwtBearer");
+                IConfigurationSection algorithms = section.GetSection(nameof(options.ValidAlgorithms));
+                // Binding initialized collections appends defaults. Explicit policies replace them.
+                if (section.GetChildren().Any(child => child.Key.Equals(nameof(options.ValidAlgorithms), StringComparison.OrdinalIgnoreCase)))
+                {
+                    options.ReplaceConfiguredAlgorithms(algorithms.Get<string[]>() ?? []);
+                }
+            })
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<MemoriesMcpAuthenticationOptions>, ValidateMcpAuthenticationOptions>();
         services.AddSingleton<IConfigureOptions<JwtBearerOptions>, ConfigureJwtBearerOptions>();
