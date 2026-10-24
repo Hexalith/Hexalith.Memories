@@ -14,6 +14,8 @@ using Dapr.Client;
 
 using Grpc.Core;
 
+using Hexalith.Memories.AccessTelemetry.Contracts;
+
 /// <summary>
 /// Process-local, secret-free bootstrap progress written by <see cref="AccessTelemetryLifecycleBootstrapService"/> and
 /// read by qualification diagnostics. It never changes health, metric, status or readiness semantics.
@@ -57,6 +59,10 @@ internal sealed class AccessTelemetryLifecycleBootstrapProgress
         string name = Name(stage);
         Update(current => current with { Stage = name });
     }
+
+    /// <summary>Retains the latest remote observation, including absence from older responses, independently of admission.</summary>
+    public void ObserveCapability(AccessTelemetryCapabilityDiagnosticSnapshot? diagnostic)
+        => Update(current => current with { CapabilityDiagnostic = diagnostic });
 
     /// <summary>Completes the current attempt as failed at its in-flight stage.</summary>
     /// <param name="kind">The bounded failure kind.</param>

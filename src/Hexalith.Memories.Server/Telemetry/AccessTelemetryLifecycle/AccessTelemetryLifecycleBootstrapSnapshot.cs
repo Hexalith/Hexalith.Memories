@@ -5,6 +5,8 @@
 
 namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 
+using Hexalith.Memories.AccessTelemetry.Contracts;
+
 /// <summary>Bounded, secret-free progress of the lifecycle sanitizer bootstrap.</summary>
 /// <param name="Attempts">The number of completed bootstrap attempts, successful or failed.</param>
 /// <param name="Stage">
@@ -16,12 +18,15 @@ namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 /// The <see cref="AccessTelemetryLifecycleBootstrapFailureKind"/> name of the last failure, or <see langword="null"/> before any failure.
 /// </param>
 /// <param name="FirstPublishedUtcMs">The UTC Unix milliseconds of the first sanitizer publication, or <see langword="null"/> until then.</param>
+/// <param name="CapabilityDiagnostic">The latest optional remote capability observation; absent on older responses.</param>
 internal sealed record AccessTelemetryLifecycleBootstrapSnapshot(
     long Attempts,
     string Stage,
     string? FailureStage,
     string? FailureKind,
-    long? FirstPublishedUtcMs)
+    long? FirstPublishedUtcMs,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    AccessTelemetryCapabilityDiagnosticSnapshot? CapabilityDiagnostic = null)
 {
     /// <summary>The bounded marker used when no bootstrap progress was observable.</summary>
     public const string Unobserved = "Unobserved";

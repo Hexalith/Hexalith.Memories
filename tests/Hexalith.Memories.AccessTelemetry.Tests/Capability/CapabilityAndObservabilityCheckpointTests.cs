@@ -29,6 +29,161 @@ using Shouldly;
 public sealed class CapabilityAndObservabilityCheckpointTests
 {
     [Fact]
+    public void CapabilityDiagnostic_IsObservableBeforeTheFirstAttempt()
+    {
+        var runner = new AccessTelemetryCapabilityProbeRunner([], new AccessTelemetryRuntimeGate(), TimeProvider.System);
+        object? snapshot = runner.GetType().GetProperty("CurrentDiagnostic")?.GetValue(runner);
+        snapshot.ShouldNotBeNull("capability refusal needs bounded evidence even before a probe starts");
+    }
+
+    [Theory]
+    [InlineData("Production", "Production")]
+    [InlineData("Version", "VersionUnpinned")]
+    [InlineData("Boundary", "BoundaryInvalid")]
+    [InlineData("Expired", "Expired")]
+    [InlineData("Binding", "LocalProfileInvalid")]
+    public async Task CapabilityDiagnostic_PreflightRefusalRunsNoProbeAndContainsNoBinding(string variant, string expected)
+    {
+        int calls = 0;
+        var runner = new AccessTelemetryCapabilityProbeRunner(
+            RequiredPassingProbes(() => calls++), new AccessTelemetryRuntimeGate(), TimeProvider.System);
+        AccessTelemetryCapabilityProbeContext context = DiagnosticContext(DateTimeOffset.UtcNow.AddMinutes(1));
+        context = variant switch
+        {
+            "Production" => context with { Production = true },
+            "Version" => context with { ExactVersionPinned = false },
+            "Boundary" => context with { DaprOnlyBoundary = false },
+            "Expired" => context with { ValidUntilUtc = DateTimeOffset.MinValue },
+            _ => context with { CurrentRunId = "fixture-secret-binding" },
+        };
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
+        calls.ShouldBe(0);
+        runner.CurrentDiagnostic.Disposition.ShouldBe("PreflightRefused");
+        runner.CurrentDiagnostic.PreflightReason.ShouldBe(expected);
+        runner.CurrentDiagnostic.Capabilities.Count.ShouldBe(10);
+        runner.CurrentDiagnostic.Capabilities.Values.ShouldAllBe(value => value.Outcome == "NotStarted");
+        System.Text.Json.JsonSerializer.Serialize(runner.CurrentDiagnostic).ShouldNotContain("fixture-secret");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CapabilityDiagnostic_TimeoutOrCancellationFreezesCompletedAndPendingOutcomes(bool cancel)
+    {
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var cancellation = new CancellationTokenSource();
+        var late = new TaskCompletionSource<AccessTelemetryCapabilityProbeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        string pending = AccessTelemetryCapabilityProbeRunner.RequiredCapabilities[0];
+        List<IAccessTelemetryCapabilityProbe> probes = RequiredPassingProbes().ToList();
+        probes[0] = new StubCapabilityProbe(pending, false, execute: _ => late.Task);
+        var runner = new AccessTelemetryCapabilityProbeRunner(probes, new AccessTelemetryRuntimeGate(time), time);
+        AccessTelemetryCapabilityProbeContext context = DiagnosticContext(time.GetUtcNow().AddMinutes(2));
+        Task<AccessTelemetryCapabilityGateResult> run = runner.RunAsync(context, cancellation.Token);
+        runner.CurrentDiagnostic.Disposition.ShouldBe("Running");
+        runner.CurrentDiagnostic.Capabilities[pending].Outcome.ShouldBe("Running");
+        if (cancel)
+        {
+            await cancellation.CancelAsync();
+            await Should.ThrowAsync<OperationCanceledException>(() => run);
+        }
+        else
+        {
+            time.Advance(TimeSpan.FromSeconds(30));
+            (await run.WaitAsync(TimeSpan.FromSeconds(5))).AllowsWrites.ShouldBeFalse();
+        }
+        AccessTelemetryCapabilityDiagnosticSnapshot terminal = runner.CurrentDiagnostic;
+        terminal.Disposition.ShouldBe(cancel ? "Canceled" : "Timeout");
+        terminal.Capabilities[pending].Outcome.ShouldBe("Running");
+        terminal.Capabilities.Values.Count(value => value.Outcome == "Passed").ShouldBe(9);
+        late.SetResult(new(pending, true));
+        await Task.Delay(50);
+        runner.CurrentDiagnostic.ShouldBeSameAs(terminal);
+        (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
+        runner.CurrentDiagnostic.ShouldBeSameAs(terminal);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("duplicate")]
+    [InlineData("unknown")]
+    [InlineData("null")]
+    [InlineData("mismatch")]
+    public async Task CapabilityDiagnostic_MalformedResultsRemainFailClosedAndUnknownNamesNeverEscape(string variant)
+    {
+        List<IAccessTelemetryCapabilityProbe> probes = RequiredPassingProbes().ToList();
+        string name = AccessTelemetryCapabilityProbeRunner.RequiredCapabilities[0];
+        if (variant == "missing") probes.RemoveAt(0);
+        else if (variant == "duplicate") probes.Add(new StubCapabilityProbe(name, true));
+        else if (variant == "unknown") probes[0] = new StubCapabilityProbe("fixture-secret-unknown", true);
+        else probes[0] = new StubCapabilityProbe(name, true, execute: _ => Task.FromResult(variant == "null" ? null! : new AccessTelemetryCapabilityProbeResult("fixture-secret-result", true)));
+        var runner = new AccessTelemetryCapabilityProbeRunner(probes, new AccessTelemetryRuntimeGate(), TimeProvider.System);
+        (await runner.RunAsync(DiagnosticContext(DateTimeOffset.UtcNow.AddMinutes(1)), CancellationToken.None)).AllowsWrites.ShouldBeFalse();
+        runner.CurrentDiagnostic.Disposition.ShouldBe("Failed");
+        runner.CurrentDiagnostic.Capabilities.Keys.Order().ShouldBe(AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Order());
+        System.Text.Json.JsonSerializer.Serialize(runner.CurrentDiagnostic).ShouldNotContain("fixture-secret");
+    }
+
+    [Theory]
+    [InlineData("false", "ReturnedFalse", "None")]
+    [InlineData("exception", "Exception", "Transport")]
+    [InlineData("denied", "Exception", "RemoteDenied")]
+    [InlineData("canceled", "Canceled", "Canceled")]
+    public async Task CapabilityDiagnostic_ActualDaprProbeDistinguishesFalseExceptionAndCancellation(string variant, string outcome, string category)
+    {
+        const string name = nameof(AccessTelemetryCapabilityProfile.DeclaredDurabilityAndFailureBehavior);
+        DaprClient client = Substitute.For<DaprClient>();
+        Task<DaprMetadata> response = variant switch
+        {
+            "false" => Task.FromResult(new DaprMetadata("fixture-secret-identity", [], new Dictionary<string, string>(), [])),
+            "exception" => Task.FromException<DaprMetadata>(new HttpRequestException("fixture-secret-endpoint")),
+            "denied" => Task.FromException<DaprMetadata>(new DaprException("fixture-secret-key", new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.PermissionDenied, "fixture-secret-message")))),
+            _ => Task.FromException<DaprMetadata>(new OperationCanceledException("fixture-secret-message")),
+        };
+        client.GetMetadataAsync(Arg.Any<CancellationToken>()).Returns(response);
+        var probe = new DaprAccessTelemetryCapabilityProbe(name, client, new AccessTelemetryRuntimeOptionsProvider(new AccessTelemetryOptions()),
+            new MonotonicRecordIdGenerator(), TimeProvider.System, NullLogger<DaprAccessTelemetryCapabilityProbe>.Instance);
+        var runner = new AccessTelemetryCapabilityProbeRunner([probe], new AccessTelemetryRuntimeGate(), TimeProvider.System);
+        (await runner.RunAsync(DiagnosticContext(DateTimeOffset.UtcNow.AddMinutes(1)), CancellationToken.None)).AllowsWrites.ShouldBeFalse();
+        runner.CurrentDiagnostic.Capabilities[name].ShouldBe(new AccessTelemetryCapabilityOutcome(outcome, category));
+        System.Text.Json.JsonSerializer.Serialize(runner.CurrentDiagnostic).ShouldNotContain("fixture-secret");
+    }
+
+    [Fact]
+    public void CapabilityDiagnostic_OwnsItsDictionariesAcrossWithExpressionsAndJson()
+    {
+        string name = AccessTelemetryCapabilityProbeRunner.RequiredCapabilities[0];
+        var source = new Dictionary<string, AccessTelemetryCapabilityOutcome>(StringComparer.Ordinal) { [name] = new("Passed", "None"), ["fixture-secret-name"] = new("fixture-secret-state", "fixture-secret-error") };
+        var first = new AccessTelemetryCapabilityDiagnosticSnapshot("Running", "None", source);
+        var copy = first with { Capabilities = source };
+        source[name] = new("ReturnedFalse", "None");
+        first.Capabilities[name].Outcome.ShouldBe("Passed");
+        copy.Capabilities[name].Outcome.ShouldBe("Passed");
+        string json = System.Text.Json.JsonSerializer.Serialize(copy);
+        json.ShouldNotContain("fixture-secret");
+        AccessTelemetryCapabilityDiagnosticSnapshot roundtrip = System.Text.Json.JsonSerializer.Deserialize<AccessTelemetryCapabilityDiagnosticSnapshot>(json)!;
+        Should.Throw<NotSupportedException>(() => ((IDictionary<string, AccessTelemetryCapabilityOutcome>)roundtrip.Capabilities).Add("bad", new("Passed", "None")));
+        var invalid = copy with { Disposition = "fixture-secret", PreflightReason = "fixture-secret", Capabilities = new Dictionary<string, AccessTelemetryCapabilityOutcome> { [name] = new("fixture-secret", "fixture-secret") } };
+        System.Text.Json.JsonSerializer.Serialize(invalid).ShouldNotContain("fixture-secret");
+        var old = System.Text.Json.JsonSerializer.Deserialize<AccessTelemetryRuntimeValidationResponse>("{\"AllowsWrites\":true,\"Reason\":0}")!;
+        old.AllowsWrites.ShouldBeTrue();
+        old.CapabilityDiagnostic.ShouldBeNull();
+        (bool allows, AccessTelemetryReason reason) = old;
+        allows.ShouldBeTrue();
+        reason.ShouldBe(AccessTelemetryReason.None);
+    }
+
+    private static IEnumerable<IAccessTelemetryCapabilityProbe> RequiredPassingProbes(Action? observe = null)
+        => AccessTelemetryCapabilityProbeRunner.RequiredCapabilities.Select(name => new StubCapabilityProbe(name, true, observe: observe));
+
+    private static AccessTelemetryCapabilityProbeContext DiagnosticContext(DateTimeOffset expiry)
+        => ProbeContext(expiry) with
+        {
+            LocalFunctional = true, Production = false, CurrentRunId = "offline-run", CurrentSourceMappingHash = new string('a', 64),
+            LocalFunctionalProfileJson = LocalCanonicalProfile(),
+            ComponentProfileHash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(LocalCanonicalProfile()))),
+        };
+
+    [Fact]
     public void CapabilityGate_AllRequiredEvidenceForExactProfile_Passes()
     {
         AccessTelemetryCapabilityGateResult result = AccessTelemetryCapabilityGate.Evaluate(
@@ -166,6 +321,8 @@ public sealed class CapabilityAndObservabilityCheckpointTests
         bool allowed = variant is "valid" or "full";
         result.AllowsWrites.ShouldBe(allowed);
         probes.ShouldBe(allowed ? 10 : 0);
+        runner.CurrentDiagnostic.Disposition.ShouldBe(allowed ? "Passed" : "PreflightRefused");
+        if (!allowed) runner.CurrentDiagnostic.PreflightReason.ShouldBe(variant is "expired" or "default-expiry" ? "Expired" : "LocalProfileInvalid");
         if (variant == "partial") AccessTelemetryOptionsValidator.Validate(options, "Development").IsValid.ShouldBeFalse();
     }
 
@@ -254,6 +411,8 @@ public sealed class CapabilityAndObservabilityCheckpointTests
         (await runner.RunAsync(drifted, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
         (await runner.RunAsync(context, CancellationToken.None)).AllowsWrites.ShouldBeFalse();
         probes.ShouldBe(10);
+        runner.CurrentDiagnostic.Disposition.ShouldBe("PreflightRefused");
+        runner.CurrentDiagnostic.PreflightReason.ShouldBe("ContextChanged");
     }
 
     [Fact]
@@ -741,6 +900,8 @@ public sealed class CapabilityAndObservabilityCheckpointTests
         Func<CancellationToken, Task<AccessTelemetryCapabilityProbeResult>>? execute = null)
         : IAccessTelemetryCapabilityProbe
     {
+        public string Capability => capability;
+
         public Task<AccessTelemetryCapabilityProbeResult> ProbeAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

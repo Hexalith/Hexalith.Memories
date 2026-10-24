@@ -81,6 +81,7 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                 byte[] markerKey = Convert.FromBase64String(encodedMarkerKey);
                 progress.Enter(AccessTelemetryLifecycleBootstrapStage.RemoteValidation);
                 AccessTelemetryRuntimeValidationResponse remote = await ValidateRemoteAsync(options, stoppingToken).ConfigureAwait(false);
+                progress.ObserveCapability(remote.CapabilityDiagnostic);
                 if (!remote.AllowsWrites)
                 {
                     progress.CompleteFailure(AccessTelemetryLifecycleBootstrapFailureKind.RemoteDenied);

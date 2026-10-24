@@ -4,6 +4,142 @@ The [active Spec 14](../spec-27-4-retention-verification-operations-runbook-and-
 
 ## Functional result
 
+### Capability-diagnostic execution — 2026-10-24 UTC; missing-record failure, cleanup verified
+
+**Result: local retention is not proved.** The approved attempt **`55eb672cd9f30d006caa815eae60a867`** ran for about **61 minutes 19 seconds**, reached both cohorts, then failed **`functional-selected-record-missing`** near the expiry boundary. Native result: **failed / 4 / HXT006**. The native TRX records **1 executed / 0 passed / 1 failed**; the wrapper explicitly reports no test counts. No passing `functional-observations.json` exists.
+
+**Authorization and execution.** The owner replied **“approve”**. `CAPABILITY=/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-capability-diagnostic-20261024-uywszy91`. Its `approval.json` at **22:18:22.547286Z** binds the reviewed plan SHA-256 `7b62a542f5f6d54e48d0a6aa36d73c946a606298f9d806a9cd98ac1704bb446c` and exact command SHA-256 `5c5ce4c672a7c6bb06794033a200b956f1714bed84a858c06729cbff3ae53a79`. From `CAPABILITY`, **`python3 -B execute-approved.py`** checked the unchanged 330 selected / 36 model / 54 operational / 489 runtime inputs, seven images, empty isolated engine, owned processes and capacity once, then dispatched the supported command in `launch-command.txt` at **22:18:25.191694Z**. One launch, zero retries/restarts; no input, version, security or timing changes during execution.
+
+Startup admission at **22:19:37.162859Z** passed the model, discovery configuration, native host, console, graph, Server and both additional source proofs. The persisted ordering receipt confirms admission before cohort A. The resource graph remained healthy through the test terminal.
+
+| Retained observation | Result |
+| :--- | :--- |
+| Cohort A accounting, observed 22:19:38.786Z | 125 attempted, enqueued, acknowledged, persisted and transaction acknowledgements; zero rejected, dropped or conflicted |
+| Cohort B accounting, observed 22:49:38.751Z | Same 125/125 accounting, zero rejected, dropped or conflicted |
+| Capability diagnostic in both responses | `Passed` / preflight `None`; all ten recorded outcomes `Passed` / category `None`; diagnostic complete |
+| Writer bootstrap in both responses | Two completed attempts, `Published`, no failure stage/kind; first publication 22:19:28.564Z; lifecycle Healthy/None |
+| Native terminal | Test completed **23:19:44.6982478Z**; controller observed exit 4 at **23:19:45.625357Z** |
+
+Accounting timestamps are response-observation times, not emission clocks. Their difference is not used as proof of exact cohort separation. A current local capability pass does not establish why the earlier `BOOTSTRAP` invocation refused capabilities and earns no full-profile or Production credit.
+
+**Failure attribution and limit.** The sole `selected-record-missing` assertion is in `_PlatformRetentionConsumer.cohort()` in `tools/access_telemetry_functional_retention.py`: at least one returned state value was not an object. That helper serves cohort A's pre-expiry checks (scheduled at 3540 and 3590 seconds) and cohort B's preservation checks after A expires. The retained failure lacks the segment, phase, missing count and per-read timing. No final canonical-record, TTL-bound, purge or signed-clock observation packet was written, so none of those final assertions is credited.
+
+A pre-expiry read crossing the expiry boundary is a **hypothesis**, not an established cause: `states()` permits a 120-second aggregate read, whereas the last planned pre-expiry A check starts only ten seconds before expiry. Early loss, a late A read, or loss of B cannot be distinguished from this receipt. No lifecycle/TTL/read-timing behavior was changed on that inference. The next Memories investigation should retain bounded phase/segment/read timing and reproduce the boundary offline before choosing a fix; no new run or plan is prepared here.
+
+**Actual cleanup.** The controller invoked the existing supported `down --run-id 55eb672cd9f30d006caa815eae60a867` under the same prefix/cwd; it returned **0 / HXI001** at **23:19:48.494843Z**. Then **`sudo -n python3 -B dispose-owned.py`**, cwd `CAPABILITY`, verified the engine was empty and stopped only recorded PID/start identities and verified descendants. At **23:19:57.016910Z**, disposal was **verified**, with no remaining owned processes or namespace members and no private socket, native workspace or run state. Total stopping time: **11.391555 seconds**, within the original cumulative 900 seconds. The graph-loss receipt at 23:19:46.484248Z follows the native terminal and records teardown, not the initiating test failure.
+
+The authentic native `functional.json` remains its pre-disposal **failed / retained / unverified:true** snapshot. It was not rewritten to claim a removed marker. The separate actual `down` success and exact private-engine disposition receipts establish cleanup. Earlier retained resources and shared engines were untouched.
+
+Evidence: **`CAPABILITY/run-result.json`**, `result-artifacts/functional.json`, `result-artifacts/functional.python3.trx`, both `before-disposal/native-tests/*-accounting.json`, startup/graph receipts under `native-run/`, retained native sidecar logs, and `private-engine-disposition.json`. Original evidence remains intact. **Approval consumed; private engine stopped; no further launch authorized.** Story 27.4, local retention, full qualification, Production and A41 remain open.
+
+### Capability-refusal diagnostics — 2026-10-24; offline implementation
+
+**Scope and evidence.** Baseline `c7957a641067be2d28c8697caa2a90c671685f22`. New private sibling **`CAPABILITY=/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-capability-diagnostic-20261024-uywszy91`** holds `owning-checks/` and `implementation-files.json`. Earlier candidates, results and consumed approvals are unchanged. No Aspire, Dapr, PostgreSQL or retention topology was launched. Test hosts and controlled doubles supply offline evidence only.
+
+**Changed behavior.** The existing lifecycle capability runner now exposes immutable observations: `NotStarted`, `PreflightRefused`, `Running`, `Passed`, `Failed`, `Timeout` or `Canceled`, plus a bounded preflight reason and the ten fixed capability names. Per-capability outcomes distinguish `NotStarted`, `Running`, `Passed`, `ReturnedFalse`, `Exception` and `Canceled`; exception categories contain no messages, keys, URLs, paths, values or identities. The Dapr probe uses the same calls and cleanup/cancellation behavior, and its exception log now carries only the category. The runner still requires its six local capabilities, ten unique results, exact binding and original 30-second budget; its once-per-process decision and full-profile behavior are unchanged. Terminal snapshots ignore late asynchronous completions.
+
+The authenticated `/v1/access-telemetry/validate` response adds optional `capabilityDiagnostic` only for a ready, exact epoch/profile request. Its existing two-argument constructor/deconstruction stays intact. Server bootstrap retains that observation inside the existing qualification `rejectionBreakdown.bootstrap`; absence in an older response clears the optional observation. Dictionaries and outcome records are owned immutable copies, including after deserialization and with-expressions. These observations do not participate in `AllowsWrites`, health/readiness, retries, the gate or retention assertions.
+
+Python projects only the bounded vocabulary and ten known capability keys. Unknown/oversized/missing fields and duplicate diagnostic JSON objects are disclosed by `rejectionBreakdownComplete: false`, without persisting arbitrary text. The optional diagnostic never changes accounting acceptance. **125 rejections still fail `functional-accounting-loss`**. Existing 125/125, real 1800/3600/900-second, signed-clock, strong-read, TTL/due-index/reminder and newer-record assertions remain intact.
+
+**File list.** `implementation-files.json` lists all **20** source/test files: **15** production/tool and **5** test files. New Contracts files are `AccessTelemetryCapabilityDiagnosticValues.cs`, `AccessTelemetryCapabilityOutcome.cs` and `AccessTelemetryCapabilityDiagnosticSnapshot.cs`; new lifecycle files are `Capability/AccessTelemetryCapabilityDiagnostics.cs` and `AccessTelemetryCapabilityFailureClassifier.cs`. Existing changes are the probe interface/result/runner/Dapr implementation, lifecycle `Program.cs`, validation response, three Server bootstrap files, `tools/access_telemetry_functional_retention.py`, the two existing Capability test files, `AccessTelemetryQualificationRejectionBreakdownTests.cs`, and the two named Python test modules. The existing active spec and this single current report are also updated; no new numbered specification is created.
+
+**Exact verification.** Commands below run from `/home/administrator/projects/hexalith/memories`, except Python module commands, whose cwd is `/home/administrator/projects/hexalith/memories/tests/tooling/access_telemetry_functional_retention`. Logs are under `CAPABILITY/owning-checks/`.
+
+| Check | Command | Observed result |
+| :--- | :--- | :--- |
+| Pre-change C# build | `dotnet build tests/Hexalith.Memories.AccessTelemetry.Tests/Hexalith.Memories.AccessTelemetry.Tests.csproj -c Debug -p:UseHexalithProjectReferences=true -m:1 --nologo -v:m` | 0 warnings/errors (`red-build.log`) |
+| Executed C# red | `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll -noLogo -noColor -method '*CapabilityDiagnostic_IsObservableBeforeTheFirstAttempt'` | 1 executed, 1 assertion failure: snapshot absent (`red-diagnostic.log`); not a compile failure |
+| Final Capability build | Same owning Debug build above | 0 warnings/errors (`build-tests.log`) |
+| Affected Capability namespace | `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.AccessTelemetry.Tests/bin/Debug/net10.0/Hexalith.Memories.AccessTelemetry.Tests.dll -noLogo -noColor -namespace Hexalith.Memories.AccessTelemetry.Tests.Capability` | **83/83**, 15.292 s, no errors/failures/skips (`capability-lane.log`); 22 added cases |
+| Source-flag Server build | `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -p:UseHexalithProjectReferences=true -m:1 --nologo -v:m` | Blocked: `EventStoreMemoriesCommandStore.cs(22,7): error CS0246: ... IEventStoreGatewayBoundCommandProofSource ... could not be found`; 0 warnings, 1 error (`server-build.log`) |
+| Existing owning fallback | `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -m:1 --nologo -v:m` | 0 warnings/errors (`server-build-fallback.log`, final `server-build-final.log`). Memories projects are built from source; external dependencies use the repository's package lane. No fully external-source build is claimed. |
+| Existing Server telemetry namespaces | `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -noLogo -noColor -namespace Hexalith.Memories.Server.Tests.Telemetry -namespace Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle` | 297 executed: 296 pass, 1 new-fixture failure (`server-telemetry-lane.log`). Its helper asserted the old five-field bootstrap shape when the optional sixth field was present. |
+| Final affected Server class after helper correction | `DiffEngine_Disabled=true dotnet exec tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -noLogo -noColor -class Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle.AccessTelemetryQualificationRejectionBreakdownTests` | **7/7**, no errors/failures/skips (`server-propagation-final.log`). The former single remote-denial fact now covers both old and new responses: net +1 case. The final wider namespace run below also passed. |
+| Final Server telemetry namespaces | Same two-namespace command above, after the fixture correction | **297/297**, 6.278 s, no errors/failures/skips (`server-telemetry-final.log`). The initial 296/297 result remains recorded. |
+| Executed Python red | `python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-capability-diagnostic-20261024-uywszy91/owning-checks/red-python.py` | 1 executed, 1 assertion failure: bounded projection drops the diagnostic (`python-red.log`). Script executes the unchanged baseline tool from `git show c7957a64:tools/access_telemetry_functional_retention.py` against the new test. |
+| New Python diagnostics | The five named tests in the command below | **5/5**, no errors/failures (`python-focused.log`) |
+| Affected Python modules | `python3 -B -m unittest -v test_functional_retention test_selected_active_sequence` | **73/73**, 321.307 s, no errors/failures (`python-affected-lanes.log`). Inventory is **68 → 73**, +5 tests. |
+
+```bash
+python3 -B -m unittest -v \
+  test_functional_retention.FunctionalTests.test_capability_diagnostic_is_retained_without_changing_accounting \
+  test_functional_retention.FunctionalTests.test_capability_diagnostic_rejects_unknown_missing_oversized_and_secret_fields \
+  test_functional_retention.FunctionalTests.test_duplicate_capability_diagnostic_json_is_incomplete_without_altering_other_fields \
+  test_functional_retention.FunctionalTests.test_capability_diagnostic_vocabulary_matches_contract_and_runner \
+  test_selected_active_sequence.SelectedActiveSequenceTests.test_capability_refusal_and_secret_projection_are_retained_before_unchanged_loss_failure
+```
+
+The source-flag blocker is outside the changed diagnostic path: `git diff --exit-code c7957a641067be2d28c8697caa2a90c671685f22 -- src/Hexalith.Memories.Server/EventStoreIntegration/EventStoreMemoriesCommandStore.cs src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj Directory.Build.targets` returned 0. The existing conditional interface and unconditional external package references are unchanged. No dependency or build gate was changed. The earlier broad `kubectl` blockers remain historical; those unrelated full suites were not rerun.
+
+**Named negative evidence.** `CapabilityDiagnostic_PreflightRefusalRunsNoProbeAndContainsNoBinding` covers production/version/boundary/expiry/incorrect local binding; existing hosted-binding tests now also require the correct refusal disposition. `ValidationDiagnostic_IsDisclosedOnlyForTheReadyExactEpochAndProfile` exercises the actual authenticated endpoint for foreign epoch, foreign profile, unready options and an exact request. `CapabilityDiagnostic_ActualDaprProbeDistinguishesFalseExceptionAndCancellation` exercises actual Dapr-probe code with returned-false, transport exception, RPC denial and cancellation doubles. `CapabilityDiagnostic_TimeoutOrCancellationFreezesCompletedAndPendingOutcomes` proves late completion cannot replace terminal evidence or enable the retained decision. `CapabilityDiagnostic_MalformedResultsRemainFailClosedAndUnknownNamesNeverEscape` covers missing, duplicate, unknown, null and mismatched results. `CapabilityDiagnostic_OwnsItsDictionariesAcrossWithExpressionsAndJson` covers immutable ownership, secret exclusion and old-response constructor/JSON compatibility. Server and selected Python replays retain diagnostics before the unchanged 125-rejection failure.
+
+Only the named C# snapshot-absence and Python retained-projection tests had executed pre-change reds. All other new cases first ran against the implementation; they are not claimed as failing-before evidence. An initial implementation compile attempt (`build-implementation.log`) had ten `CS0103` errors from referencing the application-only profile type in Contracts; fixed by fixed contract names and a parity test. That compile failure is not counted as a red test. The corrected build and all Capability cases passed. The Server fixture failure and its correction remain recorded above.
+
+| Observed capability diagnostic | Interpretation / next action |
+| :--- | :--- |
+| Absent | Older response or no successful validation response; no local probe inference. |
+| `NotStarted` | Runner has not begun; investigate lifecycle options/hosted-service binding. |
+| `PreflightRefused` | No new probes were admitted by that call. Read the bounded reason. A changed binding can retain outcomes from the earlier attempt. |
+| `Running` with pending names | At response sampling, those operations were in flight; no false-return claim. |
+| `Failed` with `ReturnedFalse` | That probe completed and returned false. Check its existing behavioral condition; optional non-required failures can coexist with a local `Passed`. |
+| `Failed` with `Exception`/`Canceled` | A call threw or canceled; use the bounded category. A failed runner with missing or pending names can also indicate malformed result registration. |
+| `Timeout`/`Canceled` with some names still `Running` | Deadline/cancellation froze the snapshot before those callbacks completed. Late completion is deliberately ignored; no success or false return is inferred. |
+| `Passed` | Only the existing local capability decision passed. This proves no retention, full qualification, Production admission or A41 closure. |
+| Incomplete diagnostic | Use only retained fields. Missing/unknown/duplicate material earns no evidence credit and does not alter the accounting verdict. |
+
+**Limits and next step.** Validation decision, capability snapshot and Server lifecycle/bootstrap snapshots are sampled separately, not atomically. No probe-attempt timestamps or exception details are added. Completed diagnostic outcomes identify a branch; they do not by themselves establish why the prior live run failed. One ordinary review found no substantive application defect. It identified two private run-control gaps (absolute deadline enforcement and cleanup before launch); their corrections and the concrete next plan are recorded below. No new launch is authorized. Retention, Story 27.4, full qualification, Production and A41 remain open.
+
+### Capability-diagnostic preparation — 2026-10-24; historical plan, authorization consumed
+
+**Concrete plan.** `CAPABILITY/run-plan.json` and `launch-command.txt` are the complete plan and exact command. The fresh private candidate is `CAPABILITY/compatible-platform`, copied physically from `BOOTSTRAP` and updated only with the 20 listed diagnostic source/test files. `pre-adoption-check.json` confirms the prior versions matched the owning baseline; `adopted-inputs.json` records the new bytes. Selected inputs are **330**: 315 unchanged, four updated and eleven newly selected relative to the prior 319. The supported selected mapping names `Hexalith.Memories`, 17 entries, hash `c51721bd61eff00bb26479a8e5de1e484ec507a371fe844caf2db529db0ed61b`.
+
+The exact command's cwd is that Platform candidate. It includes the full recorded private namespace/user/environment prefix, guarded Docker client and this unchanged supported test suffix:
+
+```bash
+dotnet tool run hexalith-module -- test \
+  --manifest references/Hexalith.Memories/module/hexalith.module-manifest.v2.json \
+  --profile functional-retention --mode source \
+  --evidence artifacts/retention/repair-spec14-capability-diagnostic-20261024-uywszy91/functional.json \
+  --output json
+```
+
+Tool **4.35.2**, Platform **`7021c41bea55bd6c690ba96082cf3dcfc95c9fca`**, Builds **`007bb9bc2806a0ead02d4831555bf2134a38d256`**, EventStore **3.127.0**, Dapr **1.18.1**, PostgreSQL **18.6** and the seven immutable image identities are unchanged. The scoped SQLite discovery `cleanupInterval: "0s"` workaround, ACL/mTLS, source/Debug, assertions and real timings are unchanged. No native handoff is constructed. The installed prerequisite checker passed in the exact private prefix/cwd/user context, including the genuine Aspire 13.6.1 child; this was an offline prerequisite check, not a native test.
+
+**Isolation and limits.** The fresh engine is **`fce19cc3-fdd4-4230-b312-77a3cd48f821`**, endpoint **`unix:///run/hx-retention-uywszy91/docker.sock`**; keeper **36350/start 3645341**, daemon **36375/start 3645351**, seven recorded owned processes. `preparation-owned-processes.json` binds every PID/start/namespace. The kernel reused historical namespace inode numbers, but the engine, process starts, endpoint and state are new; no stopped engine was restarted. Private slirp networking disables host loopback, with separate Docker/containerd/cgroup state and no host routing/firewall changes. Routing controls passed **16/16**. The engine contains seven prepared images and **zero containers**.
+
+The existing graph remains seven containers / 15 resources, no VM. Admission requires at least eight Docker CPUs, 16 GiB Docker/Linux available memory, and 20 GiB staging/backing free space; PostgreSQL has eight-CPU/16-GiB limits. These are not a whole-graph reservation. The preparation capacity receipt passed (14 CPUs, about 90 GiB Docker memory); exact available memory/disk bytes are in `preparation-capacity.json`. Capacity, identities and unchanged inputs are checked once immediately before the approved launch.
+
+**Time and attempt contract.** One launch, **zero retries/restarts**. Execution is at most **14400 s**, including **600 s startup**; stopping/preservation/disposal share a separate, nonrenewing **900 s**. Latest full-budget dispatch is **2026-10-25T10:27:22Z**. Absolute execution end is **14:27:22Z** and outer end **14:42:22Z** that day. A late admission must not dispatch. The existing real 4501-second selected observation allowance is retained. An expired plan is not extended.
+
+**Affected builds and runtime admission.** From the candidate's `references/Hexalith.Memories`, both commands passed with zero warnings/errors:
+
+```bash
+dotnet build src/Hexalith.Memories.Server/Hexalith.Memories.Server.csproj -c Debug \
+  -p:UseHexalithProjectReferences=true --artifacts-path "$CAPABILITY/application-proof-build" -m:1 --nologo -v:m
+dotnet build src/Hexalith.Memories.AccessTelemetry/Hexalith.Memories.AccessTelemetry.csproj -c Debug \
+  -p:UseHexalithProjectReferences=true --artifacts-path "$CAPABILITY/application-proof-build" -m:1 --nologo -v:m
+```
+
+The reused native model builder produced 36 bound outputs and 1089 matching source documents. Existing source/PDB inspectors passed 14 Server source checks, 35 Contracts documents, and 85 lifecycle-plus-Contracts documents; exact commands are in `binding-commands.json`. The existing startup observer now requires the actual mapped lifecycle/Server process and corresponding Contracts/lifecycle source document proofs before cohort A. Missing, foreign, stale, duplicate, replaced or disappeared process/proof evidence cannot admit. Original observer regressions plus eight new source-binding cases passed **48/48** (`python3 -B -m unittest -v test_observe_startup test_native_host_admission test_additional_sources test_discovery_admission`, cwd `CAPABILITY`; `observer-tests.log`). These are controlled offline tests; actual loaded-process admission remains for the authorized run.
+
+**One ordinary review.** A context-free reviewer checked the actual source diff and concrete private plan. It found no substantive application diagnostic defect. Two operational findings were accepted:
+
+| Finding | Correction / verification |
+| :--- | :--- |
+| Latest start was checked before admission, and execution/stopping used only relative deadlines | Dispatch rechecks the launch window after admission/collectors and the exclusive launch receipt. Execution/stopping deadlines use both UTC and monotonic clocks, clamped to the absolute endpoints; subprocess/poll waits cannot extend them. Covered by final private control tests. |
+| Empty-engine cleanup required a stopping receipt absent before launch | Explicit disposal or controller failure creates the missing stopping receipt once, then reuses it. Collector launcher PID/start is persisted before releasing execution, so failed startup remains owned. Failure handlers attempt supported `down` only for an actual plan; absent IDs are inapplicable and cleanup failures stay unverified. Covered by final private control tests. |
+
+Final private controls: `python3 -B -m unittest -v test_operator_bounds` from `CAPABILITY` passed **23/23**, 0.020 s (`operator-control-tests.log`). Tests cover near-cutoff dispatch, UTC jumps, cumulative stopping, pre-launch failure, owned collector release, supported-down failure handling and replaced-PID refusal. Root caught and corrected a helper-name collision in `main()` during patch inspection; the admission-path smoke test passes. No executed pre-change red is claimed for these private cases, and no real controller, engine or signal was exercised. Both review findings are resolved; none deferred. Review triage is in `root-review.json`; no second review cycle or unrelated workspace census was performed.
+
+**Disposition.** On terminal, failure or withdrawal, preserve real native/evidence receipts; invoke supported `down` with the actual new run ID under the same prefix when one exists. If no native identity exists, record that `down` is inapplicable. Verify this private engine is empty, stop only its recorded PID/start identities and verified descendants, then verify processes, namespace, socket and actual native workspace/state absent. All steps share the first stopping budget and absolute outer end. Previous resources, shared Docker engines and Production are excluded. Keep private source/logs/evidence; no broad prune or process-name kill.
+
+**Preparation corrections and limits.** A broad file-mode operation during parallel preparation inadvertently removed executable bits in the new copy and wrappers. The copied modes were restored from unchanged `BOOTSTRAP`, fresh wrappers restored, no external file symlinks found, and all 16 routing checks passed afterwards (`preparation-mode-restoration.json`). The new evidence-relative basename was corrected after readback caught an inherited historical path; old evidence was preserved. Two initial observer fixture errors were corrected before 48/48 passed; the initial log remains. These preparation defects were not live test failures. The source-flag owning Server blocker remains separately disclosed above; the compatible isolated candidate builds passed.
+
+**Final readback (2026-10-24T22:02:17.910287+00:00): passed.** All **330 selected / 36 model / 54 operational / 489 runtime** hashes match; source proofs, seven images, seven owned process identities, mapping, empty engine, fresh absent state/evidence and open window pass. Plan SHA-256 **`7b62a542f5f6d54e48d0a6aa36d73c946a606298f9d806a9cd98ac1704bb446c`**; exact command SHA-256 **`5c5ce4c672a7c6bb06794033a200b956f1714bed84a858c06729cbff3ae53a79`**. `root-preparation-readback.json` is the receipt.
+
+**Preparation snapshot before the execution above:** implementation, ordinary review, affected candidate preparation and final checks were complete; no approval or native launch existed yet. The subsequent owner approval was consumed by `55eb672cd9f30d006caa815eae60a867`. Its failed result and verified private cleanup are recorded above. Story 27.4, retention, full qualification, Production and A41 remain open.
+
 ### Bootstrap-stage execution — 2026-10-24; lifecycle capability refusal, disposal verified
 
 The owner replied **“approve”**. `BOOTSTRAP/approval.json` (19:57:35.569071Z) binds plan `100bb6613d88bfe14564bca273a5ddd41fe42cb0cf6a50a83b5e302151b9cb3b` and command `2d35f059ba6dd2721444a36477deb2854c4326b161f3fbfaab163fb9eebe9f3f`. `python3 -B execute-approved.py`, run from `BOOTSTRAP`, did three things:
@@ -23,9 +159,9 @@ Startup admission persisted at 19:59:14.424736Z and was confirmed to precede coh
 
 **Reading (per the outcome table).** Persistent stage failure with no publication. A lifecycle reason of `CapabilityUnproven` beside `RemoteDenied` means the lifecycle application refused writes, not a 401/403 (which would read `RemoteValidationPending`).
 
-- **Ruled out:** emission before publication, sanitation failure, configuration or secret failure.
-- **What the refusal means:** `/v1/access-telemetry/validate` returns the runtime-gate reason only when epoch and component-profile hash match, so the gate held its fail-closed `CapabilityUnproven`. In the local functional profile, `AccessTelemetryCapabilityProbeRunner` attempts its probes once per process within 30 s and keeps a failed decision.
-- **Hypothesis (correlation only):** the one-shot local capability probe failed or timed out on the `RESOLVER`-derived candidate. `MAPPING` and this run share the refusal shape, while `GUARD` accepted 125/125. The SQLite discovery `cleanupInterval: "0s"` edit is the only known structural difference.
+- **Established:** the writer bootstrap reached remote validation and repeatedly received the lifecycle app's refusal before sanitizer publication. Sanitation failure and writer-side configuration/secret failure are excluded for these attempts. This is not evidence that any lifecycle capability probe ran.
+- **What the refusal means:** `/v1/access-telemetry/validate` returns the runtime-gate reason only when epoch and component-profile hash match, so the gate held its fail-closed `CapabilityUnproven`. In the local functional profile, `AccessTelemetryCapabilityProbeRunner` can refuse local preflight without invoking any probes; otherwise it attempts probes once per process within 30 s and retains failure. Exact endpoint epoch/profile equality does not establish the hosted Development/deployment/run/source binding. The retained plan deadline is later than failure, but process-local binding and probe outcomes were not captured.
+- **Hypotheses, not established:** local preflight refusal, failed/malformed probe results, exception, cancellation or timeout can all produce this gate reason on the `RESOLVER`-derived candidate. `MAPPING` and this run share the refusal shape, while `GUARD` accepted 125/125. The SQLite discovery `cleanupInterval: "0s"` edit is the only known structural difference.
 - **Limits:** the lifecycle app's console, per-capability results and gate metrics were not captured. The 19:59:17.888Z owned-graph-loss receipt is teardown after the terminal.
 
 **Disposition.** Supported `down --run-id 1441c0dbdd973a0f9c0cbf6a8c8eb817` (same prefix and cwd) returned **0 / HXI001** at 19:59:19.969503Z. `sudo -n python3 -B dispose-owned.py` was copied from `MAPPING`, with guards added only for a missing run ID or receipts. It verified the empty engine, stopped the captures, observer and exact owned daemon/keeper/slirp identities, and confirmed absence at **19:59:31.791139Z**: **14.794657 s** from the native terminal, within **900 s**. No owned processes or namespace members remain, and the socket, workspace and run state are absent. Evidence: `BOOTSTRAP/run-result.json`, `private-engine-disposition.json`, `before-disposal/`, `native.stdout.json`, `down.stdout.log`, `native-terminal.json`, and the owner's `functional.json`/`functional.python3.trx`.
@@ -1203,13 +1339,15 @@ One ordinary review of changed behavior is complete. This execution did not stag
 
 ## Retained resources
 
+Current `CAPABILITY` run `55eb672cd9f30d006caa815eae60a867` completed supported down and verified exact private cleanup at 2026-10-24T23:19:57.016910Z; no current owned resources remain. Its native report retains the authentic pre-cleanup `retained`/`unverified` marker; separate actual disposition evidence is linked above. Earlier resources below were not queried or disposed by this run.
+
 Documentation removal does not dispose of resources. Prior failed runs `f482f16095f3027867cec221b0a35220` and `b399a0389f7a8383af4a30339761ade2` remain recorded as `retained`, `unverified: true`, `isEmpty: false`, with cleanup unauthorized. These are last-recorded dispositions, not a fresh census. Source: private `current-held-functional-retention-invocation.json` under `/home/administrator/.local/state/hexalith/memories/access-telemetry/resume-spec14-20261021-current-5clz3zwi` (`retainedFailedRuns`).
 
 The [bootstrap recovery result](../27-4-bootstrap-recovery-result-2026-10-16.md) records retained 40/600-GiB disks and a stopped QMP socket. Private raw receipts and these resources remain untouched. Before any new run, Platform must establish isolation from retained resources; old attempts/permissions cannot be replayed.
 
 ## Evidence posture
 
-No target was queried during the earlier documentation simplification. The real local runs above did query their isolated Dapr/PostgreSQL resources; their failed native reports establish no passing retention evidence. The observed cohorts and pre-expiry activity above remain partial observations, and changed executable outputs further invalidate the final run freeze. Preparation checks and offline fixtures provide no live retention evidence. Production lifecycle writes remain disabled; `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward/open. Full qualification is separately scheduled and does not gate a local functional result.
+No target was queried during the earlier documentation simplification. The real local runs above did query their isolated Dapr/PostgreSQL resources; their failed native reports establish no passing retention evidence. The observed cohorts and pre-expiry activity above remain partial observations. Earlier runs with changed executable outputs retain their documented freeze limitations. The current `CAPABILITY` run passed source admission but failed its missing-record assertion; it supplies no passing retention result. Preparation checks and offline fixtures provide no live retention evidence. Production lifecycle writes remain disabled; `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward/open. Full qualification is separately scheduled and does not gate a local functional result.
 
 The identity and C0-C6 matrix below retain the full campaign's recorded status. Repository-validation labels are historical offline results, not revalidation in this change. The former PG-ONPREM-2 identity is preserved; a full Platform campaign needs its own adopted exact target/profile. Local Debug, development UTC and file-backed secrets earn only disclosed functional evidence.
 

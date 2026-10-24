@@ -195,8 +195,10 @@ public sealed class AccessTelemetryQualificationRejectionBreakdownTests
         accounting.RejectionsForCorrelation(correlation).SanitizerUnavailable.ShouldBe(7);
     }
 
-    [Fact]
-    public async Task PersistentRemoteDenial_ReportsTheFailedStageAndKindWithoutPublication()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PersistentRemoteDenial_ReportsTheFailedStageAndKindWithoutPublication(bool includeCapabilityDiagnostic)
     {
         var time = new FakeTimeProvider(RetainedEmission);
         var accounting = new AccessTelemetryQualificationAccounting();
@@ -204,8 +206,13 @@ public sealed class AccessTelemetryQualificationRejectionBreakdownTests
         var status = new AccessTelemetryLifecycleStatus(enabled: true);
         var progress = new AccessTelemetryLifecycleBootstrapProgress();
         var accessor = new AccessTelemetrySanitizerAccessor();
+        var diagnostic = new AccessTelemetryCapabilityDiagnosticSnapshot("PreflightRefused", "LocalProfileInvalid",
+            AccessTelemetryCapabilityDiagnosticValues.Capabilities.ToDictionary(name => name, _ => new AccessTelemetryCapabilityOutcome("NotStarted", "None"), StringComparer.Ordinal));
         DaprClient dapr = AccessTelemetryLifecycleBootstrapProgressTests.CreateDapr(
-            new AccessTelemetryRuntimeValidationResponse(false, AccessTelemetryReason.CapabilityUnproven));
+            new AccessTelemetryRuntimeValidationResponse(false, AccessTelemetryReason.CapabilityUnproven)
+            {
+                CapabilityDiagnostic = includeCapabilityDiagnostic ? diagnostic : null,
+            });
         var bootstrap = AccessTelemetryLifecycleBootstrapProgressTests.CreateBootstrap(dapr, accessor, status, time, progress);
 
         await bootstrap.StartAsync(CancellationToken.None);
@@ -226,8 +233,18 @@ public sealed class AccessTelemetryQualificationRejectionBreakdownTests
             Counts(breakdown, "sanitizerUnavailableBootstrapStages").ShouldBe(new Dictionary<string, long>(StringComparer.Ordinal) { ["RemoteValidation"] = 125 });
             breakdown.GetProperty("lifecycleHealth").GetString().ShouldBe("Degraded");
             breakdown.GetProperty("lifecycleReason").GetString().ShouldBe("CapabilityUnproven");
-            RequireBootstrap(breakdown, attempts: 1, stage: "RemoteValidation", failureStage: "RemoteValidation", failureKind: "RemoteDenied");
+            RequireBootstrap(breakdown, attempts: 1, stage: "RemoteValidation", failureStage: "RemoteValidation", failureKind: "RemoteDenied", capabilityDiagnostic: includeCapabilityDiagnostic);
             breakdown.GetProperty("bootstrap").GetProperty("firstPublishedUtcMs").ValueKind.ShouldBe(JsonValueKind.Null);
+            breakdown.GetProperty("bootstrap").TryGetProperty("capabilityDiagnostic", out JsonElement retained).ShouldBe(includeCapabilityDiagnostic);
+            if (includeCapabilityDiagnostic)
+            {
+                retained.GetProperty("disposition").GetString().ShouldBe("PreflightRefused");
+                retained.GetProperty("preflightReason").GetString().ShouldBe("LocalProfileInvalid");
+                retained.GetProperty("capabilities").EnumerateObject().Count().ShouldBe(10);
+                progress.ObserveCapability(null);
+                progress.Current.CapabilityDiagnostic.ShouldBeNull();
+                retained.GetProperty("capabilities").EnumerateObject().Count().ShouldBe(10);
+            }
             accessor.Current.ShouldBeNull();
         }
         finally
@@ -389,11 +406,13 @@ public sealed class AccessTelemetryQualificationRejectionBreakdownTests
         return breakdown;
     }
 
-    private static void RequireBootstrap(JsonElement breakdown, long attempts, string stage, string? failureStage, string? failureKind)
+    private static void RequireBootstrap(JsonElement breakdown, long attempts, string stage, string? failureStage, string? failureKind, bool capabilityDiagnostic = false)
     {
         JsonElement bootstrap = breakdown.GetProperty("bootstrap");
         bootstrap.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal).ShouldBe(
-            ["attempts", "failureKind", "failureStage", "firstPublishedUtcMs", "stage"]);
+            capabilityDiagnostic
+                ? ["attempts", "capabilityDiagnostic", "failureKind", "failureStage", "firstPublishedUtcMs", "stage"]
+                : ["attempts", "failureKind", "failureStage", "firstPublishedUtcMs", "stage"]);
         bootstrap.GetProperty("attempts").GetInt64().ShouldBe(attempts);
         bootstrap.GetProperty("stage").GetString().ShouldBe(stage);
         bootstrap.GetProperty("failureStage").GetString().ShouldBe(failureStage);

@@ -35,6 +35,9 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
     };
 
     /// <inheritdoc/>
+    public string Capability => capability;
+
+    /// <inheritdoc/>
     public async Task<AccessTelemetryCapabilityProbeResult> ProbeAsync(CancellationToken cancellationToken)
     {
         try
@@ -67,8 +70,10 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
         }
         catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
         {
-            LogProbeException(logger, capability, exception);
-            return new AccessTelemetryCapabilityProbeResult(capability, false);
+            string category = AccessTelemetryCapabilityFailureClassifier.Classify(exception);
+            LogProbeException(logger, capability, category);
+            return new AccessTelemetryCapabilityProbeResult(capability, false,
+                exception is OperationCanceledException ? "Canceled" : "Exception", category);
         }
     }
 
@@ -311,6 +316,6 @@ internal sealed partial class DaprAccessTelemetryCapabilityProbe(
     [LoggerMessage(27101, LogLevel.Warning, "Access telemetry capability probe {Capability} did not pass.")]
     private static partial void LogProbeFailed(ILogger logger, string capability);
 
-    [LoggerMessage(27102, LogLevel.Warning, "Access telemetry capability probe {Capability} failed with an exception.")]
-    private static partial void LogProbeException(ILogger logger, string capability, Exception exception);
+    [LoggerMessage(27102, LogLevel.Warning, "Access telemetry capability probe {Capability} failed with category {Category}.")]
+    private static partial void LogProbeException(ILogger logger, string capability, string category);
 }

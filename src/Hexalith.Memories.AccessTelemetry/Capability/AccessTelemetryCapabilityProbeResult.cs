@@ -6,4 +6,8 @@
 namespace Hexalith.Memories.AccessTelemetry.Capability;
 
 /// <summary>Bounded result of one behavioral capability probe.</summary>
-internal sealed record AccessTelemetryCapabilityProbeResult(string Capability, bool Passed);
+internal sealed record AccessTelemetryCapabilityProbeResult(
+    string Capability,
+    bool Passed,
+    string? DiagnosticOutcome = null,
+    string FailureCategory = "None");

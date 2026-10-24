@@ -8,4 +8,9 @@ namespace Hexalith.Memories.AccessTelemetry.Contracts;
 /// <summary>Bounded exact-profile writer validation result.</summary>
 public sealed record AccessTelemetryRuntimeValidationResponse(
     bool AllowsWrites,
-    AccessTelemetryReason Reason);
+    AccessTelemetryReason Reason)
+{
+    /// <summary>Gets optional process-local observations; it has no admission authority.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public AccessTelemetryCapabilityDiagnosticSnapshot? CapabilityDiagnostic { get; init; }
+}

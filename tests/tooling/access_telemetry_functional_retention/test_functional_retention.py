@@ -398,6 +398,79 @@ class FunctionalTests(unittest.TestCase):
             with self.subTest(passingBootstrap=name):
                 self.assertEqual("memories-offline-only", functional.validate_accounting({**response, "rejectionBreakdown": {**breakdown, "bootstrap": variant}}, "functional-offline", "cohort-a", target.clock.utc()))
 
+    @staticmethod
+    def capability_diagnostic():
+        names = ("StrongCrudAndEtags", "MultiKeyTransactionsAndConflicts", "ActorReactivationFailoverAndReminders",
+                 "EffectivePerRecordTtl", "RecordAndRequestBounds", "TwoWriterThroughputDuringPurge",
+                 "DeclaredDurabilityAndFailureBehavior", "TenantIsolationAndEncryption", "PhysicalCapacityEvidence", "ReclamationEvidenceHooks")
+        return {"disposition": "PreflightRefused", "preflightReason": "LocalProfileInvalid",
+                "capabilities": {name: {"outcome": "NotStarted", "failureCategory": "None"} for name in names}}
+
+    def test_capability_diagnostic_is_retained_without_changing_accounting(self):
+        target = OfflineTarget(Clock())
+        response = target.emit("functional-offline", "cohort-a", target.clock.utc())
+        diagnostic = self.capability_diagnostic()
+        response["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"] = diagnostic
+        retained = functional.bounded_rejection_breakdown(response["rejectionBreakdown"])
+        self.assertEqual(diagnostic, retained["bootstrap"].get("capabilityDiagnostic"))
+        self.assertTrue(functional.rejection_breakdown_complete(response["rejectionBreakdown"], response))
+        self.assertEqual("memories-offline-only", functional.validate_accounting(response, "functional-offline", "cohort-a", target.clock.utc()))
+        response["rejected"] = 125
+        with self.assertRaisesRegex(functional.FunctionalRetentionError, "functional-accounting-loss"):
+            functional.validate_accounting(response, "functional-offline", "cohort-a", target.clock.utc())
+
+    def test_capability_diagnostic_rejects_unknown_missing_oversized_and_secret_fields(self):
+        from copy import deepcopy
+        valid = self.capability_diagnostic()
+        name = next(iter(valid["capabilities"]))
+        variants = [None, [], "fixture-secret", {**valid, "fixture-secret-key": "fixture-secret-value"},
+                    {**valid, "disposition": "fixture-secret"}, {**valid, "preflightReason": "fixture-secret"},
+                    {**valid, "capabilities": {}}, {**valid, "capabilities": ["fixture-secret"]},
+                    {**valid, "capabilities": {**valid["capabilities"], "fixture-secret-name": {"outcome": "Passed", "failureCategory": "None"}}},
+                    {**valid, "capabilities": {key: value for key, value in valid["capabilities"].items() if key != name}},
+                    {**valid, "capabilities": {"fixture-secret-" + str(index): {} for index in range(200)}}]
+        for field, value in (("outcome", "fixture-secret"), ("failureCategory", "fixture-secret"), ("raw", "fixture-secret")):
+            variant = deepcopy(valid)
+            variant["capabilities"][name][field] = value
+            variants.append(variant)
+        target = OfflineTarget(Clock())
+        response = target.emit("functional-offline", "cohort-a", target.clock.utc())
+        for value in variants:
+            with self.subTest(value=value):
+                response["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"] = value
+                retained = functional.bounded_rejection_breakdown(response["rejectionBreakdown"])
+                self.assertNotIn("fixture-secret", json.dumps(retained))
+                self.assertFalse(functional.rejection_breakdown_complete(response["rejectionBreakdown"], response))
+                # Optional diagnostics do not turn valid accounting into admission or failure.
+                self.assertEqual("memories-offline-only", functional.validate_accounting(response, "functional-offline", "cohort-a", target.clock.utc()))
+
+    def test_duplicate_capability_diagnostic_json_is_incomplete_without_altering_other_fields(self):
+        target = OfflineTarget(Clock())
+        response = target.emit("functional-offline", "cohort-a", target.clock.utc())
+        response["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"] = self.capability_diagnostic()
+        raw = json.dumps(response)
+        variants = [raw.replace('"StrongCrudAndEtags":', '"StrongCrudAndEtags": {}, "StrongCrudAndEtags":'),
+                    raw.replace('"outcome":', '"outcome": "fixture-secret", "outcome":', 1),
+                    raw.replace('"capabilityDiagnostic":', '"capabilityDiagnostic": {}, "capabilityDiagnostic":')]
+        for raw in variants:
+            decoded = functional.decode_selected_response(raw)
+            self.assertEqual({}, decoded["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"])
+            self.assertFalse(functional.rejection_breakdown_complete(decoded["rejectionBreakdown"], decoded))
+            self.assertEqual("memories-offline-only", functional.validate_accounting(decoded, "functional-offline", "cohort-a", target.clock.utc()))
+        self.assertEqual({"ordinary": 2}, functional.decode_selected_response('{"ordinary":1,"ordinary":2}'))
+
+    def test_capability_diagnostic_vocabulary_matches_contract_and_runner(self):
+        import re
+        source = (ROOT / "src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryCapabilityDiagnosticValues.cs").read_text()
+        for name, expected in (("Capabilities", functional._CAPABILITY_NAMES), ("Dispositions", functional._CAPABILITY_DISPOSITIONS),
+                               ("PreflightReasons", functional._CAPABILITY_PREFLIGHT_REASONS), ("Outcomes", functional._CAPABILITY_OUTCOMES),
+                               ("FailureCategories", functional._CAPABILITY_FAILURE_CATEGORIES)):
+            body = source.split(name + " { get; } = new[]", 1)[1].split(".ToFrozenSet", 1)[0]
+            self.assertEqual(set(re.findall(r'"([A-Za-z]+)"', body)), set(expected))
+        runner = (ROOT / "src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityProbeRunner.cs").read_text()
+        body = runner.split("CapabilityNames =", 1)[1].split("]);", 1)[0]
+        self.assertEqual(set(re.findall(r'nameof\(AccessTelemetryCapabilityProfile\.(\w+)\)', body)), set(functional._CAPABILITY_NAMES))
+
     def test_bounded_breakdown_drops_out_of_range_and_unknown_values(self):
         raw = {"sanitizerUnavailable": 126, "sanitationFailed": -1, "sanitizerUnavailableLifecycleReasons": {"RemoteValidationPending": 0, "None": 126, "Private": 1, "Expired": 3},
                "sanitizerUnavailableBootstrapStages": {"Secret": 0, "Published": 126, 1: 1, "RemoteValidation": True, "Configuration": 2}, "lifecycleHealth": "Private",

@@ -30,9 +30,13 @@ def pass_bootstrap(start):
 _PERSISTENT_DENIAL = {"sanitizerUnavailable": 125, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {"CapabilityUnproven": 125},
                       "sanitizerUnavailableBootstrapStages": {"RemoteValidation": 125}, "lifecycleHealth": "Degraded", "lifecycleReason": "CapabilityUnproven",
                       "bootstrap": {"attempts": 4, "stage": "RemoteValidation", "failureStage": "RemoteValidation", "failureKind": "RemoteDenied", "firstPublishedUtcMs": None}}
+_CAPABILITY_DIAGNOSTIC = {"disposition": "PreflightRefused", "preflightReason": "LocalProfileInvalid",
+                          "capabilities": {name: {"outcome": "NotStarted", "failureCategory": "None"} for name in f._CAPABILITY_NAMES}}
 # Fully allow-listed, non-zero breakdowns; only the first is internally consistent with 125 rejected records.
 CONSISTENT_REJECTIONS = {
     "breakdown-consistent-rejection": _PERSISTENT_DENIAL,
+    "capability-refusal": {**_PERSISTENT_DENIAL, "bootstrap": {**_PERSISTENT_DENIAL["bootstrap"], "capabilityDiagnostic": _CAPABILITY_DIAGNOSTIC}},
+    "capability-secret": {**_PERSISTENT_DENIAL, "bootstrap": {**_PERSISTENT_DENIAL["bootstrap"], "capabilityDiagnostic": {**_CAPABILITY_DIAGNOSTIC, "raw": "fixture-response-secret"}}},
     "breakdown-reason-sum-mismatch": {**_PERSISTENT_DENIAL, "sanitizerUnavailableLifecycleReasons": {"CapabilityUnproven": 124}},
     "breakdown-stage-sum-mismatch": {**_PERSISTENT_DENIAL, "sanitizerUnavailableBootstrapStages": {"RemoteValidation": 100}},
     "breakdown-exceeds-rejected": _PERSISTENT_DENIAL,
@@ -225,7 +229,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     # Diagnostic only: dropped fields, missing captures or inconsistent counts are disclosed, never repaired.
                     self.assertIs(snapshot["rejectionBreakdownComplete"], variant not in {"pre-enqueue-rejection", "breakdown-private", "breakdown-bootstrap-private", "breakdown-nonempty-on-pass", "accounting-foreign",
                                                                                           "breakdown-reason-sum-mismatch", "breakdown-stage-sum-mismatch", "breakdown-exceeds-rejected",
-                                                                                          "breakdown-bootstrap-inconsistent"})
+                                                                                          "breakdown-bootstrap-inconsistent", "capability-secret"})
                     self.assertEqual("offline-run", snapshot["runId"])
                     self.assertEqual(capture.stem.removesuffix("-accounting"), snapshot["segmentId"])
                     self.assertEqual(0o600, capture.stat().st_mode & 0o777)
@@ -250,7 +254,9 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                         self.assertNotIn("rawResponse", raw)
                     elif variant in CONSISTENT_REJECTIONS:
                         # Retained exactly; only the diagnostic flag discloses an inconsistent sum or excess over the rejections.
-                        self.assertEqual(CONSISTENT_REJECTIONS[variant], snapshot["rejectionBreakdown"])
+                        self.assertEqual(f.bounded_rejection_breakdown(CONSISTENT_REJECTIONS[variant]), snapshot["rejectionBreakdown"])
+                        if variant.startswith("capability-"):
+                            self.assertEqual(_CAPABILITY_DIAGNOSTIC, snapshot["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"])
                         self.assertEqual(100 if variant == "breakdown-exceeds-rejected" else 125, snapshot["counters"]["rejected"])
                     elif variant == "breakdown-private":
                         self.assertEqual({}, snapshot["rejectionBreakdown"])
@@ -294,6 +300,11 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 if result:
                     self.assertEqual(status["reason"], xml.parse(report).find("{*}Results/{*}UnitTestResult/{*}Output/{*}ErrorInfo/{*}Message").text)
             return status
+
+    def test_capability_refusal_and_secret_projection_are_retained_before_unchanged_loss_failure(self):
+        for variant in ("capability-refusal", "capability-secret"):
+            with self.subTest(variant=variant):
+                self.run_sequence(variant)
 
     def test_accounting_failure_retains_bounded_rejection_counters_before_validation(self):
         self.run_sequence("accounting-loss")
