@@ -254,6 +254,34 @@ class SelectedReadRetryTests(unittest.TestCase):
             self.consumer.states("offline-run", "cohort-a")
         self.assertFalse((self.consumer.root / "native-tests/state-read-transport-failure.json").exists())
 
+    def test_phase_timing_retains_failed_and_unobserved_ordinals_without_exception_text(self):
+        self.consumer.request = Mock(side_effect=f.TransportUncertain("offline-secret-url-key-payload"))
+        with self.assertRaisesRegex(f.TransportUncertain, "^functional-selected-state-read-transport-exhausted$"):
+            self.consumer.states("offline-run", "cohort-a", phase="initial")
+        path = self.consumer.root / "native-tests/state-read-initial-cohort-a-record-01.json"
+        raw = path.read_text()
+        observed = json.loads(raw)
+        self.assertEqual(("failed", 2, 0, 0), tuple(observed[name] for name in ("status", "keyCount", "missingCount", "nonObjectCount")))
+        failed, pending = observed["reads"]
+        self.assertEqual((1, "failed", 3, 0, 7), tuple(failed[name] for name in ("ordinal", "status", "attempts", "startedMonotonicSeconds", "completedMonotonicSeconds")))
+        self.assertIsNone(failed["responseObservedUtcMs"])
+        self.assertIsNone(failed["responseObservedMonotonicSeconds"])
+        self.assertEqual((2, "unobserved", 0), tuple(pending[name] for name in ("ordinal", "status", "attempts")))
+        self.assertIsNone(pending["startedUtcMs"])
+        self.assertIsNone(pending["completedUtcMs"])
+        self.assertEqual(0o600, path.stat().st_mode & 0o777)
+        for private in ("offline-secret", "http://", *self.keys):
+            self.assertNotIn(private, raw)
+
+    def test_diagnostic_phase_and_poll_scope_refuse_unbounded_or_untrusted_names(self):
+        self.consumer.request = Mock()
+        for phase, observation in (("offline-secret", 1), ("initial", 0), ("initial", 33), ("initial", True)):
+            with self.subTest(phase=phase, observation=observation), self.assertRaisesRegex(
+                    f.FunctionalRetentionError, "^functional-selected-read-observation-scope$"):
+                self.consumer.states("offline-run", "cohort-a", phase=phase, observation=observation)
+        self.consumer.request.assert_not_called()
+        self.assertEqual([], list((self.consumer.root / "native-tests").iterdir()))
+
     def test_failure_artifact_is_exclusive_and_does_not_overwrite_previous_evidence(self):
         path = self.consumer.root / "native-tests/state-read-transport-failure.json"
         path.write_bytes(b"retained-authentic-evidence")

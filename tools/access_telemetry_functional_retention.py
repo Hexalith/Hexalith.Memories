@@ -1522,6 +1522,7 @@ class _PlatformRetentionConsumer:
         self.ttl_absent = set()
         self.before_sequence = 0
         self.full_records = {}
+        self.validated_expiries = {}
         endpoints = observation["endpoints"]
         _require(set(endpoints) == {name + suffix for name in ("memories", "memories-access-telemetry", "memories-access-telemetry-clock") for suffix in ("", "/dapr")}, "selected-endpoints")
         for address in endpoints.values():
@@ -1572,10 +1573,11 @@ class _PlatformRetentionConsumer:
             uncertain.phase = phase
             raise uncertain from None
 
-    def states(self, run_id, segment, buckets=False):
+    def states(self, run_id, segment, buckets=False, *, phase=None, observation=1):
         # One budget covers all keys, batches and retries in this observation.
         # Reuse the existing read-only attempt count/backoff; writes are unchanged.
         started = time.monotonic()
+        started_utc = int(time.time() * 1000)
         deadline = started + LIMITS["readAggregateSeconds"]
         failures = []
         failure_lock = Lock()
@@ -1583,6 +1585,20 @@ class _PlatformRetentionConsumer:
         keys = fixed_record_keys(run_id, segment)
         if buckets:
             keys = tuple(sorted({f"expiry-bucket/{(emitted + ordinal + 3600000) // 60000:012d}/{int(key.split('/')[1]):02d}" for ordinal, key in enumerate(keys)}))
+        if phase is not None:
+            # Fixed phase names and at most 32 polls bound the selected path to
+            # 100 files, each capped by the existing private exclusive writer.
+            # The unchanged 900 s grace and 30 s poll already permit at most 31.
+            _require(_IDENTITY.fullmatch(run_id) is not None and segment in {"cohort-a", "cohort-b"}
+                     and phase in {"initial", "pre-expiry-3540", "pre-expiry-3590", "post-expiry", "preservation"}
+                     and type(observation) is int and 1 <= observation <= 32
+                     and len(keys) <= FUNCTIONAL["recordsPerCohort"], "selected-read-observation-scope")
+        timings = [{"ordinal": ordinal, "status": "unobserved", "attempts": 0,
+                    "startedUtcMs": None, "completedUtcMs": None,
+                    "startedMonotonicSeconds": None, "completedMonotonicSeconds": None,
+                    "responseObservedUtcMs": None, "responseObservedMonotonicSeconds": None,
+                    "expectedExpiryUtcMs": None if buckets else getattr(self, "validated_expiries", {}).get(segment, {}).get(ordinal)}
+                   for ordinal in range(1, len(keys) + 1)]
         def check_read():
             self.check()
             remaining = deadline - time.monotonic()
@@ -1591,37 +1607,49 @@ class _PlatformRetentionConsumer:
 
         def read(item):
             ordinal, key = item
+            timing = {**timings[ordinal - 1], "status": "failed", "startedUtcMs": int(time.time() * 1000),
+                      "startedMonotonicSeconds": time.monotonic()}
             path = "/v1.0/state/access-telemetry-store/" + urllib.parse.quote(key, safe="") + "?consistency=strong&metadata.partitionKey=access-telemetry"
-            for attempt in range(LIMITS["readAttempts"]):
-                check_read()
-                try:
-                    value = self.request("memories-access-telemetry/dapr", path, missing=True, read_deadline=deadline)
-                except TransportUncertain as error:
-                    category = getattr(error, "category", "unclassified")
-                    phase = getattr(error, "phase", "unknown")
-                    with failure_lock:
-                        failures.append({"ordinal": ordinal, "attempt": attempt + 1,
-                                         "observedUtcMs": int(time.time() * 1000),
-                                         "elapsedMilliseconds": int((time.monotonic() - started) * 1000),
-                                         "category": category if type(category) is str and category in {"timeout", "remote-disconnected", "incomplete-read", "bad-status-line", "connection-refused", "connection-reset", "connection-aborted", "connection-error", "http-protocol"} else "unclassified",
-                                         "phase": phase if type(phase) is str and phase in {"open", "body"} else "unknown"})
-                    remaining = check_read()
-                    if attempt == LIMITS["readAttempts"] - 1:
-                        raise TransportUncertain("functional-selected-state-read-transport-exhausted") from None
-                    delay = (2, 5)[attempt]
-                    _require(delay < remaining, "selected-read-aggregate-deadline")
-                    time.sleep(delay)
+            try:
+                for attempt in range(LIMITS["readAttempts"]):
                     check_read()
-                else:
-                    check_read()
-                    return {"key": key, "value": value}
+                    timing["attempts"] = attempt + 1
+                    try:
+                        value = self.request("memories-access-telemetry/dapr", path, missing=True, read_deadline=deadline)
+                    except TransportUncertain as error:
+                        category = getattr(error, "category", "unclassified")
+                        transport_phase = getattr(error, "phase", "unknown")
+                        with failure_lock:
+                            failures.append({"ordinal": ordinal, "attempt": attempt + 1,
+                                             "observedUtcMs": int(time.time() * 1000),
+                                             "elapsedMilliseconds": int((time.monotonic() - started) * 1000),
+                                             "category": category if type(category) is str and category in {"timeout", "remote-disconnected", "incomplete-read", "bad-status-line", "connection-refused", "connection-reset", "connection-aborted", "connection-error", "http-protocol"} else "unclassified",
+                                             "phase": transport_phase if type(transport_phase) is str and transport_phase in {"open", "body"} else "unknown"})
+                        remaining = check_read()
+                        if attempt == LIMITS["readAttempts"] - 1:
+                            raise TransportUncertain("functional-selected-state-read-transport-exhausted") from None
+                        delay = (2, 5)[attempt]
+                        _require(delay < remaining, "selected-read-aggregate-deadline")
+                        time.sleep(delay)
+                        check_read()
+                    else:
+                        timing.update(responseObservedUtcMs=int(time.time() * 1000), responseObservedMonotonicSeconds=time.monotonic())
+                        timing["status"] = "absent" if value is None else "object" if type(value) is dict else "non-object"
+                        check_read()
+                        return {"key": key, "value": value}
+            finally:
+                timing.update(completedUtcMs=int(time.time() * 1000), completedMonotonicSeconds=time.monotonic())
+                with failure_lock:
+                    timings[ordinal - 1] = timing
         observed = []
+        status = "failed"
         try:
             with ThreadPoolExecutor(max_workers=16) as reads:
                 for offset in range(0, len(keys), 16):
                     check_read()
                     observed.extend(reads.map(read, enumerate(keys[offset:offset + 16], start=offset + 1)))
             check_read()
+            status = "completed"
         except _SEMANTIC_FAILURES:
             if failures:
                 # At most 125 fixed keys * three attempts. Never retain keys,
@@ -1633,12 +1661,22 @@ class _PlatformRetentionConsumer:
                                  "attemptLimit": LIMITS["readAttempts"], "aggregateLimitSeconds": LIMITS["readAggregateSeconds"],
                                  "failures": sorted(failures, key=lambda failure: (failure["ordinal"], failure["attempt"]))})
             raise
+        finally:
+            if phase is not None:
+                # Capture before cohort validation can throw. No returned
+                # record, key, endpoint or exception value enters this packet.
+                _exclusive_json(self.root / "native-tests" / f"state-read-{phase}-{segment}-{'bucket' if buckets else 'record'}-{observation:02d}.json",
+                                {"phase": phase, "segmentId": segment, "kind": "bucket" if buckets else "record", "observation": observation,
+                                 "status": status, "keyCount": len(keys), "missingCount": sum(item["status"] == "absent" for item in timings),
+                                 "nonObjectCount": sum(item["status"] == "non-object" for item in timings),
+                                 "startedUtcMs": started_utc, "completedUtcMs": int(time.time() * 1000),
+                                 "startedMonotonicSeconds": started, "completedMonotonicSeconds": time.monotonic(), "reads": timings})
         return observed
 
-    def cohort(self, run_id, segment):
+    def cohort(self, run_id, segment, *, phase="initial", observation=1):
         records = []
         full = {}
-        for item in self.states(run_id, segment):
+        for item in self.states(run_id, segment, phase=phase, observation=observation):
             record = item["value"]
             _require(type(record) is dict, "selected-record-missing")
             full[record["recordId"]] = json.loads(json.dumps(record, sort_keys=True))
@@ -1725,8 +1763,9 @@ class _PlatformRetentionConsumer:
             _require(writer is None or observed_writer == writer, "selected-writer-drift")
             writer = observed_writer
             cohorts[segment] = validate_cohort(self.cohort(run_id, segment), run_id=run_id, segment=segment, emitted_ms=self.segments[segment])
+            self.validated_expiries[segment] = {ordinal: record["expiresUtcMs"] for ordinal, record in enumerate(cohorts[segment].values(), start=1)}
         self.wait(self.segments["cohort-a"] + 3540000, clocks["cohort-a"] + 3540)
-        validate_cohort(self.cohort(run_id, "cohort-a"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
+        validate_cohort(self.cohort(run_id, "cohort-a", phase="pre-expiry-3540"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
         bound = self.physical(run_id)
         bound_rows = {row["recordId"]: row for row in bound["rows"]}
         _require(len(bound["rows"]) == len(bound_rows) == 125 and set(bound_rows) == set(cohorts["cohort-a"]), "selected-ttl-bound-missing")
@@ -1734,12 +1773,14 @@ class _PlatformRetentionConsumer:
             expiry = cohorts["cohort-a"][identity]["expiresUtcMs"]
             _require(row["record"] == self.full_records["cohort-a"][identity] and type(row["expiresUtcMs"]) is int and expiry <= row["expiresUtcMs"] <= expiry + 900000 and bound["observedUtcMs"] < expiry, "selected-ttl-bound-drift")
         self.wait(self.segments["cohort-a"] + 3590000, clocks["cohort-a"] + 3590)
-        validate_cohort(self.cohort(run_id, "cohort-a"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
+        validate_cohort(self.cohort(run_id, "cohort-a", phase="pre-expiry-3590"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
         self.wait(self.segments["cohort-a"] + 3600124, clocks["cohort-a"] + 3600.124)
+        poll = 0
         while True:
+            poll += 1
             from access_telemetry_producer_common import _qualification_record_ids
             ids = _qualification_record_ids(run_id, "cohort-a")
-            absent = [record_id for record_id, item in zip(ids, self.states(run_id, "cohort-a")) if item["value"] is None]
+            absent = [record_id for record_id, item in zip(ids, self.states(run_id, "cohort-a", phase="post-expiry", observation=poll)) if item["value"] is None]
             self.check()
             physical = self.physical(run_id)
             for row in physical["rows"]:
@@ -1748,11 +1789,11 @@ class _PlatformRetentionConsumer:
             # elapsed PostgreSQL expiry and strong absence. It does not identify
             # a physical deletion mechanism or claim full reclamation proof.
             self.ttl_absent.update(identity for identity in absent if physical["observedUtcMs"] >= bound_rows[identity]["expiresUtcMs"])
-            indexed = {entry["recordId"] for bucket in self.states(run_id, "cohort-a", buckets=True) if bucket["value"] is not None for entry in bucket["value"]["entries"]}
+            indexed = {entry["recordId"] for bucket in self.states(run_id, "cohort-a", buckets=True, phase="post-expiry", observation=poll) if bucket["value"] is not None for entry in bucket["value"]["entries"]}
             actor = self.actor()
             observation = {"consistency": "strong", "absentRecordIds": absent, "removedIndexIds": [record_id for record_id in ids if record_id not in indexed], "reminderSequenceBefore": self.before_sequence, "reminderSequenceAfter": actor["ReminderSequence"], "progressObservedUtcMs": actor["LastPurgeUnixMilliseconds"] or 0, "actorDeletedRecordIds": [], "ttlAbsentRecordIds": sorted(self.ttl_absent)}
             passed = validate_purge(observation, cohorts["cohort-a"], now_ms=int(time.time() * 1000))
-            validate_cohort(self.cohort(run_id, "cohort-b"), run_id=run_id, segment="cohort-b", emitted_ms=self.segments["cohort-b"], expected=cohorts["cohort-b"])
+            validate_cohort(self.cohort(run_id, "cohort-b", phase="preservation", observation=poll), run_id=run_id, segment="cohort-b", emitted_ms=self.segments["cohort-b"], expected=cohorts["cohort-b"])
             if passed:
                 return {"status": "functional-observations-passed", "runId": run_id, "profileSha256": self.observation["profileHash"], "initialActorState": initial_actor_observation, "cohorts": cohorts, "canonicalRecords": self.full_records, "cohortClocks": {segment: {"utcMs": self.segments[segment], "monotonicSeconds": clocks[segment]} for segment in clocks}, "ttlEvidence": {"claim": "local-pre-expiry-row-and-ttl-bound-plus-elapsed-postgresql-clock-and-strong-absence", "preflight": preflight, "preExpiry": bound, "lastObservation": physical}, "purge": observation, "lifecycleOutcome": "pending-real-Platform-outcome"}
             self.wait(int(time.time() * 1000) + 30000, time.monotonic() + 30)

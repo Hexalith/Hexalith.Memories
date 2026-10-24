@@ -105,11 +105,31 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     clock.monotonic += 14400
                 gate()
             records, emitted = {}, {}
+            slow_guard_pending = False
             record_keys = {segment: f.fixed_record_keys("offline-run", segment) for segment in ("cohort-a", "cohort-b")}
+            class TimedReads:
+                """Keep the final A boundary crossing deterministic at the unchanged batch size."""
+                def __init__(self, *, max_workers):
+                    if max_workers != 16:
+                        raise AssertionError("selected read concurrency changed")
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return False
+
+                def map(self, action, values):
+                    values = list(values)
+                    if (variant == "late-a" and values[0][1] in record_keys["cohort-a"]
+                            and clock.seconds * 1000 >= emitted["cohort-a"] + 3590000):
+                        sleep(2)
+                    return map(action, values)
             def iso(milliseconds):
                 return datetime.fromtimestamp(milliseconds / 1000, timezone.utc).isoformat()
             calls = []
             def http(_, request, **kwargs):
+                nonlocal slow_guard_pending
                 calls.append(request.full_url)
                 headers = {key.lower(): value for key, value in request.headers.items()}
                 self.assertIn(headers["dapr-api-token"], {"fixture-app-secret", "fixture-dapr-secret"})
@@ -159,6 +179,8 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                         response.status = 204
                         return response
                     purged = "cohort-a" in emitted and clock.seconds * 1000 >= emitted["cohort-a"] + 3600124
+                    if variant == "delayed-purge":
+                        purged = purged and clock.seconds * 1000 >= emitted["cohort-a"] + 3660124
                     value = {"ReminderSequence": 2 if purged else 1, "LastPurgeUnixMilliseconds": int(clock.seconds * 1000) if purged else 0}
                 else:
                     key = path.split("/access-telemetry-store/", 1)[1]
@@ -166,6 +188,14 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     a_expired = "cohort-a" in emitted and clock.seconds * 1000 >= emitted["cohort-a"] + 3600124
                     if key in record_keys["cohort-a"] and a_expired:
                         value = None
+                    if key == record_keys["cohort-a"][6]:
+                        if variant == "early-a" or variant == "first-preexpiry-a" and clock.seconds * 1000 >= emitted["cohort-a"] + 3540000:
+                            value = None
+                        if variant == "non-object-a":
+                            value = "fixture-response-secret"
+                        if variant == "early-a-slow-guard" and emitted["cohort-a"] + 3540000 <= clock.seconds * 1000 < emitted["cohort-a"] + 3600000:
+                            value = None
+                            slow_guard_pending = True
                     if key in record_keys["cohort-b"] and a_expired:
                         if variant == "b-loss": value = None
                         if variant == "b-mutation": value = {**value, "payload": {"message": "mutated"}}
@@ -196,6 +226,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             report = root / "native-tests/native.trx"
             if variant == "persist-failure": write(report.with_name("functional-observations.json"), {"occupied": True})
             if variant == "accounting-occupied": write(report.with_name("cohort-a-accounting.json"), {"occupied": True})
+            if variant == "read-occupied": write(report.with_name("state-read-initial-cohort-a-record-01.json"), {"occupied": True})
             outside = base / "outside"
             if variant == "symlink-output":
                 outside.mkdir(mode=0o700)
@@ -209,11 +240,29 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     artifact = Path("/", *consumer.loaded_inputs[0].parts)
                     artifact.write_bytes(artifact.read_bytes() + b"changed-after-observation-return")
                 return observed
-            with patch.dict(os.environ, env, clear=True), patch.object(f, "__file__", str(candidate / "tools/access_telemetry_functional_retention.py")), patch.object(f, "datetime", Utc), patch.object(f.time, "time", lambda: clock.seconds), patch.object(f.time, "monotonic", lambda: clock.monotonic), patch.object(f.time, "sleep", sleep), patch("urllib.request.OpenerDirector.open", http), patch.object(f.subprocess, "run", sql), patch.object(f._PlatformRetentionConsumer, "execute", execute), redirect_stdout(io.StringIO()) as output:
+            original_check = f._PlatformRetentionConsumer.check
+            def check(consumer):
+                nonlocal slow_guard_pending
+                original_check(consumer)
+                if slow_guard_pending:
+                    slow_guard_pending = False
+                    sleep(70)
+            executor = TimedReads if variant in {"late-a", "early-a-slow-guard"} else f.ThreadPoolExecutor
+            with patch.dict(os.environ, env, clear=True), patch.object(f, "__file__", str(candidate / "tools/access_telemetry_functional_retention.py")), patch.object(f, "datetime", Utc), patch.object(f.time, "time", lambda: clock.seconds), patch.object(f.time, "monotonic", lambda: clock.monotonic), patch.object(f.time, "sleep", sleep), patch.object(f, "ThreadPoolExecutor", executor), patch("urllib.request.OpenerDirector.open", http), patch.object(f.subprocess, "run", sql), patch.object(f._PlatformRetentionConsumer, "execute", execute), patch.object(f._PlatformRetentionConsumer, "check", check), redirect_stdout(io.StringIO()) as output:
                 result = f.run_selected_platform_retention()
             self.assertNotIn("fixture-app-secret", output.getvalue())
             self.assertNotIn("fixture-dapr-secret", output.getvalue())
             status = json.loads(output.getvalue())
+            self.read_diagnostics = {}
+            for capture in sorted((root / "native-tests").glob("state-read-*.json")):
+                raw = capture.read_text()
+                self.assertLess(len(raw), 1048576)
+                self.assertEqual(0o600, capture.stat().st_mode & 0o777)
+                for private in ("fixture-response-secret", "fixture-app-secret", "fixture-dapr-secret", "http://", "original", "records/", "expiry-bucket/"):
+                    self.assertNotIn(private, raw)
+                self.read_diagnostics[capture.name] = json.loads(raw)
+            if variant == "read-occupied":
+                self.assertEqual({"occupied": True}, self.read_diagnostics["state-read-initial-cohort-a-record-01.json"])
             captures = sorted((root / "native-tests").glob("cohort-*-accounting.json"))
             if variant == "accounting-occupied":
                 self.assertEqual({"occupied": True}, json.loads(captures[0].read_text()))
@@ -267,7 +316,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                         self.assertEqual({"sanitizerUnavailable": 0, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {}, "sanitizerUnavailableBootstrapStages": {},
                                           "lifecycleHealth": "Healthy", "lifecycleReason": "None", "bootstrap": pass_bootstrap(emitted[snapshot["segmentId"]])},
                                          snapshot["rejectionBreakdown"])
-            if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact"}:
+            if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact", "delayed-purge"}:
                 self.assertEqual(0, result, status)
                 self.assertEqual("functional-observations-passed", status["status"])
                 detail = json.loads(report.with_name("functional-observations.json").read_text())
@@ -289,17 +338,108 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             else:
                 self.assertEqual(1, result, status)
                 self.assertEqual("rejected", status["status"])
-                reasons = {"accounting-loss": "functional-accounting-loss", "pre-enqueue-rejection": "functional-accounting-loss", **{name: "functional-accounting-loss" for name in CONSISTENT_REJECTIONS}, "breakdown-private": "functional-accounting-rejection-breakdown", "breakdown-bootstrap-private": "functional-accounting-rejection-breakdown", "breakdown-nonempty-on-pass": "functional-accounting-rejection-breakdown", "accounting-private": "functional-accounting-schema", "accounting-bounds": "functional-accounting-loss", "accounting-foreign": "functional-accounting-identity", "accounting-occupied": "functional-selected-input-refused", "large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
+                reasons = {**{name: "functional-selected-record-missing" for name in ("late-a", "early-a", "first-preexpiry-a", "non-object-a", "early-a-slow-guard")}, "read-occupied": "functional-selected-input-refused", "accounting-loss": "functional-accounting-loss", "pre-enqueue-rejection": "functional-accounting-loss", **{name: "functional-accounting-loss" for name in CONSISTENT_REJECTIONS}, "breakdown-private": "functional-accounting-rejection-breakdown", "breakdown-bootstrap-private": "functional-accounting-rejection-breakdown", "breakdown-nonempty-on-pass": "functional-accounting-rejection-breakdown", "accounting-private": "functional-accounting-schema", "accounting-bounds": "functional-accounting-loss", "accounting-foreign": "functional-accounting-identity", "accounting-occupied": "functional-selected-input-refused", "large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
                 self.assertEqual(reasons[variant], status["reason"])
-                if variant == "final-return-drift":
+                if variant not in {"persist-failure", "symlink-output"}:
                     self.assertFalse(report.with_name("functional-observations.json").exists())
             if variant == "symlink-output": self.assertEqual([], list(outside.iterdir()))
             else:
                 counters = xml.parse(report).find("{*}ResultSummary/{*}Counters")
-                self.assertEqual("1" if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact"} else "0", counters.attrib["passed"])
+                self.assertEqual("1" if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact", "delayed-purge"} else "0", counters.attrib["passed"])
                 if result:
                     self.assertEqual(status["reason"], xml.parse(report).find("{*}Results/{*}UnitTestResult/{*}Output/{*}ErrorInfo/{*}Message").text)
             return status
+
+    def test_read_diagnostics_cover_all_selected_phases_and_real_key_ordinals(self):
+        self.run_sequence()
+        expected = {("initial", "cohort-a", "record"), ("initial", "cohort-b", "record"),
+                    ("pre-expiry-3540", "cohort-a", "record"), ("pre-expiry-3590", "cohort-a", "record"),
+                    ("post-expiry", "cohort-a", "record"), ("post-expiry", "cohort-a", "bucket"),
+                    ("preservation", "cohort-b", "record")}
+        snapshots = list(self.read_diagnostics.values())
+        self.assertEqual(expected, {(item["phase"], item["segmentId"], item["kind"]) for item in snapshots})
+        # The stored TTL extends one second past logical expiry, so the normal
+        # fixture needs its unchanged second poll to establish TTL absence.
+        self.assertEqual(10, len(snapshots))
+        for item in snapshots:
+            self.assertEqual("completed", item["status"])
+            self.assertEqual(list(range(1, item["keyCount"] + 1)), [read["ordinal"] for read in item["reads"]])
+            expected_keys = 125 if item["kind"] == "record" else len({key.split("/")[1] for key in f.fixed_record_keys("offline-run", "cohort-a")})
+            self.assertEqual(expected_keys, item["keyCount"])
+            self.assertEqual(item["keyCount"] if item["phase"] == "post-expiry" else 0, item["missingCount"])
+            self.assertEqual(0, item["nonObjectCount"])
+            self.assertLessEqual(item["startedUtcMs"], item["completedUtcMs"])
+            self.assertLessEqual(item["startedMonotonicSeconds"], item["completedMonotonicSeconds"])
+            for read in item["reads"]:
+                self.assertLessEqual(item["startedUtcMs"], read["startedUtcMs"])
+                self.assertLessEqual(read["startedUtcMs"], read["completedUtcMs"])
+                self.assertLessEqual(read["startedUtcMs"], read["responseObservedUtcMs"])
+                self.assertLessEqual(read["responseObservedUtcMs"], read["completedUtcMs"])
+                self.assertLessEqual(read["completedUtcMs"], item["completedUtcMs"])
+                self.assertLessEqual(item["startedMonotonicSeconds"], read["startedMonotonicSeconds"])
+                self.assertLessEqual(read["startedMonotonicSeconds"], read["completedMonotonicSeconds"])
+                self.assertLessEqual(read["startedMonotonicSeconds"], read["responseObservedMonotonicSeconds"])
+                self.assertLessEqual(read["responseObservedMonotonicSeconds"], read["completedMonotonicSeconds"])
+                self.assertLessEqual(read["completedMonotonicSeconds"], item["completedMonotonicSeconds"])
+
+    def test_late_preexpiry_a_read_crossing_expiry_retains_phase_missing_ordinals_and_timing(self):
+        self.run_sequence("late-a")
+        self.assertIn("state-read-pre-expiry-3590-cohort-a-record-01.json", self.read_diagnostics)
+        item = self.read_diagnostics["state-read-pre-expiry-3590-cohort-a-record-01.json"]
+        self.assertEqual(("pre-expiry-3590", "cohort-a", 45), (item["phase"], item["segmentId"], item["missingCount"]))
+        self.assertEqual(16, item["completedMonotonicSeconds"] - item["startedMonotonicSeconds"])
+        absent = [read for read in item["reads"] if read["status"] == "absent"]
+        self.assertEqual(list(range(81, 126)), [read["ordinal"] for read in absent])
+        self.assertTrue(all(item["startedUtcMs"] < read["expectedExpiryUtcMs"] <= read["responseObservedUtcMs"] for read in absent))
+
+    def test_initial_a_absence_is_distinct_from_preexpiry_boundary_and_b_loss(self):
+        self.run_sequence("early-a")
+        self.assertIn("state-read-initial-cohort-a-record-01.json", self.read_diagnostics)
+        item = self.read_diagnostics["state-read-initial-cohort-a-record-01.json"]
+        self.assertEqual(("initial", "cohort-a", 1), (item["phase"], item["segmentId"], item["missingCount"]))
+        self.assertEqual([7], [read["ordinal"] for read in item["reads"] if read["status"] == "absent"])
+
+    def test_first_preexpiry_a_absence_retains_read_well_before_known_expiry(self):
+        self.run_sequence("first-preexpiry-a")
+        item = self.read_diagnostics["state-read-pre-expiry-3540-cohort-a-record-01.json"]
+        missing = [read for read in item["reads"] if read["status"] == "absent"]
+        self.assertEqual([7], [read["ordinal"] for read in missing])
+        self.assertGreater(missing[0]["expectedExpiryUtcMs"] - missing[0]["completedUtcMs"], 59000)
+
+    def test_b_preservation_loss_retains_segment_and_all_missing_ordinals(self):
+        self.run_sequence("b-loss")
+        self.assertIn("state-read-preservation-cohort-b-record-01.json", self.read_diagnostics)
+        item = self.read_diagnostics["state-read-preservation-cohort-b-record-01.json"]
+        self.assertEqual(("preservation", "cohort-b", 125), (item["phase"], item["segmentId"], item["missingCount"]))
+        self.assertTrue(all(read["completedUtcMs"] < read["expectedExpiryUtcMs"] for read in item["reads"]))
+
+    def test_non_object_response_is_bounded_without_retaining_its_secret_value(self):
+        self.run_sequence("non-object-a")
+        item = self.read_diagnostics["state-read-initial-cohort-a-record-01.json"]
+        self.assertEqual((0, 1), (item["missingCount"], item["nonObjectCount"]))
+        self.assertEqual([7], [read["ordinal"] for read in item["reads"] if read["status"] == "non-object"])
+
+    def test_read_observation_cannot_replace_existing_evidence(self):
+        self.run_sequence("read-occupied")
+        self.assertEqual(1, len(self.read_diagnostics))
+
+    def test_response_time_precedes_slow_guard_completion_without_implying_late_absence(self):
+        self.run_sequence("early-a-slow-guard")
+        item = self.read_diagnostics["state-read-pre-expiry-3540-cohort-a-record-01.json"]
+        read = item["reads"][6]
+        self.assertEqual("absent", read["status"])
+        self.assertLess(read["responseObservedUtcMs"], read["expectedExpiryUtcMs"])
+        self.assertLess(read["expectedExpiryUtcMs"], read["completedUtcMs"])
+        self.assertEqual(70000, read["completedUtcMs"] - read["responseObservedUtcMs"])
+        self.assertEqual(70, read["completedMonotonicSeconds"] - read["responseObservedMonotonicSeconds"])
+
+    def test_repeated_purge_and_preservation_observations_use_distinct_bounded_slots(self):
+        self.run_sequence("delayed-purge")
+        self.assertEqual(13, len(self.read_diagnostics))
+        for phase, segment, kind in (("post-expiry", "cohort-a", "record"), ("post-expiry", "cohort-a", "bucket"), ("preservation", "cohort-b", "record")):
+            for poll in (1, 2, 3):
+                item = self.read_diagnostics[f"state-read-{phase}-{segment}-{kind}-{poll:02d}.json"]
+                self.assertEqual(poll, item["observation"])
 
     def test_capability_refusal_and_secret_projection_are_retained_before_unchanged_loss_failure(self):
         for variant in ("capability-refusal", "capability-secret"):
