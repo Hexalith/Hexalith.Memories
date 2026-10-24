@@ -185,6 +185,7 @@ public class IndexSyntacticActivityTests
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
 
         IndexInput input = CreateTestInput() with
         {
@@ -217,6 +218,7 @@ public class IndexSyntacticActivityTests
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
 
         IndexInput input = CreateTestInput();
         IndexSyntacticActivity activity = new(redis, Substitute.For<ILogger<IndexSyntacticActivity>>());
@@ -259,6 +261,7 @@ public class IndexSyntacticActivityTests
 
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
         return redis;
     }
 

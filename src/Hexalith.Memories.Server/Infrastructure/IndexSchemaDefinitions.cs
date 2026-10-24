@@ -525,6 +525,20 @@ internal static class IndexSchemaDefinitions
         return problems;
     }
 
+    /// <summary>Validates the optional source-publication capability field without changing the legacy base schema.</summary>
+    internal static bool IsNumericAttribute(RedisResult raw, string name)
+    {
+        foreach (RedisResult attribute in TryGetTopLevelArray(raw, "attributes") ?? [])
+        {
+            Dictionary<string, string> values = ParseKeyValuePairs(attribute);
+            if (values.TryGetValue("identifier", out string? identifier) && identifier.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return values.TryGetValue("type", out string? type) && type.Equals("NUMERIC", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        return false;
+    }
+
     /// <summary>Gets the indexed attribute identifiers from a raw <c>FT.INFO</c> response.</summary>
     /// <param name="raw">The raw response.</param>
     /// <returns>A set of indexed field identifiers.</returns>

@@ -30,6 +30,35 @@ public sealed class IngestionStatusEndpointAuthorizationTests : IDisposable
         throwOnError: true)!;
     private readonly EventStoreWebAppFactory _factory = new();
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SourceInventoryRejectsOtherTenantBeforeReadingOrFencing(bool fence)
+    {
+        using HttpClient client = CreateAuthorizedClient("tenant-a");
+        string route = "/api/v1/tenants/tenant-b/source-inventory" + (fence ? "/fence?sourceUri=urn%3Asynthetic&permanent=true" : "?sourceUri=urn%3Asynthetic");
+        using var request = new HttpRequestMessage(fence ? HttpMethod.Post : HttpMethod.Get, route);
+        using HttpResponseMessage response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PrivilegedQualificationRoutesDenyAuthenticatedTenantWithoutOwnerClaimBeforeReadingOrMutation(bool observation)
+    {
+        _factory.ConfigurationOverrides["Memories:Testing:EnableSourceInventoryQualification"] = "true";
+        _factory.ConfigurationOverrides["Memories:Testing:UseFakeEmbedding"] = "true";
+        const string tenant = "parties-recovery-denied";
+        using HttpClient client = CreateAuthorizedClient(tenant);
+        string suffix = observation ? "/owned-derived-state" : "/qualify-owned-test-scope";
+        using var request = new HttpRequestMessage(observation ? HttpMethod.Get : HttpMethod.Post,
+            $"/api/v1/tenants/{tenant}/source-inventory" + suffix + "?sourceUri=urn%3Ahexalith%3Aparties%3Aparties-recovery-denied%3Aparty%3Asynthetic");
+        using HttpResponseMessage response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        _factory.RedisDatabase.ReceivedCalls().ShouldBeEmpty("Denial must precede coverage/admission reads and mutations.");
+    }
+
     [Fact]
     public async Task SingleWorkflowStatus_WithMismatchedTenant_ReturnsTenantForbiddenWithoutRawWorkflowState()
     {

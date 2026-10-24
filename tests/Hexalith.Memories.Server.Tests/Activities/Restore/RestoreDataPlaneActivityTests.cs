@@ -251,6 +251,7 @@ public class RestoreDataPlaneActivityTests
             IDatabase redisDb = Substitute.For<IDatabase>();
             IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
             redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(redisDb);
+            Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(redisDb);
 
             (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
             IGraphQueryBuilder builder = CreateMockBuilder();
@@ -313,6 +314,7 @@ public class RestoreDataPlaneActivityTests
             IDatabase db = Substitute.For<IDatabase>();
             IConnectionMultiplexer falkorDb = Substitute.For<IConnectionMultiplexer>();
             falkorDb.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+            Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
 
             // FalkorDB.QueryAsync calls db.ExecuteAsync("GRAPH.QUERY", ...); it must return a 3-element array.
             RedisResult fakeGraphResult = RedisResult.Create(

@@ -285,8 +285,8 @@ public class GraphQueryBuilderTests
             "mu-001", "case", "content", "hash", "uri", SourceType.File,
             "provider", "model", 3, "u@example.com", DateTimeOffset.UtcNow, "{}");
 
-        query.ShouldContain("coalesce(m.isStub, false) AS previousIsStub");
-        query.ShouldContain("m.stubCreatedAt AS stubCreatedAt");
+        query.ShouldContain("coalesce(prior.isStub, false) AS previousIsStub");
+        query.ShouldContain("prior.stubCreatedAt AS stubCreatedAt");
         query.ShouldContain("m.isStub = false");
         query.ShouldContain("RETURN previousIsStub, stubCreatedAt");
     }
@@ -508,8 +508,8 @@ public class GraphQueryBuilderTests
     {
         (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-start-001", 3, null);
 
-        query.ShouldNotContain("WHERE");
-        query.ShouldNotContain("caseId");
+        query.ShouldNotContain("n.caseId = $caseId");
+        query.ShouldNotContain("$caseId");
         parameters.ShouldNotContainKey("caseId");
     }
 
@@ -518,7 +518,7 @@ public class GraphQueryBuilderTests
     {
         (string query, IDictionary<string, object> parameters) = _builder.BuildTraverseFromNode("mu-start-001", 3, "");
 
-        query.ShouldNotContain("WHERE");
+        query.ShouldNotContain("n.caseId = $caseId");
         parameters.ShouldNotContainKey("caseId");
     }
 

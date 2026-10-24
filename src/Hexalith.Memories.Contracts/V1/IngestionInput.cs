@@ -63,4 +63,22 @@ public sealed record IngestionInput : IWorkflowTraceContextCarrier
     /// permanent <c>sourceUri → MemoryUnitId</c> mapping; it never replaces it. Story 18.4.
     /// </summary>
     public string? IdempotencyToken { get; init; }
+
+    /// <summary>Gets whether the scheduler durably admitted this workflow to the source inventory. Absent on legacy histories.</summary>
+    public bool SourceInventoryTracked { get; init; }
+
+    /// <summary>Gets whether to conditionally refresh successful content. Ordinary ingestion retains its deduplication defaults.</summary>
+    public bool RefreshExistingSource { get; init; }
+
+    /// <summary>Gets the nonnegative monotonic source revision supplied by the authoritative producer.</summary>
+    public long SourceRevisionNumber { get; init; }
+
+    /// <summary>Gets the scheduler-captured binding of revision identity, source, content type, metadata and exact bytes.</summary>
+    public string? RefreshIdentityDigest { get; init; }
+
+    /// <summary>Gets the canonical predecessor required for refresh publication, or null when the source has never been published.</summary>
+    public string? ExpectedMemoryUnitId { get; init; }
+
+    /// <summary>Gets a verified transient cleanup snapshot to reopen; permanent source fences can never be reopened.</summary>
+    public string? ReopenSourceVersion { get; init; }
 }

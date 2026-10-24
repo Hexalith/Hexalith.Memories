@@ -59,7 +59,8 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
 
         if (tenant is null)
         {
-            // Tenant already fully deleted (e.g., DAPR replay after completed deletion)
+            // Technical ownership may still exist independently of the native registry.
+            await context.CallActivityAsync<bool>(nameof(DeleteTenantDataKeysActivity), input, retryOptions);
             return new TenantDeletionResult(input.TenantId, TenantStatus.Active, "Tenant already deleted.");
         }
 
@@ -97,6 +98,10 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
 
         try
         {
+            // Fence and drain every newly managed writer before any backend teardown.
+            // A pending claim-check/graph save must never race a successful tenant deletion.
+            await context.CallActivityAsync<bool>(nameof(DeleteTenantDataKeysActivity), input, retryOptions);
+
             // Drop RediSearch index (with DD — deletes mu:* hashes)
             await context.CallActivityAsync<bool>(
                 nameof(DeleteRediSearchActivity),
@@ -178,11 +183,7 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
             deletedBackends.Add("graph");
             LogBackendDeleted(logger, input.TenantId, "graph");
 
-            // Clean up remaining Redis data keys (case:*, dedup:*)
-            await context.CallActivityAsync<bool>(
-                nameof(DeleteTenantDataKeysActivity),
-                input,
-                retryOptions);
+            // The state cleanup and permanent admission fence completed before backend deletion.
             deletedBackends.Add("state");
             LogBackendDeleted(logger, input.TenantId, "state");
 

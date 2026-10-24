@@ -103,6 +103,7 @@ public sealed class IndexSemanticChunksActivityTests
     {
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
         redis.GetDatabase().Returns(db);
         return redis;
     }

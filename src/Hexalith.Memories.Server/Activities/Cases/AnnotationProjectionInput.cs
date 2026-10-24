@@ -19,4 +19,5 @@ internal sealed record AnnotationProjectionInput(
     string IngestedBy,
     IReadOnlyDictionary<string, MetadataField> Metadata,
     IngestionWorkflowConfiguration? WorkflowConfiguration = null,
-    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;
+    WorkflowTraceContext? TraceContext = null,
+    bool TrackSourceInventory = false) : IWorkflowTraceContextCarrier;

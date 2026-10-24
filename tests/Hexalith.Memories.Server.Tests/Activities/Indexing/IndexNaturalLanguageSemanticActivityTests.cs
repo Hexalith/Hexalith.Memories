@@ -170,6 +170,7 @@ public class IndexNaturalLanguageSemanticActivityTests
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
         IndexNaturalLanguageSemanticActivity activity =
             new(redis, Substitute.For<ILogger<IndexNaturalLanguageSemanticActivity>>());
 
@@ -199,6 +200,7 @@ public class IndexNaturalLanguageSemanticActivityTests
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
         return redis;
     }
 

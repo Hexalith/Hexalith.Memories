@@ -46,8 +46,9 @@ internal sealed class PersistFailedUnitActivity : WorkflowTraceLinkedActivity<Fa
     internal const string FieldCorrelationId = "correlationId";
 
     /// <summary>Lua: HSET hash + ZADD sorted-set as one atomic round-trip.
-    /// KEYS[1]=hash, KEYS[2]=sorted-set; ARGV[1..N-2]=field/value pairs; ARGV[N-1]=score; ARGV[N]=member.</summary>
+    /// KEYS[1]=hash, KEYS[2]=sorted-set, KEYS[3]=permanent unit tombstone; ARGV[1..N-2]=field/value pairs; ARGV[N-1]=score; ARGV[N]=member.</summary>
     internal const string PersistScript = """
+        if redis.call('EXISTS',KEYS[3]) == 1 then return 0 end
         redis.call('HSET', KEYS[1], unpack(ARGV, 1, #ARGV - 2))
         redis.call('ZADD', KEYS[2], ARGV[#ARGV - 1], ARGV[#ARGV])
         return 1
@@ -117,10 +118,11 @@ internal sealed class PersistFailedUnitActivity : WorkflowTraceLinkedActivity<Fa
             input.MemoryUnitId,
         ];
 
-        await db.ScriptEvaluateAsync(
+        RedisResult persisted = await TenantIngestionOwnership.WriteAsync(db, input.TenantId,
             PersistScript,
-            [hashKey, zKey],
+            [hashKey, zKey, SourcePublicationVisibility.Tombstone(input.TenantId, input.MemoryUnitId)],
             argv).ConfigureAwait(false);
+        if ((long)persisted != 1) { return false; }
 
         RetryFailureLog.LogFailedUnitPersisted(
             _logger, input.TenantId, input.MemoryUnitId, input.Stage, input.ErrorCode);

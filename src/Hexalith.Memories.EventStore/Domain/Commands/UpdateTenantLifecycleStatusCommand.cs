@@ -12,7 +12,7 @@ using Hexalith.Memories.EventStore.Domain;
 public sealed record UpdateTenantLifecycleStatusCommand(
     string TenantId,
     TenantStatus Status,
-    DateTimeOffset UpdatedAt) : IMemoriesCommandContract
+    DateTimeOffset UpdatedAt) : IMemoriesCommandContract, Hexalith.EventStore.Contracts.Commands.ICommandContract
 {
     /// <inheritdoc/>
     public static string Domain => MemoriesDomain.Tenants;

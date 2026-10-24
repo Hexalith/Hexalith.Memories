@@ -11,6 +11,9 @@ using Hexalith.Memories.Server.Activities.Ingestion;
 /// <summary>Input for writing one or more raw semantic chunk vectors for a base memory unit.</summary>
 public sealed record SemanticChunkIndexInput : IWorkflowTraceContextCarrier
 {
+    /// <summary>Gets whether writes are staged under durable source admission and unit erasure fences.</summary>
+    public bool SourceInventoryTracked { get; init; }
+
     /// <summary>Gets the stable base memory-unit identifier.</summary>
     public required string MemoryUnitId { get; init; }
 

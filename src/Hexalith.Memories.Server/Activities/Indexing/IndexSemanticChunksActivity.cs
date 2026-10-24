@@ -114,7 +114,7 @@ public sealed class IndexSemanticChunksActivity : WorkflowTraceLinkedActivity<Se
                 hashEntries.Add(new HashEntry("cloudeventSubject", cloudEventSubject));
             }
 
-            await db.HashSetAsync(hashKey, [.. hashEntries]).ConfigureAwait(false);
+            await SourcePublicationVisibility.WriteAsync(db, input.TenantId, input.MemoryUnitId, hashKey, [.. hashEntries], input.SourceInventoryTracked).ConfigureAwait(false);
         }
 
         _logger.LogInformation(

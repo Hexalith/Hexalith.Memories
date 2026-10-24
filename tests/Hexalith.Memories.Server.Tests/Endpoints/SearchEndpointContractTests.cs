@@ -45,6 +45,46 @@ public sealed class SearchEndpointContractTests : IDisposable
 
     private readonly TelemetryWebAppFactory _factory = new();
 
+    [Theory]
+    [InlineData("/api/v1/search?tenantId=acme-search&query=publication&axis=graph&startNodeId=unit", "search")]
+    [InlineData("/api/v1/tenants/acme-search/traverse?startNodeId=unit", "traverse")]
+    public async Task GraphPublicationOverlapReturnsRetryableConflictWithErrorTelemetry(string route, string operation)
+    {
+        StubTenantActive("acme-search");
+        _factory.RedisDatabase.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns((RedisValue)"1");
+        _factory.RedisDatabase.ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("local current=redis.call('GET'", StringComparison.Ordinal)),
+            Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>()).Returns(RedisResult.Create((RedisValue)0));
+        using HttpClient client = _factory.CreateClient();
+        using HttpResponseMessage response = await client.GetAsync(route, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        (await ReadErrorResponseAsync(response)).Code.ShouldBe("SOURCE_PUBLICATION_CHANGED");
+        AccessTelemetryEvent audit = _factory.AuditLogs.AccessTelemetryCaptures.Select(capture => capture.AuditEvent)
+            .OfType<AccessTelemetryEvent>().Single(item => item.OperationType == operation);
+        audit.Outcome.ShouldBe("error"); audit.ErrorCode.ShouldBe("SOURCE_PUBLICATION_CHANGED"); audit.ResultCount.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task PublicationMismatchReturnsErrorTelemetryWithoutRecordingASuccessfulResultCount()
+    {
+        StubTenantActive("acme-search");
+        StubFusionWeights(new FusionWeights());
+        _factory.RedisDatabase.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns((RedisValue)"1");
+        _factory.RedisDatabase.StringGetAsync(Arg.Any<RedisKey[]>(), Arg.Any<CommandFlags>())
+            .Returns([(RedisValue)"1", (RedisValue)"current-unit"]);
+        using WebApplicationFactory<Program> factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<HybridSearchService>();
+            services.AddSingleton(CreateHybridSearchServiceWithSyntacticResults(MakeSyntacticResult("retired-unit")));
+        }));
+        using HttpClient client = factory.CreateClient();
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/search?tenantId=acme-search&query=publication&axis=hybrid&axes=syntactic");
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        (await ReadErrorResponseAsync(response)).Code.ShouldBe("SOURCE_PUBLICATION_CHANGED");
+        AccessTelemetryEvent audit = _factory.AuditLogs.AccessTelemetryCaptures.Select(capture => capture.AuditEvent)
+            .OfType<AccessTelemetryEvent>().Single(item => item.OperationType == "search");
+        audit.Outcome.ShouldBe("error"); audit.ErrorCode.ShouldBe("SOURCE_PUBLICATION_CHANGED"); audit.ResultCount.ShouldBeNull();
+    }
+
     [Fact]
     public async Task HybridSearch_WithSeparatorOnlyAxes_ReturnsInvalidAxis()
     {

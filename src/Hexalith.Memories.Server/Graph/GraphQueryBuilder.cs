@@ -108,7 +108,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         // previousIsStub so IndexGraphActivity can emit 9154 when a stub transitions to real, and
         // isStub is cleared. stubCreatedAt is NOT reset (post-mortem-friendly; operators compute
         // retroactive resolution latency = resolvedAt - stubCreatedAt).
-        const string query = "MERGE (m:MemoryUnit {id: $id}) WITH m, coalesce(m.isStub, false) AS previousIsStub, m.stubCreatedAt AS stubCreatedAt SET m.caseId = $caseId, m.content = $content, m.contentHash = $contentHash, m.sourceUri = $sourceUri, m.sourceType = $sourceType, m.embeddingProvider = $provider, m.embeddingModel = $model, m.embeddingDimensions = $dims, m.indexedAt = $indexedAt, m.ingestedBy = $ingestedBy, m.ingestedAt = $ingestedAt, m.lastUpdated = $lastUpdated, m.metadataJson = $metadataJson, m.isStub = false RETURN previousIsStub, stubCreatedAt";
+        const string query = "OPTIONAL MATCH (t:MemoryUnitTombstone {id:$id}) OPTIONAL MATCH (prior:MemoryUnit {id:$id}) WITH t, coalesce(prior.isStub, false) AS previousIsStub, prior.stubCreatedAt AS stubCreatedAt FOREACH (_ IN CASE WHEN t IS NULL THEN [1] ELSE [] END | MERGE (m:MemoryUnit {id: $id}) SET m.caseId = $caseId, m.content = $content, m.contentHash = $contentHash, m.sourceUri = $sourceUri, m.sourceType = $sourceType, m.embeddingProvider = $provider, m.embeddingModel = $model, m.embeddingDimensions = $dims, m.indexedAt = $indexedAt, m.ingestedBy = $ingestedBy, m.ingestedAt = $ingestedAt, m.lastUpdated = $lastUpdated, m.metadataJson = $metadataJson, m.isStub = false) RETURN previousIsStub, stubCreatedAt";
 
         Dictionary<string, object> parameters = new()
         {
@@ -259,7 +259,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         // Story 9.2 Task 7.1 — ON CREATE SET is atomic and only fires on node creation. Existing
         // stub nodes preserve their original stubCreatedAt (post-mortem-friendly), and already-
         // resolved real nodes are not regressed to isStub=true (Risk #12).
-        const string query = "MERGE (m:MemoryUnit {id: $id}) ON CREATE SET m.isStub = true, m.stubCreatedAt = $stubCreatedAt";
+        const string query = "OPTIONAL MATCH (t:MemoryUnitTombstone {id:$id}) FOREACH (_ IN CASE WHEN t IS NULL THEN [1] ELSE [] END | MERGE (m:MemoryUnit {id: $id}) ON CREATE SET m.isStub = true, m.stubCreatedAt = $stubCreatedAt)";
 
         Dictionary<string, object> parameters = new()
         {
@@ -372,7 +372,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
         string whereClause = string.IsNullOrWhiteSpace(caseId)
             ? string.Empty
             : " WHERE (n.caseId = $caseId OR n.content IS NULL) AND start.caseId = $caseId AND ALL(node IN nodes(p) WHERE (node:MemoryUnit AND (node.caseId = $caseId OR node.content IS NULL)) OR (node:Case AND node.id = $caseId))";
-        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH n, min(length(p)) AS hopDistance RETURN n.id AS nodeId, hopDistance ORDER BY hopDistance ASC, nodeId ASC LIMIT {limit}";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause}{Hexalith.Memories.Server.Ingestion.GraphSourcePublication.NativeFilter} WITH n, min(length(p)) AS hopDistance RETURN n.id AS nodeId, hopDistance ORDER BY hopDistance ASC, nodeId ASC LIMIT {limit}";
 
         Dictionary<string, object> parameters = new()
         {
@@ -431,7 +431,7 @@ public sealed class GraphQueryBuilder : IGraphQueryBuilder
             : " WHERE m.id <> n.id AND ((m:MemoryUnit AND (m.caseId = $caseId OR m.content IS NULL)) OR (m:Case AND m.id = $caseId))";
         // Story 9.2 Task 7.4 — include n.isStub so the traversal service can upgrade gap-marker
         // detection from the "content absent" heuristic to an explicit flag check (Risk #4).
-        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r:{edgeLabels}]-(m){edgeWhereClause} RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, n.isStub AS isStub, hopDistance, collect(DISTINCT {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END, verifiedBy: r.verifiedBy, previousConfidence: r.previousConfidence}}) AS edges ORDER BY coalesce(n.ingestedAt, ''), nodeId ASC LIMIT {limit}";
+        string query = $"MATCH p = (start:MemoryUnit {{id: $startId}})-[:{edgeLabels}*0..{depth}]-(n:MemoryUnit){whereClause}{Hexalith.Memories.Server.Ingestion.GraphSourcePublication.NativeFilter} WITH DISTINCT n, min(length(p)) AS hopDistance OPTIONAL MATCH (n)-[r:{edgeLabels}]-(m){edgeWhereClause} OPTIONAL MATCH (neighborPublication:SourcePublication) WHERE neighborPublication.caseId = m.caseId AND neighborPublication.sourceUri = m.sourceUri RETURN n.id AS nodeId, n.ingestedAt AS ingestedAt, n.content AS content, n.sourceUri AS sourceUri, n.sourceType AS sourceType, n.isStub AS isStub, hopDistance, collect(DISTINCT CASE WHEN neighborPublication IS NULL OR coalesce(neighborPublication.managed,false)=false OR neighborPublication.currentId=m.id THEN {{edgeType: type(r), confidence: r.confidence, origin: r.origin, connectedId: m.id, direction: CASE WHEN startNode(r) = n THEN 'outgoing' ELSE 'incoming' END, verifiedBy: r.verifiedBy, previousConfidence: r.previousConfidence}} ELSE null END) AS edges ORDER BY coalesce(n.ingestedAt, ''), nodeId ASC LIMIT {limit}";
 
         Dictionary<string, object> parameters = new()
         {

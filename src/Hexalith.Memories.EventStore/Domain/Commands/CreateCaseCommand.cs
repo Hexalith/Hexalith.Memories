@@ -13,7 +13,7 @@ public sealed record CreateCaseCommand(
     string CaseId,
     string Name,
     string? Description,
-    DateTimeOffset CreatedAt) : IMemoriesCommandContract
+    DateTimeOffset CreatedAt) : IMemoriesCommandContract, Hexalith.EventStore.Contracts.Commands.ICommandContract
 {
     /// <inheritdoc/>
     public static string Domain => MemoriesDomain.Cases;

@@ -216,6 +216,69 @@ public class MemoriesClient
         return await SendAsync<MemoryUnit>(MemoriesRoutes.CaseMemoryUnitPath(tenantId, caseId, memoryUnitId), ct).ConfigureAwait(false);
     }
 
+    /// <summary>Reads one bounded page of the exact tenant/source inventory across all historical cases.</summary>
+    /// <param name="tenantId">The authorized tenant.</param>
+    /// <param name="sourceUri">The exact canonical URI.</param>
+    /// <param name="cursor">An optional protected continuation.</param>
+    /// <param name="pageSize">The page bound, from one to 100.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>A durable inventory page; a miss never proves complete legacy coverage.</returns>
+    public virtual Task<SourceInventoryPage> GetSourceInventoryAsync(string tenantId, string sourceUri,
+        string? cursor = null, int pageSize = 100, CancellationToken ct = default)
+        => ExecuteWithinHttpTimeoutAsync(effectiveCt => GetSourceInventoryCoreAsync(tenantId, sourceUri, cursor, pageSize, effectiveCt), ct);
+
+    private async Task<SourceInventoryPage> GetSourceInventoryCoreAsync(string tenantId, string sourceUri, string? cursor, int pageSize, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
+        if (pageSize is < 1 or > 100 || cursor?.Length > 8192)
+        { throw new ArgumentOutOfRangeException(nameof(pageSize), "Inventory page or continuation exceeds its bound."); }
+        string path = $"{MemoriesRoutes.SourceInventoryPath(tenantId)}?sourceUri={Uri.EscapeDataString(sourceUri)}&pageSize={pageSize}";
+        if (cursor is not null) { path += "&cursor=" + Uri.EscapeDataString(cursor); }
+        using HttpResponseMessage response = await _httpClient.GetAsync(path, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        const int maximumBytes = 1024 * 1024;
+        if (response.Content.Headers.ContentLength > maximumBytes)
+        { throw CreateInvalidResponseException(response.StatusCode, "Source inventory response exceeds its byte bound."); }
+        using Stream stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using MemoryStream bounded = new();
+        byte[] buffer = new byte[8192];
+        int bytes;
+        while ((bytes = await stream.ReadAsync(buffer, ct).ConfigureAwait(false)) != 0)
+        {
+            if (bounded.Length + bytes > maximumBytes)
+            { throw CreateInvalidResponseException(response.StatusCode, "Source inventory response exceeds its byte bound."); }
+            await bounded.WriteAsync(buffer.AsMemory(0, bytes), ct).ConfigureAwait(false);
+        }
+        ct.ThrowIfCancellationRequested();
+        // Error bodies use the same bounded bytes before the shared remote-error parser.
+        HttpContent original = response.Content;
+        response.Content = new ByteArrayContent(bounded.ToArray());
+        original.Dispose();
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+        SourceInventoryPage page = await ReadRequiredAsync<SourceInventoryPage>(response, ct).ConfigureAwait(false);
+        if (page.Entries is null || page.Entries.Count > pageSize || page.NextCursor?.Length > 8192
+            || page.TenantId != tenantId || page.SourceUri != sourceUri || string.IsNullOrWhiteSpace(page.Version) || page.Version.Length > 200
+            || page.Entries.Any(entry => entry is null || string.IsNullOrWhiteSpace(entry.CaseId) || entry.CaseId.Length > 512
+                || entry.WorkflowInstanceId?.Length > 512 || entry.MemoryUnitId?.Length > 512 || entry.CandidateMemoryUnitId?.Length > 512))
+        { throw CreateInvalidResponseException(response.StatusCode, "Source inventory scope, entries or continuation exceeds its bound."); }
+        return page;
+    }
+
+    /// <summary>Fences all new producers for an exact source before cleanup enumeration.</summary>
+    /// <param name="tenantId">The authorized tenant.</param>
+    /// <param name="sourceUri">The exact canonical URI.</param>
+    /// <param name="permanent">Whether re-admission is permanently prohibited.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The completion task.</returns>
+    public virtual async Task FenceSourceAsync(string tenantId, string sourceUri, bool permanent, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceUri);
+        string path = $"{MemoriesRoutes.SourceInventoryFencePath(tenantId)}?sourceUri={Uri.EscapeDataString(sourceUri)}&permanent={permanent.ToString().ToLowerInvariant()}";
+        using HttpResponseMessage response = await _httpClient.PostAsync(path, null, ct).ConfigureAwait(false);
+        await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Story 18.5 — resolves the canonical <c>MemoryUnitId</c> for a known source URI by exact key via
     /// <c>GET /api/v1/tenants/{tenantId}/cases/{caseId}/memory-units/by-source-uri</c>. This is a deterministic
@@ -412,6 +475,26 @@ public class MemoriesClient
         return await ReadRequiredAsync<IngestionWorkflowStatus>(response, ct).ConfigureAwait(false);
     }
 
+    /// <summary>Refreshes canonical file content with a stable revision token and an exact predecessor condition.</summary>
+    /// <param name="tenantId">The tenant.</param>
+    /// <param name="caseId">The captured case.</param>
+    /// <param name="sourceUri">The unchanged canonical source URI.</param>
+    /// <param name="content">The changed content.</param>
+    /// <param name="contentType">The content type.</param>
+    /// <param name="ingestedBy">The producer.</param>
+    /// <param name="metadata">The optional source metadata.</param>
+    /// <param name="idempotencyToken">The stable revision retry identity.</param>
+    /// <param name="expectedMemoryUnitId">The canonical predecessor, or null for a new source.</param>
+    /// <param name="sourceRevisionNumber">The authoritative monotonic nonnegative source revision.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <param name="reopenSourceVersion">An exact terminal transient-cleanup snapshot, when reopening.</param>
+    /// <returns>The admitted workflow handle.</returns>
+    public virtual Task<string> RefreshAsync(string tenantId, string caseId, string sourceUri, byte[] content,
+        string contentType, string ingestedBy, IReadOnlyDictionary<string, MetadataField>? metadata, string idempotencyToken,
+        string? expectedMemoryUnitId, long sourceRevisionNumber, CancellationToken ct, string? reopenSourceVersion = null)
+        => IngestCoreAsync(tenantId, caseId, sourceUri, content, contentType, ingestedBy, metadata, idempotencyToken, ct,
+            refresh: true, expectedMemoryUnitId, reopenSourceVersion, sourceRevisionNumber);
+
     private async Task<string> IngestCoreAsync(
         string tenantId,
         string caseId,
@@ -421,7 +504,11 @@ public class MemoriesClient
         string ingestedBy,
         IReadOnlyDictionary<string, MetadataField>? metadata,
         string? idempotencyToken,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool refresh = false,
+        string? expectedMemoryUnitId = null,
+        string? reopenSourceVersion = null,
+        long sourceRevisionNumber = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(caseId);
@@ -450,6 +537,10 @@ public class MemoriesClient
             IngestedBy = ingestedBy,
             Metadata = metadataMap,
             IdempotencyToken = string.IsNullOrWhiteSpace(idempotencyToken) ? null : idempotencyToken,
+            RefreshExistingSource = refresh,
+            ExpectedMemoryUnitId = expectedMemoryUnitId,
+            ReopenSourceVersion = reopenSourceVersion,
+            SourceRevisionNumber = sourceRevisionNumber,
         };
 
         using HttpResponseMessage response = await _httpClient
@@ -457,6 +548,12 @@ public class MemoriesClient
             .ConfigureAwait(false);
 
         await ThrowIfNotSuccessAsync(response, ct).ConfigureAwait(false);
+
+        if (refresh && (!response.Headers.TryGetValues(SourceRefreshProtocol.AcknowledgementHeader, out IEnumerable<string>? acknowledgements)
+            || !acknowledgements.SequenceEqual([SourceRefreshProtocol.Version], StringComparer.Ordinal)))
+        {
+            throw CreateInvalidResponseException(response.StatusCode, "The producer did not acknowledge revision-aware source refresh; admission remains unresolved.");
+        }
 
         return await ReadInstanceIdAsync(response, "instanceId", ct).ConfigureAwait(false);
     }

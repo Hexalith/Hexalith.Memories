@@ -56,6 +56,7 @@ public class PersistFailedUnitActivityTests
         RedisKey[] keys = (RedisKey[])args[1]!;
         keys[0].ToString().ShouldBe("tenant-1:failed-unit:mu-99");
         keys[1].ToString().ShouldBe("tenant-1:case:case-1:failed-units");
+        keys[2].ToString().ShouldBe("publication-tombstone:tenant-1:mu-99");
 
         RedisValue[] argv = (RedisValue[])args[2]!;
         argv[^1].ToString().ShouldBe("mu-99");
@@ -144,6 +145,8 @@ public class PersistFailedUnitActivityTests
     private static (IDatabase Db, IConnectionMultiplexer Redis) CreateRedis()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create((RedisValue)1));
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Is<object?>(v => v == null)).Returns(db);

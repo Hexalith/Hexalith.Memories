@@ -32,6 +32,18 @@ public static class MemoriesRoutes
     /// <summary>Anonymous readiness operation intended for DAPR service invocation.</summary>
     public const string Health = "/api/v1/health";
 
+    /// <summary>Exact tenant/source producer inventory route.</summary>
+    public const string SourceInventory = "/api/v1/tenants/{tenantId}/source-inventory";
+
+    /// <summary>Durable exact tenant/source admission-fence route.</summary>
+    public const string SourceInventoryFence = "/api/v1/tenants/{tenantId}/source-inventory/fence";
+
+    /// <summary>Builds the relative exact-tenant source inventory path.</summary>
+    public static string SourceInventoryPath(string tenantId) => Fill(SourceInventory, ("tenantId", tenantId));
+
+    /// <summary>Builds the relative exact-tenant source admission-fence path.</summary>
+    public static string SourceInventoryFencePath(string tenantId) => Fill(SourceInventoryFence, ("tenantId", tenantId));
+
     // ---- Ingestion ----
 
     /// <summary>File ingestion submission route (<c>POST /api/v1/ingest</c>).</summary>

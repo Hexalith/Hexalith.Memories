@@ -11,7 +11,7 @@ using Hexalith.Memories.EventStore.Domain;
 public sealed record RegisterTenantCommand(
     string TenantId,
     string DisplayName,
-    DateTimeOffset RegisteredAt) : IMemoriesCommandContract
+    DateTimeOffset RegisteredAt) : IMemoriesCommandContract, Hexalith.EventStore.Contracts.Commands.ICommandContract
 {
     /// <inheritdoc/>
     public static string Domain => MemoriesDomain.Tenants;

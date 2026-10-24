@@ -28,6 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Hexalith.EventStore.Contracts" />
     <PackageReference Include="Dapr.AspNetCore" />
     <PackageReference Include="Dapr.Client" />
     <PackageReference Include="Dapr.Workflow" />

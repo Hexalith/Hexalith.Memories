@@ -89,6 +89,8 @@ MemoriesMeter.EnsureHandlerGaugeCreated(() =>
 });
 
 app.MapIngestionEndpoints();
+app.MapSourceInventoryEndpoints();
+app.MapSourceInventoryQualificationEndpoints();
 app.MapTenantLifecycleEndpoints();
 app.MapExportEndpoints();
 app.MapImportEndpoints();

@@ -78,7 +78,7 @@ public sealed class IndexSyntacticActivity : WorkflowTraceLinkedActivity<IndexIn
             input.IngestedAt,
             input.IngestedAt);
 
-        await db.HashSetAsync(hashKey, [.. hashEntries]).ConfigureAwait(false);
+        await SourcePublicationVisibility.WriteAsync(db, input.TenantId, input.MemoryUnitId, hashKey, [.. hashEntries], input.SourceInventoryTracked, input.CaseId, input.SourceUri).ConfigureAwait(false);
 
         // Story 5.5 AC1 / Amendment A + L + T: stamp last-activity AFTER the hash write succeeds
         // (ordering L: never advertise activity that never happened). Fire-and-forget because a

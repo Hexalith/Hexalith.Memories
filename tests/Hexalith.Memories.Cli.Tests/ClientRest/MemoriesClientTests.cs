@@ -215,16 +215,57 @@ public class MemoriesClientTests
         body.ShouldContain("\"idempotencyToken\":null");
     }
 
-    private static (MemoriesClient Client, Func<string?> CapturedBody) CreateCapturingClient(string responseBody)
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExplicitRefreshCarriesPublicationBindingsWhileOrdinaryIngestRetainsDefaults(bool refresh)
+    {
+        (MemoriesClient client, Func<string?> capturedBody) = CreateCapturingClient("{\"instanceId\":\"workflow\"}", refresh ? SourceRefreshProtocol.Version : null);
+        byte[] content = Encoding.UTF8.GetBytes("changed revision");
+        string result = refresh
+            ? await client.RefreshAsync("tenant", "case", "urn:source", content, "text/plain", "producer", null,
+                "stable-retry", "predecessor", 42, TestContext.Current.CancellationToken, "fenced-version")
+            : await client.IngestAsync("tenant", "case", "urn:source", content, "text/plain", "producer", null,
+                "stable-retry", TestContext.Current.CancellationToken);
+        result.ShouldBe("workflow");
+        using JsonDocument document = JsonDocument.Parse(capturedBody().ShouldNotBeNull());
+        JsonElement body = document.RootElement;
+        body.GetProperty("refreshExistingSource").GetBoolean().ShouldBe(refresh);
+        body.GetProperty("sourceRevisionNumber").GetInt64().ShouldBe(refresh ? 42 : 0);
+        body.GetProperty("expectedMemoryUnitId").GetString().ShouldBe(refresh ? "predecessor" : null);
+        body.GetProperty("reopenSourceVersion").GetString().ShouldBe(refresh ? "fenced-version" : null);
+        body.GetProperty("idempotencyToken").GetString().ShouldBe("stable-retry");
+        body.GetProperty("contentBytes").GetBytesFromBase64().ShouldBe(content);
+        body.GetProperty("sourceInventoryTracked").GetBoolean().ShouldBeFalse();
+        body.GetProperty("refreshIdentityDigest").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("unsupported-refresh")]
+    [InlineData("source-refresh-v1, source-refresh-v1")]
+    public async Task OlderProducerIgnoringRefreshFieldsCannotReturnQualifiedRefreshSuccess(string? acknowledgement)
+    {
+        (MemoriesClient client, _) = CreateCapturingClient("{\"instanceId\":\"old-canonical-workflow\"}", acknowledgement);
+        MemoriesRemoteException failure = await Should.ThrowAsync<MemoriesRemoteException>(() => client.RefreshAsync("tenant", "case", "urn:source",
+            Encoding.UTF8.GetBytes("changed"), "text/plain", "producer", null, "retry", "old-canonical", 2, TestContext.Current.CancellationToken));
+        failure.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        failure.Error.Code.ShouldBe("INVALID_RESPONSE");
+        failure.Error.Message.ShouldContain("did not acknowledge");
+    }
+
+    private static (MemoriesClient Client, Func<string?> CapturedBody) CreateCapturingClient(string responseBody, string? refreshAcknowledgement = null)
     {
         string? captured = null;
         var handler = new TestDelegatingHandler(async (request, ct) =>
         {
             captured = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
-            return new HttpResponseMessage(HttpStatusCode.Accepted)
+            var response = new HttpResponseMessage(HttpStatusCode.Accepted)
             {
                 Content = new StringContent(responseBody, Encoding.UTF8, "application/json"),
             };
+            if (refreshAcknowledgement is not null) { response.Headers.Add(SourceRefreshProtocol.AcknowledgementHeader, refreshAcknowledgement); }
+            return response;
         });
         var httpClient = new HttpClient(handler) { BaseAddress = Endpoint };
         IOptions<MemoriesClientOptions> options = Options.Create(new MemoriesClientOptions { Endpoint = Endpoint });

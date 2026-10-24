@@ -10,6 +10,7 @@ using Dapr.Workflow;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -21,10 +22,24 @@ using StackExchange.Redis;
 public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<TenantDeletionInput, bool>
 {
     private readonly IConnectionMultiplexer _redis;
+    private readonly IWorkflowPayloadStore? _payloadStore;
     private readonly IAggregateCaseMappingStore _aggregateCaseMappingStore;
     private readonly IObservedEventTypeStore _observedEventTypeStore;
     private readonly IHostApplicationLifetime _hostApplicationLifetime;
     private readonly ILogger<DeleteTenantDataKeysActivity> _logger;
+
+    /// <summary>Initializes the compatible tenant cleanup API.</summary>
+    /// <param name="redis">The Redis connection.</param>
+    /// <param name="aggregateCaseMappingStore">The mapping store.</param>
+    /// <param name="observedEventTypeStore">The observed event store.</param>
+    /// <param name="hostApplicationLifetime">The host cancellation source.</param>
+    /// <param name="logger">The activity logger.</param>
+    public DeleteTenantDataKeysActivity([FromKeyedServices("redis")] IConnectionMultiplexer redis,
+        IAggregateCaseMappingStore aggregateCaseMappingStore, IObservedEventTypeStore observedEventTypeStore,
+        IHostApplicationLifetime hostApplicationLifetime, ILogger<DeleteTenantDataKeysActivity> logger)
+        : this(redis, aggregateCaseMappingStore, observedEventTypeStore, hostApplicationLifetime, logger, null)
+    {
+    }
 
     /// <summary>Initializes a new instance of the <see cref="DeleteTenantDataKeysActivity"/> class.</summary>
     /// <param name="redis">The Redis connection multiplexer.</param>
@@ -33,14 +48,17 @@ public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<Tena
     /// <param name="hostApplicationLifetime">Host lifetime used as the activity cancellation source
     /// (<see cref="WorkflowActivityContext"/> does not surface a <see cref="CancellationToken"/>).</param>
     /// <param name="logger">The logger instance.</param>
+    /// <param name="payloadStore">The claim-check adapter used to reconcile retained producer payloads.</param>
     public DeleteTenantDataKeysActivity(
         [FromKeyedServices("redis")] IConnectionMultiplexer redis,
         IAggregateCaseMappingStore aggregateCaseMappingStore,
         IObservedEventTypeStore observedEventTypeStore,
         IHostApplicationLifetime hostApplicationLifetime,
-        ILogger<DeleteTenantDataKeysActivity> logger)
+        ILogger<DeleteTenantDataKeysActivity> logger,
+        IWorkflowPayloadStore? payloadStore)
     {
         _redis = redis;
+        _payloadStore = payloadStore;
         _aggregateCaseMappingStore = aggregateCaseMappingStore;
         _observedEventTypeStore = observedEventTypeStore;
         _hostApplicationLifetime = hostApplicationLifetime;
@@ -52,6 +70,7 @@ public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<Tena
     {
         ArgumentNullException.ThrowIfNull(input);
         CancellationToken cancellationToken = _hostApplicationLifetime.ApplicationStopping;
+        await TenantIngestionOwnership.PurgeAsync(_redis, input.TenantId, _payloadStore, cancellationToken).ConfigureAwait(false);
         IDatabase db = _redis.GetDatabase();
         IServer server = _redis.GetServers().FirstOrDefault(static s => s.IsConnected)
             ?? throw new InvalidOperationException("No Redis server is available for tenant data cleanup.");

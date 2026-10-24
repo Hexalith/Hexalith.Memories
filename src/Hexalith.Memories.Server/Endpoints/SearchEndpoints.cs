@@ -55,6 +55,7 @@ internal static class SearchEndpoints
 
         app.MapGet(MemoriesRoutes.Search, async (
             SyntacticSearchService syntacticService,
+            Hexalith.Memories.Server.Ingestion.RefreshPublicationStore publication,
             SemanticSearchService semanticService,
             NaturalLanguageSemanticSearchService naturalLanguageService,
             GraphScopedSearch graphScopedSearch,
@@ -219,6 +220,10 @@ internal static class SearchEndpoints
                     return SearchTenantRejected(tenantStatusError.Code, TenantStatusGuard.ToHttpResult(tenantStatusError));
                 }
 
+                int publicationPageSize = Math.Clamp(maxResults, 1, 100);
+                int publicationOffset = Math.Max(offset, 0);
+                int? publicationBudget = tokenBudget;
+
                 // Validate caseId exists before executing search
                 if (!string.IsNullOrWhiteSpace(caseId))
                 {
@@ -332,6 +337,7 @@ internal static class SearchEndpoints
                     }
 
                     result = SearchResponseMetadataApplier.ApplySearch(result, "graph", tokenBudget);
+                    result = await publication.FilterResultAsync(tenantId, result, publicationPageSize, publicationOffset, publicationBudget, cancellationToken).ConfigureAwait(false);
                     CompleteSearchSuccess("graph", result.Results.Count);
                     return Results.Ok(result);
                 }
@@ -538,6 +544,7 @@ internal static class SearchEndpoints
                         hybridResult = hybridResult with { Explanation = ExplainMetadataBuilder.BuildForHybrid(explanationAxes, weights) };
                     }
 
+                    hybridResult = await publication.FilterResultAsync(tenantId, hybridResult, publicationPageSize, publicationOffset, publicationBudget, cancellationToken).ConfigureAwait(false);
                     CompleteSearchSuccess("hybrid", hybridResult.Results.Count);
                     if (hybridResult.Degraded && hybridResult.UnavailableAxes.Count > 0)
                     {
@@ -647,6 +654,7 @@ internal static class SearchEndpoints
                     }
 
                     searchResult = SearchResponseMetadataApplier.ApplySearch(searchResult, "nl", tokenBudget);
+                    searchResult = await publication.FilterResultAsync(tenantId, searchResult, publicationPageSize, publicationOffset, publicationBudget, cancellationToken).ConfigureAwait(false);
                     CompleteSearchSuccess("nl", searchResult.Results.Count);
                     return Results.Ok(searchResult);
                 }
@@ -766,6 +774,7 @@ internal static class SearchEndpoints
                         }
 
                         result = SearchResponseMetadataApplier.ApplySearch(result, "semantic", tokenBudget);
+                        result = await publication.FilterResultAsync(tenantId, result, publicationPageSize, publicationOffset, publicationBudget, cancellationToken).ConfigureAwait(false);
                         CompleteSearchSuccess("graph-scoped-semantic", result.Results.Count);
                         return Results.Ok(result);
                     }
@@ -843,6 +852,7 @@ internal static class SearchEndpoints
                     }
 
                     syntacticResult = SearchResponseMetadataApplier.ApplySearch(syntacticResult, "syntactic", tokenBudget);
+                    syntacticResult = await publication.FilterResultAsync(tenantId, syntacticResult, publicationPageSize, publicationOffset, publicationBudget, cancellationToken).ConfigureAwait(false);
                     CompleteSearchSuccess("graph-scoped-syntactic", syntacticResult.Results.Count);
                     return Results.Ok(syntacticResult);
                 }
@@ -922,6 +932,7 @@ internal static class SearchEndpoints
                     }
 
                     searchResult = SearchResponseMetadataApplier.ApplySearch(searchResult, "semantic", tokenBudget);
+                    searchResult = await publication.FilterResultAsync(tenantId, searchResult, publicationPageSize, publicationOffset, publicationBudget, cancellationToken).ConfigureAwait(false);
                     CompleteSearchSuccess("semantic", searchResult.Results.Count);
                     return Results.Ok(searchResult);
                 }
@@ -958,8 +969,15 @@ internal static class SearchEndpoints
                 }
 
                 syntacticDefault = SearchResponseMetadataApplier.ApplySearch(syntacticDefault, "syntactic", tokenBudget);
+                syntacticDefault = await publication.FilterResultAsync(tenantId, syntacticDefault, publicationPageSize, publicationOffset, publicationBudget, cancellationToken).ConfigureAwait(false);
                 CompleteSearchSuccess("syntactic", syntacticDefault.Results.Count);
                 return Results.Ok(syntacticDefault);
+            }
+            catch (InvalidOperationException ex) when (ex.Message is "source-refresh-search-window-incomplete" or "source-publication-graph-snapshot-changed")
+            {
+                return SearchError("SOURCE_PUBLICATION_CHANGED", Results.Json(new ErrorResponse("SOURCE_PUBLICATION_CHANGED",
+                    "Source publication changed during this search.",
+                    "Retry the same query; no empty-result or count claim was made."), statusCode: 503));
             }
             catch (Exception ex)
             {

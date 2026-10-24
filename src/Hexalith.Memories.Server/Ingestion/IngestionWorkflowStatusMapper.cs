@@ -55,7 +55,7 @@ internal static class IngestionWorkflowStatusMapper
                     memoryUnitId = result.MemoryUnitId;
                     memoryUnitStatus = result.Status;
                     failureSummary = result.Status == MemoryUnitStatus.Failed
-                        ? "Workflow completed with failed ingestion status."
+                        ? result.ConsistencyNote == "source-refresh-superseded" ? "source-refresh-superseded" : "Workflow completed with failed ingestion status."
                         : null;
                 }
             }

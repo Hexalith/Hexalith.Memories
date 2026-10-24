@@ -193,7 +193,7 @@ internal sealed class CaseService
                 input.IngestedBy,
                 metadata,
                 _workflowConfigurationCapture?.Capture() ?? new IngestionWorkflowConfiguration(),
-                _workflowTraceContextCapture?.Capture()),
+                _workflowTraceContextCapture?.Capture(), TrackSourceInventory: true),
             cancellationToken).ConfigureAwait(false);
 
         _logger.LogInformation(

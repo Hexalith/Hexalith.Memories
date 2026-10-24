@@ -19,10 +19,9 @@ public static partial class IngestionWorkflowDeterminismGuardTests
         string repoRoot = ResolveRepoRoot();
         (string RelativePath, int Line, string Method, string NameExpression)[] expected =
         [
-            ("src/Hexalith.Memories.Server/Activities/Cases/ScheduleAnnotationIngestionActivity.cs", 54, "direct", "nameof(IngestionWorkflow)"),
-            ("src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs", 319, "direct", "nameof(IngestionWorkflow)"),
-            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 73, "direct", "nameof(IngestionWorkflow)"),
-            ("src/Hexalith.Memories.Server/Workflows/AnnotationProjectionWorkflow.cs", 32, "child", "nameof(IngestionWorkflow)"),
+            ("src/Hexalith.Memories.Server/Activities/Cases/ScheduleAnnotationIngestionActivity.cs", 77, "direct", "nameof(IngestionWorkflow)"),
+            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 108, "direct", "nameof(IngestionWorkflow)"),
+            ("src/Hexalith.Memories.Server/Workflows/AnnotationProjectionWorkflow.cs", 47, "child", "nameof(IngestionWorkflow)"),
         ];
 
         IReadOnlyList<(string RelativePath, int Line, string Method, string NameExpression)> detected =
@@ -73,7 +72,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
 
         AssertOrdered(
             scheduler,
-            "IngestionInput slimInput = await PrepareInputAsync( _payloadStore, instanceId, input, _workflowConfigurationCapture, _workflowTraceContextCapture, cancellationToken)",
+            "slimInput = await PrepareInputAsync( _payloadStore, instanceId, input, _workflowConfigurationCapture, _workflowTraceContextCapture, cancellationToken)",
             "ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), instanceId, slimInput, null, cancellationToken)");
         AssertOrdered(
             scheduler,
@@ -85,22 +84,23 @@ public static partial class IngestionWorkflowDeterminismGuardTests
             "SourceUri = request.Url, ContentBytes = null,");
         AssertContains(
             endpoints,
-            "input = workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input)); string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);");
+            "await workflowScheduler.ScheduleAsync(Guid.NewGuid().ToString(), input, cancellationToken);");
 
         AssertOrdered(
             annotationActivity,
             "WorkflowConfiguration = input.WorkflowConfiguration,",
             "if (ingestionInput.WorkflowConfiguration is null)",
             "ingestionInput = workflowConfigurationCapture.Apply(ingestionInput);");
-        AssertContains(
-            annotationActivity,
-            "ingestionInput = await IngestionPayloadClaimCheck .PrepareAsync(payloadStore, input.AnnotationMemoryUnitId, ingestionInput) .ConfigureAwait(false); await workflowClient.ScheduleNewWorkflowAsync( nameof(IngestionWorkflow), instanceId: input.AnnotationMemoryUnitId, input: ingestionInput).ConfigureAwait(false);");
+        AssertOrdered(annotationActivity,
+            "ingestionInput = await IngestionPayloadClaimCheck .PrepareAsync(payloadStore, input.AnnotationMemoryUnitId, ingestionInput)",
+            "await inventory.SetSchedulingAsync(ingestionInput.TenantId, ingestionInput.SourceUri, input.AnnotationMemoryUnitId,",
+            "await workflowClient.ScheduleNewWorkflowAsync( nameof(IngestionWorkflow), instanceId: input.AnnotationMemoryUnitId, input: ingestionInput)");
 
         AssertContains(annotationWorkflow, "ContentBytes = Encoding.UTF8.GetBytes(input.Content),");
         AssertContains(annotationWorkflow, "WorkflowConfiguration = input.WorkflowConfiguration,");
         AssertOrdered(
             annotationWorkflow,
-            "CallChildWorkflowAsync<IngestionResult>( nameof(IngestionWorkflow), CreateIngestionInput(input),",
+            "CallChildWorkflowAsync<IngestionResult>( nameof(IngestionWorkflow), ingestionInput,",
             "catch (WorkflowTaskFailedException)",
             "CallActivityAsync<bool>( nameof(CleanupGraphActivity)");
         annotationWorkflow.Contains("IngestionPayloadClaimCheck", StringComparison.Ordinal).ShouldBeFalse(
@@ -108,7 +108,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
 
         AssertContains(
             caseService,
-            "metadata, _workflowConfigurationCapture?.Capture() ?? new IngestionWorkflowConfiguration(), _workflowTraceContextCapture?.Capture())");
+            "metadata, _workflowConfigurationCapture?.Capture() ?? new IngestionWorkflowConfiguration(), _workflowTraceContextCapture?.Capture(), TrackSourceInventory: true)");
     }
 
     [Fact]
@@ -177,30 +177,17 @@ public static partial class IngestionWorkflowDeterminismGuardTests
     }
 
     [Fact]
-    public static void DirectUrlIngestion_CapturesTraceContextBeforeDirectWorkflowSchedule()
+    public static void DirectUrlIngestion_UsesTheAdmissionAndTraceCapturingScheduler()
     {
         string repoRoot = ResolveRepoRoot();
-
-        // Story 25.1 moved the direct URL ingestion endpoint out of Program.cs into the decomposed
-        // IngestionEndpoints.cs; this guard follows the code so it keeps verifying the capture-before-schedule
-        // ordering at its real home.
-        string endpointsPath = Path.Combine(
-            repoRoot,
-            "src",
-            "Hexalith.Memories.Server",
-            "Endpoints",
-            "IngestionEndpoints.cs");
-        string source = StripComments(File.ReadAllText(endpointsPath));
-
-        int captureIndex = source.IndexOf(
-            "workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input))",
-            StringComparison.Ordinal);
-        int scheduleIndex = source.IndexOf(
-            "ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input)",
-            StringComparison.Ordinal);
-
-        captureIndex.ShouldBeGreaterThanOrEqualTo(0, "The direct URL endpoint must apply workflow trace capture.");
-        scheduleIndex.ShouldBeGreaterThan(captureIndex, "Trace context must be captured before direct URL workflow scheduling.");
+        string endpoints = LoadNormalizedSource(repoRoot, "src/Hexalith.Memories.Server/Endpoints/IngestionEndpoints.cs");
+        string scheduler = LoadNormalizedSource(repoRoot, "src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs");
+        endpoints.ShouldNotContain("ScheduleNewWorkflowAsync(nameof(IngestionWorkflow)");
+        AssertContains(endpoints, "await workflowScheduler.ScheduleAsync(Guid.NewGuid().ToString(), input, cancellationToken);");
+        AssertOrdered(scheduler, "await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken)",
+            "slimInput = await PrepareInputAsync(", "ScheduleNewWorkflowAsync(nameof(IngestionWorkflow)");
+        AssertOrdered(scheduler, "workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input))",
+            "IngestionPayloadClaimCheck.PrepareAsync(");
     }
 
     [Theory]

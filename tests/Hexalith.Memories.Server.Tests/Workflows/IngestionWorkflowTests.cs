@@ -40,6 +40,24 @@ public class IngestionWorkflowTests
     // --- AC1: Full pipeline orchestration ---
 
     [Fact]
+    public async Task SupersededRefreshRecordsThePhysicallyCompensatedOutputBeforeTerminalReturn()
+    {
+        IngestionInput input = IngestionInputFactory.Create() with { RefreshExistingSource = true, SourceInventoryTracked = true };
+        WorkflowContext context = CreateMockContext();
+        SetupHappyPathActivities(context, input);
+        context.CallActivityAsync<bool>(nameof(PublishRefreshActivity), Arg.Any<RefreshPublicationInput>(), Arg.Any<WorkflowTaskOptions>()).Returns(false);
+        IngestionResult result = await new IngestionWorkflow().RunAsync(context, input);
+        result.ConsistencyNote.ShouldBe("source-refresh-superseded");
+        Received.InOrder(() =>
+        {
+            context.CallActivityAsync<bool>(nameof(Hexalith.Memories.Server.Activities.Cases.DeleteMemoryUnitProjectionActivity),
+                Arg.Any<Hexalith.Memories.Server.Activities.Cases.MemoryUnitDeletionProjectionInput>(), Arg.Any<WorkflowTaskOptions>());
+            context.CallActivityAsync<bool>(nameof(RecordSourceInventoryOutputActivity),
+                Arg.Is<SourceInventoryOutputInput>(output => output.MemoryUnitId == result.MemoryUnitId), Arg.Any<WorkflowTaskOptions>());
+        });
+    }
+
+    [Fact]
     public async Task RunAsync_HappyPath_ShouldCallAllActivitiesInOrder()
     {
         IngestionInput input = IngestionInputFactory.Create();
@@ -1041,7 +1059,7 @@ public class IngestionWorkflowTests
     [Fact]
     public async Task RunAsync_SourceDedupLosesAfterIndexing_ShouldCompensateAndReturnDuplicate()
     {
-        IngestionInput input = IngestionInputFactory.Create(sourceUri: "file:///same-source.pdf");
+        IngestionInput input = IngestionInputFactory.Create(sourceUri: "file:///same-source.pdf") with { SourceInventoryTracked = true };
         WorkflowContext context = CreateMockContext();
         SetupHappyPathActivities(context, input);
         context.CallActivityAsync<DedupKeySaveResult>(
@@ -1059,6 +1077,10 @@ public class IngestionWorkflowTests
 
         IngestionResult result = await workflow.RunAsync(context, input);
 
+        await context.Received(1).CallActivityAsync<bool>(nameof(RecordSourceInventoryCandidateActivity),
+            Arg.Is<SourceInventoryOutputInput>(item => item.MemoryUnitId == TestGuid.ToString() && item.SourceUri == input.SourceUri), Arg.Any<WorkflowTaskOptions>());
+        await context.Received(1).CallActivityAsync<bool>(nameof(RecordSourceInventoryOutputActivity),
+            Arg.Is<SourceInventoryOutputInput>(item => item.MemoryUnitId == "mu-winner" && item.SourceUri == input.SourceUri), Arg.Any<WorkflowTaskOptions>());
         result.WasDuplicate.ShouldBeTrue();
         result.MemoryUnitId.ShouldBe("mu-winner");
         result.Status.ShouldBe(MemoryUnitStatus.Indexed);
@@ -1083,6 +1105,7 @@ public class IngestionWorkflowTests
         IngestionInput input = IngestionInputFactory.Create(sourceUri: "file:///different-source.pdf") with
         {
             IdempotencyToken = "idem-shared",
+            SourceInventoryTracked = true,
         };
         string sourceKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
         string tokenKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, "idem-shared");
@@ -1110,6 +1133,10 @@ public class IngestionWorkflowTests
 
         IngestionResult result = await workflow.RunAsync(context, input);
 
+        await context.Received(1).CallActivityAsync<bool>(nameof(RecordSourceInventoryCandidateActivity),
+            Arg.Is<SourceInventoryOutputInput>(item => item.MemoryUnitId == TestGuid.ToString() && item.SourceUri == input.SourceUri), Arg.Any<WorkflowTaskOptions>());
+        await context.Received(1).CallActivityAsync<bool>(nameof(RecordSourceInventoryOutputActivity),
+            Arg.Is<SourceInventoryOutputInput>(item => item.MemoryUnitId == "mu-token-winner" && item.SourceUri == input.SourceUri), Arg.Any<WorkflowTaskOptions>());
         result.WasDuplicate.ShouldBeTrue();
         result.MemoryUnitId.ShouldBe("mu-token-winner");
         await context.Received(1).CallActivityAsync<bool>(

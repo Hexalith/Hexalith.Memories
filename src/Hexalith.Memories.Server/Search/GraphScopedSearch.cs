@@ -66,6 +66,23 @@ public sealed partial class GraphScopedSearch
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
+        RedisValue epoch = await Hexalith.Memories.Server.Ingestion.GraphPublicationReadGate.BeginAsync(_redis, _falkorDb, query.TenantId, cancellationToken).ConfigureAwait(false);
+        SearchResult result = await SearchCoreAsync(query, startNodeId, depth, innerSearch, cancellationToken, scopedInnerSearch, graphScopeKeyBuilder).ConfigureAwait(false);
+        await Hexalith.Memories.Server.Ingestion.GraphPublicationReadGate.EndAsync(_redis, query.TenantId, epoch, cancellationToken).ConfigureAwait(false);
+        return result;
+    }
+
+    private async Task<SearchResult> SearchCoreAsync(
+        SearchQuery query,
+        string startNodeId,
+        int depth,
+        Func<SearchQuery, Task<SearchResult>>? innerSearch = null,
+        CancellationToken cancellationToken = default,
+        Func<SearchQuery, IReadOnlyCollection<RedisKey>, Task<SearchResult>>? scopedInnerSearch = null,
+        Func<string, string, string>? graphScopeKeyBuilder = null)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
 
         SearchQuery normalizedQuery = query with
         {

@@ -21,17 +21,37 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
     private static readonly TimeSpan GraphOperationTimeout = TimeSpan.FromSeconds(10);
 
     private readonly IConnectionMultiplexer _falkorDb;
+    private readonly IConnectionMultiplexer? _redis;
     private readonly IGraphQueryBuilder _graphQueryBuilder;
     private readonly ILogger<IndexGraphActivity> _logger;
     private readonly IWorkflowPayloadStore? _payloadStore;
 
+    /// <summary>Initializes the compatible graph activity API.</summary>
+    /// <param name="falkorDb">The graph connection.</param>
+    /// <param name="graphQueryBuilder">The parameterized query builder.</param>
+    /// <param name="logger">The activity logger.</param>
+    /// <param name="payloadStore">The optional claim-check reader.</param>
+    public IndexGraphActivity([FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
+        IGraphQueryBuilder graphQueryBuilder, ILogger<IndexGraphActivity> logger, IWorkflowPayloadStore? payloadStore = null)
+        : this(falkorDb, graphQueryBuilder, logger, payloadStore, null)
+    {
+    }
+
+    /// <summary>Initializes production graph writes with independent tenant write authority.</summary>
+    /// <param name="falkorDb">The graph connection.</param>
+    /// <param name="graphQueryBuilder">The parameterized query builder.</param>
+    /// <param name="logger">The activity logger.</param>
+    /// <param name="payloadStore">The claim-check reader.</param>
+    /// <param name="redis">The tenant ownership connection.</param>
     public IndexGraphActivity(
         [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
         IGraphQueryBuilder graphQueryBuilder,
         ILogger<IndexGraphActivity> logger,
-        IWorkflowPayloadStore? payloadStore = null)
+        IWorkflowPayloadStore? payloadStore,
+        [FromKeyedServices("redis")] IConnectionMultiplexer? redis)
     {
         _falkorDb = falkorDb;
+        _redis = redis;
         _graphQueryBuilder = graphQueryBuilder;
         _logger = logger;
         _payloadStore = payloadStore;
@@ -43,105 +63,122 @@ public sealed partial class IndexGraphActivity : WorkflowTraceLinkedActivity<Ind
         IndexInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
-        TenantIdGuard.Validate(input.TenantId);
+        IngestionIdentityGuard.Scope(input.TenantId, input.SourceUri);
+        IngestionIdentityGuard.Handle(input.CaseId);
+        IngestionIdentityGuard.Handle(input.MemoryUnitId);
         string content = await ResolveContentAsync(input).ConfigureAwait(false);
 
         NFalkorDB.FalkorDB falkor = new(_falkorDb.GetDatabase());
         string graphId = input.TenantId;
 
-        // 1. Merge case node
-        (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeCaseNode(input.CaseId);
-        await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        string? writeIdentity = _redis is null ? null
+            : await TenantIngestionOwnership.BeginOperationAsync(_redis.GetDatabase(), input.TenantId, CancellationToken.None).ConfigureAwait(false);
 
-        // Activities are non-deterministic code and may read wall clock directly (unlike workflows).
-        // The MERGE query's ON CREATE SET is idempotent so replays re-apply the same timestamp to the
-        // durable state without drift.
-        DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
-
-        // 2. Merge memory unit node (idempotent — creates or updates). Story 9.2 Task 7.3 reads
-        //    previousIsStub + stubCreatedAt from the MERGE result to emit 9154 on retroactive
-        //    resolution (causal-chain gap filled by a subsequently-arriving event).
-        (query, parameters) = _graphQueryBuilder.BuildMergeMemoryUnitNode(
-            input.MemoryUnitId,
-            input.CaseId,
-            content,
-            input.ContentHash,
-            input.SourceUri,
-            input.SourceType,
-            input.EmbeddingProvider,
-            input.EmbeddingModel,
-            input.EmbeddingDimensions,
-            input.IngestedBy,
-            input.IngestedAt,
-            JsonSerializer.Serialize(
-                PersistenceModelMapper.ToStored(input.Metadata),
-                MemoriesPersistenceJsonContext.Options));
-        NFalkorDB.ResultSet mergeResult = await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
-        TryEmitStubResolvedTelemetry(mergeResult, input, nowUtc);
-
-        // 3. Contains edge: case → memory unit
-        (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
-            input.CaseId,
-            input.MemoryUnitId,
-            EdgeType.Contains,
-            EdgeTypeDefaults.Contains,
-            EdgeOrigin.Explicit);
-        await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
-
-        // 4. Optional CausedBy edge. Symmetric to the CorrelationId guard below: a self-edge is
-        //    skipped when CausationId == MemoryUnitId (malformed publisher where `causationid ==
-        //    cloudevent.id` — produces a spurious cycle). Emits 9156 at Debug (high-frequency path).
-        if (!string.IsNullOrWhiteSpace(input.CausationId)
-            && !string.Equals(input.CausationId, input.MemoryUnitId, StringComparison.Ordinal))
+        try
         {
-            (query, parameters) = _graphQueryBuilder.BuildMergeStubNode(input.CausationId, nowUtc);
+            // 1. Merge case node
+            (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeCaseNode(input.CaseId);
             await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
-            (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
-                input.CausationId,
+            // Activities are non-deterministic code and may read wall clock directly (unlike workflows).
+            // The MERGE query's ON CREATE SET is idempotent so replays re-apply the same timestamp to the
+            // durable state without drift.
+            DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+
+            // 2. Merge memory unit node (idempotent — creates or updates). Story 9.2 Task 7.3 reads
+            //    previousIsStub + stubCreatedAt from the MERGE result to emit 9154 on retroactive
+            //    resolution (causal-chain gap filled by a subsequently-arriving event).
+            (query, parameters) = _graphQueryBuilder.BuildMergeMemoryUnitNode(
                 input.MemoryUnitId,
-                EdgeType.CausedBy,
-                EdgeTypeDefaults.CausedBy,
+                input.CaseId,
+                content,
+                input.ContentHash,
+                input.SourceUri,
+                input.SourceType,
+                input.EmbeddingProvider,
+                input.EmbeddingModel,
+                input.EmbeddingDimensions,
+                input.IngestedBy,
+                input.IngestedAt,
+                JsonSerializer.Serialize(
+                    PersistenceModelMapper.ToStored(input.Metadata),
+                    MemoriesPersistenceJsonContext.Options));
+            NFalkorDB.ResultSet mergeResult = await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            TryEmitStubResolvedTelemetry(mergeResult, input, nowUtc);
+
+            // 3. Contains edge: case → memory unit
+            (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
+                input.CaseId,
+                input.MemoryUnitId,
+                EdgeType.Contains,
+                EdgeTypeDefaults.Contains,
                 EdgeOrigin.Explicit);
             await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
-        }
-        else if (string.Equals(input.CausationId, input.MemoryUnitId, StringComparison.Ordinal))
-        {
-            LogCausationIdSelfEdgeSkipped(_logger, input.MemoryUnitId);
-        }
 
-        // 5. Optional CorrelatedWith edge (Story 9.2 Task 6 — Risk #3 + Risk #15). The existing edge
-        //    direction root-to-current is preserved (ADR 9.2-C). A self-edge is skipped when the
-        //    current event IS the correlation root (CorrelationId == MemoryUnitId), because a root
-        //    correlating with itself produces a spurious cycle and operators treat root-outbound
-        //    traversals as "the group of correlated events" — including the root in that set would
-        //    be confusing.
-        if (!string.IsNullOrWhiteSpace(input.CorrelationId)
-            && !string.Equals(input.CorrelationId, input.MemoryUnitId, StringComparison.Ordinal))
-        {
-            (query, parameters) = _graphQueryBuilder.BuildMergeStubNode(input.CorrelationId, nowUtc);
-            await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            // 4. Optional CausedBy edge. Symmetric to the CorrelationId guard below: a self-edge is
+            //    skipped when CausationId == MemoryUnitId (malformed publisher where `causationid ==
+            //    cloudevent.id` — produces a spurious cycle). Emits 9156 at Debug (high-frequency path).
+            if (!string.IsNullOrWhiteSpace(input.CausationId)
+                && !string.Equals(input.CausationId, input.MemoryUnitId, StringComparison.Ordinal))
+            {
+                (query, parameters) = _graphQueryBuilder.BuildMergeStubNode(input.CausationId, nowUtc);
+                await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
 
-            (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
-                input.CorrelationId,
+                (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
+                    input.CausationId,
+                    input.MemoryUnitId,
+                    EdgeType.CausedBy,
+                    EdgeTypeDefaults.CausedBy,
+                    EdgeOrigin.Explicit);
+                await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            }
+            else if (string.Equals(input.CausationId, input.MemoryUnitId, StringComparison.Ordinal))
+            {
+                LogCausationIdSelfEdgeSkipped(_logger, input.MemoryUnitId);
+            }
+
+            // 5. Optional CorrelatedWith edge (Story 9.2 Task 6 — Risk #3 + Risk #15). The existing edge
+            //    direction root-to-current is preserved (ADR 9.2-C). A self-edge is skipped when the
+            //    current event IS the correlation root (CorrelationId == MemoryUnitId), because a root
+            //    correlating with itself produces a spurious cycle and operators treat root-outbound
+            //    traversals as "the group of correlated events" — including the root in that set would
+            //    be confusing.
+            if (!string.IsNullOrWhiteSpace(input.CorrelationId)
+                && !string.Equals(input.CorrelationId, input.MemoryUnitId, StringComparison.Ordinal))
+            {
+                (query, parameters) = _graphQueryBuilder.BuildMergeStubNode(input.CorrelationId, nowUtc);
+                await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+
+                (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
+                    input.CorrelationId,
+                    input.MemoryUnitId,
+                    EdgeType.CorrelatedWith,
+                    EdgeTypeDefaults.CorrelatedWith,
+                    EdgeOrigin.Explicit);
+                await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+            }
+            else if (string.Equals(input.CorrelationId, input.MemoryUnitId, StringComparison.Ordinal))
+            {
+                // Debug level — high-frequency; structured event id 9155 via NaturalLanguageIntegrationLog.
+                LogCorrelationIdSelfEdgeSkipped(_logger, input.MemoryUnitId);
+            }
+
+            _logger.LogInformation(
+                "Indexed memory unit {MemoryUnitId} in FalkorDB graph for tenant {TenantId}",
                 input.MemoryUnitId,
-                EdgeType.CorrelatedWith,
-                EdgeTypeDefaults.CorrelatedWith,
-                EdgeOrigin.Explicit);
-            await falkor.SelectGraph(graphId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+                input.TenantId);
+
+            if (_redis is not null)
+            {
+                await TenantIngestionOwnership.CompleteOperationAsync(_redis.GetDatabase(), input.TenantId, writeIdentity!, CancellationToken.None).ConfigureAwait(false);
+            }
+            return new IndexResult("graph", input.MemoryUnitId, input.TenantId);
         }
-        else if (string.Equals(input.CorrelationId, input.MemoryUnitId, StringComparison.Ordinal))
+        catch (RedisServerException error) when (_redis is not null && TenantIngestionOwnership.IsDefiniteGraphRejection(error))
         {
-            // Debug level — high-frequency; structured event id 9155 via NaturalLanguageIntegrationLog.
-            LogCorrelationIdSelfEdgeSkipped(_logger, input.MemoryUnitId);
+            await TenantIngestionOwnership.CompleteOperationAsync(_redis.GetDatabase(), input.TenantId, writeIdentity!, CancellationToken.None).ConfigureAwait(false);
+            throw;
         }
-
-        _logger.LogInformation(
-            "Indexed memory unit {MemoryUnitId} in FalkorDB graph for tenant {TenantId}",
-            input.MemoryUnitId,
-            input.TenantId);
-
-        return new IndexResult("graph", input.MemoryUnitId, input.TenantId);
     }
 
     [LoggerMessage(EventId = 9155, Level = LogLevel.Debug, Message = "CorrelationId self-edge skipped for memory unit {MemoryUnitId} (CorrelationId == MemoryUnitId).")]

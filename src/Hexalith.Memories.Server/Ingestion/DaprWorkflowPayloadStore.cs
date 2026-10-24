@@ -19,6 +19,7 @@ using Microsoft.Extensions.Options;
 public sealed class DaprWorkflowPayloadStore : IWorkflowPayloadStore
 {
     private readonly DaprClient _daprClient;
+    private readonly WorkflowPayloadLedger? _ledger;
     private readonly TimeProvider _timeProvider;
     private readonly WorkflowPayloadStoreOptions _options;
 
@@ -36,6 +37,18 @@ public sealed class DaprWorkflowPayloadStore : IWorkflowPayloadStore
         _timeProvider = timeProvider;
     }
 
+    /// <summary>Initializes the production adapter with durable producer artifact retention.</summary>
+    /// <param name="daprClient">The Dapr state transport.</param>
+    /// <param name="options">The payload store options.</param>
+    /// <param name="timeProvider">The expiry clock.</param>
+    /// <param name="redis">The technical producer ledger store.</param>
+    public DaprWorkflowPayloadStore(DaprClient daprClient, IOptions<WorkflowPayloadStoreOptions> options, TimeProvider timeProvider,
+        [Microsoft.Extensions.DependencyInjection.FromKeyedServices("redis")] StackExchange.Redis.IConnectionMultiplexer redis)
+        : this(daprClient, options, timeProvider)
+    {
+        _ledger = new WorkflowPayloadLedger(redis);
+    }
+
     /// <inheritdoc/>
     public async Task<WorkflowPayloadReference> SaveAsync(
         string tenantId,
@@ -46,7 +59,8 @@ public sealed class DaprWorkflowPayloadStore : IWorkflowPayloadStore
         CancellationToken cancellationToken = default)
     {
         TenantIdGuard.Validate(tenantId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+        IngestionIdentityGuard.Handle(tenantId, 128);
+        IngestionIdentityGuard.Handle(memoryUnitId);
         if (kind == WorkflowPayloadKind.Unknown || !Enum.IsDefined(kind))
         {
             throw new ArgumentOutOfRangeException(nameof(kind), "Workflow payload kind must be supported.");
@@ -75,6 +89,7 @@ public sealed class DaprWorkflowPayloadStore : IWorkflowPayloadStore
         int ttlSeconds = Math.Max(1, _options.TtlHours) * 3600;
         WorkflowPayloadStoreEntry entry = new(reference, bytes, now, now.AddSeconds(ttlSeconds));
 
+        string? writeId = _ledger is null ? null : await _ledger.BeginAsync(reference, cancellationToken).ConfigureAwait(false);
         await _daprClient.SaveStateAsync(
             _options.StateStoreName,
             BuildStateKey(reference),
@@ -85,6 +100,12 @@ public sealed class DaprWorkflowPayloadStore : IWorkflowPayloadStore
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
+        if (_ledger is not null) { await _ledger.CompleteWriteAsync(reference, writeId!, cancellationToken).ConfigureAwait(false); }
+        if (_ledger is not null && await _ledger.IsFencedAsync(tenantId, memoryUnitId, cancellationToken).ConfigureAwait(false))
+        {
+            await DeleteAsync(reference, cancellationToken).ConfigureAwait(false);
+            throw new InvalidOperationException("workflow-payload-unit-erased");
+        }
         return reference;
     }
 
@@ -131,13 +152,20 @@ public sealed class DaprWorkflowPayloadStore : IWorkflowPayloadStore
     }
 
     /// <inheritdoc/>
-    public Task DeleteAsync(WorkflowPayloadReference reference, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(WorkflowPayloadReference reference, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reference);
-        return _daprClient.DeleteStateAsync(
+        await _daprClient.DeleteStateAsync(
             _options.StateStoreName,
             BuildStateKey(reference),
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (_ledger is not null)
+        {
+            WorkflowPayloadStoreEntry? remaining = await _daprClient.GetStateAsync<WorkflowPayloadStoreEntry?>(
+                _options.StateStoreName, BuildStateKey(reference), cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (remaining is not null) { throw new InvalidOperationException("workflow-payload-delete-not-observed"); }
+            await _ledger.RemoveAsync(reference, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static string BuildStateKey(WorkflowPayloadReference reference)
@@ -158,7 +186,8 @@ public sealed class DaprWorkflowPayloadStore : IWorkflowPayloadStore
     {
         ArgumentNullException.ThrowIfNull(reference);
         TenantIdGuard.Validate(tenantId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+        IngestionIdentityGuard.Handle(tenantId, 128);
+        IngestionIdentityGuard.Handle(memoryUnitId);
         if (!string.Equals(reference.TenantId, tenantId, StringComparison.Ordinal))
         {
             throw new WorkflowPayloadException("PAYLOAD_TENANT_MISMATCH", reference.Id);

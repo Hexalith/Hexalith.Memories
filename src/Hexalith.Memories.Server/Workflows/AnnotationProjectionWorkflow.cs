@@ -23,15 +23,30 @@ internal sealed class AnnotationProjectionWorkflow : Workflow<AnnotationProjecti
         WorkflowTaskOptions retryOptions = CreateRetryOptions();
         WorkflowTaskOptions compensationOptions = CreateCompensationOptions();
         bool graphProjected = false;
+        bool admitted = false;
+        bool childAttempted = false;
 
         try
         {
+            IngestionInput ingestionInput = CreateIngestionInput(input);
+            if (input.TrackSourceInventory)
+            {
+                ingestionInput = await context.CallActivityAsync<IngestionInput>(nameof(AdmitSourceInventoryActivity),
+                    new SourceInventoryAdmissionInput(input.AnnotationMemoryUnitId, ingestionInput), retryOptions);
+                admitted = true;
+            }
             await context.CallActivityAsync<bool>(nameof(ProjectAnnotationGraphActivity), input, retryOptions);
             graphProjected = true;
 
+            if (admitted)
+            {
+                await context.CallActivityAsync<bool>(nameof(SetSourceInventorySchedulingActivity),
+                    new SourceInventorySchedulingInput(input.TenantId, input.SourceUri, input.AnnotationMemoryUnitId, "Scheduling"), retryOptions);
+            }
+            childAttempted = true;
             await context.CallChildWorkflowAsync<IngestionResult>(
                 nameof(IngestionWorkflow),
-                CreateIngestionInput(input),
+                ingestionInput,
                 new ChildWorkflowTaskOptions(
                     input.AnnotationMemoryUnitId,
                     RetryPolicy: null,
@@ -54,6 +69,13 @@ internal sealed class AnnotationProjectionWorkflow : Workflow<AnnotationProjecti
         }
         catch (WorkflowTaskFailedException)
         {
+            if (admitted && !graphProjected && !childAttempted)
+            {
+                // This durable execution history proves no child call was attempted. Process loss
+                // in Preparing or an ambiguous Scheduling transition supplies no such evidence.
+                await context.CallActivityAsync<bool>(nameof(SetSourceInventorySchedulingActivity),
+                    new SourceInventorySchedulingInput(input.TenantId, input.SourceUri, input.AnnotationMemoryUnitId, "Unscheduled"), compensationOptions);
+            }
             if (graphProjected)
             {
                 await context.CallActivityAsync<bool>(

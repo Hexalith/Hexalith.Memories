@@ -207,7 +207,7 @@ internal sealed class RestoreReindexUnitActivity : WorkflowActivity<RestoreReind
                 hashEntries.Add(new HashEntry("cloudeventSubject", cloudEventSubject));
             }
 
-            await db.HashSetAsync(chunkKey, [.. hashEntries]).ConfigureAwait(false);
+            await SourcePublicationVisibility.WriteAsync(db, input.TenantId, input.MemoryUnitId, chunkKey, [.. hashEntries], false).ConfigureAwait(false);
         }
 
         _logger.LogInformation(

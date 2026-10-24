@@ -4,7 +4,7 @@
 
 This document publishes the canonical invocable surface of the Memories Server — every `/api/v1/*` REST route plus the Dapr pub/sub delivery and subscription-discovery operations — in one operator-facing place so an external Dapr access-control policy (`accesscontrol.memories.yaml`) can be verified against real operation paths instead of an unverified `/process` placeholder.
 
-Origin: MEM-3 (Parties consumer integration intake, Sprint Change Proposal 2026-05-27). The routes below already exist in code (56 minimal-API endpoints in the Server host, a pub/sub controller, and the framework-emitted subscription handler); this contract **publishes** them as the ACL-verifiable surface and **guards** them against drift. **Full OpenAPI/Swagger document emission stays explicitly deferred** — see [Deferred: OpenAPI document generation](#deferred-openapi-document-generation) below.
+Origin: MEM-3 (Parties consumer integration intake, Sprint Change Proposal 2026-05-27). The routes below already exist in code (58 minimal-API endpoints in the Server host, a pub/sub controller, and the framework-emitted subscription handler); this contract **publishes** them as the ACL-verifiable surface and **guards** them against drift. **Full OpenAPI/Swagger document emission stays explicitly deferred** — see [Deferred: OpenAPI document generation](#deferred-openapi-document-generation) below.
 
 > **Code is the source of truth.** Every route in this document is mirrored from the authoritative source file named in its section. A structure-aware drift-guard test (see [Automated enforcement](#automated-enforcement)) fails the build if a mapped endpoint is added without documenting it, or if a documented route diverges from code.
 
@@ -23,11 +23,13 @@ This satisfies "method, path, and Dapr operation semantics" (AC2): the table giv
 
 ## REST `/api/v1/*` operation surface
 
-All 56 routes below are minimal-API endpoints mapped in `src/Hexalith.Memories.Server/Program.cs` (`app.MapGet/Post/Put/Delete/Patch`). There are no `MapGroup`/route-group prefixes; each path is the full template. The drift-guard test derives this list from the source, so a newly added endpoint that is not documented here fails the build.
+All 58 routes below are minimal-API endpoints mapped in `src/Hexalith.Memories.Server/Program.cs` (`app.MapGet/Post/Put/Delete/Patch`). There are no `MapGroup`/route-group prefixes; each path is the full template. The drift-guard test derives this list from the source, so a newly added endpoint that is not documented here fails the build.
 
 | Area | Method + path | Purpose |
 | :--- | :--- | :--- |
 | Ingestion | `POST /api/v1/ingest` | Start a content-ingestion workflow. |
+| Source inventory | `GET /api/v1/tenants/{tenantId}/source-inventory` | Read a bounded source snapshot with explicit legacy coverage and workflow/deletion provenance. |
+| Source inventory | `POST /api/v1/tenants/{tenantId}/source-inventory/fence` | Durably close exact-source admission for transient cleanup or permanent erasure. |
 | Ingestion | `GET /api/v1/ingest/{instanceId}` | Read a tenant-authorized safe ingestion workflow status projection (`IngestionWorkflowStatus`), not raw Dapr `WorkflowState`. |
 | Ingestion | `POST /api/v1/ingest/url` | Ingest content from a URL. |
 | Ingestion | `POST /api/v1/ingest/directory` | Ingest a directory batch. |
@@ -150,7 +152,9 @@ The Memories MCP host (`src/Hexalith.Memories.Mcp/Program.cs`) exposes a single 
 
 ## No `/process` operation exists
 
-There is **no `/process` operation anywhere on the Memories surface** — not in the `/api/v1/*` REST routes, not in the pub/sub controller, and not as a framework route. A grep for `/process` across `src/` returns no production route literal. An ACL or downstream runbook that references `/process` is using the wrong operation path: domain events are delivered to `POST /events/ingest` (pub/sub) and there is no `/process` service-invocation method to allow. This mirrors the refutation already recorded in [`../dev/eventstore-integration.md`](../dev/eventstore-integration.md) §1.6. The drift-guard test asserts the `/process` literal is absent from both `Program.cs` and `EventIngestionController.cs`, so this negative claim is enforced against code, not just prose.
+There is **no `/process` operation anywhere on the native Memories Server surface** — not in its `/api/v1/*` REST routes, pub/sub controller or framework routes. Domain-event intake still uses `POST /events/ingest`. The drift guard enforces this boundary against the native Server and `EventIngestionController` sources.
+
+The separate `Hexalith.Memories.DomainService` executable hosts authoritative commands and replay for `memories-tenants`, `memories-cases` and `memories-memory-units` through the canonical EventStore SDK. Its independently authenticated SDK routes include `POST /process`, `POST /replay-state` and `POST /admin/operational-index-metadata`; they do not become native Server or pub/sub routes. Route the three exact domains to this host with version `v1`, and permit only the authenticated EventStore caller through deny-default Dapr ACLs and app-channel/workload authentication. The host executes the existing six commands and unchanged event contracts. Publishing and configuring this additional workload is an owner deployment prerequisite, independent of native REST route compatibility.
 
 ## The guarantee (rename = breaking-change-for-consumers)
 
@@ -162,7 +166,7 @@ A structure-aware drift-guard test protects this contract:
 [`tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs`](../../tests/Hexalith.Memories.Server.Tests/Deployment/RouteSurfaceContractTests.cs). It runs on every build (plain `[Fact]`s, no Docker/fixture, repo-root marker walk) and enforces:
 
 - **Forward tie (code → exact row), the core sync guard:** every source-derived `app.Map(Get|Post|Put|Delete|Patch)(MemoriesRoutes.X, …)` route must be unique in source and appear exactly once as the normalized Method + path cell in the exact REST table.
-- **Count tie:** the number of extracted `/api/v1/*` source routes (currently **56**) must equal the REST table's data-row count — defending against silent omission, duplicate rows, and phantom rows.
+- **Count tie:** the number of extracted `/api/v1/*` source routes (currently **58**) must equal the REST table's data-row count — defending against silent omission, duplicate rows, and phantom rows.
 - **Pub/sub constant tie (bidirectional):** the exact two-row pub/sub table is tied to `MapSubscribeHandler()`, `EventIngestionController.PubSubName`, `TopicEnvVar`, `[Route("events")]`, and `[HttpPost("ingest")]`.
 - **Health constant tie:** the exact three-row health table binds each path cell to its adjacent `HealthEndpointPaths.Health` / `.Alive` / `.Ready` constant cell.
 - **`/process` negative tie (code-tied):** asserts neither `Program.cs` nor `EventIngestionController.cs` contains a `/process` route literal, **and** that this document contains the explicit "no `/process`" statement.
@@ -174,7 +178,7 @@ A structure-aware drift-guard test protects this contract:
 
 ## Deferred: OpenAPI document generation
 
-AC2 permits "an OpenAPI document **or** a maintained route-surface doc". The repository has **no** OpenAPI/Swagger setup today (`AddOpenApi`, `MapOpenApi`, `AddSwaggerGen`, `UseSwagger`, Swashbuckle, and `Microsoft.AspNetCore.OpenApi` are all absent; no `openapi.json` exists). Standing up OpenAPI generation for 56 minimal-API endpoints plus the pub/sub controller is a larger, separable effort and is **explicitly deferred**. This story delivers the maintained route-surface contract and its drift guard only. The deferral is recorded as `MEM-3-OPENAPI` in [`../../_bmad-output/implementation-artifacts/deferred-work.md`](../../_bmad-output/implementation-artifacts/deferred-work.md); no follow-up story id is assigned yet.
+AC2 permits "an OpenAPI document **or** a maintained route-surface doc". The repository has **no** OpenAPI/Swagger setup today (`AddOpenApi`, `MapOpenApi`, `AddSwaggerGen`, `UseSwagger`, Swashbuckle, and `Microsoft.AspNetCore.OpenApi` are all absent; no `openapi.json` exists). Standing up OpenAPI generation for 58 minimal-API endpoints plus the pub/sub controller is a larger, separable effort and is **explicitly deferred**. This story delivers the maintained route-surface contract and its drift guard only. The deferral is recorded as `MEM-3-OPENAPI` in [`../../_bmad-output/implementation-artifacts/deferred-work.md`](../../_bmad-output/implementation-artifacts/deferred-work.md); no follow-up story id is assigned yet.
 
 ## References
 
@@ -186,7 +190,7 @@ AC2 permits "an OpenAPI document **or** a maintained route-surface doc". The rep
 - [`../dev/mcp-server.md`](../dev/mcp-server.md) — MCP `/mcp` transport surface and the four agent tools.
 - [`../dev/health-checks.md`](../dev/health-checks.md) — health-probe semantics and tag conventions.
 - [`../dev/public-surface-stability.md`](../dev/public-surface-stability.md) — companion Story 18.1 contract (host project / assembly / namespace name stability).
-- `src/Hexalith.Memories.Server/Program.cs` plus `Endpoints/*Endpoints.cs` — the 56 `/api/v1/*` `app.MapX` route registrations; `MapDefaultEndpoints()`; middleware order `UseCloudEvents()` → `MapControllers()` → `MapSubscribeHandler()`.
+- `src/Hexalith.Memories.Server/Program.cs` plus `Endpoints/*Endpoints.cs` — the 58 `/api/v1/*` `app.MapX` route registrations; `MapDefaultEndpoints()`; middleware order `UseCloudEvents()` → `MapControllers()` → `MapSubscribeHandler()`.
 - `src/Hexalith.Memories.EventStore/EventIngestionController.cs` — `[Route("events")]`, `[HttpPost("ingest")]`, `PubSubName`, `TopicEnvVar`.
 - `src/Hexalith.Memories.ServiceDefaults/Health/HealthEndpointPaths.cs` — `/health`, `/alive`, `/ready` path constants.
 - `src/Hexalith.Memories.Mcp/Program.cs` — `MapMcp("/mcp").RequireAuthorization()` and the MCP host `MapDefaultEndpoints()`.

@@ -12,7 +12,7 @@ public sealed record DeleteCaseCommand(
     string TenantId,
     string CaseId,
     IReadOnlyList<string> MemoryUnitIds,
-    DateTimeOffset DeletedAt) : IMemoriesCommandContract
+    DateTimeOffset DeletedAt) : IMemoriesCommandContract, Hexalith.EventStore.Contracts.Commands.ICommandContract
 {
     /// <inheritdoc/>
     public static string Domain => MemoriesDomain.Cases;

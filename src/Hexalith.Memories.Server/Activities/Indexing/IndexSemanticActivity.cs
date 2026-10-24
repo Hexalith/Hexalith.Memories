@@ -13,6 +13,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
@@ -96,7 +97,7 @@ public sealed class IndexSemanticActivity : WorkflowTraceLinkedActivity<IndexInp
             hashEntries.Add(new HashEntry("cloudeventSubject", cloudEventSubject));
         }
 
-        await db.HashSetAsync(hashKey, [.. hashEntries]).ConfigureAwait(false);
+        await SourcePublicationVisibility.WriteAsync(db, input.TenantId, input.MemoryUnitId, hashKey, [.. hashEntries], input.SourceInventoryTracked, input.CaseId, input.SourceUri).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Indexed memory unit {MemoryUnitId} in Redis Vector for tenant {TenantId}",

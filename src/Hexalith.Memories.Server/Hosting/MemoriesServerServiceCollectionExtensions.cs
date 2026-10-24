@@ -13,6 +13,9 @@ using Dapr.Client;
 using Dapr.Workflow;
 
 using Hexalith.EventStore.Client.Registration;
+using Hexalith.EventStore.DomainService;
+using Hexalith.EventStore.ServiceDefaults.Authentication;
+using Hexalith.Memories.EventStore.Domain;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Cases;
@@ -64,6 +67,11 @@ internal static class MemoriesServerServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.AddDaprClient();
+        builder.Services.AddSingleton<SourceInventoryStore>();
+        builder.Services.AddSingleton<SourceInventoryFailureReconciler>();
+        builder.Services.AddSingleton<RefreshPublicationStore>();
+        builder.Services.AddDataProtection();
+        builder.Services.AddEventStoreQueryCursorCodec("Hexalith.Memories.SourceInventory.v1");
         builder.AddAccessTelemetryLifecycle();
         builder.Services.AddExceptionHandler<MemoriesServerExceptionHandler>();
         builder.Services.AddProblemDetails();
@@ -98,16 +106,7 @@ internal static class MemoriesServerServiceCollectionExtensions
         }
         else
         {
-            // The base address defaults to Dapr sidecar service invocation for the "eventstore" app so
-            // deployments only need configuration when the gateway is reached directly.
-            builder.Services.AddEventStoreGatewayClient(options =>
-            {
-                string? configuredBaseAddress = builder.Configuration["EventStoreIntegration:CommandGateway:BaseAddress"];
-                string daprHttpPort = Environment.GetEnvironmentVariable("DAPR_HTTP_PORT") ?? "3500";
-                options.BaseAddress = string.IsNullOrWhiteSpace(configuredBaseAddress)
-                    ? new Uri($"http://localhost:{daprHttpPort}/v1.0/invoke/eventstore/method/")
-                    : new Uri(configuredBaseAddress, UriKind.Absolute);
-            });
+            builder.AddMemoriesEventStoreGateway();
             builder.Services.AddSingleton<IMemoriesCommandStore, EventStoreMemoriesCommandStore>();
         }
         builder.Services.AddScoped<ICaseProjectionWorkflowScheduler, DaprCaseProjectionWorkflowScheduler>();
@@ -425,6 +424,13 @@ internal static class MemoriesServerServiceCollectionExtensions
             options.RegisterWorkflow<CaseDeletionProjectionWorkflow>();
             options.RegisterActivity<ValidateContentActivity>();
             options.RegisterActivity<CheckIdempotencyActivity>();
+            options.RegisterActivity<RecordSourceInventoryOutputActivity>();
+            options.RegisterActivity<RecordSourceInventoryCandidateActivity>();
+            options.RegisterActivity<PauseSourceInventoryProducerActivity>();
+            options.RegisterActivity<AdmitSourceInventoryActivity>();
+            options.RegisterActivity<SetSourceInventorySchedulingActivity>();
+            options.RegisterActivity<PublishRefreshActivity>();
+            options.RegisterActivity<ReconcileRefreshPublicationActivity>();
             options.RegisterActivity<SaveDedupKeyActivity>();
             options.RegisterActivity<ReleaseDedupKeyIfOwnedActivity>();
             options.RegisterActivity<VerifyConsistencyActivity>();
@@ -592,4 +598,66 @@ internal static class MemoriesServerServiceCollectionExtensions
         builder.Services.AddHostedService<AccessTelemetryDeliveryWorker>();
         builder.Services.AddHostedService<AccessTelemetryHeartbeatWorker>();
     }
+    /// <summary>Composes the supported SDK gateway and workload authority without forwarding user credentials.</summary>
+    internal static void AddMemoriesEventStoreGateway(this WebApplicationBuilder builder)
+    {
+        // The base address defaults to Dapr sidecar service invocation for the "eventstore" app so
+        // deployments only need configuration when the gateway is reached directly.
+        builder.Services.AddEventStoreWorkloadAssertionIssuer(builder.Configuration, options =>
+        {
+            if (string.IsNullOrWhiteSpace(options.Workload)) { options.Workload = "memories"; }
+        });
+        (Uri baseAddress, string appId) = ResolveGatewayRouting(builder.Configuration);
+        IHttpClientBuilder gateway = builder.Services.AddEventStoreGatewayClient(options => options.BaseAddress = baseAddress)
+#if HEXALITH_EVENTSTORE_MULTI_DOMAIN_WORKLOAD
+            .AddEventStoreGatewayMultiDomainWorkloadTransport([MemoriesDomain.Tenants, MemoriesDomain.Cases, MemoriesDomain.MemoryUnits],
+                builder.Configuration["EventStore:CommandGateway:Audience"] ?? builder.Configuration["EventStoreIntegration:CommandGateway:Audience"] ?? "eventstore")
+#else
+            // The catalog package exposes only fixed-domain authority. Keep the package
+            // build valid and fail closed for case/unit operations until owner publication.
+            .AddEventStoreGatewayWorkloadTransport(MemoriesDomain.Tenants,
+                builder.Configuration["EventStore:CommandGateway:Audience"] ?? builder.Configuration["EventStoreIntegration:CommandGateway:Audience"] ?? "eventstore")
+#endif
+            ;
+        _ = gateway.AddEventStoreDaprServiceInvocation(appId,
+                builder.Configuration["DAPR_API_TOKEN"] ?? Environment.GetEnvironmentVariable("DAPR_API_TOKEN"));
+#if HEXALITH_EVENTSTORE_MULTI_DOMAIN_WORKLOAD
+        string? proofKey = builder.Configuration["EventStore:CommandGateway:BoundCommand:PrivateKeyPkcs8Base64"]
+            ?? builder.Configuration["EventStoreIntegration:CommandGateway:BoundCommand:PrivateKeyPkcs8Base64"];
+        if (!string.IsNullOrWhiteSpace(proofKey))
+        {
+            _ = gateway.AddEventStoreGatewayBoundCommandProof(builder.Configuration["Authentication:WorkloadIssuer:Workload"] ?? "memories", proofKey,
+                [MemoriesDomain.Tenants, MemoriesDomain.Cases, MemoriesDomain.MemoryUnits]);
+        }
+#endif
+    }
+
+    private static (Uri Address, string AppId) ResolveGatewayRouting(IConfiguration configuration)
+    {
+        string? target = configuration["EventStore:CommandGateway:AppId"] ?? configuration["EventStoreIntegration:CommandGateway:AppId"];
+        string? configured = configuration["EventStore:CommandGateway:BaseAddress"] ?? configuration["EventStoreIntegration:CommandGateway:BaseAddress"];
+        Uri address = string.IsNullOrWhiteSpace(configured)
+            ? new Uri($"http://localhost:{Environment.GetEnvironmentVariable("DAPR_HTTP_PORT") ?? "3500"}/")
+            : new Uri(configured.TrimEnd('/') + "/", UriKind.Absolute);
+        const string invocation = "/v1.0/invoke/";
+        int marker = address.AbsolutePath.IndexOf(invocation, StringComparison.Ordinal);
+        if (marker >= 0)
+        {
+            string tail = address.AbsolutePath[(marker + invocation.Length)..];
+            string[] parts = tail.Split('/');
+            if (parts.Length != 3 || parts[1] != "method" || parts[2].Length != 0 || parts[0].Length == 0)
+            {
+                throw new InvalidOperationException("The legacy EventStore invocation base address is not an exact application method root.");
+            }
+            string legacyTarget = Uri.UnescapeDataString(parts[0]);
+            if (target is not null && target != legacyTarget)
+            {
+                throw new InvalidOperationException("The configured EventStore application conflicts with its legacy invocation base address.");
+            }
+            target = legacyTarget;
+            address = new UriBuilder(address) { Path = address.AbsolutePath[..(marker + 1)], Query = string.Empty, Fragment = string.Empty }.Uri;
+        }
+        return (address, target ?? "eventstore");
+    }
+
 }

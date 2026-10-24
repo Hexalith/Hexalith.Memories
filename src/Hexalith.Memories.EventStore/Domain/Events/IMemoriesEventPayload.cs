@@ -6,4 +6,4 @@
 namespace Hexalith.Memories.EventStore.Domain.Events;
 
 /// <summary>Marker interface for Memories domain event payloads.</summary>
-public interface IMemoriesEventPayload;
+public interface IMemoriesEventPayload : Hexalith.EventStore.Contracts.Events.IEventPayload;

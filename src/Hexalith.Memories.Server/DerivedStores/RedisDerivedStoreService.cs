@@ -15,6 +15,7 @@ using Hexalith.Memories.Contracts.V1.DerivedStores;
 using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 
 using NFalkorDB;
 
@@ -120,10 +121,12 @@ internal sealed class RedisDerivedStoreService(
         }
 
         string json = JsonSerializer.Serialize(artifact, MemoriesJsonContext.Options);
-        await _redis.GetDatabase()
-            .StringSetAsync(BuildSourceArtifactKey(artifact.TenantId, artifact.MemoryUnitId), json)
-            .WaitAsync(cancellationToken)
-            .ConfigureAwait(false);
+        const string save = "if redis.call('EXISTS',KEYS[1]) == 1 then return 0 end redis.call('SET',KEYS[2],ARGV[1]); return 1";
+        RedisResult saved = await TenantIngestionOwnership.WriteAsync(_redis.GetDatabase(), artifact.TenantId, save,
+            [(RedisKey)SourcePublicationVisibility.Tombstone(artifact.TenantId, artifact.MemoryUnitId),
+                (RedisKey)BuildSourceArtifactKey(artifact.TenantId, artifact.MemoryUnitId)], [(RedisValue)json])
+            .WaitAsync(cancellationToken).ConfigureAwait(false);
+        if ((long)saved != 1) { throw new DerivedStoreStateException("SOURCE_ERASED", "The memory unit was deleted and cannot retain new source content."); }
     }
 
     internal async Task<DerivedStoreBinding> FinalizeBindingAsync(

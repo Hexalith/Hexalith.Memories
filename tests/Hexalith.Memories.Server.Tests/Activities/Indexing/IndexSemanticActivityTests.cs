@@ -190,6 +190,7 @@ public class IndexSemanticActivityTests
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
 
         IndexInput input = CreateTestInput() with
         {
@@ -220,6 +221,7 @@ public class IndexSemanticActivityTests
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase().Returns(db);
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
         return redis;
     }
 

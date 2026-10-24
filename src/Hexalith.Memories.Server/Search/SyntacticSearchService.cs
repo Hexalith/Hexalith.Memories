@@ -17,6 +17,7 @@ using NRedisStack.RedisStackCommands;
 using NRedisStack.Search;
 
 using StackExchange.Redis;
+using Hexalith.Memories.Server.Ingestion;
 
 using RedisSearchResult = NRedisStack.Search.SearchResult;
 
@@ -91,6 +92,8 @@ public sealed partial class SyntacticSearchService
             query.CloudEventSubject,
             query.AttributeFilters);
 
+        queryString = await SourcePublicationVisibility.FilterQueryAsync(db, query.TenantId, queryString,
+            IndexSchemaDefinitions.GetSyntacticIndexName(query.TenantId)).ConfigureAwait(false);
         Query redisQuery = BuildRedisQuery(queryString, offset, maxResults);
 
         string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(query.TenantId);

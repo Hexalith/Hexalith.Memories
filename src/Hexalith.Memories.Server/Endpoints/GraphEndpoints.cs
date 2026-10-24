@@ -161,6 +161,12 @@ internal static class GraphEndpoints
                 scope.MarkValidationError("GRAPH_TIMEOUT");
                 return SearchEndpointDegradationResponses.BuildGraphTimeoutResponse();
             }
+            catch (InvalidOperationException ex) when (ex.Message == "source-publication-graph-snapshot-changed")
+            {
+                scope.MarkValidationError("SOURCE_PUBLICATION_CHANGED");
+                return Results.Json(new ErrorResponse("SOURCE_PUBLICATION_CHANGED", "Source publication changed during traversal.",
+                    "Retry the same traversal."), statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
             catch (Exception ex)
             {
                 scope.MarkUnhandledException(ex);

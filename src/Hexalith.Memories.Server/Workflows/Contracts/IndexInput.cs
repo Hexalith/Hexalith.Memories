@@ -8,6 +8,9 @@ namespace Hexalith.Memories.Server.Workflows.Contracts;
 /// <summary>Shared input for all three indexing activities (syntactic, semantic, graph).</summary>
 public sealed record IndexInput : IWorkflowTraceContextCarrier
 {
+    /// <summary>Gets whether writes are staged under durable source admission and unit erasure fences.</summary>
+    public bool SourceInventoryTracked { get; init; }
+
     public required string MemoryUnitId { get; init; }
 
     public required string TenantId { get; init; }

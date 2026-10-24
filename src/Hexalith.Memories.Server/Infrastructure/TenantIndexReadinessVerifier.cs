@@ -12,6 +12,7 @@ using Hexalith.Memories.Server.Activities.Indexing;
 using Microsoft.Extensions.Logging;
 
 using StackExchange.Redis;
+using Hexalith.Memories.Server.Ingestion;
 
 /// <summary>Story 23.7 (A34): process-local, concurrency-safe implementation of
 /// <see cref="ITenantIndexReadinessVerifier"/>. Verifies an existing tenant index once with a single
@@ -201,6 +202,12 @@ internal sealed partial class TenantIndexReadinessVerifier : ITenantIndexReadine
             problems.Add($"expected prefix '{expectedPrefix}' but found [{string.Join(", ", prefixes)}]");
         }
 
+        // An optional, owner-installed publication capability is compatible only with its exact numeric type.
+        if (actualFields.Contains(SourcePublicationVisibility.Field))
+        {
+            if (!IndexSchemaDefinitions.IsNumericAttribute(info, SourcePublicationVisibility.Field)) { problems.Add("source publication visibility field is not numeric"); }
+            actualFields.Remove(SourcePublicationVisibility.Field);
+        }
         HashSet<string> expectedFields = new(GetExpectedFields(family), StringComparer.OrdinalIgnoreCase);
         IReadOnlyCollection<string> additiveFields = GetAllowedAdditiveFields(family);
         if (!actualFields.SetEquals(expectedFields) && additiveFields.Count > 0)

@@ -8,6 +8,7 @@ namespace Hexalith.Memories.Server.Ingestion;
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Workflows;
 
 using Microsoft.Extensions.Logging;
@@ -15,6 +16,8 @@ using Microsoft.Extensions.Logging;
 /// <summary>DAPR-backed implementation of <see cref="IIngestionWorkflowScheduler"/>.</summary>
 internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflowScheduler
 {
+    private readonly SourceInventoryStore? _sourceInventory;
+    private readonly RefreshPublicationStore? _refreshPublication;
     private readonly IDaprWorkflowClient _workflowClient;
     private readonly IWorkflowPayloadStore _payloadStore;
     private readonly IngestionWorkflowConfigurationCapture _workflowConfigurationCapture;
@@ -30,7 +33,9 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         WorkflowTraceContextCapture workflowTraceContextCapture,
         IIngestionWorkflowInFlightRegistry inFlightRegistry,
         TimeProvider timeProvider,
-        ILogger<DaprIngestionWorkflowScheduler> logger)
+        ILogger<DaprIngestionWorkflowScheduler> logger,
+        SourceInventoryStore? sourceInventory = null,
+        RefreshPublicationStore? refreshPublication = null)
     {
         ArgumentNullException.ThrowIfNull(workflowClient);
         ArgumentNullException.ThrowIfNull(payloadStore);
@@ -39,6 +44,8 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         ArgumentNullException.ThrowIfNull(inFlightRegistry);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
+        _sourceInventory = sourceInventory;
+        _refreshPublication = refreshPublication;
         _workflowClient = workflowClient;
         _payloadStore = payloadStore;
         _workflowConfigurationCapture = workflowConfigurationCapture;
@@ -53,25 +60,58 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
         ArgumentNullException.ThrowIfNull(input);
 
-        IngestionInput slimInput = await PrepareInputAsync(
-                _payloadStore,
-                instanceId,
-                input,
-                _workflowConfigurationCapture,
-                _workflowTraceContextCapture,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        IngestionWorkflowInFlightEntry trackedEntry = new(input.TenantId, instanceId, _timeProvider.GetUtcNow());
-        await _inFlightRegistry
-            .TrackAsync(trackedEntry, cancellationToken)
-            .ConfigureAwait(false);
-
+        IngestionIdentityGuard.Input(input, instanceId);
+        if (input.RefreshExistingSource)
+        {
+            IngestionInputValidator.Validate(input, requireInlineRefreshContent: true);
+            if (_refreshPublication is null) { throw new InvalidOperationException("source-refresh-unavailable"); }
+            input = input with { RefreshIdentityDigest = await _refreshPublication.PrepareAsync(input, cancellationToken).ConfigureAwait(false) };
+        }
+        if (_sourceInventory is not null)
+        {
+            await _sourceInventory.AdmitAsync(instanceId, input, cancellationToken).ConfigureAwait(false);
+            input = input with { SourceInventoryTracked = true };
+        }
+        IngestionInput slimInput;
         try
         {
-            return await _workflowClient
-                .ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), instanceId, slimInput, null, cancellationToken)
+            slimInput = await PrepareInputAsync(
+                    _payloadStore,
+                    instanceId,
+                    input,
+                    _workflowConfigurationCapture,
+                    _workflowTraceContextCapture,
+                    cancellationToken)
                 .ConfigureAwait(false);
+
+            IngestionWorkflowInFlightEntry trackedEntry = new(input.TenantId, instanceId, _timeProvider.GetUtcNow());
+            await _inFlightRegistry
+                .TrackAsync(trackedEntry, cancellationToken)
+                .ConfigureAwait(false);
+
+        }
+        catch
+        {
+            if (_sourceInventory is not null)
+            {
+                using var proofBudget = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await _sourceInventory.SetSchedulingAsync(input.TenantId, input.SourceUri, instanceId, "Unscheduled", proofBudget.Token).ConfigureAwait(false);
+            }
+            throw;
+        }
+        if (_sourceInventory is not null)
+        {
+            await _sourceInventory.SetSchedulingAsync(input.TenantId, input.SourceUri, instanceId, "Scheduling", cancellationToken).ConfigureAwait(false);
+        }
+        try
+        {
+            string accepted = await _workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), instanceId, slimInput, null, cancellationToken).ConfigureAwait(false);
+            if (accepted != instanceId) { throw new InvalidOperationException("source-inventory-scheduler-identity-mismatch"); }
+            if (_sourceInventory is not null)
+            {
+                await _sourceInventory.SetSchedulingAsync(input.TenantId, input.SourceUri, instanceId, "Scheduled", cancellationToken).ConfigureAwait(false);
+            }
+            return accepted;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

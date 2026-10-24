@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsPublishable>true</IsPublishable>
+    <EnableContainer>true</EnableContainer>
+    <ContainerRepository>memories-domain-service</ContainerRepository>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hexalith.Memories.EventStore\Hexalith.Memories.EventStore.csproj" />
+    <PackageReference Include="Hexalith.EventStore.DomainService" />
+    <InternalsVisibleTo Include="Hexalith.Memories.DomainService.Tests" />
+  </ItemGroup>
+</Project>

@@ -45,10 +45,18 @@ public sealed class CheckIdempotencyActivity : WorkflowTraceLinkedActivity<Idemp
             IdempotencyResult tokenResult = await CheckKeyAsync(db, tokenKey).ConfigureAwait(false);
             if (tokenResult.IsDuplicate)
             {
+                if (input.RefreshExistingSource)
+                {
+                    RedisValue current = await db.StringGetAsync(DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri)).ConfigureAwait(false);
+                    bool erased = await db.KeyExistsAsync(Hexalith.Memories.Server.Ingestion.SourcePublicationVisibility.Tombstone(
+                        input.TenantId, tokenResult.ExistingMemoryUnitId!)).ConfigureAwait(false);
+                    return tokenResult with { IsSuperseded = erased || current.ToString() != tokenResult.ExistingMemoryUnitId };
+                }
                 return tokenResult;
             }
         }
 
+        if (input.RefreshExistingSource) { return new IdempotencyResult(false, null); }
         string sourceKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
         return await CheckKeyAsync(db, sourceKey).ConfigureAwait(false);
     }

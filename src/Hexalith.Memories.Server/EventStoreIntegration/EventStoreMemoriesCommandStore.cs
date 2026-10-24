@@ -16,7 +16,12 @@ using Hexalith.Memories.EventStore.Domain.Commands;
 /// <summary>EventStore gateway implementation of <see cref="IMemoriesCommandStore"/>. Story 21.2:
 /// command submission goes through the Hexalith.EventStore.Client SDK gateway contract so the
 /// authoritative write path uses the platform API instead of hand-rolled service invocation.</summary>
-internal sealed class EventStoreMemoriesCommandStore(IEventStoreGatewayClient gatewayClient) : IMemoriesCommandStore
+internal sealed class EventStoreMemoriesCommandStore(
+    IEventStoreGatewayClient gatewayClient
+#if HEXALITH_EVENTSTORE_MULTI_DOMAIN_WORKLOAD
+    , IEventStoreGatewayBoundCommandProofSource? commandProofs = null
+#endif
+    ) : IMemoriesCommandStore
 {
     private static readonly JsonSerializerOptions SerializerOptions = JsonSerializerOptions.Web;
 
@@ -39,8 +44,7 @@ internal sealed class EventStoreMemoriesCommandStore(IEventStoreGatewayClient ga
 
         string messageId = BaUlid.New(UlidOptions).ToString();
         JsonElement payload = JsonSerializer.SerializeToElement(command, SerializerOptions);
-        SubmitCommandResponse response = await gatewayClient.SubmitCommandAsync(
-            new SubmitCommandRequest(
+        var request = new SubmitCommandRequest(
                 messageId,
                 tenantId,
                 TCommand.Domain,
@@ -52,9 +56,15 @@ internal sealed class EventStoreMemoriesCommandStore(IEventStoreGatewayClient ga
                 {
                     ["actorId"] = actorId,
                     ["source"] = "Hexalith.Memories.Server",
-                }),
-            cancellationToken).ConfigureAwait(false);
-
+                });
+#if HEXALITH_EVENTSTORE_MULTI_DOMAIN_WORKLOAD
+        var bound = new BoundWorkloadCommandRequest(request, actorId);
+        string? proof = commandProofs is null ? null : await commandProofs.IssueAsync(bound, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(proof)) { throw new InvalidOperationException("The exact Memories command/principal proof is unavailable."); }
+        SubmitCommandResponse response = await gatewayClient.SubmitBoundWorkloadCommandAsync(bound, proof, cancellationToken).ConfigureAwait(false);
+#else
+        SubmitCommandResponse response = await gatewayClient.SubmitCommandAsync(request, cancellationToken).ConfigureAwait(false);
+#endif
         return response.CorrelationId;
     }
 }

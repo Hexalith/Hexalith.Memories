@@ -20,7 +20,8 @@ internal sealed class ScheduleAnnotationIngestionActivity(
     DaprWorkflowClient workflowClient,
     IWorkflowPayloadStore payloadStore,
     IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
-    WorkflowTraceContextCapture workflowTraceContextCapture)
+    WorkflowTraceContextCapture workflowTraceContextCapture,
+    SourceInventoryStore? inventory = null)
     : WorkflowTraceLinkedActivity<AnnotationProjectionInput, string>
 {
     /// <inheritdoc/>
@@ -47,10 +48,32 @@ internal sealed class ScheduleAnnotationIngestionActivity(
             ingestionInput = workflowConfigurationCapture.Apply(ingestionInput);
         }
 
-        ingestionInput = await IngestionPayloadClaimCheck
-            .PrepareAsync(payloadStore, input.AnnotationMemoryUnitId, ingestionInput)
-            .ConfigureAwait(false);
+        if (inventory is not null)
+        {
+            await inventory.AdmitAsync(input.AnnotationMemoryUnitId, ingestionInput, CancellationToken.None).ConfigureAwait(false);
+            ingestionInput = ingestionInput with { SourceInventoryTracked = true };
+        }
+        try
+        {
+            ingestionInput = await IngestionPayloadClaimCheck
+                .PrepareAsync(payloadStore, input.AnnotationMemoryUnitId, ingestionInput)
+                .ConfigureAwait(false);
 
+        }
+        catch
+        {
+            if (inventory is not null)
+            {
+                await inventory.SetSchedulingAsync(ingestionInput.TenantId, ingestionInput.SourceUri, input.AnnotationMemoryUnitId,
+                    "Unscheduled", CancellationToken.None).ConfigureAwait(false);
+            }
+            throw;
+        }
+        if (inventory is not null)
+        {
+            await inventory.SetSchedulingAsync(ingestionInput.TenantId, ingestionInput.SourceUri, input.AnnotationMemoryUnitId,
+                "Scheduling", CancellationToken.None).ConfigureAwait(false);
+        }
         await workflowClient.ScheduleNewWorkflowAsync(
             nameof(IngestionWorkflow),
             instanceId: input.AnnotationMemoryUnitId,

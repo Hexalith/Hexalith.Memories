@@ -78,11 +78,17 @@ public sealed class AppHostSecurityConfigurationTests
     [Fact]
     public void BuildsCatalog_PinsEventStoreFamilyAt31270()
     {
-        string catalog = ReadRepoFile(
-            "references",
-            "Hexalith.Builds",
-            "Props",
-            "Directory.Packages.props");
+        // Match this repository's three tracked Directory.Packages.props import locations.
+        // Umbrella checkouts use the root-declared sibling Builds; never initialize a nested submodule.
+        string root = ResolveRepoRoot();
+        string[] candidates =
+        [
+            Path.Combine(root, "references", "Hexalith.Builds", "Props", "Directory.Packages.props"),
+            Path.Combine(root, "..", "Hexalith.Builds", "Props", "Directory.Packages.props"),
+            Path.Combine(root, "..", "..", "Hexalith.Builds", "Props", "Directory.Packages.props"),
+        ];
+        string catalogPath = candidates.FirstOrDefault(File.Exists).ShouldNotBeNull("The tracked Builds catalog import must exist.");
+        string catalog = File.ReadAllText(catalogPath);
 
         catalog.ShouldContain(
             $"<HexalithEventStoreVersion Condition=\"'$(HexalithEventStoreVersion)' == ''\">{EventStoreCatalogVersion}</HexalithEventStoreVersion>",

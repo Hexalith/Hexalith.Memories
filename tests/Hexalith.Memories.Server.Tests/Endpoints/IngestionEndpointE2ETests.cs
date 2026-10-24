@@ -87,6 +87,58 @@ public sealed class IngestionEndpointE2ETests : IDisposable
     }
 
     [Fact]
+    public async Task PostIngest_ExplicitRefreshAcknowledgesTheProducerProtocolOnlyAfterScheduling()
+    {
+        StubTenantActive();
+        _scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>()).Returns("refresh-workflow");
+        IngestionInput request = IngestionInputFactory.Create(tenantId: TenantId, caseId: CaseId) with
+        { RefreshExistingSource = true, SourceRevisionNumber = 2, IdempotencyToken = "stable-refresh", ExpectedMemoryUnitId = "prior" };
+        using HttpClient client = CreateAuthorizedClient();
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/ingest", request,
+            MemoriesJsonContext.Options, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        response.Headers.GetValues(SourceRefreshProtocol.AcknowledgementHeader).ShouldBe([SourceRefreshProtocol.Version]);
+        await _scheduler.Received(1).ScheduleAsync(Arg.Any<string>(), Arg.Is<IngestionInput>(input =>
+            input.RefreshExistingSource && input.SourceRevisionNumber == 2 && input.ExpectedMemoryUnitId == "prior"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PostIngest_RefreshWithPayloadReferenceOnly_ReturnsBadRequestWithoutScheduling()
+    {
+        IngestionInput request = IngestionInputFactory.Create(tenantId: TenantId, caseId: CaseId) with
+        {
+            ContentBytes = null,
+            PayloadReference = new("owned-source", "abc", 3, WorkflowPayloadKind.SourceBytes, TenantId, "unit"),
+            RefreshExistingSource = true, SourceRevisionNumber = 1, IdempotencyToken = "stable-refresh",
+        };
+        using HttpClient client = CreateAuthorizedClient();
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/ingest", request,
+            MemoriesJsonContext.Options, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        ErrorResponse error = await ReadJsonAsync<ErrorResponse>(response);
+        error.Code.ShouldBe("INVALID_INPUT");
+        error.Message.ShouldContain("requires inline ContentBytes");
+        await _scheduler.DidNotReceive().ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("source-inventory-reopen-rejected", "SOURCE_REOPEN_CONFLICT")]
+    [InlineData("source-inventory-admission-closed", "SOURCE_ADMISSION_CLOSED")]
+    public async Task PostIngest_RefreshAcrossNewFence_ReturnsConflict(string failure, string code)
+    {
+        StubTenantActive();
+        _scheduler.ScheduleAsync(Arg.Any<string>(), Arg.Any<IngestionInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string>(new InvalidOperationException(failure)));
+        IngestionInput request = IngestionInputFactory.Create(tenantId: TenantId, caseId: CaseId) with
+        { RefreshExistingSource = true, SourceRevisionNumber = 1, IdempotencyToken = "stable-refresh", ReopenSourceVersion = "stale-fence" };
+        using HttpClient client = CreateAuthorizedClient();
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/ingest", request,
+            MemoriesJsonContext.Options, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ReadJsonAsync<ErrorResponse>(response)).Code.ShouldBe(code);
+    }
+
+    [Fact]
     public async Task PostIngest_DuplicateInFlight_ReturnsWinnerWithoutScheduling()
     {
         const string winnerInstanceId = "wf-winner";
@@ -96,7 +148,8 @@ public sealed class IngestionEndpointE2ETests : IDisposable
                 Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<TimeSpan?>(), Arg.Any<When>())
             .Returns(false);
         _factory.RedisDatabase.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-            .Returns((RedisValue)winnerInstanceId);
+            .Returns(call => call.Arg<RedisKey>().ToString().StartsWith("source-inventory:", StringComparison.Ordinal)
+                ? RedisValue.Null : (RedisValue)winnerInstanceId);
         IngestionInput request = IngestionInputFactory.Create(
             tenantId: TenantId,
             caseId: CaseId,

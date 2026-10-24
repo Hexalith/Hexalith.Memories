@@ -154,6 +154,8 @@ public sealed partial class NaturalLanguageSemanticSearchService
         string fallbackIndexName = IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenantId);
         string queryString = $"*=>[KNN {clamped} @embedding $query_vec AS __vector_score]";
 
+        queryString = await SourcePublicationVisibility.FilterQueryAsync(_redis.GetDatabase(), tenantId, queryString,
+            indexName, fallbackIndexName).ConfigureAwait(false);
         var redisQuery = new Query(queryString)
             .AddParam("query_vec", queryVectorBytes)
             .SetSortBy("__vector_score", true)

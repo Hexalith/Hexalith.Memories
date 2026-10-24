@@ -308,6 +308,40 @@ public static class ErrorMessageCatalog
                 CliSuggestion: "Specify the target node id and retry.",
                 ExitCode: 1),
 
+            // Source inventory and explicit revision publication.
+            ["INVENTORY_INCOMPLETE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Retain discovered obligations and restart the bounded source inventory read; reconcile legacy coverage with the owner.",
+                ExitCode: 1),
+            ["OWNED_TEST_SCOPE_REQUIRED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Use the explicitly authorized fresh owned test scope; this operation cannot qualify legacy or production inventory.",
+                ExitCode: 1),
+            ["SOURCE_ADMISSION_CLOSED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Retain the cleanup fence and reconcile admitted producers; permanent source closure cannot be reopened.",
+                ExitCode: 1),
+            ["SOURCE_PUBLICATION_CHANGED"] = new(
+                CliMessage: null,
+                CliSuggestion: "Retry the search against the current source publication.",
+                ExitCode: 1),
+            ["SOURCE_REOPEN_CONFLICT"] = new(
+                CliMessage: null,
+                CliSuggestion: "Read the current fenced inventory and reconcile terminal obligations before attempting a transient reopen.",
+                ExitCode: 1),
+            ["SOURCE_REVISION_CONFLICT"] = new(
+                CliMessage: null,
+                CliSuggestion: "Reconcile the current canonical predecessor before retrying the same logical source revision.",
+                ExitCode: 1),
+            ["SOURCE_REVISION_STALE"] = new(
+                CliMessage: null,
+                CliSuggestion: "Keep the newer authoritative source revision and reconcile the superseded output.",
+                ExitCode: 1),
+            ["SOURCE_REVISION_IDENTITY_MISMATCH"] = new(
+                CliMessage: null,
+                CliSuggestion: "Retain the original retry identity and exact request body; use a new logical revision for changed content.",
+                ExitCode: 1),
+
             // Batch / ingestion admin surface.
             ["BATCH_NOT_FOUND"] = new(
                 CliMessage: null,

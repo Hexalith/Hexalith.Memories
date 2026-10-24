@@ -57,6 +57,7 @@ internal static class IngestionEndpoints
             IIngestionWorkflowScheduler workflowScheduler,
             TenantStatusGuard tenantGuard,
             IngestDedupReservation ingestReservation,
+            SourceInventoryStore sourceInventory,
             IOptionsMonitor<Hexalith.Memories.EventStore.TenantEventRoutingOptions> ingestRoutingOptions,
             ILogger<AccessTelemetryCategory> auditLogger,
             HttpContext httpContext,
@@ -105,6 +106,13 @@ internal static class IngestionEndpoints
                     return TenantStatusGuard.ToHttpResult(tenantStatusError);
                 }
 
+                if (!input.RefreshExistingSource)
+                {
+                    // This also rejects preflight dedup acknowledgements after closure;
+                    // the scheduler's atomic admission independently fences the race.
+                    await sourceInventory.EnsureAdmissionOpenAsync(input.TenantId, input.SourceUri, httpContext.RequestAborted).ConfigureAwait(false);
+                }
+
                 // Story 18.4 (MEM-4) — atomic preflight dedup reservation closes the concurrent-ingest race on the
                 // REST path. The candidate id becomes the workflow instance id (and, for SourceType.File, the
                 // MemoryUnitId), so a losing concurrent ingest returns the winner's instance and observes the same
@@ -113,7 +121,7 @@ internal static class IngestionEndpoints
                 Hexalith.Memories.EventStore.TenantEventRoutingOptions routing = ingestRoutingOptions.CurrentValue;
                 bool reservationHeld = false;
 
-                if (routing.PreflightDedupEnabled)
+                if (routing.PreflightDedupEnabled && !input.RefreshExistingSource)
                 {
                     IngestReservationResult reservation = await ingestReservation.TryReserveAsync(
                         input.TenantId,
@@ -139,6 +147,10 @@ internal static class IngestionEndpoints
                     string instanceId = await workflowScheduler
                         .ScheduleAsync(candidateInstanceId, input, CancellationToken.None)
                         .ConfigureAwait(false);
+                    if (input.RefreshExistingSource)
+                    {
+                        httpContext.Response.Headers[SourceRefreshProtocol.AcknowledgementHeader] = SourceRefreshProtocol.Version;
+                    }
                     return Results.Accepted(MemoriesRoutes.IngestStatusLocation(instanceId), new { instanceId });
                 }
                 catch
@@ -151,6 +163,29 @@ internal static class IngestionEndpoints
 
                     throw;
                 }
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "source-inventory-admission-closed")
+            {
+                scope.MarkValidationError("SOURCE_ADMISSION_CLOSED");
+                return Results.Conflict(new ErrorResponse("SOURCE_ADMISSION_CLOSED", "This source is fenced against new producers.", "Permanent erasure fences cannot be reopened."));
+            }
+            catch (InvalidOperationException ex) when (ex.Message is "source-refresh-revision-stale" or "source-refresh-identity-mismatch")
+            {
+                string code = ex.Message == "source-refresh-revision-stale" ? "SOURCE_REVISION_STALE" : "SOURCE_REVISION_IDENTITY_MISMATCH";
+                scope.MarkValidationError(code);
+                return Results.Conflict(new ErrorResponse(code, "The source revision or retry identity is no longer admissible.", "Retain the current canonical revision and reconcile the producer's logical version."));
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "source-inventory-reopen-rejected")
+            {
+                scope.MarkValidationError("SOURCE_REOPEN_CONFLICT");
+                return Results.Conflict(new ErrorResponse("SOURCE_REOPEN_CONFLICT", "The observed transient source fence cannot be reopened.",
+                    "Reconcile the latest fenced source inventory; a permanent fence cannot be reopened."));
+            }
+            catch (InvalidOperationException ex) when (ex.Message == "source-refresh-predecessor-mismatch")
+            {
+                scope.MarkValidationError("SOURCE_REVISION_CONFLICT");
+                return Results.Conflict(new ErrorResponse("SOURCE_REVISION_CONFLICT", "The canonical source predecessor changed before admission.",
+                    "Read the current canonical source identity and retry the same logical revision with that predecessor."));
             }
             catch (Exception ex)
             {
@@ -232,7 +267,7 @@ internal static class IngestionEndpoints
         });
 
         app.MapPost(MemoriesRoutes.IngestUrl, async (
-            DaprWorkflowClient workflowClient,
+            IIngestionWorkflowScheduler workflowScheduler,
             IngestionWorkflowConfigurationCapture workflowConfigurationCapture,
             WorkflowTraceContextCapture workflowTraceContextCapture,
             TenantStatusGuard tenantGuard,
@@ -316,7 +351,7 @@ internal static class IngestionEndpoints
 
                 input = workflowTraceContextCapture.Apply(workflowConfigurationCapture.Apply(input));
 
-                string instanceId = await workflowClient.ScheduleNewWorkflowAsync(nameof(IngestionWorkflow), input: input);
+                string instanceId = await workflowScheduler.ScheduleAsync(Guid.NewGuid().ToString(), input, cancellationToken);
 
                 IngestionEndpointLog.LogUrlIngestionScheduled(
                     urlLogger,
@@ -675,7 +710,7 @@ internal static class IngestionEndpoints
     {
         try
         {
-            IngestionInputValidator.Validate(input);
+            IngestionInputValidator.Validate(input, requireInlineRefreshContent: true);
             return null;
         }
         catch (ArgumentException ex)

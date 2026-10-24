@@ -21,4 +21,5 @@ public sealed record IdempotencyInput(
     string TenantId,
     string CaseId,
     string? IdempotencyToken = null,
-    WorkflowTraceContext? TraceContext = null) : IWorkflowTraceContextCarrier;
+    WorkflowTraceContext? TraceContext = null,
+    bool RefreshExistingSource = false) : IWorkflowTraceContextCarrier;

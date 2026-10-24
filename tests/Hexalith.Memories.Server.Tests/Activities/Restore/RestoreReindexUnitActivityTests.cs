@@ -137,6 +137,7 @@ public sealed class RestoreReindexUnitActivityTests
             ]);
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        Hexalith.Memories.Server.Tests.Infrastructure.AtomicPublicationWriteFixture.Configure(db);
 
         TenantEmbeddingConfig config = new("google", "text-embedding-004", 3, 60, "embedding-key");
         ITenantEmbeddingConfigProvider configProvider = Substitute.For<ITenantEmbeddingConfigProvider>();

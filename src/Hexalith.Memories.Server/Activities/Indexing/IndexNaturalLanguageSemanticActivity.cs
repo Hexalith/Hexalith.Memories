@@ -14,6 +14,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 using Hexalith.Memories.Server.Migration;
 
 using Microsoft.Extensions.Logging;
@@ -108,7 +109,7 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowTraceLinkedAc
             new HashEntry("embeddingDimensions", input.EmbeddingDimensions),
         ];
 
-        await db.HashSetAsync(hashKey, [.. hashEntries]).ConfigureAwait(false);
+        await SourcePublicationVisibility.WriteAsync(db, input.TenantId, input.MemoryUnitId, hashKey, [.. hashEntries], input.SourceInventoryTracked).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Indexed memory unit {MemoryUnitId} in NL semantic index for tenant {TenantId}",

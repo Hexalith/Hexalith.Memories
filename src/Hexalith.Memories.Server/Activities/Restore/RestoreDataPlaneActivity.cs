@@ -41,6 +41,7 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
     private readonly ITenantIndexReadinessVerifier _readinessVerifier;
     private readonly IRestoreTargetGuard _targetGuard;
     private readonly ILogger<RestoreDataPlaneActivity> _logger;
+    private readonly SourceInventoryStore? _sourceInventory;
 
     /// <summary>Initializes a new instance of the <see cref="RestoreDataPlaneActivity"/> class.</summary>
     /// <param name="stagingStore">The import staging store (source of the export payload).</param>
@@ -59,7 +60,7 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         ITenantEmbeddingConfigProvider tenantEmbeddingConfigProvider,
         IRestoreTargetGuard targetGuard,
         ILogger<RestoreDataPlaneActivity> logger,
-        ITenantIndexReadinessVerifier? readinessVerifier = null)
+        ITenantIndexReadinessVerifier? readinessVerifier = null, SourceInventoryStore? sourceInventory = null)
     {
         ArgumentNullException.ThrowIfNull(stagingStore);
         ArgumentNullException.ThrowIfNull(redis);
@@ -68,6 +69,7 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         ArgumentNullException.ThrowIfNull(tenantEmbeddingConfigProvider);
         ArgumentNullException.ThrowIfNull(targetGuard);
         ArgumentNullException.ThrowIfNull(logger);
+        _sourceInventory = sourceInventory;
         _stagingStore = stagingStore;
         _redis = redis;
         _falkorDb = falkorDb;
@@ -302,7 +304,11 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             unit.IngestedBy,
             unit.IngestedAt,
             unit.LastUpdated);
-        await db.HashSetAsync(hashKey, [.. hashEntries]).ConfigureAwait(false);
+        if (_sourceInventory is not null)
+        {
+            await _sourceInventory.InvalidateForRestoreAsync(tenantId, unit.SourceUri, unit.CaseId, unit.Id, CancellationToken.None).ConfigureAwait(false);
+        }
+        await SourcePublicationVisibility.WriteAsync(db, tenantId, unit.Id, hashKey, [.. hashEntries], false, unit.CaseId, unit.SourceUri).ConfigureAwait(false);
 
         // MemoryUnit graph node. BuildMergeMemoryUnitNode rejects blank provider/model; legacy units without
         // embedding attribution (pre-FR70) fall back to a sentinel so the node still merges.

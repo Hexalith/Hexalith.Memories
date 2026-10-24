@@ -57,6 +57,7 @@ public sealed partial class GraphTraversalService
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(startNodeId);
 
+        RedisValue publicationEpoch = await Hexalith.Memories.Server.Ingestion.GraphPublicationReadGate.BeginAsync(_redis, _falkorDb, tenantId, cancellationToken).ConfigureAwait(false);
         FalkorDB falkor = new(_falkorDb.GetDatabase());
         string graphId = tenantId;
 
@@ -152,6 +153,7 @@ public sealed partial class GraphTraversalService
         long elapsedMs = (long)Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
         LogTraversalComplete(_logger, tenantId, startNodeId, depth, nodes.Count, elapsedMs);
 
+        await Hexalith.Memories.Server.Ingestion.GraphPublicationReadGate.EndAsync(_redis, tenantId, publicationEpoch, cancellationToken).ConfigureAwait(false);
         return new TraversalResult(startNodeId, depth, nodes, nodes.Count) { GapMarkers = gapMarkers };
     }
 

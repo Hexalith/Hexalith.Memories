@@ -75,6 +75,8 @@ using Hexalith.Memories.Contracts.V1.DerivedStores;
 [JsonSerializable(typeof(IReadOnlyList<ScoredResult>))]
 [JsonSerializable(typeof(IngestionActivityRetryConfiguration))]
 [JsonSerializable(typeof(IngestionInput))]
+[JsonSerializable(typeof(SourceInventoryEntry))]
+[JsonSerializable(typeof(SourceInventoryPage))]
 [JsonSerializable(typeof(IngestionResult))]
 [JsonSerializable(typeof(IngestionWorkflowConfiguration))]
 [JsonSerializable(typeof(IngestionWorkflowStatus))]

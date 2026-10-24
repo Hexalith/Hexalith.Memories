@@ -12,6 +12,9 @@ namespace Hexalith.Memories.Server.Workflows.Contracts;
 /// without grep.</summary>
 public sealed record NaturalLanguageIndexInput : IWorkflowTraceContextCarrier
 {
+    /// <summary>Gets whether writes are staged under durable source admission and unit erasure fences.</summary>
+    public bool SourceInventoryTracked { get; init; }
+
     /// <summary>The memory unit identifier.</summary>
     public required string MemoryUnitId { get; init; }
 

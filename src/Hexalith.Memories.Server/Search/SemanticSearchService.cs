@@ -103,6 +103,8 @@ public sealed partial class SemanticSearchService
             query.CaseId,
             query.CloudEventSubject);
 
+        queryString = await SourcePublicationVisibility.FilterQueryAsync(_redis.GetDatabase(), query.TenantId, queryString,
+            IndexSchemaDefinitions.GetSemanticActiveAliasName(query.TenantId), IndexSchemaDefinitions.GetSemanticIndexName(query.TenantId)).ConfigureAwait(false);
         var redisQuery = new Query(queryString)
             .AddParam("query_vec", queryVectorBytes)
             .SetSortBy("__vector_score", true)

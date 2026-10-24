@@ -13,7 +13,7 @@ public sealed record DeleteMemoryUnitCommand(
     string CaseId,
     string MemoryUnitId,
     IReadOnlyList<string> AnnotationMemoryUnitIds,
-    DateTimeOffset DeletedAt) : IMemoriesCommandContract
+    DateTimeOffset DeletedAt) : IMemoriesCommandContract, Hexalith.EventStore.Contracts.Commands.ICommandContract
 {
     /// <inheritdoc/>
     public static string Domain => MemoriesDomain.MemoryUnits;

@@ -17,7 +17,7 @@ public sealed record RequestAnnotationCommand(
     string Content,
     string? AnnotationType,
     string IngestedBy,
-    DateTimeOffset RequestedAt) : IMemoriesCommandContract
+    DateTimeOffset RequestedAt) : IMemoriesCommandContract, Hexalith.EventStore.Contracts.Commands.ICommandContract
 {
     /// <inheritdoc/>
     public static string Domain => MemoriesDomain.MemoryUnits;

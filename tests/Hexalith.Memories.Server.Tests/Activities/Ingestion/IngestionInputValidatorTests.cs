@@ -189,6 +189,19 @@ public class IngestionInputValidatorTests
             .Message.ShouldContain("ContentBytes or PayloadReference is required for SourceType=Event");
     }
 
+    [Fact]
+    public void Validate_Refresh_WithPayloadReferenceOnly_RejectsBeforeScheduling()
+    {
+        IngestionInput input = IngestionInputFactory.Create() with
+        {
+            ContentBytes = null, PayloadReference = CreateSourceReference(),
+            RefreshExistingSource = true, IdempotencyToken = "stable-refresh", SourceRevisionNumber = 1,
+        };
+        Should.Throw<ArgumentException>(() => IngestionInputValidator.Validate(input, requireInlineRefreshContent: true))
+            .Message.ShouldContain("requires inline ContentBytes");
+        Should.NotThrow(() => IngestionInputValidator.Validate(input));
+    }
+
     private static WorkflowPayloadReference CreateSourceReference()
         => new("mu-1:sourcebytes:abc:source", "abc", 3, WorkflowPayloadKind.SourceBytes, "test-tenant", "mu-1");
 }

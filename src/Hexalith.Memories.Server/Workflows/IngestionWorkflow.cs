@@ -9,6 +9,7 @@ using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
+using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.DerivedStores;
 using Hexalith.Memories.Server.Ingestion;
@@ -72,17 +73,27 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 input.TenantId,
                 memoryUnitId);
 
+            if (input.SourceInventoryTracked)
+            {
+                await context.CallActivityAsync<bool>(nameof(RecordSourceInventoryCandidateActivity),
+                    new SourceInventoryOutputInput(input.TenantId, input.SourceUri, context.InstanceId, input.CaseId, memoryUnitId), compensationRetry);
+            }
             await UpdateCounter("none", "queued");
             context.SetCustomStatus("queued");
 
             WorkflowPayloadReference? sourcePayloadReference = input.PayloadReference;
             AddPayloadReference(transientPayloads, sourcePayloadReference);
 
+            if (input.SourceInventoryTracked)
+            {
+                await context.CallActivityAsync<bool>(nameof(PauseSourceInventoryProducerActivity), context.InstanceId,
+                    For(nameof(PauseSourceInventoryProducerActivity)));
+            }
             currentStage = "idempotency";
             string dedupKey = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
             IdempotencyResult idempotency = await context.CallActivityAsync<IdempotencyResult>(
                 nameof(CheckIdempotencyActivity),
-                new IdempotencyInput(input.SourceUri, input.TenantId, input.CaseId, input.IdempotencyToken, traceContext),
+                new IdempotencyInput(input.SourceUri, input.TenantId, input.CaseId, input.IdempotencyToken, traceContext, input.RefreshExistingSource),
                 For(nameof(CheckIdempotencyActivity)));
 
             if (idempotency.IsDuplicate)
@@ -93,11 +104,25 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     input.TenantId,
                     idempotency.ExistingMemoryUnitId);
 
-                currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus, MemoryUnitStatus.Indexed);
+                if (input.RefreshExistingSource && !idempotency.IsSuperseded)
+                {
+                    bool reconciled = await context.CallActivityAsync<bool>(nameof(ReconcileRefreshPublicationActivity),
+                        new RefreshPublicationInput(input, idempotency.ExistingMemoryUnitId!), For(nameof(SaveDedupKeyActivity)));
+                    if (!reconciled) { idempotency = idempotency with { IsSuperseded = true }; }
+                }
+                currentStatus = TransitionStatus(logger, memoryUnitId, currentStatus,
+                    idempotency.IsSuperseded ? MemoryUnitStatus.Failed : MemoryUnitStatus.Indexed);
 
                 await UpdateCounter("queued", "none");
                 context.SetCustomStatus("duplicate");
                 await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, traceContext: traceContext);
+
+                if (input.SourceInventoryTracked)
+                {
+                    await context.CallActivityAsync<bool>(nameof(RecordSourceInventoryOutputActivity),
+                        new SourceInventoryOutputInput(input.TenantId, input.SourceUri, context.InstanceId, input.CaseId, idempotency.ExistingMemoryUnitId!),
+                        For(nameof(SaveDedupKeyActivity)));
+                }
 
                 // Story 9.2 Task 5.6: dedup returns NotApplicable — the existing memory unit was
                 // already indexed by an earlier ingest and its NL status is owned by that prior run.
@@ -106,7 +131,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                     currentStatus,
                     ingestedAt,
                     WasDuplicate: true,
-                    ConsistencyNote: null)
+                    ConsistencyNote: idempotency.IsSuperseded ? "source-refresh-superseded" : null)
                 {
                     NaturalLanguageEmbeddingStatus = NaturalLanguageEmbeddingStatus.NotApplicable,
                 };
@@ -304,6 +329,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             IndexInput indexInput = new()
             {
                 MemoryUnitId = memoryUnitId,
+                SourceInventoryTracked = input.SourceInventoryTracked,
                 TenantId = input.TenantId,
                 CaseId = input.CaseId,
                 Content = extraction.ExtractedContent,
@@ -336,6 +362,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             SemanticChunkIndexInput semanticIndexInput = new()
             {
                 MemoryUnitId = memoryUnitId,
+                SourceInventoryTracked = input.SourceInventoryTracked,
                 TenantId = input.TenantId,
                 CaseId = input.CaseId,
                 Chunks = embedding.Chunks,
@@ -364,6 +391,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 NaturalLanguageIndexInput nlIndexInput = new()
                 {
                     MemoryUnitId = memoryUnitId,
+                    SourceInventoryTracked = input.SourceInventoryTracked,
                     TenantId = input.TenantId,
                     CaseId = input.CaseId,
                     EmbeddingVector = nlEmbedding.Vector,
@@ -464,58 +492,61 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                         consistencyNote);
                 }
 
-                currentStage = "dedup";
-                DedupKeySaveResult sourceSave = await context.CallActivityAsync<DedupKeySaveResult>(
-                    nameof(SaveDedupKeyActivity),
-                    new DedupKeyInput(dedupKey, memoryUnitId, traceContext),
-                    For(nameof(SaveDedupKeyActivity)));
-
-                if (IsDuplicateOwnedByAnother(sourceSave, memoryUnitId))
+                if (!input.RefreshExistingSource)
                 {
-                    return await CompletePostIndexDuplicateAsync(
-                        context,
-                        memoryUnitId,
-                        sourceSave.MemoryUnitId,
-                        nlSemanticTask,
-                        cleanupInput,
-                        transientPayloads,
-                        compensationRetry,
-                        logger,
-                        UpdateCounter);
-                }
-
-                // Story 18.4 — when an explicit idempotency token was supplied, also persist a token-keyed
-                // permanent record pointing at the SAME MemoryUnitId. This augments (never replaces) the
-                // sourceUri mapping written above, so token-based redelivery stays idempotent while
-                // Stories 18.5/18.6's sourceUri → MemoryUnitId lookup and stability remain intact.
-                if (!string.IsNullOrWhiteSpace(input.IdempotencyToken))
-                {
-                    string tokenDedupKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, input.IdempotencyToken);
-                    DedupKeySaveResult tokenSave = await context.CallActivityAsync<DedupKeySaveResult>(
+                    currentStage = "dedup";
+                    DedupKeySaveResult sourceSave = await context.CallActivityAsync<DedupKeySaveResult>(
                         nameof(SaveDedupKeyActivity),
-                        new DedupKeyInput(tokenDedupKey, memoryUnitId, traceContext),
+                        new DedupKeyInput(dedupKey, memoryUnitId, traceContext),
                         For(nameof(SaveDedupKeyActivity)));
 
-                    if (IsDuplicateOwnedByAnother(tokenSave, memoryUnitId))
+                    if (IsDuplicateOwnedByAnother(sourceSave, memoryUnitId))
                     {
-                        if (sourceSave.IsSaved)
-                        {
-                            await context.CallActivityAsync<bool>(
-                                nameof(ReleaseDedupKeyIfOwnedActivity),
-                                new DedupKeyInput(dedupKey, memoryUnitId, traceContext),
-                                compensationRetry);
-                        }
-
                         return await CompletePostIndexDuplicateAsync(
                             context,
                             memoryUnitId,
-                            tokenSave.MemoryUnitId,
+                            sourceSave.MemoryUnitId,
                             nlSemanticTask,
                             cleanupInput,
                             transientPayloads,
                             compensationRetry,
                             logger,
-                            UpdateCounter);
+                            UpdateCounter, input.SourceInventoryTracked ? input : null);
+                    }
+
+                    // Story 18.4 — when an explicit idempotency token was supplied, also persist a token-keyed
+                    // permanent record pointing at the SAME MemoryUnitId. This augments (never replaces) the
+                    // sourceUri mapping written above, so token-based redelivery stays idempotent while
+                    // Stories 18.5/18.6's sourceUri → MemoryUnitId lookup and stability remain intact.
+                    if (!string.IsNullOrWhiteSpace(input.IdempotencyToken))
+                    {
+                        string tokenDedupKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, input.IdempotencyToken);
+                        DedupKeySaveResult tokenSave = await context.CallActivityAsync<DedupKeySaveResult>(
+                            nameof(SaveDedupKeyActivity),
+                            new DedupKeyInput(tokenDedupKey, memoryUnitId, traceContext),
+                            For(nameof(SaveDedupKeyActivity)));
+
+                        if (IsDuplicateOwnedByAnother(tokenSave, memoryUnitId))
+                        {
+                            if (sourceSave.IsSaved)
+                            {
+                                await context.CallActivityAsync<bool>(
+                                    nameof(ReleaseDedupKeyIfOwnedActivity),
+                                    new DedupKeyInput(dedupKey, memoryUnitId, traceContext),
+                                    compensationRetry);
+                            }
+
+                            return await CompletePostIndexDuplicateAsync(
+                                context,
+                                memoryUnitId,
+                                tokenSave.MemoryUnitId,
+                                nlSemanticTask,
+                                cleanupInput,
+                                transientPayloads,
+                                compensationRetry,
+                                logger,
+                                UpdateCounter, input.SourceInventoryTracked ? input : null);
+                        }
                     }
                 }
 
@@ -543,6 +574,7 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                         System.Text.Json.JsonSerializer.Serialize(input.WorkflowConfiguration, MemoriesJsonContext.Options),
                         ingestedAt),
                     For(nameof(PromoteDerivedStoreSourceArtifactActivity)));
+
             }
             catch (Exception ex)
             {
@@ -587,6 +619,33 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
                 throw;
             }
 
+            if (input.RefreshExistingSource)
+            {
+                currentStage = "refresh-publication";
+                bool published = await context.CallActivityAsync<bool>(nameof(PublishRefreshActivity),
+                    new RefreshPublicationInput(input, memoryUnitId), For(nameof(SaveDedupKeyActivity)));
+                if (!published)
+                {
+                    // The losing candidate was hidden before its first derived write.
+                    // Full physical cleanup includes source artifacts; no failed-unit payload
+                    // is retained for a deliberately superseded revision.
+                    await context.CallActivityAsync<bool>(nameof(DeleteMemoryUnitProjectionActivity),
+                        new MemoryUnitDeletionProjectionInput(input.TenantId, input.CaseId, memoryUnitId, []), compensationRetry);
+                    await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads,
+                        compensationRetry, traceContext: traceContext);
+                    await UpdateCounter("indexing", "none");
+                    if (input.SourceInventoryTracked)
+                    {
+                        await context.CallActivityAsync<bool>(nameof(RecordSourceInventoryOutputActivity),
+                            new SourceInventoryOutputInput(input.TenantId, input.SourceUri, context.InstanceId, input.CaseId, memoryUnitId),
+                            For(nameof(SaveDedupKeyActivity)));
+                    }
+                    context.SetCustomStatus("superseded");
+                    return new IngestionResult(memoryUnitId, MemoryUnitStatus.Failed, ingestedAt,
+                        WasDuplicate: false, ConsistencyNote: "source-refresh-superseded");
+                }
+            }
+
             try
             {
                 await context.CallActivityAsync<bool>(
@@ -609,6 +668,13 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             await UpdateCounter("indexing", "none");
             context.SetCustomStatus("indexed");
             await CleanupTransientPayloadsAsync(context, input.TenantId, memoryUnitId, transientPayloads, compensationRetry, traceContext: traceContext);
+
+            if (input.SourceInventoryTracked)
+            {
+                await context.CallActivityAsync<bool>(nameof(RecordSourceInventoryOutputActivity),
+                    new SourceInventoryOutputInput(input.TenantId, input.SourceUri, context.InstanceId, input.CaseId, memoryUnitId),
+                    For(nameof(SaveDedupKeyActivity)));
+            }
 
             // Story 9.2 Task 5.6: surface the NL-embedding outcome — Indexed on the healthy path,
             // Queued on the degraded path (LLM unavailable), NotApplicable for SourceType != Event.
@@ -878,7 +944,8 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
         IReadOnlyList<WorkflowPayloadReference> transientPayloads,
         WorkflowTaskOptions compensationRetry,
         ILogger logger,
-        Func<string, string, Task<bool>> updateCounter)
+        Func<string, string, Task<bool>> updateCounter,
+        IngestionInput? trackedInput = null)
     {
         HashSet<string> postIndexBackends = new(StringComparer.OrdinalIgnoreCase) { "syntactic", "semantic", "graph" };
         if (nlSemanticTask is { IsCompletedSuccessfully: true })
@@ -908,6 +975,12 @@ public class IngestionWorkflow : Workflow<IngestionInput, IngestionResult>
             compensationRetry,
             traceContext: cleanupInput.TraceContext);
 
+        if (trackedInput is not null)
+        {
+            await context.CallActivityAsync<bool>(nameof(RecordSourceInventoryOutputActivity),
+                new SourceInventoryOutputInput(trackedInput.TenantId, trackedInput.SourceUri, context.InstanceId, trackedInput.CaseId, winnerMemoryUnitId),
+                compensationRetry);
+        }
         return new IngestionResult(
             winnerMemoryUnitId,
             MemoryUnitStatus.Indexed,

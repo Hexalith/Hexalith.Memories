@@ -21,6 +21,7 @@ internal static class IngestionPayloadClaimCheck
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
         ArgumentNullException.ThrowIfNull(input);
 
+        IngestionIdentityGuard.Input(input, memoryUnitId);
         if (input.SourceType == SourceType.Url
             || input.PayloadReference is not null
             || input.ContentBytes is not { Length: > 0 } bytes)
@@ -43,6 +44,16 @@ internal static class IngestionPayloadClaimCheck
             ContentBytes = null,
             PayloadReference = reference,
         };
+    }
+
+    /// <summary>Derives the exact source identity before its save can succeed without acknowledgement.</summary>
+    internal static WorkflowPayloadReference? GetSourceReference(string unit, IngestionInput input)
+    {
+        IngestionIdentityGuard.Input(input, unit);
+        if (input.PayloadReference is not null) { return input.PayloadReference; }
+        if (input.SourceType == SourceType.Url || input.ContentBytes is not { Length: > 0 } bytes) { return null; }
+        string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+        return new(unit + ":sourcebytes:" + hash + ":source", hash, bytes.LongLength, WorkflowPayloadKind.SourceBytes, input.TenantId, unit);
     }
 
     /// <summary>Gets the declared payload length for telemetry without exposing payload contents.</summary>

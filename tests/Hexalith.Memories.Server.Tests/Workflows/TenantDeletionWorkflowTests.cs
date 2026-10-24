@@ -47,11 +47,11 @@ public class TenantDeletionWorkflowTests
         {
             context.CallActivityAsync<TenantInfo?>(nameof(GetTenantRegistryActivity), Arg.Any<string>(), Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<bool>(nameof(UpdateTenantStatusActivity), Arg.Any<TenantStatusUpdateInput>(), Arg.Any<WorkflowTaskOptions>());
+            context.CallActivityAsync<bool>(nameof(DeleteTenantDataKeysActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<bool>(nameof(DeleteRediSearchActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<bool>(nameof(DeleteRedisVectorActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<BatchedGraphDeletionResult>(nameof(DeleteFalkorDbBatchActivity), Arg.Any<BatchedGraphDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<bool>(nameof(DeleteFalkorDbGraphFinalizerActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
-            context.CallActivityAsync<bool>(nameof(DeleteTenantDataKeysActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
             context.CallActivityAsync<bool>(nameof(RemoveTenantRegistryActivity), Arg.Any<string>(), Arg.Any<WorkflowTaskOptions>());
         });
 
@@ -82,7 +82,9 @@ public class TenantDeletionWorkflowTests
         result.Status.ShouldBe(TenantStatus.Active);
         result.Message.ShouldContain("already deleted");
 
-        // Should NOT call any deletion activities
+        await context.Received(1).CallActivityAsync<bool>(nameof(DeleteTenantDataKeysActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
+
+        // No native backend cleanup is needed when the native registry is absent.
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(DeleteRediSearchActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
     }
@@ -264,7 +266,7 @@ public class TenantDeletionWorkflowTests
         result.Status.ShouldBe(TenantStatus.Provisioning);
         result.Message.ShouldContain("provisioning");
 
-        // Should NOT call any deletion activities
+        // Provisioning cannot authorize tenant cleanup.
         await context.DidNotReceive().CallActivityAsync<bool>(
             nameof(DeleteRediSearchActivity), Arg.Any<TenantDeletionInput>(), Arg.Any<WorkflowTaskOptions>());
     }

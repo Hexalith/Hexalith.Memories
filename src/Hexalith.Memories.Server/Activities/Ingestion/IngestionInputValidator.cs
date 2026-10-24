@@ -15,11 +15,13 @@ internal static class IngestionInputValidator
 
     /// <summary>Validates an ingestion payload and throws <see cref="ArgumentException"/> when invalid.</summary>
     /// <param name="input">The ingestion payload to validate.</param>
-    public static void Validate(IngestionInput input)
+    /// <param name="requireInlineRefreshContent">Public admission requires inline refresh bytes; trusted claim-checked workflow inputs may use a payload reference.</param>
+    public static void Validate(IngestionInput input, bool requireInlineRefreshContent = false)
     {
         ArgumentNullException.ThrowIfNull(input);
 
         ValidateTenantId(input.TenantId);
+        Hexalith.Memories.Server.Ingestion.IngestionIdentityGuard.Input(input);
         ValidateRequired(input.CaseId, nameof(input.CaseId));
         ValidateRequired(input.SourceUri, nameof(input.SourceUri));
         ValidateRequired(input.ContentType, nameof(input.ContentType));
@@ -27,6 +29,20 @@ internal static class IngestionInputValidator
         ValidateSourceType(input.SourceType);
         ValidateContentBytesForSourceType(input.ContentBytes, input.PayloadReference, input.SourceType, input.SourceUri, input.TenantId);
         ValidateMetadata(input.Metadata);
+        if (requireInlineRefreshContent && input.RefreshExistingSource && input.ContentBytes is not { Length: > 0 })
+        {
+            throw new ArgumentException("Explicit source refresh requires inline ContentBytes.");
+        }
+        if (input.RefreshExistingSource && (input.SourceType != SourceType.File || input.SourceRevisionNumber < 0
+            || string.IsNullOrWhiteSpace(input.IdempotencyToken)
+            || input.IdempotencyToken.Length > 200 || input.ExpectedMemoryUnitId is not null && string.IsNullOrWhiteSpace(input.ExpectedMemoryUnitId)))
+        {
+            throw new ArgumentException("Explicit source refresh requires file content, a bounded stable revision token and a valid optional predecessor.");
+        }
+        if (!input.RefreshExistingSource && input.ReopenSourceVersion is not null)
+        {
+            throw new ArgumentException("Only explicit refresh can reopen a verified transient source generation.");
+        }
     }
 
     private static void ValidateContentBytesForSourceType(
