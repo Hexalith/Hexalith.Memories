@@ -12,6 +12,10 @@ using Dapr.Client;
 using Hexalith.Memories.AccessTelemetry.Contracts;
 
 /// <summary>Loads authoritative retention and marker-key material without blocking business startup.</summary>
+/// <remarks>
+/// Each attempt also records bounded, secret-free stage progress in <see cref="AccessTelemetryLifecycleBootstrapProgress"/>.
+/// That progress is diagnostic only; health, status, metric and retry behavior are unchanged.
+/// </remarks>
 internal sealed class AccessTelemetryLifecycleBootstrapService(
     DaprClient daprClient,
     AccessTelemetryOptions configuredOptions,
@@ -19,7 +23,8 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
     AccessTelemetryLifecycleStatus status,
     TimeProvider timeProvider,
     MonotonicRecordIdGenerator recordIds,
-    IHostEnvironment environment) : BackgroundService
+    IHostEnvironment environment,
+    AccessTelemetryLifecycleBootstrapProgress progress) : BackgroundService
 {
     private const string RetentionConfigurationKey = "retentionSeconds";
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(10);
@@ -33,12 +38,14 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
+            progress.BeginAttempt();
             try
             {
                 AccessTelemetryOptions options = await ResolveRetentionAsync(stoppingToken).ConfigureAwait(false);
                 AccessTelemetryOptionsValidationResult validation = AccessTelemetryOptionsValidator.Validate(options, environment.EnvironmentName);
                 if (!validation.IsValid || validation.EffectiveRetention is null)
                 {
+                    progress.CompleteFailure(AccessTelemetryLifecycleBootstrapFailureKind.ConfigurationInvalid);
                     if (_validatedOnce)
                     {
                         sanitizerAccessor.Clear();
@@ -51,12 +58,14 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                     continue;
                 }
 
+                progress.Enter(AccessTelemetryLifecycleBootstrapStage.Secret);
                 Dictionary<string, string> secret = await daprClient.GetSecretAsync(
                     options.SecretStoreName,
                     options.MarkerKeyReference,
                     cancellationToken: stoppingToken).ConfigureAwait(false);
                 if (!secret.TryGetValue(options.MarkerKeyReference, out string? encodedMarkerKey) || string.IsNullOrWhiteSpace(encodedMarkerKey))
                 {
+                    progress.CompleteFailure(AccessTelemetryLifecycleBootstrapFailureKind.SecretMissing);
                     if (_validatedOnce)
                     {
                         sanitizerAccessor.Clear();
@@ -70,9 +79,11 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                 }
 
                 byte[] markerKey = Convert.FromBase64String(encodedMarkerKey);
+                progress.Enter(AccessTelemetryLifecycleBootstrapStage.RemoteValidation);
                 AccessTelemetryRuntimeValidationResponse remote = await ValidateRemoteAsync(options, stoppingToken).ConfigureAwait(false);
                 if (!remote.AllowsWrites)
                 {
+                    progress.CompleteFailure(AccessTelemetryLifecycleBootstrapFailureKind.RemoteDenied);
                     status.Publish(
                         remote.Reason == AccessTelemetryReason.ConfigurationInvalid
                             ? AccessTelemetryHealthState.Unhealthy
@@ -94,6 +105,7 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                     !string.Equals(markerKeyHash, _publishedMarkerKeyHash, StringComparison.Ordinal) &&
                     string.Equals(options.MarkerKeyGeneration, _publishedMarkerKeyGeneration, StringComparison.Ordinal))
                 {
+                    progress.CompleteFailure(AccessTelemetryLifecycleBootstrapFailureKind.ConfigurationInvalid);
                     sanitizerAccessor.Clear();
                     status.PublishTerminal(AccessTelemetryReason.ConfigurationInvalid);
                     return;
@@ -117,6 +129,7 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
                 }
 
                 _validatedOnce = true;
+                progress.CompletePublished(timeProvider.GetUtcNow());
                 status.Publish(AccessTelemetryHealthState.Healthy, AccessTelemetryReason.None);
                 await Task.Delay(RefreshInterval, timeProvider, stoppingToken).ConfigureAwait(false);
             }
@@ -126,6 +139,7 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
             }
             catch (Exception exception) when (exception is FormatException or ArgumentException or OverflowException)
             {
+                progress.CompleteFailure(AccessTelemetryLifecycleBootstrapFailureKind.Format);
                 status.Publish(AccessTelemetryHealthState.Unhealthy, AccessTelemetryReason.ConfigurationInvalid);
                 if (_validatedOnce)
                 {
@@ -138,6 +152,8 @@ internal sealed class AccessTelemetryLifecycleBootstrapService(
             }
             catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
             {
+                // Only the bounded kind is retained; the exception detail never leaves this catch.
+                progress.CompleteFailure(AccessTelemetryLifecycleBootstrapProgress.Classify(exception));
                 status.Publish(AccessTelemetryHealthState.Degraded, AccessTelemetryReason.RemoteValidationPending);
                 await Task.Delay(TimeSpan.FromSeconds(5), timeProvider, stoppingToken).ConfigureAwait(false);
             }

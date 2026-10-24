@@ -20,6 +20,7 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
     private readonly AccessTelemetryLifecycleStatus? _status;
     private readonly TimeProvider? _timeProvider;
     private readonly AccessTelemetryQualificationAccounting? _qualificationAccounting;
+    private readonly AccessTelemetryLifecycleBootstrapProgress? _bootstrapProgress;
 
     /// <summary>Initializes a category-bound lifecycle logger.</summary>
     public AccessTelemetryLifecycleLogger(
@@ -40,13 +41,21 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
     }
 
     /// <summary>Initializes a category-bound lifecycle logger with health activity tracking.</summary>
+    /// <param name="categoryName">The logger category; only the access-telemetry category is enabled.</param>
+    /// <param name="queue">The bounded lifecycle queue.</param>
+    /// <param name="sanitizerAccessor">The fail-closed published sanitizer.</param>
+    /// <param name="status">The lifecycle status, or <see langword="null"/> when activity is not tracked.</param>
+    /// <param name="timeProvider">The activity clock, or <see langword="null"/>.</param>
+    /// <param name="qualificationAccounting">The qualification-only accounting, or <see langword="null"/>.</param>
+    /// <param name="bootstrapProgress">The bootstrap progress attributed to unavailable-sanitizer rejections, or <see langword="null"/>.</param>
     public AccessTelemetryLifecycleLogger(
         string categoryName,
         BoundedAccessTelemetryQueue queue,
         AccessTelemetrySanitizerAccessor sanitizerAccessor,
         AccessTelemetryLifecycleStatus? status,
         TimeProvider? timeProvider,
-        AccessTelemetryQualificationAccounting? qualificationAccounting = null)
+        AccessTelemetryQualificationAccounting? qualificationAccounting = null,
+        AccessTelemetryLifecycleBootstrapProgress? bootstrapProgress = null)
     {
         _categoryMatches = string.Equals(categoryName, RequiredCategory, StringComparison.Ordinal);
         _queue = queue;
@@ -54,6 +63,7 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
         _status = status;
         _timeProvider = timeProvider;
         _qualificationAccounting = qualificationAccounting;
+        _bootstrapProgress = bootstrapProgress;
     }
 
     /// <inheritdoc/>
@@ -89,6 +99,10 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
                 _status.RecordActivity(_timeProvider.GetUtcNow());
             }
 
+            // Bootstrap publishes the sanitizer before its Healthy status and Published stage. Reading both before the
+            // sanitizer means a rejection for a missing sanitizer can never be attributed to a later published state.
+            AccessTelemetryReason? lifecycleReason = _status?.Current.Reason;
+            string? bootstrapStage = _bootstrapProgress?.Current.Stage;
             AccessTelemetrySanitizer? sanitizer = _sanitizerAccessor.Current;
             if (source is not null && sanitizer is not null && sanitizer.TrySanitize(logLevel, eventId, source, out AccessTelemetryRecord? record, out _))
             {
@@ -116,12 +130,12 @@ internal sealed class AccessTelemetryLifecycleLogger : ILogger
             else if (source is not null && sanitizer is null)
             {
                 ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Rejected, AccessTelemetryReason.RemoteValidationPending);
-                _qualificationAccounting?.RecordRejected(qualificationCorrelation);
+                _qualificationAccounting?.RecordSanitizerUnavailable(qualificationCorrelation, lifecycleReason, bootstrapStage);
             }
             else if (source is not null)
             {
                 ServerAccessTelemetryLifecycleMetrics.Record(AccessTelemetryRecordState.Rejected, AccessTelemetryReason.SchemaMismatch);
-                _qualificationAccounting?.RecordRejected(qualificationCorrelation);
+                _qualificationAccounting?.RecordSanitationFailed(qualificationCorrelation);
             }
         }
         catch (Exception caught) when (caught is not OutOfMemoryException and not StackOverflowException)

@@ -132,15 +132,40 @@ internal sealed class AccessTelemetryQualificationAccounting
         RecordDisposition(records, 0, records.Count, static counters => counters.RecordDropped());
     }
 
-    /// <summary>Records a pre-queue correlated rejection.</summary>
-    public void RecordRejected(string? correlation)
+    /// <summary>Records a pre-queue rejection caused by an unpublished sanitizer.</summary>
+    /// <param name="correlation">The bounded segment correlation, or <see langword="null"/> for ordinary traffic.</param>
+    /// <param name="lifecycleReason">The lifecycle status reason observed at rejection, if available.</param>
+    /// <param name="bootstrapStage">The bootstrap stage name observed at rejection, if available.</param>
+    public void RecordSanitizerUnavailable(string? correlation, AccessTelemetryReason? lifecycleReason, string? bootstrapStage)
     {
         RecordRejected(1);
         if (correlation is not null)
         {
-            _correlated.GetOrAdd(correlation, static _ => new()).RecordRejected(conflicted: false);
+            _correlated.GetOrAdd(correlation, static _ => new())
+                .RecordSanitizerUnavailable(
+                    AccessTelemetryQualificationRejectionBreakdown.ReasonName(lifecycleReason),
+                    AccessTelemetryQualificationRejectionBreakdown.StageName(bootstrapStage));
         }
     }
+
+    /// <summary>Records a pre-queue rejection because the published sanitizer refused the typed record.</summary>
+    /// <param name="correlation">The bounded segment correlation, or <see langword="null"/> for ordinary traffic.</param>
+    public void RecordSanitationFailed(string? correlation)
+    {
+        RecordRejected(1);
+        if (correlation is not null)
+        {
+            _correlated.GetOrAdd(correlation, static _ => new()).RecordSanitationFailed();
+        }
+    }
+
+    /// <summary>Gets the pre-queue rejection breakdown belonging only to one fixed-workload segment.</summary>
+    /// <param name="correlation">The privacy-safe segment correlation.</param>
+    /// <returns>The segment's monotonic breakdown; its lifecycle state is not observed here.</returns>
+    public AccessTelemetryQualificationRejectionBreakdown RejectionsForCorrelation(string correlation)
+        => _correlated.TryGetValue(correlation, out Counters? counters)
+            ? counters.Rejections
+            : AccessTelemetryQualificationRejectionBreakdown.Empty;
 
     private static string? TryGetCorrelation(AccessTelemetryEvent source)
     {
@@ -192,12 +217,16 @@ internal sealed class AccessTelemetryQualificationAccounting
 
     private sealed class Counters
     {
+        private readonly ConcurrentDictionary<string, long> _unavailableReasons = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, long> _unavailableStages = new(StringComparer.Ordinal);
         private long _attempted;
         private long _conflicted;
         private long _dropped;
         private long _enqueued;
         private long _persisted;
         private long _rejected;
+        private long _sanitationFailed;
+        private long _sanitizerUnavailable;
 
         public AccessTelemetryQualificationAccountingSnapshot Current => new(
             Volatile.Read(ref _attempted),
@@ -222,6 +251,31 @@ internal sealed class AccessTelemetryQualificationAccounting
             }
         }
 
+        // The breakdown copies both dictionaries into its own read-only instances; no mutable state is shared.
+        public AccessTelemetryQualificationRejectionBreakdown Rejections => new(
+            Volatile.Read(ref _sanitizerUnavailable),
+            Volatile.Read(ref _sanitationFailed),
+            _unavailableReasons,
+            _unavailableStages,
+            AccessTelemetryQualificationRejectionBreakdown.Unobserved,
+            AccessTelemetryQualificationRejectionBreakdown.Unobserved,
+            AccessTelemetryLifecycleBootstrapSnapshot.NotObserved);
+
         public void RecordDropped() => Interlocked.Increment(ref _dropped);
+
+        // Kind-specific counters are published before the aggregate rejection that completes a segment.
+        public void RecordSanitizerUnavailable(string reason, string stage)
+        {
+            _ = _unavailableReasons.AddOrUpdate(reason, 1, static (_, count) => count + 1);
+            _ = _unavailableStages.AddOrUpdate(stage, 1, static (_, count) => count + 1);
+            _ = Interlocked.Increment(ref _sanitizerUnavailable);
+            RecordRejected(conflicted: false);
+        }
+
+        public void RecordSanitationFailed()
+        {
+            _ = Interlocked.Increment(ref _sanitationFailed);
+            RecordRejected(conflicted: false);
+        }
     }
 }

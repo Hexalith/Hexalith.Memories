@@ -23,6 +23,7 @@ namespace Hexalith.Memories.Server.Telemetry.AccessTelemetryLifecycle;
 /// <param name="Rejected">The non-conflict rejection count.</param>
 /// <param name="RecordIds">The exact deterministic record identities emitted by this segment.</param>
 /// <param name="ResultCount">The nonzero aggregate observation count.</param>
+/// <param name="RejectionBreakdown">The bounded, secret-free pre-queue rejection breakdown for this segment.</param>
 internal sealed record AccessTelemetryQualificationWorkloadResult(
     string RunId,
     string SegmentId,
@@ -40,4 +41,5 @@ internal sealed record AccessTelemetryQualificationWorkloadResult(
     long Dropped,
     long Rejected,
     IReadOnlyList<string> RecordIds,
-    long ResultCount);
+    long ResultCount,
+    AccessTelemetryQualificationRejectionBreakdown RejectionBreakdown);

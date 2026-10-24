@@ -1,5 +1,6 @@
 """Offline real selected sequence with controlled UTC/monotonic, HTTP and SQL; no live credit."""
 from contextlib import redirect_stdout
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import hashlib
 import io
@@ -20,6 +21,24 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
 import access_telemetry_functional_retention as f
 from access_telemetry_producer_common import _qualification_record_ids
+
+# A correct segment whose bootstrap failed once before publishing must still pass: bootstrap is shape-checked only.
+def pass_bootstrap(start):
+    return {"attempts": 3, "stage": "Published", "failureStage": "RemoteValidation", "failureKind": "Transport", "firstPublishedUtcMs": start - 30000}
+
+
+_PERSISTENT_DENIAL = {"sanitizerUnavailable": 125, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {"CapabilityUnproven": 125},
+                      "sanitizerUnavailableBootstrapStages": {"RemoteValidation": 125}, "lifecycleHealth": "Degraded", "lifecycleReason": "CapabilityUnproven",
+                      "bootstrap": {"attempts": 4, "stage": "RemoteValidation", "failureStage": "RemoteValidation", "failureKind": "RemoteDenied", "firstPublishedUtcMs": None}}
+# Fully allow-listed, non-zero breakdowns; only the first is internally consistent with 125 rejected records.
+CONSISTENT_REJECTIONS = {
+    "breakdown-consistent-rejection": _PERSISTENT_DENIAL,
+    "breakdown-reason-sum-mismatch": {**_PERSISTENT_DENIAL, "sanitizerUnavailableLifecycleReasons": {"CapabilityUnproven": 124}},
+    "breakdown-stage-sum-mismatch": {**_PERSISTENT_DENIAL, "sanitizerUnavailableBootstrapStages": {"RemoteValidation": 100}},
+    "breakdown-exceeds-rejected": _PERSISTENT_DENIAL,
+    # Every field is individually valid, but no completed attempt cannot carry a failure.
+    "breakdown-bootstrap-inconsistent": {**_PERSISTENT_DENIAL, "bootstrap": {**_PERSISTENT_DENIAL["bootstrap"], "attempts": 0}},
+}
 
 
 class SelectedActiveSequenceTests(unittest.TestCase):
@@ -98,8 +117,31 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     ids = _qualification_record_ids("offline-run", segment)
                     for ordinal, (key, identity) in enumerate(zip(record_keys[segment], ids)):
                         records[key] = {"recordId": identity, "envelopeHash": "e" * 64, "emittedAtUtc": iso(start + ordinal), "expiresAtUtc": iso(start + ordinal + 3600000), "acceptedAtUtc": iso(start), "payload": {"message": "original"}}
-                    value = {"runId": "offline-run", "segmentId": segment, "writer": "writer-1", "recordIds": ids, "startedUtcMs": start, "finishedUtcMs": start, "emitFinishedUtcMs": start, "acknowledgedUtcMs": start, "resultCount": 1, **{key: 125 for key in ("attempted", "enqueued", "acknowledged", "persisted", "transactionAcknowledgements")}, **{key: 0 for key in ("conflicted", "rejected", "dropped")}}
-                    if variant == "accounting-loss":
+                    value = {"runId": "offline-run", "segmentId": segment, "writer": "writer-1", "recordIds": ids, "startedUtcMs": start, "finishedUtcMs": start, "emitFinishedUtcMs": start, "acknowledgedUtcMs": start, "resultCount": 1, **{key: 125 for key in ("attempted", "enqueued", "acknowledged", "persisted", "transactionAcknowledgements")}, **{key: 0 for key in ("conflicted", "rejected", "dropped")},
+                             # A passing segment may carry any valid bootstrap history, including an earlier failure.
+                             "rejectionBreakdown": {"sanitizerUnavailable": 0, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {}, "sanitizerUnavailableBootstrapStages": {},
+                                                    "lifecycleHealth": "Healthy", "lifecycleReason": "None", "bootstrap": pass_bootstrap(start)}}
+                    rejected_counters = {"enqueued": 0, "acknowledged": 0, "persisted": 0, "transactionAcknowledgements": 0, "rejected": 125}
+                    if variant == "pre-enqueue-rejection":
+                        value.update(rejected_counters,
+                                     rejectionBreakdown={"sanitizerUnavailable": 125, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {"CapabilityUnproven": 120, "RemoteValidationPending": 5, "fixture-response-secret": 1},
+                                                         "sanitizerUnavailableBootstrapStages": {"NotStarted": 120, "Configuration": 5, "fixture-response-secret": 1},
+                                                         "lifecycleHealth": "Degraded", "lifecycleReason": "CapabilityUnproven", "rawResponse": "fixture-response-secret",
+                                                         "bootstrap": {"attempts": 0, "stage": "Configuration", "failureStage": None, "failureKind": None, "firstPublishedUtcMs": None, "rawResponse": "fixture-response-secret"}})
+                    elif variant in CONSISTENT_REJECTIONS:
+                        value.update(rejected_counters, rejectionBreakdown=deepcopy(CONSISTENT_REJECTIONS[variant]))
+                        if variant == "breakdown-exceeds-rejected":
+                            value.update(enqueued=25, acknowledged=25, persisted=25, transactionAcknowledgements=25, rejected=100)
+                    elif variant == "breakdown-private":
+                        value["rejectionBreakdown"] = {"sanitizerUnavailable": "fixture-response-secret", "sanitationFailed": 10**100, "sanitizerUnavailableLifecycleReasons": ["fixture-response-secret"],
+                                                       "sanitizerUnavailableBootstrapStages": "fixture-response-secret", "lifecycleHealth": {"credential": "fixture-response-secret"},
+                                                       "lifecycleReason": "fixture-response-secret", "bootstrap": ["fixture-response-secret"]}
+                    elif variant == "breakdown-bootstrap-private":
+                        value["rejectionBreakdown"]["bootstrap"] = {"attempts": True, "stage": "fixture-response-secret", "failureStage": 3, "failureKind": "fixture-response-secret",
+                                                                    "firstPublishedUtcMs": "fixture-response-secret", "rawResponse": "fixture-response-secret"}
+                    elif variant == "breakdown-nonempty-on-pass":
+                        value["rejectionBreakdown"] = {**value["rejectionBreakdown"], "sanitationFailed": 1}
+                    elif variant == "accounting-loss":
                         value.update(acknowledged=124, persisted=124, transactionAcknowledgements=124, rejected=1)
                     elif variant == "accounting-private":
                         value.update(persisted="fixture-response-secret", rawResponse={"credential": "fixture-response-secret"})
@@ -179,7 +221,11 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     self.assertNotIn("fixture-app-secret", raw)
                     self.assertNotIn("fixture-dapr-secret", raw)
                     snapshot = json.loads(raw)
-                    self.assertEqual({"runId", "segmentId", "observedUtcMs", "counters"}, set(snapshot))
+                    self.assertEqual({"runId", "segmentId", "observedUtcMs", "counters", "rejectionBreakdown", "rejectionBreakdownComplete"}, set(snapshot))
+                    # Diagnostic only: dropped fields, missing captures or inconsistent counts are disclosed, never repaired.
+                    self.assertIs(snapshot["rejectionBreakdownComplete"], variant not in {"pre-enqueue-rejection", "breakdown-private", "breakdown-bootstrap-private", "breakdown-nonempty-on-pass", "accounting-foreign",
+                                                                                          "breakdown-reason-sum-mismatch", "breakdown-stage-sum-mismatch", "breakdown-exceeds-rejected",
+                                                                                          "breakdown-bootstrap-inconsistent"})
                     self.assertEqual("offline-run", snapshot["runId"])
                     self.assertEqual(capture.stem.removesuffix("-accounting"), snapshot["segmentId"])
                     self.assertEqual(0o600, capture.stat().st_mode & 0o777)
@@ -194,6 +240,27 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                         self.assertEqual({"rejected": 0, "dropped": 0}, snapshot["counters"])
                     elif variant == "accounting-foreign":
                         self.assertEqual({}, snapshot["counters"])
+                        self.assertEqual({}, snapshot["rejectionBreakdown"])
+                    elif variant == "pre-enqueue-rejection":
+                        self.assertEqual({"attempted": 125, "enqueued": 0, "acknowledged": 0, "persisted": 0, "transactionAcknowledgements": 0, "conflicted": 0, "rejected": 125, "dropped": 0}, snapshot["counters"])
+                        self.assertEqual({"sanitizerUnavailable": 125, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {"CapabilityUnproven": 120, "RemoteValidationPending": 5},
+                                          "sanitizerUnavailableBootstrapStages": {"NotStarted": 120, "Configuration": 5},
+                                          "lifecycleHealth": "Degraded", "lifecycleReason": "CapabilityUnproven",
+                                          "bootstrap": {"attempts": 0, "stage": "Configuration", "failureStage": None, "failureKind": None, "firstPublishedUtcMs": None}}, snapshot["rejectionBreakdown"])
+                        self.assertNotIn("rawResponse", raw)
+                    elif variant in CONSISTENT_REJECTIONS:
+                        # Retained exactly; only the diagnostic flag discloses an inconsistent sum or excess over the rejections.
+                        self.assertEqual(CONSISTENT_REJECTIONS[variant], snapshot["rejectionBreakdown"])
+                        self.assertEqual(100 if variant == "breakdown-exceeds-rejected" else 125, snapshot["counters"]["rejected"])
+                    elif variant == "breakdown-private":
+                        self.assertEqual({}, snapshot["rejectionBreakdown"])
+                    elif variant == "breakdown-bootstrap-private":
+                        self.assertEqual({}, snapshot["rejectionBreakdown"]["bootstrap"])
+                        self.assertEqual({}, snapshot["rejectionBreakdown"]["sanitizerUnavailableBootstrapStages"])
+                    elif variant in {"pass", "accounting-loss"}:
+                        self.assertEqual({"sanitizerUnavailable": 0, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {}, "sanitizerUnavailableBootstrapStages": {},
+                                          "lifecycleHealth": "Healthy", "lifecycleReason": "None", "bootstrap": pass_bootstrap(emitted[snapshot["segmentId"]])},
+                                         snapshot["rejectionBreakdown"])
             if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact"}:
                 self.assertEqual(0, result, status)
                 self.assertEqual("functional-observations-passed", status["status"])
@@ -216,7 +283,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             else:
                 self.assertEqual(1, result, status)
                 self.assertEqual("rejected", status["status"])
-                reasons = {"accounting-loss": "functional-accounting-loss", "accounting-private": "functional-accounting-schema", "accounting-bounds": "functional-accounting-loss", "accounting-foreign": "functional-accounting-identity", "accounting-occupied": "functional-selected-input-refused", "large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
+                reasons = {"accounting-loss": "functional-accounting-loss", "pre-enqueue-rejection": "functional-accounting-loss", **{name: "functional-accounting-loss" for name in CONSISTENT_REJECTIONS}, "breakdown-private": "functional-accounting-rejection-breakdown", "breakdown-bootstrap-private": "functional-accounting-rejection-breakdown", "breakdown-nonempty-on-pass": "functional-accounting-rejection-breakdown", "accounting-private": "functional-accounting-schema", "accounting-bounds": "functional-accounting-loss", "accounting-foreign": "functional-accounting-identity", "accounting-occupied": "functional-selected-input-refused", "large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
                 self.assertEqual(reasons[variant], status["reason"])
                 if variant == "final-return-drift":
                     self.assertFalse(report.with_name("functional-observations.json").exists())
@@ -233,6 +300,22 @@ class SelectedActiveSequenceTests(unittest.TestCase):
 
     def test_accounting_capture_excludes_untrusted_fields_values_and_foreign_identities(self):
         for variant in ("accounting-private", "accounting-bounds", "accounting-foreign"):
+            with self.subTest(variant=variant):
+                self.run_sequence(variant)
+
+    def test_pre_enqueue_rejection_retains_bounded_breakdown_and_still_fails_accounting(self):
+        self.run_sequence("pre-enqueue-rejection")
+
+    def test_rejection_breakdown_values_are_allow_listed_and_must_be_consistent(self):
+        for variant in ("breakdown-private", "breakdown-bootstrap-private", "breakdown-nonempty-on-pass"):
+            with self.subTest(variant=variant):
+                self.run_sequence(variant)
+
+    def test_consistent_nonzero_breakdown_is_complete_and_still_fails_accounting(self):
+        self.run_sequence("breakdown-consistent-rejection")
+
+    def test_inconsistent_breakdown_is_retained_but_disclosed_incomplete(self):
+        for variant in ("breakdown-reason-sum-mismatch", "breakdown-stage-sum-mismatch", "breakdown-exceeds-rejected", "breakdown-bootstrap-inconsistent"):
             with self.subTest(variant=variant):
                 self.run_sequence(variant)
 

@@ -4,6 +4,233 @@ The [active Spec 14](../spec-27-4-retention-verification-operations-runbook-and-
 
 ## Functional result
 
+### Bootstrap-stage execution — 2026-10-24; lifecycle capability refusal, disposal verified
+
+The owner replied **“approve”**. `BOOTSTRAP/approval.json` (19:57:35.569071Z) binds plan `100bb6613d88bfe14564bca273a5ddd41fe42cb0cf6a50a83b5e302151b9cb3b` and command `2d35f059ba6dd2721444a36477deb2854c4326b161f3fbfaab163fb9eebe9f3f`. `python3 -B execute-approved.py`, run from `BOOTSTRAP`, did three things:
+
+1. Once-before-launch admission passed at **19:57:44.543784Z**: 319 selected / 36 model / 39 operational / 489 runtime inputs, seven images, the empty engine `6dd698f6-b6a6-4c9e-9729-4f2e744c3b3d`, owned PID/start identities, and capacity.
+2. Captures and the observer were made ready.
+3. The unchanged supported command in `launch-command.txt` was dispatched once at **19:57:44.677179Z**, as native run **`1441c0dbdd973a0f9c0cbf6a8c8eb817`**.
+
+Startup admission persisted at 19:59:14.424736Z and was confirmed to precede cohort A.
+
+| Evidence | Actual result |
+| :--- | :--- |
+| Native terminal | **failed / 4 / HXT006**, completed 19:59:16.038388Z. TRX: 1 executed, 0 passed, 1 failed, `functional-accounting-loss`. Wrapper counts were not reported. |
+| Cohort A counters | 125 attempted / 125 rejected / zero enqueued, acknowledged, persisted, dropped or conflicted. |
+| `rejectionBreakdown` (complete) | `sanitizerUnavailable` 125, `sanitationFailed` 0; by reason `{CapabilityUnproven: 125}`; by stage `{RemoteValidation: 125}`; lifecycle Degraded/`CapabilityUnproven`. |
+| `bootstrap` | `attempts` 3, `stage` `RemoteValidation`, `failureStage` `RemoteValidation`, `failureKind` `RemoteDenied`, `firstPublishedUtcMs` null. |
+
+**Reading (per the outcome table).** Persistent stage failure with no publication. A lifecycle reason of `CapabilityUnproven` beside `RemoteDenied` means the lifecycle application refused writes, not a 401/403 (which would read `RemoteValidationPending`).
+
+- **Ruled out:** emission before publication, sanitation failure, configuration or secret failure.
+- **What the refusal means:** `/v1/access-telemetry/validate` returns the runtime-gate reason only when epoch and component-profile hash match, so the gate held its fail-closed `CapabilityUnproven`. In the local functional profile, `AccessTelemetryCapabilityProbeRunner` attempts its probes once per process within 30 s and keeps a failed decision.
+- **Hypothesis (correlation only):** the one-shot local capability probe failed or timed out on the `RESOLVER`-derived candidate. `MAPPING` and this run share the refusal shape, while `GUARD` accepted 125/125. The SQLite discovery `cleanupInterval: "0s"` edit is the only known structural difference.
+- **Limits:** the lifecycle app's console, per-capability results and gate metrics were not captured. The 19:59:17.888Z owned-graph-loss receipt is teardown after the terminal.
+
+**Disposition.** Supported `down --run-id 1441c0dbdd973a0f9c0cbf6a8c8eb817` (same prefix and cwd) returned **0 / HXI001** at 19:59:19.969503Z. `sudo -n python3 -B dispose-owned.py` was copied from `MAPPING`, with guards added only for a missing run ID or receipts. It verified the empty engine, stopped the captures, observer and exact owned daemon/keeper/slirp identities, and confirmed absence at **19:59:31.791139Z**: **14.794657 s** from the native terminal, within **900 s**. No owned processes or namespace members remain, and the socket, workspace and run state are absent. Evidence: `BOOTSTRAP/run-result.json`, `private-engine-disposition.json`, `before-disposal/`, `native.stdout.json`, `down.stdout.log`, `native-terminal.json`, and the owner's `functional.json`/`functional.python3.trx`.
+
+**One launch, zero retries; approval consumed; engine stopped; no further launch authorized or prepared.** Next owner: Memories, to obtain per-capability evidence for the lifecycle app's one-shot local probe offline before any fix. Story 27.4, local retention, full qualification, Production and **A41 remain open**. The preparation below is historical.
+
+### Bootstrap-stage rejection breakdown — 2026-10-24; reviewed preparation awaiting one authorization
+
+**Scope.** This section implements the Spec 14 loop-1 `bad_spec` amendment after consumed run **`dd8512086bb377547e89eda7d028b986`** (cohort A **125 attempted / 125 rejected / zero enqueued**). Preparation baseline is Memories **`014a4ad365f6d4d6e47c806aba1621c85da2757d`**. No launch, topology, Production test, dependency change, staging, commit or push occurred. The loop-1 `BREAKDOWN` plan (SHA-256 `ef9bcdcb…`) stays withdrawn and was never authorized. Its report section is not restored. `DIAG` diagnosis evidence remains valid; no cause is attributed, and emission ordering is unchanged.
+
+**Why loop 1 was not enough.** The lifecycle status starts as Degraded/`RemoteValidationPending`, and the bootstrap catch-all publishes the same pair for every unexpected exception. A breakdown keyed only by lifecycle reason would therefore read `{RemoteValidationPending: 125}` both for emission before publication and for a persistently failing Dapr configuration, secret or remote-validation call.
+
+**Change (owning Memories).** The loop-1 implementation (`DIAG/loop1-reverted-implementation.patch`, SHA-256 `561f37cc…`) was re-applied to `014a4ad3` without its report hunk, then extended:
+
+- **New process-local singleton.** `AccessTelemetryLifecycleBootstrapProgress` lives in its own file, with supporting `AccessTelemetryLifecycleBootstrapSnapshot`, `AccessTelemetryLifecycleBootstrapStage` and `AccessTelemetryLifecycleBootstrapFailureKind`. It is registered unconditionally.
+- **What it records.** `AccessTelemetryLifecycleBootstrapService` records:
+  - completed attempts;
+  - the in-flight or last stage: `NotStarted`, `Configuration`, `Secret`, `RemoteValidation` or `Published`;
+  - the last failure stage and its allow-listed kind: `ConfigurationInvalid`, `SecretMissing`, `RemoteDenied` (a lifecycle refusal, or HTTP 401/403 or gRPC `PermissionDenied`/`Unauthenticated` on a secret, configuration or invocation call; the failure stage names the call), `Timeout`, `Canceled`, `Transport`, `DaprApi`, `Format` or `Other`;
+  - the first sanitizer publication time in UTC milliseconds.
+- **No detail is retained.** Only the enum name is kept; exception text never leaves the catch. `AccessTelemetryLifecycleStatusSnapshot`, health, metrics, status values and retry delays are unchanged.
+- **Logger.** It now reads the lifecycle status and the bootstrap stage before the sanitizer. Each sanitizer-unavailable rejection is counted both by lifecycle reason and by bootstrap stage.
+- **Response.** `rejectionBreakdown` adds `sanitizerUnavailableBootstrapStages` and a `bootstrap` snapshot taken when the response is built. Every breakdown dictionary is an owned immutable copy, including in `with` copies and `Empty`.
+- **Runner construction.** DI selects the public runner constructor that takes both the status and the bootstrap progress, and the logger provider also receives the progress.
+- **Selected verifier.** `tools/access_telemetry_functional_retention.py` allow-lists and bounds the new fields and retains them in `cohort-*-accounting.json` before validation. A passing segment must report an exact, empty breakdown, and its bootstrap snapshot is checked for shape and allow-list validity only. `rejectionBreakdownComplete` also checks the stage sum.
+- **Unchanged guards.** Any rejection still fails `functional-accounting-loss`.
+
+**Files.** Production:
+
+- `src/Hexalith.Memories.Server/Hosting/MemoriesServerServiceCollectionExtensions.cs`
+- in `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/`:
+  - the four new bootstrap files;
+  - `AccessTelemetryQualificationRejectionBreakdown.cs` (new);
+  - `AccessTelemetryLifecycleBootstrapService.cs`, `AccessTelemetryLifecycleLogger.cs`, `AccessTelemetryLifecycleLoggerProvider.cs`, `AccessTelemetryQualificationAccounting.cs`, `AccessTelemetryQualificationWorkloadResult.cs`, `AccessTelemetryQualificationWorkloadRunner.cs`;
+- `tools/access_telemetry_functional_retention.py`.
+
+Tests:
+
+- New: `AccessTelemetryLifecycleBootstrapProgressTests.cs`, `AccessTelemetryQualificationRejectionBreakdownTests.cs`, `AccessTelemetryQualificationRejectionAccountingTests.cs`.
+- Updated: `AccessTelemetryLifecycleRegistrationTests.cs`, `AccessTelemetryQualificationWorkloadTests.cs`, `test_functional_retention.py`, `test_selected_active_sequence.py`.
+
+**Exact focused commands and results.** The cwd is `/home/administrator/projects/hexalith/memories`. `DLL=tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll`, `NS=Hexalith.Memories.Server.Tests.Telemetry.AccessTelemetryLifecycle`. `O=<BOOTSTRAP>/owning-checks`, where `BOOTSTRAP` is defined below.
+
+| Check | Exact command | Result |
+| :--- | :--- | :--- |
+| Build | `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -m:1 --nologo -v:m` | **0 warnings / 0 errors** (`O/review-fix/build.log`) |
+| Focused classes | `DiffEngine_Disabled=true dotnet exec $DLL -noLogo -noColor -class $NS.AccessTelemetryLifecycleBootstrapProgressTests -class $NS.AccessTelemetryQualificationRejectionBreakdownTests -class $NS.AccessTelemetryQualificationRejectionAccountingTests -class $NS.AccessTelemetryLifecycleRegistrationTests -class $NS.AccessTelemetryQualificationWorkloadTests -class $NS.AccessTelemetryDeliveryCheckpointTests` | **90/90**; loop 1 was 80/80, and 10 cases are new (`O/review-fix/focused.log`) |
+| Telemetry namespaces | `DiffEngine_Disabled=true dotnet exec $DLL -noLogo -noColor -namespace Hexalith.Memories.Server.Tests.Telemetry -namespace $NS` | **295/295** (`O/review-fix/telemetry-namespaces.log`) |
+| Repeat loop | `for i in $(seq 1 20); do DiffEngine_Disabled=true dotnet exec $DLL -noLogo -noColor -class $NS.AccessTelemetryLifecycleBootstrapProgressTests -class $NS.AccessTelemetryQualificationRejectionBreakdownTests -class $NS.AccessTelemetryQualificationRejectionAccountingTests -class $NS.AccessTelemetryLifecycleRegistrationTests; done` | **20/20** runs pass, 17 cases each (`O/review-fix/repeat-summary.log`) |
+| Python named tests, cwd `tests/tooling/access_telemetry_functional_retention` | `python3 -B -m unittest -v test_functional_retention.FunctionalTests.test_real_workload_response_contract_and_no_loss_are_required test_functional_retention.FunctionalTests.test_bounded_breakdown_drops_out_of_range_and_unknown_values test_functional_retention.FunctionalTests.test_rejection_breakdown_allow_lists_match_the_server_enums test_selected_active_sequence.SelectedActiveSequenceTests.test_pre_enqueue_rejection_retains_bounded_breakdown_and_still_fails_accounting test_selected_active_sequence.SelectedActiveSequenceTests.test_rejection_breakdown_values_are_allow_listed_and_must_be_consistent test_selected_active_sequence.SelectedActiveSequenceTests.test_consistent_nonzero_breakdown_is_complete_and_still_fails_accounting test_selected_active_sequence.SelectedActiveSequenceTests.test_inconsistent_breakdown_is_retained_but_disclosed_incomplete test_selected_active_sequence.SelectedActiveSequenceTests.test_accounting_failure_retains_bounded_rejection_counters_before_validation test_selected_active_sequence.SelectedActiveSequenceTests.test_accounting_capture_excludes_untrusted_fields_values_and_foreign_identities` | **9/9** before the coordinator review; the 11-test covering set below replaced it |
+| Python directory (before the coordinator review) | `python3 -B -m unittest discover -v -s tests/tooling/access_telemetry_functional_retention -p 'test_*.py'` | `Ran 129 tests`, all 129 `ok` (loop 1's 126 plus 3 new), but the run exits **`FAILED (errors=1)`**: `setUpClass (test_functional_target.RenderTests)` errors on the `kubectl` blocker below, so those class tests never execute (`O/python-functional-retention-dir.log`; the candidate run is identical) |
+| Coordinator-review fixes: covering C# tests only | the build above, then `DiffEngine_Disabled=true dotnet exec $DLL -noLogo -noColor -class $NS.AccessTelemetryLifecycleBootstrapProgressTests -class $NS.AccessTelemetryQualificationRejectionBreakdownTests` | build **0 warnings / 0 errors**; **11/11**, including the new in-place key-change test and the `GetConfiguration` case (`O/coordinator-fix/build.log`, `O/coordinator-fix/focused.log`) |
+| Coordinator-review fixes: covering Python tests only, cwd `tests/tooling/access_telemetry_functional_retention` | `python3 -B -m unittest -v` with the 9 names above plus `test_functional_retention.FunctionalTests.test_breakdown_completeness_requires_internally_consistent_bootstrap_progress` and `test_selected_active_sequence.SelectedActiveSequenceTests.test_real_selected_sequence_reconciles_cleanup_before_first_poll` | **11/11** owning and **11/11** in the candidate (`O/coordinator-fix/python-focused.log`, `BOOTSTRAP/candidate-python-focused.log`). Wider suites were not rerun after these fixes; the coordinator runs full verification. |
+
+**Red evidence.** The new tests depend on new types, so they cannot compile against `014a4ad3` or the loop-1 code. Red runs therefore use sequential in-place mutants. Each mutant reverts one new behaviour, rebuilds, runs only the named tests, then restores the file. Hashes are verified after each restore, and the worktree diff and untracked-file hashes were identical before and after.
+
+- First round: `python3 -B <BOOTSTRAP>/owning-checks/mutation/run_mutations.py <BOOTSTRAP>/owning-checks/mutation`.
+- Review-fix round: `python3 -B <BOOTSTRAP>/owning-checks/mutation/review-fix/run_mutations_review_fix.py <BOOTSTRAP>/owning-checks/mutation/review-fix`.
+
+All 15 mutants failed their named tests:
+
+| Mutant | Failing tests |
+| :--- | :--- |
+| Progress not registered in DI | `RegisteredRunner_IsStatusAndBootstrapAwareInTheRealComposition` |
+| Logger ignores the stage | mixed-segment logger, unpublished, persistent-denial and publication-during-burst replays (4/4) |
+| Bootstrap catch-all not recorded | both hosted bootstrap tests |
+| Remote denial not recorded | `PersistentRemoteDenial_…` |
+| Runner omits the bootstrap snapshot | published replay and composition test |
+| Breakdown shares a mutable input | `Breakdown_ExposesOwnedReadOnlyDictionariesThatNoCallerCanMutate` |
+| `Since` keeps cumulative stages | delta test and `EarlierRejectedBaseline_…` |
+| Python pass ignores bootstrap shape or stage counts | `test_real_workload_response_contract_and_no_loss_are_required` |
+| Completeness ignores stage sum, reason sum or excess | `test_inconsistent_breakdown_is_retained_but_disclosed_incomplete` (3 mutants) |
+| Bootstrap allows any stage | allow-list tests |
+| Catch-all status not published (review fix) | both hosted bootstrap tests |
+| HTTP JSON ignores nulls (review fix) | composition test |
+
+The first round ran against the pre-review test versions. The review fixes only added assertions, and two further mutants cover them.
+
+These new tests never had a red run:
+
+- C#: `Classify_MapsEachFailureToTheFixedAllowListWithoutDetail`, `Progress_KeepsTheFirstPublicationAndOnlyBoundedNames`, `Breakdown_ReportsOnlyBoundedLifecycleAndBootstrapNames`, `Logger_WithoutBootstrapProgressCountsUnavailableRejectionsAsUnobservedStage`, and `SanitizerRefusal_IsCountedSeparatelyFromSanitizerUnavailability`. The last one had only loop 1's absent-breakdown red.
+- C#, added for the coordinator review: `HostedBootstrap_InPlaceMarkerKeyChangeIsTerminalAndRecordedAtTheStageInFlight`, the `GetConfiguration` case in `HostedBootstrap_ReportsEachRefusalAtItsStageWithItsBoundedKind`, and the new `Classify` cases (gRPC `PermissionDenied`/`Unauthenticated` to `RemoteDenied`, `NotFound` to `DaprApi`).
+- Python: `test_bounded_breakdown_drops_out_of_range_and_unknown_values`, `test_consistent_nonzero_breakdown_is_complete_and_still_fails_accounting`, the extended enum-parity test, `test_breakdown_completeness_requires_internally_consistent_bootstrap_progress` and the `breakdown-bootstrap-inconsistent` variant.
+- Recording sites that tests reach but no mutant ever reverted: `CompleteFailure(ConfigurationInvalid)` for invalid configuration, `CompleteFailure(ConfigurationInvalid)` for the in-place key change, `CompleteFailure(SecretMissing)`, `CompleteFailure(Format)`, and the hosted bootstrap's first-publication time (`CompletePublished`).
+- The status-before-sanitizer read-order swap is an inherent race. It has no deterministic regression and is source-inspected only.
+
+**Broad-lane blockers.** These are recorded separately from the focused fallback above.
+
+- **.NET.** `DiffEngine_Disabled=true dotnet exec $DLL -noLogo -noColor` runs **3053**: 3044 pass, 1 skipped, 8 fail. All 8 are `Deployment.ProductionDeploymentArtifactsTests` (`O/review-fix/server-full-assembly.log`), each failing with `System.ComponentModel.Win32Exception : An error occurred trying to start process 'kubectl' with working directory '/home/administrator/projects/hexalith/memories'. No such file or directory`. `which kubectl` exits 1.
+- **Python.** `setUpClass (test_functional_target.RenderTests)` raises `RuntimeError: offline-render-requires-kubectl` (`test_functional_target.py` line 38). A pristine `git archive 014a4ad3` export reproduces it unchanged with `python3 -B -m unittest -v test_functional_target.RenderTests` (`O/python-baseline-render-tests.log`).
+
+**Count changes.**
+
+- **Selected inputs.** RESOLVER had **308**, loop 1 had 312, and this preparation has **319**: 306 unchanged, the same 2 changed (`AccessTelemetryLifecycleLogger.cs`, `tools/access_telemetry_functional_retention.py`) and **11 newly selected** production sources. These are loop 1's 4 plus `MemoriesServerServiceCollectionExtensions.cs`, `AccessTelemetryLifecycleBootstrapService.cs`, `AccessTelemetryLifecycleLoggerProvider.cs` and the 4 new bootstrap types.
+- **Operational inputs.** These stay at **39**: `MAPPING`'s 37 plus loop 1's two extended-inspector entries, rebased. The inspector entries now name this preparation's copy. The four reused-engine entries (guard, client configuration, `daemon.json`, `start-private-daemon.sh`) keep their withdrawn-preparation paths and unchanged hashes.
+- **Server PDB documents.** These rise from **441** in the withdrawn loop-1 `BREAKDOWN` Server proof (`BREAKDOWN/server-whole-pdb-binding.json`) to **445**, one per new bootstrap type file.
+
+**Outcome interpretation for the next run.** A failed result still consumes the launch, and the breakdown is diagnostic only. Rows can combine; read each part by its own row. The snapshot keeps no stage-entry or attempt time, so it shows neither duration nor persistence over time. Nor can it separate a hung retry from waiting for the next retry at the same stage.
+
+| Retained `cohort-a-accounting.json` result | Reading | Next step |
+| :--- | :--- | :--- |
+| All rejected; stage counts only at `NotStarted`/`Configuration`/`Secret`/`RemoteValidation`; `bootstrap.attempts` 0; `firstPublishedUtcMs` null | The first bootstrap attempt had not completed when cohort A was emitted. It was not yet run, still in progress, or hung at that stage; the snapshot cannot say which. | Emission before publication is demonstrated. Offline, make the existing selected path wait, bounded inside the 600 s startup, for existing lifecycle readiness before cohort A. Then prepare one new plan. |
+| Partly rejected; `firstPublishedUtcMs` between `startedUtcMs` and `emitFinishedUtcMs`; stage counts only pre-publication | Publication during the burst | Same bounded readiness wait before cohort A |
+| All rejected; `bootstrap.attempts` ≥ 1 with no publication; `failureStage`/`failureKind` set; stage counts at that stage | A dependency call failed and never succeeded. `attempts` ≥ 2 shows repetition. Only the last failure is kept. The kind names the class: `RemoteDenied` for a lifecycle refusal or a 401/403 or gRPC permission/authentication denial (the stage names the denied call: secret scope, configuration or invocation ACL/app token); `Transport`/`Timeout`/`DaprApi` for a sidecar or API failure; `SecretMissing`/`ConfigurationInvalid`/`Format` for configuration or secret content. | Diagnose that dependency class offline from the retained sidecar and generated configuration. The owner is Memories for Server configuration/secret wiring, or Platform/Builds for generated ACL/component configuration. No ordering change. |
+| Kind `DaprApi` at stage `Secret` | Includes a secret store that reports the key absent as an error. `SecretMissing` means only that the store returned no or blank value for the key. | Check the secret store and key reference |
+| Kind `Canceled` or `Other` | `Canceled` is a dependency call canceled without host stop and without a timeout cause; `Other` is an unclassified exception. Neither names a dependency beyond its stage. | Use the retained sidecar logs for the stage; draw no class inference |
+| Stage `RemoteValidation` with kind `Format` or `ConfigurationInvalid` and lifecycle reason `ConfigurationInvalid` | The post-validation steps are attributed to the stage still in flight: sanitizer construction (for example a marker key under 256 bits, `Format`) or an in-place key change under the same generation (`ConfigurationInvalid`, terminal). A malformed validation response is instead `Format` with `RemoteValidationPending`. | Fix the secret content or response contract in its owner |
+| `firstPublishedUtcMs` before `startedUtcMs`, yet sanitizer-unavailable counts | The sanitizer was published, then cleared by a terminal refresh path. The per-rejection reason can read `None`, because `Clear()` precedes `PublishTerminal`; the response-time status reads Unhealthy/`ConfigurationInvalid`. | Diagnose the configuration or secret change that made the refresh terminal. The Server process must restart. |
+| Both `sanitizerUnavailable` and `sanitationFailed` > 0 | A mixed segment: part rejected before publication (or after a clear), part refused by a published sanitizer | Read each part by its own row |
+| `sanitationFailed` > 0 and `sanitizerUnavailable` 0 | The published sanitizer refused the records: schema, key or clock/expiry | Replay offline with the retained identity and published retention/key generation, then fix the sanitizer input in Memories |
+| `rejected` > `sanitizerUnavailable` + `sanitationFailed` | A post-queue remainder: records rejected after enqueue (delivery-side rejection), which the pre-queue breakdown does not explain | Diagnose delivery from the retained lifecycle/sidecar evidence; no bootstrap inference |
+| `Unobserved` stage, lifecycle health or reason | The runner or logger provider was built without the status or bootstrap progress: a miswired composition | Treat the breakdown as unattributable and fix the composition in Memories offline |
+| Response-time lifecycle health/reason and `bootstrap` disagree by one transition | The two snapshots, and each per-rejection pair, are separate non-atomic reads | Prefer the per-rejection stage counts and allow one transition of skew |
+| `rejectionBreakdownComplete: false` | A field was dropped, counts are inconsistent, or the bootstrap fields contradict each other | Use only the retained values; draw no further inference |
+| 125/125 accepted | Empty breakdown | The real retention assertions decide the run |
+
+**Fresh candidate and binding.** **`BOOTSTRAP=/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-bootstrap-stage-20261024-nj4ub5_x`** physically copies `RESOLVER/compatible-platform` (`cp -a`, 17.6 s). `adopt-inputs.py` adopts the 20 affected files (13 production/tool, 7 test), recorded in `adopted-inputs.json`:
+
+- 18 files were adopted whole from the owning working tree: 8 are new files absent from both `014a4ad3` and RESOLVER, and 10 existing RESOLVER copies equalled `014a4ad3` apart from line endings.
+- `MemoriesServerServiceCollectionExtensions.cs` and `AccessTelemetryQualificationWorkloadTests.cs` are an older Memories snapshot in RESOLVER. Only the owning 3-line and 2-line hunks were applied, by unique exact context, so no unrelated owning change entered the candidate. After the coordinator review, `adopt-inputs.py` re-adopted only the 7 changed files (`adopted-inputs.pre-coordinator.json` keeps the previous record).
+- A whole-tree comparison shows only those files, rebuilt `obj/` outputs of the in-place offline model build, and a `references/Hexalith.Builds/.git/index` stat refresh with the same entries and HEAD.
+
+Genuine Platform `7021c41…` / Builds `007bb9b…`, EventStore 3.127.0, tool 4.35.2, Dapr 1.18.1, PostgreSQL 18.6 and source/Debug are unchanged.
+
+- **Mapping.** The installed resolver on the selected manifest yields **`Hexalith.Memories` / 17 entries / no findings / `79e432172896c1104e9609c360ca84d72dfe1f88022d54d8fcf97592a01fdb86`**, offline and inside the exact prefix. After root rebasing it equals the withdrawn and consumed mappings except the derived hash.
+- **Model.** The supported offline model build has no identity findings. Of its 36 outputs, 20 are byte-identical; the 16 path-dependent DLL/PDBs bind 1089/1089 documents with root-relative sets equal to RESOLVER's.
+- **Server proof.** The offline source/Debug Server build has 0 warnings/errors and its whole PDB binds **445/445**. A copy of the existing read-only inspector changes lines 17 and 22 so the Hosting file can be named, and checks **14/14** affected and retained sources. It refuses the withdrawn `BREAKDOWN` Server DLL as a negative control.
+- **Commands.** `verification.json` lists every exact command.
+
+**Reused empty private engine.** The spec allows reuse only if exact identity and emptiness checks pass again. `reused-engine.py` (read-only) passed at **18:53:35Z** and again after the coordinator-review rebuild:
+
+- Docker 29.8.2 engine **`6dd698f6-b6a6-4c9e-9729-4f2e744c3b3d`** on `unix:///run/hx-retention-sv84pzjt/docker.sock`;
+- **zero containers**, and the seven image identities match;
+- all seven owned PID/start/namespace identities match (keeper **63126**, daemon **63148**);
+- the copied engine records are byte-identical.
+
+The engine's unchanged guard, client configuration, data root and logs stay in the withdrawn directory. The plan references that directory for nothing else. Further context checks:
+
+- Routing passes **16/16**.
+- The genuine installed prerequisite checker passes in this exact context: diagnostic null, Aspire **13.6.1** exit 0, UID/GID 1000, private namespace, fresh cwd and `XDG_DATA_HOME`.
+- Context/plan checks pass **16/16** (`test_preparation_context.py`).
+- Observer script, MON collectors and guard parser are reused unchanged. Observer configuration changes only the mapping hash, model/server proofs, inspector identity and fresh paths.
+
+**Concrete plan.** `BOOTSTRAP/run-plan.json` and the full `launch-command.txt`:
+
+- cwd `BOOTSTRAP/compatible-platform`, owner its `references/Hexalith.Memories`;
+- fresh absent state `BOOTSTRAP/native-run`;
+- owner-relative evidence `artifacts/retention/repair-spec14-bootstrap-stage-20261024-nj4ub5_x/functional.json`.
+
+It runs under the exact prefix: privileged `nsenter --net=/proc/63126/ns/net`, then `runuser -u administrator -- env`, the guarded client, the reused `DOCKER_HOST`/`DOCKER_CONFIG` and a fresh `XDG_DATA_HOME`.
+
+```bash
+dotnet tool run hexalith-module -- test \
+  --manifest references/Hexalith.Memories/module/hexalith.module-manifest.v2.json \
+  --profile functional-retention --mode source \
+  --evidence artifacts/retention/repair-spec14-bootstrap-stage-20261024-nj4ub5_x/functional.json --output json
+```
+
+- **Budget and window.** **One launch / zero retries**, **14400 s including 600 s startup / separate cumulative 900 s stopping**. The start window runs from **2026-10-24T19:44:10Z** (final preparation build) to the latest start **2026-10-25T10:27:22Z**; the outer end is **14:42:22Z**.
+- **Unchanged guards.** Resource floors, PostgreSQL caps, the 7-container/15-resource graph, real timing and every assertion are unchanged.
+- **Admission and monitoring.** Admission checks capacity and isolation once immediately before launch. The existing captures/observer must admit before cohort A and the long wait, and the first loss, detection, stop or terminal anchors stopping.
+- **Cleanup.** Supported same-prefix `down --run-id <actual-new-run-id>`, then PID/start-checked disposal of only this private engine. An early refusal with no run ID gets no invented identity.
+- **Executor.** `execute-approved.py` is the loop-1 executor byte for byte. It binds this directory's inventories and permits a single exclusive dispatch.
+
+**Single ordinary review and readback.** An independent read-only reviewer found **no High or Medium issues**. It recomputed all 394 pinned hashes with 0 mismatches and confirmed DI, read order, single completion, owned dictionaries, the adoption hunks and the plan bounds. Every Low finding and nit was verified and resolved (`BOOTSTRAP/root-review.json`):
+
+- **L1, L2.** Attribution and interpretation limits are now stated in the plan and the table above. No field beyond the spec list was added, and the remote call order is unchanged.
+- **L3.** This report and the spec are updated.
+- **L4.** The never-red read-order fix is disclosed.
+- **L5.** The composition test now serializes through the composed HTTP JSON options and requires explicit nulls.
+- **Nits.** Hosted tests start from `NoData` so the published status is proved, a trivial assertion was removed, and the Builds index refresh is disclosed.
+
+Post-fix checks repeat 90/90, 295/295, 3053 (8 `kubectl`), 20/20 repeats, 2/2 review-fix reds, context 16/16, and re-adoption of only the two changed test files.
+
+**Coordinator review.** It found twelve further issues, all resolved (`root-review.json` `coordinatorReview`):
+
+- gRPC secret, configuration and invocation denials now map to `RemoteDenied`.
+- The status races in two tests are fixed, and `WaitForAsync` now allows about 30 s.
+- New tests cover the in-place key change and a failing `GetConfiguration` call.
+- The verifier's `failureStage` allow-list is now `Configuration`/`Secret`/`RemoteValidation`/null. Bootstrap cross-field checks were added to the diagnostic completeness flag only.
+- Fixtures now use valid states, and an inconsistent-bootstrap variant was added.
+- The approved gate profile constant replaces the hard-coded hash.
+- This outcome table and the verification statements are corrected.
+- The candidate was refreshed: re-adoption of the 7 changed files, selected inputs **319**, and a rebuilt Server proof (0 warnings/errors, inspector **14/14**, whole PDB **445/445**, `BREAKDOWN` DLL refused). The plan was regenerated, the reused engine rechecked, and context passes **16/16**.
+
+The independent readback at **2026-10-24T19:45:20Z** (`root-preparation-readback.json`) passed:
+
+- correct engine, zero containers and seven images;
+- seven owned identities;
+- **319/36/39/489** inventories;
+- helpers, mapping and Server sources;
+- absent fresh state, evidence, approval and launch;
+- an open window.
+
+The reviewed plan SHA-256 is **`100bb6613d88bfe14564bca273a5ddd41fe42cb0cf6a50a83b5e302151b9cb3b`** and the launch-command SHA-256 is **`2d35f059ba6dd2721444a36477deb2854c4326b161f3fbfaab163fb9eebe9f3f`**; `readyForOperationalApproval:true`, `launchAuthorized:false`.
+
+**Limits.**
+
+- Bootstrap progress keeps one in-flight/last snapshot and the last failure only. It keeps no stage-entry or attempt timestamp, so it shows neither duration nor persistence over time and cannot separate a hung retry from waiting to retry. A refresh after publication cycles the stage, and the lifecycle and bootstrap snapshots are read non-atomically.
+- A shutdown-interrupted attempt is not completed.
+- The existing unsynchronised `RecordActivity` can leave a lifecycle reason stale.
+- The upstream SQLite GC defect and the historical AppHost-exit/HXP020 causes remain.
+
+**One operational authorization remains; no launch is authorized.** Story 27.4 stays **in progress**; local retention, full qualification, Production and **A41 remain open**.
+
 ### Corrected-mapping execution — 2026-10-24; cohort A rejected, disposal verified
 
 The owner replied **“approve”** for the reviewed plan in **`MAPPING=/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-selected-mapping-20261024-0bzfsk_f`**. Approval **2026-10-24T16:26:12.182975Z** binds plan SHA-256 **`cff42780e9b295e3a658235fa7534f8fe72f87d7b52d278025fa099c9e684d31`** and the exact command in `launch-command.txt`. Once-before-launch admission passed at **16:26:13.927358Z**: **308 selected inputs, 36 model outputs, 37 operational inputs and 489 runtime bindings**, immutable images, fresh private-engine ownership/isolation and resource capacity. Captures and observer were ready before the single native invocation at **16:26:14.064099Z**, run **`dd8512086bb377547e89eda7d028b986`**. The unchanged command below used the complete reviewed namespace/user/guarded-Docker prefix in `MAPPING/live-execution.json`, from `RESOLVER/compatible-platform`; owner is its physical `references/Hexalith.Memories` directory.
@@ -32,7 +259,7 @@ The unchanged assertion returned **`functional-accounting-loss`**. Native termin
 
 **Verified disposition.** Supported same-prefix `down --run-id dd8512086bb377547e89eda7d028b986` started **16:27:53.885590Z** and returned **0/HXI001** at **16:27:56.756168Z**. The authoritative final native selected-test record is **removed / empty container and process sets / unverified:false**. Original owner `functional.json` preserves its earlier **retained / unverified:true** snapshot. Both are retained; neither result was manufactured or rewritten. The correct private engine was empty before exact PID/start-checked collector/observer and daemon/containerd/slirp/keeper disposal. Private-engine verification completed **16:31:18.115893Z**; final verification **16:32:01.432644Z** confirms all **29** bound native graph process identities and the recorded operator/preparation identities absent, no private-namespace processes, and absent private socket, native workspace and state. Controller stopping charge is **247.558814s**; the more conservative charge from the preceding failed accounting observation is **247.823644s**, within the separate cumulative **900s**. No retry, restart, shared-engine cleanup, prior-resource disposal or other-session interruption occurred.
 
-`MAPPING` preserves approval, command/admission/execution receipts, native/down outputs, original functional evidence and TRX, final native disposition, actual generated inputs, all four captured native sidecar streams, pre-disposal plan/readiness/accounting, startup admission/order and graph evidence, exact process disposal, `final-disposition.json` and `run-result.json`. Captured public sidecar snapshots end at Running and do not independently prove each sidecar's terminal state; native cleanup plus exact process/namespace absence establishes removal. Approved **4.35.2 / Dapr 1.18.1 / PostgreSQL 18.6**, source/Debug, real **125/125 and 1800/3600/900s** assertions, resource/security limits, **14400s including 600s startup / separate 900s stopping**, and **2026-10-25T14:42:22Z** outer end remained unchanged. **One launch, zero retries; this approval is consumed and the private engine is stopped. No further launch is authorized or prepared.** Story 27.4 stays **in progress**; local retention, full qualification, Production and **A41 remain open**. The mapping preparation below is historical.
+`MAPPING` preserves approval, command/admission/execution receipts, native/down outputs, original functional evidence and TRX, final native disposition, actual generated inputs, all four captured native sidecar streams, pre-disposal plan/readiness/accounting, startup admission/order and graph evidence, exact process disposal, `final-disposition.json` and `run-result.json`. Captured public sidecar snapshots end at Running and do not independently prove each sidecar's terminal state; native cleanup plus exact process/namespace absence establishes removal. Approved **4.35.2 / Dapr 1.18.1 / PostgreSQL 18.6**, source/Debug, real **125/125 and 1800/3600/900s** assertions, resource/security limits, **14400s including 600s startup / separate 900s stopping**, and **2026-10-25T14:42:22Z** outer end remained unchanged. **One launch, zero retries; this approval is consumed and the private engine is stopped. No further launch was authorized or prepared at this result; the bootstrap-stage rejection breakdown preparation above is the later correction.** Story 27.4 stays **in progress**; local retention, full qualification, Production and **A41 remain open**. The mapping preparation below is historical.
 
 ### SQLite-workaround invocation — 2026-10-24; startup refusal, disposal verified
 

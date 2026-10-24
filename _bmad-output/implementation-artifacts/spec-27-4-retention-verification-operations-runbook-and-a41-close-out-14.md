@@ -4,6 +4,7 @@ type: 'feature'
 created: '2026-10-12'
 status: 'in-progress'
 route: 'dispatch'
+review_loop_iteration: 1
 story_key: '27-4-retention-verification-operations-runbook-and-a41-close-out'
 baseline_commit: 'b1d8014fa0dbacaf71528ddda74ff83cf19ca3ca'
 context:
@@ -44,12 +45,89 @@ Functional completion requires passing native TRX and `functional-observations.j
 
 | Track | Owner | Evidence | Review state | Completion state |
 | :--- | :--- | :--- | :--- | :--- |
-| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Corrected mapping and complete startup admission passed; native cohort A rejected 125/125 | Failed evidence preserved; rejection before enqueue established, initiating cause unresolved | In progress: `dd8512086bb377547e89eda7d028b986` failed/4/HXT006; exact-run/private-engine disposal verified within 247.823644s. Approval consumed; no retry. Retention and A41/full qualification remain open. |
+| Local functional retention | Jérôme Piquot; Memories assertions, Platform/Builds lifecycle | Corrected mapping and complete startup admission passed; native cohort A rejected 125/125; bootstrap-stage rejection breakdown implemented, adopted into fresh `BOOTSTRAP` candidate and bound | Failed evidence preserved; rejection branch not uniquely attributable from retained evidence; loop-2 ordinary review complete (no High/Medium; all Low/nits resolved); coordinator review findings resolved | In progress: `BOOTSTRAP` run `1441c0dbdd973a0f9c0cbf6a8c8eb817` failed/4/HXT006. Cohort A was rejected by a persistent lifecycle-app `CapabilityUnproven` refusal (3 `RemoteValidation`/`RemoteDenied` attempts, sanitizer never published); disposal was verified in 14.794657 s. Approval consumed; no further launch is authorized. Retention and A41/full qualification remain open. |
 | Full qualification / A41 | Jérôme Piquot; Platform Operations and Security roles | Current per-gate inventory linked below | Pending | Deferred to a separately scheduled campaign; open |
 
 ## Full qualification and close-out checkpoints
 
 The [current per-gate inventory](../../docs/operations/access-telemetry-full-qualification.md) remains the full campaign's requirements/owner/state register, subject to adopting its exact current target/profile. Its workload, capacity, faults, backup/restore, long-duration, security, terminal and publication obligations do not gate local functional completion. Functional success earns no full-profile or Production credit and cannot close A41. Overall Story 27.4 stays in progress until its separate full close-out obligations are met.
+
+## Review Triage Log — step-04 review, bootstrap-stage breakdown (loop 2)
+
+Three layers (blind, edge-case, verification-gap) reviewed the loop-2 diff from preparation baseline `014a4ad3`. Verdicts are root's, after checking each claim against the code. No intent_gap or bad_spec was found, so no loopback is needed. The patches below go to the loop-2 implementer, and the `BOOTSTRAP` candidate and plan must be re-adopted afterwards.
+
+| Finding | Verdict / evidence | Route |
+| :--- | :--- | :--- |
+| gRPC `PermissionDenied`/`Unauthenticated` from secret or configuration calls (`DaprException` wrapping `RpcException`, or a bare `RpcException`) is classified `DaprApi` (blind, edge-case) | **low**. `ClassifyRpc` maps only `DeadlineExceeded`/`Cancelled`/`Unavailable`, while invocation denials map to `RemoteDenied`. A secret-scope ACL or API-token denial, which generated configuration can produce, would be routed to the wrong owner. | patch: map both codes to the existing `RemoteDenied` kind (stage tells which call), update the enum doc, the locking test and the table. |
+| Hosted test asserts status right after `Attempts >= 1`, but the catch-all calls `CompleteFailure` before `status.Publish` (edge-case) | **low**. `AccessTelemetryLifecycleBootstrapProgressTests.cs:133-136` starts from `NoData`, so it races. | patch (grouped as test robustness) |
+| `PersistentRemoteDenial_…` waits only for `Attempts >= 1`, but the denial branch publishes `CapabilityUnproven` after `CompleteFailure` (edge-case) | **low**. `AccessTelemetryQualificationRejectionBreakdownTests.cs:215`: early records can be counted under `RemoteValidationPending`. | patch (grouped) |
+| `WaitForAsync` has a fixed real-time limit of about 5 s (blind) | **low**. CI-load flakiness is plausible; raising the bound is a direct fix. | patch (grouped) |
+| In-place marker-key-change terminal exit is untested (verification-gap, pre-verified, filed `defer`) | **low**. A regression gap at `AccessTelemetryLifecycleBootstrapService.cs:108`. The filed reason for deferring (pinned inventory) no longer applies, because these patches re-adopt test files anyway. | patch |
+| No hosted test covers a failing Dapr `GetConfiguration` call (blind) | **low**. Every hosted test uses `DevelopmentDefault`, so the Configuration-stage catch-all is never run. | patch |
+| Verifier accepts impossible bootstrap states (`failureStage` of `NotStarted`/`Published`/`Unobserved`; no cross-field consistency); fixtures and `PASS_BOOTSTRAP` model impossible states (blind) | **low**. | patch: restrict the `failureStage` allow-list to `Configuration`/`Secret`/`RemoteValidation`/`null`, add the cross-field consistency check to the diagnostic `rejectionBreakdownComplete` only, and use valid fixtures. |
+| Breakdown tests hard-code the gate profile hash instead of `AccessTelemetryQualificationGate.ApprovedProfileSha256` (blind) | **low**, direct fix. | patch |
+| Outcome table is incomplete or overclaims (blind, edge-case). Missing rows: post-queue remainder, `Unobserved` miswiring, published-then-terminal-clear, a mixed unavailable-plus-refused segment, `Canceled`/`Other` kinds, a store-reported absent secret as `DaprApi`, non-atomic lifecycle-versus-bootstrap snapshots, post-validation steps attributed to `RemoteValidation`. Overclaims: "attempts span startup" relies on time data that is not recorded, and stage cannot separate a hung retry from waiting to retry. | **low**. These are documentation accuracy gaps. | patch (report) |
+| Evidence misreports: Python directory run shown as 129/129 though its log ends `FAILED (errors=1)` from `RenderTests.setUpClass`; impossible "18 RESOLVER copies equalled `014a4ad3`"; unnamed PDB 441→445 baseline; untested recording sites missing from the never-red list (blind) | **low**. These are honesty and accuracy gaps in the report. | patch (report) |
+| `rejectionBreakdownComplete` has no lower bound, so an all-zero breakdown beside 125 rejections reads complete (blind) | carried: same location and claim as the loop-1 row "`rejectionBreakdownComplete` meaning overstated", **low**, rejected. All pre-queue rejections go through the two recording methods. | Rejected (carried). |
+| Add a `Waiting` stage so a hung retry differs from waiting to retry; add a publication stage after remote validation (blind) | **low**, rejected as code. Either needs new response vocabulary, and the next action is the same (diagnose the failing stage's dependency). The table overclaim is corrected in the report patch. | Rejected (code); report patch covers wording. |
+| Reviewed diff leaves out the spec (blind) | **false**. The workflow deliberately gives the spec only to the edge-case layer. | Rejected. |
+| `Counters.Rejections` snapshot is not atomic under concurrent writes; record equality compares dictionaries by reference (blind) | **false**. Logging is synchronous inside the runner's emission loop, so no writer for that correlation is active when the result is built. Aggregate-last ordering serves the completion wait, and no caller compares breakdowns for equality. | Rejected. |
+| A sixth stage value, `Unobserved`, beyond the spec's five names (edge-case, claim) | **low**, rejected. It is documented in the snapshot type and allow-listed in Python, and no consumer assumes five names. | Rejected. |
+
+## Review Triage Log — bootstrap-stage breakdown and BOOTSTRAP plan (loop 2 ordinary review)
+
+One independent read-only reviewer checked the loop-2 diff from `014a4ad3` and the concrete `BOOTSTRAP` plan. It found no High or Medium issue, recomputed the plan's 394 pinned hashes with no mismatch, and confirmed read order, single attempt completion, DI construction, owned dictionaries, adoption hunks and plan bounds. Root verified each finding (`BOOTSTRAP/root-review.json`).
+
+| Finding | Verdict / evidence | Resolution |
+| :--- | :--- | :--- |
+| L1: a marker key rejected by sanitizer construction (for example under 256 bits) is recorded at `RemoteValidation`/`Format`, which resembles a malformed validation response | Low, verified: the sanitizer is constructed after remote validation succeeds | Documented attribution limit in plan `limits[2]` and the report table; lifecycle reason `ConfigurationInvalid` versus `RemoteValidationPending` separates them. No behaviour or call-order change. |
+| L2: `attempts 0` also fits a slow or hung first call; one recorded failure is not necessarily persistent | Low, verified | Plan `limits[0]`/`[1]` and the outcome table now say "first attempt not completed (not run, in progress or hung)" and require attempts spanning startup for persistence. No field beyond the spec list. |
+| L3: report/spec not yet updated | Low | Report section and spec updated with verbatim commands, never-red disclosure, blocker text, count changes and outcome table. |
+| L4: read-order swap has no regression | Low, inherent race | Disclosed as never red; source-inspected. |
+| L5: nothing proved the composed HTTP JSON options keep the explicit nulls the verifier requires | Low, not a current defect | Composition test serializes with the composed `IOptions<JsonOptions>` and requires all fields with nulls; a `WhenWritingNull` mutant turns it red. |
+| N1-N4: shutdown leaves an attempt uncompleted; hosted tests asserted the initial status; trivial singleton assertion; candidate Builds index stat refresh; key change recorded at `RemoteValidation` | Nits | Disclosed; hosted tests now start from `NoData` (a removed catch-all publish turns them red); trivial assertion removed; index refresh disclosed. |
+
+### Coordinator review of the loop-2 implementation
+
+| Finding | Resolution |
+| :--- | :--- |
+| gRPC `PermissionDenied`/`Unauthenticated` from secret/configuration calls classified `DaprApi` | Both codes map to `RemoteDenied` for every call (the failure stage names the call); enum doc and `Classify` test updated. |
+| Two tests asserted a status published after the waited-for progress (catch-all; persistent denial) | Both now wait for the published status/reason; `WaitForAsync` allows about 30 s. |
+| In-place key-change terminal exit and a failing `GetConfiguration` call untested | Added a hosted in-place key-change test and a `DaprConfiguration`-sourced `GetConfiguration` failure case. |
+| Verifier accepted impossible `failureStage` values; no bootstrap cross-field check; impossible fixtures | `failureStage` allow-list is `Configuration`/`Secret`/`RemoteValidation`/null; cross-field checks only in diagnostic `rejectionBreakdownComplete`; fixtures use valid states; inconsistent-bootstrap variant added. |
+| Hard-coded gate profile hash in breakdown tests | Uses `AccessTelemetryQualificationGate.ApprovedProfileSha256`. |
+| Report outcome table incomplete/overclaiming; verification and adoption statements inaccurate | Rows added (post-queue remainder, `Unobserved` composition, published-then-cleared, mixed segment, `Canceled`/`Other`, store-reported absent secret, non-atomic snapshots, post-validation attribution); persistence/hung-retry claims removed; Python directory, adoption (10 existing + 8 new + 2 hunk-only), PDB baseline and never-red statements corrected. |
+| Candidate, bindings and plan hashes stale | Re-adopted the 7 changed files, recomputed selected inputs, rebuilt/rebound the Server proof, regenerated the plan, rechecked the reused engine, reran context and readback. |
+
+## Review Triage Log — step-04 review, pre-enqueue rejection breakdown (loop 1)
+
+Three layers (blind, edge-case, verification-gap) reviewed the loop-1 diff from preparation baseline `014a4ad3`. Verdicts are root's, after checking each claim against the code.
+
+| Finding | Verdict / evidence | Route |
+| :--- | :--- | :--- |
+| Breakdown cannot separate emission-before-publication from a persistently failing Dapr configuration, secret or remote-validation call (blind) | **medium**. `AccessTelemetryLifecycleStatus(enabled: true)` starts as Degraded/`RemoteValidationPending`, and the bootstrap catch-all publishes the same pair for every non-format exception. Both hypotheses therefore yield `{RemoteValidationPending: 125}`, which defeats the one remaining launch's diagnostic purpose. | bad_spec: loopback. Grouped with the next row. |
+| No bootstrap progress is captured anywhere, and the bootstrap catch-all does not log (blind) | **medium**, same root cause: bootstrap stage and progress are unobservable. | bad_spec (grouped). |
+| Lifecycle reason is read after the null-sanitizer read, so a publication race is counted under `None` (blind, edge-case) | **low**. Real narrow window in `AccessTelemetryLifecycleLogger.Log`; swapping the read order is a direct fix. | Carried into the amended task (moot under loopback). |
+| `rejectionBreakdownComplete` reason-sum and `<=` clauses are never decisive in any test (verification-gap, pre-verified) | **low**. Fixtures are all-zero or fail on another clause. | Carried into the amended task. |
+| Runner `Since(before)` is never run against a non-empty baseline (verification-gap, pre-verified) | **low**. Same-process re-execution after a faulted attempt is reachable via `EvictIfUnsuccessful`, and current code subtracts correctly. | Carried into the amended task. |
+| Production DI choice of the status-aware runner constructor is untested; `Unobserved` passes silently (blind) | **low**. `AddAccessTelemetryLifecycle` registers `status` unconditionally, and DI picks the 5-argument constructor today, but no test pins it. | Carried into the amended task. |
+| Shared mutable `SortedDictionary` behind `IReadOnlyDictionary` in `Empty`/snapshots (blind) | **low**. No caller mutates it; wrapping is direct. | Carried into the amended task. |
+| Missing Python negatives (non-dict, single missing field, out-of-range count); parity test hard-codes `Unobserved` (blind) | **low**. Validation logic rejects these, but untested. | Carried into the amended task. |
+| Report precision: operational inputs 37→39 and newly selected Server sources unexplained; commands not reproducible; red/green sets differ; .NET broad-lane blocker lacks baseline; no outcome-interpretation guidance (blind) | **low**. The spec requires exact commands; the other gaps are honesty and readability gaps. | Carried into the amended task. |
+| `rejectionBreakdownComplete` meaning overstated; post-queue remainder unbucketed (blind) | **low**, rejected. The flag concerns breakdown fields; pre- versus post-queue can be read from `enqueued` versus `attempted`. Fixing it would add counters. | Rejected. |
+| Swallowed logger exception leaves an attempted record with no outcome (blind) | **low**, pre-existing, rejected. Counters still distinguish it (`rejected: 0`, `enqueued < attempted`), and the fix would add a counter. | Rejected. |
+| Tests serialize with `MemoriesJsonContext.Options`, not the HTTP JSON options (blind) | **false**. `ConfigureHttpJsonOptions` copies the same camelCase policy and resolver chain, with no dictionary-key policy in either, so output is identical. | Rejected. |
+| Full-qualification `access_telemetry_producer_common.py` ignores the breakdown (blind) | **low**, out of scope by contract (full qualification is separate). Verified that it reads fields individually, so the new field does not break it. | Rejected. |
+| Explicit `null` to the non-nullable status constructor parameter (edge-case) | **false**. DI supplies the registered singleton; a source `null` is CS8625, an error under `TreatWarningsAsErrors`. | Rejected. |
+
+## Review Triage Log — pre-enqueue rejection breakdown (loop-1 implementer self-review; code since reverted)
+
+| Finding | Verdict / evidence | Resolution |
+| :--- | :--- | :--- |
+| Unused reasonless pre-queue `RecordRejected(string?)` | Low: a future caller would recreate an unattributed rejection. | Removed; pre-queue callers use the sanitizer-unavailable/sanitation-failed methods. |
+| Python allow-lists not tied to Server enums; silent drops; overstated test names | Low. | Enum parity test; diagnostic `rejectionBreakdownComplete`; renamed variants and pinned reason codes. |
+| `RecordActivity` race and catch-all `RemoteValidationPending` | Low, existing behaviour outside this correction. | Recorded as accuracy limits in plan, spec and report; behaviour unchanged. |
+| Test gaps, nits, inspector copy and feasibility wording | Low/nit. | Mixed-segment test, field assertions, required `RejectionBreakdown`, docs, modified-copy record, asserted feasibility; re-adopted and re-verified. |
 
 ## Review Triage Log — sidecar-loss continuation
 
@@ -60,7 +138,154 @@ The [current per-gate inventory](../../docs/operations/access-telemetry-full-qua
 
 The single ordinary review is complete. Both patches are covered by the final **8/8** focused run and a clean compatible source/Debug model build. No findings deferred. Live retention, full qualification, Production admission and A41 remain open; no further launch is authorized.
 
+## Spec Change Log
+
+### Loop 1 — 2026-10-24, step-04 bad_spec loopback (pre-enqueue rejection continuation)
+
+- **Trigger:** the step-04 blind review found the loop-1 breakdown cannot separate the leading hypothesis (cohort A emitted before the sanitizer was published) from a persistently failing Dapr configuration, secret or remote-validation call. The initial lifecycle status and the bootstrap catch-all both report Degraded/`RemoteValidationPending`. Verdict medium, grouped with "no bootstrap progress captured".
+- **Amended:**
+  - Task 2 now requires bounded bootstrap-stage evidence (attempts, stage, failure stage and kind, first-publication time, stage at rejection) plus the carried low-severity items.
+  - Task 3 now requires reproducible commands and outcome interpretation.
+  - Tasks 2–4 are unchecked. Code, the report section, the `BREAKDOWN` candidate and the plan are reverted or withdrawn.
+- **Known-bad state avoided:** spending the last launch in the window (latest start 2026-10-25T10:27:22Z) on a run that could fail again as `{RemoteValidationPending: 125}` with no way to tell which hypothesis is true.
+- **KEEP:**
+  - Reuse `DIAG/loop1-reverted-implementation.patch` as the starting point: `git apply` it to `014a4ad3`, then extend it. Keep its shape:
+    - the `AccessTelemetryQualificationRejectionBreakdown` record (own file);
+    - `RecordSanitizerUnavailable`/`RecordSanitationFailed`, with the reasonless pre-queue `RecordRejected(string?)` removed;
+    - kind counters published before the aggregate;
+    - per-segment `Since(before)` deltas;
+    - the status-aware public runner constructor chosen by DI;
+    - camelCase `rejectionBreakdown` serialized through the existing options;
+    - Python `bounded_rejection_breakdown` allow-listing;
+    - an empty breakdown required on a pass;
+    - any rejection still failing `functional-accounting-loss`;
+    - retained `cohort-*-accounting.json` with `rejectionBreakdownComplete`;
+    - the three JSON-level replays of the retained `dd8512…` identity, the mixed-segment logger test and the Server-enum parity test.
+  - Keep the loop-1 diagnosis and its limits (`DIAG/diagnosis.json`, `evidence-comparison.json`): no cause is attributed, emission ordering is unchanged, and the 401 does not discriminate.
+  - Keep all preparation invariants (versions, source/Debug, assertions, resources, one launch/zero retries, 14400/600/900 s, window).
+
 ## Dev Notes
+
+### Bootstrap-stage execution — 2026-10-24; lifecycle capability refusal, disposal verified
+
+The owner's **“approve”** authorized the reviewed `BOOTSTRAP` plan once. `BOOTSTRAP/approval.json` binds the reply at **19:57:35.569071Z** to plan `100bb6613d88bfe14564bca273a5ddd41fe42cb0cf6a50a83b5e302151b9cb3b` and command `2d35f059…`. Once-before-launch admission passed at **19:57:44.543784Z**: **319/36/39/489** inputs, seven images, the reused engine `6dd698f6…` empty, owned process identities, and capacity of 14 CPU / 91,336,089,600 available bytes. The single native invocation started at **19:57:44.677179Z**, run **`1441c0dbdd973a0f9c0cbf6a8c8eb817`**. Startup admission persisted at **19:59:14.424736Z** and preceded cohort A.
+
+**Result: failed, 4 / HXT006.** The native test completed at **19:59:16.038388Z**. The TRX shows **1 executed, 0 passed, 1 failed**, reason `functional-accounting-loss`; wrapper counts were not reported. Cohort A had **125 attempted / 125 rejected / zero enqueued**. The new retained breakdown was complete:
+
+- **Sanitizer never published:** `sanitizerUnavailable` was **125**, with `sanitationFailed` **0**, and `firstPublishedUtcMs` was null.
+- **Bootstrap:** **3 completed attempts**, each failing at stage `RemoteValidation` with kind `RemoteDenied`; all 125 rejections were counted at stage `RemoteValidation`.
+- **Lifecycle:** Degraded / **`CapabilityUnproven`**.
+
+No cohort B, retention wait or passing observations exist.
+
+**What this establishes.** The loop-1 leading hypothesis, emission before publication, is **ruled out**, and so are sanitation failure and configuration or secret failure. A reason of `CapabilityUnproven`, not `RemoteValidationPending`, means the lifecycle application answered `v1/access-telemetry/validate` and refused writes; it was not a 401/403 or transport failure. That endpoint returns its runtime-gate reason only when the epoch and component-profile hash match exactly. So the hashes matched, and the lifecycle app's runtime gate held its fail-closed `CapabilityUnproven`.
+
+In the local functional profile, `AccessTelemetryCapabilityProbeRunner` runs its capability probes **once per process**, with a 30 s budget. A failed, timed-out or refused attempt is kept for the life of the process, which matches the three identical refusals.
+
+**Hypothesis, not proven:** the lifecycle app's one-shot local capability probe failed or ran past its budget. The same refusal shape follows every run on the `RESOLVER`-derived candidate (`MAPPING` and this run), while `GUARD` accepted 125/125. The scoped SQLite discovery `cleanupInterval: "0s"` edit is the only known structural difference.
+
+**Limits:** the lifecycle app's own console, its per-capability probe results and its runtime-gate metrics were not captured; only its sidecar console was. The owned-graph-loss receipt at **19:59:17.888Z** follows the native terminal and records teardown, not an initiating loss.
+
+**Verified disposition.** Supported same-prefix `down --run-id 1441c0dbdd973a0f9c0cbf6a8c8eb817` started **19:59:16.998261Z** and returned **0 / HXI001** at **19:59:19.969503Z**. `dispose-owned.py` was copied from `MAPPING`, with guards added only for a missing run ID or missing receipts. It confirmed the engine empty, stopped captures, observer and the exact owned daemon/keeper/slirp identities, and verified their absence at **19:59:31.791139Z**, **14.794657 s** after the native terminal and within the **900 s** budget. No owned processes or namespace members remain, and the socket, workspace and run state are absent. `BOOTSTRAP/run-result.json`, `private-engine-disposition.json`, `before-disposal/` (including `native-tests/cohort-a-accounting.json`), the native/down receipts and the TRX retain the evidence.
+
+**One launch, zero retries; this approval is consumed and the private engine is stopped. No further launch is authorized or prepared.** Next owner: Memories, to diagnose offline why the lifecycle app's one-shot local capability probe does not pass on this candidate. That needs per-capability probe evidence from the lifecycle app before any fix. Story 27.4, local retention, full qualification, Production and A41 remain open.
+
+### Pre-enqueue rejection continuation — 2026-10-24 (current preparation scope)
+
+The owner's `/bmad-build 27.4` resumes this spec after consumed run `dd8512086bb377547e89eda7d028b986` (cohort A **125 attempted / 125 rejected / zero enqueued**). Under the approved contract, keep that failed result and fix its concrete failing input. Preparation baseline **`014a4ad365f6d4d6e47c806aba1621c85da2757d`**; preserve the frontmatter baseline. **No launch, topology, Production test, other-session interruption, dependency change, staging, commit or push.** Prior approvals are consumed. Read owning guidance before changes, never load skills under `references/`, and write new private receipts into a fresh sibling directory. Earlier evidence/candidates stay unchanged.
+
+Code map (investigation starting points, not conclusions):
+
+- `src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryLifecycleLogger.cs` `Log`: rejects when `_sanitizerAccessor.Current` is null (metric reason `RemoteValidationPending`) or `TrySanitize` fails (`SchemaMismatch`). `_qualificationAccounting.RecordRejected` keeps no reason, so the retained counters cannot tell these apart.
+- `AccessTelemetryLifecycleBootstrapService.cs`: publishes the sanitizer only after Dapr configuration `retentionSeconds`, Dapr secret `MarkerKeyReference` and remote `InvokeMethodAsync(LifecycleAppId, "v1/access-telemetry/validate")` all succeed. On failure it retries after 5–10 s, while business startup and health continue.
+- `AccessTelemetryQualificationWorkloadRunner.cs` and `tools/verify-access-telemetry-lifecycle.py`: cohort A was accounted **1.6 s** after startup admission. Business readiness and the qualification gate do not establish that the sanitizer is ready.
+- Comparison: consumed run `b5f8ad4f27345347ca7e857e8b2bfa2f` (`GUARD`) accepted A/B **125/125** on the candidate before the two SQLite discovery `cleanupInterval: "0s"` edits. `MAPPING` (path in the report) retains four sidecar consoles, container logs, `functional-final.json`, TRX, generated runtime inputs (including `accesscontrol.memories-access-telemetry.yaml`) and the captured sidecar subscription-endpoint 401.
+
+#### Tasks & Acceptance — pre-enqueue rejection
+
+- [x] Diagnose from retained `MAPPING` and `GUARD` evidence, matched sources and controlled offline reproductions only. Given the 125/125 rejection, establish which rejection branch ran: no sanitizer published (configuration, secret, remote validation, service-invocation resolution/ACL/app-token, or emission before publication), or sanitation failure (record schema, key or clock). Also determine whether the 401 or the discovery edits contributed. Record facts, hypotheses and limits separately. Never attribute a cause from timing alone. *(Complete in loop 1; `DIAG` evidence stays valid, so do not repeat it.)*
+- [x] Fix the demonstrated cause in its owning repository (Memories, or Platform/Builds for generated configuration), with a failing-before/passing-after focused regression. If retained evidence cannot uniquely establish the cause, add a bounded, secret-free per-reason rejection breakdown to the existing qualification accounting/response: sanitizer-unavailable versus sanitation-failed. Change emission ordering only if the diagnosis demonstrates emission before publication, and then make the existing selected path wait, bounded inside the 600 s startup, for the existing lifecycle readiness before cohort A. Given either fix, any rejection still fails the run: keep 125/125 acceptance, real 1800/3600/900 s timing, strong reads, TTL/due-index/reminder/newer-record/signed-time assertions, security, ACL/mTLS and resources unchanged. No fake time, injected results or direct backend writes.
+  - **Bootstrap-stage evidence (loop-1 amendment).** The lifecycle status reason alone cannot separate "emission before the sanitizer was published" from "a Dapr call kept failing": both read `RemoteValidationPending`. So the breakdown must also carry bounded bootstrap progress.
+    - Add one new process-local singleton type in its own file. `AccessTelemetryLifecycleBootstrapService` updates it, and the runner reads it. Do not add fields to `AccessTelemetryLifecycleStatusSnapshot`, and change no health, metric or status semantics.
+    - It records:
+      - the completed bootstrap attempt count;
+      - the in-flight or last stage, from the fixed names `NotStarted`, `Configuration`, `Secret`, `RemoteValidation`, `Published`;
+      - the last failure stage, plus a failure kind mapped from a fixed allow-list: `ConfigurationInvalid`, `SecretMissing`, `RemoteDenied`, `Timeout`, `Canceled`, `Transport`, `DaprApi`, `Format`, `Other`. Never exception text, messages, URLs, keys or values;
+      - the UTC milliseconds when the sanitizer was first published (`null` until then).
+    - Count sanitizer-unavailable rejections both by lifecycle reason and by the bootstrap stage observed at rejection.
+    - Return a `bootstrap` snapshot inside `rejectionBreakdown` when the response is built.
+    - The Python verifier allow-lists, bounds and retains these fields in `cohort-*-accounting.json`, and validates their shape on a passing segment. Bootstrap fields must never turn a correct 125/125 segment into a failure, beyond shape and allow-list validity.
+  - **Carried review items:**
+    - In `AccessTelemetryLifecycleLogger.Log`, read the lifecycle status before the sanitizer.
+    - Expose every breakdown dictionary read-only, with no shared mutable instance.
+    - Add a runner test with a non-empty earlier baseline for the same correlation. It must show `rejected: 0` and an empty breakdown after publication.
+    - Add a test resolving the runner from the real `AddAccessTelemetryLifecycle` composition. It must show status-aware construction, not `Unobserved`.
+    - Add Python variants for a consistent non-zero breakdown (`rejectionBreakdownComplete: true`) and a reason-sum mismatch (`false`).
+    - Add Python negatives for a non-dict breakdown, a single missing field and out-of-range counts.
+    - The parity test reads the C# `Unobserved` constant instead of hard-coding it.
+- [x] Run the focused Debug regressions in the owning repository: build the test project, then run the built xUnit v3 assembly with `-class`/`-method` filters. Record exact commands/results, and record any broad-lane blocker separately from the focused fallback. Adopt only the affected inputs into a fresh physical sibling of `RESOLVER/compatible-platform`, keeping genuine Platform **`7021c41bea55bd6c690ba96082cf3dcfc95c9fca`** / Builds **`007bb9bc2806a0ead02d4831555bf2134a38d256`**, EventStore **3.127.0**, tool **4.35.2**, Dapr **1.18.1**, PostgreSQL **18.6** and source/Debug. Re-run the supported selected-manifest mapping and native offline model/DLL/PDB binding for the affected sources, and reuse unaffected proof (observer, guard, graph, prerequisite).
+  - **Report precision (loop-1 amendment).** Each recorded command must be reproducible verbatim: full assembly path, fully qualified class or method names, named Python tests and any repeat loop. Disclose which new tests never had a red run. Back the .NET broad-lane `kubectl` blocker with its exact error text or a baseline run. Explain any change in selected or operational input counts. Add a short outcome-interpretation table saying how each likely breakdown result (all pending with no publication, published during the burst, persistent stage failure, sanitation failed) would be read and what the next step would be.
+- [x] Prepare one concrete fresh plan in this spec and the current report. It needs a fresh independently isolated empty private engine (zero containers), routing/context checks, the exact supported command, fresh state and owner-relative evidence, and observer configuration updated only for changed identities. Keep **one launch / zero retries**, **14400 s including 600 s startup / separate cumulative 900 s stopping**, latest start **2026-10-25T10:27:22Z** and outer end **14:42:22Z** (check actual UTC; never extend an expired window), plus supported exact-run `down` and private-engine disposal. Root completes **one ordinary review** of changed behavior and the plan, then presents it for **one launch authorization**. No launch is authorized. Story 27.4, retention, full qualification, Production and A41 remain open.
+
+#### Bootstrap-stage rejection breakdown — loop 2; reviewed preparation awaiting one authorization
+
+**Fix.** No cause is attributed and emission ordering is unchanged. The loop-1 patch was re-applied to `014a4ad3` without its report hunk, keeping its shape, then extended:
+
+- A new process-local singleton, `AccessTelemetryLifecycleBootstrapProgress`, lives in its own file, with snapshot, stage and failure-kind types. It is registered unconditionally and updated by the bootstrap service. It records completed attempts, the in-flight/last stage, the last failure stage and allow-listed kind, and the first publication UTC milliseconds.
+- The logger reads the status and the bootstrap stage before the sanitizer. Each sanitizer-unavailable rejection is counted by lifecycle reason and by bootstrap stage.
+- `rejectionBreakdown` adds `sanitizerUnavailableBootstrapStages` and a response-time `bootstrap` snapshot, built from owned immutable dictionaries.
+- DI selects the status-and-bootstrap-aware runner, and the logger provider receives the progress.
+- The selected verifier allow-lists, bounds and retains the new fields, shape-checks them on a passing segment, and still fails any rejection as `functional-accounting-loss`.
+- Health, status, metric and retry semantics are unchanged.
+
+All carried review items are implemented:
+
+- status read before the sanitizer;
+- read-only dictionaries;
+- a runner test with a non-empty earlier baseline (`rejected: 0`, empty breakdown);
+- a real-composition runner test, which also checks the composed HTTP JSON options;
+- Python consistent non-zero, reason-sum and stage-sum mismatch variants;
+- negatives for a non-dict value, each single missing field and out-of-range counts;
+- the parity test reads the C# `Unobserved` constant and the new Server enums.
+
+**Focused proof.**
+
+- Test-project build: 0 warnings/errors.
+- Focused classes **90/90**; `Telemetry` namespaces **295/295**; **20/20** repeat runs. After the coordinator review, only the covering tests were rerun: C# **11/11** and Python **11/11** (owning and candidate).
+- Python named **9/9**. The tooling directory ran 129 tests, all `ok`, but exits `FAILED (errors=1)` from the `RenderTests.setUpClass` `kubectl` blocker.
+- **15/15** in-place mutants red, with restoration hash-verified.
+- Never-red tests and the read-order race are disclosed in the report.
+- Broad-lane blockers are recorded separately with exact text: 8 `kubectl`-absent `ProductionDeploymentArtifactsTests` failures out of 3053, and Python `RenderTests` `offline-render-requires-kubectl`, reproduced on a pristine `014a4ad3` export.
+
+**Adoption and preparation.** **`BOOTSTRAP=/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-bootstrap-stage-20261024-nj4ub5_x`** is a fresh physical sibling of `RESOLVER/compatible-platform`:
+
+- **Adoption.** 20 affected files: 18 whole (10 existing RESOLVER copies equal to `014a4ad3` apart from line endings, plus 8 new files), plus the owning hunk only for two older-snapshot candidate files. After the coordinator review, only the 7 changed files were re-adopted.
+- **Selected inputs.** **306/308** unchanged, 2 changed, 11 newly selected (**319**). Operational inputs stay **39**.
+- **Mapping.** **`79e432172896c1104e9609c360ca84d72dfe1f88022d54d8fcf97592a01fdb86`** (17 entries, no findings), equal to the withdrawn/consumed mappings after root rebasing apart from the hash.
+- **Model.** 36 outputs, 20 byte-identical; 16 path-dependent outputs bind identical root-relative sources (1089/1089).
+- **Server.** After the coordinator-review rebuild: 445/445 PDB documents (441 in the loop-1 `BREAKDOWN` proof) and 14/14 inspector sources; the old DLL is refused.
+- **Engine.** The withdrawn preparation's empty engine **`6dd698f6-b6a6-4c9e-9729-4f2e744c3b3d`** (keeper 63126, daemon 63148) is reused only after its exact identity/emptiness recheck passed: zero containers, seven images, seven owned identities.
+- **Context checks.** Routing **16/16**, installed prerequisite in the exact new context (Aspire 13.6.1), context/plan **16/16**.
+- **Review.** Root's single ordinary review found no High/Medium issue. All Low findings and nits, and then the coordinator review findings, were resolved and re-verified (triage logs above). The reused-engine recheck and readback at **2026-10-24T19:45:20Z** passed.
+
+`BOOTSTRAP/run-plan.json` (SHA-256 **`100bb6613d88bfe14564bca273a5ddd41fe42cb0cf6a50a83b5e302151b9cb3b`**) and `launch-command.txt` (SHA-256 `2d35f059…`, unchanged) keep:
+
+- **one launch / zero retries**;
+- **14400 s including 600 s startup / separate 900 s stopping**;
+- latest start **2026-10-25T10:27:22Z** and outer end **14:42:22Z**;
+- supported exact-run `down` plus PID/start-checked private-engine disposal.
+
+The [current report](tests/27-4-retention-verification-evidence.md#bootstrap-stage-rejection-breakdown--2026-10-24-reviewed-preparation-awaiting-one-authorization) retains commands, the outcome-interpretation table and limits. **No launch is authorized; one operational authorization remains.** Story 27.4, retention, full qualification, Production and A41 remain open.
+
+#### Pre-enqueue rejection breakdown — loop 1; reverted for re-derivation
+
+**Superseded by the loop-1 change-log entry below.** The Diagnosis paragraph remains valid evidence. The loop-1 code, report section, `BREAKDOWN` candidate and plan (`ef9bcdcb…`, never authorized) are withdrawn. The exact reverted implementation is preserved as `DIAG/loop1-reverted-implementation.patch`, SHA-256 `561f37ccb56339e1c47d456c76e4996b86c7c29ec90a275e217f90be80214470`; it applies cleanly to `014a4ad3`. The fresh empty private engine `6dd698f6-b6a6-4c9e-9729-4f2e744c3b3d` (keeper 63126, daemon 63148) is still running with zero containers. The re-derivation may reuse it only if its exact identity and emptiness checks pass again; otherwise it must be disposed with verified absence. Disposal follows `BREAKDOWN/run-plan.json`: run `cleanup.privateEmptyCheck`, then the `cleanup.privateEngineStopping` procedure against `preparation-owned-processes.json`, with PID and start time checked at each step.
+
+**Diagnosis.** Private **`DIAG=/home/administrator/.local/state/hexalith/memories/access-telemetry/diagnose-spec14-pre-enqueue-rejection-20261024-FNmayDll`** (`diagnosis.json`, secret-free `evidence-comparison.json`) separates facts, hypotheses and limits. The matched logger can reject before enqueue only when no sanitizer is published or when the published sanitizer refuses the record. Offline replay of the exact retained identity through the production-rate runner (from DI) gives three results. An unpublished sanitizer reproduces 125 attempted / 125 rejected / zeros exactly. A published sanitizer (retained `development-key-1`, 3600 s) accepts all 125. A controlled refusal yields the same counters as the unpublished case. The **401 also occurs in `GUARD`** (accepted 125/125), so it does not distinguish the runs. The only structural configuration difference from `GUARD` is the scoped discovery `cleanupInterval: 0s`, which is neither demonstrated nor excluded as a contributor. No Server or lifecycle status was retained. Emission before publication is the most consistent hypothesis, but only timing supports it, so **no cause is attributed and emission ordering is unchanged**.
+
+**Fix and focused proof.** Memories now returns a bounded, secret-free `rejectionBreakdown`: sanitizer-unavailable counted by the current lifecycle status reason, sanitation-failed, and lifecycle health/reason. The selected verifier retains an allow-listed copy in `cohort-*-accounting.json` before validation. Any rejection still fails `functional-accounting-loss`, and a passing segment must report an empty breakdown. A diagnostic-only `rejectionBreakdownComplete` flag discloses dropped or inconsistent fields, and the reasonless pre-queue `RecordRejected(string?)` is removed. Red: the three JSON-level regressions fail only at the missing breakdown on pre-fix source; Python red has 4 failures plus 1 schema error. Green after review: test-project build **0 warnings/errors**; focused classes **80/80**; `Telemetry` and `Telemetry.AccessTelemetryLifecycle` namespaces **285/285**; Python focused **7/7**, including the Server-enum parity test; tooling directory **126/126 executed**. Broad-lane blockers are recorded separately and are all `kubectl` absence: the whole Server assembly is 3043 cases (3034 pass, 1 skip) with 8 deployment-render failures, and Python `RenderTests` stops in `setUpClass`, which the unchanged pre-fix copy reproduces.
+
+**Adoption and preparation.** **`BREAKDOWN=/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-rejection-breakdown-20261024-sv84pzjt`** is a fresh physical sibling of `RESOLVER/compatible-platform` with only the adopted files. Selected inputs are **306/308 unchanged**, with 2 changed and 4 newly selected. Genuine Platform `7021c41…` / Builds `007bb9b…`, EventStore 3.127.0, tool 4.35.2, Dapr 1.18.1, PostgreSQL 18.6 and source/Debug are unchanged. The supported selected-manifest mapping is **`ed7f9161904b4a42f6d0741712dc435074f9cae7b59defb4b1bb24b0518983b4`** (17 entries, no findings), equal to the consumed mapping after root rebasing apart from the derived hash. The native offline model passes, and its 16 rebuilt path-dependent outputs bind identical root-relative sources. The Server DLL/PDB binds 441/441 documents; an extended copy of the existing read-only inspector checks 7/7 affected sources and refuses the old binary. Observer, MON graph, guard parser and prerequisite proof are reused. The fresh engine is **`6dd698f6-b6a6-4c9e-9729-4f2e744c3b3d`** on `unix:///run/hx-retention-sv84pzjt/docker.sock` (keeper 63126, daemon 63148) with seven images and **zero containers**. Routing passes **16/16** and context/plan **14/14**; the genuine Aspire 13.6.1 checker passes in the exact context. Root's single ordinary review found no High/Medium issues; every Low finding and nit was fixed and re-verified, two existing accuracy limits are recorded, and none is deferred (`root-review.json`). The readback at 2026-10-24T17:51:14Z passed: correct empty engine, seven images, seven owned identities, 312/36/39/489 hashes and absent fresh state. Reviewed plan SHA-256: `ef9bcdcb…`. `BREAKDOWN/run-plan.json` / `launch-command.txt` keep **one launch / zero retries**, **14400 s including 600 s startup / separate 900 s stopping**, latest start **2026-10-25T10:27:22Z** and outer end **14:42:22Z**, with supported exact-run `down` plus private-engine disposal. The [current report](tests/27-4-retention-verification-evidence.md#pre-enqueue-rejection-breakdown--2026-10-24-reviewed-preparation-awaiting-one-authorization) retains commands and limits. **No launch is authorized**. Story 27.4, retention, full qualification, Production and A41 remain open.
 
 ### Corrected-mapping execution — 2026-10-24; cohort A rejected, disposal verified
 
