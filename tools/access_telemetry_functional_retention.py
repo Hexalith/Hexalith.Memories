@@ -1519,9 +1519,11 @@ class _PlatformRetentionConsumer:
         self.started = time.monotonic()
         self.wall = time.time()
         self.segments = {}
+        self.segment_monotonic = {}
         self.ttl_absent = set()
         self.before_sequence = 0
         self.full_records = {}
+        self.validated_expiries = {}
         endpoints = observation["endpoints"]
         _require(set(endpoints) == {name + suffix for name in ("memories", "memories-access-telemetry", "memories-access-telemetry-clock") for suffix in ("", "/dapr")}, "selected-endpoints")
         for address in endpoints.values():
@@ -1572,56 +1574,98 @@ class _PlatformRetentionConsumer:
             uncertain.phase = phase
             raise uncertain from None
 
-    def states(self, run_id, segment, buckets=False):
+    def states(self, run_id, segment, buckets=False, *, phase=None, observation=1):
         # One budget covers all keys, batches and retries in this observation.
         # Reuse the existing read-only attempt count/backoff; writes are unchanged.
         started = time.monotonic()
-        deadline = started + LIMITS["readAggregateSeconds"]
+        started_utc = int(time.time() * 1000)
+        aggregate_deadline = started + LIMITS["readAggregateSeconds"]
+        pre_expiry = phase in {"pre-expiry-3300", "pre-expiry-3450"}
         failures = []
         failure_lock = Lock()
         emitted = self.segments[segment]
         keys = fixed_record_keys(run_id, segment)
         if buckets:
             keys = tuple(sorted({f"expiry-bucket/{(emitted + ordinal + 3600000) // 60000:012d}/{int(key.split('/')[1]):02d}" for ordinal, key in enumerate(keys)}))
-        def check_read():
+        if phase is not None:
+            # Fixed phase names and at most 32 polls bound the selected path to
+            # 100 read files, each capped by the existing private exclusive writer.
+            # The unchanged 900 s grace and 30 s poll already permit at most 31.
+            _require(_IDENTITY.fullmatch(run_id) is not None and segment in {"cohort-a", "cohort-b"}
+                     and phase in {"initial", "pre-expiry-3300", "pre-expiry-3450", "post-expiry", "preservation"}
+                     and (not pre_expiry or segment == "cohort-a" and not buckets)
+                     and type(observation) is int and 1 <= observation <= 32
+                     and len(keys) <= FUNCTIONAL["recordsPerCohort"], "selected-read-observation-scope")
+        expiry_utc, expiry_monotonic = self._preexpiry_bounds(segment) if pre_expiry else (None, None)
+        deadline = min(aggregate_deadline, expiry_monotonic) if pre_expiry else aggregate_deadline
+        timings = [{"ordinal": ordinal, "status": "unobserved", "attempts": 0,
+                    "startedUtcMs": None, "completedUtcMs": None,
+                    "startedMonotonicSeconds": None, "completedMonotonicSeconds": None,
+                    "responseObservedUtcMs": None, "responseObservedMonotonicSeconds": None,
+                    "expectedExpiryUtcMs": None if buckets else getattr(self, "validated_expiries", {}).get(segment, {}).get(ordinal)}
+                   for ordinal in range(1, len(keys) + 1)]
+        def check_read(*, dispatch=False):
             self.check()
-            remaining = deadline - time.monotonic()
+            remaining = aggregate_deadline - time.monotonic()
             _require(remaining > 0, "selected-read-aggregate-deadline")
+            if pre_expiry and dispatch:
+                remaining = min(remaining, expiry_monotonic - time.monotonic(), (expiry_utc - int(time.time() * 1000)) / 1000)
+                _require(remaining > 0, "selected-preexpiry-window")
             return remaining
 
         def read(item):
             ordinal, key = item
+            timing = {**timings[ordinal - 1], "status": "failed", "startedUtcMs": int(time.time() * 1000),
+                      "startedMonotonicSeconds": time.monotonic()}
             path = "/v1.0/state/access-telemetry-store/" + urllib.parse.quote(key, safe="") + "?consistency=strong&metadata.partitionKey=access-telemetry"
-            for attempt in range(LIMITS["readAttempts"]):
-                check_read()
-                try:
-                    value = self.request("memories-access-telemetry/dapr", path, missing=True, read_deadline=deadline)
-                except TransportUncertain as error:
-                    category = getattr(error, "category", "unclassified")
-                    phase = getattr(error, "phase", "unknown")
-                    with failure_lock:
-                        failures.append({"ordinal": ordinal, "attempt": attempt + 1,
-                                         "observedUtcMs": int(time.time() * 1000),
-                                         "elapsedMilliseconds": int((time.monotonic() - started) * 1000),
-                                         "category": category if type(category) is str and category in {"timeout", "remote-disconnected", "incomplete-read", "bad-status-line", "connection-refused", "connection-reset", "connection-aborted", "connection-error", "http-protocol"} else "unclassified",
-                                         "phase": phase if type(phase) is str and phase in {"open", "body"} else "unknown"})
-                    remaining = check_read()
-                    if attempt == LIMITS["readAttempts"] - 1:
-                        raise TransportUncertain("functional-selected-state-read-transport-exhausted") from None
-                    delay = (2, 5)[attempt]
-                    _require(delay < remaining, "selected-read-aggregate-deadline")
-                    time.sleep(delay)
-                    check_read()
-                else:
-                    check_read()
-                    return {"key": key, "value": value}
+            try:
+                for attempt in range(LIMITS["readAttempts"]):
+                    remaining = check_read(dispatch=True)
+                    timing["attempts"] = attempt + 1
+                    try:
+                        value = self.request("memories-access-telemetry/dapr", path, missing=True,
+                                             read_deadline=min(deadline, time.monotonic() + remaining) if pre_expiry else deadline)
+                    except TransportUncertain as error:
+                        category = getattr(error, "category", "unclassified")
+                        transport_phase = getattr(error, "phase", "unknown")
+                        with failure_lock:
+                            failures.append({"ordinal": ordinal, "attempt": attempt + 1,
+                                             "observedUtcMs": int(time.time() * 1000),
+                                             "elapsedMilliseconds": int((time.monotonic() - started) * 1000),
+                                             "category": category if type(category) is str and category in {"timeout", "remote-disconnected", "incomplete-read", "bad-status-line", "connection-refused", "connection-reset", "connection-aborted", "connection-error", "http-protocol"} else "unclassified",
+                                             "phase": transport_phase if type(transport_phase) is str and transport_phase in {"open", "body"} else "unknown"})
+                        remaining = check_read(dispatch=True)
+                        if attempt == LIMITS["readAttempts"] - 1:
+                            raise TransportUncertain("functional-selected-state-read-transport-exhausted") from None
+                        delay = (2, 5)[attempt]
+                        _require(delay < remaining, "selected-preexpiry-window" if pre_expiry and deadline < aggregate_deadline else "selected-read-aggregate-deadline")
+                        time.sleep(delay)
+                        check_read(dispatch=True)
+                    else:
+                        timing.update(responseObservedUtcMs=int(time.time() * 1000), responseObservedMonotonicSeconds=time.monotonic())
+                        timing["status"] = "absent" if value is None else "object" if type(value) is dict else "non-object"
+                        if pre_expiry:
+                            _require(timing["responseObservedUtcMs"] < expiry_utc
+                                     and timing["responseObservedMonotonicSeconds"] < expiry_monotonic, "selected-preexpiry-window")
+                        # Eligibility belongs to the recorded response, before
+                        # a slow guard. The shared 120 s budget still applies.
+                        check_read()
+                        if pre_expiry:
+                            _require(type(value) is dict, "selected-record-missing")
+                        return {"key": key, "value": value}
+            finally:
+                timing.update(completedUtcMs=int(time.time() * 1000), completedMonotonicSeconds=time.monotonic())
+                with failure_lock:
+                    timings[ordinal - 1] = timing
         observed = []
+        status = "failed"
         try:
             with ThreadPoolExecutor(max_workers=16) as reads:
                 for offset in range(0, len(keys), 16):
-                    check_read()
+                    check_read(dispatch=True)
                     observed.extend(reads.map(read, enumerate(keys[offset:offset + 16], start=offset + 1)))
             check_read()
+            status = "completed"
         except _SEMANTIC_FAILURES:
             if failures:
                 # At most 125 fixed keys * three attempts. Never retain keys,
@@ -1633,12 +1677,22 @@ class _PlatformRetentionConsumer:
                                  "attemptLimit": LIMITS["readAttempts"], "aggregateLimitSeconds": LIMITS["readAggregateSeconds"],
                                  "failures": sorted(failures, key=lambda failure: (failure["ordinal"], failure["attempt"]))})
             raise
+        finally:
+            if phase is not None:
+                # Capture before cohort validation can throw. No returned
+                # record, key, endpoint or exception value enters this packet.
+                _exclusive_json(self.root / "native-tests" / f"state-read-{phase}-{segment}-{'bucket' if buckets else 'record'}-{observation:02d}.json",
+                                {"phase": phase, "segmentId": segment, "kind": "bucket" if buckets else "record", "observation": observation,
+                                 "status": status, "keyCount": len(keys), "missingCount": sum(item["status"] == "absent" for item in timings),
+                                 "nonObjectCount": sum(item["status"] == "non-object" for item in timings),
+                                 "startedUtcMs": started_utc, "completedUtcMs": int(time.time() * 1000),
+                                 "startedMonotonicSeconds": started, "completedMonotonicSeconds": time.monotonic(), "reads": timings})
         return observed
 
-    def cohort(self, run_id, segment):
+    def cohort(self, run_id, segment, *, phase="initial", observation=1):
         records = []
         full = {}
-        for item in self.states(run_id, segment):
+        for item in self.states(run_id, segment, phase=phase, observation=observation):
             record = item["value"]
             _require(type(record) is dict, "selected-record-missing")
             full[record["recordId"]] = json.loads(json.dumps(record, sort_keys=True))
@@ -1647,10 +1701,34 @@ class _PlatformRetentionConsumer:
         self.full_records.setdefault(segment, full)
         return {"consistency": "strong", "records": records}
 
-    def physical(self, run_id):
+    def _preexpiry_bounds(self, segment):
+        """Bind the earliest validated expiry to the original emission clocks."""
+        expiries = self.validated_expiries.get(segment, {})
+        _require(expiries and all(type(value) is int for value in expiries.values()), "selected-preexpiry-window")
+        expiry = min(expiries.values())
+        return expiry, self.segment_monotonic[segment] + (expiry - self.segments[segment]) / 1000
+
+    def physical(self, run_id, *, pre_expiry_segment=None):
         self.check()
+        timeout = 10
+        if pre_expiry_segment is not None:
+            _require(pre_expiry_segment == "cohort-a" and _IDENTITY.fullmatch(run_id) is not None, "selected-read-observation-scope")
+            expiry_utc, expiry_monotonic = self._preexpiry_bounds(pre_expiry_segment)
+            timeout = min(timeout, (expiry_utc - int(time.time() * 1000)) / 1000, expiry_monotonic - time.monotonic())
+            timing = {"segmentId": pre_expiry_segment, "startedUtcMs": int(time.time() * 1000),
+                      "startedMonotonicSeconds": time.monotonic(), "expectedExpiryUtcMs": expiry_utc,
+                      "expectedExpiryMonotonicSeconds": expiry_monotonic, "status": "failed"}
         argv = ["docker", "exec", "--env", "PGSSLMODE=verify-full", "--env", "PGSSLROOTCERT=/run/retention/ca.pem", "--env", "PGPASSFILE=/run/retention/pgpass", self.observation["postgresqlContainerId"], "psql", "-h", "127.0.0.1", "-w", "-XAt", "-U", "telemetry_observer", "-d", "telemetry", "-c", fixed_physical_bound_query(run_id)]
-        physical = subprocess.run(argv, capture_output=True, timeout=10, check=True)
+        try:
+            _require(timeout > 0, "selected-preexpiry-window")
+            physical = subprocess.run(argv, capture_output=True, timeout=timeout, check=True)
+            if pre_expiry_segment is not None:
+                _require(int(time.time() * 1000) < expiry_utc and time.monotonic() < expiry_monotonic, "selected-preexpiry-window")
+                timing["status"] = "completed"
+        finally:
+            if pre_expiry_segment is not None:
+                timing.update(completedUtcMs=int(time.time() * 1000), completedMonotonicSeconds=time.monotonic())
+                _exclusive_json(self.root / "native-tests" / "pre-expiry-physical-cohort-a.json", timing)
         _require(len(physical.stdout) + len(physical.stderr) <= 1048576, "selected-postgres-output-limit")
         value = json.loads(physical.stdout)
         _require(value["serverVersionNum"] == "180006" and value["ssl"] is True and value["tlsVersion"] in {"TLSv1.2", "TLSv1.3"} and value["role"] == "telemetry_observer" and value["readOnly"] == "on", "selected-postgres-session")
@@ -1714,6 +1792,7 @@ class _PlatformRetentionConsumer:
             if segment == "cohort-b":
                 self.wait(self.segments["cohort-a"] + 1800000, clocks["cohort-a"] + 1800)
             self.segments[segment], clocks[segment] = int(time.time() * 1000), time.monotonic()
+            self.segment_monotonic[segment] = clocks[segment]
             for attempt in range(2):
                 try:
                     accounting = self.request("memories", "/operations/access-telemetry/qualification/fixed-workload", data=b"", headers={"X-Hexalith-Qualification-Run": run_id, "X-Hexalith-Qualification-Segment": segment, "X-Hexalith-Qualification-Emitted-Utc-Ms": str(self.segments[segment])})
@@ -1725,21 +1804,24 @@ class _PlatformRetentionConsumer:
             _require(writer is None or observed_writer == writer, "selected-writer-drift")
             writer = observed_writer
             cohorts[segment] = validate_cohort(self.cohort(run_id, segment), run_id=run_id, segment=segment, emitted_ms=self.segments[segment])
-        self.wait(self.segments["cohort-a"] + 3540000, clocks["cohort-a"] + 3540)
-        validate_cohort(self.cohort(run_id, "cohort-a"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
-        bound = self.physical(run_id)
+            self.validated_expiries[segment] = {ordinal: record["expiresUtcMs"] for ordinal, record in enumerate(cohorts[segment].values(), start=1)}
+        self.wait(self.segments["cohort-a"] + 3300000, clocks["cohort-a"] + 3300)
+        validate_cohort(self.cohort(run_id, "cohort-a", phase="pre-expiry-3300"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
+        bound = self.physical(run_id, pre_expiry_segment="cohort-a")
         bound_rows = {row["recordId"]: row for row in bound["rows"]}
         _require(len(bound["rows"]) == len(bound_rows) == 125 and set(bound_rows) == set(cohorts["cohort-a"]), "selected-ttl-bound-missing")
         for identity, row in bound_rows.items():
             expiry = cohorts["cohort-a"][identity]["expiresUtcMs"]
             _require(row["record"] == self.full_records["cohort-a"][identity] and type(row["expiresUtcMs"]) is int and expiry <= row["expiresUtcMs"] <= expiry + 900000 and bound["observedUtcMs"] < expiry, "selected-ttl-bound-drift")
-        self.wait(self.segments["cohort-a"] + 3590000, clocks["cohort-a"] + 3590)
-        validate_cohort(self.cohort(run_id, "cohort-a"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
+        self.wait(self.segments["cohort-a"] + 3450000, clocks["cohort-a"] + 3450)
+        validate_cohort(self.cohort(run_id, "cohort-a", phase="pre-expiry-3450"), run_id=run_id, segment="cohort-a", emitted_ms=self.segments["cohort-a"], expected=cohorts["cohort-a"])
         self.wait(self.segments["cohort-a"] + 3600124, clocks["cohort-a"] + 3600.124)
+        poll = 0
         while True:
+            poll += 1
             from access_telemetry_producer_common import _qualification_record_ids
             ids = _qualification_record_ids(run_id, "cohort-a")
-            absent = [record_id for record_id, item in zip(ids, self.states(run_id, "cohort-a")) if item["value"] is None]
+            absent = [record_id for record_id, item in zip(ids, self.states(run_id, "cohort-a", phase="post-expiry", observation=poll)) if item["value"] is None]
             self.check()
             physical = self.physical(run_id)
             for row in physical["rows"]:
@@ -1748,11 +1830,11 @@ class _PlatformRetentionConsumer:
             # elapsed PostgreSQL expiry and strong absence. It does not identify
             # a physical deletion mechanism or claim full reclamation proof.
             self.ttl_absent.update(identity for identity in absent if physical["observedUtcMs"] >= bound_rows[identity]["expiresUtcMs"])
-            indexed = {entry["recordId"] for bucket in self.states(run_id, "cohort-a", buckets=True) if bucket["value"] is not None for entry in bucket["value"]["entries"]}
+            indexed = {entry["recordId"] for bucket in self.states(run_id, "cohort-a", buckets=True, phase="post-expiry", observation=poll) if bucket["value"] is not None for entry in bucket["value"]["entries"]}
             actor = self.actor()
             observation = {"consistency": "strong", "absentRecordIds": absent, "removedIndexIds": [record_id for record_id in ids if record_id not in indexed], "reminderSequenceBefore": self.before_sequence, "reminderSequenceAfter": actor["ReminderSequence"], "progressObservedUtcMs": actor["LastPurgeUnixMilliseconds"] or 0, "actorDeletedRecordIds": [], "ttlAbsentRecordIds": sorted(self.ttl_absent)}
             passed = validate_purge(observation, cohorts["cohort-a"], now_ms=int(time.time() * 1000))
-            validate_cohort(self.cohort(run_id, "cohort-b"), run_id=run_id, segment="cohort-b", emitted_ms=self.segments["cohort-b"], expected=cohorts["cohort-b"])
+            validate_cohort(self.cohort(run_id, "cohort-b", phase="preservation", observation=poll), run_id=run_id, segment="cohort-b", emitted_ms=self.segments["cohort-b"], expected=cohorts["cohort-b"])
             if passed:
                 return {"status": "functional-observations-passed", "runId": run_id, "profileSha256": self.observation["profileHash"], "initialActorState": initial_actor_observation, "cohorts": cohorts, "canonicalRecords": self.full_records, "cohortClocks": {segment: {"utcMs": self.segments[segment], "monotonicSeconds": clocks[segment]} for segment in clocks}, "ttlEvidence": {"claim": "local-pre-expiry-row-and-ttl-bound-plus-elapsed-postgresql-clock-and-strong-absence", "preflight": preflight, "preExpiry": bound, "lastObservation": physical}, "purge": observation, "lifecycleOutcome": "pending-real-Platform-outcome"}
             self.wait(int(time.time() * 1000) + 30000, time.monotonic() + 30)
