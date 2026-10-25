@@ -31,6 +31,9 @@ from verify_access_telemetry_lifecycle import (  # noqa: E402
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--owner-plan", help="Canonical private owner plan path.")
+    parser.add_argument("--approved-owner-plan-sha256", help="Digest retained outside the proposed predecessor.")
+    parser.add_argument("--owner-custody-root", help="Exact private approved evidence root.")
     parser.add_argument("--kube-context")
     parser.add_argument("--namespace")
     parser.add_argument("--deployment-id")
@@ -87,6 +90,11 @@ def main(argv: list[str] | None = None) -> int:
         from access_telemetry_functional_retention import run_selected_platform_retention
         return run_selected_platform_retention()
     args = _parser().parse_args(argv)
+    for name, value in (("HEXALITH_C1_OWNER_PLAN", args.owner_plan),
+                        ("HEXALITH_C1_APPROVED_PLAN_SHA256", args.approved_owner_plan_sha256),
+                        ("HEXALITH_C1_CUSTODY_ROOT", args.owner_custody_root)):
+        if value is not None:
+            os.environ[name] = value
     repository_root = Path(args.repository_root)
     if args.checkpoint == "functional-retention":
         if args.prepare_functional_bundle:

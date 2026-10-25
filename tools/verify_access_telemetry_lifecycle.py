@@ -2557,6 +2557,17 @@ def _hash_git_blob(repository_root: Path, commit: str, relative: str) -> str:
     return hashlib.sha256(result.stdout).hexdigest()
 
 
+OWNER_AUTHORITY_SOURCES = (
+    "tools/access_telemetry_c1_owner_authority.py",
+    "tools/access_telemetry_c1_gate_semantics.py",
+    "tools/access_telemetry_c1_owner_custody.py",
+    "tools/access_telemetry_c1_owner_dispatch.py",
+    "tools/access_telemetry_c1_owner_run.py",
+    "tools/access_telemetry_c1_interchange.py",
+    "tools/access_telemetry_c1_approval_policy.py",
+)
+
+
 def _expected_source_paths(checkpoint: Any) -> frozenset[str]:
     identity = STORY_27_4_PRODUCERS.get(checkpoint)
     if identity is None:
@@ -2575,7 +2586,10 @@ def _validate_source_identity(payload: Mapping[str, Any], repository_root: Path 
     hashes = _require_mapping(payload.get("source_hashes"), "source_hashes")
     if not hashes:
         raise EvidenceValidationError("source_hashes must bind at least one reviewed producer")
-    if set(hashes) != set(_expected_source_paths(payload.get("checkpoint"))):
+    expected_sources = set(_expected_source_paths(payload.get("checkpoint")))
+    if payload.get("producer", {}).get("arguments", {}).get("authority_mode") == "sole-owner":
+        expected_sources.update(OWNER_AUTHORITY_SOURCES)
+    if set(hashes) != expected_sources:
         raise EvidenceValidationError("source_hashes do not bind the exact reviewed source set")
     for path, digest in hashes.items():
         _require_hex64(digest, f"source_hashes[{path!r}]")
@@ -2828,36 +2842,29 @@ def _validate_predecessor(
     evidence_root: Path | None = None,
     *,
     require_authorization_freshness: bool = True,
-) -> None:
-    """Refuse C1 execution until authenticated v2 authority is implemented.
+    action: str = "observe",
+):
+    """Authorize explicit sole-owner v1; historical v2 still fails closed.
 
-    The legacy reader above is retained for historical inspection only. A v2
-    summary and its structural reader cannot establish current I3-I5 authority,
-    session status, retained-reference custody, or the approved P7 time limits.
-    These arguments remain for the consumer interface and cannot opt out of the
-    authorization boundary.
+    Freshness flags never bypass authority. The separately approved plan and
+    freshly read custody/status are required on every invocation.
     """
-
-    from access_telemetry_c1_interchange import (
-        InterchangeFormatError,
-        JsonSnapshot,
-        parse_predecessor,
-    )
-
+    from access_telemetry_c1_owner_authority import SCHEMA, verify_owner_predecessor
+    if isinstance(predecessor, Mapping) and predecessor.get("schemaVersion") == SCHEMA:
+        try:
+            return verify_owner_predecessor(predecessor, repository_root, evidence_root, action=action)
+        except (ValueError, OSError, KeyError, TypeError, AttributeError) as error:
+            raise EvidenceValidationError("C1 owner authority refused") from None
     if not isinstance(predecessor, Mapping) or predecessor.get("schemaVersion") != (
         "hexalith.access-telemetry.c1.predecessor/v2"
     ):
-        raise EvidenceValidationError(
-            "C1 predecessor version refused: authenticated predecessor/v2 is required"
-        )
+        raise EvidenceValidationError("C1 predecessor version refused: authenticated predecessor/v2 is required")
+    from access_telemetry_c1_interchange import JsonSnapshot, parse_predecessor
     try:
         parse_predecessor(JsonSnapshot(_canonical_json(predecessor).encode("utf-8")))
-    except (InterchangeFormatError, TypeError, ValueError) as exc:
-        raise EvidenceValidationError(f"C1 predecessor/v2 shape refused: {exc}") from exc
-    raise EvidenceValidationError(
-        "C1 predecessor/v2 current authority unavailable: authenticated I3-I5 "
-        "verdict, retained references, session status, and P7 time limits are unverified"
-    )
+    except ValueError as error:
+        raise EvidenceValidationError("C1 predecessor/v2 shape refused") from None
+    raise EvidenceValidationError("C1 predecessor/v2 current authority unavailable: authenticated I3-I5 verdict is unverified")
 
 
 def _validate_common_checkpoint(
@@ -3747,12 +3754,19 @@ def validate_story_27_4_checkpoint(
     repository_root: Path | None = None,
     evidence_root: Path | None = None,
     require_current_freshness: bool = True,
+    authority_action: str = "observe",
 ) -> None:
     """Require current C1 authority before validating a C2-C4 checkpoint."""
 
     if checkpoint not in STORY_27_4_CHECKPOINTS:
         raise EvidenceValidationError(f"unsupported Story 27.4 checkpoint: {checkpoint}")
-    _validate_predecessor(predecessor, repository_root, evidence_root)
+    authority = _validate_predecessor(predecessor, repository_root, evidence_root, action=authority_action)
+    arguments = _require_mapping(payload.get("producer", {}).get("arguments"), "producer authority arguments")
+    if (arguments.get("authority_mode") != "sole-owner"
+            or payload.get("source_commit") != authority.source_commit
+            or arguments.get("authority_session_id") != authority.session_id
+            or arguments.get("authority_target_sha256") != authority.target_sha256):
+        raise EvidenceValidationError("checkpoint authority scope differs")
     _inspect_checkpoint_payload(
         checkpoint, payload, repository_root,
         require_current_freshness=require_current_freshness,
@@ -4052,6 +4066,35 @@ def _run_bounded_process(
 ) -> tuple[int, bytes, bytes]:
     """Stream one child with deterministic limits and terminate on the first exceeded bound."""
 
+    original_budget_remaining = None
+
+    def check_authority():
+        nonlocal original_budget_remaining
+        if environment is None or environment.get("HEXALITH_C1_CHECK_EXECUTION") != "1":
+            return
+        path = environment.get("HEXALITH_C1_PREDECESSOR_PATH")
+        custody = environment.get("HEXALITH_C1_CUSTODY_ROOT")
+        root = environment.get("HEXALITH_C1_REPOSITORY_ROOT")
+        if not path or not custody or not root:
+            raise EvidenceValidationError("producer wait authority inputs missing")
+        required_actions = environment.get("HEXALITH_C1_REQUIRED_ACTION")
+        actions = [required_actions] if required_actions else environment.get("HEXALITH_C1_ACTIONS", "observe").split(",")
+        for action in actions:
+            authority = _validate_predecessor(_read_bounded_json(Path(path), approved_root=Path(custody)), Path(root), Path(custody), action=action)
+        # Independent UTC prevents resetting a resumed subprocess's ceiling.
+        origin = environment.get("HEXALITH_C3_EXECUTION_DEADLINE_MS")
+        if environment.get("HEXALITH_C1_CHECKPOINT") == "c3-retention-reclamation" or origin is not None:
+            from access_telemetry_c1_owner_authority import c3_remaining_seconds
+            try:
+                original_budget_remaining = c3_remaining_seconds(authority)
+            except (ValueError, OSError):
+                raise EvidenceValidationError("C3 original execution origin unavailable or exhausted") from None
+            if origin is not None:
+                if int(origin) != authority.c3_execution["startedUtcMs"] + 777600000:
+                    raise EvidenceValidationError("C3 supervisor origin differs")
+            if original_budget_remaining <= 0:
+                raise EvidenceValidationError("C3 original execution budget exhausted")
+    check_authority()
     inline = _run_inline_kubectl(command, environment=environment, stdin_bytes=stdin_bytes)
     if inline is not None:
         return inline
@@ -4086,10 +4129,15 @@ def _run_bounded_process(
             raise EvidenceValidationError("reviewed producer rejected its bounded stdin") from exc
     selector.register(process.stdout, selectors.EVENT_READ, (stdout, _MAX_EVIDENCE_BYTES, "stdout"))
     selector.register(process.stderr, selectors.EVENT_READ, (stderr, _MAX_STDERR_BYTES, "stderr"))
-    deadline = time.monotonic() + timeout_seconds
+    process_clock = (lambda: time.clock_gettime(time.CLOCK_BOOTTIME)) if original_budget_remaining is not None else time.monotonic
+    deadline = process_clock() + min(timeout_seconds, original_budget_remaining if original_budget_remaining is not None else timeout_seconds)
+    next_authority_check = process_clock()
     try:
         while selector.get_map():
-            remaining = deadline - time.monotonic()
+            if process_clock() >= next_authority_check:
+                check_authority()
+                next_authority_check = process_clock() + 5
+            remaining = deadline - process_clock()
             if remaining <= 0:
                 raise EvidenceValidationError("reviewed producer exceeded its bounded timeout")
             for key, _ in selector.select(min(remaining, 0.25)):
@@ -4103,9 +4151,13 @@ def _run_bounded_process(
                         f"reviewed producer {stream_name} exceeded {maximum} bytes"
                     )
                 buffer.extend(chunk)
-        return_code = process.wait(timeout=max(0.1, deadline - time.monotonic()))
+        return_code = process.wait(timeout=max(0.1, deadline - process_clock()))
+        check_authority()
+        if process_clock() >= deadline:
+            raise EvidenceValidationError("reviewed producer exceeded its bounded timeout")
         return return_code, bytes(stdout), bytes(stderr)
-    except EvidenceValidationError:
+    except EvidenceValidationError as error:
+        error.producer_started = True
         if process.poll() is None:
             process.terminate()
             try:
@@ -4125,7 +4177,9 @@ def _run_bounded_process(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
-        raise EvidenceValidationError("reviewed producer execution failed or timed out") from exc
+        error = EvidenceValidationError("reviewed producer execution failed or timed out")
+        error.producer_started = True
+        raise error from exc
     finally:
         selector.close()
         if process.poll() is None:
@@ -4155,6 +4209,8 @@ def run_story_27_4_producer_checkpoint(
     execution_predecessor_path: Path | None = None
     resolved_input: Path | None = None
     producer_authenticated = False
+    producer_launched = False
+    execution_environment = None
     try:
         normalized_owner = _require_nonempty_string(owner, "owner")
         registered = STORY_27_4_PRODUCERS.get(checkpoint)
@@ -4174,12 +4230,17 @@ def run_story_27_4_producer_checkpoint(
         predecessor, predecessor_bytes = _read_bounded_json_snapshot(
             resolved_predecessor, approved_root=approved_root
         )
-        _validate_predecessor(
+        authority = _validate_predecessor(
             predecessor,
             root,
             approved_root,
             require_authorization_freshness=True,
         )
+        if checkpoint == "c3-retention-reclamation":
+            from access_telemetry_c1_owner_authority import c3_remaining_seconds
+            c3_remaining_seconds(authority)
+        for action in (("purge", "reclaim") if checkpoint == "c3-retention-reclamation" else ("fault",)):
+            _validate_predecessor(predecessor, root, approved_root, action=action)
         resolved_input = _require_evidence_path(
             scenario_input_path, approved_root, "scenario input", must_exist=True
         )
@@ -4187,12 +4248,10 @@ def run_story_27_4_producer_checkpoint(
             raise EvidenceValidationError(
                 "controlled producers require a clean tracked and untracked source worktree"
             )
-        platform_operations_reviewer = next(
-            _require_nonempty_string(item.get("reviewer"), "C1 platform-operations reviewer")
-            for item in _require_sequence(predecessor.get("approvals"), "C1.approvals")
-            if isinstance(item, Mapping) and item.get("role") == "platform-operations"
-        )
+        platform_operations_reviewer = "owner-6775094"
         source_commit = _git_checked(root, "rev-parse", "--verify", "HEAD^{commit}")
+        if source_commit != authority.source_commit:
+            raise EvidenceValidationError("producer source differs from approved session")
         source_sha256 = _hash_git_blob(root, source_commit, relative_producer)
         producer_bytes = _authenticated_worktree_bytes(root, relative_producer, source_sha256)
         common_producer = "tools/access_telemetry_producer_common.py"
@@ -4213,6 +4272,11 @@ def run_story_27_4_producer_checkpoint(
         (execution_directory / Path(common_producer).name).write_bytes(common_bytes)
         (execution_directory / Path(verifier_source).name).write_bytes(verifier_bytes)
         (execution_directory / Path(reporter_manifest).name).write_bytes(reporter_bytes)
+        authority_hashes = {}
+        for relative in OWNER_AUTHORITY_SOURCES:
+            digest = _hash_git_blob(root, source_commit, relative)
+            (execution_directory / Path(relative).name).write_bytes(_authenticated_worktree_bytes(root, relative, digest))
+            authority_hashes[relative] = digest
         execution_input_path.write_bytes(input_bytes)
         execution_predecessor_path.write_bytes(predecessor_bytes)
         for copied in execution_directory.iterdir():
@@ -4233,16 +4297,26 @@ def run_story_27_4_producer_checkpoint(
             producer_command.extend(
                 ("--journal", str(approved_root / "c3-retention-reclamation.journal.jsonl"))
             )
-        return_code, stdout, stderr = _run_bounded_process(
-            tuple(producer_command),
-            cwd=root,
-            timeout_seconds=777_600 if checkpoint == "c3-retention-reclamation" else 50_400,
-            environment={
+        execution_environment = {
                 **os.environ,
                 "HEXALITH_STORY_27_4_SOURCE_COMMIT": source_commit,
                 "HEXALITH_STORY_27_4_PRODUCER_SHA256": source_sha256,
-            },
+                "HEXALITH_C1_PREDECESSOR_PATH": str(execution_predecessor_path),
+                "HEXALITH_C1_REPOSITORY_ROOT": str(root),
+                "HEXALITH_C1_CHECK_EXECUTION": "1",
+                "HEXALITH_C1_ACTIONS": "observe,fault" if checkpoint != "c3-retention-reclamation" else "observe,purge,reclaim",
+                "HEXALITH_C1_CHECKPOINT": checkpoint,
+                "HEXALITH_C1_EXECUTION_ID": os.urandom(16).hex(),
+            }
+        timeout = 50400
+        if checkpoint == "c3-retention-reclamation":
+            authority = _validate_predecessor(predecessor, root, approved_root)
+            timeout = min(777600, c3_remaining_seconds(authority))
+            execution_environment["HEXALITH_C3_EXECUTION_DEADLINE_MS"] = str(authority.c3_execution["startedUtcMs"] + 777600000)
+        return_code, stdout, stderr = _run_bounded_process(
+            tuple(producer_command), cwd=root, timeout_seconds=timeout, environment=execution_environment,
         )
+        producer_launched = True
         finished = _utc_now_milliseconds()
         if return_code != 0:
             raise EvidenceValidationError(
@@ -4263,7 +4337,7 @@ def run_story_27_4_producer_checkpoint(
             # interval rather than pretending all multi-day observations were
             # made by this final process invocation.
             packet_started = min(
-                [started]
+                [_require_utc_milliseconds(mutable.get("started_utc"), "C3 durable execution origin")]
                 + [
                     _require_utc_milliseconds(
                         _require_mapping(command, f"commands[{index}]").get("started_utc_ms"),
@@ -4275,6 +4349,9 @@ def run_story_27_4_producer_checkpoint(
         arguments = {
             "scenario_input_sha256": input_sha256,
             "target_kind": "non-production-qualification",
+            "authority_mode": "sole-owner",
+            "authority_session_id": authority.session_id,
+            "authority_target_sha256": authority.target_sha256,
         }
         mutable["source_commit"] = source_commit
         mutable["source_hashes"] = {
@@ -4282,6 +4359,7 @@ def run_story_27_4_producer_checkpoint(
             common_producer: common_sha256,
             verifier_source: verifier_sha256,
             reporter_manifest: reporter_sha256,
+            **authority_hashes,
         }
         mutable["producer"] = {
             "command_id": command_id,
@@ -4321,7 +4399,7 @@ def run_story_27_4_producer_checkpoint(
     except (EvidenceValidationError, OSError, ValueError) as exc:
         if resolved_evidence is not None:
             disable_observation: dict[str, Any] = {}
-            if producer_authenticated and execution_producer_path is not None and execution_input_path is not None:
+            if producer_authenticated and (producer_launched or getattr(exc, "producer_started", False)) and execution_producer_path is not None and execution_input_path is not None:
                 try:
                     disable_code, disable_stdout, disable_stderr = _run_bounded_process(
                         (
@@ -4336,6 +4414,8 @@ def run_story_27_4_producer_checkpoint(
                         ),
                         cwd=repository_root,
                         timeout_seconds=60,
+                        environment={key: value for key, value in (execution_environment or os.environ).items()
+                                     if key not in {"HEXALITH_C1_CHECK_EXECUTION", "HEXALITH_C3_EXECUTION_DEADLINE_MS", "HEXALITH_C1_REQUIRED_ACTION"}},
                     )
                     disable_observation = {
                         "disable_exit_code": disable_code,
@@ -4641,7 +4721,9 @@ def _validate_terminal_bundle(
         c1_item["artifact_sha256"], "C1.artifact_sha256"
     ):
         raise EvidenceValidationError("terminal bundle checkpoint C1 artifact hash mismatch")
-    _validate_predecessor(c1_payload, repository_root, evidence_root)
+    authority = _validate_predecessor(c1_payload, repository_root, evidence_root, action="close-out")
+    if authority.terminal_bundle_sha256 != _sha256(_canonical_json(bundle)):
+        raise EvidenceValidationError("terminal bundle lacks outside-approved owner acceptance")
     c1_artifact_payload: Mapping[str, Any] | None = None
     behavioral_artifacts: dict[str, Mapping[str, Any]] = {}
     behavioral_capture_ms: dict[str, int] = {}
@@ -4682,6 +4764,9 @@ def _validate_terminal_bundle(
             "C6": {"C6", "security-acceptance"},
             "terminal": {"terminal", "terminal-validation"},
         }[name]
+        if name == "C1" and artifact_payload.get("schemaVersion") == "hexalith.access-telemetry.c1.owner-predecessor/v1":
+            c1_artifact_payload = artifact_payload
+            continue
         if artifact_payload.get("checkpoint") not in expected_checkpoint:
             raise EvidenceValidationError(f"terminal artifact {name} carries another checkpoint")
         if artifact_payload.get("status") != "passed":
@@ -4782,7 +4867,7 @@ def _validate_terminal_bundle(
             chain_payloads[name].get("observation"),
             f"terminal artifact {name}.observation",
         )
-        if observation.get("predecessor_sha256") != artifact_hashes["C1"]:
+        if observation.get("predecessor_sha256") not in {artifact_hashes["C1"], *authority.lineage}:
             raise EvidenceValidationError(
                 f"terminal artifact {name} does not bind the bundled C1 predecessor"
             )
@@ -4802,6 +4887,7 @@ def _validate_terminal_bundle(
             repository_root=repository_root,
             evidence_root=evidence_root,
             require_current_freshness=False,
+            authority_action="close-out",
         )
     for name in ("C0", "C5", "C6", "terminal"):
         artifact_payload = chain_payloads[name]
@@ -4857,27 +4943,22 @@ def _validate_terminal_bundle(
             f"C0 immutable artifact {name}",
         )
 
-    c1_reviewers = {
-        _require_nonempty_string(item.get("reviewer"), "C1 approval reviewer")
-        for item in _require_sequence(c1_artifact_payload.get("approvals"), "C1.approvals")
-        if isinstance(item, Mapping)
-    }
-    post_reviewers: set[str] = set()
     expected_roles = {"C5": "platform-operations", "C6": "security"}
     expected_acceptance_hashes = {name: artifact_hashes[name] for name in ("C0", "C1", "C2", "C3", "C4")}
     for name, role in expected_roles.items():
         approval = _require_mapping(chain_payloads[name].get("results"), f"{name}.results")
         _require_exact_fields(
             approval,
-            frozenset({"role", "approver", "approved_utc_ms", "accepted_checkpoint_hashes"}),
+            frozenset({"role", "approver", "approved_utc_ms", "accepted_checkpoint_hashes", "assurance_mode"}),
             f"{name}.results",
         )
         if approval["role"] != role:
             raise EvidenceValidationError(f"{name} has the wrong approval role")
         approver = _require_nonempty_string(approval["approver"], f"{name}.approver")
-        if approver in c1_reviewers or approver in post_reviewers:
-            raise EvidenceValidationError("post-evidence approvals must be mutually independent and new")
-        post_reviewers.add(approver)
+        if approver != "github:user:6775094" or approval["assurance_mode"] != "sole-owner/self-reviewed":
+            raise EvidenceValidationError("owner post-evidence approval identity differs")
+        if artifact_hashes["C5"] == artifact_hashes["C6"]:
+            raise EvidenceValidationError("distinct post-evidence role records required")
         approved = _require_utc_milliseconds(approval["approved_utc_ms"], f"{name}.approved_utc_ms")
         _validate_fresh_run(
             approved,
@@ -5052,6 +5133,7 @@ def run_close_out_preflight(
             remote=normalized_remote,
             remote_url_sha256=_sha256(remote_url),
             bundle_sha256=hashlib.sha256(resolved_bundle.read_bytes()).hexdigest(),
+            bundle_path=str(resolved_bundle.relative_to(approved_root)),
             mutation_manifest_sha256=hashlib.sha256(
                 resolved_manifest.read_bytes()
             ).hexdigest(),
@@ -5078,6 +5160,7 @@ def _authenticate_preflight(
     preflight_path: Path,
     manifest_path: Path,
     evidence_root: Path,
+    *, repository_root: Path | None = None, action: str = "close-out",
 ) -> tuple[Mapping[str, Any], Mapping[str, Any], str]:
     preflight = _read_bounded_json(preflight_path, approved_root=evidence_root)
     _validate_close_out_packet_hash(preflight, "preflight")
@@ -5099,6 +5182,7 @@ def _authenticate_preflight(
                 "remote",
                 "remote_url_sha256",
                 "bundle_sha256",
+                "bundle_path",
                 "mutation_manifest_sha256",
                 "inventory_sha256",
                 "inventory",
@@ -5116,12 +5200,16 @@ def _authenticate_preflight(
         or preflight.get("profile_sha256") != STORY_27_4_PROFILE_SHA256
     ):
         raise EvidenceValidationError("preflight packet is not authentic or passing")
-    # The packet carries only a bundle hash. It cannot re-establish current C1
-    # authority, so no retained preflight can authorize postflight or publish.
-    raise EvidenceValidationError(
-        "close-out C1 current authority unavailable: preflight bundle hash "
-        "cannot establish authenticated predecessor/v2 authorization"
-    )
+    if repository_root is None:
+        raise EvidenceValidationError("close-out C1 current authority unavailable: repository required")
+    relative = _require_nonempty_string(preflight.get("bundle_path"), "preflight bundle path", maximum=512)
+    bundle_path = _require_evidence_path(evidence_root / relative, evidence_root, "preflight bundle", must_exist=True)
+    bundle, raw = _read_bounded_json_snapshot(bundle_path, approved_root=evidence_root)
+    if hashlib.sha256(raw).hexdigest() != preflight["bundle_sha256"]:
+        raise EvidenceValidationError("preflight bundle bytes differ")
+    _validate_terminal_bundle(bundle, repository_root, evidence_root)
+    c1_path = evidence_root / bundle["checkpoints"]["C1"]["artifact_path"]
+    _validate_predecessor(_read_bounded_json(c1_path, approved_root=evidence_root), repository_root, evidence_root, action=action)
     resolved_manifest = _require_evidence_path(
         manifest_path, evidence_root, "mutation manifest", must_exist=True
     )
@@ -5238,7 +5326,7 @@ def run_close_out_postflight(
             evidence_path, approved_root, "postflight output", must_exist=False
         )
         preflight, manifest, preflight_sha = _authenticate_preflight(
-            resolved_preflight, mutation_manifest_path, approved_root
+            resolved_preflight, mutation_manifest_path, approved_root, repository_root=root
         )
         resolved_snapshot = _require_evidence_path(snapshot_path, approved_root, "snapshot", must_exist=True)
         _authenticate_snapshot(resolved_snapshot, preflight, approved_root)
@@ -5309,9 +5397,10 @@ def _authenticate_postflight(
     manifest_path: Path,
     snapshot_path: Path,
     evidence_root: Path,
+    *, repository_root: Path | None = None,
 ) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any], str]:
     preflight, manifest, preflight_sha = _authenticate_preflight(
-        preflight_path, manifest_path, evidence_root
+        preflight_path, manifest_path, evidence_root, repository_root=repository_root, action="publish"
     )
     snapshot_path = _require_evidence_path(snapshot_path, evidence_root, "snapshot", must_exist=True)
     postflight_path = _require_evidence_path(postflight_path, evidence_root, "postflight", must_exist=True)
@@ -5390,6 +5479,7 @@ def run_publish_verification(
             mutation_manifest_path,
             snapshot_path,
             approved_root,
+            repository_root=root,
         )
         commit_id = _require_nonempty_string(commit, "commit", maximum=64)
         if _COMMIT_ID.fullmatch(commit_id) is None:

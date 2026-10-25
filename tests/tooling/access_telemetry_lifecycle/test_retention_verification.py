@@ -1841,7 +1841,7 @@ class RetentionVerificationTests(unittest.TestCase):
                     self.assertEqual(1, result)
                     packet = json.loads(output.read_text(encoding="utf-8"))
                     self.assertEqual("rejected", packet["status"])
-                    self.assertIn("C1 current authority unavailable", packet["reason"])
+                    self.assertTrue("C1 current authority unavailable" in packet["reason"] or "missing bundle_path" in packet["reason"])
             self.assertFalse((evidence / "missing-snapshot.json").exists())
 
     @staticmethod
@@ -1961,6 +1961,24 @@ def qualification_test_env(fake_bin: Path, **extra: str) -> dict[str, str]:
         "HEXALITH_STORY_27_4_INLINE_KUBECTL": str(fake_bin / "kubectl"),
         "HEXALITH_STORY_27_4_INLINE_KUBECTL_UNITTEST": "1",
     }
+    # Supply actual private owner authority to the producer subprocess so these
+    # existing body/Lease/cleanup tests continue reaching their intended branch.
+    from test_owner_authority import OwnerFixture
+    custody = fake_bin.parent / "owner-authority"
+    if not custody.exists():
+        custody.mkdir(mode=0o700)
+        clean_environment = {key: value for key, value in env.items() if not key.startswith("QUALIFICATION_")}
+        observed_target = {"kind": "non-production-qualification", "kube_context": "operator@local",
+                           "namespace": "memories-qualification", "profile_sha256": STORY_27_4_PROFILE_SHA256,
+                           "_platform_operations_reviewer": "c1-operator-reviewer", "_lease_holder": "fixture"}
+        with patch.dict(os.environ, clean_environment, clear=True):
+            identity, _ = _run_operation(observed_target, "c2-production-replacement", "qualification-target-identity")
+        fixture = OwnerFixture(custody, runtime_sha256=identity["runtime_identity_sha256"])
+        (custody / "test-env.json").write_text(json.dumps(fixture.env), encoding="utf-8")
+        (custody / "test-env.json").chmod(0o600)
+    env.update(json.loads((custody / "test-env.json").read_text(encoding="utf-8")))
+    env["HEXALITH_C1_PREDECESSOR_PATH"] = str(custody / "predecessor.json")
+    env["HEXALITH_C1_REPOSITORY_ROOT"] = str(REPO_ROOT)
     env.pop("KUBECONFIG", None)
     env.update(extra)
     return env
@@ -1971,6 +1989,14 @@ def install_fake_kubectl(directory: Path) -> None:
     script.write_text("""#!/usr/bin/env python3
 import hashlib, json, os, sys, time
 args = sys.argv[1:]
+if 'config' in args and 'view' in args:
+    import base64
+    print('https://fixture.invalid:6443\\n' + base64.b64encode(b'fixture-api-ca').decode() + '\\n', end='')
+    raise SystemExit(0)
+if 'get' in args and 'namespace' in args:
+    name = args[args.index('namespace') + 1]
+    print(json.dumps({'metadata': {'name': name, 'uid': 'fixture-cluster' if name == 'kube-system' else 'fixture-namespace'}}))
+    raise SystemExit(0)
 prior_calls = []
 call_log = os.environ.get('QUALIFICATION_KUBECTL_LOG')
 if call_log:

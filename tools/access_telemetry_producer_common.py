@@ -45,6 +45,8 @@ from verify_access_telemetry_lifecycle import (
     _sha256,
     _utc_now_milliseconds,
     _validate_secret_safe,
+    _validate_predecessor,
+    _read_bounded_json,
 )
 
 
@@ -1496,6 +1498,12 @@ class _C3Journal:
         descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
         self._stream = os.fdopen(descriptor, "r+b", buffering=0)
         self._prefix_bytes = b""
+        self._path = path
+        self._execution = None
+        metadata = os.fstat(descriptor)
+        if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077 or metadata.st_nlink != 1:
+            self._stream.close()
+            raise EvidenceValidationError("C3 journal must be private and single-link")
         try:
             fcntl.flock(self._stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             self._entries = self._read_entries()
@@ -1512,6 +1520,8 @@ class _C3Journal:
         self._prefix_bytes = content
         if len(content) > _MAX_TRANSCRIPT_BYTES:
             raise EvidenceValidationError("C3 journal exceeded its bounded size")
+        if content and not content.endswith(b"\n"):
+            raise EvidenceValidationError("C3 journal contains an interrupted entry")
         entries: list[Mapping[str, Any]] = []
         previous = "0" * 64
         for index, raw_line in enumerate(content.splitlines(), 1):
@@ -1557,6 +1567,10 @@ class _C3Journal:
         return entries
 
     def append(self, command_id: str, result: Mapping[str, Any]) -> None:
+        if self._execution is not None:
+            if self._execution.get("inflight") != command_id:
+                raise EvidenceValidationError("C3 completion has no durable execution marker")
+            self.check_execution(self._authority_now())
         if self._context_sha256 is None:
             self._context_sha256 = "0" * 64
         result_copy = {key: value for key, value in result.items() if key != "_command"}
@@ -1578,6 +1592,161 @@ class _C3Journal:
         self._prefix_bytes += line
         self._previous = hashlib.sha256(encoded).hexdigest()
         self._entries.append(entry)
+        if self._execution is not None:
+            self._execution["inflight"] = None
+            self._persist_execution()
+
+    def enable_execution(self, authority) -> None:
+        """Admit an original or explicitly approved exact continuation before I/O.
+
+        A separately approved digest of both files prevents prefix truncation,
+        state replacement, reordering or origin/deadline resets on resume.
+        """
+        from access_telemetry_c1_owner_authority import boot_identity, boottime_ns
+        state_path = self._path.with_name(self._path.name + ".state.json")
+        self._state_path = state_path
+        self._persisted_state_sha256 = None
+        origin = _require_mapping(authority.c3_execution, "outside-approved C3 execution origin")
+        _require_exact_fields(origin, frozenset({"startedUtcMs", "startedBoottimeNs", "bootId", "journalPath"}), "approved C3 execution origin")
+        if origin["journalPath"] != str(self._path) or self._path.name != "c3-retention-reclamation.journal.jsonl":
+            raise EvidenceValidationError("C3 journal differs from approved fixed identity")
+        custody = os.environ.get("HEXALITH_C1_CUSTODY_ROOT")
+        if custody is None or self._path.parent != Path(custody):
+            raise EvidenceValidationError("C3 journal must remain directly under approved custody")
+        self._verify_named_prefix()
+        self._authority_now = lambda: _authorize_target(self._target_for_authority).now_ms
+        if state_path.exists() or state_path.is_symlink():
+            continuation = authority.continuation
+            if not isinstance(continuation, Mapping) or set(continuation) != {"journalSha256", "stateSha256"}:
+                raise EvidenceValidationError("C3 resume requires an explicit approved continuation")
+            fd = os.open(state_path, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                metadata = os.fstat(fd)
+                if not stat_module.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077 or metadata.st_nlink != 1 or metadata.st_size > 16384:
+                    raise EvidenceValidationError("C3 execution state is not private and bounded")
+                raw = os.read(fd, 16385)
+            finally:
+                os.close(fd)
+            if (hashlib.sha256(raw).hexdigest() != continuation["stateSha256"]
+                    or self.authenticated_prefix_sha256 != continuation["journalSha256"]):
+                raise EvidenceValidationError("C3 approved continuation bytes differ")
+            self._persisted_state_sha256 = hashlib.sha256(raw).hexdigest()
+            self._execution = dict(_require_mapping(_json_without_duplicates(raw.decode("utf-8"), "C3 execution state"), "C3 execution state"))
+            expected = {"version", "context_sha256", "boot_id", "started_utc_ms", "started_boottime_ns", "last_utc_ms", "last_boottime_ns", "last_wall_utc_ms", "deadline_utc_ms", "journal_sha256", "entry_count", "inflight", "runtime_identity_sha256"}
+            _require_exact_fields(self._execution, frozenset(expected), "C3 execution state")
+            if (self._execution["context_sha256"] != self._context_sha256
+                    or self._execution["journal_sha256"] != self.authenticated_prefix_sha256
+                    or self._execution["entry_count"] != len(self._entries)):
+                raise EvidenceValidationError("C3 durable prefix or session context differs")
+            inflight = self._execution["inflight"]
+            if inflight is not None and not self._repeatable_read(inflight):
+                raise EvidenceValidationError("C3 interrupted uncertain mutation requires disposition; no automatic replay")
+        else:
+            if self._entries or authority.continuation is not None:
+                raise EvidenceValidationError("C3 cannot reconstruct a lost execution origin")
+            boot = boottime_ns()
+            self._execution = {
+                "version": 1, "context_sha256": self._context_sha256, "boot_id": boot_identity(),
+                "started_utc_ms": origin["startedUtcMs"], "started_boottime_ns": origin["startedBoottimeNs"],
+                "last_utc_ms": authority.now_ms, "last_boottime_ns": boot,
+                "last_wall_utc_ms": _utc_now_milliseconds(),
+                "deadline_utc_ms": origin["startedUtcMs"] + 777600000,
+                "journal_sha256": self.authenticated_prefix_sha256, "entry_count": 0,
+                "inflight": None, "runtime_identity_sha256": None,
+            }
+        if (self._execution["started_utc_ms"] != origin["startedUtcMs"]
+                or self._execution["started_boottime_ns"] != origin["startedBoottimeNs"]
+                or self._execution["boot_id"] != origin["bootId"]):
+            raise EvidenceValidationError("C3 approved origin differs from durable execution")
+        self.check_execution(authority.now_ms)
+        self._persist_execution()
+
+    @staticmethod
+    def _repeatable_read(command_id):
+        return (command_id in {"c3-empty-preflight", "c3-runtime-identity"}
+                or command_id.endswith("-wait") or command_id.endswith("-expiry"))
+
+    def check_execution(self, now_ms):
+        from access_telemetry_c1_owner_authority import boot_identity, boottime_ns
+        state = self._execution
+        self._verify_named_prefix()
+        if self._persisted_state_sha256 is not None:
+            state_fd = os.open(self._state_path, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                raw_state = os.read(state_fd, 16385)
+                if hashlib.sha256(raw_state).hexdigest() != self._persisted_state_sha256:
+                    raise EvidenceValidationError("C3 execution state changed during execution")
+            finally:
+                os.close(state_fd)
+        if state is None:
+            raise EvidenceValidationError("C3 durable execution not initialized")
+        boot = boottime_ns()
+        wall = _utc_now_milliseconds()
+        for name in ("started_utc_ms", "started_boottime_ns", "last_utc_ms", "last_boottime_ns", "last_wall_utc_ms", "deadline_utc_ms", "entry_count"):
+            _require_integer(state[name], "C3 " + name, minimum=0)
+        if (state["version"] != 1 or state["boot_id"] != boot_identity()
+                or boot < state["last_boottime_ns"] or now_ms < state["last_utc_ms"]
+                or wall < state["last_wall_utc_ms"]
+                or state["deadline_utc_ms"] != state["started_utc_ms"] + 777600000
+                or abs((now_ms - state["started_utc_ms"]) - (boot - state["started_boottime_ns"]) // 1000000) > 1000):
+            raise EvidenceValidationError("C3 reboot, clock regression or origin mismatch")
+        if now_ms >= state["deadline_utc_ms"] or boot - state["started_boottime_ns"] >= 777600000000000:
+            raise EvidenceValidationError("C3 original 777600-second budget exhausted")
+        state["last_utc_ms"], state["last_boottime_ns"], state["last_wall_utc_ms"] = now_ms, boot, wall
+
+    def _verify_named_prefix(self):
+        from access_telemetry_c1_owner_dispatch import _open_held_file
+        from contextlib import ExitStack
+        custody = os.environ.get("HEXALITH_C1_CUSTODY_ROOT")
+        if not custody:
+            raise EvidenceValidationError("C3 custody root missing")
+        with ExitStack() as descriptors:
+            held = _open_held_file(str(self._path), descriptors, custody_root=custody, effective_uid=os.geteuid())
+            named = held.before
+            current = os.fstat(self._stream.fileno())
+            if (named.st_dev, named.st_ino) != (current.st_dev, current.st_ino) or held.read() != self._prefix_bytes:
+                raise EvidenceValidationError("C3 named journal prefix changed during execution")
+
+    def _persist_execution(self):
+        state = self._execution
+        state["journal_sha256"] = self.authenticated_prefix_sha256
+        state["entry_count"] = len(self._entries)
+        raw = (_canonical_json(state) + "\n").encode()
+        temporary = self._state_path.with_name(self._state_path.name + ".pending")
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self._state_path)
+            self._persisted_state_sha256 = hashlib.sha256(raw).hexdigest()
+            parent_fd = os.open(self._state_path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+
+    def begin(self, command_id):
+        self.check_execution(self._authority_now())
+        self._execution["inflight"] = command_id
+        self._persist_execution()
+
+    def bind_runtime(self, digest):
+        old = self._execution["runtime_identity_sha256"]
+        if old is not None and old != digest:
+            raise EvidenceValidationError("C3 continuation runtime identity differs")
+        self._execution["runtime_identity_sha256"] = digest
+        self._execution["inflight"] = None
+        self._persist_execution()
+
+    @property
+    def remaining_seconds(self):
+        from access_telemetry_c1_owner_authority import boottime_ns
+        return max(0, (777600000000000 - (boottime_ns() - self._execution["started_boottime_ns"])) / 1000000000)
 
     @property
     def resume_results(self) -> Mapping[str, Mapping[str, Any]]:
@@ -1919,11 +2088,106 @@ def _run_writer_segments(
     return result, observation
 
 
+def _authorize_target(target, action="observe"):
+    """Fresh owner authority; no inspection object or command label substitutes."""
+    if target.get("_authority_required") is not True:
+        raise EvidenceValidationError("producer has no execution authority")
+    path = os.environ.get("HEXALITH_C1_PREDECESSOR_PATH")
+    root = os.environ.get("HEXALITH_C1_REPOSITORY_ROOT")
+    custody = os.environ.get("HEXALITH_C1_CUSTODY_ROOT")
+    if not path or not root or not custody:
+        raise EvidenceValidationError("producer requires outside-approved C1 authority")
+    authority = _validate_predecessor(_read_bounded_json(Path(path), approved_root=Path(custody)), Path(root), Path(custody), action=action)
+    from access_telemetry_c1_owner_dispatch import _validated_plan
+    plan = _validated_plan(Path(os.environ["HEXALITH_C1_OWNER_PLAN"]).read_bytes(), os.environ["HEXALITH_C1_APPROVED_PLAN_SHA256"]).value
+    execution_target = dict(plan.get("executionTarget", {}))
+    if execution_target != {key: target[key] for key in _TARGET_FIELDS}:
+        raise EvidenceValidationError("producer target differs from approved execution target")
+    previous = target.get("_authority_scope")
+    scope = (authority.session_id, authority.source_commit, authority.target_sha256)
+    if previous is not None and previous != scope:
+        raise EvidenceValidationError("producer authority session changed")
+    from access_telemetry_c1_owner_authority import qualification_lease_holder
+    target["_lease_holder"] = qualification_lease_holder(authority, target.setdefault("_execution_id", os.environ.get("HEXALITH_C1_EXECUTION_ID") or os.urandom(16).hex()))
+    target["_authority_scope"] = scope
+    target["_current_authority"] = authority
+    target["_approved_target_identity"] = authority.target_identity
+    journal = target.get("_c3_journal")
+    if journal is not None:
+        journal.check_execution(authority.now_ms)
+    return authority
+
+
+def _authorize_cleanup_target(target):
+    from access_telemetry_c1_owner_authority import verify_owner_cleanup, qualification_lease_holder
+    custody = os.environ.get("HEXALITH_C1_CUSTODY_ROOT")
+    repository = os.environ.get("HEXALITH_C1_REPOSITORY_ROOT")
+    if not custody or not repository:
+        raise EvidenceValidationError("cleanup original authority context missing")
+    authority = verify_owner_cleanup(Path(repository), Path(custody))
+    from access_telemetry_c1_owner_dispatch import _validated_plan
+    plan = _validated_plan(Path(os.environ["HEXALITH_C1_OWNER_PLAN"]).read_bytes(), os.environ["HEXALITH_C1_APPROVED_PLAN_SHA256"]).value
+    if dict(plan["executionTarget"]) != {key: target[key] for key in _TARGET_FIELDS}:
+        raise EvidenceValidationError("cleanup execution target differs")
+    target["_approved_target_identity"] = authority.target_identity
+    target["_lease_holder"] = qualification_lease_holder(authority, os.environ.get("HEXALITH_C1_EXECUTION_ID"))
+    target["_cleanup_only"] = True
+    _verify_target_transport(target)
+
+
+def _verify_target_transport(target):
+    """Authenticate the effective API CA/server and actual cluster/namespace UIDs.
+
+    The kubeconfig projection emits no user credential. Kubectl performs its
+    normal TLS verification; insecure verification and changed CA bytes refuse.
+    These are bounded reads after owner authorization and before any mutation.
+    """
+    expected = target.get("_approved_target_identity")
+    if not isinstance(expected, Mapping):
+        raise EvidenceValidationError("approved physical target identity is missing")
+    prefix = _kubectl_prefix(target)
+    projection = '{.clusters[0].cluster.server}{"\\n"}{.clusters[0].cluster.certificate-authority-data}{"\\n"}{.clusters[0].cluster.insecure-skip-tls-verify}'
+    commands = [(*prefix, "config", "view", "--raw", "--minify", "-o", "jsonpath=" + projection),
+                (*prefix, "get", "namespace", "kube-system", "-o", "json"),
+                (*prefix, "get", "namespace", target["namespace"], "-o", "json")]
+    observed = []
+    for index, command in enumerate(commands):
+        code, stdout, _ = _run_bounded_process(command, cwd=Path.cwd(), timeout_seconds=10)
+        if code != 0 or len(stdout) > 1048576:
+            raise EvidenceValidationError("physical qualification target unavailable")
+        if index == 0:
+            parts = stdout.decode("utf-8", errors="strict").split("\n")
+            if len(parts) != 3:
+                raise EvidenceValidationError("qualification API TLS projection invalid")
+            item = dict(zip(("server", "ca", "insecure"), parts))
+            if set(item) != {"server", "ca", "insecure"} or item["insecure"] not in ("", "false") or item["server"] != expected["apiServer"]:
+                raise EvidenceValidationError("qualification API TLS identity differs")
+            try:
+                ca = base64.b64decode(item["ca"], validate=True)
+            except (ValueError, TypeError):
+                raise EvidenceValidationError("qualification API CA data invalid") from None
+            if not ca or hashlib.sha256(ca).hexdigest() != expected["apiCaSha256"]:
+                raise EvidenceValidationError("qualification API CA differs")
+        else:
+            item = _require_mapping(_json_without_duplicates(stdout.decode("utf-8"), "target identity"), "target identity")
+            metadata = _require_mapping(item.get("metadata"), "target namespace metadata")
+            key = "clusterUid" if index == 1 else "namespaceUid"
+            if metadata.get("uid") != expected[key] or metadata.get("name") != ("kube-system" if index == 1 else target["namespace"]):
+                raise EvidenceValidationError("qualification cluster or namespace identity differs")
+        observed.append(item)
+
+
 def _run_operation(
     target: Mapping[str, str],
     checkpoint: str,
     command_id: str,
 ) -> tuple[Mapping[str, Any], dict[str, Any]]:
+    if target.get("_cleanup_only") is True and command_id not in {"qualification-disable", "qualification-final-state", "qualification-target-identity"}:
+        raise EvidenceValidationError("cleanup scope cannot authorize qualification work")
+    if target.get("_authority_required") is True and target.get("_cleanup_only") is not True and command_id not in {"qualification-disable", "qualification-final-state"}:
+        action = "fault" if command_id.startswith(("replace-", "failure-")) or command_id == "approved-adapter-fault" else "purge" if command_id.endswith("-purge") else "reclaim" if command_id.endswith("-reclamation") else "observe"
+        _authorize_target(target, action)
+        _verify_target_transport(target)
     if command_id in {"writer-1", "writer-2"}:
         return _run_writer_segments(target, checkpoint, command_id)
     if _command_mutates_qualification_lease(command_id):
@@ -1966,6 +2230,15 @@ def _run_locked_operation(
         "HEXALITH_STORY_27_4_LEASE_HOLDER": target["_lease_holder"],
     }
     operation_commands = _fixed_operation_commands(target, checkpoint, command_id)
+    if target.get("_authority_required") is True and target.get("_cleanup_only") is not True and command_id not in {"qualification-disable", "qualification-final-state"}:
+        environment["HEXALITH_C1_CHECK_EXECUTION"] = "1"
+        environment["HEXALITH_C1_REQUIRED_ACTION"] = ("fault" if command_id.startswith(("replace-", "failure-")) or command_id == "approved-adapter-fault" else "purge" if command_id.endswith("-purge") else "reclaim" if command_id.endswith("-reclamation") else "observe")
+        journal = target.get("_c3_journal")
+        if journal is not None:
+            environment["HEXALITH_C3_EXECUTION_DEADLINE_MS"] = str(journal._execution["deadline_utc_ms"])
+    if command_id in {"qualification-disable", "qualification-final-state"} or target.get("_cleanup_only") is True:
+        for name in ("HEXALITH_C1_CHECK_EXECUTION", "HEXALITH_C1_REQUIRED_ACTION", "HEXALITH_C1_ACTIONS", "HEXALITH_C3_EXECUTION_DEADLINE_MS"):
+            environment.pop(name, None)
     pending_restorations = [command[1:] for command in operation_commands if command and command[0] == "__FAULT_RESTORE__"]
     fault_active = False
     emitted_utc_ms_token: str | None = None
@@ -1982,7 +2255,7 @@ def _run_locked_operation(
                     restoration,
                     cwd=Path.cwd(),
                     timeout_seconds=300,
-                    environment=environment,
+                    environment={key: value for key, value in environment.items() if key not in {"HEXALITH_C1_CHECK_EXECUTION", "HEXALITH_C1_REQUIRED_ACTION", "HEXALITH_C1_ACTIONS", "HEXALITH_C3_EXECUTION_DEADLINE_MS"}},
                 )
                 if return_code != 0:
                     failures.append(
@@ -2099,7 +2372,7 @@ def _run_locked_operation(
             if (
                 not isinstance(resource_version, str)
                 or not isinstance(holder, str)
-                or (holder not in {"", expected_holder} and not holder_is_expired_story_run)
+                or (holder not in {"", expected_holder} and (target.get("_cleanup_only") is True or not holder_is_expired_story_run))
             ):
                 raise EvidenceValidationError("qualification Lease release refused another runner's ownership")
             release_patch = _canonical_json(
@@ -2340,7 +2613,7 @@ def _run_locked_operation(
                     and lease_time_ms + duration * 1000 < _utc_now_milliseconds()
                 )
                 target["_disable_lease_authorized"] = (
-                    holder in {"", target["_lease_holder"]} or expired_story_holder
+                    holder in {"", target["_lease_holder"]} or (expired_story_holder and target.get("_cleanup_only") is not True)
                 )
         if (
             last_payload is not None
@@ -2415,22 +2688,31 @@ def _run_locked_operation(
         )
         if expired_story_lease and isinstance(target, dict):
             target["_cleanup_expired_lease"] = True
-        if (
-            namespace_name != target["namespace"]
-            or gate.get("state") != "disabled"
-            or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
-            or type(gate.get("expiresUtcMs")) is not int
-            or gate.get("expiresUtcMs") != 0
-            or not isinstance(lease_spec, Mapping)
-            or not isinstance(lease_metadata, Mapping)
-            or not isinstance(lease_metadata.get("resourceVersion"), str)
-            or lease_spec.get("holderIdentity") != ""
-            or type(lease_spec.get("leaseDurationSeconds")) is not int
-            or lease_spec.get("leaseDurationSeconds") != 0
-            or lifecycle_replicas != 0
-            or clock_replicas != 0
-        ):
-            raise EvidenceValidationError("qualification target identity is not an exact disabled-profile match")
+        if target.get("_cleanup_only") is True:
+            if (namespace_name != target["namespace"] or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
+                    or gate.get("state") not in {"enabled", "disabled"}
+                    or not isinstance(lease_metadata, Mapping) or not isinstance(lease_metadata.get("resourceVersion"), str)
+                    or holder not in {"", target["_lease_holder"]}
+                    or type(lifecycle_replicas) is not int or not 0 <= lifecycle_replicas <= 2
+                    or type(clock_replicas) is not int or not 0 <= clock_replicas <= 1):
+                raise EvidenceValidationError("cleanup target or owned Lease differs")
+        else:
+            if (
+                namespace_name != target["namespace"]
+                or gate.get("state") != "disabled"
+                or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
+                or type(gate.get("expiresUtcMs")) is not int
+                or gate.get("expiresUtcMs") != 0
+                or not isinstance(lease_spec, Mapping)
+                or not isinstance(lease_metadata, Mapping)
+                or not isinstance(lease_metadata.get("resourceVersion"), str)
+                or lease_spec.get("holderIdentity") != ""
+                or type(lease_spec.get("leaseDurationSeconds")) is not int
+                or lease_spec.get("leaseDurationSeconds") != 0
+                or lifecycle_replicas != 0
+                or clock_replicas != 0
+            ):
+                raise EvidenceValidationError("qualification target identity is not an exact disabled-profile match")
         if isinstance(target, dict):
             target["_lease_resource_version"] = lease_metadata["resourceVersion"]
         runtime_inventory: list[dict[str, Any]] = []
@@ -2761,6 +3043,8 @@ def _run_locked_operation(
             )
         )
         runtime_identity_sha256 = _sha256(_canonical_json(runtime_inventory))
+        if target.get("_authority_required") is True and runtime_identity_sha256 != target["_approved_target_identity"]["initialRuntimeIdentitySha256"]:
+            raise EvidenceValidationError("qualification runtime identity differs from approved initial input")
         if isinstance(target, dict):
             target["_runtime_identity_sha256"] = runtime_identity_sha256
         result = {
@@ -3858,18 +4142,6 @@ def _c3(
     target: Mapping[str, str],
     journal_path: Path,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    initial_identity, initial_identity_command = _run_operation(
-        target, "c3-retention-reclamation", "qualification-target-identity"
-    )
-    runtime_identity_sha256 = _require_nonempty_string(
-        initial_identity.get("runtime_identity_sha256"),
-        "C3 initial runtime identity",
-        maximum=64,
-    )
-    initial_identity_command = {
-        **initial_identity_command,
-        "command_id": "c3-runtime-identity",
-    }
     command_ids = ["retention-controls", "c3-empty-preflight"]
     for hours in (168, 24, 1):
         command_ids.append(f"cohort-{hours}h-seed")
@@ -3891,15 +4163,34 @@ def _c3(
         "c1_platform_operations_reviewer": target["_platform_operations_reviewer"],
         "source_commit": os.environ.get("HEXALITH_STORY_27_4_SOURCE_COMMIT", "unbound"),
         "producer_source_sha256": os.environ.get("HEXALITH_STORY_27_4_PRODUCER_SHA256", "unbound"),
-        "first_runtime_identity_sha256": runtime_identity_sha256,
+        "authority_session_id": target["_current_authority"].session_id,
+        "authority_target_sha256": target["_current_authority"].target_sha256,
     }
     with _C3Journal(journal_path, journal_context) as journal:
+        journal._target_for_authority = target
+        journal.enable_execution(target["_current_authority"])
+        target["_c3_journal"] = journal
         resume_results = journal.resume_results
         resumed_ids = list(resume_results)
         if resumed_ids != command_ids[: len(resumed_ids)]:
             raise EvidenceValidationError(
                 "C3 journal must contain an exact completed prefix with no skips or reordering"
             )
+        journal.begin("c3-runtime-identity")
+        initial_identity, initial_identity_command = _run_operation(
+            target, "c3-retention-reclamation", "qualification-target-identity"
+        )
+        runtime_identity_sha256 = _require_nonempty_string(
+            initial_identity.get("runtime_identity_sha256"),
+            "C3 initial runtime identity",
+            maximum=64,
+        )
+        initial_identity_command = {
+            **initial_identity_command,
+            "command_id": "c3-runtime-identity",
+        }
+        journal.bind_runtime(runtime_identity_sha256)
+        target["_c3_execution_started_utc_ms"] = journal._execution["started_utc_ms"]
         results: dict[str, Mapping[str, Any]] = {}
         commands: list[dict[str, Any]] = [initial_identity_command]
 
@@ -3909,6 +4200,7 @@ def _c3(
                 results[command_id] = resumed
                 commands.append(dict(_require_mapping(resumed["_command"], f"{command_id} command")))
                 return
+            journal.begin(command_id)
             result, command = _run_operation(target, "c3-retention-reclamation", command_id)
             stored = {**result, "_command": command}
             journal.append(command_id, stored)
@@ -3924,6 +4216,7 @@ def _c3(
                 results[command_id] = resumed
                 commands.extend(dict(_require_mapping(item, f"{command_id} session command")) for item in session_commands)
                 return
+            journal.begin(command_id)
             session_results, session_commands = _execute_qualification(
                 target, "c3-retention-reclamation", [command_id]
             )
@@ -3997,6 +4290,7 @@ def _c3(
                 }
                 target["_c3_reporter_artifact_sha256"] = journal.authenticated_prefix_sha256
                 run_qualified("cohort-168h-report")
+    target.pop("_c3_journal", None)
     cohorts = []
     for hours in (1, 24, 168):
         merged: dict[str, Any] = {}
@@ -4109,18 +4403,18 @@ def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
         if _SAFE_TARGET.fullmatch(reviewer) is None:
             raise EvidenceValidationError("validated C1 platform-operations reviewer is not bounded")
         target = dict(_load_target(Path(args.scenario_input)))
+        target["_authority_required"] = True
         target["_platform_operations_reviewer"] = reviewer
         target["_lease_holder"] = f"story-27-4/{reviewer}/{os.getpid()}-{_utc_now_milliseconds()}"
+        if not args.disable_only:
+            _authorize_target(target)
         if checkpoint == "c4-failure-privacy-observability" and not args.disable_only:
             # Credential validation is intentionally completed before the first
             # kubectl command can inspect or mutate the qualification target.
             target["_business_bearer"] = _load_business_bearer()
         if args.disable_only:
-            try:
-                _run_operation(target, checkpoint, "qualification-target-identity")
-            except EvidenceValidationError:
-                if target.get("_cleanup_expired_lease") is not True:
-                    raise
+            _authorize_cleanup_target(target)
+            _run_operation(target, checkpoint, "qualification-target-identity")
             disable: Mapping[str, Any] | None = None
             final: Mapping[str, Any] | None = None
             try:
@@ -4152,6 +4446,8 @@ def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
             "result_count": sum(command["result_count"] for command in commands),
             "results": results,
         }
+        if checkpoint == "c3-retention-reclamation":
+            payload["started_utc"] = target["_c3_execution_started_utc_ms"]
         print(_canonical_json(payload))
         return 0
     except (EvidenceValidationError, OSError, ValueError, KeyError) as exc:
