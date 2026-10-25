@@ -24,65 +24,13 @@ public sealed class NaturalLanguageEmbeddingRetryWorkflow
         WorkflowContext context,
         NaturalLanguageEmbeddingRetryInput input)
     {
-        ConsistencyInput consistencyInput = new(input.MemoryUnitId, input.TenantId);
-        bool existsAtRetryStart = await context.CallActivityAsync<bool>(
-            nameof(CheckMemoryUnitExistsActivity),
-            consistencyInput);
-        if (!existsAtRetryStart)
+        if (!string.IsNullOrEmpty(input.RawJsonPayload))
         {
-            return new NaturalLanguageEmbeddingRetryResult(Indexed: false, Reason: "memory-unit-deleted-during-retry");
+            // Historic workflows are drained/purged during erasure. Never replay their raw input
+            // into another durable activity; the worker can read the fenced registry on a fresh run.
+            return new NaturalLanguageEmbeddingRetryResult(Indexed: false, Reason: "legacy-retry-input-requires-restart");
         }
-
-        NaturalLanguageDescriptionResult nlResult;
-        try
-        {
-            nlResult = await context.CallActivityAsync<NaturalLanguageDescriptionResult>(
-                nameof(GenerateNaturalLanguageDescriptionActivity),
-                new NaturalLanguageDescriptionInput(
-                    input.TenantId,
-                    input.MemoryUnitId,
-                    input.RawJsonPayload,
-                    input.EventType,
-                    input.AggregateType));
-        }
-        catch (NaturalLanguageDescriptionUnavailableException)
-        {
-            return new NaturalLanguageEmbeddingRetryResult(Indexed: false, Reason: "llm-still-unavailable");
-        }
-
-        EmbeddingResult nlEmbedding = await context.CallActivityAsync<EmbeddingResult>(
-            nameof(GenerateEmbeddingActivity),
-            new EmbeddingInput(
-                input.TenantId,
-                nlResult.Description,
-                EmbeddingContentKind.NaturalLanguageDescription));
-
-        bool existsBeforeIndex = await context.CallActivityAsync<bool>(
-            nameof(CheckMemoryUnitExistsActivity),
-            consistencyInput);
-        if (!existsBeforeIndex)
-        {
-            return new NaturalLanguageEmbeddingRetryResult(Indexed: false, Reason: "memory-unit-deleted-during-retry");
-        }
-
-        NaturalLanguageIndexInput indexInput = new()
-        {
-            MemoryUnitId = input.MemoryUnitId,
-            TenantId = input.TenantId,
-            CaseId = input.CaseId,
-            EmbeddingVector = nlEmbedding.Vector,
-            EmbeddingProvider = nlEmbedding.Provider,
-            EmbeddingModel = string.IsNullOrWhiteSpace(nlEmbedding.Model) ? input.EmbeddingModel : nlEmbedding.Model,
-            EmbeddingDimensions = nlEmbedding.Dimensions,
-            NaturalLanguageDescription = nlResult.Description,
-            DescriptionConfidence = nlResult.EstimatedConfidence,
-            ConfidenceSource = nlResult.ConfidenceSource,
-        };
-
-        await context.CallActivityAsync<IndexResult>(
-            nameof(IndexNaturalLanguageSemanticActivity),
-            indexInput);
-
-        return new NaturalLanguageEmbeddingRetryResult(Indexed: true);
+        return await context.CallActivityAsync<NaturalLanguageEmbeddingRetryResult>(
+            nameof(RetryNaturalLanguageEmbeddingActivity), input);
     }
 }

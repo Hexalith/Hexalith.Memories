@@ -94,7 +94,7 @@ internal sealed class RefreshPublicationStore([FromKeyedServices("redis")] IConn
             [IndexSchemaDefinitions.GetSyntacticIndexName(input.TenantId), IndexSchemaDefinitions.GetSemanticActiveAliasName(input.TenantId),
                 IndexSchemaDefinitions.GetSemanticIndexName(input.TenantId), IndexSchemaDefinitions.GetNaturalLanguageSemanticActiveAliasName(input.TenantId),
                 IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(input.TenantId)]).ConfigureAwait(false);
-        if (current is not null) { await RegisterLegacyKeysAsync(input.TenantId, current, cancellationToken).ConfigureAwait(false); }
+        if (current is not null) { await SemanticKeyDiscovery.RegisterLegacyKeysAsync(db, input.TenantId, current, cancellationToken).ConfigureAwait(false); }
         long currentRevision = values[2].HasValue ? long.Parse(values[2].ToString(), CultureInfo.InvariantCulture) : -1;
         await TenantIngestionOwnership.GraphWriteAsync(db, input.TenantId,
             () => GraphSourcePublication.SetCurrentAsync(falkorDb, input.TenantId, input.CaseId, input.SourceUri, current ?? string.Empty, currentRevision), cancellationToken).ConfigureAwait(false);
@@ -182,99 +182,6 @@ internal sealed class RefreshPublicationStore([FromKeyedServices("redis")] IConn
             [(RedisKey)DedupKeyBuilder.BuildKey(tenantId, caseId, sourceUri),
                 (RedisKey)SourcePublicationVisibility.Keys(tenantId, candidate), (RedisKey)SourcePublicationVisibility.Tombstone(tenantId, candidate)],
             [(RedisValue)candidate]).WaitAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task RegisterLegacyKeysAsync(string tenant, string unit, CancellationToken cancellationToken)
-    {
-        IDatabase db = redis.GetDatabase();
-        HashSet<RedisKey> keys = [IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit), IndexSchemaDefinitions.BuildSemanticKey(tenant, unit),
-            IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit)];
-        string trackedKey = SourcePublicationVisibility.Keys(tenant, unit);
-        long knownCount = await db.SetLengthAsync(trackedKey).WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (knownCount > SourcePublicationVisibility.KeyCapacity) { throw new InvalidOperationException("source-publication-key-capacity"); }
-        if (knownCount > 0 && await db.KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, unit)).WaitAsync(cancellationToken).ConfigureAwait(false))
-        {
-            // Modern writers retain every exact output key before materialization.
-            // Refresh must never rediscover those keys through a database scan.
-            RedisValue[] known = await db.SetMembersAsync(trackedKey).WaitAsync(cancellationToken).ConfigureAwait(false);
-            if (known.Length > SourcePublicationVisibility.KeyCapacity) { throw new InvalidOperationException("source-publication-key-capacity"); }
-            return;
-        }
-        try
-        {
-            // The deployed base vector schema already has memoryUnitId TAG. This exact-unit,
-            // native indexed lookup bounds result work without changing its schema or scanning Redis.
-            RedisResult raw = await db.ExecuteAsync("FT.SEARCH", IndexSchemaDefinitions.GetSemanticIndexName(tenant),
-                "@memoryUnitId:{" + RediSearchQueryEscaper.EscapeTag(unit) + "}", "NOCONTENT", "LIMIT", "0",
-                SourcePublicationVisibility.KeyCapacity + 1, "TIMEOUT", "1000", "DIALECT", "2").WaitAsync(cancellationToken).ConfigureAwait(false);
-            RedisResult[] rows = (RedisResult[])raw!;
-            long total;
-            string[] discovered;
-            if (rows.Length > 0 && long.TryParse(rows[0].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out total))
-            {
-                discovered = rows.Skip(1).Select(row => row.ToString()).ToArray();
-            }
-            else
-            {
-                Dictionary<string, RedisResult> map = ResultMap(rows);
-                if (!map.TryGetValue("total_results", out RedisResult? totalResult)
-                    || !long.TryParse(totalResult.ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out total)
-                    || !map.TryGetValue("results", out RedisResult? resultRows))
-                { throw new InvalidOperationException("source-publication-legacy-discovery-invalid"); }
-                discovered = ((RedisResult[]?)resultRows ?? []).Select(row =>
-                {
-                    Dictionary<string, RedisResult> fields = ResultMap((RedisResult[]?)row ?? []);
-                    return fields.TryGetValue("id", out RedisResult? id) ? id.ToString() : string.Empty;
-                }).ToArray();
-            }
-            if (total > SourcePublicationVisibility.KeyCapacity || discovered.Length != total)
-            { throw new InvalidOperationException("source-publication-key-capacity"); }
-            foreach (string key in discovered)
-            {
-                if (key != IndexSchemaDefinitions.BuildSemanticKey(tenant, unit)
-                    && !key.StartsWith(IndexSchemaDefinitions.BuildSemanticKey(tenant, unit) + ":", StringComparison.Ordinal))
-                { throw new InvalidOperationException("source-publication-legacy-key-scope"); }
-                keys.Add(key);
-            }
-            if (keys.Count > SourcePublicationVisibility.KeyCapacity) { throw new InvalidOperationException("source-publication-key-capacity"); }
-        }
-        catch (RedisServerException error)
-        { throw new InvalidOperationException("source-publication-legacy-owner-reconciliation-required", error); }
-        const string register = """
-            -- Complete bounded legacy discovery is sealed only after all exact keys are retained.
-            local retained=redis.call('SMEMBERS',KEYS[1])
-            local merged={}
-            for _,key in ipairs(retained) do merged[key]=true end
-            for _,key in ipairs(ARGV) do merged[key]=true end
-            local count=0
-            for key,_ in pairs(merged) do
-                count=count+1
-                if count>4096 then return 0 end
-                local kind=redis.call('TYPE',key).ok
-                if kind~='none' and kind~='hash' then return 0 end
-            end
-            for key,_ in pairs(merged) do
-                if redis.call('EXISTS',key)==1 then
-                    redis.call('HSETNX',key,'publicationVisible','1')
-                    redis.call('SADD',KEYS[1],key)
-                end
-            end
-            redis.call('SET',KEYS[2],'legacy-complete')
-            return 1
-            """;
-        RedisResult registered = await TenantIngestionOwnership.WriteAsync(db, tenant, register,
-            [(RedisKey)trackedKey, (RedisKey)SourcePublicationVisibility.KeyProvenance(tenant, unit)],
-            keys.Select(key => (RedisValue)key.ToString()).ToArray()).WaitAsync(cancellationToken).ConfigureAwait(false);
-        if ((long)registered != 1) { throw new InvalidOperationException("source-publication-legacy-owner-reconciliation-required"); }
-
-    }
-
-    private static Dictionary<string, RedisResult> ResultMap(RedisResult[] values)
-    {
-        if (values.Length % 2 != 0) { throw new InvalidOperationException("source-publication-legacy-discovery-invalid"); }
-        Dictionary<string, RedisResult> map = new(StringComparer.Ordinal);
-        for (int index = 0; index < values.Length; index += 2) { map.Add(values[index].ToString(), values[index + 1]); }
-        return map;
     }
 
     private static string RevisionKey(string sourceKey) => "refresh-version:" + sourceKey;

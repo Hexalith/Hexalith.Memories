@@ -108,7 +108,7 @@ public sealed class IngestionEndpointE2ETests : IDisposable
         IngestionInput request = IngestionInputFactory.Create(tenantId: TenantId, caseId: CaseId) with
         {
             ContentBytes = null,
-            PayloadReference = new("owned-source", "abc", 3, WorkflowPayloadKind.SourceBytes, TenantId, "unit"),
+            PayloadReference = new("owned-source", new string('a', 64), 3, WorkflowPayloadKind.SourceBytes, TenantId, "unit"),
             RefreshExistingSource = true, SourceRevisionNumber = 1, IdempotencyToken = "stable-refresh",
         };
         using HttpClient client = CreateAuthorizedClient();

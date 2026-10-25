@@ -19,61 +19,29 @@ using Shouldly;
 public class NaturalLanguageEmbeddingRetryWorkflowTests
 {
     [Fact]
-    public async Task RunAsync_MemoryUnitMissingAtRetryStart_ReturnsDeletedReasonWithoutCallingLlm()
+    public async Task RunAsync_LegacyRawInputNeverPropagatesIntoDurableActivityHistory()
     {
         WorkflowContext context = Substitute.For<WorkflowContext>();
-        context.CallActivityAsync<bool>(
-                nameof(CheckMemoryUnitExistsActivity),
-                Arg.Any<ConsistencyInput>())
-            .Returns(Task.FromResult(false));
-
-        NaturalLanguageEmbeddingRetryWorkflow workflow = new();
-
-        NaturalLanguageEmbeddingRetryResult result = await workflow.RunAsync(context, CreateInput());
-
+        var result = await new NaturalLanguageEmbeddingRetryWorkflow().RunAsync(context, CreateInput());
         result.Indexed.ShouldBeFalse();
-        result.Reason.ShouldBe("memory-unit-deleted-during-retry");
-
-        await context.DidNotReceive().CallActivityAsync<NaturalLanguageDescriptionResult>(
-            nameof(GenerateNaturalLanguageDescriptionActivity),
-            Arg.Any<NaturalLanguageDescriptionInput>());
+        result.Reason.ShouldBe("legacy-retry-input-requires-restart");
+        context.ReceivedCalls().ShouldBeEmpty();
     }
 
-    [Fact]
-    public async Task RunAsync_MemoryUnitDeletedBeforeIndex_ReturnsDeletedReasonWithoutWritingNlHash()
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "memory-unit-deleted-during-retry")]
+    public async Task RunAsync_ContentFreeInputDelegatesOnlyToFencedRetryActivity(bool indexed, string? reason)
     {
         WorkflowContext context = Substitute.For<WorkflowContext>();
-        context.CallActivityAsync<bool>(
-                nameof(CheckMemoryUnitExistsActivity),
-                Arg.Any<ConsistencyInput>())
-            .Returns(Task.FromResult(true), Task.FromResult(false));
-        context.CallActivityAsync<NaturalLanguageDescriptionResult>(
-                nameof(GenerateNaturalLanguageDescriptionActivity),
-                Arg.Any<NaturalLanguageDescriptionInput>())
-            .Returns(Task.FromResult(new NaturalLanguageDescriptionResult(
-                "A business action happened.",
-                null,
-                ConfidenceSource.Constant,
-                "llm",
-                "gpt-4o-mini")));
-        context.CallActivityAsync<EmbeddingResult>(
-                nameof(GenerateEmbeddingActivity),
-                Arg.Any<EmbeddingInput>())
-            .Returns(Task.FromResult(new EmbeddingResult([0.1f, 0.2f, 0.3f], "openai", 3)
-            {
-                Model = "text-embedding-3-small",
-            }));
-
-        NaturalLanguageEmbeddingRetryWorkflow workflow = new();
-
-        NaturalLanguageEmbeddingRetryResult result = await workflow.RunAsync(context, CreateInput());
-
-        result.Indexed.ShouldBeFalse();
-        result.Reason.ShouldBe("memory-unit-deleted-during-retry");
-
-        await context.DidNotReceive().CallActivityAsync<IndexResult>(
-            nameof(IndexNaturalLanguageSemanticActivity),
-            Arg.Any<NaturalLanguageIndexInput>());
+        var input = CreateInput() with { RawJsonPayload = string.Empty };
+        context.CallActivityAsync<NaturalLanguageEmbeddingRetryResult>(
+            nameof(Hexalith.Memories.Server.NaturalLanguage.RetryNaturalLanguageEmbeddingActivity), input)
+            .Returns(new NaturalLanguageEmbeddingRetryResult(indexed, reason));
+        var result = await new NaturalLanguageEmbeddingRetryWorkflow().RunAsync(context, input);
+        result.Indexed.ShouldBe(indexed);
+        result.Reason.ShouldBe(reason);
+        context.ReceivedCalls().Count().ShouldBe(1);
     }
 
     private static NaturalLanguageEmbeddingRetryInput CreateInput() => new(

@@ -48,12 +48,12 @@ public sealed class InventoryWirePaginationIntegrationTests(RedisStackFixture re
         WebApplicationBuilder builder = WebApplication.CreateBuilder(); builder.Logging.ClearProviders(); builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(inventory);
         builder.Services.AddSingleton(Substitute.For<IIngestionWorkflowStateReader>());
-        builder.Services.AddSingleton(new SourceInventoryFailureReconciler(redis.Connection, redis.Connection, new GraphQueryBuilder(), Substitute.For<IWorkflowPayloadStore>(), inventory));
+        builder.Services.AddSingleton(new SourceInventoryFailureReconciler(redis.Connection, redis.Connection, new GraphQueryBuilder(), Substitute.For<IWorkflowPayloadStore>(), inventory, workflowClient: NSubstitute.Substitute.For<Dapr.Workflow.IDaprWorkflowClient>()));
         await using WebApplication app = builder.Build();
         app.Use((context, next) => { context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ServerTenantClaimsTransformation.TenantClaimType, tenant)], "owned-test")); return next(context); });
         app.MapSourceInventoryEndpoints(); await app.StartAsync(token);
         using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
-        var client = new MemoriesClient(http);
+        var client = new MemoriesClient(http, Microsoft.Extensions.Options.Options.Create(new MemoriesClientOptions()), Microsoft.Extensions.Logging.Abstractions.NullLogger<MemoriesClient>.Instance);
         List<SourceInventoryEntry> actual = []; string? cursor = null; string? version = null; int pages = 0;
         do
         {

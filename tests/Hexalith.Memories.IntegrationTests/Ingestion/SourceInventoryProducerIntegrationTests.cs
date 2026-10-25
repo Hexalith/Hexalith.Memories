@@ -27,6 +27,8 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using Shouldly;
 using StackExchange.Redis;
+using NRedisStack.RedisStackCommands;
+using Hexalith.Memories.Server.Infrastructure;
 
 /// <summary>Executes the scheduler, producer activities and authenticated inventory endpoint against persisted Redis/graph state.</summary>
 [Collection("RedisStack")]
@@ -40,6 +42,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "producer-" + Guid.NewGuid().ToString("N");
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "producer");
         IngestionInput input = Input(tenant);
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "ProducerTests");
         var inventory = new SourceInventoryStore(redis.Connection, codec);
@@ -82,6 +85,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "failed-" + Guid.NewGuid().ToString("N");
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "producer");
         IngestionInput input = Input(tenant);
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "FailedProducerTests");
         var inventory = new SourceInventoryStore(redis.Connection, codec);
@@ -139,6 +143,9 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "payload-ledger-" + Guid.NewGuid().ToString("N");
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "candidate");
+        EnsureProvisionedSemanticIndex(tenant);
+        await WaitForSemanticIndexAsync(tenant, token);
         var dapr = Substitute.For<Dapr.Client.DaprClient>();
         Dictionary<string, string> persisted = new(StringComparer.Ordinal);
         bool loseAcknowledgement = false;
@@ -161,7 +168,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         (await redis.Connection.GetDatabase().SetLengthAsync(WorkflowPayloadLedger.Key(tenant, "candidate"))).ShouldBe(3);
         using IConnectionMultiplexer restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
         var recreatedStore = new DaprWorkflowPayloadStore(dapr, Options.Create(new WorkflowPayloadStoreOptions()), TimeProvider.System, restarted);
-        await new Hexalith.Memories.Server.Activities.Cases.DeleteMemoryUnitProjectionActivity(restarted, graph.Connection, new GraphQueryBuilder(), payloadStore: recreatedStore)
+        await new Hexalith.Memories.Server.Activities.Cases.DeleteMemoryUnitProjectionActivity(restarted, graph.Connection, new GraphQueryBuilder(), payloadStore: recreatedStore, workflowClient: Substitute.For<IDaprWorkflowClient>())
             .RunAsync(null!, new(tenant, "case", "candidate", []));
         persisted.ShouldBeEmpty();
         (await restarted.GetDatabase().SetLengthAsync(WorkflowPayloadLedger.Key(tenant, "candidate"))).ShouldBe(0);
@@ -227,6 +234,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "annotation-proof-" + Guid.NewGuid().ToString("N");
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "annotation");
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "AnnotationProofTests");
         var inventory = new SourceInventoryStore(redis.Connection, codec);
         var input = new Hexalith.Memories.Server.Activities.Cases.AnnotationProjectionInput(tenant, "case", "annotation", "target", "urn:annotation",
@@ -274,6 +282,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "duplicate-loser-" + Guid.NewGuid().ToString("N");
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "producer", "winner");
         IngestionInput input = Input(tenant) with { SourceInventoryTracked = true };
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "DiscardedProducerTests");
         var inventory = new SourceInventoryStore(redis.Connection, codec);
@@ -338,7 +347,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
             bytes.ShouldBeEmpty();
             (await db.KeyExistsAsync(tenant + ":mu:winner")).ShouldBeTrue(); (await db.KeyExistsAsync(tenant + ":mu:unrelated")).ShouldBeTrue();
             (await new NFalkorDB.FalkorDB(graph.Connection.GetDatabase()).SelectGraph(tenant).QueryAsync("MATCH (m:MemoryUnit {id:'producer'}) RETURN m.id")).ShouldBeEmpty();
-            await new Hexalith.Memories.Server.Activities.Cases.DeleteMemoryUnitProjectionActivity(restartedConnection, graph.Connection, new GraphQueryBuilder(), restarted, payloadStore: payloads)
+            await new Hexalith.Memories.Server.Activities.Cases.DeleteMemoryUnitProjectionActivity(restartedConnection, graph.Connection, new GraphQueryBuilder(), restarted, payloadStore: payloads, workflowClient: Substitute.For<IDaprWorkflowClient>())
                 .RunAsync(null!, new(tenant, "case", "winner", []));
             (await client.GetFromJsonAsync<SourceInventoryPage>(Route(tenant, input.SourceUri), token))!.Entries.Single().State.ShouldBe("Deleted");
             (await db.KeyExistsAsync(tenant + ":mu:unrelated")).ShouldBeTrue();
@@ -350,6 +359,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "superseded-output-" + Guid.NewGuid().ToString("N");
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "loser");
         IngestionInput input = Input(tenant) with { SourceInventoryTracked = true };
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "SupersededOutputTests");
         var inventory = new SourceInventoryStore(redis.Connection, codec);
@@ -358,7 +368,7 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
         await redis.Connection.GetDatabase().HashSetAsync(tenant + ":mu:loser", [new("content", "synthetic loser")]);
         await redis.Connection.GetDatabase().HashSetAsync(tenant + ":mu:unrelated", [new("content", "survivor")]);
         await new NFalkorDB.FalkorDB(graph.Connection.GetDatabase()).SelectGraph(tenant).QueryAsync("CREATE (:MemoryUnit {id:'loser'}),(:MemoryUnit {id:'unrelated'})");
-        await new Hexalith.Memories.Server.Activities.Cases.DeleteMemoryUnitProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), inventory)
+        await new Hexalith.Memories.Server.Activities.Cases.DeleteMemoryUnitProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), inventory, workflowClient: Substitute.For<IDaprWorkflowClient>())
             .RunAsync(null!, new(tenant, input.CaseId, "loser", []));
         await new RecordSourceInventoryOutputActivity(inventory, new RefreshPublicationStore(redis.Connection, inventory, graph.Connection))
             .RunAsync(null!, new(tenant, input.SourceUri, "loser", input.CaseId, "loser"));
@@ -382,12 +392,14 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     private async Task<(WebApplication App, HttpClient Client)> StartAsync(string tenant, SourceInventoryStore inventory, IWorkflowPayloadStore payloads,
         IIngestionWorkflowStateReader workflows, CancellationToken token)
     {
+        EnsureProvisionedSemanticIndex(tenant);
+        await WaitForSemanticIndexAsync(tenant, token);
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(inventory);
         builder.Services.AddSingleton(workflows);
-        builder.Services.AddSingleton(new SourceInventoryFailureReconciler(redis.Connection, graph.Connection, new GraphQueryBuilder(), payloads, inventory));
+        builder.Services.AddSingleton(new SourceInventoryFailureReconciler(redis.Connection, graph.Connection, new GraphQueryBuilder(), payloads, inventory, workflowClient: NSubstitute.Substitute.For<Dapr.Workflow.IDaprWorkflowClient>()));
         WebApplication app = builder.Build();
         app.Use((context, next) => { context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ServerTenantClaimsTransformation.TenantClaimType, tenant)], "owned-test")); return next(context); });
         app.MapSourceInventoryEndpoints();
@@ -397,9 +409,33 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
 
     private static string Route(string tenant, string source) => "/api/v1/tenants/" + tenant + "/source-inventory?sourceUri=" + Uri.EscapeDataString(source);
 
-    private static IngestionInput Input(string tenant) => new() { TenantId = tenant, CaseId = "case", SourceUri = "urn:synthetic:failed-producer", ContentBytes = [1, 2, 3], ContentType = "text/plain", SourceType = SourceType.File, IngestedBy = "test" };
+    private IngestionInput Input(string tenant)
+    {
+        EnsureProvisionedSemanticIndex(tenant);
+        return new() { TenantId = tenant, CaseId = "case", SourceUri = "urn:synthetic:failed-producer", ContentBytes = [1, 2, 3], ContentType = "text/plain", SourceType = SourceType.File, IngestedBy = "test" };
+    }
 
-    private static IWorkflowPayloadStore Payloads(Dictionary<string, string> bytes, bool failSave = false)
+    private void EnsureProvisionedSemanticIndex(string tenant)
+    {
+        try { redis.Connection.GetDatabase().FT().Create(IndexSchemaDefinitions.GetSemanticIndexName(tenant),
+            IndexSchemaDefinitions.CreateSemanticParams(tenant), IndexSchemaDefinitions.CreateSemanticSchema(3)); }
+        catch (RedisServerException error) when (error.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase)) { }
+    }
+
+    private async Task WaitForSemanticIndexAsync(string tenant, CancellationToken token)
+    {
+        using var ready = CancellationTokenSource.CreateLinkedTokenSource(token);
+        ready.CancelAfter(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            RedisResult[] info = (RedisResult[])(await redis.Connection.GetDatabase().ExecuteAsync("FT.INFO", IndexSchemaDefinitions.GetSemanticIndexName(tenant)))!;
+            int indexing = Array.FindIndex(info, value => value.ToString() == "indexing");
+            if (indexing >= 0 && info[indexing + 1].ToString() == "0") return;
+            await Task.Delay(25, ready.Token);
+        }
+    }
+
+    private IWorkflowPayloadStore Payloads(Dictionary<string, string> bytes, bool failSave = false)
     {
         var store = Substitute.For<IWorkflowPayloadStore>();
         store.SaveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<WorkflowPayloadKind>(), Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())

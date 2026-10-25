@@ -1,15 +1,19 @@
 namespace Hexalith.Memories.Server.Ingestion;
 
+using Dapr.Workflow;
 using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Graph;
+using Microsoft.Extensions.Options;
+using Hexalith.Memories.Server.NaturalLanguage;
 using StackExchange.Redis;
 
 /// <summary>Physically reconciles retained producer artifacts only after independently proven terminal or unscheduled work.</summary>
 internal sealed class SourceInventoryFailureReconciler(
     [FromKeyedServices("redis")] IConnectionMultiplexer redis,
     [FromKeyedServices("falkordb")] IConnectionMultiplexer graph,
-    IGraphQueryBuilder queries, IWorkflowPayloadStore payloads, SourceInventoryStore inventory)
+    IGraphQueryBuilder queries, IWorkflowPayloadStore payloads, SourceInventoryStore inventory, IDaprWorkflowClient? workflowClient = null,
+    IOptions<NaturalLanguageDescriptionOptions>? retryOptions = null)
 {
     /// <summary>Deletes exact scoped artifacts, preserving the obligation on every partial failure.</summary>
     internal async Task ReconcileAsync(string tenant, string source, SourceInventoryEntry entry, CancellationToken token)
@@ -30,7 +34,9 @@ internal sealed class SourceInventoryFailureReconciler(
     internal async Task ReconcileDiscardedAsync(string tenant, string source, SourceInventoryEntry entry, CancellationToken token)
     {
         if (entry.CandidateMemoryUnitId is null || entry.MemoryUnitId is null || entry.CandidateMemoryUnitId == entry.MemoryUnitId)
-        { throw new InvalidOperationException("source-inventory-discarded-output-mismatch"); }
+        {
+            throw new InvalidOperationException("source-inventory-discarded-output-mismatch");
+        }
         await DeleteArtifactsAsync(tenant, source, entry, token).ConfigureAwait(false);
         await inventory.RecordDiscardedDeletionAsync(tenant, source, entry, token).ConfigureAwait(false);
     }
@@ -39,7 +45,7 @@ internal sealed class SourceInventoryFailureReconciler(
     {
         string candidate = entry.CandidateMemoryUnitId ?? entry.WorkflowInstanceId
             ?? throw new InvalidOperationException("source-inventory-failed-candidate-missing");
-        await new DeleteMemoryUnitProjectionActivity(redis, graph, queries, inventory, payloadStore: payloads).RunAsync(null!,
+        await new DeleteMemoryUnitProjectionActivity(redis, graph, queries, inventory, payloadStore: payloads, workflowClient: workflowClient, retryOptions: retryOptions).RunAsync(null!,
             new(tenant, entry.CaseId, candidate, [])).WaitAsync(token).ConfigureAwait(false);
         if (entry.WorkflowInstanceId is { } workflow && workflow != candidate)
         {
@@ -48,7 +54,9 @@ internal sealed class SourceInventoryFailureReconciler(
         if (entry.SourcePayloadReference is { } payload)
         {
             if (payload.TenantId != tenant || (payload.MemoryUnitId != entry.WorkflowInstanceId && payload.MemoryUnitId != DedupKeyBuilder.BuildKey(tenant, entry.CaseId, source)))
-            { throw new InvalidOperationException("source-inventory-failed-payload-scope"); }
+            {
+                throw new InvalidOperationException("source-inventory-failed-payload-scope");
+            }
             if (payload.MemoryUnitId != candidate && payload.MemoryUnitId != entry.WorkflowInstanceId)
             {
                 await new WorkflowPayloadLedger(redis).PurgeAsync(tenant, payload.MemoryUnitId, payloads, token).ConfigureAwait(false);
@@ -59,7 +67,9 @@ internal sealed class SourceInventoryFailureReconciler(
                 _ = await payloads.ReadAsync(payload, tenant, payload.MemoryUnitId, payload.ContentKind, token).ConfigureAwait(false);
                 throw new InvalidOperationException("source-inventory-failed-payload-retained");
             }
-            catch (WorkflowPayloadException error) when (error.ErrorCode == "PAYLOAD_NOT_FOUND") { }
+            catch (WorkflowPayloadException error) when (error.ErrorCode == "PAYLOAD_NOT_FOUND")
+            {
+            }
         }
         IDatabase db = redis.GetDatabase();
         await db.KeyDeleteAsync(PersistFailedUnitActivity.BuildHashKey(tenant, candidate)).WaitAsync(token).ConfigureAwait(false);

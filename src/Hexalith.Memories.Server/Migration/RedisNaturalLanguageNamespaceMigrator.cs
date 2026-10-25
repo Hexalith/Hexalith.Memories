@@ -6,6 +6,7 @@
 namespace Hexalith.Memories.Server.Migration;
 
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.Ingestion;
 
 using StackExchange.Redis;
 
@@ -36,31 +37,49 @@ internal static class RedisNaturalLanguageNamespaceMigrator
                 continue;
             }
 
-            RedisKey targetKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenantId, memoryUnitId);
-
-            HashEntry[] targetEntries = await db.HashGetAllAsync(targetKey).WaitAsync(ct).ConfigureAwait(false);
-            if (!HasRequiredFields(targetEntries))
-            {
-                HashEntry[] legacyEntries = await db.HashGetAllAsync(legacyKey).WaitAsync(ct).ConfigureAwait(false);
-                if (!HasRequiredFields(legacyEntries))
-                {
-                    continue;
-                }
-
-                await db.HashSetAsync(targetKey, legacyEntries).WaitAsync(ct).ConfigureAwait(false);
-                targetEntries = await db.HashGetAllAsync(targetKey).WaitAsync(ct).ConfigureAwait(false);
-            }
-
-            if (HasRequiredFields(targetEntries))
-            {
-                await db.KeyDeleteAsync(legacyKey).WaitAsync(ct).ConfigureAwait(false);
-            }
+            await MigrateOneAsync(db, tenantId, memoryUnitId, ct).ConfigureAwait(false);
         }
     }
 
-    private static bool HasRequiredFields(HashEntry[] entries)
-        => entries.Any(e => e.Name == "embedding" && !e.Value.IsNullOrEmpty)
-            && entries.Any(e => e.Name == "memoryUnitId" && !e.Value.IsNullOrEmpty)
-            && entries.Any(e => e.Name == "caseId" && !e.Value.IsNullOrEmpty)
-            && entries.Any(e => e.Name == "naturalLanguageDescription" && !e.Value.IsNullOrEmpty);
+    /// <summary>Copies and retires exactly one legacy hash under the same atomic erasure and source fence.</summary>
+    internal static async Task MigrateOneAsync(IDatabase db, string tenant, string unit, CancellationToken ct)
+    {
+        RedisKey sourceKey = IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit);
+        RedisValue source = await db.HashGetAsync(sourceKey, "sourceUri").WaitAsync(ct).ConfigureAwait(false);
+        const string migrate = """
+            -- nl-namespace-migration-fenced-v2
+            if redis.call('EXISTS',KEYS[3],KEYS[7])~=0 then return 0 end
+            if (redis.call('HGET',KEYS[4],'sourceUri') or '')~=ARGV[3] then return 0 end
+            local inventory=redis.call('GET',KEYS[5])
+            if inventory and cjson.decode(inventory).admissionClosed then return 0 end
+            local function valid(key)
+                if redis.call('HGET',key,'memoryUnitId')~=ARGV[1] then return false end
+                local tenant=redis.call('HGET',key,'tenantId')
+                if tenant and tenant~=ARGV[2] then return false end
+                for _,field in ipairs({'embedding','caseId','naturalLanguageDescription'}) do
+                    local value=redis.call('HGET',key,field)
+                    if not value or value=='' then return false end
+                end
+                return true
+            end
+            if not valid(KEYS[1]) then return 0 end
+            if redis.call('EXISTS',KEYS[2])==0 then
+                if redis.call('SCARD',KEYS[6])>=4096 and redis.call('SISMEMBER',KEYS[6],KEYS[2])==0 then return 0 end
+                redis.call('HSET',KEYS[2],unpack(redis.call('HGETALL',KEYS[1])))
+                redis.call('SADD',KEYS[6],KEYS[2])
+            end
+            if not valid(KEYS[2]) then return -1 end
+            redis.call('DEL',KEYS[1])
+            return 1
+            """;
+        RedisResult result = await TenantIngestionOwnership.WriteAsync(db, tenant, migrate,
+            [(RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, unit),
+                (RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit),
+                (RedisKey)SourcePublicationVisibility.Tombstone(tenant, unit), sourceKey,
+                (RedisKey)(source.HasValue ? SourceInventoryStore.BuildKey(tenant, source.ToString()) : "__unused-source-inventory"),
+                (RedisKey)SourcePublicationVisibility.Keys(tenant, unit), (RedisKey)TenantIngestionOwnership.Fence(tenant)],
+            [(RedisValue)unit, (RedisValue)tenant, source.HasValue ? source : RedisValue.EmptyString], ct).ConfigureAwait(false);
+        if ((long)result == -1)
+            throw new InvalidOperationException("nl-namespace-canonical-owner-reconciliation-required");
+    }
 }

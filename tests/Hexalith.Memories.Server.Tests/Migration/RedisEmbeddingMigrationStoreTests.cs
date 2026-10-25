@@ -31,6 +31,9 @@ public class RedisEmbeddingMigrationStoreTests
         IServer server = CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]);
         IConnectionMultiplexer redis = CreateRedis(db, server);
         HashEntry[] legacyEntries = CreateNaturalLanguageHashEntries();
+        db.ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("nl-namespace-migration-fenced-v2", StringComparison.Ordinal)),
+            Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>()).Returns(call =>
+            { operations.Add("migrate:fenced-copy-delete"); return RedisResult.Create((RedisValue)1); });
 
         db.HashGetAllAsync((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
             .Returns([], legacyEntries);
@@ -79,7 +82,7 @@ public class RedisEmbeddingMigrationStoreTests
 
         await store.PrepareStagingSemanticIndexesAsync("tenant-a", targetConfig, "version-1", CancellationToken.None);
 
-        operations.Take(2).ShouldBe(["migrate:write-target", "migrate:delete-legacy"]);
+        operations.First().ShouldBe("migrate:fenced-copy-delete");
         operations.ShouldNotContain("drop:" + IndexSchemaDefinitions.GetSemanticIndexName("tenant-a"));
         operations.ShouldNotContain("drop:" + IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName("tenant-a"));
         ftCreateCalls.Count.ShouldBe(2);

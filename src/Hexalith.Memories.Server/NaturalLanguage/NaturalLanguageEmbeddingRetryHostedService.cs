@@ -5,6 +5,9 @@
 
 namespace Hexalith.Memories.Server.NaturalLanguage;
 
+using System.Security.Cryptography;
+using System.Text.Json;
+
 using Dapr.Workflow;
 
 using Hexalith.Memories.Contracts.V1;
@@ -133,7 +136,7 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
         NaturalLanguageEmbeddingRetryInput input = new(
             record.TenantId,
             record.MemoryUnitId,
-            record.TruncatedRawJsonPayload,
+            string.Empty,
             record.EventType,
             record.AggregateType,
             record.CaseId,
@@ -182,6 +185,15 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
     }
 
     internal static string GetRetryWorkflowInstanceId(string tenantId, string memoryUnitId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);
+        // A JSON tuple preserves the tenant/unit boundary; the prefix is disjoint from legacy IDs.
+        byte[] scope = JsonSerializer.SerializeToUtf8Bytes(new[] { tenantId, memoryUnitId });
+        return "retry-nlv2-" + Convert.ToHexStringLower(SHA256.HashData(scope));
+    }
+
+    internal static string GetLegacyRetryWorkflowInstanceId(string tenantId, string memoryUnitId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tenantId);
         ArgumentException.ThrowIfNullOrWhiteSpace(memoryUnitId);

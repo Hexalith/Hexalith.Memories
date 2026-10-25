@@ -38,8 +38,24 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
 
     public DaprClient DaprClient { get; private set; } = null!;
 
+    private bool _workflow;
+    private string? _workflowRedisHost;
+
+    /// <summary>Creates an owned workflow sidecar against the collection's owned Redis resource.</summary>
+    public static DaprStateSidecarFixture CreateWorkflow(string redisHost) => new() { _workflow = true, _workflowRedisHost = redisHost };
+
     public async ValueTask InitializeAsync()
     {
+        string? redisHost = _workflowRedisHost ?? (Environment.GetEnvironmentVariable("MEMORIES_TEST_OWNED_NATIVE") == "1"
+            ? Environment.GetEnvironmentVariable("MEMORIES_TEST_REDISSTACK_CONNECTION") : null);
+        if (redisHost is not null)
+        {
+            var options = StackExchange.Redis.ConfigurationOptions.Parse(redisHost);
+            if (options.EndPoints.Count != 1 || options.EndPoints[0] is not IPEndPoint { Address: var address, Port: > 1024 } || !address.Equals(IPAddress.Loopback))
+                throw new InvalidOperationException("Owned native Dapr fixture requires an unprivileged loopback Redis endpoint.");
+        }
+        else
+        {
         _redis = new ContainerBuilder(RedisStackImage)
             .WithPortBinding(0, 6379)
             .WithWaitStrategy(
@@ -49,7 +65,8 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
             .Build();
         await _redis.StartAsync().ConfigureAwait(false);
 
-        string redisHost = $"127.0.0.1:{_redis.GetMappedPublicPort(6379)}";
+        redisHost = $"127.0.0.1:{_redis.GetMappedPublicPort(6379)}";
+        }
         _componentsDir = Path.Combine(Path.GetTempPath(), $"memories-ida-dapr-{Guid.NewGuid():N}");
         _ = Directory.CreateDirectory(_componentsDir);
         await File.WriteAllTextAsync(
@@ -68,7 +85,7 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
                   - name: enableTLS
                     value: "false"
                   - name: actorStateStore
-                    value: "false"
+                    value: "{{(_workflow ? "true" : "false")}}"
               """).ConfigureAwait(false);
 
         int httpPort = GetFreePort();
@@ -100,6 +117,15 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
             },
             EnableRaisingEvents = true,
         };
+        if (_workflow)
+        {
+            _daprd.StartInfo.ArgumentList.Add("--placement-host-address");
+            _daprd.StartInfo.ArgumentList.Add(Environment.GetEnvironmentVariable("MEMORIES_DAPR_PLACEMENT_HOST_ADDRESS") ?? "127.0.0.1:50005");
+            _daprd.StartInfo.ArgumentList.Add("--scheduler-host-address");
+            _daprd.StartInfo.ArgumentList.Add(Environment.GetEnvironmentVariable("MEMORIES_DAPR_SCHEDULER_HOST_ADDRESS") ?? "127.0.0.1:50006");
+            _daprd.StartInfo.ArgumentList.Add("--dapr-listen-addresses");
+            _daprd.StartInfo.ArgumentList.Add("127.0.0.1");
+        }
         _daprd.OutputDataReceived += (_, e) =>
         {
             if (e.Data is not null)

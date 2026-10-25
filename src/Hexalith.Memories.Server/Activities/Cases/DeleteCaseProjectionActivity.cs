@@ -5,20 +5,23 @@
 
 namespace Hexalith.Memories.Server.Activities.Cases;
 
-using System.Net;
+using Hexalith.Memories.Server.Ingestion;
 
 using Dapr.Workflow;
 
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Infrastructure;
 
+using Microsoft.Extensions.Options;
+using Hexalith.Memories.Server.NaturalLanguage;
 using StackExchange.Redis;
 
 /// <summary>Deletes case and memory-unit projections idempotently.</summary>
 internal sealed class DeleteCaseProjectionActivity(
     [FromKeyedServices("redis")] IConnectionMultiplexer redis,
     [FromKeyedServices("falkordb")] IConnectionMultiplexer falkorDb,
-    IGraphQueryBuilder graphQueryBuilder) : WorkflowActivity<CaseDeletionProjectionInput, bool>
+    IGraphQueryBuilder graphQueryBuilder, SourceInventoryStore? inventory = null, IWorkflowPayloadStore? payloadStore = null, IDaprWorkflowClient? workflowClient = null,
+    IOptions<NaturalLanguageDescriptionOptions>? retryOptions = null) : WorkflowActivity<CaseDeletionProjectionInput, bool>
 {
     /// <inheritdoc/>
     public override async Task<bool> RunAsync(WorkflowActivityContext context, CaseDeletionProjectionInput input)
@@ -29,15 +32,9 @@ internal sealed class DeleteCaseProjectionActivity(
 
         foreach (string memoryUnitId in input.MemoryUnitIds)
         {
-            string muKey = IndexSchemaDefinitions.BuildSyntacticKey(input.TenantId, memoryUnitId);
-            RedisKey[] semanticKeys = await FindSemanticKeysAsync(input.TenantId, memoryUnitId).ConfigureAwait(false);
-            string nlVecKey = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(input.TenantId, memoryUnitId);
-            (string graphQuery, IDictionary<string, object> graphParams) = graphQueryBuilder.BuildDeleteMemoryUnitNode(memoryUnitId);
-            await Task.WhenAll(
-                db.KeyDeleteAsync(muKey),
-                db.KeyDeleteAsync(semanticKeys),
-                db.KeyDeleteAsync(nlVecKey)).ConfigureAwait(false);
-            await falkor.SelectGraph(input.TenantId).QueryAsync(graphQuery, graphParams).ConfigureAwait(false);
+            await new DeleteMemoryUnitProjectionActivity(redis, falkorDb, graphQueryBuilder, inventory,
+                payloadStore: payloadStore, workflowClient: workflowClient, retryOptions: retryOptions)
+                .DeleteOneAsync(db, falkor, input.TenantId, memoryUnitId).ConfigureAwait(false);
         }
 
         (string caseDelQuery, IDictionary<string, object> caseDelParams) = graphQueryBuilder.BuildDeleteCaseNode(input.CaseId);
@@ -49,27 +46,4 @@ internal sealed class DeleteCaseProjectionActivity(
         return true;
     }
 
-    private async Task<RedisKey[]> FindSemanticKeysAsync(string tenantId, string memoryUnitId)
-    {
-        List<RedisKey> keys = [IndexSchemaDefinitions.BuildSemanticKey(tenantId, memoryUnitId)];
-        foreach (EndPoint endpoint in redis.GetEndPoints())
-        {
-            IServer server = redis.GetServer(endpoint);
-            if (!server.IsConnected)
-            {
-                continue;
-            }
-
-            await foreach (RedisKey key in server.KeysAsync(pattern: IndexSchemaDefinitions.BuildSemanticChunkKeyPattern(tenantId, memoryUnitId), pageSize: 100))
-            {
-                if (IndexSchemaDefinitions.TryParseSemanticChunkKey(tenantId, key, out string parsedId, out _)
-                    && string.Equals(parsedId, memoryUnitId, StringComparison.Ordinal))
-                {
-                    keys.Add(key);
-                }
-            }
-        }
-
-        return [.. keys];
-    }
 }

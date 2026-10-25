@@ -20,7 +20,7 @@ public static partial class IngestionWorkflowDeterminismGuardTests
         (string RelativePath, int Line, string Method, string NameExpression)[] expected =
         [
             ("src/Hexalith.Memories.Server/Activities/Cases/ScheduleAnnotationIngestionActivity.cs", 77, "direct", "nameof(IngestionWorkflow)"),
-            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 108, "direct", "nameof(IngestionWorkflow)"),
+            ("src/Hexalith.Memories.Server/Ingestion/DaprIngestionWorkflowScheduler.cs", 109, "direct", "nameof(IngestionWorkflow)"),
             ("src/Hexalith.Memories.Server/Workflows/AnnotationProjectionWorkflow.cs", 47, "child", "nameof(IngestionWorkflow)"),
         ];
 

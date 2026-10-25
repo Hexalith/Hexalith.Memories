@@ -32,6 +32,14 @@ public sealed class NaturalLanguageDescriptionOptions
     /// <summary>Gets or sets whether the retry worker may drain and schedule backlog records.</summary>
     public bool RetryWorkerEnabled { get; set; } = true;
 
+    /// <summary>Gets or sets whether the owner has confirmed that all legacy retry schedulers are
+    /// drained before erasing their historic instance IDs. Default false blocks matching legacy
+    /// workflow mutation because Dapr cannot condition termination or purge on execution identity.</summary>
+    public bool LegacyRetrySchedulersDrainedForErasure
+    {
+        get; set;
+    }
+
     /// <summary>Gets or sets the batch size dequeued per retry tick per tenant. Keeps the retry path from
     /// starving live ingestion by throttling NL API volume.</summary>
     public int BatchSize { get; set; } = 5;

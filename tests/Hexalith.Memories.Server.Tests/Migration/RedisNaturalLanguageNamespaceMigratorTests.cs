@@ -19,59 +19,29 @@ using StackExchange.Redis;
 public class RedisNaturalLanguageNamespaceMigratorTests
 {
     [Fact]
-    public async Task MigrateAsync_LegacyHashExists_CopiesAllFieldsThenDeletesLegacyKey()
+    public async Task MigrateAsync_DelegatesExactUnitCopyAndRetirementToOneFencedAtomicScript()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create(1L));
         IServer server = CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]);
-        HashEntry[] legacyEntries = CreateNlEntries();
-        db.HashGetAllAsync((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
-            .Returns([], legacyEntries);
-        db.HashGetAllAsync((RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
-            .Returns(legacyEntries);
-
         await RedisNaturalLanguageNamespaceMigrator.MigrateAsync(db, server, "tenant-a", CancellationToken.None);
-
-        await db.Received(1).HashSetAsync(
-            (RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1"),
-            Arg.Is<HashEntry[]>(entries =>
-                entries!.Any(e => e.Name == "embedding")
-                && entries!.Any(e => e.Name == "embeddingProvider" && e.Value == "openai")
-                && entries!.Any(e => e.Name == "embeddingDimensions" && e.Value == "1536")),
-            Arg.Any<CommandFlags>());
-        await db.Received(1).KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>());
+        await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("nl-namespace-migration-fenced-v2", StringComparison.Ordinal)),
+            Arg.Is<RedisKey[]>(keys => keys[0] == IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")
+                && keys[1] == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1")),
+            Arg.Is<RedisValue[]>(values => values[0] == "mu-1" && values[1] == "tenant-a"), Arg.Any<CommandFlags>());
+        await db.DidNotReceiveWithAnyArgs().HashSetAsync(default, default(HashEntry[])!, default);
+        await db.DidNotReceiveWithAnyArgs().KeyDeleteAsync(default(RedisKey), default);
     }
 
     [Fact]
-    public async Task MigrateAsync_TargetAlreadyVerified_DoesNotOverwriteTarget()
+    public async Task MigrateAsync_CancellationNeverStartsTheAtomicMutation()
     {
         IDatabase db = Substitute.For<IDatabase>();
-        IServer server = CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]);
-        HashEntry[] targetEntries = CreateNlEntries();
-        db.HashGetAllAsync((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
-            .Returns(targetEntries);
-
-        await RedisNaturalLanguageNamespaceMigrator.MigrateAsync(db, server, "tenant-a", CancellationToken.None);
-
-        await db.DidNotReceive().HashSetAsync(
-            Arg.Any<RedisKey>(),
-            Arg.Any<HashEntry[]>(),
-            Arg.Any<CommandFlags>());
-        await db.Received(1).KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>());
-    }
-
-    [Fact]
-    public async Task MigrateAsync_TargetCannotBeVerified_LeavesLegacyKeyForRetry()
-    {
-        IDatabase db = Substitute.For<IDatabase>();
-        IServer server = CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]);
-        db.HashGetAllAsync((RedisKey)IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
-            .Returns([]);
-        db.HashGetAllAsync((RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>())
-            .Returns([new HashEntry("memoryUnitId", "mu-1")]);
-
-        await RedisNaturalLanguageNamespaceMigrator.MigrateAsync(db, server, "tenant-a", CancellationToken.None);
-
-        await db.DidNotReceive().KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1"), Arg.Any<CommandFlags>());
+        using var canceled = new CancellationTokenSource(); canceled.Cancel();
+        await Should.ThrowAsync<OperationCanceledException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateAsync(db,
+            CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]), "tenant-a", canceled.Token));
+        await db.DidNotReceiveWithAnyArgs().ScriptEvaluateAsync(default(string)!, default, default, default);
     }
 
     private static IServer CreateServer(IReadOnlyList<RedisKey> keys)

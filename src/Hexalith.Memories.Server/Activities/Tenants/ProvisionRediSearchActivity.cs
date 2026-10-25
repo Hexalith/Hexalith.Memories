@@ -41,7 +41,7 @@ public sealed partial class ProvisionRediSearchActivity : WorkflowActivity<Tenan
         ArgumentNullException.ThrowIfNull(input);
         long startTimestamp = Stopwatch.GetTimestamp();
         IDatabase db = _redis.GetDatabase();
-        if (await db.KeyExistsAsync(Ingestion.TenantIngestionOwnership.Fence(input.TenantId)).ConfigureAwait(false))
+        if (await db.KeyExistsAsync(Hexalith.Memories.Server.Ingestion.TenantIngestionOwnership.Fence(input.TenantId)).ConfigureAwait(false))
         { throw new InvalidOperationException("tenant-ingestion-erased"); }
         var ft = db.FT();
 

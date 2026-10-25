@@ -182,3 +182,70 @@ Queued | Extracting | Embedding | Indexing
 - [Tenant onboarding and offboarding](./tenant-onboarding-offboarding.md)
 - [Upgrade and migration](./upgrade-migration.md)
 - [Monitoring and alerting thresholds](./monitoring-alerting-thresholds.md)
+
+
+## Natural-language erasure and legacy reconciliation
+
+Unit and case cleanup install permanent unit tombstones before removing Redis
+or graph content. Both natural-language namespaces are deleted. The legacy
+namespace migrator copies, checks and retires a scoped source hash in one atomic
+unit/source-fenced operation; it preserves a newer valid canonical target.
+Drain older unfenced writers before a deployed migration or erasure cutover.
+
+Retry queue admission, attempt increments and overflow moves observe the same
+unit and tenant fences atomically. Cleanup removes exact-unit fields and old
+JSON members from both live and dead queues. New retry workflows carry no raw
+payload and resolve content inside a single activity, keeping raw and derived
+intermediates out of durable workflow history. Historical retry workflows are
+terminated, physically purged and read back before cleanup succeeds. An absent
+workflow client or unconfirmed termination/purge blocks completion. New instance
+IDs hash an unambiguous tenant/unit tuple in a namespace disjoint from historic
+concatenated IDs. Cleanup checks authoritative stored input before terminating
+or purging either address. A historic address belonging to another scope is
+left intact; missing, malformed or duplicate scope fields block cleanup.
+Matching legacy instances fail closed by default with
+`nl-retry-legacy-scheduler-quiescence-required`. After the owner verifies all
+old retry schedulers have stopped and cannot restart or reuse a historic ID,
+set `NaturalLanguage:LegacyRetrySchedulersDrainedForErasure=true` to qualify
+legacy reconciliation. Keep that qualification valid throughout cleanup and
+remove the opt-in if legacy scheduling can resume. Dapr's instance-ID mutation
+API has no conditional execution token. Modern cleanup and proven foreign
+legacy nonmutation need no opt-in; current schedulers never create legacy IDs. Producer
+failure reconciliation uses the same workflow cleanup dependency.
+
+Semantic cleanup uses bounded exact-key provenance (maximum 4,096 retained
+keys). Modern publication writers register every materialized key. For legacy
+units, an exact-unit native TAG lookup discovers additional obligations and
+validates index schema, tenant prefix, background readiness, indexing failures,
+key scope and `ON_TIMEOUT=FAIL`. An optional TAG cannot prove that all historical
+hashes populated it: unknown coverage remains incomplete even after a successful
+query. Missing-TAG chunks remain erasure obligations. The adapter never scans
+the Redis keyspace to infer completeness and never changes server configuration.
+
+A qualified owner must drain older writers and reconcile the entire historical
+unit inventory, including keys lacking the optional TAG, into its exact key set
+before recording `legacy-owner-reconciled-v1` provenance. This marker is an
+explicit owner attestation; automatic TAG discovery cannot issue it. Older
+`legacy-complete` markers issued by automatic discovery are rejected. No local
+test grants production owner approval or inventory completeness. An incomplete
+canonical NL target with valid legacy content blocks migration with
+`nl-namespace-canonical-owner-reconciliation-required`; the valid legacy hash
+is retained for explicit repair.
+
+JSON-only legacy live retry members are atomically promoted to current payload
+storage under unit/tenant fences before scheduling. The activity requires the
+canonical syntactic unit before description/embedding work and before indexing,
+and valid overflow moves always enforce the configured dead-payload cap.
+
+The integration fixtures optionally accept owned native RedisSearch/FalkorDB
+processes when `MEMORIES_TEST_OWNED_NATIVE=1` and the two
+`MEMORIES_TEST_REDISSTACK_CONNECTION` / `MEMORIES_TEST_FALKORDB_CONNECTION`
+variables each select an unprivileged `127.0.0.1` port. The caller owns process
+startup, `ON_TIMEOUT=FAIL`, persistence and cleanup.
+`RetryWorkflowErasureIntegrationTests` uses the existing owned Dapr sidecar
+fixture against the collection's Redis resource and has both `Integration` and
+`IntegrationSlow` traits. The maintained nightly slow lane initializes Dapr
+placement/scheduler and runs these assertions without optional endpoint skips.
+The class verifies actual content-bearing legacy description activity history,
+termination/purge, a late activity completion and worker/Redis-adapter recreation,
+in addition to scoped identity collisions and the retained timer controls.

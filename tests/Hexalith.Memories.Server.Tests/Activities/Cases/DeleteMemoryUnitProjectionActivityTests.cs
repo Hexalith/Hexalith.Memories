@@ -32,7 +32,7 @@ public class DeleteMemoryUnitProjectionActivityTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder);
+        DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder, workflowClient: Substitute.For<IDaprWorkflowClient>());
         MemoryUnitDeletionProjectionInput input = new("tenant-1", "case-001", "mu-001", ["ann-001"]);
 
         // Act
@@ -45,10 +45,10 @@ public class DeleteMemoryUnitProjectionActivityTests
         Received.InOrder(() =>
         {
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "ann-001"))), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => keys.Length == 2 && keys[0].ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "ann-001") && keys[1].ToString() == IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => keys.Length == 2 && keys[0].ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "mu-001") && keys[1].ToString() == IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
             redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
         });
     }
@@ -60,7 +60,7 @@ public class DeleteMemoryUnitProjectionActivityTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder);
+        DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder, workflowClient: Substitute.For<IDaprWorkflowClient>());
         MemoryUnitDeletionProjectionInput input = new("tenant-1", "case-001", "mu-001", []);
 
         redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<CommandFlags>())
@@ -83,7 +83,7 @@ public class DeleteMemoryUnitProjectionActivityTests
         (IConnectionMultiplexer redis, IDatabase redisDb) = CreateMockRedis();
         (IConnectionMultiplexer falkorDb, _) = CreateMockFalkorDb();
         IGraphQueryBuilder builder = CreateMockBuilder();
-        DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder);
+        DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder, workflowClient: Substitute.For<IDaprWorkflowClient>());
         MemoryUnitDeletionProjectionInput input = new("tenant-1", "case-001", "mu-001", ["ann-001"]);
 
         redisDb.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(false);
@@ -108,6 +108,9 @@ public class DeleteMemoryUnitProjectionActivityTests
     private static (IConnectionMultiplexer, IDatabase) CreateMockRedis()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        db.StringGetAsync(Arg.Is<RedisKey>(key => key.ToString().StartsWith("publication-key-provenance:", StringComparison.Ordinal)), Arg.Any<CommandFlags>()).Returns((RedisValue)"modern");
+        db.SetMembersAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(Array.Empty<RedisValue>());
+        db.SortedSetScanAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<int>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CommandFlags>()).Returns(EmptyQueue());
         IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
         redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
         return (redis, db);
@@ -126,6 +129,12 @@ public class DeleteMemoryUnitProjectionActivityTests
             .Returns(fakeGraphResult);
 
         return (falkorDb, db);
+    }
+
+    private static async IAsyncEnumerable<SortedSetEntry> EmptyQueue()
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 
     private static bool ContainsOnly(RedisKey[] keys, string expected)

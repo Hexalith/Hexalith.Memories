@@ -105,20 +105,21 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
     public async Task EnqueueAsync_UsesMemoryUnitMemberAndPayloadHash()
     {
         IDatabase db = CreateDatabase();
+        ITransaction tx = db.CreateTransaction();
         FailedNaturalLanguageEmbeddingRegistry registry = CreateRegistry(db);
         FailedNaturalLanguageEmbeddingRecord record = CreateRecord("mu-1", queuedAtTicks: 10);
 
         await registry.EnqueueAsync(record, CancellationToken.None);
 
-        await db.Received(1).HashSetAsync(
+        await tx.Received(1).HashSetAsync(
             FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
             "mu-1",
             Arg.Is<RedisValue>(value => value!.ToString().Contains("\"memoryUnitId\":\"mu-1\"", StringComparison.Ordinal)),
             Arg.Any<When>(),
             Arg.Any<CommandFlags>());
-        CountSortedSetAddCalls(db, FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"), "mu-1")
+        CountSortedSetAddCalls(tx, FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"), "mu-1")
             .ShouldBe(1);
-        await db.Received(1).SetAddAsync(
+        await tx.Received(1).SetAddAsync(
             FailedNaturalLanguageEmbeddingRegistry.TenantBacklogKey,
             "tenant-a",
             Arg.Any<CommandFlags>());
@@ -128,14 +129,15 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
     public async Task EnqueueAsync_WhenDuplicateMemoryUnit_UsesStableMember()
     {
         IDatabase db = CreateDatabase();
+        ITransaction tx = db.CreateTransaction();
         FailedNaturalLanguageEmbeddingRegistry registry = CreateRegistry(db);
 
         await registry.EnqueueAsync(CreateRecord("mu-1", queuedAtTicks: 10), CancellationToken.None);
         await registry.EnqueueAsync(CreateRecord("mu-1", queuedAtTicks: 20) with { Attempts = 2 }, CancellationToken.None);
 
-        CountSortedSetAddCalls(db, FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"), "mu-1")
+        CountSortedSetAddCalls(tx, FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"), "mu-1")
             .ShouldBe(2);
-        await db.Received(2).HashSetAsync(
+        await tx.Received(2).HashSetAsync(
             FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
             "mu-1",
             Arg.Any<RedisValue>(),
@@ -389,6 +391,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
     public async Task EnqueueAsync_WhenLiveQueueExceedsCap_MovesOverflowToDeadLetter()
     {
         IDatabase db = CreateDatabase();
+        ITransaction tx = db.CreateTransaction();
         FailedNaturalLanguageEmbeddingRecord oldRecord = CreateRecord("old-mu", queuedAtTicks: 1);
         db.SortedSetLengthAsync(
             FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"),
@@ -415,21 +418,15 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
 
         await registry.EnqueueAsync(CreateRecord("mu-1", queuedAtTicks: 10), CancellationToken.None);
 
-        await db.Received(1).SortedSetRemoveAsync(
-            FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "old-mu" })),
-            Arg.Any<CommandFlags>());
-        await db.Received(1).HashDeleteAsync(
-            FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"),
-            Arg.Is<RedisValue[]>(values => values!.SequenceEqual(new RedisValue[] { "old-mu" })),
-            Arg.Any<CommandFlags>());
-        await db.Received(1).HashSetAsync(
+        await tx.Received(1).SortedSetRemoveAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a"), (RedisValue)"old-mu", Arg.Any<CommandFlags>());
+        await tx.Received(1).HashDeleteAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey("tenant-a"), (RedisValue)"old-mu", Arg.Any<CommandFlags>());
+        await tx.Received(1).HashSetAsync(
             FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey("tenant-a"),
             "old-mu",
             Arg.Is<RedisValue>(value => value!.ToString().Contains("\"memoryUnitId\":\"old-mu\"", StringComparison.Ordinal)),
             Arg.Any<When>(),
             Arg.Any<CommandFlags>());
-        CountSortedSetAddCalls(db, FailedNaturalLanguageEmbeddingRegistry.DeadKey("tenant-a"), "old-mu")
+        CountSortedSetAddCalls(tx, FailedNaturalLanguageEmbeddingRegistry.DeadKey("tenant-a"), "old-mu")
             .ShouldBe(1);
     }
 
@@ -519,6 +516,9 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
     private static IDatabase CreateDatabase()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        ITransaction tx = Substitute.For<ITransaction>();
+        tx.ExecuteAsync(Arg.Any<CommandFlags>()).Returns(true);
+        db.CreateTransaction(Arg.Any<object?>()).Returns(tx);
         db.SortedSetRangeByRankAsync(
             Arg.Any<RedisKey>(),
             Arg.Any<long>(),
@@ -552,7 +552,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
             QueuedAtTicks: queuedAtTicks,
             Attempts: 0);
 
-    private static int CountSortedSetAddCalls(IDatabase db, RedisKey key, RedisValue member)
+    private static int CountSortedSetAddCalls(IDatabaseAsync db, RedisKey key, RedisValue member)
         => db.ReceivedCalls()
             .Count(call =>
                 call.GetMethodInfo().Name == "SortedSetAddAsync"

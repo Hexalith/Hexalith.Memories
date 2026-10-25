@@ -412,6 +412,7 @@ internal static class MemoriesServerServiceCollectionExtensions
             options.RegisterActivity<CheckMemoryUnitExistsActivity>();
 
             // Story 9.2 Task 8.4: retry workflow that re-runs NL description + embedding + index.
+            options.RegisterActivity<RetryNaturalLanguageEmbeddingActivity>();
             options.RegisterWorkflow<NaturalLanguageEmbeddingRetryWorkflow>();
 
             options.RegisterWorkflow<IngestionWorkflow>();

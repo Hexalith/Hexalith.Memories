@@ -91,7 +91,10 @@ public class RestoreDataPlaneActivityTests
         // Syntactic hashes written under the tenant-prefixed key.
         await fixture.RedisDatabase.Received().HashSetAsync("acme:mu:mu-1", Arg.Any<HashEntry[]>());
         await fixture.RedisDatabase.Received().HashSetAsync("acme:mu:mu-2", Arg.Any<HashEntry[]>());
-        await fixture.RedisDatabase.Received().HashSetAsync("acme:case:case-1", Arg.Any<HashEntry[]>());
+        await fixture.RedisDatabase.Received().ScriptEvaluateAsync(
+            Arg.Is<string>(script => script.Contains("redis.call('HSET',KEYS[1],unpack(ARGV))", StringComparison.Ordinal)),
+            Arg.Is<RedisKey[]>(keys => keys[0] == "acme:case:case-1"),
+            Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>());
         await fixture.Readiness.Received(1).EnsureReadyAsync(
             fixture.RedisDatabase,
             "acme",

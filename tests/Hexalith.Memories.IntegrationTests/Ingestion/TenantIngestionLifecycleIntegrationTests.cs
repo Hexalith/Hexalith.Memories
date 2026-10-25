@@ -204,7 +204,7 @@ public sealed class TenantIngestionLifecycleIntegrationTests(RedisStackFixture r
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddSingleton(inventory);
         builder.Services.AddSingleton(Substitute.For<IIngestionWorkflowStateReader>());
-        builder.Services.AddSingleton(new SourceInventoryFailureReconciler(redis.Connection, graph.Connection, new GraphQueryBuilder(), Payloads(state.DaprClient, redis.Connection), inventory));
+        builder.Services.AddSingleton(new SourceInventoryFailureReconciler(redis.Connection, graph.Connection, new GraphQueryBuilder(), Payloads(state.DaprClient, redis.Connection), inventory, workflowClient: NSubstitute.Substitute.For<Dapr.Workflow.IDaprWorkflowClient>()));
         await using WebApplication app = builder.Build();
         app.Use((context, next) => { context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ServerTenantClaimsTransformation.TenantClaimType, tenant)], "boundary-test")); return next(context); });
         app.MapSourceInventoryEndpoints(); await app.StartAsync(token);

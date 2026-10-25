@@ -162,8 +162,20 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         (await redis.Connection.GetDatabase().KeyExistsAsync(SourcePublicationVisibility.KeyProvenance(tenant, "old"))).ShouldBeFalse();
         IngestionInput older = Input(tenant, caseId, source, "olderred shared shared shared", "revision-one", 1, "old");
         IngestionInput newer = Input(tenant, caseId, source, "newyellow shared " + new string('x', 200), "revision-two", 2, "old");
+        // Provisioning an optional field starts a native background reindex. Qualify
+        // readiness before exercising completion ordering, as production rollout does.
+        await SourcePublicationVisibility.EnsureSchemaAsync(redis.Connection.GetDatabase(),
+            [IndexSchemaDefinitions.GetSyntacticIndexName(tenant), IndexSchemaDefinitions.GetSemanticIndexName(tenant)]);
+        await WaitForSemanticIndexReadyAsync(redis.Connection.GetDatabase(), tenant);
+        (await Should.ThrowAsync<InvalidOperationException>(() => publication.PrepareAsync(older, token)))
+            .Message.ShouldBe("source-publication-legacy-owner-reconciliation-required");
+        // Explicit fixture-owner reconciliation covers every known old key, including native chunks.
+        await redis.Connection.GetDatabase().SetAddAsync(SourcePublicationVisibility.Keys(tenant, "old"),
+            [(RedisValue)IndexSchemaDefinitions.BuildSyntacticKey(tenant, "old"), (RedisValue)IndexSchemaDefinitions.BuildSemanticKey(tenant, "old"),
+                (RedisValue)IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, "old", 0)]);
+        await redis.Connection.GetDatabase().StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "old"), "legacy-owner-reconciled-v1");
         older = older with { RefreshIdentityDigest = await publication.PrepareAsync(older, token) };
-        (await redis.Connection.GetDatabase().StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "old"))).ToString().ShouldBe("legacy-complete");
+        (await redis.Connection.GetDatabase().StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "old"))).ToString().ShouldBe("legacy-owner-reconciled-v1");
         (await redis.Connection.GetDatabase().SetContainsAsync(SourcePublicationVisibility.Keys(tenant, "old"),
             IndexSchemaDefinitions.BuildSemanticChunkKey(tenant, "old", 0))).ShouldBeTrue();
         newer = newer with { RefreshIdentityDigest = await publication.PrepareAsync(newer, token) };
@@ -172,7 +184,7 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         await IndexAsync(tenant, "older", source, older.ContentBytes!);
         await IndexAsync(tenant, "newer", source, newer.ContentBytes!);
         var publish = new PublishRefreshActivity(publication, inventory);
-        var delete = new DeleteMemoryUnitProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), inventory);
+        var delete = new DeleteMemoryUnitProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), inventory, workflowClient: NSubstitute.Substitute.For<Dapr.Workflow.IDaprWorkflowClient>());
         string current;
         if (newerFirst)
         {
@@ -372,8 +384,20 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         IngestionInput old = Input(tenant, caseId, source, "old source", "initial", 0, null);
         await inventory.AdmitAsync("old", old, token);
         await IndexAsync(tenant, "old", source, old.ContentBytes!);
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "old");
         await new SaveDedupKeyActivity(redis.Connection).RunAsync(null!, new(DedupKeyBuilder.BuildKey(tenant, caseId, source), "old"));
         IngestionInput next = Input(tenant, caseId, source, "new source", "refresh-one", 1, "old");
+        // Provision the optional publication field before refresh so its own background
+        // reindex does not race this graph-failure boundary.
+        await SourcePublicationVisibility.EnsureSchemaAsync(redis.Connection.GetDatabase(), [IndexSchemaDefinitions.GetSemanticIndexName(tenant)]);
+        using var schemaReady = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            RedisResult[] info = (RedisResult[])(await redis.Connection.GetDatabase().ExecuteAsync("FT.INFO", IndexSchemaDefinitions.GetSemanticIndexName(tenant)))!;
+            int indexing = Array.FindIndex(info, value => value.ToString() == "indexing");
+            if (indexing >= 0 && info[indexing + 1].ToString() == "0") break;
+            await Task.Delay(25, schemaReady.Token);
+        }
         next = next with { RefreshIdentityDigest = await publication.PrepareAsync(next, token) };
         await inventory.AdmitAsync("current", next, token);
         await IndexAsync(tenant, "current", source, next.ContentBytes!);
@@ -414,12 +438,13 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         IngestionInput input = Input(tenant, "captured-case", source, "synthetic alias content", "alias-retry", 0, null);
         await inventory.AdmitAsync("old", input, token);
         await IndexAsync(tenant, "old", source, input.ContentBytes!);
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "old");
         await inventory.CompleteAsync(tenant, source, "old", "captured-case", "old", token);
         // Recreate the historical interrupted ordering: output persisted, reverse alias not yet retained.
         string aliasKey = "source-inventory-output:" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
             System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new[] { tenant, "old" })));
         await redis.Connection.GetDatabase().KeyDeleteAsync(aliasKey);
-        await new DeleteMemoryUnitProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), inventory)
+        await new DeleteMemoryUnitProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), inventory, workflowClient: NSubstitute.Substitute.For<Dapr.Workflow.IDaprWorkflowClient>())
             .RunAsync(null!, new(tenant, "captured-case", "old", []));
         using IConnectionMultiplexer connection = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
         var restarted = new SourceInventoryStore(connection, codec);
@@ -432,6 +457,22 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         (await connection.GetDatabase().KeyExistsAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, "old"))).ShouldBeFalse();
     }
 
+    private static async Task WaitForSemanticIndexReadyAsync(IDatabase db, string tenant)
+    {
+        using var ready = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        ready.CancelAfter(TimeSpan.FromSeconds(10));
+        while (true)
+        {
+            RedisResult[] info = (RedisResult[])(await db.ExecuteAsync("FT.INFO", IndexSchemaDefinitions.GetSemanticIndexName(tenant)))!;
+            int indexing = Array.FindIndex(info, value => value.ToString() == "indexing");
+            if (indexing >= 0 && info[indexing + 1].ToString() == "0")
+            {
+                return;
+            }
+            await Task.Delay(25, ready.Token);
+        }
+    }
+
     private async Task IndexAsync(string tenant, string id, string source, byte[] content)
     {
         IDatabase db = redis.Connection.GetDatabase();
@@ -439,6 +480,9 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase)) { }
         try { db.FT().Create(IndexSchemaDefinitions.GetSemanticIndexName(tenant), IndexSchemaDefinitions.CreateSemanticParams(tenant), IndexSchemaDefinitions.CreateSemanticSchema(3)); }
         catch (RedisServerException ex) when (ex.Message.Contains("Index already exists", StringComparison.OrdinalIgnoreCase)) { }
+        // Production provisioning/readiness precedes refresh. A newly created native
+        // index can still be scanning the existing sparse database in the background.
+        await WaitForSemanticIndexReadyAsync(db, tenant);
         IndexInput input = IndexInputFactory.Create(memoryUnitId: id, tenantId: tenant, caseId: "captured-case", sourceUri: source,
             content: Encoding.UTF8.GetString(content)) with { SourceInventoryTracked = id != "old" && id != "unrelated" };
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
@@ -480,6 +524,7 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         IngestionInput old = Input(tenant, caseId, source, "old content", "initial", 0, null);
         await inventory.AdmitAsync("old", old, token);
         await IndexAsync(tenant, "old", source, old.ContentBytes!);
+        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "old");
         await new SaveDedupKeyActivity(redis.Connection).RunAsync(Substitute.For<WorkflowActivityContext>(),
             new(DedupKeyBuilder.BuildKey(tenant, caseId, source), "old"));
         await inventory.CompleteAsync(tenant, source, "old", caseId, "old", token);
@@ -491,6 +536,9 @@ public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, 
         await inventory.ReconcileAsync(tenant, source, page.Version, [], "owned-test-settled-reopen", token);
         page = await inventory.ReadAsync(tenant, source, null, 100, token);
         IngestionInput refresh = Input(tenant, caseId, source, "new content", "reopened-retry", 1, "old") with { ReopenSourceVersion = page.Version };
+        await SourcePublicationVisibility.EnsureSchemaAsync(redis.Connection.GetDatabase(),
+            [IndexSchemaDefinitions.GetSyntacticIndexName(tenant), IndexSchemaDefinitions.GetSemanticIndexName(tenant)]);
+        await WaitForSemanticIndexReadyAsync(redis.Connection.GetDatabase(), tenant);
         string digest = await publication.PrepareAsync(refresh, token);
         await inventory.AdmitAsync("accepted-before-lost-ack", refresh, token);
         using IConnectionMultiplexer connection = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);

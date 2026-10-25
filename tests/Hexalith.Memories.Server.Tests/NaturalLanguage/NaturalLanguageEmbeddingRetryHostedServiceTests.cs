@@ -94,7 +94,7 @@ public class NaturalLanguageEmbeddingRetryHostedServiceTests
         var releaseFirstSchedule = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         workflowClient.ScheduleNewWorkflowAsync(
                 Arg.Any<string>(),
-                "retry-nl-tenant-a-first",
+                NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId("tenant-a", "first"),
                 Arg.Any<NaturalLanguageEmbeddingRetryInput>())
             .Returns(_ =>
             {
@@ -111,16 +111,16 @@ public class NaturalLanguageEmbeddingRetryHostedServiceTests
         Task tick = worker.TickAsync(new NaturalLanguageDescriptionOptions(), TestContext.Current.CancellationToken);
         await firstScheduleStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         enabled.ShouldBeFalse();
-        releaseFirstSchedule.SetResult("retry-nl-tenant-a-first");
+        releaseFirstSchedule.SetResult(NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId("tenant-a", "first"));
         await tick;
 
         _ = await workflowClient.Received(1).ScheduleNewWorkflowAsync(
             Arg.Any<string>(),
-            "retry-nl-tenant-a-first",
+            NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId("tenant-a", "first"),
             Arg.Any<NaturalLanguageEmbeddingRetryInput>());
         _ = await workflowClient.DidNotReceive().ScheduleNewWorkflowAsync(
             Arg.Any<string>(),
-            "retry-nl-tenant-a-second",
+            NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId("tenant-a", "second"),
             Arg.Any<NaturalLanguageEmbeddingRetryInput>());
         await registry.DidNotReceive().CompleteAsync(records[1], Arg.Any<CancellationToken>());
         _ = await registry.DidNotReceive().IncrementAttemptsAsync(
@@ -137,11 +137,14 @@ public class NaturalLanguageEmbeddingRetryHostedServiceTests
     }
 
     [Fact]
-    public void GetRetryWorkflowInstanceId_IncludesTenantAndMemoryUnit()
+    public void GetRetryWorkflowInstanceId_PreservesScopeBoundariesAndUsesDisjointBoundedNamespace()
     {
-        NaturalLanguageEmbeddingRetryHostedService
-            .GetRetryWorkflowInstanceId("tenant-a", "mu-001")
-            .ShouldBe("retry-nl-tenant-a-mu-001");
+        string first = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId("a-b", "c");
+        first.ShouldNotBe(NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId("a", "b-c"));
+        first.ShouldBe(NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId("a-b", "c"));
+        first.Length.ShouldBe(75);
+        first.ShouldStartWith("retry-nlv2-");
+        first.ShouldNotBe(NaturalLanguageEmbeddingRetryHostedService.GetLegacyRetryWorkflowInstanceId("a-b", "c"));
     }
 
     [Theory]

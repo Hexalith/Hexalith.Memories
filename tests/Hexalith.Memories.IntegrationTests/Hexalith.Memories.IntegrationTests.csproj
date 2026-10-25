@@ -51,4 +51,12 @@
     <Using Include="Hexalith.Memories.Server.Serialization" />
   </ItemGroup>
 
+  <!-- Qualification-only workflows do not use version discovery. Its generated public
+       registry collides with the production Server registry imported by this assembly. -->
+  <Target Name="RemoveQualificationWorkflowVersionRegistryGenerator" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Filename)' == 'Dapr.Workflow.Versioning.Generators'" />
+    </ItemGroup>
+  </Target>
+
 </Project>
