@@ -19,6 +19,8 @@ import threading
 import time
 from typing import Any, Callable, Mapping, Sequence
 
+from access_telemetry_campaign_profile import active_profile, active_profile_sha256, active_runtime_image, active_runtime_manifest, selected_campaign_profile, validate_campaign_runtime_binding
+
 from verify_access_telemetry_lifecycle import (
     REQUIRED_FAILURE_SCENARIOS,
     REQUIRED_LIFECYCLE_SIGNALS,
@@ -330,7 +332,7 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_target(path: Path) -> Mapping[str, str]:
+def _load_target(path: Path, *, cleanup_only=False) -> Mapping[str, str]:
     if path.is_symlink() or not path.is_file() or path.stat().st_size > 16_384:
         raise EvidenceValidationError("scenario input must be one small regular file")
     payload = path.read_bytes()
@@ -355,16 +357,33 @@ def _load_target(path: Path) -> Mapping[str, str]:
     }
     if normalized["kind"] != "non-production-qualification":
         raise EvidenceValidationError("Story 27.4 producers run only in non-Production qualification")
-    if normalized["profile_sha256"] != STORY_27_4_PROFILE_SHA256:
+    if not cleanup_only and normalized["profile_sha256"] != active_profile_sha256():
         raise EvidenceValidationError("scenario target profile differs from PG-ONPREM-2")
+    if not cleanup_only and selected_campaign_profile() is not None:
+        identity = active_profile().identity
+        if normalized["kube_context"] != identity["kubeContext"] or normalized["namespace"] != identity["kubeNamespace"]:
+            raise EvidenceValidationError("scenario target differs from the bound finite profile")
     if normalized["namespace"] == "hexalith-memories" or not normalized["namespace"].endswith("-qualification"):
         raise EvidenceValidationError("scenario namespace is not the isolated qualification namespace")
     for name in ("kube_context", "namespace"):
         if _SAFE_TARGET.fullmatch(normalized[name]) is None:
             raise EvidenceValidationError(f"target.{name} is not a bounded Kubernetes identity")
     # Authenticated producers execute a frozen code snapshot with cwd at the owning repository.
-    validate_current_profile_inputs(Path.cwd())
+    if not cleanup_only:
+        validate_current_profile_inputs(Path.cwd())
     return normalized
+
+
+def _target_profile_sha256(target):
+    if target.get("_cleanup_only") is True:
+        return target["_cleanup_profile_sha256"]
+    return active_profile_sha256()
+
+
+def _finite_target(target):
+    if target.get("_cleanup_only") is True:
+        return target.get("_cleanup_profile_id") == "PG-FINITE-CAMPAIGN-1"
+    return selected_campaign_profile() is not None
 
 
 def _named_resource_items(payloads: Sequence[object | None]) -> dict[str, Any]:
@@ -478,6 +497,8 @@ def _fixed_operation_commands(
                 (*dapr, "get", "serviceaccount", name, "-o", "json")
                 for name in _DAPR_CONTROL_PLANE_SERVICE_ACCOUNTS
             ],
+            *([(*prefix, "get", "configmap", "access-telemetry-campaign-identity", "-o", "json")]
+              if _finite_target(target) else []),
         ]
     if command_id == "qualification-enable":
         expires_utc_ms = _utc_now_milliseconds() + _QUALIFICATION_SESSION_SECONDS * 1000
@@ -488,7 +509,7 @@ def _fixed_operation_commands(
                         {
                             "schemaVersion": 1,
                             "state": "enabled",
-                            "profileSha256": STORY_27_4_PROFILE_SHA256,
+                            "profileSha256": _target_profile_sha256(target),
                             "expiresUtcMs": expires_utc_ms,
                         }
                     )
@@ -556,7 +577,7 @@ def _fixed_operation_commands(
                         {
                             "schemaVersion": 1,
                             "state": "disabled",
-                            "profileSha256": STORY_27_4_PROFILE_SHA256,
+                            "profileSha256": _target_profile_sha256(target),
                             "expiresUtcMs": 0,
                         }
                     )
@@ -2130,8 +2151,10 @@ def _authorize_cleanup_target(target):
     if dict(plan["executionTarget"]) != {key: target[key] for key in _TARGET_FIELDS}:
         raise EvidenceValidationError("cleanup execution target differs")
     target["_approved_target_identity"] = authority.target_identity
-    target["_lease_holder"] = qualification_lease_holder(authority, os.environ.get("HEXALITH_C1_EXECUTION_ID"))
+    target["_lease_holder"] = qualification_lease_holder(authority, target.get("_execution_id") or os.environ.get("HEXALITH_C1_EXECUTION_ID"))
     target["_cleanup_only"] = True
+    target["_cleanup_profile_id"] = authority.cleanup_profile_id
+    target["_cleanup_profile_sha256"] = authority.cleanup_profile_sha256
     _verify_target_transport(target)
 
 
@@ -2338,7 +2361,7 @@ def _run_locked_operation(
                 {"data": {"gate.json": _canonical_json({
                     "schemaVersion": 1,
                     "state": "enabled",
-                    "profileSha256": STORY_27_4_PROFILE_SHA256,
+                    "profileSha256": _target_profile_sha256(target),
                     "expiresUtcMs": _utc_now_milliseconds() + _QUALIFICATION_SESSION_SECONDS * 1000,
                 })}}
             )
@@ -2399,7 +2422,7 @@ def _run_locked_operation(
                 raise EvidenceValidationError("authenticated C3 reporter prefix is not canonical")
             evidence = {
                 "evidenceId": "story-27-4-c3",
-                "componentProfileHash": STORY_27_4_PROFILE_SHA256,
+                "componentProfileHash": _target_profile_sha256(target),
                 "artifactSha256": artifact_sha256,
                 "reporterImageDigest": _require_nonempty_string(
                     target.get("_reporter_image"), "C1-reviewed reporter image"
@@ -2689,7 +2712,7 @@ def _run_locked_operation(
         if expired_story_lease and isinstance(target, dict):
             target["_cleanup_expired_lease"] = True
         if target.get("_cleanup_only") is True:
-            if (namespace_name != target["namespace"] or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
+            if (namespace_name != target["namespace"] or gate.get("profileSha256") != _target_profile_sha256(target)
                     or gate.get("state") not in {"enabled", "disabled"}
                     or not isinstance(lease_metadata, Mapping) or not isinstance(lease_metadata.get("resourceVersion"), str)
                     or holder not in {"", target["_lease_holder"]}
@@ -2700,7 +2723,7 @@ def _run_locked_operation(
             if (
                 namespace_name != target["namespace"]
                 or gate.get("state") != "disabled"
-                or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
+                or gate.get("profileSha256") != _target_profile_sha256(target)
                 or type(gate.get("expiresUtcMs")) is not int
                 or gate.get("expiresUtcMs") != 0
                 or not isinstance(lease_spec, Mapping)
@@ -2889,6 +2912,19 @@ def _run_locked_operation(
         dapr_statefulsets = _named_resource_items(parsed_payloads[18:20])
         dapr_pods = parsed_payloads[20]
         dapr_service_accounts = _named_resource_items(parsed_payloads[21:26])
+        if _finite_target(target):
+            if len(parsed_payloads) != 27:
+                raise EvidenceValidationError("qualification omitted the finite runtime binding")
+            if target.get("_cleanup_only") is True:
+                observed = _require_mapping(parsed_payloads[26], "original finite runtime binding")
+                data = _require_mapping(observed.get("data"), "original finite runtime data")
+                if (observed.get("kind") != "ConfigMap" or observed.get("metadata", {}).get("namespace") != target["namespace"]
+                        or observed.get("metadata", {}).get("name") != "access-telemetry-campaign-identity"
+                        or data.get("profileId") != target["_cleanup_profile_id"] or data.get("profileSha256") != _target_profile_sha256(target)):
+                    raise EvidenceValidationError("cleanup original runtime binding differs")
+            else:
+                data = validate_campaign_runtime_binding(parsed_payloads[26])
+            runtime_inventory.append({"kind": "FiniteCampaignBinding", "name": "access-telemetry-campaign-identity", "data": data})
         for payload, required in (
             (qualification_service_accounts, {
                 "memories",
@@ -3002,13 +3038,13 @@ def _run_locked_operation(
                     ]
                     if len(selected) != 1:
                         raise EvidenceValidationError("qualification PG-ONPREM-2 running container identity is missing or duplicated")
-                    expected_digests = (
+                    expected_digests = None if target.get("_cleanup_only") is True else (
                         {EXPECTED_POSTGRESQL_IMAGE.rsplit("@", 1)[-1], EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST}
                         if expected_name == "postgresql"
-                        else {EXPECTED_RUNTIME_IMAGE.rsplit("@", 1)[-1], EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST}
+                        else {active_runtime_image().rsplit("@", 1)[-1], active_runtime_manifest()}
                     )
                     observed = re.search(r"sha256:[0-9a-f]{64}\Z", str(selected[0].get("imageID")))
-                    if observed is None or observed.group() not in expected_digests:
+                    if observed is None or (expected_digests is not None and observed.group() not in expected_digests):
                         raise EvidenceValidationError("qualification running image differs from PG-ONPREM-2")
                 runtime_inventory.append({
                     "kind": "PodRuntime",
@@ -3050,7 +3086,7 @@ def _run_locked_operation(
         result = {
             "kind": "non-production-qualification",
             "namespace": target["namespace"],
-            "profile_sha256": STORY_27_4_PROFILE_SHA256,
+            "profile_sha256": _target_profile_sha256(target),
             "writes_state": "disabled",
             "runtime_identity_sha256": runtime_identity_sha256,
             "result_count": len(stdout_parts),
@@ -3081,7 +3117,7 @@ def _run_locked_operation(
         lease_spec = lease_payload.get("spec") if isinstance(lease_payload, Mapping) else None
         if (
             gate.get("state") != "disabled"
-            or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
+            or gate.get("profileSha256") != _target_profile_sha256(target)
             or type(gate.get("expiresUtcMs")) is not int
             or gate.get("expiresUtcMs") != 0
             or not isinstance(lease_spec, Mapping)
@@ -3131,7 +3167,7 @@ def _run_locked_operation(
             or lease_spec.get("holderIdentity") != target["_lease_holder"]
             or lease_spec.get("leaseDurationSeconds") != _QUALIFICATION_SESSION_SECONDS
             or gate.get("state") != "enabled"
-            or gate.get("profileSha256") != STORY_27_4_PROFILE_SHA256
+            or gate.get("profileSha256") != _target_profile_sha256(target)
             or type(expires_utc_ms) is not int
             or expires_utc_ms <= _utc_now_milliseconds()
             or expires_utc_ms > _utc_now_milliseconds() + (_QUALIFICATION_SESSION_SECONDS * 1000) + 5_000
@@ -3774,7 +3810,7 @@ def _transition(
     if (
         identity.get("kind") != "non-production-qualification"
         or identity.get("namespace") != target["namespace"]
-        or identity.get("profile_sha256") != STORY_27_4_PROFILE_SHA256
+        or identity.get("profile_sha256") != _target_profile_sha256(target)
         or identity.get("writes_state") != "disabled"
     ):
         raise EvidenceValidationError("qualification target identity is not an exact disabled-profile match")
@@ -3853,7 +3889,7 @@ def _execute_qualification(
         if (
             identity.get("kind") != "non-production-qualification"
             or identity.get("namespace") != target["namespace"]
-            or identity.get("profile_sha256") != STORY_27_4_PROFILE_SHA256
+            or identity.get("profile_sha256") != _target_profile_sha256(target)
             or identity.get("writes_state") != "disabled"
         ):
             raise EvidenceValidationError(
@@ -3984,6 +4020,8 @@ def _execute_qualification(
         # producer exits nonzero, but producer-owned cleanup does not depend on it.
         if acquired_ownership or target.get("_lease_acquired") is True or target.get("_cleanup_expired_lease") is True:
             try:
+                if target.get("_authority_required") is True:
+                    _authorize_cleanup_target(target)
                 disable, disable_command = _run_operation(target, checkpoint, "qualification-disable")
                 results["qualification-disable"] = {**disable, "_command": disable_command}
                 commands.append(disable_command)
@@ -3991,6 +4029,7 @@ def _execute_qualification(
                 final, final_command = _run_operation(target, checkpoint, "qualification-final-state")
                 results["qualification-final-state"] = {**final, "_command": final_command}
                 commands.append(final_command)
+                target.pop("_cleanup_only", None)
     return results, commands
 
 
@@ -4158,7 +4197,7 @@ def _c3(
         "target_kind": target["kind"],
         "kube_context": target["kube_context"],
         "namespace": target["namespace"],
-        "profile_sha256": STORY_27_4_PROFILE_SHA256,
+        "profile_sha256": _target_profile_sha256(target),
         "workload_sha256": STORY_27_4_WORKLOAD_SHA256,
         "c1_platform_operations_reviewer": target["_platform_operations_reviewer"],
         "source_commit": os.environ.get("HEXALITH_STORY_27_4_SOURCE_COMMIT", "unbound"),
@@ -4402,11 +4441,12 @@ def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
         )
         if _SAFE_TARGET.fullmatch(reviewer) is None:
             raise EvidenceValidationError("validated C1 platform-operations reviewer is not bounded")
-        target = dict(_load_target(Path(args.scenario_input)))
+        target = dict(_load_target(Path(args.scenario_input), cleanup_only=args.disable_only))
         target["_authority_required"] = True
         target["_platform_operations_reviewer"] = reviewer
         target["_lease_holder"] = f"story-27-4/{reviewer}/{os.getpid()}-{_utc_now_milliseconds()}"
         if not args.disable_only:
+            validate_current_profile_inputs(Path.cwd(), launch_admission=True, require_original_admission=checkpoint == "c3-retention-reclamation")
             _authorize_target(target)
         if checkpoint == "c4-failure-privacy-observability" and not args.disable_only:
             # Credential validation is intentionally completed before the first
@@ -4435,7 +4475,7 @@ def run(checkpoint: str, argv: Sequence[str] | None = None) -> int:
         payload = {
             "schema_version": 1,
             "checkpoint": checkpoint,
-            "profile_sha256": STORY_27_4_PROFILE_SHA256,
+            "profile_sha256": _target_profile_sha256(target),
             "workload_sha256": STORY_27_4_WORKLOAD_SHA256,
             "owner": "hexalith-platform-operations",
             "failure_count": 0,

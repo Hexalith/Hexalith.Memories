@@ -1101,6 +1101,58 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         }
     }
 
+    [Fact]
+    public void Gate_FiniteCampaignRequiresExactApprovedComponentAndShortMountedGateInQualification()
+    {
+        string path = Path.GetTempFileName();
+        string profileHash = new('a', 64);
+        try
+        {
+            File.WriteAllText(path, "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" + profileHash +
+                "\",\"expiresUtcMs\":" + Now.AddMinutes(1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) + "}");
+            IHostEnvironment environment = Substitute.For<IHostEnvironment>();
+            environment.EnvironmentName.Returns("Qualification");
+            IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AccessTelemetryQualification:GatePath"] = path,
+                ["AccessTelemetryQualification:ProfileId"] = "PG-FINITE-CAMPAIGN-1",
+                ["AccessTelemetryQualification:ApprovedProfileHash"] = profileHash,
+                ["AccessTelemetryLifecycle:ComponentProfileHash"] = profileHash,
+            }).Build();
+            var gate = new AccessTelemetryQualificationGate(environment, configuration, new FakeTimeProvider(Now));
+            gate.TryValidate(out _).ShouldBeTrue();
+
+            foreach ((string key, string? replacement) in new (string, string?)[]
+            {
+                ("AccessTelemetryQualification:ProfileId", null),
+                ("AccessTelemetryQualification:ProfileId", "PG-ONPREM-2"),
+                ("AccessTelemetryQualification:ApprovedProfileHash", null),
+                ("AccessTelemetryQualification:ApprovedProfileHash", new string('A', 64)),
+                ("AccessTelemetryQualification:ApprovedProfileHash", AccessTelemetryQualificationGate.ApprovedProfileSha256),
+                ("AccessTelemetryLifecycle:ComponentProfileHash", new string('b', 64)),
+                ("AccessTelemetryLifecycle:LocalFunctionalRunId", "foreign-local-intent"),
+            })
+            {
+                string? original = configuration[key];
+                configuration[key] = replacement;
+                gate.TryValidate(out _).ShouldBeFalse();
+                configuration[key] = original;
+            }
+
+            environment.EnvironmentName.Returns(Environments.Production);
+            gate.TryValidate(out _).ShouldBeFalse();
+            environment.EnvironmentName.Returns("Qualification");
+            File.WriteAllText(path, "{\"schemaVersion\":1,\"state\":\"enabled\",\"profileSha256\":\"" + new string('b', 64) +
+                "\",\"expiresUtcMs\":" + Now.AddMinutes(1).ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture) + "}");
+            gate.TryValidate(out _).ShouldBeFalse();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+    }
+
     private static AccessTelemetryQualificationGate CreateGate(
         string path,
         string environmentName,

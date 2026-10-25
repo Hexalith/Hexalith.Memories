@@ -9,3 +9,20 @@ The next work is the separately scheduled [full qualification campaign](access-t
 Preserve all 25 C1 gates, two-writer replacement/fault work, real 1/24/168-hour cohorts and physical reclamation, distinct Operations/Security acceptance, terminal checks and publication verification. The former profiles and completed local run supply no full-profile credit. The local run's four-hour budget does not authorize the full campaign's 216-hour producer bound.
 
 Functional completion is its own outcome. Full qualification, Production admission and A41 remain separately scheduled; Story 27.4 overall stays in progress. Keep `github:user:6775094` / `sole-owner/self-reviewed`, existing isolation/security, real elapsed time, bounded resource ownership, and previous retained resources. The current report preserves the full campaign's pending status matrix.
+
+The smaller full-campaign continuation is now implemented as a provisional
+`PG-FINITE-CAMPAIGN-1` capacity/configuration and consumer path. See the
+[campaign register](access-telemetry-full-qualification.md#smaller-finite-campaign-profile--2026-10-25)
+and [current report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md#smaller-finite-campaign-implementation--2026-10-25).
+Full-campaign PG/backup allocations now depend on a validated source-bound finite
+renewal schedule; actual compatible timing/isolation evidence is missing and no
+exact data allocation is selected. The24/57/16GiB single-collection lower bound
+is superseded. Fixed other primary storage is33GiB and compute16250m/31GiB;
+the observed14-CPU host is insufficient. Actual full environment/lifecycle,
+monitored bounds, C2 drain/C3 isolation, original-admission issuer/key/UTC custody,
+images/render/input/command adoption and operational identities remain missing.
+No campaign is ready/adopted/qualified and no launch approval is requested.
+The one ordinary review is complete and four findings are fixed, with none deferred.
+Final coordinator verification passes33 authority,41 retention,18 capacity and16
+finite-consumer tests; the report retains exact results and the C# build limitation. WINDOW/full/Production/A41 states and historical
+identities remain unchanged.

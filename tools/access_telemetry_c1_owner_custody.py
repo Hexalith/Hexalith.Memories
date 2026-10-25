@@ -75,6 +75,7 @@ def _compose_owner_run_files(
     action: str,
     inspection=None,
     artifacts=None,
+    profile_binding=None,
 ):
     """Compose offline inspection within the complete private descriptor lifetime.
 
@@ -127,7 +128,7 @@ def _compose_owner_run_files(
                 return status_bytes
 
             result = _dispatch_owner_run(record, plan_bytes, approved_plan_sha256,
-                                         now=now, action=action, status_reader=read_status)
+                                         now=now, action=action, status_reader=read_status, profile_binding=profile_binding)
             if inspection is not None:
                 result = inspection(retained_plan, result.snapshot,
                                     JsonSnapshot(status_bytes).value["withdrawn"])

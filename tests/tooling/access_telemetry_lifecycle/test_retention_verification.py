@@ -252,7 +252,10 @@ def common(checkpoint: str) -> dict[str, object]:
     source_hashes = {
         producer_path: SHA,
         "tools/verify_access_telemetry_lifecycle.py": SHA,
+        "tools/access_telemetry_campaign_profile.py": SHA,
     }
+    from verify_access_telemetry_lifecycle import OWNER_AUTHORITY_SOURCES
+    source_hashes.update({relative: SHA for relative in OWNER_AUTHORITY_SOURCES})
     if checkpoint in {
         "c2-production-replacement",
         "c3-retention-reclamation",
@@ -1868,11 +1871,13 @@ def manifest(paths: dict[str, str]) -> dict[str, object]:
 
 
 def install_tools(repository: Path) -> None:
+    from verify_access_telemetry_lifecycle import OWNER_AUTHORITY_SOURCES
     destination = repository / "tools"
     destination.mkdir()
-    for name in ("verify-access-telemetry-lifecycle.py", "verify_access_telemetry_lifecycle.py",
+    for name in {"verify-access-telemetry-lifecycle.py", "verify_access_telemetry_lifecycle.py",
                  "access_telemetry_producer_common.py", "access_telemetry_c2_producer.py",
-                 "access_telemetry_c3_producer.py", "access_telemetry_c4_producer.py"):
+                 "access_telemetry_c3_producer.py", "access_telemetry_c4_producer.py",
+                 *(Path(relative).name for relative in OWNER_AUTHORITY_SOURCES)}:
         shutil.copy2(TOOLS_DIR / name, destination / name)
     from verify_access_telemetry_lifecycle import canonical_pg_onprem_2_profile
     identity = canonical_pg_onprem_2_profile().identity

@@ -1,5 +1,258 @@
 # Story 27.4 — current retention results
 
+## Smaller finite campaign implementation — 2026-10-25
+
+**Implementation, focused verification and one ordinary review complete.** No full
+campaign was launched or target contacted. The new `PG-FINITE-CAMPAIGN-1` path
+is provisional pending actual measurements, source/command/input adoption,
+reservations and Platform's full environment/lifecycle. Story27.4 remains in
+progress; all34 full campaign gate rows, Production and A41 remain open. The
+completed WINDOW evidence below is preserved byte-for-byte.
+
+Platform owns `eng/helm-qualification/campaign_capacity.py`, additive maintained
+chart configuration and offline `qualify.py --campaign-capacity` dispatch.
+Memories owns `access_telemetry_campaign_profile.py`, explicit owner-run/v2
+profile binding, finite C1.13/C1.18/runtime semantics and the actual existing
+producer/offline/terminal/frozen-source consumers. Legacy constructors, default
+KVM identity `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb`,
+400GiB70/80/90% arithmetic, multiplier2,128GiB rewrite floor and seven-day
+exclusion remain historical and unchanged. (The exact full historical hash is
+retained in the campaign register and canonical manifest.)
+
+Let N be the number of complete C1 collections in the validated finite renewal
+schedule. Each collection reserves450000 C1.9 records,150000 C1.10 records and
+50000 other C1/C0 records. C2 reserves450000 writers +150000 separate backlog
++50000 other; C3 reserves375 seeds +125 newer controls; C4 reserves50000 other.
+The cumulative live/dead bound is therefore R=650000*N+700500 records, with no
+credit for earlier vacuum/reuse. A complete source/normalized-argument inventory
+has exactly one invocation per command per round; retries earn no extra allowance.
+The50000 terms are configured admission envelopes, not observed producer counts.
+Missing or excess inventory refuses; producer behavior remains unchanged.
+
+For the admitted R, raw relation/support bytes are4096*R (2048 heap/TOAST +2048
+all index/actor/due/catalogue/cursor/reminder state); M=ceil(5*4096*R/4) adds25%.
+Reserve one full M-byte rewrite,4GiB WAL and1GiB fixed DB overhead:
+PG=round_up_4GiB(ceil(5*(2*M+5GiB)/4)). The independent recoverable backup is
+round_up_4GiB(ceil(5*(M+5GiB)/4)). Both retain20% free at modeled peak. Fixed
+other primary allocations are8GiB control (etcd4/OpenBao1/logs+other3), three1GiB
+Scheduler volumes,4GiB app spill and18GiB host workspace:33GiB. Primary=PG+33GiB.
+These configured bounds require actual scoped physical/support/WAL/rewrite and
+performance measurements; no exact PG/backup allocation is selected without a
+compatible measured schedule. The former24GiB PG /57GiB primary /16GiB backup
+numbers are only a single-collection lower bound, superseded for the full campaign.
+Aggregate compute remains16250m CPU/31GiB (PG8CPU/16GiB, apps4.5CPU/7GiB,
+control2CPU/3GiB, Scheduler0.75CPU/1GiB and host1CPU/4GiB).
+
+A compatible renewal schedule remains a missing Platform prerequisite. The
+unchanged C1.15->C1.16 parent chain requires all25 descendants to be recaptured
+for each root refresh. A round reserves measured source-bound gate capture,
+decision and cleanup slots in parent order, at most24h capture/review lag, the
+original<=72h collection and<=24h review/use windows, and<=96h technical age.
+Their collection coverage must span the full C2/C3/C4 intervals inside336h.
+Each actual owner plan binds `campaignOriginUtcMs` and `renewalRound`; the
+consumer checks actual capture/collection times against that admitted round.
+A new round cannot move the immutable profile or original C3 origin/deadline.
+
+C1 fault/workers and whole-table maintenance can purge C3 cohorts early or
+confound exact125-row seeds/newer controls and physical attribution. The schedule
+therefore reserves no-overlap intervals for empty/seeding and every cohort's
+expiry/purge/reclamation, with newer-control/report isolation at168h. Shorter
+operation reservations require retained source-bound timing measurements;900s
+purge,24h reclamation and216h overall C3 policies remain unchanged. Every round
+requires exact retained zero unrelated live/dead/support-state readbacks and
+unchanged C3 cohort/due/reminder inventory, plus physical-attribution proof.
+C2's24h records must be proven drained/purged/reclaimed before C3's empty boundary.
+The proposed phase times alone cannot prove that fit. Missing timing, cleanup,
+C2 drain or C3 isolation measurements reject admission. No operational renewal
+count or compatible timeline is invented; unit schedules/receipts are simulations
+and supply no adopted evidence. Platform must supply a real compatible plan and
+exercise its native lifecycle; this change supplies no second orchestrator.
+
+Admission binds actual tool/toolchain, immutable runtime/backend images, complete
+chart, values/render, component/application/reporter, source/storage configuration
+and finite command inventory. Exact retained receipt contents must match measured
+operands, reservations, backing identities and competing demands. Missing full
+heap/index/support/WAL/rewrite/compute observations, unreserved or non-Linux
+backing, insufficient aggregate resources or same-domain backup refuses. Fresh
+outside-pinned storage/compute receipts expire after300s and name the immutable
+profile; observations may refresh only the original backing/allocation identities.
+
+Initial measurement freshness cannot be renewed by a fresh capacity receipt.
+A first use needs<=24h measurements. Before C3 dispatch, the private outside-approved
+owner plan must additionally bind `initialCapacityAdmission` (exact Ref digest),
+`capacityAdmissionIssuer`, `capacityAdmissionKeyPath` and
+`capacityAdmissionKeySha256`. Platform's small initial-admission artifact signs
+the exact immutable profile after strict fresh validation. Its issuer advances an
+authenticated independent UTC sample with same-boot CLOCK_BOOTTIME (sample<=60s)
+and stamps actual admission time; there is no user backdate argument. Verification
+uses only outside-approved issuer/key/receipt bytes, rechecks initial freshness at
+that authenticated original stamp, and preserves original identity/C3 time through
+multi-day continuation. The immutable initial300s compute/storage observations do
+not start expiring again during a valid continuation; separate current capacity
+receipts still require<=300s age before every launch. They may renew only observed
+available/reserved/competing quantities and receipt metadata over the original
+poolId/failureDomain/Linux backing/allocation ownership; backing changes need new
+adoption. The real issuer, key custody and trusted-UTC service remain absent
+operational prerequisites. No operational key, timestamp or receipt was created.
+
+Owned cleanup authenticates the original outside-approved profile, physical API/CA/
+cluster/namespace/runtime, session and exact Lease independently of changed capacity
+inputs. Actual disable-only and parent fallback retain this authority and preserve
+the original failure-packet profile. Foreign targets/sessions/Leases still refuse.
+Historical source closure is authenticated from the committed verifier's actual
+imports: authentic old C0/C2-C4 archives retain their original exact source sets;
+current exports require every actual import, including the finite-profile loader.
+Historical source cannot earn finite-profile credit.
+
+Self-reference is avoided deliberately. Values/render contain a named reference
+to `access-telemetry-campaign-identity/profileSha256`, shared by the configured
+lifecycle component and Qualification approved hash. After canonical hashing,
+Platform's `runtime_binding` produces the exact late-bound ConfigMap descriptor;
+its data is outside its own hashed inputs. C0 and every producer read it back
+and bind profile/capacity identity before mutation, with physical target/source/
+session authority unchanged. Server's runtime gate permits the finite hash only
+in Qualification with matching approved/component/mounted short gate. Partial,
+foreign, historical-as-finite, mixed local and Production intent refuse. The
+actual target-readback test constructs values -> bound profile -> canonical hash
+-> descriptor -> real consumer readback without mocking the calculation.
+
+### Accessible sizing evidence and missing operands
+
+- Read-only retained WINDOW
+  `/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-preexpiry-window-20261025-1gcua2ah/result-artifacts/functional-observations.json`,
+  SHA256`982a61627276a2fd3c71e13aaa47b5cecab14994b15e145c2c03b5aaab16f8e0`:
+ 250 actual retained canonical records encode to692 UTF-8 bytes each using
+ `json.dumps(record, ensure_ascii=False, separators=(',', ':'))`. This is offline
+ serialization of retained values, not physical PostgreSQL/index/support-state
+ or full-rate measurement. The sizing calculation reports aggregate counts and encoded byte lengths.
+- WINDOW `before-disposal/native-tests/pre-expiry-physical-cohort-a.json` contains
+ timing/status fields, with no physical capacity/amplification operands.
+- `/home/administrator/evidence/hexalith-memories` exists and contains C1.16 only;
+ C1.13/C1.18 paths and corresponding measurements are absent.
+- Read-only `/proc/meminfo`, `os.sched_getaffinity(0)` and `os.statvfs(Path.cwd())`
+ at2026-10-25T11:29:44.721523Z:14CPU slots;97021218816 total /
+ 67109687296 available memory bytes;282774736896 workspace available bytes,
+ device2096. CPU is below16250m. These readings reserve nothing and do not
+ establish aggregate competing demand, Linux-backed durable data allocation,
+ independent backup or performance. No existing reservation is claimed.
+
+The [campaign register's conditional plan](../../../docs/operations/access-telemetry-full-qualification.md#conditional-concrete-launch-and-disposition-plan--not-ready-for-authorization)
+records exact logical cluster/context/namespace, proposed private custody,
+336-hour phase bounds, no retries, input/capacity/authority admission, failure
+capture, owned stop/removal verification and prior-resource/Production/publication
+exclusions. Actual native full-environment provision/stop routes, run/engine/API/
+CA/UID identities, new Dapr/application/reporter digests, complete render/commands,
+measurements/reservations and canonical operational profile remain missing.
+The synthetic chart qualifier cannot fill those gaps. The plan is not deployable
+or ready for authorization; no operational approval is requested. Platform still
+must implement/supply those real environment/lifecycle/monitoring prerequisites.
+
+### Executed focused checks
+
+Commands below run from Memories root unless the cwd is stated. Unit capacity,
+private files, command doubles and simulated elapsed time confer no live credit.
+
+| Exact command / cwd | Result and limit |
+| :--- | :--- |
+| Platform root: `python3 -B -m unittest discover -s eng/helm-qualification -p test_campaign_capacity.py -v` |12/12 passed, final0.226s, exit0. Math, all component allocations, same-pool aggregate competition, independent backup, missing/drifted/stale operands and identity-preserving fresh capacity receipts. |
+| `python3 -B -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p test_campaign_profile.py -v` | 9/9 passed1.042s, exit0; actual all25 owner gates, finite/old separation, frozen selection, refusal before child/target and actual descriptor readback. |
+| Platform root: `HELM_BIN=/tmp/story27-pinned-helm-w8usbu5u/helm python3 -B -m unittest discover -s eng/helm-qualification -p test_chart.py -v` |19/19 passed127.235s, exit0. All historical chart cases and added finite resource/replica/sidecar case. Final affected late-binding/resource case rerun1/1 passed2.101s, exit0: `HELM_BIN=/tmp/story27-pinned-helm-w8usbu5u/helm python3 -B -m unittest -v test_chart.ChartTests.test_finite_campaign_resources_replicas_and_sidecars_are_explicit`, cwd Platform `eng/helm-qualification`. |
+| `PYTHONPATH=tests/tooling/access_telemetry_lifecycle python3 -B -m unittest -v test_owner_review_fixes test_pg_onprem_2_adoption.ApprovedProfileAdoptionTests.test_authenticated_platform_child_runtime_passes_c0_and_downstream_inventory test_pg_onprem_2_adoption.ApprovedProfileAdoptionTests.test_both_python_cli_preflights_refuse_bound_input_drift_before_any_kubectl` |10/10 passed30.260s, exit0, after source/export fixture corrections. Existing C2 renewal, C3 original deadline/resume, cleanup/fallback, terminal/pre/postflight and C0/adoption paths. |
+| `tests/tooling/access_telemetry_c1_interchange`: `python3 -B -m unittest -v test_owner_run test_owner_dispatch test_owner_custody` |106/106 passed1.513s, exit0; historical pure inspection/custody behavior. |
+| `python3 -B -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p test_retention_verification.py -v` |41/41 passed79.878s, exit0, before final finite-only runtime/command-plan additions. Relevant export/adoption/authority paths were covered by the10-case rerun above; no final whole-suite claim is made. |
+| Platform root: `python3 -B eng/helm-qualification/qualify.py --campaign-capacity > /tmp/story27-finite-candidate.json` | Exit0; emitted provisional status and missing measurements; after the renewal correction sizing is blocked with null PG/backup requests until a compatible schedule binds without a Qualification object or cluster call. No bound operational profile was emitted. |
+| `dotnet run --project /tmp/story27-finite-runtime-gate-6bsli4lt/GateChecks.csproj -c Debug -p:NuGetAudit=false -p:UseSharedCompilation=false` | Exit0,12 runtime checks passed. Temporary project links the actual edited Gate.cs and current source-built Contracts DLL; positive finite and historical acceptance plus partial/foreign/uppercase/component/local/Production/short-gate/expiry refusals. No application topology launched. |
+
+Helm was absent from PATH. A temporary copy of the already-pinned4.2.0 distribution
+was fetched from the tracked toolchain URL; archive SHA256
+`97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096` matched before
+extracting its binary into `/tmp/story27-pinned-helm-w8usbu5u/helm`. No repository
+dependency/toolchain pin changed and no cluster was contacted.
+
+**Broad C# blocker.** Exact command:
+`dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -c Debug -p:UseHexalithProjectReferences=true -p:UseNuGetDeps=false -p:RunAnalyzers=false -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -m:1 --no-restore`
+failed15.55s with0 warnings/3 errors. Each is`NETSDK1004: Assets file .../obj/project.assets.json not found`
+for existing EventStore.Contracts, EventStore.Client and EventStore.DomainService
+source projects under`references/Hexalith.EventStore/src/`. No dependencies were
+changed or submodules initialized. The narrow linked-source fallback above passed.
+The added repository xUnit runtime-gate case could not run through that blocked
+project; its complete owning-project build/test remains a disclosed prerequisite.
+
+**Failed-check disclosure.** The initial25-case authority run had1 failure when
+an uncommitted edited owner-run source was compared to the old fixture's HEAD hash.
+The corrected real frozen-source fixture's named test passed1/1 in0.363s. The
+initial20-case review/adoption run had6 failures/1 error: the same source-fixture
+assumption and missing loader in old closed exports; corrected fixtures bind the
+new import set and an unchanged actual C1 source. The affected10-case rerun above
+passes without weakening refusal/assertion behavior. The new actual descriptor
+readback test first exposed a missing `name` in the added runtime inventory entry;
+that production defect was fixed. Two subsequent fixture errors used an old Dapr
+digest and the test-only inline script's cached first bytes; explicit new digest
+and distinct current/foreign fixture paths corrected them. The named test then
+passed1/1 in0.482s. No pre-implementation red run is claimed; initial failures and
+final passes are separate evidence. No live performance/retention/campaign credit
+is inferred from these checks.
+
+Changed files are the two profile/capacity modules; existing Memories verifier,
+producer, owner-run/dispatch/custody/authority and gate semantics; the runtime
+Server gate and its xUnit case; focused Python tests; Platform qualifier/chart/
+tests/README; this report, Spec14, adapter appendix, campaign register and handoff.
+The one ordinary coordinator review is complete and its four findings are fixed;
+final coordinator verification passes, as recorded below. No
+infrastructure, cluster, Git index/ref/commit/push, submodule initialization,
+dependency or sprint-state mutation occurred. Parent baseline/frontmatter and
+completed local evidence remain preserved.
+
+
+### Coordinator final verification — smaller campaign
+
+Final checks ran against the completed renewal-aware implementation. The one
+ordinary review is complete: three high and one medium finding were accepted,
+fixed and verified; none is deferred. The coordinator also corrected the omitted
+C1 recapture inventory and authenticated the Platform module's approved source
+bytes before executing its module body. An actual import-effect regression
+confirms tampered source is refused before its side effect.
+
+| Exact command / cwd | Final result |
+| :--- | :--- |
+| Memories root: `python3 -B -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p 'test_owner*.py' -v` |33/33 passed43.760s, exit0, no failures/errors/skips; `/tmp/story27-smaller-final-authority.log`. |
+| Memories root: `python3 -B -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p test_retention_verification.py -v` |41/41 passed55.478s, exit0, no failures/errors/skips; `/tmp/story27-smaller-final-retention.log`. |
+| Platform root: `python3 -B -m unittest discover -s eng/helm-qualification -p test_campaign_capacity.py -v` |18/18 passed1.408s, exit0, no failures/errors/skips; `/tmp/story27-smaller-final-capacity.log`. Includes the real offline original-admission CLI and renewal schedule/evidence refusal paths. |
+| Memories root: `PYTHONPATH=tests/tooling/access_telemetry_lifecycle python3 -B -m unittest -v test_campaign_profile test_campaign_review_fixes` |16/16 passed5.813s, exit0, no failures/errors/skips; `/tmp/story27-smaller-final-campaign.log`. Includes all25 gates, actual round binding, frozen imports, original C3 deadline, stale first use, backing drift, actual disable/fallback after input drift, authenticated historical imports and rejection before changed Platform source executes. |
+| Compile the11 changed production Python modules with `compile()`; call `validate_current_profile_inputs(Path.cwd())`; both owning repositories' `git diff --check` | Passed. Default historical hash remains `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb`. |
+
+The original18/15 focused fix runs passed1.367s/8.637s;25 affected
+comparison/authority/offline/frozen cases passed42.276s. Two affected legacy
+cleanup cases initially exposed a missing in-process Lease nonce; it was fixed,
+and those cases passed2/2 in80.535s before the final41-case lane above. Earlier
+33/41 coordinator runs passed52.045s/66.773s. No pre-implementation red run is
+claimed. The latest finite-only source-import guard was followed by the16-case
+rerun; legacy lanes do not enter that branch. The previously executed19 chart,
+106 owner-custody and12 actual-source C# checks remain applicable to unchanged
+paths. The owning C# test-project NETSDK1004 result and its linked-source fallback
+are disclosed above; no passing complete C# project build is claimed.
+
+Preservation checks match all four pre-change hashes: the completed report from
+`## Functional result` onward, historical KVM profile JSON, sprint status and all34
+full gate rows remain byte-identical. Spec14's original frontmatter/baseline and
+in-progress parent state remain unchanged. No live elapsed, capacity reservation,
+new operational canonical identity or full qualification credit follows.
+
+Read-only final Git inspection found an unrelated Memories commit during this
+work: HEAD advanced from`b29f3d67f90d4abead744f4f689d6be80ca40f8a` to
+`d9826761def835880ee352b9df3517fdf4ac41e0` (foreign semantic hashes during erasure).
+Its12 unrelated files were preserved. Platform HEAD remains
+`b9cf0e78c42ca8bfe1aa5488cc4340c238887acb`. This workflow performed no staging,
+commit, push, ref, dependency or submodule-initialization operation.
+
+The implementation tasks are complete. Full operational PG/backup allocation and
+canonical adoption remain blocked on real renewal/workload/timing/isolation,
+physical amplification, issuer/UTC/key custody, reservations and Platform's native
+full environment/lifecycle. Fixed non-data primary storage is33GiB and aggregate
+compute16250m/31GiB; observed14-CPU capacity is insufficient. The conditional
+launch/disposal plan and dates remain provisional and unapproved. Overall
+Story27.4, full campaign, Production and A41 stay open.
+
 The [active Spec 14](../spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) governs this functional run. The [full campaign checklist](../../../docs/operations/access-telemetry-full-qualification.md) remains separate.
 
 ## Owner authority and continuation implementation — 2026-10-25
@@ -86,6 +339,44 @@ python3 -B -m unittest -v test_selected_read_retry \
 **33/33 passed in18.058s, exit0** (28 retry cases plus five named acceptance cases); `git diff --check` also passed before these documentary additions. This rerun is offline regression evidence. The completed local outcome remains unchanged. Full preparation is **blocked on Platform-owned environment/capacity and Memories' authority/continuation implementation**, with exact profile adoption and a complete authorized launch plan still pending; all full/Production/A41 states remain open.
 
 One ordinary reviewer independently checked the target/toolchain, profile distinction, source capability, capacity and UTC arithmetic. The accepted substantive finding is now an explicit Memories-owned prerequisite: `_validate_predecessor` refuses structurally valid v2 predecessors until actual I3–I5 authority, retained-reference custody, session status and P7 bounds are verified; the runbook also requires verified owner-mode migration and multi-day continuation. Environment/profile changes cannot bypass that refusal. Documentary checks preserve all34 original full gate rows byte-for-byte, resolve added local links/anchors, and reconcile the phase seconds to **172800 + 50400 + 777600 + 50400 + 157500 + 900 = 1209600** (336hours). An initial ad-hoc row comparison also selected the new schedule table; scoping it to the original `Gate` table corrected that check without changing a gate. The existing local pass and all open execution prerequisites remain accurately recorded.
+
+### Ordinary-review fixes and renewal acceptance correction
+
+The four accepted findings in Spec14 are resolved. Strict initial freshness and
+outside-approved original admission prevent a new48h-old profile from entering
+actual selection/CLI launch; actual three-day C3 selection retains profile and
+original origin, while missing/wrong issuer/receipt denies before dispatch.
+Pool/failure-domain/allocation substitution refuses. Original owned disable-only,
+real parent fallback and failure packet construction survive component/measurement
+drift, with foreign API/session/Lease still denied. Committed-source import
+inspection preserves authentic historical exact closures and requires all current
+imports without transferring historical credit to the new finite profile.
+
+The coordinator acceptance correction also supersedes the initial single-C1
+sizing above. Actual renewal/timing/noninterference/physical evidence is absent;
+no operational N, PG/backup allocation, issuer/key/clock or adopted receipt exists.
+No second review or new planning workflow was run. Final coordinator checks remain
+pending. The exact additional focused commands/results are recorded below.
+
+| Exact focused fix command / cwd | Result and scope |
+| :--- | :--- |
+| Platform `eng/helm-qualification`: `python3 -B -m unittest -v test_campaign_capacity` | Final18/18 passed1.367s, exit0. Real offline qualifier CLI forwards original-admission anchors and denies foreign issuer. Fresh initial admission, immutable three-day identity, foreign backing denial, all-round inventory/coverage, missing/incompatible timing/isolation/drain and capacity refusal are covered. All receipts/schedules are temporary simulations. |
+| `PYTHONPATH=tests/tooling/access_telemetry_lifecycle python3 -B -m unittest -v test_campaign_profile test_campaign_review_fixes` | Final15/15 passed8.637s, exit0. Actual finite owner round/capture binding, all25 packets, real frozen CLI, initial48h denial, C3 mandatory original proof before dispatch, authenticated three-day selection with unchanged origin, input-drift disable-only/fallback and foreign scope denials; authentic old committed C0/C2-C4 closures pass and omitted current imports/new-profile archival credit refuse. |
+| `PYTHONPATH=tests/tooling/access_telemetry_lifecycle python3 -B -m unittest -v test_campaign_profile test_campaign_review_fixes test_owner_review_fixes test_owner_authority.OwnerAuthorityTests.test_offline_checkpoint_uses_actual_consumer_and_refuses_mixed_session test_owner_authority.OwnerAuthorityTests.test_frozen_source_import_closure_is_complete` |25/25 passed42.276s, exit0 after renewal-round wiring; before the final source-bound C3 operation-reservation detail, whose affected15 finite cases were rerun above. Covers existing short-verdict renewal, multi-day journal, cleanup, fallback and terminal/offline/frozen paths. |
+| `PYTHONPATH=tests/tooling/access_telemetry_lifecycle python3 -B -m unittest -v test_retention_verification.RetentionVerificationTests.test_producer_restores_disabled_state_when_body_fails_after_enable test_retention_verification.RetentionVerificationTests.test_producer_restores_disabled_state_when_enable_response_is_malformed` |2/2 passed80.535s, exit0 after the in-process owned Lease nonce correction. No broad suite was rerun by the implementer during review fixes. |
+| Coordinator pre-fix compatibility lanes, retained `/tmp/story27-smaller-coordinator-authority.log` and `/tmp/story27-smaller-coordinator-retention.log` |33/33 authority in52.045s and41/41 retention in66.773s passed before these four fixes/renewal correction. These are accurate pre-fix results, not final settled-code claims. Root will perform final compatibility verification. |
+| `git diff --check` (Memories and Platform) | Passed. Original Spec frontmatter, historical KVM bytes, sprint bytes and all34 full-gate rows are preserved; report bytes from `Functional result` have SHA256`0459e3b2893a5ee665ce4b1622d84a8db565cd69b10c31440c33524f5274e76a`. Tracked CRLF documentation format is retained. |
+
+**Fix-run failure disclosure.** An initial21-case focused compatibility run passed
+19 and failed two legacy cleanup cases: the new cleanup Lease comparison omitted
+the nonce stored on the in-process target. It now uses that owned target nonce
+or the inherited execution nonce; both failed cases reran green above. Two
+intermediate unittest commands omitted the needed cwd/PYTHONPATH and failed import
+before tests; an initial renewal test invocation used the old fixture before its
+schedule update (15 errors). Corrected focused commands/results are recorded
+separately. No production failure or live campaign credit is inferred from setup
+errors or simulated checks. The existing C# restore-assets limitation and12-check
+linked-source fallback above remain unchanged; no C# file changed in these fixes.
 
 ## Functional result
 

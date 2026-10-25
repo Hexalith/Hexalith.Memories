@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ast
 from decimal import Decimal, InvalidOperation, localcontext
 import base64
 import binascii
@@ -22,6 +23,13 @@ import threading
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Sequence
+
+from access_telemetry_campaign_profile import (
+    active_profile, active_profile_id, active_profile_sha256,
+    active_runtime_image, active_runtime_manifest, active_runtime_version,
+    selected_campaign_profile,
+    validate_campaign_runtime_binding,
+)
 
 
 class EnvironmentIdentityError(ValueError):
@@ -183,7 +191,7 @@ class EnvironmentIdentity:
         rows, not by this hash.
         """
 
-        identity = canonical_pg_onprem_2_profile().identity
+        identity = dict(active_profile().identity)
         identity.update({
             "profileId": self.profile_id,
             "kubeContext": self.kube_context,
@@ -476,10 +484,12 @@ def canonical_pg_onprem_2_profile() -> AdapterProfile:
     return profile
 
 
-def validate_current_profile_inputs(repository_root: Path | None = None) -> None:
+def validate_current_profile_inputs(repository_root: Path | None = None, *, launch_admission: bool = False, require_original_admission: bool = False) -> None:
     """Reject source/configuration drift before contacting a qualification target."""
 
     root = repository_root or Path(__file__).resolve().parents[1]
+    if selected_campaign_profile(root, launch=launch_admission, require_original=require_original_admission) is not None:
+        return
     profile = canonical_pg_onprem_2_profile()
     if profile.manifest()["profile_sha256"] != CURRENT_PROFILE_SHA256:
         raise EvidenceValidationError("approved PG-ONPREM-2 canonical identity drifted")
@@ -1202,7 +1212,7 @@ def _c0_profile_runtime_reason(
         allowed = {
             EXPECTED_POSTGRESQL_IMAGE.rsplit("@", 1)[-1], EXPECTED_POSTGRESQL_LINUX_AMD64_MANIFEST,
         } if container_name == "postgresql" else {
-            EXPECTED_RUNTIME_IMAGE.rsplit("@", 1)[-1], EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST,
+            active_runtime_image().rsplit("@", 1)[-1], active_runtime_manifest(),
         }
         for pod in running:
             metadata, status = _mapping(pod.get("metadata")), _mapping(pod.get("status"))
@@ -1262,6 +1272,16 @@ def collect_capacity_evidence(
     """
 
     values = os.environ if environment is None else environment
+    if values.get("HEXALITH_CAMPAIGN_PROFILE") or values.get("HEXALITH_CAMPAIGN_APPROVED_PROFILE_SHA256"):
+        try:
+            campaign = selected_campaign_profile(launch=True)
+            return {"status": "measured", "semantics": "finite-campaign/v1",
+                    "profile_sha256": active_profile_sha256(), "requirements": campaign["sizing"],
+                    "cohort_records": {"1h": 125, "24h": 125, "168h": 125},
+                    "continuous_seven_day_credit": False, "historical_400_gib_credit": False}
+        except (ValueError, OSError, TypeError, KeyError):
+            return {"status": "blocked", "semantics": "finite-campaign/v1",
+                    "reason": "bound profile and fresh capacity admission required", "admissions": []}
     missing = sorted(
         name
         for name in (*_CAPACITY_ENV.values(), *_CAPACITY_HORIZON_ENV.values())
@@ -1383,7 +1403,7 @@ def _write_rejection_evidence(
     path.parent.mkdir(parents=True, exist_ok=True)
     manifest = profile.manifest()
     timestamp = datetime.now(timezone.utc).isoformat()
-    reviewed_manifest = canonical_pg_onprem_2_profile().manifest()
+    reviewed_manifest = active_profile().manifest()
     lines = [
         "# Story 27.3 C1 Adapter Profile Evidence",
         "",
@@ -1419,7 +1439,7 @@ def _write_rejection_evidence(
             # this packet but are deliberately outside the hash.
             "- profile_hash_covers: `declared profile identity (profileId, kubeContext, kubeNamespace), the approved backend/runtime/platform/security/deployment identities and bound inputs, the capacity/fault boundary, the C1 capability set, and the ADR two-writer workload envelope; no live query result and no invocation parameter`",
             f"- reviewed_canonical_profile_sha256: `{reviewed_manifest['profile_sha256']}`",
-            "- reviewed_canonical_profile_source: `tools/verify_access_telemetry_lifecycle.py::canonical_pg_onprem_2_profile`",
+            "- reviewed_canonical_profile_source: `tools/access_telemetry_campaign_profile.py::active_profile`",
             f"- runtime_matches_reviewed_profile: `{str(manifest['profile_sha256'] == reviewed_manifest['profile_sha256']).lower()}`",
             "",
             "## Reviewed Source Hashes",
@@ -1585,7 +1605,7 @@ def _write_c0_adapter_profile_pass(
             configuration.pop("secret_scope_count", None)
     runtime_artifact = {
         "schema_version": 1,
-        "profile_sha256": STORY_27_4_PROFILE_SHA256,
+        "profile_sha256": active_profile_sha256(),
         "workload_sha256": STORY_27_4_WORKLOAD_SHA256,
         "deployment_id_sha256": _sha256(identity.deployment_id),
         "summaries": evidence_summaries,
@@ -1646,7 +1666,7 @@ def _write_c0_adapter_profile_pass(
         )
     common = {
         "schema_version": 1,
-        "profile_sha256": STORY_27_4_PROFILE_SHA256,
+        "profile_sha256": active_profile_sha256(),
         "workload_sha256": STORY_27_4_WORKLOAD_SHA256,
         "source_commit": source_commit,
         "source_hashes": source_hashes,
@@ -1673,7 +1693,7 @@ def _write_c0_adapter_profile_pass(
         "status": "passed",
         "production_lifecycle_writes": "disabled",
         "results": {
-            "profile_id": EXPECTED_PROFILE_ID,
+            "profile_id": active_profile_id(),
             "profile_complete": True,
             "runtime_matches_reviewed_profile": True,
             "immutable_artifacts": {
@@ -1797,12 +1817,16 @@ def run_adapter_profile_checkpoint(
             if c0_wrapper_path is not None
             else "execution target does not match the approved on-premises Kubernetes namespace"
         )
-    elif identity.profile_id != EXPECTED_PROFILE_ID:
+    elif identity.profile_id != active_profile_id():
         preflight_reason = "profile identity does not match the approved immutable PG-ONPREM-2 profile"
 
     if preflight_reason is None:
         try:
-            validate_current_profile_inputs(repository_root)
+            validate_current_profile_inputs(repository_root, launch_admission=True)
+            selected = selected_campaign_profile(repository_root)
+            if selected is not None and (identity.kube_context != selected["target"]["context"]
+                    or identity.kube_namespace != selected["target"]["namespace"]):
+                raise EvidenceValidationError("adapter target differs from the bound finite profile")
         except EvidenceValidationError as error:
             preflight_reason = str(error)
 
@@ -1944,12 +1968,12 @@ def run_adapter_profile_checkpoint(
                 reason = "the running state component maxConns differs from PG-ONPREM-2"
             elif runtime_reason := _c0_profile_runtime_reason(pod_groups, deployments):
                 reason = runtime_reason
-            elif runtime_identity.get("daprd_version") != "1.18.1":
+            elif runtime_identity.get("daprd_version") != active_runtime_version():
                 reason = "the running Dapr version differs from PG-ONPREM-2"
             elif not isinstance(sidecar_digests, list) or not sidecar_digests or any(
                 re.fullmatch(r"(?:[A-Za-z0-9._:/@-]+)?sha256:[0-9a-f]{64}", image_id) is None
                 or "sha256:" + image_id.rsplit("sha256:", 1)[-1] not in {
-                    EXPECTED_RUNTIME_IMAGE.rsplit("@", 1)[-1], EXPECTED_RUNTIME_LINUX_AMD64_MANIFEST,
+                    active_runtime_image().rsplit("@", 1)[-1], active_runtime_manifest(),
                 }
                 for image_id in sidecar_digests
             ):
@@ -1967,6 +1991,16 @@ def run_adapter_profile_checkpoint(
 
     if not reason and workload_before != workload_after:
         reason = "deployment workload identity changed during C0 collection"
+
+    if not reason and selected_campaign_profile(repository_root) is not None:
+        binding = _run_kubectl(identity, "get", "configmap", "access-telemetry-campaign-identity", "-o", "json")
+        observations.append(binding)
+        try:
+            if binding.exit_code != 0:
+                raise EvidenceValidationError("finite campaign identity observation failed")
+            summaries["finite_campaign_runtime_binding"] = validate_campaign_runtime_binding(binding.payload)
+        except EvidenceValidationError:
+            reason = "finite campaign runtime binding could not be authenticated"
 
     if not reason:
         pod_rechecks = _collect_c0_profile_pods(identity)
@@ -2542,7 +2576,7 @@ def _normalize_repo_path(repository_root: Path, value: Any, name: str) -> str:
     return relative
 
 
-def _hash_git_blob(repository_root: Path, commit: str, relative: str) -> str:
+def _read_git_blob(repository_root: Path, commit: str, relative: str) -> bytes:
     try:
         result = subprocess.run(
             ("git", "-C", str(repository_root), "show", f"{commit}:{relative}"),
@@ -2554,10 +2588,15 @@ def _hash_git_blob(repository_root: Path, commit: str, relative: str) -> str:
         raise EvidenceValidationError(f"git source read timed out for {relative}") from exc
     if result.returncode != 0:
         raise EvidenceValidationError(f"source path {relative!r} does not exist at commit {commit}")
-    return hashlib.sha256(result.stdout).hexdigest()
+    return result.stdout
+
+
+def _hash_git_blob(repository_root: Path, commit: str, relative: str) -> str:
+    return hashlib.sha256(_read_git_blob(repository_root, commit, relative)).hexdigest()
 
 
 OWNER_AUTHORITY_SOURCES = (
+    "tools/access_telemetry_campaign_profile.py",
     "tools/access_telemetry_c1_owner_authority.py",
     "tools/access_telemetry_c1_gate_semantics.py",
     "tools/access_telemetry_c1_owner_custody.py",
@@ -2568,11 +2607,15 @@ OWNER_AUTHORITY_SOURCES = (
 )
 
 
-def _expected_source_paths(checkpoint: Any) -> frozenset[str]:
+def _expected_source_paths(checkpoint: Any, *, closure_version="campaign-profile/v1") -> frozenset[str]:
     identity = STORY_27_4_PRODUCERS.get(checkpoint)
     if identity is None:
         raise EvidenceValidationError("checkpoint has no closed source registry entry")
     paths = {identity[1], "tools/verify_access_telemetry_lifecycle.py"}
+    if closure_version == "campaign-profile/v1":
+        paths.update(OWNER_AUTHORITY_SOURCES)
+    elif closure_version != "historical/v1":
+        raise EvidenceValidationError("unknown authenticated source closure")
     if checkpoint in STORY_27_4_CHECKPOINTS:
         paths.add("tools/access_telemetry_producer_common.py")
         paths.add("deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml")
@@ -2586,9 +2629,27 @@ def _validate_source_identity(payload: Mapping[str, Any], repository_root: Path 
     hashes = _require_mapping(payload.get("source_hashes"), "source_hashes")
     if not hashes:
         raise EvidenceValidationError("source_hashes must bind at least one reviewed producer")
-    expected_sources = set(_expected_source_paths(payload.get("checkpoint")))
+    # The authenticated producer source, not a packet label or current working
+    # tree, selects its closure version. Historical commits genuinely lacking the
+    # import retain their exact archival schema. Current imports cannot be omitted.
+    closure_version = "campaign-profile/v1"
+    if repository_root is not None:
+        source = _read_git_blob(repository_root, commit, "tools/verify_access_telemetry_lifecycle.py")
+        if hashlib.sha256(source).hexdigest() != hashes.get("tools/verify_access_telemetry_lifecycle.py"):
+            raise EvidenceValidationError("source closure version is not authenticated")
+        tree = ast.parse(source.decode("utf-8", errors="strict"))
+        imports_campaign = any(
+            isinstance(node, ast.ImportFrom) and node.module == "access_telemetry_campaign_profile"
+            or isinstance(node, ast.Import) and any(alias.name == "access_telemetry_campaign_profile" for alias in node.names)
+            for node in ast.walk(tree)
+        )
+        closure_version = "campaign-profile/v1" if imports_campaign else "historical/v1"
+        if closure_version == "historical/v1" and payload.get("profile_sha256") != CURRENT_PROFILE_SHA256:
+            raise EvidenceValidationError("historical source closure cannot qualify a new profile")
+    expected_sources = set(_expected_source_paths(payload.get("checkpoint"), closure_version=closure_version))
     if payload.get("producer", {}).get("arguments", {}).get("authority_mode") == "sole-owner":
-        expected_sources.update(OWNER_AUTHORITY_SOURCES)
+        expected_sources.update(path for path in OWNER_AUTHORITY_SOURCES
+                                if closure_version != "historical/v1" or path != "tools/access_telemetry_campaign_profile.py")
     if set(hashes) != expected_sources:
         raise EvidenceValidationError("source_hashes do not bind the exact reviewed source set")
     for path, digest in hashes.items():
@@ -2879,7 +2940,7 @@ def _validate_common_checkpoint(
         raise EvidenceValidationError("schema_version must be 1")
     if payload["checkpoint"] != checkpoint:
         raise EvidenceValidationError("checkpoint payload does not match the requested mode")
-    if payload["profile_sha256"] != STORY_27_4_PROFILE_SHA256:
+    if payload["profile_sha256"] != active_profile_sha256():
         raise EvidenceValidationError("checkpoint profile differs from the approved immutable profile")
     if payload["workload_sha256"] != STORY_27_4_WORKLOAD_SHA256:
         raise EvidenceValidationError("checkpoint workload differs from the approved immutable workload")
@@ -3875,6 +3936,7 @@ def _checkpoint_packet(
     *,
     observation: Mapping[str, Any] | None = None,
     evidence_mode: str = "offline-validation",
+    profile_sha256: str | None = None,
 ) -> dict[str, Any]:
     packet = {
         "schema_version": _STORY_PACKET_SCHEMA_VERSION,
@@ -3882,7 +3944,7 @@ def _checkpoint_packet(
         "checkpoint": checkpoint,
         "status": status,
         "evidence_mode": evidence_mode,
-        "profile_sha256": STORY_27_4_PROFILE_SHA256,
+        "profile_sha256": profile_sha256 if profile_sha256 is not None else active_profile_sha256(),
         "owner": owner,
         "captured_utc": _utc_now(),
         "reason": reason,
@@ -4211,6 +4273,7 @@ def run_story_27_4_producer_checkpoint(
     producer_authenticated = False
     producer_launched = False
     execution_environment = None
+    admitted_profile_sha256 = None
     try:
         normalized_owner = _require_nonempty_string(owner, "owner")
         registered = STORY_27_4_PRODUCERS.get(checkpoint)
@@ -4218,6 +4281,8 @@ def run_story_27_4_producer_checkpoint(
             raise EvidenceValidationError("checkpoint has no registered producer")
         command_id, relative_producer = registered
         root = repository_root.resolve(strict=True)
+        validate_current_profile_inputs(root, launch_admission=True, require_original_admission=checkpoint == "c3-retention-reclamation")
+        admitted_profile_sha256 = active_profile_sha256(root)
         approved_root = _validated_evidence_root(evidence_root, root)
         resolved_predecessor = _require_evidence_path(
             predecessor_path, approved_root, "predecessor", must_exist=True
@@ -4257,6 +4322,16 @@ def run_story_27_4_producer_checkpoint(
         common_producer = "tools/access_telemetry_producer_common.py"
         common_sha256 = _hash_git_blob(root, source_commit, common_producer)
         common_bytes = _authenticated_worktree_bytes(root, common_producer, common_sha256)
+        selected = selected_campaign_profile(root)
+        if selected is not None:
+            ref = selected["inputs"]["workloadPlan"][0]
+            raw = Path(ref["path"]).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != ref["sha256"]:
+                raise EvidenceValidationError("finite workload plan drifted")
+            category = {"c2-production-replacement": "C2.", "c3-retention-reclamation": "C3.", "c4-failure-privacy-observability": "C4."}[checkpoint]
+            rows = [row for row in json.loads(raw)["commandInventory"] if row["commandId"].startswith(category)]
+            if not rows or any(row["sourceSha256"] != common_sha256 for row in rows):
+                raise EvidenceValidationError("finite producer workload envelope is not source bound")
         verifier_source = "tools/verify_access_telemetry_lifecycle.py"
         verifier_sha256 = _hash_git_blob(root, source_commit, verifier_source)
         verifier_bytes = _authenticated_worktree_bytes(root, verifier_source, verifier_sha256)
@@ -4434,6 +4509,7 @@ def run_story_27_4_producer_checkpoint(
                         _bounded_reason(exc),
                         observation=disable_observation,
                         evidence_mode="controlled-producer",
+                        profile_sha256=admitted_profile_sha256,
                     ),
                 )
             except EvidenceValidationError:
@@ -4642,7 +4718,7 @@ def _validate_c0_adapter_profile(
         ),
         "C0 adapter-profile results",
     )
-    if results["profile_id"] != EXPECTED_PROFILE_ID:
+    if results["profile_id"] != active_profile_id():
         raise EvidenceValidationError("C0 adapter-profile ID differs from PG-ONPREM-2")
     _require_bool(results["profile_complete"], "C0.profile_complete", True)
     _require_bool(
@@ -4692,7 +4768,7 @@ def _validate_terminal_bundle(
     aggregate_budget = _EvidenceAggregateBudget(evidence_root)
 
     _require_exact_fields(bundle, frozenset({"profile_sha256", "checkpoints"}), "terminal bundle")
-    if bundle["profile_sha256"] != STORY_27_4_PROFILE_SHA256:
+    if bundle["profile_sha256"] != active_profile_sha256():
         raise EvidenceValidationError("terminal bundle profile drifted from PG-ONPREM-2")
     checkpoints = _require_mapping(bundle["checkpoints"], "terminal bundle checkpoints")
     expected = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "terminal"}
@@ -4736,7 +4812,7 @@ def _validate_terminal_bundle(
             frozenset({"status", "profile_sha256", "artifact_path", "artifact_sha256"}),
             f"terminal bundle {name}",
         )
-        if item.get("status") != "passed" or item.get("profile_sha256") != STORY_27_4_PROFILE_SHA256:
+        if item.get("status") != "passed" or item.get("profile_sha256") != active_profile_sha256():
             raise EvidenceValidationError(f"terminal bundle checkpoint {name} is not a same-profile pass")
         artifact_path = _require_nonempty_string(
             item.get("artifact_path"), f"{name}.artifact_path", maximum=512
@@ -4771,7 +4847,7 @@ def _validate_terminal_bundle(
             raise EvidenceValidationError(f"terminal artifact {name} carries another checkpoint")
         if artifact_payload.get("status") != "passed":
             raise EvidenceValidationError(f"terminal artifact {name} is not passing by content")
-        if artifact_payload.get("profile_sha256") != STORY_27_4_PROFILE_SHA256:
+        if artifact_payload.get("profile_sha256") != active_profile_sha256():
             raise EvidenceValidationError(f"terminal artifact {name} profile differs by content")
         if name == "C1":
             c1_artifact_payload = artifact_payload
@@ -5043,7 +5119,7 @@ def _close_out_packet(checkpoint: str, status: str, reason: str, **fields: Any) 
         "producer": "verify-access-telemetry-lifecycle/v1",
         "checkpoint": checkpoint,
         "status": status,
-        "profile_sha256": STORY_27_4_PROFILE_SHA256,
+        "profile_sha256": active_profile_sha256(),
         "captured_utc": _utc_now(),
         "reason": reason,
         "a41_status": "open" if status != "published" else "published-close-out-verified",
@@ -5197,7 +5273,7 @@ def _authenticate_preflight(
         preflight.get("producer") != "verify-access-telemetry-lifecycle/v1"
         or preflight.get("checkpoint") != "close-out-preflight"
         or preflight.get("status") != "passed"
-        or preflight.get("profile_sha256") != STORY_27_4_PROFILE_SHA256
+        or preflight.get("profile_sha256") != active_profile_sha256()
     ):
         raise EvidenceValidationError("preflight packet is not authentic or passing")
     if repository_root is None:
@@ -5436,7 +5512,7 @@ def _authenticate_postflight(
         postflight.get("producer") != "verify-access-telemetry-lifecycle/v1"
         or postflight.get("checkpoint") != "close-out-postflight"
         or postflight.get("status") != "passed"
-        or postflight.get("profile_sha256") != STORY_27_4_PROFILE_SHA256
+        or postflight.get("profile_sha256") != active_profile_sha256()
         or postflight.get("preflight_sha256") != preflight_sha
         or postflight.get("mutation_manifest_sha256") != preflight.get("mutation_manifest_sha256")
         or postflight.get("snapshot_sha256") != preflight.get("snapshot_sha256")

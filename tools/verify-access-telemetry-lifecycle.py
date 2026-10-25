@@ -34,6 +34,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--owner-plan", help="Canonical private owner plan path.")
     parser.add_argument("--approved-owner-plan-sha256", help="Digest retained outside the proposed predecessor.")
     parser.add_argument("--owner-custody-root", help="Exact private approved evidence root.")
+    parser.add_argument("--campaign-profile", help="Exact bound Platform finite-campaign profile.")
+    parser.add_argument("--approved-campaign-profile-sha256", help="Outside-approved raw profile digest.")
+    parser.add_argument("--campaign-capacity-receipt", help="Fresh exact-profile storage/compute receipt.")
+    parser.add_argument("--approved-campaign-capacity-sha256", help="Outside-pinned raw capacity receipt digest.")
     parser.add_argument("--kube-context")
     parser.add_argument("--namespace")
     parser.add_argument("--deployment-id")
@@ -93,6 +97,12 @@ def main(argv: list[str] | None = None) -> int:
     for name, value in (("HEXALITH_C1_OWNER_PLAN", args.owner_plan),
                         ("HEXALITH_C1_APPROVED_PLAN_SHA256", args.approved_owner_plan_sha256),
                         ("HEXALITH_C1_CUSTODY_ROOT", args.owner_custody_root)):
+        if value is not None:
+            os.environ[name] = value
+    for name, value in (("HEXALITH_CAMPAIGN_PROFILE", args.campaign_profile),
+                        ("HEXALITH_CAMPAIGN_APPROVED_PROFILE_SHA256", args.approved_campaign_profile_sha256),
+                        ("HEXALITH_CAMPAIGN_CAPACITY_RECEIPT", args.campaign_capacity_receipt),
+                        ("HEXALITH_CAMPAIGN_APPROVED_CAPACITY_SHA256", args.approved_campaign_capacity_sha256)):
         if value is not None:
             os.environ[name] = value
     repository_root = Path(args.repository_root)

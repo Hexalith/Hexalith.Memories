@@ -34,6 +34,7 @@ class ReviewFixTests(unittest.TestCase):
         original_git = lifecycle._git_checked
         original_blob = lifecycle._hash_git_blob
         original_bytes = lifecycle._authenticated_worktree_bytes
+        original_read = lifecycle._read_git_blob
         def git(root, *args):
             return "" if args[0] == "status" else original_git(root, *args)
         def blob(root, commit, relative):
@@ -49,6 +50,9 @@ class ReviewFixTests(unittest.TestCase):
         stack.enter_context(patch.object(lifecycle, "_git_checked", git))
         stack.enter_context(patch.object(lifecycle, "_hash_git_blob", functools.lru_cache(maxsize=100)(blob)))
         stack.enter_context(patch.object(lifecycle, "_authenticated_worktree_bytes", worktree))
+        stack.enter_context(patch.object(lifecycle, "_read_git_blob", lambda root, commit, relative:
+            (ROOT / relative).read_bytes().replace(b"\r\n", b"\n") if commit == self.fixture.commit and (ROOT / relative).is_file()
+            else original_read(root, commit, relative)))
 
     def update_plan(self, plan, env=None):
         env = self.env if env is None else env
@@ -324,6 +328,7 @@ class ReviewFixTests(unittest.TestCase):
             stack.enter_context(patch.dict(os.environ, self.fixture.env))
             stack.enter_context(patch.object(lifecycle, "_git_checked", git))
             stack.enter_context(patch.object(lifecycle, "_hash_git_blob", lambda root, commit, relative: digest((model / relative).read_bytes().replace(b"\r\n", b"\n"))))
+            stack.enter_context(patch.object(lifecycle, "_read_git_blob", lambda root, commit, relative: (model / relative).read_bytes().replace(b"\r\n", b"\n")))
             stack.enter_context(patch.object(lifecycle, "_collect_a41_inventory_and_blobs", return_value=(inventory, old_blobs)))
             stack.enter_context(patch.object(lifecycle, "_staged_blob_hash", lambda root, relative: digest((model / relative).read_bytes())))
             lifecycle._validate_terminal_bundle(bundle, model, self.custody)

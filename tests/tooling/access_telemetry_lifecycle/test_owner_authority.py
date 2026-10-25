@@ -86,16 +86,20 @@ def technical(number):
 
 
 class OwnerFixture:
-    def __init__(self, root, *, now=None, runtime_sha256=SHA):
+    def __init__(self, root, *, now=None, runtime_sha256=SHA, profile_sha256=_PROFILE,
+                 profile_id="PG-ONPREM-2", technical_factory=technical, target_override=None, campaign_schedule=None, campaign_origin_ms=None, renewal_round=None):
         self.root = root
         root.chmod(0o700)
         self.now = datetime.now(timezone.utc) if now is None else now
         self.ms = int(self.now.timestamp() * 1000)
         self.commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-        self.source = "tools/access_telemetry_c1_owner_run.py"
+        # Use an unchanged real owner source for synthetic C1 command contracts;
+        # producer closure fixtures independently bind all edited consumer files.
+        self.source = "tools/access_telemetry_c1_approval_policy.py"
         source_sha = digest(subprocess.check_output(["git", "show", f"{self.commit}:{self.source}"], cwd=ROOT))
         self.target = dict(apiServer="https://fixture.invalid:6443", apiCaSha256=digest(b"fixture-api-ca"), clusterUid="fixture-cluster", namespaceUid="fixture-namespace", initialRuntimeIdentitySha256=runtime_sha256, context="operator@local", namespace="memories-qualification", selector="app=qualification", appId="memories-access-telemetry", actorType="AccessTelemetryLifecycleActor")
-        self.scope = dict(profileId="PG-ONPREM-2", profileSha256=_PROFILE, workloadSha256=_WORKLOAD, sessionId="fixture-session", sourceCommit=self.commit, targetSha256=digest(j1_bytes(self.target)), ownerPrincipal="github:user:6775094", assuranceMode="sole-owner/self-reviewed")
+        self.target.update(target_override or {})
+        self.scope = dict(profileId=profile_id, profileSha256=profile_sha256, workloadSha256=_WORKLOAD, sessionId="fixture-session", sourceCommit=self.commit, targetSha256=digest(j1_bytes(self.target)), ownerPrincipal="github:user:6775094", assuranceMode="sole-owner/self-reviewed")
         self.active = set()
         self.contracts = {}
         self.gates = {}
@@ -108,7 +112,11 @@ class OwnerFixture:
         for index, number in enumerate(order):
             name = f"C1.{number}"
             start = self.ms - 70 * 3600000 + index * 7200000
-            facts = technical(number)
+            finish = start + 5400000
+            if campaign_schedule is not None:
+                left, right = renewal_round["captureBoundsSeconds"][name]
+                start, finish = campaign_origin_ms + left * 1000, campaign_origin_ms + right * 1000 - 1
+            facts = technical_factory(number)
             if number == 17:
                 facts["sourceCommit"] = self.commit
             if number == 15:
@@ -125,11 +133,11 @@ class OwnerFixture:
             stdout = self.write(f"stdout-{number}.json", output)
             stderr = self.write(f"stderr-{number}.txt", b"")
             args = dict(gate=name, target_sha256=self.scope["targetSha256"], session_id=self.scope["sessionId"])
-            command = dict(command_id=name + "-observe", arguments=args, arguments_sha256=digest(j1_bytes(args)), started_utc_ms=start, finished_utc_ms=start + 5400000, exit_code=0, stdout_sha256=stdout["sha256"], stderr_sha256=stderr["sha256"], result_count=1)
+            command = dict(command_id=name + "-observe", arguments=args, arguments_sha256=digest(j1_bytes(args)), started_utc_ms=start, finished_utc_ms=finish, exit_code=0, stdout_sha256=stdout["sha256"], stderr_sha256=stderr["sha256"], result_count=1)
             contract = dict(sourcePath=self.source, sourceSha256=source_sha, commandId=command["command_id"], argumentsSha256=command["arguments_sha256"], cleanupRequired=True)
             contract.update(latencyLimits=dict(p95Microseconds=1000, p99Microseconds=2000), maxDrainMs=600000, configurationEpoch="epoch", images={"app": "sha256:" + SHA}, manifestSha256=SHA, coveredInputsSha256=SHA, nodeIdentity="node", storageIdentity="volume", maxRpoMs=1000, maxRtoMs=1000)
             self.contracts[name] = contract
-            cleanup = self.write(f"cleanup-{number}.json", dict(gate=name, state="restored-approved-baseline", finishedUtcMs=start + 5400000, gateBefore="disabled", gateAfter="disabled", leaseEmpty=True, lifecycleReplicas=0, clockReplicas=0, ownedSyntheticRemoved=True, **self.scope))
+            cleanup = self.write(f"cleanup-{number}.json", dict(gate=name, state="restored-approved-baseline", finishedUtcMs=finish, gateBefore="disabled", gateAfter="disabled", leaseEmpty=True, lifecycleReplicas=0, clockReplicas=0, ownedSyntheticRemoved=True, **self.scope))
             parent_hashes = {f"C1.{p}": self.refs[f"C1.{p}"]["sha256"] for p in authority.PARENTS[number]}
             if number in (20, 24):
                 facts["evidenceHashes"] = parent_hashes
@@ -141,7 +149,7 @@ class OwnerFixture:
             # Technical stdout is the exact same structured result as the packet.
             stdout = self.write(f"stdout-{number}.json", dict(gate=name, observations=observations, technical=facts, **self.scope))
             command["stdout_sha256"] = stdout["sha256"]
-            packet = dict(schemaVersion=authority.PREFIX + "owner-gate/v1", gate=name, startedUtcMs=start, finishedUtcMs=start + 5400000, decidedUtcMs=start + 5400100, expiresUtcMs=self.ms + 86400000, decision="accepted", reviewerRole="security" if number in (11, 12, 15, 16, 25) else "platform-operations", reasons=["measured synthetic fixture"], parents={f"C1.{p}": self.refs[f"C1.{p}"]["sha256"] for p in authority.PARENTS[number]}, sourcePath=self.source, sourceSha256=source_sha, commands=[command], commandStreams={command["command_id"]: dict(stdout=stdout, stderr=stderr)}, technicalCommandId=command["command_id"], technical=facts, resultCount=1, failureCount=0, skipCount=0, observations=observations, cleanup=dict(required=True, receipts=[cleanup], finalState="restored-approved-baseline"), **self.scope)
+            packet = dict(schemaVersion=authority.PREFIX + "owner-gate/v1", gate=name, startedUtcMs=start, finishedUtcMs=finish, decidedUtcMs=finish + 100, expiresUtcMs=self.ms + 86400000, decision="accepted", reviewerRole="security" if number in (11, 12, 15, 16, 25) else "platform-operations", reasons=["measured synthetic fixture"], parents={f"C1.{p}": self.refs[f"C1.{p}"]["sha256"] for p in authority.PARENTS[number]}, sourcePath=self.source, sourceSha256=source_sha, commands=[command], commandStreams={command["command_id"]: dict(stdout=stdout, stderr=stderr)}, technicalCommandId=command["command_id"], technical=facts, resultCount=1, failureCount=0, skipCount=0, observations=observations, cleanup=dict(required=True, receipts=[cleanup], finalState="restored-approved-baseline"), **self.scope)
             self.gates[name] = packet
             self.refs[name] = self.write(f"gate-{number}.json", packet)
         manifest = dict(schemaVersion=authority.PREFIX + "owner-manifest/v1", createdUtcMs=self.ms - 3000000, gates=[dict(gate=g, artifact=self.refs[g]) for g in authority.GATES], **self.scope)
@@ -152,10 +160,18 @@ class OwnerFixture:
         def utc(dt):
             return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
         self.record = dict(schemaVersion=authority.PREFIX + "owner-run/v1", policyId="sole-owner-qualification/2026-10-12", policySha256=SHA, environment="non-production", custodyRoot=str(root), actions=["observe", "fault", "purge", "reclaim", "close-out", "publish"], notBeforeUtc=utc(self.now - timedelta(hours=70)), collectionEndsAtUtc=utc(self.now + timedelta(hours=2)), reviewEndsAtUtc=utc(self.now + timedelta(hours=26)), expiresAtUtc=utc(self.now + timedelta(days=7) - timedelta(hours=70)), status="approved", **self.scope)
+        if campaign_schedule is not None:
+            def scheduled_time(seconds):
+                return utc(datetime.fromtimestamp((campaign_origin_ms + seconds * 1000) / 1000, timezone.utc))
+            self.record.update(notBeforeUtc=scheduled_time(renewal_round["startSeconds"]), collectionEndsAtUtc=scheduled_time(renewal_round["collectionEndSeconds"]), reviewEndsAtUtc=scheduled_time(renewal_round["reviewEndSeconds"]), expiresAtUtc=scheduled_time(renewal_round["startSeconds"] + 168 * 3600))
+        if profile_id != "PG-ONPREM-2":
+            self.record["schemaVersion"] = authority.PREFIX + "owner-run/v2"
         # owner-run uses exactly its own scope fields, no additional wire fields.
         self.record.pop("technical", None)
         record_ref = self.write("record.json", self.record, active=False)
-        self.plan = dict(recordSha256=record_ref["sha256"], policySha256=SHA, sessionId=self.scope["sessionId"], sourceCommit=self.commit, targetSha256=self.scope["targetSha256"], custodyRoot=str(root), statusPath=str(root / "withdrawal.json"), recordPath=str(root / "record.json"), predecessorSha256=authority.canonical_predecessor_sha256(self.predecessor), clockSamplePath=str(root / "clock.json"), clockKeyPath=str(root / "clock.key"), clockSourceId="independent-platform-clock", authorityStatusPath=str(root / "authority-status.json"), gateContracts=self.contracts, target=self.target, executionTarget=dict(kind="non-production-qualification", kube_context=self.target["context"], namespace=self.target["namespace"], profile_sha256=_PROFILE))
+        self.plan = dict(recordSha256=record_ref["sha256"], policySha256=SHA, sessionId=self.scope["sessionId"], sourceCommit=self.commit, targetSha256=self.scope["targetSha256"], custodyRoot=str(root), statusPath=str(root / "withdrawal.json"), recordPath=str(root / "record.json"), predecessorSha256=authority.canonical_predecessor_sha256(self.predecessor), clockSamplePath=str(root / "clock.json"), clockKeyPath=str(root / "clock.key"), clockSourceId="independent-platform-clock", authorityStatusPath=str(root / "authority-status.json"), gateContracts=self.contracts, target=self.target, executionTarget=dict(kind="non-production-qualification", kube_context=self.target["context"], namespace=self.target["namespace"], profile_sha256=profile_sha256))
+        if campaign_schedule is not None:
+            self.plan.update(campaignOriginUtcMs=campaign_origin_ms, renewalRound=renewal_round["id"])
         self.key = b"independent-UTC-fixture-key-32-bytes"
         self.plan["clockKeySha256"] = digest(self.key)
         self.write("clock.key", self.key, active=False)
@@ -407,7 +423,14 @@ class OwnerAuthorityTests(unittest.TestCase):
                 destination.write_bytes((ROOT / relative).read_bytes())
             payload["source_hashes"] = {p: digest((frozen / p).read_bytes()) for p in source_paths}
             payload["producer"]["source_sha256"] = payload["source_hashes"][payload["producer"]["path"]]
+            # Bind the fixture's approved C1 source to the same frozen resolver;
+            # otherwise it compares HEAD bytes with intentionally edited bytes.
+            for gate, packet in self.fixture.gates.items():
+                packet["sourceSha256"] = payload["source_hashes"][self.fixture.source]
+                self.fixture.contracts[gate]["sourceSha256"] = packet["sourceSha256"]
+            self.fixture.rebind()
             original = lifecycle._hash_git_blob
+            original_read = lifecycle._read_git_blob
             def frozen_blob(root, commit, relative):
                 if commit == self.fixture.commit and relative in source_paths:
                     return digest((frozen / relative).read_bytes())
@@ -419,7 +442,7 @@ class OwnerAuthorityTests(unittest.TestCase):
                     payload["commands"][0]["arguments_sha256"] = digest(j1_bytes(payload["commands"][0]["arguments"]))
                 self.fixture.write("payload.json", payload, active=False)
                 output = self.fixture.root / ("foreign-result.json" if foreign else "offline-result.json")
-                with patch.dict(os.environ, self.fixture.env), patch.object(lifecycle, "_hash_git_blob", frozen_blob), patch.object(lifecycle, "_run_bounded_process", side_effect=AssertionError("target contacted")):
+                with patch.dict(os.environ, self.fixture.env), patch.object(lifecycle, "_hash_git_blob", frozen_blob), patch.object(lifecycle, "_read_git_blob", lambda root, commit, relative: (frozen / relative).read_bytes() if commit == self.fixture.commit and relative in source_paths else original_read(root, commit, relative)), patch.object(lifecycle, "_run_bounded_process", side_effect=AssertionError("target contacted")):
                     code = lifecycle.run_story_27_4_checkpoint(checkpoint="c2-production-replacement", input_path=self.fixture.root / "payload.json", predecessor_path=self.fixture.root / "predecessor.json", evidence_path=output, owner="owner-6775094", repository_root=ROOT, evidence_root=self.fixture.root)
                 self.assertEqual(1 if foreign else 0, code, output.read_text())
                 packet = json.loads(output.read_text())

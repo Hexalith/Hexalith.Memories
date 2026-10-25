@@ -26,6 +26,7 @@ from access_telemetry_c1_owner_custody import _compose_owner_run_files, _Artifac
 from access_telemetry_c1_owner_dispatch import _open_held_file, _canonical_path
 from access_telemetry_c1_owner_run import _PROFILE, _WORKLOAD
 from access_telemetry_c1_approval_policy import OWNER_GITHUB_PRINCIPAL
+from access_telemetry_campaign_profile import active_profile_id, active_profile_sha256, selected_campaign_profile
 
 PREFIX = "hexalith.access-telemetry.c1."
 SCHEMA = PREFIX + "owner-predecessor/v1"
@@ -107,6 +108,8 @@ class OwnerAuthority:
     terminal_bundle_sha256: object
     target_identity: object
     c3_execution: object
+    cleanup_profile_id: str = ""
+    cleanup_profile_sha256: str = ""
 
 
 def canonical_predecessor_sha256(predecessor):
@@ -140,6 +143,9 @@ def verify_owner_predecessor(predecessor, repository_root, evidence_root, *, act
     predecessor = JsonSnapshot(j1_bytes(predecessor)).value
     now_ms = None
     summary_sha = canonical_predecessor_sha256(predecessor)
+    selected_profile = selected_campaign_profile(repository_root)
+    profile_sha256 = active_profile_sha256(repository_root)
+    profile_binding = (active_profile_id(repository_root), profile_sha256) if selected_profile is not None else None
 
     with ExitStack() as descriptors:
         retained_bytes = 0
@@ -212,9 +218,12 @@ def verify_owner_predecessor(predecessor, repository_root, evidence_root, *, act
         if hashlib.sha256(j1_bytes(value["target"])).hexdigest() != value["targetSha256"]:
             refuse("approved-target-digest-mismatch")
         execution_target = value["executionTarget"]
+        if selected_profile is not None and (value["target"]["context"] != selected_profile["target"]["context"]
+                or value["target"]["namespace"] != selected_profile["target"]["namespace"]):
+            refuse("finite-profile-target-mismatch")
         if (execution_target["kube_context"] != value["target"]["context"]
                 or execution_target["namespace"] != value["target"]["namespace"]
-                or execution_target["profile_sha256"] != _PROFILE
+                or execution_target["profile_sha256"] != profile_sha256
                 or execution_target["kind"] != "non-production-qualification"):
             refuse("approved-execution-target-mismatch")
         if value.get("predecessorSha256") != summary_sha:
@@ -236,6 +245,21 @@ def verify_owner_predecessor(predecessor, repository_root, evidence_root, *, act
             refuse("clock-sample-stale-or-foreign")
         now_ms = _integer(sample["utcMs"], 1) + age // 1_000_000
         trusted_now = datetime.fromtimestamp(now_ms / 1000, timezone.utc)
+        if selected_profile is not None and value.get("c3Execution") is not None:
+            selected_campaign_profile(repository_root, now_ms=now_ms, require_original=True)
+        renewal_round = None
+        campaign_origin = None
+        if selected_profile is not None:
+            campaign_origin = _integer(value.get("campaignOriginUtcMs"), 1)
+            renewal_round = next((r for r in selected_profile["renewalSchedule"]["rounds"] if r["id"] == value.get("renewalRound")), None)
+            if renewal_round is None:
+                refuse("finite-renewal-round-not-approved")
+            elapsed = now_ms - campaign_origin
+            cutoff = "collectionEndSeconds" if action in ("observe", "fault", "purge", "reclaim") else "reviewEndSeconds"
+            if not renewal_round["readySeconds"] * 1000 <= elapsed < renewal_round[cutoff] * 1000:
+                refuse("finite-renewal-round-window-expired")
+            if value.get("c3Execution") is not None and value["c3Execution"]["startedUtcMs"] != campaign_origin + selected_profile["renewalSchedule"]["phases"]["c3"][0] * 1000:
+                refuse("finite-c3-campaign-origin-mismatch")
 
         def scope(item, run):
             for name in _BASE:
@@ -259,7 +283,7 @@ def verify_owner_predecessor(predecessor, repository_root, evidence_root, *, act
 
         def inspect(plan_snapshot, run_snapshot, withdrawn):
             run = run_snapshot.value
-            for name, expected in (("profileSha256", _PROFILE), ("workloadSha256", _WORKLOAD)):
+            for name, expected in (("profileSha256", profile_sha256), ("workloadSha256", _WORKLOAD)):
                 if run[name] != expected:
                     refuse("current-profile-required")
             summary = _object(predecessor, "schemaVersion manifest approvals status productionLifecycleWrites qualificationAuthorized")
@@ -302,6 +326,12 @@ def verify_owner_predecessor(predecessor, repository_root, evidence_root, *, act
                 if (not collection_start <= start <= finish < collection_end or finish - start > 86400000
                         or not -1000 <= now_ms - finish <= 345600000):
                     refuse("gate-capture-window-invalid")
+                if renewal_round is not None:
+                    left, right = renewal_round["captureBoundsSeconds"][entry["gate"]]
+                    if (collection_start != campaign_origin + renewal_round["startSeconds"] * 1000
+                            or collection_end != campaign_origin + renewal_round["collectionEndSeconds"] * 1000
+                            or not campaign_origin + left * 1000 <= start <= finish <= campaign_origin + right * 1000):
+                        refuse("finite-capture-outside-admitted-round")
                 capture_finishes.append(finish)
                 if (_integer(packet["resultCount"], 1) < 1 or _integer(packet["failureCount"]) != 0 or _integer(packet["skipCount"]) != 0):
                     refuse("gate-result-invalid")
@@ -336,6 +366,18 @@ def verify_owner_predecessor(predecessor, repository_root, evidence_root, *, act
                 if (command is None or technical_id != contract["commandId"]
                         or command["arguments_sha256"] != contract["argumentsSha256"]):
                     refuse("technical-command-not-approved")
+                if selected_profile is not None:
+                    import json
+                    ref = selected_profile["inputs"]["workloadPlan"][0]
+                    raw = Path(ref["path"]).read_bytes()
+                    if hashlib.sha256(raw).hexdigest() != ref["sha256"]:
+                        refuse("finite-workload-plan-drifted")
+                    plan_commands = {row["commandId"]: row for row in json.loads(raw)["commandInventory"]}
+                    planned = plan_commands[renewal_round["id"] + "/" + entry["gate"]]
+                    normalized_arguments = dict(command["arguments"], target_sha256="late-bound-target", session_id="late-bound-session")
+                    if (planned["sourceSha256"] != contract["sourceSha256"]
+                            or planned["argumentsSha256"] != hashlib.sha256(j1_bytes(normalized_arguments)).hexdigest()):
+                        refuse("finite-command-envelope-not-bound")
                 output = JsonSnapshot(technical_outputs[technical_id]).value
                 _object(output, _BASE | {"gate", "observations", "technical"})
                 scope(output, run)
@@ -410,7 +452,7 @@ def verify_owner_predecessor(predecessor, repository_root, evidence_root, *, act
             return run
 
         run = _compose_owner_run_files(plan_path, os.environ[_ENV[1]], custody_root=root,
-            now=trusted_now, action=action, inspection=inspect)
+            now=trusted_now, action=action, inspection=inspect, profile_binding=profile_binding)
         # Completed predecessors are archival references only. Their manifest
         # scope must match; they never authorize a fresh operation themselves.
         lineage = []
@@ -463,7 +505,7 @@ def verify_owner_predecessor(predecessor, repository_root, evidence_root, *, act
             refuse("action-or-reference-revoked-or-unknown")
         # The base withdrawal file is last again; this also repeats run windows.
         _compose_owner_run_files(plan_path, os.environ[_ENV[1]], custody_root=root,
-            now=datetime.fromtimestamp(now_ms / 1000, timezone.utc), action=action)
+            now=datetime.fromtimestamp(now_ms / 1000, timezone.utc), action=action, profile_binding=profile_binding)
         file, raw = held[-1]
         os.lseek(file.descriptor, 0, os.SEEK_SET)
         if file.read() != raw:
@@ -525,7 +567,6 @@ def verify_owner_cleanup(repository_root, evidence_root):
     """
     from access_telemetry_c1_owner_dispatch import _validated_plan
     from access_telemetry_c1_owner_run import OwnerRunAnchors, inspect_owner_run
-    from verify_access_telemetry_lifecycle import validate_current_profile_inputs
     if any(not os.environ.get(name) for name in _ENV):
         refuse("outside-approved-cleanup-plan-required")
     root = _canonical_path(os.environ[_ENV[2]])
@@ -551,14 +592,22 @@ def verify_owner_cleanup(repository_root, evidence_root):
         # Historical inspection checks the immutable adopted owner/version/scope;
         # this instant is never presented as current qualification permission.
         start_ms = _instant(record.value["notBeforeUtc"], spelling="new") // _TICKS_MS - 62135683200000
-        inspect_owner_run(record, anchors, now=datetime.fromtimestamp(start_ms / 1000, timezone.utc), withdrawn=False, action="observe")
+        # The held outside-approved record appoints only the original cleanup
+        # identity. Current capacity, source files and dependent inputs cannot
+        # prevent owned disable after drift; they still gate every execution.
+        profile_id, profile_sha = record.value["profileId"], record.value["profileSha256"]
+        binding = (profile_id, profile_sha) if record.value["schemaVersion"] == PREFIX + "owner-run/v2" else None
+        inspect_owner_run(record, anchors, now=datetime.fromtimestamp(start_ms / 1000, timezone.utc), withdrawn=False, action="observe", profile_binding=binding)
         if hashlib.sha256(j1_bytes(value["target"])).hexdigest() != value["targetSha256"]:
             refuse("cleanup-target-not-approved")
-        validate_current_profile_inputs(Path(repository_root))
+        execution = _object(value["executionTarget"], "kind kube_context namespace profile_sha256")
+        if (execution["kind"] != "non-production-qualification" or execution["profile_sha256"] != profile_sha
+                or execution["kube_context"] != value["target"]["context"] or execution["namespace"] != value["target"]["namespace"]):
+            refuse("cleanup-original-profile-or-target-mismatch")
         for file, raw in held:
             os.lseek(file.descriptor, 0, os.SEEK_SET)
             if file.read() != raw:
                 refuse("cleanup-plan-drifted")
         return OwnerAuthority(value["sessionId"], value["sourceCommit"], value["targetSha256"],
                               value["predecessorSha256"], plan.sha256, start_ms, None, (), None,
-                              value["target"], value.get("c3Execution"))
+                              value["target"], value.get("c3Execution"), profile_id, profile_sha)

@@ -109,6 +109,7 @@ def inspect_owner_run(
     now: datetime,
     withdrawn: bool,
     action: str,
+    profile_binding: tuple[str, str] | None = None,
 ) -> OwnerRunInspection:
     """Inspect one exact owner record without I/O or deployed admission.
 
@@ -138,11 +139,18 @@ def inspect_owner_run(
         if retained.sha256 != anchors.record_sha256:
             _refuse("owner-run-record-digest-mismatch")
         value = _object(retained.value, _FIELDS)
+        schema, profile_id, profile_sha256 = _SCHEMA, "PG-ONPREM-2", _PROFILE
+        if value["schemaVersion"] == "hexalith.access-telemetry.c1.owner-run/v2":
+            if (type(profile_binding) is not tuple or len(profile_binding) != 2
+                    or profile_binding[0] != "PG-FINITE-CAMPAIGN-1"):
+                _refuse("owner-run-explicit-profile-binding-required")
+            _digest(profile_binding[1])
+            schema, (profile_id, profile_sha256) = value["schemaVersion"], profile_binding
         for name, expected in (
-            ("schemaVersion", _SCHEMA), ("policyId", _POLICY),
+            ("schemaVersion", schema), ("policyId", _POLICY),
             ("ownerPrincipal", OWNER_GITHUB_PRINCIPAL),
             ("assuranceMode", _ASSURANCE), ("environment", "non-production"),
-            ("profileId", "PG-ONPREM-2"), ("profileSha256", _PROFILE),
+            ("profileId", profile_id), ("profileSha256", profile_sha256),
             ("workloadSha256", _WORKLOAD), ("status", "approved"),
         ):
             _text(value[name])

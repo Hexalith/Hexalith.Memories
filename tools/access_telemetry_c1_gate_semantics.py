@@ -8,6 +8,9 @@ current status, review and dependency order.
 from __future__ import annotations
 
 from access_telemetry_c1_interchange import _object, _array, _digest
+from access_telemetry_campaign_profile import (
+    selected_campaign_profile, active_profile_sha256, active_runtime_image, active_runtime_version,
+)
 
 
 def validate_gate_technical(number, value, *, approved, run, capture_interval):
@@ -50,7 +53,7 @@ def validate_gate_technical(number, value, *, approved, run, capture_interval):
             for child in item:
                 typed_measurements(child, name)
         elif type(item) is bool:
-            require(name in {"matchingAccepted", "osDiskShrinkClaimed", "postgresTls", "openBaoTls", "highAvailability", "restoreTargetProduction", "admitted"})
+            require(name in {"matchingAccepted", "osDiskShrinkClaimed", "postgresTls", "openBaoTls", "highAvailability", "restoreTargetProduction", "admitted", "continuousSevenDayCredit", "historical400GiBCredit"})
         elif name.endswith("UtcMs"):
             require(type(item) is int and capture_interval[0] <= item <= capture_interval[1])
     typed_measurements(value)
@@ -148,6 +151,15 @@ def validate_gate_technical(number, value, *, approved, run, capture_interval):
         require(v["badCaStatus"] == v["badHostnameStatus"] == "denied" and v["crossPrefixStatus"] == 403)
         _digest(v["atRestDeviceSha256"]); _digest(v["atRestObservationSha256"])
     elif number == 13:
+        campaign = selected_campaign_profile()
+        if campaign is not None:
+            v = fields("semantics profileSha256 requirements cohortRecords continuousSevenDayCredit historical400GiBCredit")
+            from access_telemetry_c1_interchange import _mutable_json
+            require(v["semantics"] == "finite-campaign/v1" and v["profileSha256"] == run["profileSha256"] == active_profile_sha256())
+            require(_mutable_json(v["requirements"]) == campaign["sizing"]
+                    and dict(v["cohortRecords"]) == {"1h": 125, "24h": 125, "168h": 125}
+                    and v["continuousSevenDayCredit"] is False and v["historical400GiBCredit"] is False)
+            return
         # Existing capacity evaluator recomputes every operand, including exact
         # 400 GiB admission and the seven-day non-admissible horizon boundary.
         v = fields("operands expectedAdmissions")
@@ -169,7 +181,7 @@ def validate_gate_technical(number, value, *, approved, run, capture_interval):
         names = "runtimeImage runtimeVersion appId actorType schedulerMembers placementMembers independentClockSource apiServer apiCaSha256 clusterUid namespaceUid initialRuntimeIdentitySha256" if number == 15 else "componentType componentVersion backendImage serverVersion actualConnectionSha256 capabilities" if number == 16 else "images manifestSha256 configurationEpoch profileSha256 sourceCommit coveredInputsSha256"
         v = fields(names)
         if number == 15:
-            require(v["runtimeImage"] == EXPECTED_RUNTIME_IMAGE and v["runtimeVersion"] == "1.18.1" and v["appId"] == "memories-access-telemetry" and v["actorType"] == "AccessTelemetryLifecycleActor")
+            require(v["runtimeImage"] == active_runtime_image() and v["runtimeVersion"] == active_runtime_version() and v["appId"] == "memories-access-telemetry" and v["actorType"] == "AccessTelemetryLifecycleActor")
             require(len(set(v["schedulerMembers"])) == len(set(v["placementMembers"])) == 3 and type(v["independentClockSource"]) is str and bool(v["independentClockSource"]))
         elif number == 16:
             require(v["componentType"] == "state.postgresql" and v["componentVersion"] == "v2" and v["backendImage"] == EXPECTED_POSTGRESQL_IMAGE and v["serverVersion"] == "18.6")
@@ -184,7 +196,14 @@ def validate_gate_technical(number, value, *, approved, run, capture_interval):
                 same_hash(v[name], approved[name])
     elif number == 18:
         v = fields("nodeIdentity storageIdentity reservedBytes availableBytes requestedBytes cpuCount memoryBytes costOwner quoteUtcMs operatingCostMinorUnits currency")
-        require(v["reservedBytes"] >= PROFILE_CAPACITY_BYTES and v["availableBytes"] >= PROFILE_CAPACITY_BYTES and v["cpuCount"] >= 8 and v["memoryBytes"] >= 17179869184)
+        campaign = selected_campaign_profile()
+        if campaign is not None:
+            requirements = campaign["sizing"]
+            require(integer(v["reservedBytes"]) >= requirements["primaryBytes"] and integer(v["availableBytes"]) >= requirements["primaryBytes"]
+                    and integer(v["requestedBytes"]) == requirements["primaryBytes"]
+                    and integer(v["cpuCount"]) * 1000 >= requirements["cpuMilli"] and integer(v["memoryBytes"]) >= requirements["memoryBytes"])
+        else:
+            require(v["reservedBytes"] >= PROFILE_CAPACITY_BYTES and v["availableBytes"] >= PROFILE_CAPACITY_BYTES and v["cpuCount"] >= 8 and v["memoryBytes"] >= 17179869184)
         require(v["nodeIdentity"] == approved["nodeIdentity"] and v["storageIdentity"] == approved["storageIdentity"])
         require(integer(v["quoteUtcMs"], 1) > 0 and integer(v["operatingCostMinorUnits"], 1) > 0 and bool(v["costOwner"]) and len(v["currency"]) == 3)
     elif number in (20, 24):

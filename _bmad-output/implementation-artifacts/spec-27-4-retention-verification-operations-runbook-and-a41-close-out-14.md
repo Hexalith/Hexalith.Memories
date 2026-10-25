@@ -14,6 +14,85 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Smaller full campaign profile — 2026-10-25 (current implementation scope)
+
+This owner-authorized continuation controls the present work. Continue this Spec 14 and the single report; preserve the completed WINDOW local functional evidence, all implemented authority/continuation work, historical profile constructors/identities and original baseline frontmatter. Implement a smaller full qualification profile across the owning repositories; do not create another planning-only handoff or a Memories environment runner. Platform owns sizing/configuration/infrastructure/lifecycle; Memories owns assertions and profile-bound evidence semantics. Read the workspace baseline, relevant tracked guidance/configuration and owning architecture before edits. Do not launch infrastructure, contact clusters, change dependencies, initialize submodules, stage, commit, push or change sprint state. Overall Story 27.4/A41 stay open, dates provisional. Operational authorization is requested only when actual launch inputs and disposal plan are complete and reviewable; missing measurements are blockers, never invented evidence.
+
+### Investigation and Code Map — smaller campaign
+
+- `tools/verify_access_telemetry_lifecycle.py` owns historical canonical PG1/PG2/KVM constructors, selectors, `calculate_capacity`, `evaluate_capacity_admission`, `collect_capacity_evidence` and full consumers. Existing KVM hash is `95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb`. Its 400 GiB/70-80-90% rule, multiplier 2, 128 GiB reclamation floor and seven-day exclusion must remain historical rules. Do not merely lower their constants. Add an explicit new-profile path only after exact inputs are bound; unbound proposals may size/inspect but cannot authorize execution or reinterpret old evidence.
+- `tools/access_telemetry_c1_gate_semantics.py` C1.13 currently recomputes continuous horizon inventories `{1h:900000,24h:21600000,7d:151200000}` against the old formula. New finite-campaign semantics must be explicit and profile-bound; keep all other 25-gate semantics, distinct Operations/Security records, authority/current-status/freshness and C1.24 parent ordering.
+- `tools/access_telemetry_producer_common.py::_c2` overlaps two 125-record/s writers for 1800 seconds: 450000 accepted records, at least 900000 component operations; 150000 backlog remains required. `_c3` starts with an empty lifecycle table/index, seeds 125 rows each at 168/24/1 hours, and seeds 125 newer controls near the 168-hour boundary. Trace actual fixed workload, retry/idempotence, C1/C4 and due-index/reminder state before deriving a peak. Campaign duration does not imply continuous ingestion. Preserve all producer timing/coverage and the 50400-second C2/C4, 777600-second C3 ceilings, original reclamation and cleanup bounds.
+- `docs/operations/access-telemetry-full-qualification.md` is the existing campaign register. It inherits 400 GiB and records only a host free-space observation, which is not reservation evidence. `docs/operations/access-telemetry-adapter-production.md` contains the old fixed 32 GiB control, 128 GiB workspace, three 16 GiB Scheduler allowances. Revision of those allowances is explicitly authorized for the new profile, with defensible formula/limits and missing-measurement admission.
+- Owning Platform is the root-declared `references/Hexalith.Platform` repository. Its maintained `eng/helm-qualification/chart/`, `toolchain.json`, `qualify.py` and offline tests provide application render/admission and exact isolated cleanup; qualifier fixtures disable Scheduler and do not supply real PostgreSQL/OpenBao. Read ordinary source/documentation there; never load skills from `references/`. Implement campaign capacity/configuration through the existing Platform boundary (for example a cohesive module beside that qualifier), reuse lifecycle ownership rather than building a second framework. Preserve toolchain versions and historical chart fixtures unless a narrowly scoped real-profile override is needed. Relevant Platform architecture is `_bmad-output/planning-artifacts/architecture/architecture-platform-2026-09-27/ARCHITECTURE-SPINE.md`.
+- Existing focused Memories tests are `tests/tooling/access_telemetry_lifecycle/` and `tests/tooling/access_telemetry_c1_interchange/`; extend meaningful cases for finite inventory, storage/compute admission, binding/drift and old/new identity separation. Investigate retained local private WINDOW evidence and other accessible measured artifacts without starting tools/services. Report exact unavailable paths/measurements instead of treating assumptions as observations.
+
+### Tasks & Acceptance — smaller campaign
+
+- [x] Investigate actual campaign requirements and accessible measurements. Given the unchanged producers and retained evidence, when sizing, then distinguish C2's 30-minute workload, C3's small long-lived cohorts, phase overlap/empty boundary, peak live/dead data and indexes, WAL, reclamation workspace, application/control-plane/Scheduler volumes, host workspace and a separate recoverable backup destination. Record source paths, exact measured values and limitations; no invented measurements or campaign-wide ingestion extrapolation.
+- [x] Implement the smallest defensible new qualification sizing/configuration in Platform and assertion/profile semantics in Memories. Given measured operands or explicit conservative configured bounds, when sizing, then produce selected allocations and explain every term, rounding, safety margin and compute requirement. Given missing measurement, unreserved backing capacity, aggregate competing demands, stale/drifted inputs or insufficient CPU/memory/storage/backup, when launch admission runs, then refuse before any launch. Missing measurements may leave a provisional candidate with deterministic requirements; they cannot yield a ready/adopted/qualified profile. Bind actual tool/runtime/image/chart/values/render/component/application/reporter/storage/measurement inputs into a distinct canonical identity when available; preserve exact old identities/evidence and never imply qualification of 400 GiB.
+- [x] Preserve behavioral coverage. Given the smaller candidate, when verifying capacity and gate packets, then enforce all 25 C1 gates, distinct Operations/Security records, two writers, 250 accepted records/s, at least 500 component operations/s, 30 minutes, 150000 backlog, real 1/24/168-hour cohorts, physical reclamation/newer-record/strong-read/freshness assertions and original execution/cleanup budgets. New finite 168-hour cohort admission must confer no continuous-seven-day workload or old-profile credit. Make new semantics usable by the owning consumer path once actual profile inputs are bound; a disconnected calculator alone is insufficient.
+- [x] Run focused offline positive/negative checks for sizing math, component allocations/aggregate admission, incomplete or tampered profile inputs and historical identity separation, plus relevant authority/continuation regressions. No infrastructure or cluster contact. Capture exact commands/results. Complete exactly one ordinary review of this continuation and resolve its substantive findings; no adversarial multi-review loop.
+- [x] Update this Spec 14, the existing campaign register and single retention report with selected allocations, sizing evidence, focused verification/review results, remaining Platform prerequisites and one concrete launch/disposal plan (exact target/context/ownership, supported route, resource and time limits, no retries, capacity/input admission, failure capture, stop/removal verification and exclusions). Keep actual operational identities or measurements explicitly missing where unavailable; do not request operational authorization for an incomplete plan. Parent remains in-progress and all unexecuted campaign gates/A41 remain open.
+
+### Coordinator sizing acceptance correction — finite C1 renewal workload
+
+The unchanged authority code (`gate-capture-window-invalid` / `run-expired-during-verification`) limits technical captures to96h and observe/fault/purge/reclaim to the original<=72h collection window. One C1 collection cannot authorize the216h C3 or336h campaign. Its parent-hash graph also prevents refreshing root identity evidence while silently reusing dependent stale decisions. The initial1350500-row /24GiB PG candidate omitted finite fresh C1.9/C1.10 collections required during continuation. That initial sizing is not a full-campaign allocation; the implemented dynamic renewal-aware formula supersedes it without changing policy or resetting C3.
+
+Account for a source-bound finite renewal plan, its full throughput/backlog/other command inventories, real capture/parent/decision windows and overlaps with C3's exact cohorts, purge deadlines, newer control and reclamation assertions. Derive selected allocations from the admitted renewal bound; no invented collection duration/count or continuous-ingestion extrapolation. Missing or incompatible renewal inputs must refuse before launch. This is a coordinator acceptance correction discovered after the one ordinary review, not another review or planning workflow. Existing parent state, original baseline and evidence remain unchanged.
+
+### Review Triage Log — smaller campaign (one ordinary review)
+
+The single ordinary review is complete. Root verified all four findings against the consumer paths and accepts them within the approved continuation. All four findings are fixed; exact focused regression results are in the single report; no second review, planning loop, reversal or launch is required.
+
+| Finding | Verdict / verified evidence | Required resolution |
+| :--- | :--- | :--- |
+| First-use measurement freshness bypass | high: `selected_campaign_profile` and CLI receipt admission disable initial freshness without authenticated prior fresh admission; a new 48-hour-old measurement profile can enter launch selection. | Fixed: strict fresh issuance with authenticated independent UTC/boot clock; outside-approved original receipt/issuer/key required before C3 dispatch and verified for archival continuation. Actual three-day selection keeps the immutable profile/C3 origin; missing/foreign anchors refuse. |
+| Refresh changes backing identities | high: `admit_launch` substitutes the storage list without comparing original pool/failure-domain/allocation identity; a foreign fresh receipt can pass with the old digest. | Fixed: refresh compares original pool/failureDomain/Linux/allocation ownership before accepting observations; all foreign backing permutations refuse and need new adoption. |
+| Input drift prevents owned cleanup | high: disable command construction and fallback reopen all finite capacity inputs; changed components/receipts refuse before owned gate patch/scale. | Fixed: original held owner plan/profile/physical target/session/Lease authorize actual disable-only and fallback despite component/measurement drift; foreign target/session/Lease denials remain. Failure packets retain the captured original profile. |
+| Historical packet source-set regression | medium: the current validator unconditionally adds a file absent from old committed producer closures, so authentic historical PG2 packets fail exact-set validation. | Fixed: committed verifier imports authenticate source-closure version; authentic old C0/C2-C4 sets pass archival validation, actual current imports are mandatory and historical source cannot earn finite-profile credit. |
+
+### Smaller campaign implementation handoff — 2026-10-25
+
+Platform's additive finite capacity/configuration path and Memories' explicit
+profile-bound authority/consumer/runtime semantics are implemented. The renewal
+acceptance correction is implemented as dynamic minimal4GiB allocation math over
+an explicitly validated finite schedule: R=650000*N+700500 cumulative live/dead
+records, then the configured4096B/record bound requiring measurement,25% margin, full rewrite/WAL/fixed terms,
+20% free and4GiB rounding. The former24/57/16GiB values are a single-collection
+lower bound and are superseded for the full campaign. Fixed non-data primary
+storage is33GiB; compute16250m/31GiB. No exact full-campaign PG/backup allocation
+is selected until actual compatible renewal/workload/timing/isolation inputs bind.
+
+All25 descendants recapture on each root refresh; the owner consumer binds actual
+captures to an outside-approved round and unchanged campaign/C3 origin. Original
+72h collection/24h review/96h capture, phase/cleanup/purge/reclamation budgets and
+C3 exact-row/newer-control/physical assertions remain. Source-bound per-round
+measurements, C2 drain, unchanged cohort/due/reminder readback and no unrelated
+live/dead/support state are required. Missing proof refuses; synthetic unit
+schedules are not operational evidence and no real renewal count is invented.
+
+The [single report](tests/27-4-retention-verification-evidence.md#smaller-finite-campaign-implementation--2026-10-25)
+records exact focused fixes/checks, sizing/measurement limitations and the narrow
+C# fallback/existing restore-assets blocker. The [campaign register](../../docs/operations/access-telemetry-full-qualification.md#conditional-concrete-launch-and-disposition-plan--not-ready-for-authorization)
+records the concrete conditional target/disposal plan and missing actual timeline,
+measurements, reservations, original-admission issuer/key/UTC custody and full
+Platform lifecycle/routes/identities. It is not deployable or ready for operational
+authorization. The one ordinary review is complete and four findings are fixed;
+final coordinator verification and documentary evidence are complete. Parent stays
+in-progress and all unexecuted full/A41 gates stay open.
+
+Focused fix evidence: Platform capacity/CLI18/18 (1.367s); Memories finite/profile/
+review-fix15/15 (8.637s); affected authority/review/offline/frozen25/25 (42.276s,
+before final C3 reservation measurement detail, followed by the15-case rerun);
+two failed legacy cleanup cases corrected and rerun2/2 (80.535s). Exact commands,
+failed-check disclosure and pre-fix coordinator33/41 compatibility results are in
+the single report. Both repository diff checks pass. No broad verification or
+second review was run during fixes. Final coordinator checks pass33 authority,41 retention,18 capacity and16 finite-consumer cases; the single report records exact commands/results and preservation checks. No finding is deferred.
+
+Implementation may adjust API/file details after inspecting existing contracts while satisfying these criteria. The user has authorized implementation and focused checks already; no intermediate approval gate is needed. Earlier current-scope authority sections below are completed retained context, not instructions to redo those implementations or relaunch historical runs.
+
+
 ## Full-gate authority and continuation — 2026-10-25 (current implementation scope)
 
 The owner explicitly requests implementation of the two Memories-owned prerequisites in `docs/operations/access-telemetry-full-qualification.md`, focused verification and **one ordinary review**, with no planning-only handoff. This section controls the present continuation; earlier functional launch instructions are completed history. Preserve the original baseline, this Spec 14, the single retention-verification report, and all pre-existing user changes. Overall Story 27.4 stays `in-progress`, A41 and all full-campaign gates stay open. No infrastructure launch, cluster contact, dependency/version change, staging, commit, push or sprint-state mutation. Proposed campaign dates remain provisional. Platform still owns environments/capacity; add no Memories environment runner.

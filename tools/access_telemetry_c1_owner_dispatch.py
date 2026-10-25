@@ -231,7 +231,7 @@ def dispatch_owner_run(
 
 
 def _dispatch_owner_run(snapshot: JsonSnapshot, plan_bytes: bytes, approved_plan_sha256: str,
-                        *, now: datetime, action: str, status_reader) -> OwnerRunInspection:
+                        *, now: datetime, action: str, status_reader, profile_binding=None) -> OwnerRunInspection:
     """Shared binding/inspection path with a per-call current status reader."""
     if type(snapshot) is not JsonSnapshot:
         _refuse("owner-dispatch-record-snapshot-required")
@@ -267,7 +267,7 @@ def _dispatch_owner_run(snapshot: JsonSnapshot, plan_bytes: bytes, approved_plan
         _refuse(format_refusal)
     try:
         return inspect_owner_run(retained_record, anchors, now=now,
-                                 withdrawn=status["withdrawn"], action=action)
+                                 withdrawn=status["withdrawn"], action=action, profile_binding=profile_binding)
     except OwnerRunInspectionError as error:
         inspection_refusal = str(error)
     # Preserve the inspector's public refusal type/code while dropping any

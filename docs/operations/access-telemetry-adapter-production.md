@@ -321,6 +321,31 @@ The runtime role is limited to the dedicated database/schema and the Dapr-owned
 tables. The adapter operator owns PostgreSQL maintenance and evidence sessions;
 those credentials are never mounted into Memories or the lifecycle service.
 
+## Finite campaign capacity — 2026-10-25
+
+The separate `PG-FINITE-CAMPAIGN-1` path is implemented in Platform's
+`eng/helm-qualification/campaign_capacity.py` and consumed by Memories' explicit
+profile selector. PostgreSQL/backup allocations are derived only from a compatible
+measured finite renewal schedule; none is selected while that input is absent.
+The former24/57/16GiB single-collection lower bound is superseded for the full
+campaign. Fixed non-data primary storage is33GiB; compute is16250m/31GiB.
+There is no measured minimum, adopted operational identity or qualification credit. The [campaign
+register](access-telemetry-full-qualification.md#smaller-finite-campaign-profile--2026-10-25)
+records the formula, exact missing measurements and conditional plan. The historical
+400GiB formula below, multiplier2,128GiB rewrite floor and continuous-seven-day
+exclusion remain unchanged for their original identities.
+
+The new finite workload counts every full C1 renewal and C2 separately, accounts for backlog and
+all supporting lifecycle relations, and budgets live/dead tuples without assuming
+vacuum has reclaimed earlier phases. Missing complete command inventory, measured
+physical amplification/compute, source-bound timing/noninterference and C2-drain
+proof, authenticated original admission/issuer/key custody, monitored WAL/phase bounds, reserved Linux-backed
+capacity, aggregate competing demands or a separate recoverable backup refuses
+launch. A new finite168-hour cohort confers neither continuous-seven-day workload
+credit nor historical400GiB qualification. Physical reclamation, newer controls,
+strong reads, signed time, all25 gates and all original execution/stopping bounds
+remain mandatory.
+
 ## Retention, capacity, and cost admission
 
 Use integer bytes and the measured profile formula:
