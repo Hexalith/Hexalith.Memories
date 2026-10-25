@@ -2,6 +2,8 @@
 
 **Current execution direction — 2026-10-25:** The [active Spec 14](spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) local functional outcome is complete: WINDOW run `0673d50339f4e1058c26e3a9b2d680a2` passed native TRX 1/1, both real cohorts and retention assertions, with actual removed/verified disposition. The [current report](tests/27-4-retention-verification-evidence.md) retains authentic results and limits; its single launch authorization is consumed. Under the [approved simplification](../planning-artifacts/sprint-change-proposal-2026-10-21.md), full qualification/A41 remains a separate campaign requiring an adopted exact full Platform target/profile and its own schedule. Overall Story 27.4 remains in progress. Retained-resource dispositions live in the current report.
 
+**Next preparation — 2026-10-25:** The owner's **“I dont know, do recommended”** delegates target/window selection. The [prepared full-campaign recommendation](../../docs/operations/access-telemetry-full-qualification.md#recommended-target-and-provisional-schedule--2026-10-25) selects Platform's maintained isolated kind/chart foundation with a provisional 336-hour window, 2026-10-26T08:00Z–2026-11-09T08:00Z. Full environment/capacity/lifetime capability is missing in Platform; Memories' authority-consumer migration and verified multi-day continuation are also unimplemented. Exact new profile adoption and operational launch authorization remain pending. The existing chart-only qualifier cannot earn C0–C6 credit. No current profile, runtime pin or gate state is changed by this documentary preparation.
+
 
 <!-- Compiled from planning artifacts. Edit freely. Regenerate with compile-epic-context if planning docs change. -->
 

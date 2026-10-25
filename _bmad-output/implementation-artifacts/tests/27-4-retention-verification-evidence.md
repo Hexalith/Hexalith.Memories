@@ -2,6 +2,29 @@
 
 The [active Spec 14](../spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) governs this functional run. The [full campaign checklist](../../../docs/operations/access-telemetry-full-qualification.md) remains separate.
 
+## Next campaign preparation — 2026-10-25
+
+The owner delegated target/schedule selection with **“I dont know, do recommended”**. The [concrete recommendation](../../../docs/operations/access-telemetry-full-qualification.md#recommended-target-and-provisional-schedule--2026-10-25) selects Platform's maintained isolated kind/chart foundation and proposes **2026-10-26T08:00:00Z–2026-11-09T08:00:00Z** (336 hours). This contains the unchanged C3 216-hour and C2/C4 14-hour ceilings, prerequisites, review and final disposition. The proposal expires if readiness or a phase boundary is missed; it is not an operational grant or capacity reservation.
+
+Read-only investigation at Memories **`98383a95b36638399f7e48b29dd009ab6125be2d`** and root-declared Platform **`ce90c4215f3343c2d78d8aee2ebada92405227ff`** found tested chart/admission isolation and owned cleanup, but no supported full Memories PostgreSQL/OpenBao environment, full resource reservation or multi-day campaign lifecycle. Platform's toolchain is kind0.31.0/Kubernetes1.35.0/Dapr1.18.7/Helm4.2.0/Aspire13.6.1. Its Scheduler-disabled synthetic qualifier cannot supply full-profile evidence. The checklist records exact owning source paths, required changes and the Linux workspace's **120,523,268,096-byte** free-space observation, below400GiB before overhead. No cluster was contacted or resource allocated.
+
+Offline canonical validation passed: from Memories root, `python3 -B` with `tools` on `sys.path`, import `validate_current_profile_inputs` and `canonical_pg_onprem_2_profile` from `verify_access_telemetry_lifecycle`, then call `validate_current_profile_inputs(Path.cwd())`. The recomputed former profile hash is **`95aa36e8aba8d9914566f6df894c33098739251040dd0cc4b2917f76a994ccdb`**. New kind/Dapr1.18.7 adoption must replace that identity through reviewed source/input changes; neither a new hash nor full gate acceptance is claimed here. No version pin changed.
+
+Root independently re-read the authentic WINDOW result/TRX and recomputed both retained observation/TRX hashes below: native **1 executed / 1 passed / 0 failed / 0 skipped**, artifact verification passed, cleanup verified with empty owned processes and **5.366938s** stopping. The implementation agent also re-ran the existing focused offline command from `tests/tooling/access_telemetry_functional_retention`:
+
+```bash
+python3 -B -m unittest -v test_selected_read_retry \
+  test_selected_active_sequence.SelectedActiveSequenceTests.test_complete_sixteen_second_observations_and_sql_finish_before_expiry \
+  test_selected_active_sequence.SelectedActiveSequenceTests.test_complete_near_budget_observations_and_ten_second_sql_finish_before_expiry \
+  test_selected_active_sequence.SelectedActiveSequenceTests.test_late_preexpiry_response_is_refused_even_when_the_record_is_still_present \
+  test_selected_active_sequence.SelectedActiveSequenceTests.test_late_scheduling_is_refused_before_dispatch_and_retains_unobserved_ordinals \
+  test_selected_active_sequence.SelectedActiveSequenceTests.test_response_time_precedes_slow_guard_completion_without_implying_late_absence
+```
+
+**33/33 passed in18.058s, exit0** (28 retry cases plus five named acceptance cases); `git diff --check` also passed before these documentary additions. This rerun is offline regression evidence. The completed local outcome remains unchanged. Full preparation is **blocked on Platform-owned environment/capacity and Memories' authority/continuation implementation**, with exact profile adoption and a complete authorized launch plan still pending; all full/Production/A41 states remain open.
+
+One ordinary reviewer independently checked the target/toolchain, profile distinction, source capability, capacity and UTC arithmetic. The accepted substantive finding is now an explicit Memories-owned prerequisite: `_validate_predecessor` refuses structurally valid v2 predecessors until actual I3–I5 authority, retained-reference custody, session status and P7 bounds are verified; the runbook also requires verified owner-mode migration and multi-day continuation. Environment/profile changes cannot bypass that refusal. Documentary checks preserve all34 original full gate rows byte-for-byte, resolve added local links/anchors, and reconcile the phase seconds to **172800 + 50400 + 777600 + 50400 + 157500 + 900 = 1209600** (336hours). An initial ad-hoc row comparison also selected the new schedule table; scoping it to the original `Gate` table corrected that check without changing a gate. The existing local pass and all open execution prerequisites remain accurately recorded.
+
 ## Functional result
 
 ### Corrected-window execution — 2026-10-25; local functional retention passed, cleanup verified
