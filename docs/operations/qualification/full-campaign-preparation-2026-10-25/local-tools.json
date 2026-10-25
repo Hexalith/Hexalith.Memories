@@ -1,4 +1,86 @@
 {
+  "executionDependencies": {
+    "python": {
+      "path": "/usr/bin/python3.14",
+      "sha256": "52e0a13e60a981d8c4b6478be2ba5176f69da07948a056bf49cf6f077e30cb41"
+    },
+    "pythonVersion": "3.14.4 (main, Aug 20 2026, 10:41:58) [GCC 15.2.0]",
+    "pyyamlFiles": [
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/__init__.py",
+        "sha256": "b19dfcc333d6a75dfd73073901164507252f271b41d3b5f7d85510033a0547a7"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/_yaml.cpython-314-x86_64-linux-gnu.so",
+        "sha256": "f22c893369d4aa986cc0a97446dca60c850edee78a94b8ac4a4e43c2cb047b8f"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/composer.py",
+        "sha256": "fcaa37d16afa783594794a5ab94193dcb720f503c19ce3d59539c8311189f453"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/constructor.py",
+        "sha256": "90d8247da78b524c10618fd0e857f54f3d97570fe91b5c5513d024ef3faf88b0"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/cyaml.py",
+        "sha256": "e99ac01bd7c062f7557b614aff0d21997a06ed962ca185306a91bc0a20bbd87d"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/dumper.py",
+        "sha256": "3cb72d66563064ba7b5e679477046ebf89d8399d940670c8532f3e94a7cb17ea"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/emitter.py",
+        "sha256": "8e086d694ede170837d5b1b407b45979aff6f40762f422a65eafd08e04290a44"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/error.py",
+        "sha256": "021f73fada072546c4f63f8cf18a7181244ce4280b09cc15cc980b2d1176171a"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/events.py",
+        "sha256": "e74fd392c810884e2ea7e94aa3f57e9c1cbeb402319083d0c58e6a0e1282787c"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/loader.py",
+        "sha256": "5156becc8aa6905482218abf3e04869b835226db4763645fff3438fdbd5f1cdd"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/nodes.py",
+        "sha256": "80f28d8fca4a09d87677882bde021820d9cf39a3b11a12405226211919cf13ce"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/parser.py",
+        "sha256": "8a55a9e6fbe0a07146cef3990c8b45a068c3e83e369e1959ad9ca30306b4a09a"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/reader.py",
+        "sha256": "d1d9b38ab3a20c6e17a38d519ee412ecaf6b918df18c78956ac7c330d4ea08dc"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/representer.py",
+        "sha256": "22e58ff9c016f6c1ca1274b4802a926bcf78935060e1c813c5a0f021c6d143e6"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/resolver.py",
+        "sha256": "f4bf9561f9b89961f1503d558385fbae30d12bfed565de9bf76c33abb63620a6"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/scanner.py",
+        "sha256": "60433788b652690c17710460da5d91e0c753d3318fd85f5e1e42862a71f25906"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/serializer.py",
+        "sha256": "0a1b85826854d35863e31808f0668abfabdf33606e8f06bd8bb7761401e3edc0"
+      },
+      {
+        "path": "/usr/lib/python3/dist-packages/yaml/tokens.py",
+        "sha256": "953408cd2570f0c83dc2fe39f7e4e388e41eeb05738aa69196a5f6ffcf6ba79e"
+      }
+    ],
+    "pyyamlVersion": "6.0.3"
+  },
   "helmArchive": {
     "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/helm.tar.gz",
     "sha256": "97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096"
@@ -38,10 +120,11 @@
   },
   "privateToolManifest": {
     "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tool-inputs.draft.json",
-    "sha256": "0b039ba177a9f3de9f37e2e57a1082c904e08929f597167f247c2b5c65aab01c"
+    "sha256": "63e93b378bcf7771cf8c1f05fbf1edfd602512f5de9639d0aae649e434712a03"
   },
   "status": "partial-not-adopted",
-  "supportFileCount": 793,
+  "supportFileCount": 812,
+  "toolSupportFileCountBeforePython": 793,
   "tools": {
     "buildsCli": {
       "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/builds/Hexalith.Builds.Module.Cli.dll",

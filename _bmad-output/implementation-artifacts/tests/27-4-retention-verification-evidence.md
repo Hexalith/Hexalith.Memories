@@ -1,5 +1,86 @@
 # Story 27.4 — current retention results
 
+## Actual operational input preparation — 2026-10-25
+
+**Offline preparation is recorded; supported prepare remains blocked.** Platform's
+completed implementation and its one ordinary review were not repeated. The
+[concrete operational/disposal plan](../../../docs/operations/access-telemetry-full-qualification.md#operational-input-preparation--2026-10-25-current)
+contains the exact supported command sequence and bounded external prerequisite
+actions. The [input index](../../../docs/operations/qualification/full-campaign-preparation-2026-10-25/preparation.json)
+binds the actual local artifacts. This is preparation evidence only; Story27.4
+remains in progress and A41/full qualification/Production remain open.
+
+Private custody:
+`/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg`.
+It holds private executable/Builds support copies, tool/input drafts, offline
+stdout/stderr/host trace and preservation receipts. `lifecycle-plan.draft.json`
+contains nulls for unresolved actual inputs; it is not an approved plan and was
+not submitted to `prepare`. `lifecycle-plan.json` and `campaign-state/` are absent.
+No run/attempt/environment/session/target identity, signing key, credential,
+reservation, measurement or authorization was fabricated.
+
+Retained repository JSON artifacts bind26 source/import/command files, all6 chart
+files,7 configuration templates, the toolchain, actual executable/support hashes,
+PostgreSQL18.6/OpenBao2.6.4 pins, all7 graph workloads, all25 C1 parents, finite
+record envelopes, complete monitor series and missing credential/trust bindings.
+Local Helm archive SHA256 matches the existing4.2.0 pin, and the retained executable
+matches its archive bytes. The current Builds CLI SHA256 is
+`690f4cd11ec769040da125e5f6eca6b8ceabe47813664f3e596c49b774ee0e60`;
+its existing `validate --environment` command is present. Raw working-file and
+HEAD-blob hashes are distinguished, including PowerShell newline normalization.
+Controlled C2–C4 producers require a clean worktree and approved committed source;
+current staged/unstaged user changes remain untouched and are not declared eligible.
+
+The local17:39:05.494985Z observation found14 CPU slots,97021218816 total /
+67167330304 available RAM bytes and357742424064 available workspace bytes on
+device2096. This local time/free-space observation is not an authenticated clock,
+capacity reservation or backup proof. The CPU shortfall is at least2250m before
+competing demand against16250m/31GiB. The existing evidence root contains historical
+C1.16 only. Historical WINDOW serialization/TTL results, old1.18.1 image receipts
+and synthetic1.18.7 render logs cannot supply the absent finite physical/renewal,
+independent-clock or immutable operational image inputs.
+
+Exact cwd/argv/exit/stdout/stderr hashes are in
+[offline-checks.json](../../../docs/operations/qualification/full-campaign-preparation-2026-10-25/offline-checks.json).
+All8 commands exited0: retained `kind version`, `kubectl version --client=true -o
+json`, `helm version --short`, `docker --version`, the existing Builds
+`validate --help`, Platform `qualify.py --help`, Platform `qualify.py
+--campaign-capacity`, and Memories `verify-access-telemetry-lifecycle.py --help`.
+Observed versions are kind0.31.0, Helm4.2.0, kubectl1.36.1 and Docker client29.8.2;
+no client/server compatibility or running-target result is inferred. Supported
+sizing returned `sizing.status: blocked` / `compatible-finite-renewal-plan-required`,
+with null operational PG/backup allocation. Exit0 describes successful inspection,
+not admission. No implementation tests, review, cluster/daemon commands or prepare
+attempt were needed to establish these results.
+
+Remaining prerequisites are actual source/argument-bound gate and renewal timings,
+C2 drain/C3 isolation and physical sizing at full rate, exact images/assets and
+credential-compatible configuration, trusted UTC/status/collector and scoped
+credentials, aggregate reservations and independent backup/restore, clean source
+adoption, physical target binding and owner authority. The plan specifies one
+bounded artifact/host/trust/measurement/backup action at a time and original-owner
+cleanup. New calibration infrastructure needs its own Platform-authorized plan;
+the measurement-dependent full `prepare` cannot bootstrap that missing evidence.
+No launch authorization is requested before the actual inputs and prepared result
+exist. Existing WINDOW, historical profiles, gate rows, pins, workload/timing,
+security and cleanup requirements retain their original identities.
+
+**Final artifact verification.** The retained command
+`python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/offline-artifact-verification.py`
+checks actual references/tools, strict JSON, existing limits,25 gate parents,
+all34 unchanged campaign rows, original document bytes and private custody.
+[verification.json](../../../docs/operations/qualification/full-campaign-preparation-2026-10-25/verification.json)
+records `artifact-checks-passed-with-external-git-change`. `git diff --check`
+passed in all3 owners. The first `/tmp/verify_story274_operational_inputs.py`
+invocation exited1 with `AssertionError: memoriesHeadUnchanged`: an external
+process advanced Memories7b0c8b56->39be0009 (via5fd20e5f),
+Platformfbac461->935d74b and Buildse171c5a->7f740a8, and committed initial input
+JSON files. This agent performed no Git writes or reversal. Root gitlink pins
+remain at their original commits; actual submodule checkouts advanced externally.
+The receipt preserves this discrepancy; it does not claim unchanged HEADs/index.
+Inventoried source/tool/configuration and protected package/profile bytes still
+match. No operational state or admitted runtime identity was created.
+
 ## Supported full-campaign lifecycle implementation — 2026-10-25
 
 The lifecycle continuation implements Platform's full-campaign mode on its existing

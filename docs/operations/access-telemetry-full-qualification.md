@@ -6,6 +6,268 @@ Adopt one exact full Platform target/profile before scheduling this campaign. Pr
 
 C1.24 precedes C1.23/C1.25. Full C2 retains two writers, 30 minutes and 150,000 backlog records. Full C3 retains real 1/24/168-hour cohorts, 24-hour allocator proof and the 216-hour producer bound. No deadline extension is implicit. Use the existing [lifecycle runbook](access-telemetry-lifecycle.md) and [adapter contract](access-telemetry-adapter-production.md). Production activation/publication remain separate decisions.
 
+## Operational input preparation — 2026-10-25 (current)
+
+**Offline inputs are inventoried; supported `prepare` has not run.** Platform's
+implementation and its single ordinary review remain complete. This continuation
+adds operational input artifacts and a conditional execution/disposal sequence;
+it repeats neither implementation nor review. No infrastructure, Docker daemon,
+cluster, registry or external authority was contacted. This continuation performed no Git writes. Package/toolchain pins remain
+unchanged; concurrent Git changes are disclosed below. Story 27.4 remains in progress; every full gate, Production and A41 remains
+open. Earlier WINDOW results and historical profiles retain their original scope.
+
+The [preparation index](qualification/full-campaign-preparation-2026-10-25/preparation.json)
+binds the actual files prepared in this continuation. Private custody is
+`/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg`
+(0700; private input files 0600, executable copies 0700). This directory contains
+input copies and offline receipts only. Neither `lifecycle-plan.json` nor
+`campaign-state/` exists. `lifecycle-plan.draft.json` uses the existing Platform
+plan fields with unresolved values explicitly null. **Do not pass the draft to
+`prepare`; its hash is an inventory hash, not an outside approval.** No run,
+attempt, environment, session, Lease, target UID or operational grant was invented.
+
+### Retained inputs and their limits
+
+| Artifact | What is actually bound | Remaining prerequisite |
+| :--- | :--- | :--- |
+| [Source inventory](qualification/full-campaign-preparation-2026-10-25/source-inventory.json) | Raw SHA256 of 26 source/command/import files, all six current chart files, toolchain and seven configuration templates. HEAD-blob hashes are recorded separately; raw PowerShell CRLF bytes need not equal normalized Git blobs. | Actual application/provider/collector source closures and approved committed producer source. C2–C4 explicitly refuse a dirty worktree in `run_story_27_4_producer_checkpoint`; current staged/unstaged user changes are preserved. Adopt an eligible clean source checkout in a separately authorized step; do not use an old commit to omit the completed changes. |
+| [Local tools](qualification/full-campaign-preparation-2026-10-25/local-tools.json) | Private copies of kind 0.31.0, Helm 4.2.0, Docker client 29.8.2, kubectl client 1.36.1 and the already-built Builds Debug CLI/support files. Helm archive matches the existing pin and its binary matches the archive. The actual dotnet executable and 793 CLI/runtime support files plus Python3.14.4/PyYAML6.0.3 files are hashed
+(812 support references total); host trace retains the validator's runtime resolution. | These are local observed tools, not approved operational versions or a remote host binding. Preserve Kubernetes 1.35.0 and other toolchain pins; operator must adopt/check the client combination on the selected host. Dapr 1.18.7 chart, Gateway 1.5.1 CRDs and real CNI asset bytes were not found in the inspected cache scope. |
+| [Backend images](qualification/full-campaign-preparation-2026-10-25/backend-images.json) | Exact existing PostgreSQL 18.6 and OpenBao 2.6.4 index and linux/amd64 manifest digests, extracted from the historical canonical manifest and matching the finite contract. | Current registry/archive availability, provenance and actual deployed platform manifest. Historical image inspections grant no availability or rollout proof. |
+| [Binding requirements](qualification/full-campaign-preparation-2026-10-25/binding-requirements.json) | All seven maintained graph workloads, their configuration/secret reference names, nine-Pod allocation, backend/node pins, required monitoring series and custody/freshness requirements. | Real digest-bound Dapr 1.18.7 images (six roles), seven application images, provider/reporter/CNI images, complete values/components/provider objects, credentials, rendered inputs and actual source closures. No fixture values/images are promoted. |
+| [Workload contract](qualification/full-campaign-preparation-2026-10-25/workload-contract.json) | All 25 C1 gates in parent order, original limits, source-bound C2–C4 common producer, command-ID inventory and finite record envelopes. | Every actual C1 command/argument contract, per-round measured duration/cleanup receipt, compatible renewal schedule and C2 drain/C3 isolation evidence. `renewalSchedule` and round count remain null. |
+| [Host observation](qualification/full-campaign-preparation-2026-10-25/host-observation.json) | Local `/proc`/filesystem readback at 2026-10-25T17:39:05.494985Z: 14 CPU slots, 97021218816 total /67167330304 available RAM bytes, 357742424064 available workspace bytes on device 2096. | At least 16250m CPU and 33285996544 RAM bytes reserved after competing demand, exact engine identity, Linux-backed owned allocations, reservation term and independent backup. CPU is short by at least 2250m before competition. These observations are neither trusted UTC nor capacity receipts. |
+| [Supported sizing](qualification/full-campaign-preparation-2026-10-25/supported-sizing.json) | Actual existing `--campaign-capacity` output: exit 0, `sizing.status: blocked`, `compatible-finite-renewal-plan-required`. | Schedule-derived PG/backup sizes remain null. The displayed single-collection 24/57/16-GiB diagnostic is not a full-campaign allocation. |
+| [Discovery record](qualification/full-campaign-preparation-2026-10-25/evidence-discovery.json) and [offline commands](qualification/full-campaign-preparation-2026-10-25/offline-checks.json) | Inspected locations, historical/fixture exclusions and eight successful client-version/help/sizing commands with retained stdout/stderr hashes. | No new test/review pass, trusted receipt, running-target readiness or gate credit is claimed. |
+
+Source identities are observations of actual relevant bytes, not a whole-workspace
+freeze. Rebind only changed effective inputs and their dependent profile/plan
+hashes. The local Builds reader already exposes `validate --environment`; its
+successful help invocation does not validate a nonexistent campaign descriptor.
+The old reporter manifest is a template with a mutable image, old Dapr pin and
+retry count; it is not admitted directly. Supply the existing environment
+contract's immutable, suspended, zero-retry unprivileged reporter configuration.
+Do not edit historical profile files to turn them into the finite candidate.
+
+### Workload, renewal and capacity binding order
+
+1. Supply actual source/argument contracts for all 25 gates and C0/C2/C3/C4,
+   including the exact C2/C4 fault resources and scenarios. The old PowerShell
+   C1 entry supports only C1.15/C1.16 and historical PG profiles; it is not a
+   complete finite campaign command inventory. Existing owner authority accepts
+   approved per-gate source/command contracts; use that contract without creating
+   a Memories environment runner. Only C1 target/session arguments receive the
+   existing late-binding normalization. One invocation per command per round,
+   zero extra accepted records for retries, and all 25 descendants after each
+   C1.15 root refresh remain mandatory.
+2. Retain actual measured bounds for each round's capture, decisions and cleanup
+   in parent order; C1.24 precedes C1.23/C1.25. All rounds need zero unrelated
+   live/dead/support state and equal before/after C3 cohort inventories. Retain
+   C2's 24h-record drain/purge/reclamation before C3's empty boundary, plus exact
+   seed/control/due/reminder and physical-attribution readbacks. A proposed time
+   slot is not a timing receipt.
+3. Solve the 336h timeline using those measurements: C2/C4 50400s each, C3
+   777600s from its original origin; capture/review <=24h, collection <=72h,
+   review/use <=24h, technical age <=96h, continuous collection coverage. No
+   renewal overlaps C2/C4 or C3 empty/seeding, 1h/24h expiry-purge-reclaim, or
+   168h/control/report protected intervals. The final control/report interval
+   must be <24h including all operations; reserving the full 24h reclamation
+   ceiling plus overhead cannot prove that fit. A shorter reservation requires
+   actual source-bound measurements; the 24h reclamation policy stays unchanged.
+4. Only then choose N and derive R=650000*N+700500, PostgreSQL, primary PG+33GiB
+   and independent backup from Platform's existing formula. Retain a full
+   rewrite workspace, 4GiB WAL, 1GiB fixed DB overhead and 20% free at modeled
+   peak. Measure heap/TOAST and every index/actor/due/catalogue/cursor/reminder
+   relation at the actual limits, with two writers/1800s, >=450000 accepted
+   records, >=900000 component operations and 150000 separate backlog records.
+   WINDOW's 692-byte serialization measurement cannot supply physical sizing.
+5. Bind complete chart/values/render, backend/runtime images, tools, components,
+   providers, reporter, source, storage configuration, workload and renewal proof
+   into the existing closed profile inputs. Reserve exact allocations and the
+   16250m/31GiB aggregate, including competing demands. Provider/reporter/CNI
+   limits must fit the existing residual 300m/1GiB control allowance. A different
+   allocation requires separate adoption; no cap or workload is reduced here.
+6. Obtain a fresh initial measurement packet (<=24h), initial compute/storage
+   receipts (<=300s), independent-UTC-backed signed initial admission, and current
+   capacity receipts. Compute the canonical Memories profile through the existing
+   consumer only after admission. Bind it through the existing late-bound runtime
+   ConfigMap; never embed a literal self-hash inside hashed values/render files.
+
+The proposed 2026-10-26T08:00Z–2026-11-09T08:00Z envelope remains unreserved.
+No phase origin or renewal count is adopted. Missed readiness/phase boundaries
+invalidate the proposal; they do not move the original deadlines automatically.
+Startup must fit inside the execution window; reserve final stop/remove time and
+owner review explicitly when the measured schedule is filled in.
+
+### Trust, credentials and backup prerequisites
+
+Supply an independent authenticated UTC service with the existing <=1s uncertainty
+contract, and lifecycle samples <=60s old advanced by same-boot elapsed time.
+Development UTC and old WINDOW HMAC keys do not qualify. Separately appoint the
+lifecycle status issuer, capacity-admission issuer and collector, retaining their
+source/command hashes and private key references. Status binds exact owner
+`github:user:6775094`, run/plan and current capacity receipt, is <=300s old and
+expires <=900s after observation. Authorize `prepare` separately from future
+`launch`/`monitor`; signed preparation status does not authorize creation.
+
+The operational collector must supply all listed allocation, PostgreSQL and
+runtime series. Its signed preflight has null target/runtime/PostgreSQL series;
+after startup, actual target-bound observed series are mandatory within 60s.
+Measure owned allocations, not whole-filesystem free space. Pin actual limits,
+source and command before approval. Fault allowances bind exact source command,
+resource UID, scenario and <=900s interval, remain cumulative across receipts,
+and require restoration. Missing/stale data, drift, exhausted bounds, withdrawal
+or deadline causes containment. The foreground monitor remains active; `monitor`
+only resumes observation of the same owner and original deadlines.
+
+Use the maintained PostgreSQL TLS/bootstrap template. Provide verify-full SAN/CA
+identities for the actual service names, separate `memories_admin` maintenance
+and `memories_access_telemetry_runtime` credentials, and real OpenBao TLS/seed/
+policies/tokens. Runtime DB credentials remain behind Dapr secrets. Supply distinct
+app/API, inspection/reporter, clock signing, lifecycle, registry and provider
+credentials using graph-declared references; the reporter has no Kubernetes API
+token or RoleBinding. The application/provider namespaces require default-deny
+ingress/egress with explicit needed flows and an effective NetworkPolicy-capable
+CNI. Include provider `monitoring`, `prometheus-operated:9090`, OTel collector
+and the declared `redis-stack` fault target. Verify role scope, rotation, expiry
+and revocation against the whole run before adoption. No secret values are stored
+in the repository artifacts.
+
+The backup must name an independently recoverable Linux-backed pool/failure domain,
+owned destination and credentials, retained relation+WAL+metadata capacity,
+schedule and competing demands. C1.21/C1.22 require actual restore, measured
+RPO/RTO and the no-node/site-HA acknowledgement. Specify the restoration namespace/
+destination, one bounded restore attempt and cleanup before its future execution;
+neither another directory on device 2096 nor the old KVM disks proves independence.
+Keep backup/evidence custody after environment removal until its own disposition
+decision. No old disk, WINDOW state or other-session resource is in this ownership.
+
+### Exact supported command sequence (not executed)
+
+The [command catalogue](qualification/full-campaign-preparation-2026-10-25/command-catalog.json)
+records argv and cwd. These are conditional operator commands, not a shell runner.
+The final `lifecycle-plan.json`, all referenced bytes and outside-approved hash
+must exist first; do not rename the incomplete draft or self-approve its digest.
+
+```bash
+cd /home/administrator/projects/hexalith/memories/references/Hexalith.Platform
+CUSTODY=/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg
+PLAN="$CUSTODY/lifecycle-plan.json"
+STATE="$CUSTODY/campaign-state"
+: "${PLAN_SHA256:?Supply the outside-approved SHA256 of the complete actual plan}"
+
+# Offline only, after all actual prepare prerequisites and prepare status exist.
+python3 -B eng/helm-qualification/qualify.py --campaign prepare --campaign-state "$STATE" --campaign-plan "$PLAN" --approved-plan-sha256 "$PLAN_SHA256"
+python3 -B eng/helm-qualification/qualify.py --campaign inspect --campaign-state "$STATE"
+
+# Later, only after explicit authorization of the complete prepared plan.
+python3 -B eng/helm-qualification/qualify.py --campaign launch --campaign-state "$STATE" --approved-plan-sha256 "$PLAN_SHA256"
+
+# Recovery of monitoring only: same owner, no concurrent monitor or new launch.
+python3 -B eng/helm-qualification/qualify.py --campaign monitor --campaign-state "$STATE" --approved-plan-sha256 "$PLAN_SHA256"
+
+# Stop and remove share the original cumulative 900-second allowance.
+python3 -B eng/helm-qualification/qualify.py --campaign stop --campaign-state "$STATE"
+python3 -B eng/helm-qualification/qualify.py --campaign remove --campaign-state "$STATE"
+python3 -B eng/helm-qualification/qualify.py --campaign inspect --campaign-state "$STATE"
+```
+
+After a future successful prepare, retain its descriptor/render hashes and
+`inspect` output before asking for launch authorization. Before launch refresh
+status/capacity/preflight monitor and UTC; pin the exact engine/socket, owned
+primary and independent backup, original execution window and stopping authority.
+Launch once; no automatic recreation or retry. Startup is <=600s and execution
+is at most336h within the approved absolute window. Fault and phase launches
+require their separate existing owner/C1 authority; environment readiness supplies
+no C1 acceptance. Obtain the current immutable `observationPair` from `inspect`
+for each producer admission and outside-pin its hash. Keep its lifecycle-plan
+hash and exact physical target consistent with the owner plan. Never substitute
+an arbitrary latest file or change the original C3 journal/origin on renewal.
+
+Memories retains its existing command boundary. Once actual source, scenario,
+predecessor and custody inputs exist, its exact producer form is:
+
+```bash
+# From the actual clean approved Memories checkout; all variables are required
+# actual approved bindings. CHECKPOINT is one of the three names below.
+python3 -B tools/verify-access-telemetry-lifecycle.py \
+  --checkpoint "$CHECKPOINT" --repository-root "$MEMORIES_ROOT" \
+  --owner-plan "$OWNER_PLAN" --approved-owner-plan-sha256 "$OWNER_PLAN_SHA256" \
+  --owner-custody-root "$EVIDENCE_ROOT" \
+  --campaign-profile "$PROFILE" --approved-campaign-profile-sha256 "$PROFILE_SHA256" \
+  --campaign-capacity-receipt "$CAPACITY" --approved-campaign-capacity-sha256 "$CAPACITY_SHA256" \
+  --scenario-input "$SCENARIO" --predecessor "$PREDECESSOR" \
+  --evidence-root "$EVIDENCE_ROOT" --evidence "$EVIDENCE" --owner 'Jérôme Piquot'
+```
+
+Allowed phase names are `c2-production-replacement`, `c3-retention-reclamation`
+and `c4-failure-privacy-observability`; never loop/retry this command automatically.
+Also bind `HEXALITH_CAMPAIGN_APPROVED_LIFECYCLE_PLAN_SHA256`,
+`HEXALITH_CAMPAIGN_OBSERVATION` and
+`HEXALITH_CAMPAIGN_APPROVED_OBSERVATION_SHA256` to the approved plan/held pair.
+C0 remains the existing `adapter-profile` route with actual deployment/fault/
+workload identity; all 25 C1 gate commands remain unresolved operational inputs,
+not invented shell invocations. C5/C6 and A41 publication are outside this launch
+preparation. No complete executable producer invocation is claimed yet.
+
+On failure/cancellation, retain native bounded logs, command exit/elapsed/UTC,
+failure capture, terminal and descriptor/readback evidence. Use only supported
+`stop`/`remove` on the actual owner state. Verify disabled gate, empty exact-owned
+Lease, zero lifecycle/clock desired and ready replicas, terminated writers, then
+exact owned node/container/volume/primary removal. Require the runner's actual
+`removed`, empty remainder and `unverified:false` disposition; retain uncertainty,
+foreign resources, changed boot or budget exhaustion as incomplete. Do not issue
+manual broad Docker/kubectl deletion or restart the 900s allowance. Backups and
+evidence are intentionally retained and separately inventoried for later disposal.
+
+### Smallest next external actions and cleanup
+
+These are unexecuted prerequisite actions, not a request to launch. Each needs
+its actual destination, authority and source/command binding before execution.
+
+| Missing input | Smallest bounded action | Cleanup / refusal boundary |
+| :--- | :--- | :--- |
+| Exact artifacts and image provenance | One read-only retrieval per pinned Dapr/Gateway asset and required immutable image manifest/archive, <=300s per request, no tag upgrade or retries. Supply signed/build provenance for the seven application images and actual provider/reporter/CNI assets. | Retain verified bytes in private custody; remove only new incomplete downloads. No daemon load, publish or deployment. |
+| CPU/storage/backup reservation and engine identity | Platform owner supplies one <=60s read-only inventory per proposed host/pool plus reservation records for the full measured window. Reserve >=16250m/31GiB after competition and formula-derived primary/independent backup. | No resource creation needed. Reject this 14-slot host unless actual available capacity changes and is newly measured/reserved. No consumption of old disks or unverified `/mnt/c` backing. |
+| Real measurements and renewal compatibility | First import existing exact-input receipts if available. Otherwise request one separately authorized Platform calibration on an already admitted isolated target: full two-writer1800s/450000-record measurement and separate150000 backlog, physical/support/WAL/rewrite/compute readbacks. Bound the applicable producer by its existing50400s ceiling, with600s startup and900s cumulative disposal. Retain all25 gate timings/cleanup and the actual C2 drain; prove real1/24/168h cohort isolation with the existing C3 original777600s ceiling when no eligible evidence exists. A30-minute sample cannot stand in for that multi-day proof. | No shortened workload/retention or fabricated receipts. Stop at the first bound/attribution failure, disable/clear/zero owned writers and dispose only the calibration owner through its supported lifecycle. Retain authentic failure and backup/evidence. A new calibration environment cannot bootstrap missing admission measurements by feeding this draft to `prepare`; Platform must supply its separately approved prerequisite environment/plan. None is available here. |
+| UTC/status/collector trust and scoped credentials | Owner provisions one finite campaign credential/issuer set in private custody, with exact audiences/scopes and revocation path. On the selected host collect one <=60s authenticated preflight sample, test signature/withdrawal/expiry and all series against the retained source contract; renew continuously only during an approved run. | Revoke new test tokens/leases and stop only that probe collector on refusal; retain sanitized receipts. Do not reuse development keys or disclose Secrets in evidence. |
+| Backup recovery | On the already approved isolated calibration target, take one bounded backup and one restore to an explicitly separate owned destination, with a declared attempt ceiling within its existing gate slot (<=24h); measure actual RPO/RTO and physical/failure-domain identity. | No production overwrite. Stop/remove only the restore target under that target's original cleanup allowance; retain independent recoverable backup until its explicit disposition decision. |
+| Clean source and actual gate command inventory | Owners identify the exact eligible committed source and all25 approved command contracts; rebind affected hashes without changing dependency pins. Existing local changes remain untouched. | No Git action is authorized in this continuation. No source checkout is declared eligible from a dirty snapshot or from test fixtures. |
+| Operational authority | After all inputs pass supported prepare, present actual plan hash, prepared artifacts, reservations, phases/faults, monitoring, bounded execution and verified disposal procedure for one owner decision. | Until then, no launch authorization request and no external action. A41 remains open regardless of preparation outcome. |
+
+
+### Final artifact verification and concurrent workspace changes
+
+The [verification receipt](qualification/full-campaign-preparation-2026-10-25/verification.json)
+reopens actual source/chart/configuration/tool references with Platform's existing
+validators and checks strict JSON, unchanged sizing/limits, gate order, private
+custody, local links and the absence of operational plan/state. All original bytes
+of the three existing documents survive around these added sections; all34 gate
+rows, including25 C1 gates, are unchanged. Focused `git diff --check` exited0 in
+Memories, Platform and Builds. No implementation/review suite was repeated.
+
+The first preservation check (`python3 -B
+/tmp/verify_story274_operational_inputs.py`) exited1 with
+`AssertionError: memoriesHeadUnchanged`. Concurrent Git activity advanced session
+HEADs from Memories `7b0c8b5692600e293346eea7a84652eb87e4c346` to
+`39be000902254c4717df6726bfcc3ea927b26b70`, Platform
+`fbac4610309c6f9f9df334cfd5b029dcb3a9e354` to
+`935d74b89e1710abebdba2267b280814f8dc6b08`, and Builds
+`e171c5a788eab183b32683431b084198c9b8d373` to
+`7f740a8264cf8ce444b70fe486473e5f97fd26ee`. The root's recorded Platform/Builds
+gitlink pins stayed unchanged while those working checkouts advanced. The external
+commit also captured the initial preparation JSON files. This agent invoked no
+stage/commit/push/branch/update command and did not undo the concurrent changes.
+The receipt retains initial/capture/current identities rather than asserting
+unchanged HEADs or replacing the baseline. Actual inventoried source/tool bytes
+and protected package/toolchain/profile bytes still match.
+
+The final bounded artifact check is retained for replay as
+`python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/offline-artifact-verification.py`.
+Its result is `artifact-checks-passed-with-external-git-change`, not a claim that
+Git state stayed fixed. No `prepare`, `inspect`, `launch`, `monitor`, `stop` or
+`remove` command was executed because no admitted state exists.
+
 ## Supported Platform lifecycle commands — 2026-10-25
 
 The current implementation extends Platform's maintained kind `Qualification`

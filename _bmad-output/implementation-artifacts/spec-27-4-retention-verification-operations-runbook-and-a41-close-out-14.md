@@ -14,6 +14,52 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Actual operational inputs — 2026-10-25 (active continuation)
+
+The owner requests operational preparation only. Platform's full-campaign
+implementation and its one ordinary review are complete; neither is repeated.
+The [current operational plan](../../docs/operations/access-telemetry-full-qualification.md#operational-input-preparation--2026-10-25-current)
+and [prepared input index](../../docs/operations/qualification/full-campaign-preparation-2026-10-25/preparation.json)
+bind this continuation. Earlier implementation and review sections remain intact.
+
+- [x] Inspect local source/contracts, artifacts and historical evidence without
+  cluster/daemon/external access. Retain raw source/tool/configuration hashes and
+  provenance limits; preserve the existing staged and unstaged changes.
+- [x] Retain actual local tool copies/support hashes, Helm archive verification,
+  PostgreSQL/OpenBao immutable pins, full graph input/credential/monitoring
+  requirements and all25 parent-ordered C1 gates in the finite workload contract.
+- [x] Record actual host observations and supported offline sizing, retaining null
+  schedule/PG/backup allocation when measurements do not support selection.
+- [x] Specify exact supported prepare/inspect/launch/monitor/stop/remove commands,
+  producer handoff, original budgets, failure/disposal evidence, and the smallest
+  bounded external prerequisite actions with their cleanup plans.
+- [ ] Bind actual compatible measured renewals, immutable runtime/provider/reporter
+  inputs, trusted UTC/status/monitoring, scoped credentials, clean adopted source,
+  aggregate reservations/independent backup and outside-approved action authority.
+  Only then run supported prepare and present its actual artifacts for launch
+  authorization. The incomplete private draft is not executable or approved.
+
+Eight local version/help/sizing commands passed; sizing itself remains blocked on
+`compatible-finite-renewal-plan-required`. No prepare or lifecycle command was
+attempted, no state/run identity issued, no infrastructure launched, no ordinary
+review or implementation test suite repeated, and no Git write performed by this agent. The
+14-slot host is short by2250m before competing demand against the unchanged
+16250m/31GiB model. The actual producer also requires an approved clean committed
+source worktree; this continuation does not commit the existing changes.
+
+Keep the336h envelope provisional, C2/C4 at50400s, original C3 at777600s, real
+1/24/168h cohorts,900s purge,24h reclamation and900s cumulative stop/remove.
+Dependency pins, historical profiles, completed WINDOW evidence, all25 C1 gates
+and the full security/workload/cleanup contracts remain unchanged. Story27.4 is
+in progress and A41 is open. No launch authorization is requested while required
+inputs are missing. Results are appended only to the existing single report.
+
+Artifact verification and the report disclose concurrent external commits in
+all3 repositories, including initial preparation JSON files. Original package/
+toolchain/profile/document/gate bytes are preserved; HEAD/index preservation is
+not claimed. No concurrent Git change was undone. The root's recorded dependency
+gitlinks remain unchanged; working submodule HEADs advanced externally.
+
 ## Supported full-campaign environment and lifecycle — 2026-10-25 (active continuation)
 
 The owner's current instruction supersedes earlier implementation handoffs below: the finite campaign profile and authority/continuation implementation are complete. Implement Platform's supported full-campaign environment and lifecycle in the owning repositories. Reuse Platform/Builds' existing runner, descriptor, readiness, cancellation and disposal contracts; do not create a Memories environment runner. This is implementation work, not another planning-only handoff. Preserve the original baseline frontmatter, historical profiles, completed WINDOW evidence, all 25 C1 gates, existing workload/timing/security/cleanup requirements and every dependency pin. Do not launch infrastructure, contact clusters, initialize/update submodules, stage, commit or push. Story 27.4 and A41 stay open. Missing actual measurements, reservations, credentials and authority inputs remain explicit prerequisites, never fabricated evidence. Do not request launch authorization until a complete concrete operational plan is reviewable.

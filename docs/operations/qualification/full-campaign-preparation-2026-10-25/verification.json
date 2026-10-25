@@ -1,0 +1,69 @@
+{
+  "checkCount": 158,
+  "command": [
+    "python3",
+    "-B",
+    "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/offline-artifact-verification.py"
+  ],
+  "earlierCheck": {
+    "command": [
+      "python3",
+      "-B",
+      "/tmp/verify_story274_operational_inputs.py"
+    ],
+    "exitCode": 1,
+    "explanation": "A concurrent process advanced all three HEADs/index contents. No Git write command was executed by this agent; baseline is preserved, not overwritten.",
+    "result": "AssertionError: memoriesHeadUnchanged"
+  },
+  "externalGitChanges": [
+    {
+      "afterHead": "7f740a8264cf8ce444b70fe486473e5f97fd26ee",
+      "afterStageSha256": "e6d71e65771e9c89a4b7f31af6e4fc59fe5413302c0e76a9a78c65e340827f1f",
+      "agentGitWrites": false,
+      "baselineCaptureHead": "7f740a8264cf8ce444b70fe486473e5f97fd26ee",
+      "beforeStageSha256": "e6d71e65771e9c89a4b7f31af6e4fc59fe5413302c0e76a9a78c65e340827f1f",
+      "disposition": "Observed concurrent change; left untouched.",
+      "repository": "builds",
+      "sessionInitialHead": "e171c5a788eab183b32683431b084198c9b8d373",
+      "status": ""
+    },
+    {
+      "afterHead": "39be000902254c4717df6726bfcc3ea927b26b70",
+      "afterStageSha256": "9f6d81ac9b086873becb852abe5ca34c8f6263786daa79d01baa3d1b9c258350",
+      "agentGitWrites": false,
+      "baselineCaptureHead": "5fd20e5f576eed78a4c44d656361f16dcfd43db1",
+      "beforeStageSha256": "93645ae010f3caef7c00a30666d974faefecfe6386e0c1942868d10ab4b26285",
+      "disposition": "Observed concurrent change; left untouched.",
+      "repository": "memories",
+      "sessionInitialHead": "7b0c8b5692600e293346eea7a84652eb87e4c346",
+      "status": " M _bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md\n M _bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md\n M docs/operations/access-telemetry-full-qualification.md\n M docs/operations/qualification/full-campaign-preparation-2026-10-25/local-tools.json\n M docs/operations/qualification/full-campaign-preparation-2026-10-25/preparation.json\n M references/Hexalith.Builds\n M references/Hexalith.Platform\n?? docs/operations/qualification/full-campaign-preparation-2026-10-25/verification.json\n"
+    },
+    {
+      "afterHead": "935d74b89e1710abebdba2267b280814f8dc6b08",
+      "afterStageSha256": "0bf9c2e0ddc94fe55db0c7bc4d6de256356a8809b0a6349a9f7fe66aac7d1547",
+      "agentGitWrites": false,
+      "baselineCaptureHead": "fbac4610309c6f9f9df334cfd5b029dcb3a9e354",
+      "beforeStageSha256": "ae614ec8581248fb6dc9bc50fdb948fa63843092fbb09be214565fae3628e8d6",
+      "disposition": "Observed concurrent change; left untouched.",
+      "repository": "platform",
+      "sessionInitialHead": "fbac4610309c6f9f9df334cfd5b029dcb3a9e354",
+      "status": ""
+    }
+  ],
+  "observedLocalUtc": "2026-10-25T17:49:29.398230+00:00",
+  "qualificationCredit": false,
+  "receipt": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/offline-artifact-verification.json",
+    "sha256": "4c252bacfea216167f5140f036692cf447f7bc5b85794c8bd4ba572679446986"
+  },
+  "status": "artifact-checks-passed-with-external-git-change",
+  "summary": [
+    "actual references/tool bytes reopened with existing Platform reference/binary validators",
+    "strict JSON and supported source constants match",
+    "all25 C1 parents and all34 gate rows preserved",
+    "original bytes of all3 existing documents preserved around inserted current sections",
+    "protected pin bytes unchanged; concurrent HEAD/index changes recorded separately",
+    "no operational plan/state created",
+    "8 local client/help/sizing results retained"
+  ]
+}
