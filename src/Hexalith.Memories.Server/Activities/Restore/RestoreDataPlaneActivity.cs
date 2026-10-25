@@ -248,7 +248,8 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             new HashEntry("createdAt", caseRecord.CreatedAt.ToString("o")),
             new HashEntry("lastUpdated", caseRecord.LastUpdated.ToString("o")),
         ];
-        await db.HashSetAsync(caseKey, caseEntries).ConfigureAwait(false);
+        await TenantIngestionOwnership.WriteAsync(db, tenantId, "return redis.call('HSET',KEYS[1],unpack(ARGV))",
+            [(RedisKey)caseKey], caseEntries.SelectMany(entry => new RedisValue[] { entry.Name, entry.Value }).ToArray()).ConfigureAwait(false);
 
         // Members hash — one field per member, value = stored CaseMember JSON (mirrors CaseService.AddMemberAsync).
         string membersKey = $"{tenantId}:case:{caseRecord.Id}:members";
@@ -257,7 +258,8 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             string memberJson = JsonSerializer.Serialize(
                 PersistenceModelMapper.ToStored(member),
                 MemoriesPersistenceJsonContext.Options);
-            await db.HashSetAsync(membersKey, member.MemberId, memberJson).ConfigureAwait(false);
+            await TenantIngestionOwnership.WriteAsync(db, tenantId, "return redis.call('HSET',KEYS[1],ARGV[1],ARGV[2])",
+                [(RedisKey)membersKey], [(RedisValue)member.MemberId, (RedisValue)memberJson]).ConfigureAwait(false);
         }
 
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeCaseNode(
@@ -265,7 +267,8 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             caseRecord.Name,
             tenantId,
             caseRecord.CreatedAt);
-        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        await TenantIngestionOwnership.GraphWriteAsync(_redis.GetDatabase(), tenantId,
+            () => falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout), CancellationToken.None).ConfigureAwait(false);
     }
 
     private async Task<bool> RestoreMemoryUnitAsync(
@@ -329,7 +332,8 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             unit.IngestedAt,
             unit.LastUpdated,
             metadataJson);
-        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        await TenantIngestionOwnership.GraphWriteAsync(_redis.GetDatabase(), tenantId,
+            () => falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout), CancellationToken.None).ConfigureAwait(false);
 
         // CONTAINS edge case -> memory unit. Rebuilt from caseId (never present in the exported edges[]).
         (query, parameters) = _graphQueryBuilder.BuildMergeEdge(
@@ -338,7 +342,8 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
             EdgeType.Contains,
             EdgeTypeDefaults.Contains,
             EdgeOrigin.Explicit);
-        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        await TenantIngestionOwnership.GraphWriteAsync(_redis.GetDatabase(), tenantId,
+            () => falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout), CancellationToken.None).ConfigureAwait(false);
         return true;
     }
 
@@ -399,7 +404,8 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
         // exported case (dangling target) — MERGE a stub so the edge MATCH resolves.
         await MergeStubIfMissingAsync(falkor, tenantId, edge.SourceId, edge.CreatedAt).ConfigureAwait(false);
         await MergeStubIfMissingAsync(falkor, tenantId, edge.TargetId, edge.CreatedAt).ConfigureAwait(false);
-        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        await TenantIngestionOwnership.GraphWriteAsync(_redis.GetDatabase(), tenantId,
+            () => falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout), CancellationToken.None).ConfigureAwait(false);
         return RestoreEdgeOutcome.Restored;
     }
 
@@ -438,6 +444,7 @@ internal sealed class RestoreDataPlaneActivity : WorkflowActivity<RestoreDataPla
     private async Task MergeStubIfMissingAsync(NFalkorDB.FalkorDB falkor, string tenantId, string nodeId, DateTimeOffset stubCreatedAt)
     {
         (string query, IDictionary<string, object> parameters) = _graphQueryBuilder.BuildMergeStubNode(nodeId, stubCreatedAt);
-        await falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout).ConfigureAwait(false);
+        await TenantIngestionOwnership.GraphWriteAsync(_redis.GetDatabase(), tenantId,
+            () => falkor.SelectGraph(tenantId).QueryAsync(query, parameters).WaitAsync(GraphOperationTimeout), CancellationToken.None).ConfigureAwait(false);
     }
 }

@@ -36,11 +36,13 @@ public sealed partial class ProvisionRediSearchActivity : WorkflowActivity<Tenan
     }
 
     /// <inheritdoc/>
-    public override Task<bool> RunAsync(WorkflowActivityContext context, TenantProvisioningInput input)
+    public override async Task<bool> RunAsync(WorkflowActivityContext context, TenantProvisioningInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
         long startTimestamp = Stopwatch.GetTimestamp();
         IDatabase db = _redis.GetDatabase();
+        if (await db.KeyExistsAsync(Ingestion.TenantIngestionOwnership.Fence(input.TenantId)).ConfigureAwait(false))
+        { throw new InvalidOperationException("tenant-ingestion-erased"); }
         var ft = db.FT();
 
         string indexName = IndexSchemaDefinitions.GetSyntacticIndexName(input.TenantId);
@@ -66,7 +68,7 @@ public sealed partial class ProvisionRediSearchActivity : WorkflowActivity<Tenan
             "success",
             Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,
             DateTimeOffset.UtcNow);
-        return Task.FromResult(true);
+        return true;
     }
 
     private static void EnsureSyntacticSchemaMatches(IDatabase db, string indexName, string tenantId)

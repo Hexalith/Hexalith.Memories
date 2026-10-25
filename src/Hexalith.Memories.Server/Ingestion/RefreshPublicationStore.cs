@@ -23,10 +23,11 @@ internal sealed class RefreshPublicationStore([FromKeyedServices("redis")] IConn
             return 0
         end
         local revision = redis.call('GET',KEYS[3])
-        if revision and (not string.match(revision,'^[0-9]+$') or #ARGV[3] < #revision or (#ARGV[3] == #revision and (ARGV[3] < revision or (ARGV[3] == revision and redis.call('EXISTS',KEYS[8]) == 0)))) then return 0 end
+        if revision and (not string.match(revision,'^[0-9]+$') or #ARGV[3] < #revision or (#ARGV[3] == #revision and (ARGV[3] < revision or (ARGV[3] == revision and (ARGV[1] == '' or redis.call('EXISTS',KEYS[8]) == 0))))) then return 0 end
         if (ARGV[1] == '' and current) or (ARGV[1] ~= '' and current ~= ARGV[1]) then return 0 end
         local candidateKeys = redis.call('SMEMBERS', KEYS[5])
-        local priorKeys = redis.call('SMEMBERS', KEYS[6])
+        local priorKeys = {}
+        if ARGV[1] ~= '' then priorKeys = redis.call('SMEMBERS', KEYS[6]) end
         if #candidateKeys == 0 or #candidateKeys > 4096 or #priorKeys > 4096 then return 0 end
         for _, key in ipairs(candidateKeys) do if redis.call('EXISTS',key) == 0 then return 0 end end
         for _, key in ipairs(priorKeys) do if redis.call('EXISTS',key) == 1 then redis.call('HSET',key,'publicationVisible','0') end end
@@ -49,6 +50,7 @@ internal sealed class RefreshPublicationStore([FromKeyedServices("redis")] IConn
         {
             await inventory.ReopenAsync(input.TenantId, input.SourceUri, input.ReopenSourceVersion, cancellationToken).ConfigureAwait(false);
         }
+        await inventory.EnsureAdmissionOpenAsync(input.TenantId, input.SourceUri, cancellationToken).ConfigureAwait(false);
         string source = DedupKeyBuilder.BuildKey(input.TenantId, input.CaseId, input.SourceUri);
         string tokenKey = DedupKeyBuilder.BuildTokenKey(input.TenantId, input.CaseId, input.IdempotencyToken!);
         IDatabase db = redis.GetDatabase();
@@ -110,9 +112,9 @@ internal sealed class RefreshPublicationStore([FromKeyedServices("redis")] IConn
         RedisResult result = await TenantIngestionOwnership.WriteAsync(redis.GetDatabase(), input.TenantId, Publish,
             [(RedisKey)source, (RedisKey)tokenKey, (RedisKey)RevisionKey(source), (RedisKey)TokenBindingKey(tokenKey),
                 (RedisKey)SourcePublicationVisibility.Keys(input.TenantId, candidateId),
-                (RedisKey)SourcePublicationVisibility.Keys(input.TenantId, input.ExpectedMemoryUnitId ?? "__none"),
+                (RedisKey)(input.ExpectedMemoryUnitId is { } predecessor ? SourcePublicationVisibility.Keys(input.TenantId, predecessor) : "__unused-prior-keys"),
                 (RedisKey)SourcePublicationVisibility.Tombstone(input.TenantId, candidateId),
-                (RedisKey)SourcePublicationVisibility.Tombstone(input.TenantId, input.ExpectedMemoryUnitId ?? "__none"),
+                (RedisKey)(input.ExpectedMemoryUnitId is { } prior ? SourcePublicationVisibility.Tombstone(input.TenantId, prior) : "__unused-prior-tombstone"),
                 (RedisKey)GraphPublicationReadGate.JournalKey(input.TenantId), (RedisKey)GraphPublicationReadGate.EpochKey(input.TenantId)],
             [(RedisValue)(input.ExpectedMemoryUnitId ?? string.Empty), (RedisValue)candidateId,
                 (RedisValue)input.SourceRevisionNumber.ToString(CultureInfo.InvariantCulture), (RedisValue)input.RefreshIdentityDigest!,

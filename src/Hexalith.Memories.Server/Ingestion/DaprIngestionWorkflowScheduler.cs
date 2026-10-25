@@ -61,6 +61,7 @@ internal sealed partial class DaprIngestionWorkflowScheduler : IIngestionWorkflo
         ArgumentNullException.ThrowIfNull(input);
 
         IngestionIdentityGuard.Input(input, instanceId);
+        input = await IngestionPayloadClaimCheck.NormalizeSourceAsync(_payloadStore, input, cancellationToken).ConfigureAwait(false);
         if (input.RefreshExistingSource)
         {
             IngestionInputValidator.Validate(input, requireInlineRefreshContent: true);

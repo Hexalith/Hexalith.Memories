@@ -202,6 +202,18 @@ public class IngestionInputValidatorTests
         Should.NotThrow(() => IngestionInputValidator.Validate(input));
     }
 
+    [Fact]
+    public void Validate_PublicRefreshRejectsDualSourcesWhileTrustedSlimInputRemainsValid()
+    {
+        IngestionInput input = IngestionInputFactory.Create() with
+        {
+            RefreshExistingSource = true, IdempotencyToken = "stable-revision", SourceRevisionNumber = 1,
+            PayloadReference = CreateSourceReference(),
+        };
+        Should.Throw<ArgumentException>(() => IngestionInputValidator.Validate(input, requireInlineRefreshContent: true));
+        Should.NotThrow(() => IngestionInputValidator.Validate(input with { ContentBytes = null }));
+    }
+
     private static WorkflowPayloadReference CreateSourceReference()
-        => new("mu-1:sourcebytes:abc:source", "abc", 3, WorkflowPayloadKind.SourceBytes, "test-tenant", "mu-1");
+        => new("mu-1:sourcebytes:abc:source", new string('a', 64), 3, WorkflowPayloadKind.SourceBytes, "test-tenant", "mu-1");
 }

@@ -61,6 +61,7 @@ public sealed partial class TenantDeletionWorkflow : Workflow<TenantDeletionInpu
         {
             // Technical ownership may still exist independently of the native registry.
             await context.CallActivityAsync<bool>(nameof(DeleteTenantDataKeysActivity), input, retryOptions);
+            await context.CallActivityAsync<bool>(nameof(DeleteFalkorDbGraphFinalizerActivity), input, retryOptions);
             return new TenantDeletionResult(input.TenantId, TenantStatus.Active, "Tenant already deleted.");
         }
 

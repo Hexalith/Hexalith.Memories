@@ -232,6 +232,44 @@ public sealed class SourceInventoryIntegrationTests(RedisStackFixture redis, Fal
         (await inventory.ReadAsync(tenant, source, null, 100, token)).Entries.ShouldBeEmpty();
     }
 
+    [Fact]
+    public async Task WorkflowAndHistoricalUnitIdentitiesCannotCollideAcrossRoundTrip()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "discriminated-" + Guid.NewGuid().ToString("N");
+        const string source = "urn:synthetic:discriminated";
+        var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "DiscriminatedTests");
+        var store = new SourceInventoryStore(redis.Connection, codec);
+        await store.AdmitAsync("unit:x", Input(tenant, "case", source), token);
+        await store.RetainCanonicalAsync(tenant, source, "case", "x", token);
+        using IConnectionMultiplexer restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        var recreated = new SourceInventoryStore(restarted, codec);
+        (await recreated.ReadAsync(tenant, source, null, 100, token)).Entries.Count.ShouldBe(2);
+        await recreated.FenceAsync(tenant, source, false, token);
+        SourceInventoryPage page = await recreated.ReadAsync(tenant, source, null, 100, token);
+        await recreated.ReconcileAsync(tenant, source, page.Version,
+            [new("another-case", null, MemoryUnitId: "x", State: "Completed")], "exact-owner-test", token);
+        (await recreated.ReadAsync(tenant, source, null, 100, token)).Entries.Count.ShouldBe(3);
+    }
+
+    [Theory]
+    [InlineData(63)]
+    [InlineData(65)]
+    [InlineData(1000000)]
+    public async Task InvalidPayloadHashCannotBeAdmittedOrReadFromDurableInventory(int length)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "bad-hash-" + Guid.NewGuid().ToString("N");
+        const string source = "urn:synthetic:hash";
+        var store = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "HashTests"));
+        var reference = new WorkflowPayloadReference("valid-id", new string('a', length), 1, WorkflowPayloadKind.SourceBytes, tenant, "prior");
+        await Should.ThrowAsync<ArgumentException>(() => store.AdmitAsync("new", Input(tenant, "case", source) with { PayloadReference = reference }, token));
+        (await redis.Connection.GetDatabase().KeyExistsAsync(SourceInventoryStore.BuildKey(tenant, source))).ShouldBeFalse();
+        var snapshot = new SourceInventorySnapshot(tenant, source, "corrupt", Entries: [new("case", "new", SourcePayloadReference: reference)]);
+        await redis.Connection.GetDatabase().StringSetAsync(SourceInventoryStore.BuildKey(tenant, source), JsonSerializer.Serialize(snapshot, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        await Should.ThrowAsync<ArgumentException>(() => store.ReadAsync(tenant, source, null, 100, token));
+    }
+
     private static IngestionInput Input(string tenant, string caseId, string source) => new()
     {
         TenantId = tenant, CaseId = caseId, SourceUri = source, ContentType = "text/plain", SourceType = SourceType.File,

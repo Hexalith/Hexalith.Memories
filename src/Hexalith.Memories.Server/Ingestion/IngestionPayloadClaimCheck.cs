@@ -5,7 +5,10 @@
 
 namespace Hexalith.Memories.Server.Ingestion;
 
+using System.Security.Cryptography;
+
 using Hexalith.Memories.Contracts.V1;
+using Hexalith.Memories.Server.Activities.Ingestion;
 
 /// <summary>Prepares ingestion workflow input by moving non-URL source bytes into the workflow payload store.</summary>
 internal static class IngestionPayloadClaimCheck
@@ -44,6 +47,22 @@ internal static class IngestionPayloadClaimCheck
             ContentBytes = null,
             PayloadReference = reference,
         };
+    }
+
+    /// <summary>Reads and validates supported prior-owner source bytes before admitting an independently owned copy.</summary>
+    internal static async Task<IngestionInput> NormalizeSourceAsync(IWorkflowPayloadStore payloadStore, IngestionInput input, CancellationToken token)
+    {
+        IngestionInputValidator.Validate(input, requireInlineRefreshContent: true);
+        if (input.PayloadReference is not { } reference) { return input; }
+        byte[] bytes = await payloadStore.ReadAsync(reference, input.TenantId, reference.MemoryUnitId,
+            WorkflowPayloadKind.SourceBytes, token).ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        if (bytes.LongLength != reference.ByteLength || bytes.Length > IngestionInputValidator.MaxContentBytes
+            || !string.Equals(Convert.ToHexStringLower(SHA256.HashData(bytes)), reference.Sha256Hash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Referenced source bytes do not match the bounded admitted claim-check.");
+        }
+        return input with { ContentBytes = bytes, PayloadReference = null };
     }
 
     /// <summary>Derives the exact source identity before its save can succeed without acknowledgement.</summary>

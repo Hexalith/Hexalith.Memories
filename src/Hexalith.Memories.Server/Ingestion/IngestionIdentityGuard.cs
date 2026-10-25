@@ -35,9 +35,20 @@ internal static class IngestionIdentityGuard
         if (input.ReopenSourceVersion is not null) { Handle(input.ReopenSourceVersion, 200); }
         if (input.PayloadReference is { } reference)
         {
-            Handle(reference.MemoryUnitId);
-            Handle(reference.TenantId, 128);
-            Handle(reference.Id, 2048);
+            PayloadReference(reference);
+        }
+    }
+
+    /// <summary>Validates the documented bounded claim-check shape before retention or durable reads.</summary>
+    internal static void PayloadReference(WorkflowPayloadReference reference)
+    {
+        Handle(reference.MemoryUnitId);
+        TenantIdGuard.Validate(reference.TenantId);
+        Handle(reference.TenantId, 128);
+        Handle(reference.Id, 2048);
+        if (reference.Sha256Hash is not { Length: 64 } hash || hash.Any(character => !char.IsAsciiHexDigit(character)))
+        {
+            throw new ArgumentException("PayloadReference requires a 64-character hexadecimal SHA-256 hash.");
         }
     }
 
@@ -50,9 +61,7 @@ internal static class IngestionIdentityGuard
         if (entry.CandidateMemoryUnitId is not null) { Handle(entry.CandidateMemoryUnitId); }
         if (entry.SourcePayloadReference is { } reference)
         {
-            Handle(reference.MemoryUnitId);
-            Handle(reference.TenantId, 128);
-            Handle(reference.Id, 2048);
+            PayloadReference(reference);
         }
     }
 }

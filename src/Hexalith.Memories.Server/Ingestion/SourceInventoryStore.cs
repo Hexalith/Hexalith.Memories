@@ -12,6 +12,7 @@ using StackExchange.Redis;
 internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnectionMultiplexer redis, IQueryCursorCodec cursorCodec)
 {
     internal const int Capacity = 1024;
+    internal const int MaximumPageBytes = 1024 * 1024;
     private const int MaximumDocumentCharacters = 4 * 1024 * 1024;
     private const string CompareExchange = "if redis.call('GET',KEYS[1]) == ARGV[1] then redis.call('SET',KEYS[1],ARGV[2]); return 1 else return 0 end";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -253,9 +254,18 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         SourceInventoryEntry[] entries = (current.Entries ?? []).Skip(offset).Take(pageSize)
             .Select(entry => entry.CandidateMemoryUnitId is { } candidate && candidate != entry.MemoryUnitId && !entry.CandidateArtifactsDeleted
                 ? entry with { TerminalVerified = false } : entry).ToArray();
-        int next = offset + entries.Length;
-        return new(tenantId, sourceUri, current.Version, current.CoverageComplete, current.AdmissionClosed, current.Permanent,
-            entries, next < (current.Entries?.Count ?? 0) ? cursorCodec.Encode("memories-source-inventory-v1", scope, next.ToString(CultureInfo.InvariantCulture)) : null, current.CoverageComplete ? null : current.IncompleteReason ?? "legacy-coverage-not-reconciled");
+        // Account for the actual Web JSON escaping, UTF-8 bytes and protected continuation.
+        // Removing only trailing entries preserves exact snapshot offsets and accepted identities.
+        while (true)
+        {
+            int next = offset + entries.Length;
+            SourceInventoryPage page = new(tenantId, sourceUri, current.Version, current.CoverageComplete, current.AdmissionClosed, current.Permanent,
+                entries, next < (current.Entries?.Count ?? 0) ? cursorCodec.Encode("memories-source-inventory-v1", scope, next.ToString(CultureInfo.InvariantCulture)) : null,
+                current.CoverageComplete ? null : current.IncompleteReason ?? "legacy-coverage-not-reconciled");
+            if (JsonSerializer.SerializeToUtf8Bytes(page, Json).Length <= MaximumPageBytes) { return page; }
+            if (entries.Length <= 1) { throw new InvalidOperationException("source-inventory-page-byte-capacity"); }
+            entries = entries[..^1];
+        }
     }
 
     /// <summary>Explicit owner reconciliation seam. Only a fenced, fully enumerated historical source can gain a coverage marker.</summary>
@@ -278,7 +288,7 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         {
             if (!current.AdmissionClosed || current.Version != expectedVersion) { throw new InvalidOperationException("source-inventory-reconciliation-conflict"); }
             SourceInventoryEntry[] merged = [.. (current.Entries ?? []).Concat(historicalEntries).Distinct()];
-            if (merged.Length > Capacity || merged.GroupBy(entry => entry.WorkflowInstanceId ?? "unit:" + entry.MemoryUnitId, StringComparer.Ordinal).Any(group => group.Count() > 1))
+            if (merged.Length > Capacity || merged.GroupBy(EntryIdentity).Any(group => group.Count() > 1))
             {
                 throw new InvalidOperationException("source-inventory-reconciliation-invalid");
             }
@@ -307,6 +317,8 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             SourceInventoryEntry[] entries = [.. updated.Entries ?? []];
             foreach (SourceInventoryEntry entry in entries) { IngestionIdentityGuard.Entry(entry); }
             if (entries.Length > Capacity) { throw new InvalidOperationException("source-inventory-capacity"); }
+            if (entries.GroupBy(EntryIdentity).Any(group => group.Count() > 1))
+            { throw new InvalidOperationException("source-inventory-duplicate-identity"); }
             string[] units = entries.Where(entry => entry.MemoryUnitId is not null && entry.State != "Deleted")
                 .Select(entry => entry.MemoryUnitId!).Distinct(StringComparer.Ordinal).ToArray();
             RedisValue[] receipts = units.Length == 0 ? [] : await db.StringGetAsync(
@@ -336,7 +348,7 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
             || (current.Entries ?? []).Any(entry => entry is null || string.IsNullOrWhiteSpace(entry.CaseId)
                 || (string.IsNullOrWhiteSpace(entry.WorkflowInstanceId) && string.IsNullOrWhiteSpace(entry.MemoryUnitId)) || entry.State is not ("Admitted" or "Completed" or "Deleted")
                 || (entry.State != "Admitted" && string.IsNullOrWhiteSpace(entry.MemoryUnitId)))
-            || (current.Entries ?? []).GroupBy(entry => entry.WorkflowInstanceId ?? "unit:" + entry.MemoryUnitId, StringComparer.Ordinal).Any(group => group.Count() > 1)
+            || (current.Entries ?? []).GroupBy(EntryIdentity).Any(group => group.Count() > 1)
             || (current.CoverageComplete && string.IsNullOrWhiteSpace(current.CoverageEvidenceId)))
         {
             throw new InvalidOperationException("source-inventory-unreadable");
@@ -344,6 +356,9 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         foreach (SourceInventoryEntry entry in current.Entries ?? []) { IngestionIdentityGuard.Entry(entry); }
         return current;
     }
+
+    private static (string Kind, string? Case, string? Id) EntryIdentity(SourceInventoryEntry entry)
+        => entry.WorkflowInstanceId is { } workflow ? ("workflow", null, workflow) : ("unit", entry.CaseId, entry.MemoryUnitId);
 
     internal static string BuildKey(string tenantId, string sourceUri)
     {

@@ -29,6 +29,42 @@ using StackExchange.Redis;
 public sealed class RefreshPublicationIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IClassFixture<FalkorDbFixture>
 {
     [Fact]
+    public async Task InitialPublicationCannotRetireARealUnitNamedNone()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "absent-prior-" + Guid.NewGuid().ToString("N");
+        const string source = "urn:synthetic:new-source";
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "AbsentPriorTests"));
+        var publication = new RefreshPublicationStore(redis.Connection, inventory, graph.Connection);
+        await IndexAsync(tenant, "__none", "urn:synthetic:unrelated", Encoding.UTF8.GetBytes("unrelated"));
+        await SourcePublicationVisibility.WriteAsync(redis.Connection.GetDatabase(), tenant, "__none", tenant + ":mu:__none",
+            [new HashEntry("content", "unrelated")], false, "captured-case", "urn:synthetic:unrelated");
+        string before = (await redis.Connection.GetDatabase().HashGetAsync(tenant + ":mu:__none", SourcePublicationVisibility.Field)).ToString();
+        var input = Input(tenant, "captured-case", source, "new content", "new-token", 1, null);
+        input = input with { RefreshIdentityDigest = await publication.PrepareAsync(input, token) };
+        await IndexAsync(tenant, "candidate", source, input.ContentBytes!);
+        (await publication.PublishAsync(input, "candidate", token)).ShouldBeTrue();
+        (await redis.Connection.GetDatabase().HashGetAsync(tenant + ":mu:__none", SourcePublicationVisibility.Field)).ToString().ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task PermanentSourceFenceRejectsDistinctRefreshTokensWithoutRetainingBindings()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string tenant = "closed-bindings-" + Guid.NewGuid().ToString("N");
+        const string source = "urn:synthetic:closed-source";
+        var inventory = new SourceInventoryStore(redis.Connection, new QueryCursorCodec(new EphemeralDataProtectionProvider(), "ClosedBindingTests"));
+        await inventory.FenceAsync(tenant, source, true, token);
+        long before = await redis.Connection.GetDatabase().SetLengthAsync(TenantIngestionOwnership.Key(tenant));
+        var publication = new RefreshPublicationStore(redis.Connection, inventory, graph.Connection);
+        for (int index = 0; index < 20; index++)
+        {
+            await Should.ThrowAsync<InvalidOperationException>(() => publication.PrepareAsync(Input(tenant, "captured-case", source, "bytes", "token-" + index, index, null), token));
+        }
+        (await redis.Connection.GetDatabase().SetLengthAsync(TenantIngestionOwnership.Key(tenant))).ShouldBe(before);
+    }
+
+    [Fact]
     public async Task UntrackedMaintenanceKeysJoinModernProvenanceBeforeRefreshAndNativeTopK()
     {
         CancellationToken token = TestContext.Current.CancellationToken;

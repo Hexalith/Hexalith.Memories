@@ -29,9 +29,10 @@ internal static class IngestionInputValidator
         ValidateSourceType(input.SourceType);
         ValidateContentBytesForSourceType(input.ContentBytes, input.PayloadReference, input.SourceType, input.SourceUri, input.TenantId);
         ValidateMetadata(input.Metadata);
-        if (requireInlineRefreshContent && input.RefreshExistingSource && input.ContentBytes is not { Length: > 0 })
+        if (requireInlineRefreshContent && input.RefreshExistingSource
+            && (input.ContentBytes is not { Length: > 0 } || input.PayloadReference is not null))
         {
-            throw new ArgumentException("Explicit source refresh requires inline ContentBytes.");
+            throw new ArgumentException("Explicit source refresh requires inline ContentBytes as its only source and no PayloadReference.");
         }
         if (input.RefreshExistingSource && (input.SourceType != SourceType.File || input.SourceRevisionNumber < 0
             || string.IsNullOrWhiteSpace(input.IdempotencyToken)
@@ -54,7 +55,7 @@ internal static class IngestionInputValidator
     {
         if (sourceType == SourceType.Url)
         {
-            if (contentBytes is { Length: > 0 })
+            if (contentBytes is { Length: > 0 } || payloadReference is not null)
             {
                 throw new ArgumentException("ContentBytes must be null for SourceType=Url; the server fetches the URL body.");
             }
@@ -97,7 +98,7 @@ internal static class IngestionInputValidator
                 throw new ArgumentException("PayloadReference must reference source bytes for non-URL ingestion.");
             }
 
-            if (payloadReference.ByteLength <= 0
+            if (payloadReference.ByteLength <= 0 || payloadReference.ByteLength > MaxContentBytes
                 || string.IsNullOrWhiteSpace(payloadReference.Id)
                 || string.IsNullOrWhiteSpace(payloadReference.Sha256Hash)
                 || string.IsNullOrWhiteSpace(payloadReference.MemoryUnitId))
