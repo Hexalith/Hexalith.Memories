@@ -25,10 +25,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Hexalith.Memories.Contracts\Hexalith.Memories.Contracts.csproj" />
+    <ProjectReference Include="$(HexalithEventStoreRoot)\src\Hexalith.EventStore.Contracts\Hexalith.EventStore.Contracts.csproj" Condition="'$(HexalithEventStoreFromSource)' == 'true'" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Hexalith.EventStore.Contracts" />
+    <PackageReference Include="Hexalith.EventStore.Contracts" Condition="'$(HexalithEventStoreFromSource)' != 'true'" />
     <PackageReference Include="Dapr.AspNetCore" />
     <PackageReference Include="Dapr.Client" />
     <PackageReference Include="Dapr.Workflow" />

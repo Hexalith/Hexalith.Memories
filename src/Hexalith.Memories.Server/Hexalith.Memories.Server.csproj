@@ -38,6 +38,8 @@
     <ProjectReference
       Include="..\Hexalith.Memories.ServiceDefaults\Hexalith.Memories.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Hexalith.Memories.Telemetry\Hexalith.Memories.Telemetry.csproj" />
+    <ProjectReference Include="$(HexalithEventStoreRoot)\src\Hexalith.EventStore.Client\Hexalith.EventStore.Client.csproj" Condition="'$(HexalithEventStoreFromSource)' == 'true'" />
+    <ProjectReference Include="$(HexalithEventStoreRoot)\src\Hexalith.EventStore.DomainService\Hexalith.EventStore.DomainService.csproj" Condition="'$(HexalithEventStoreFromSource)' == 'true'" />
   </ItemGroup>
 
   <ItemGroup>
@@ -49,8 +51,8 @@
     <PackageReference Include="Dapr.Actors.AspNetCore" />
     <PackageReference Include="Dapr.AI" />
     <PackageReference Include="Dapr.AI.Microsoft.Extensions" />
-    <PackageReference Include="Hexalith.EventStore.Client" />
-    <PackageReference Include="Hexalith.EventStore.DomainService" />
+    <PackageReference Include="Hexalith.EventStore.Client" Condition="'$(HexalithEventStoreFromSource)' != 'true'" />
+    <PackageReference Include="Hexalith.EventStore.DomainService" Condition="'$(HexalithEventStoreFromSource)' != 'true'" />
     <PackageReference Include="Kreuzberg" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
