@@ -26,6 +26,10 @@ import verify_access_telemetry_lifecycle as lifecycle
 
 class CampaignProfileTests(unittest.TestCase):
     def setUp(self):
+        # These tests isolate existing capacity/authority semantics. The lifecycle
+        # handoff itself is exercised with the real Builds reader in its own suite.
+        boundary = patch.object(profiles, "validate_campaign_environment_binding", return_value={"qualified": False})
+        boundary.start(); self.addCleanup(boundary.stop)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)

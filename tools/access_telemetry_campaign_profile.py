@@ -95,6 +95,7 @@ def selected_campaign_profile(repository_root=None, *, now_ms=None, launch=False
                 raise ValueError("fresh outside-approved capacity receipt is required")
             module.admit_launch(profile, current_path, current_sha, now_ms=now_ms,
                                 original_admission=original, require_original=require_original)
+            validate_campaign_environment_binding(profile)
         return profile
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ImportError) as error:
         raise EvidenceValidationError("finite campaign profile admission refused") from error
@@ -164,3 +165,76 @@ def validate_campaign_runtime_binding(value):
             or value.get("data") != data):
         raise EvidenceValidationError("finite campaign runtime binding differs from approved profile")
     return data
+
+
+def validate_campaign_environment_binding(campaign):
+    """Require the supported runner's ready descriptor and exact physical readback.
+
+    These additional outside-approved anchors grant no C1 or producer permission.
+    The existing owner authority separately verifies the same physical target,
+    source, session, current status and all 25 gates before any mutation.
+    """
+    import json
+    import subprocess
+    import time
+    from verify_access_telemetry_lifecycle import EvidenceValidationError, _json_without_duplicates
+    try:
+        pair = None
+        pair_path = os.environ.get('HEXALITH_CAMPAIGN_OBSERVATION')
+        pair_sha = os.environ.get('HEXALITH_CAMPAIGN_APPROVED_OBSERVATION_SHA256')
+        if pair_path or pair_sha:
+            path = Path(pair_path or '')
+            if not pair_sha or not path.is_absolute() or path.is_symlink() or path.resolve() != path or path.stat().st_size > 1048576:
+                raise ValueError('invalid observation pair')
+            raw = path.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != pair_sha:
+                raise ValueError('observation pair changed')
+            pair = _json_without_duplicates(raw.decode(), 'campaign observation pair')
+            if set(pair) != {'schema', 'runId', 'observedUtcMs', 'descriptor', 'readback'} or pair['schema'] != 'hexalith.platform.campaign-observation/v1':
+                raise ValueError('invalid observation pair shape')
+        def read(name):
+            path = Path(pair[name.lower()]['path'] if pair else os.environ['HEXALITH_CAMPAIGN_' + name])
+            expected = pair[name.lower()]['sha256'] if pair else os.environ['HEXALITH_CAMPAIGN_APPROVED_' + name + '_SHA256']
+            if path.is_symlink() or path.resolve() != path or path.stat().st_size > 1048576:
+                raise ValueError('invalid lifecycle artifact')
+            raw = path.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != expected:
+                raise ValueError('lifecycle artifact changed')
+            return path, _json_without_duplicates(raw.decode(), 'campaign lifecycle artifact'), expected
+        descriptor_path, descriptor, descriptor_sha = read('DESCRIPTOR')
+        _, readback, _ = read('READBACK')
+        if pair and (pair['runId'] != readback['runId'] or pair['observedUtcMs'] != readback['observedUtcMs']):
+            raise ValueError('observation pair binding differs')
+        bindings = descriptor['bindings']
+        if (readback['schema'] != 'hexalith.platform.campaign-readback/v1' or readback['qualified'] is not False
+                or readback['descriptorSha256'] != descriptor_sha
+                or readback['profileSha256'] != active_profile_sha256()
+                or readback['capacityProfileSha256'] != hashlib.sha256(json.dumps(campaign, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode()).hexdigest()
+                or readback['planSha256'] != os.environ['HEXALITH_CAMPAIGN_APPROVED_LIFECYCLE_PLAN_SHA256']
+                or bindings['run']['runId'] != readback['runId'] or bindings['run']['ownerRunId'] != readback['runId']
+                or bindings['environment']['composition']['contentIdentity'] != 'sha256:' + readback['planSha256']
+                or bindings['environment']['readiness']['status'] != 'ready'
+                or not 0 <= int(time.time() * 1000) - readback['observedUtcMs'] <= 60000):
+            raise ValueError('lifecycle binding differs')
+        # The already outside-approved owner plan binds actual API/CA/cluster and
+        # namespace identities. A proposed descriptor cannot appoint its target.
+        from access_telemetry_c1_owner_dispatch import _validated_plan
+        plan = _validated_plan(Path(os.environ['HEXALITH_C1_OWNER_PLAN']).read_bytes(), os.environ['HEXALITH_C1_APPROVED_PLAN_SHA256']).value
+        if any(readback['target'][key] != plan['target'][key] for key in ('apiServer', 'apiCaSha256', 'clusterUid', 'namespaceUid')):
+            raise ValueError('physical target differs')
+        ref = campaign['inputs']['tool'][0]
+        raw = Path(ref['path']).read_bytes()
+        if hashlib.sha256(raw).hexdigest() != ref['sha256']:
+            raise ValueError('tool input changed')
+        tool = json.loads(raw)
+        for selected in [*tool['tools'].values(), *tool['toolFiles']]:
+            with Path(selected['path']).open('rb') as stream:
+                if hashlib.file_digest(stream, 'sha256').hexdigest() != selected['sha256']:
+                    raise ValueError('descriptor validator changed')
+        result = subprocess.run([tool['tools']['dotnet']['path'], tool['tools']['buildsCli']['path'], 'validate', '--environment', str(descriptor_path), '--output', 'json'],
+                                stdin=subprocess.DEVNULL, capture_output=True, timeout=30, check=False)
+        if result.returncode != 0 or len(result.stdout) > 1048576 or json.loads(result.stdout).get('status') != 'validated':
+            raise ValueError('supported descriptor reader refused')
+        return readback
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as error:
+        raise EvidenceValidationError('finite campaign environment admission refused') from error

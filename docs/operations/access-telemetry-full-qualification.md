@@ -6,6 +6,118 @@ Adopt one exact full Platform target/profile before scheduling this campaign. Pr
 
 C1.24 precedes C1.23/C1.25. Full C2 retains two writers, 30 minutes and 150,000 backlog records. Full C3 retains real 1/24/168-hour cohorts, 24-hour allocator proof and the 216-hour producer bound. No deadline extension is implicit. Use the existing [lifecycle runbook](access-telemetry-lifecycle.md) and [adapter contract](access-telemetry-adapter-production.md). Production activation/publication remain separate decisions.
 
+## Supported Platform lifecycle commands — 2026-10-25
+
+The current implementation extends Platform's maintained kind `Qualification`
+runner with a durable full-campaign mode. Builds exposes its existing strict
+`hexalith.test-environment.v1` reader through `validate --environment`; Memories
+consumes a ready descriptor and exact physical readback before admitted execution.
+The older fixture-only qualifier remains separate. The one ordinary review is
+complete, all seven substantive findings are resolved, and the final lifecycle
+and Memories consumer selections pass37/37 and18/18. This section records the
+supported commands and operational prerequisites; it grants no launch approval.
+
+Run these commands from `references/Hexalith.Platform` in this workspace, or the
+owning Platform checkout. `PLAN`, `STATE` and `PLAN_SHA256` must be actual approved
+private paths and the outside-approved raw plan hash. No values for them were
+invented or operational state directories created during this implementation.
+
+```bash
+# Offline admission, real chart rendering and Builds descriptor validation.
+python3 -B eng/helm-qualification/qualify.py --campaign prepare --campaign-state "$STATE" --campaign-plan "$PLAN" --approved-plan-sha256 "$PLAN_SHA256"
+
+# Inspect the durable original owner and latest observation.
+python3 -B eng/helm-qualification/qualify.py --campaign inspect --campaign-state "$STATE"
+
+# Explicitly authorized launch only; remains in bounded foreground supervision.
+python3 -B eng/helm-qualification/qualify.py --campaign launch --campaign-state "$STATE" --approved-plan-sha256 "$PLAN_SHA256"
+
+# Resume observation of that same owner; does not relaunch or renew deadlines.
+python3 -B eng/helm-qualification/qualify.py --campaign monitor --campaign-state "$STATE" --approved-plan-sha256 "$PLAN_SHA256"
+
+# Request stop, then exact disposal within the original cumulative stop allowance.
+python3 -B eng/helm-qualification/qualify.py --campaign stop --campaign-state "$STATE"
+python3 -B eng/helm-qualification/qualify.py --campaign remove --campaign-state "$STATE"
+```
+
+Preparation performs local validation/rendering only. Launch consumes one attempt;
+there is no automatic recreation or retry. Startup is bounded to 600 seconds,
+execution to the original approved window (at most 336 hours), and stopping plus
+removal share the original 900-second allowance. Stopping does not reset that
+allowance for a later remove. An uncertain in-flight command, foreign resource,
+changed boot, exhausted budget or unverified remainder remains an explicit refusal
+or incomplete disposition, not removal success. The monitor must remain active;
+local failure/cancellation retains the first terminal outcome and original ownership.
+All old KVM, WINDOW and other-session resources remain excluded. Independent backups
+and evidence custody are retained under their own disposition decisions.
+
+The selected target remains **provisional**:
+`memories-qualification-27-4-20261026`, context
+`kind-memories-qualification-27-4-20261026`, namespace
+`hexalith-memories-qualification`. A pre-existing target name refuses. The actual
+Docker engine/socket, private primary/backup paths, run/attempt/environment IDs,
+transport/cluster/namespace identity, source/artifact hashes, reservation and usable
+UTC window must be bound before authorization. Dates do not grant a launch window.
+
+Required operational inputs remain unavailable:
+
+- A source-bound compatible finite renewal/workload schedule, full-rate physical
+  PostgreSQL/support/WAL/rewrite and compute measurements, signed initial admission,
+  fresh capacity receipts, Linux-backed allocations and aggregate competing-demand
+  reservations. The model remains **16250m CPU / 31 GiB RAM**, schedule-derived
+  PostgreSQL plus **33 GiB** primary overhead and a separately recoverable backup.
+  The last observed 14 host CPU slots are not a sufficient reservation.
+- Exact current binaries and their supporting assemblies, unchanged pinned kind,
+  Kubernetes, Helm/Dapr/chart/CRD artifacts, a digest-bound NetworkPolicy-capable
+  CNI, immutable application/provider/reporter images, real component files,
+  chart values/render and source closure. Provider/reporter/CNI resources must fit
+  the remaining configured control allowance; new measurements/adoption are needed
+  if they do not. Three Placement/Scheduler members on one node confer no node HA.
+- Actual PostgreSQL/OpenBao TLS identities, private bootstrap/registry/scoped Dapr
+  credentials, provider configuration, OpenBao seed/policy/token bindings and
+  credential-compatible application/reporter inputs. Runtime database credentials
+  stay within the Dapr secret boundary; maintenance credentials do not enter the
+  applications. No test keys or fixture images can satisfy these prerequisites.
+- An authenticated independent UTC source, outside-approved lifecycle status issuer
+  and key custody with fresh status renewal, a complete source-bound monitoring
+  collector/series over the actual backing, and the existing distinct Operations/
+  Security/owner authorities for Memories. A signed lifecycle status grants no C1
+  acceptance or authority to bypass the existing producer checks.
+- Exact live runtime target/readback and fresh coherent descriptor observations for
+  producer handoff, all 25 eligible same-session C1 gates, original C3 origin and
+  continuation custody, backup/restore proof, and final disposition authority.
+
+Collector admission has two distinct phases. Before creation, a fresh signed
+`preflight` receipt validates source/trust, allocation bindings and complete declared
+series/limits, with `target: null` and all unavailable PostgreSQL/runtime series
+explicitly null. After startup settles, monitoring requires an `observed` receipt
+bound to the actual target with all live series present and fresh. Missing/stale
+live data stops the run. A source-approved PostgreSQL fault can make only its
+PostgreSQL series unavailable inside the exact reserved interval; allocation and
+runtime observations remain mandatory. These receipts must come from the approved
+operational collector, not test data or a manually invented observation.
+
+Memories' existing C0/C2/C3/C4 commands continue to use the finite profile/capacity
+and owner-plan flags. They additionally receive outside-pinned lifecycle plan,
+descriptor and readback hashes through `HEXALITH_CAMPAIGN_APPROVED_LIFECYCLE_PLAN_SHA256`,
+`HEXALITH_CAMPAIGN_DESCRIPTOR`, `HEXALITH_CAMPAIGN_APPROVED_DESCRIPTOR_SHA256`,
+`HEXALITH_CAMPAIGN_READBACK`, and `HEXALITH_CAMPAIGN_APPROVED_READBACK_SHA256`.
+The preferred coherent handoff uses the immutable `observationPair` returned by
+`inspect`: set `HEXALITH_CAMPAIGN_OBSERVATION` and
+`HEXALITH_CAMPAIGN_APPROVED_OBSERVATION_SHA256` to its outside-pinned path/hash,
+with the same lifecycle plan hash. Read-only inspection works during foreground
+monitoring, and later polls cannot rewrite that held pair. Separate artifact
+bindings remain supported.
+
+Pure sizing/inspection requires no running environment. Runtime admission still
+requires the existing exact physical target, all predecessor gates, fresh independent
+UTC/status, source and session checks; environment readiness grants no gate credit.
+
+The implementation/test receipt and disclosed broader-check limits are in the
+[single retention report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md#supported-full-campaign-lifecycle-implementation--2026-10-25).
+Story 27.4 and A41 remain open. No launch authorization is requested because actual
+operational inputs and adoption remain incomplete.
+
 ## Recommended target and provisional schedule — 2026-10-25
 
 After the local pass, the owner answered **“I dont know, do recommended”** when asked which full Platform target/profile and UTC window to prepare. This selects the following preparation direction. A deployable full profile, capacity reservation and operational launch plan remain prerequisites; no campaign has started.
@@ -18,13 +130,13 @@ The current verifier still accepts canonical profile **`95aa36e8aba8d9914566f6df
 
 ### Prerequisites and owning work
 
-Platform's [maintained chart documentation](../../references/Hexalith.Platform/eng/helm-qualification/README.md) and `eng/helm-qualification/qualify.py` provide a tested foundation: unique cluster, private kubeconfig, explicit context, bounded commands and owned cleanup. Their retained 2026-10-22 qualification establishes chart/admission behavior only. The qualifier disables Scheduler, uses synthetic bindings, and provides no real PostgreSQL/OpenBao environment. Running that qualifier alone cannot discharge this campaign.
+Platform's [maintained chart documentation](../../references/Hexalith.Platform/eng/helm-qualification/README.md) and `eng/helm-qualification/qualify.py` provide a tested foundation: unique cluster, private kubeconfig, explicit context, bounded commands and owned cleanup. Their retained 2026-10-22 qualification establishes chart/admission behavior only. The historical fixture mode disables Scheduler and uses synthetic bindings. The new `--campaign` mode supplies the full environment lifecycle documented above. Running either mode does not discharge Memories campaign assertions or authorize its gates.
 
 | Owner | Required change before a full run | Completion evidence |
 | :--- | :--- | :--- |
-| Platform / Builds | Extend the existing environment lifecycle and descriptor handoff to own this isolated Kubernetes campaign, with finite startup/execution/stopping budgets, persistent run identity, monitoring, exact stop/disposal and failure disposition. Declare the full suites; the current Memories manifest declares only `functional-retention` at 14400 seconds. | Supported command and actual descriptor/loaded-input proof, exercised cancellation/failure/cleanup/isolation checks; no new Memories environment runner. |
-| Platform | Supply real PostgreSQL, OpenBao/secret references, authenticated independent UTC, component configuration, working Scheduler/reminders and the full declared Placement/Scheduler fault topology. Build and bind actual application/reporter images and authority inputs. | Readiness and runtime/security/identity evidence over the exact deployed inputs; fresh C1 packets, including C1.15/C1.16. |
-| Platform Operations | Reserve actual CPU/memory and Linux-backed storage for the whole interval, including application/control-plane load, PostgreSQL's existing8CPU/16GiB cap, the new finite candidate's measured allocations/rewrite workspace and a separate recoverable backup destination. Replace the chart fixture's 10m/32Mi requests and 1 CPU/512Mi limits with measured full-profile allocations. | Capacity/cost admission and backup/restore proof; a PVC request or free space on another filesystem is insufficient. |
+| Platform / Builds | The full environment lifecycle and strict descriptor handoff are implemented with persistent ownership and original startup/execution/stopping budgets. Prepare/adopt actual inputs before use. The existing Memories manifest still declares only `functional-retention` at14400s; this environment route does not register full suites or produce candidate/artifact proof. Existing C0/C2/C3/C4 qualification consumers remain separate. | Supported commands and focused offline cancellation/failure/cleanup/isolation checks are recorded above and in the report. Actual ready descriptor, loaded-input/target proof and Memories qualification evidence remain required; no Memories environment runner was added. |
+| Platform | Real PostgreSQL/OpenBao configuration and persistent Placement/Scheduler topology are implemented. Supply actual authenticated independent UTC/status/monitoring sources, scoped credentials/components, provider configuration and immutable application/reporter images, then bind and adopt them. | Live readiness/reminder and runtime/security/identity evidence over the exact deployed inputs remains required, with fresh C1 packets including C1.15/C1.16. Offline rendering grants no gate credit. |
+| Platform Operations | Reserve actual CPU/memory and Linux-backed storage for the whole interval, including application/control-plane load, PostgreSQL's existing8CPU/16GiB cap, the new finite candidate's measured allocations/rewrite workspace and a separate recoverable backup destination. The campaign chart now uses the finite profile allocations; actual measurements must establish that those bounds fit. | Capacity/cost admission and backup/restore proof; a PVC request or free space on another filesystem is insufficient. |
 | Memories | The explicit owner-predecessor/v1 authority consumer and durable C3 continuation are implemented and offline verified; see the [runbook contract](access-telemetry-lifecycle.md#owner-authority-and-c3-continuation-consumer--2026-10-25) and [current report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md#owner-authority-and-continuation-implementation--2026-10-25). The single ordinary review is complete; all four findings are fixed and final focused verification passes. Supply actual outside-approved authority, fresh independent UTC/status and physical target/runtime identity before use. Historical predecessor/v2 still refuses. | Focused temporary-file authority/continuation verification is recorded in the report, including distinct owner roles and unchanged full-mode bounds. These fixtures provide no live gate credit. Actual Platform-supplied authority/time/target inputs and separately adopted kind profile remain required; profile rebinding alone cannot enable C2–C4. |
 | Memories | Adopt the exact new canonical profile and source/input bindings in `tools/verify_access_telemetry_lifecycle.py`, the C1 identity/authority consumers and qualification overlays, with mismatch, tenant-denial and fail-closed regressions. Preserve all existing behavioral gates and historical profile/evidence identities. | Reviewed profile manifest, source-bound C0 and all 25 eligible same-session C1 packets before C2–C4. |
 | Jérôme Piquot | Bind the concrete plan to the actual reserved target/window, including bounded retries, fault authority, prior-resource exclusions and disposition; later record distinct Operations/Security acceptance. | One operational decision on the complete launch plan; later C5/C6 acceptance over actual evidence under `sole-owner/self-reviewed`. |
@@ -151,17 +263,20 @@ assertions. Refuse pre-existing cluster names. Proposed private custody is
 it was not created. Actual API/CA/cluster/namespace UIDs, engine ownership,
 application/reporter/runtime digests, full values/render/component set, source
 revision, measurement/reservation receipts and adopted profile hash are **missing**.
-The provision/observe/stop command for the full environment and its actual native
-run ID are **missing**; the synthetic qualifier is not an alternative full launcher.
+The supported full-environment commands are now implemented in the [lifecycle
+section above](#supported-platform-lifecycle-commands--2026-10-25). An actual prepared
+run/attempt/environment identity has not been issued; the synthetic fixture mode
+is not a full campaign launch.
 
 Preparation/admission uses the exact offline command documented in Platform's
 [README](../../references/Hexalith.Platform/eng/helm-qualification/README.md#finite-memories-campaign-capacity-offline).
-After Platform supplies the environment and one complete outside-approved owner
-plan, use the existing Memories `verify-access-telemetry-lifecycle.py` C0/C2/C3/C4
+After complete real inputs are bound and Platform supplies a ready exact environment
+under an outside-approved owner plan, use the existing Memories
+`verify-access-telemetry-lifecycle.py` C0/C2/C3/C4
 routes, with `--campaign-profile`, `--approved-campaign-profile-sha256`,
 `--campaign-capacity-receipt`, `--approved-campaign-capacity-sha256` and existing
 owner-plan/custody flags. The actual complete command cannot be finalized while
-those private paths/hashes and native lifecycle route are missing. This is a
+actual private paths/hashes, artifacts, reservations and authority inputs are missing. This is a
 concrete bounded target/ownership plan with explicit blockers, not a deployable plan.
 No operational authorization is requested.
 
@@ -176,7 +291,7 @@ WAL/phase/resource bound violation, source/identity drift, withdrawal or deadlin
 Bind native process/resources before faults; retain bounded private native logs,
 UTC/elapsed/exit and failure/TRX evidence before stopping, with missing exit data
 explicit. Stop only the actual owned native run, verify its disabled gate, empty
-Lease, zero lifecycle/clock replicas and no owned workloads, then delete only
+Lease, zero lifecycle/clock replicas and no owned writer Pods, then delete only
 its owned kind cluster with explicit private kubeconfig/context. Fresh exact-name
 cluster/node/container/namespace scans must verify removal; uncertain disposition
 stays failed/unverified. Final disposal gets900s within the proposed last15 minutes;
@@ -188,9 +303,11 @@ never extension of a running budget. All34 gate rows below remain unchanged/open
 The continuation's one ordinary review is complete; its four accepted findings
 are fixed, with none deferred. Coordinator verification passes33 authority,41
 retention,18 capacity and16 finite-consumer tests; exact results and the disclosed
-C# build limitation are in the single report. Actual
-full environment, monitored resource bounds, measurement/reservation, source/input
-adoption, runtime identity and operational launch authorization remain prerequisites.
+C# build limitation are in the single report's earlier continuation. The current
+lifecycle implementation/review and Builds descriptor CLI build are now complete,
+with final results above. Actual deployment, trusted monitoring, measurements/
+reservations, source/input adoption, runtime identity and operational launch
+authorization remain prerequisites.
 
 ### Provisional UTC reservation
 
@@ -203,7 +320,7 @@ come from the source-bound measured schedule before any operational approval.
 C2/C4 retain50400s each; C3 retains777600s from its original origin; final owned
 disposition retains900s. No phase start is presently admitted.
 
-The proposed reservation expires if target readiness/capacity, Memories authority/continuation verification and the complete operational plan are not settled by its first start, or a required phase misses its boundary. Record the missed window and prepare a replacement schedule; do not silently move deadlines, revive consumed local permissions or weaken a gate. Current state is **preparation blocked on Platform's full environment/capacity and actual authority/time/target inputs**, with the Memories prerequisites implemented/reviewed and exact new-profile adoption and operational authorization pending. All gate rows below remain open.
+The proposed reservation expires if target readiness/capacity, Memories authority/continuation verification and the complete operational plan are not settled by its first start, or a required phase misses its boundary. Record the missed window and prepare a replacement schedule; do not silently move deadlines, revive consumed local permissions or weaken a gate. Current state is **implementation complete; operational preparation awaits actual environment inputs, measured/reserved capacity and authority/time/target bindings**. Platform lifecycle and Memories prerequisites are implemented/reviewed; exact new-profile adoption and operational authorization remain pending. All gate rows below remain open.
 
 ## Full campaign gates
 

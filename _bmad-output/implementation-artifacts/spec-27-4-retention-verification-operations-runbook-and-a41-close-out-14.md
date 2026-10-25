@@ -14,6 +14,78 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Supported full-campaign environment and lifecycle — 2026-10-25 (active continuation)
+
+The owner's current instruction supersedes earlier implementation handoffs below: the finite campaign profile and authority/continuation implementation are complete. Implement Platform's supported full-campaign environment and lifecycle in the owning repositories. Reuse Platform/Builds' existing runner, descriptor, readiness, cancellation and disposal contracts; do not create a Memories environment runner. This is implementation work, not another planning-only handoff. Preserve the original baseline frontmatter, historical profiles, completed WINDOW evidence, all 25 C1 gates, existing workload/timing/security/cleanup requirements and every dependency pin. Do not launch infrastructure, contact clusters, initialize/update submodules, stage, commit or push. Story 27.4 and A41 stay open. Missing actual measurements, reservations, credentials and authority inputs remain explicit prerequisites, never fabricated evidence. Do not request launch authorization until a complete concrete operational plan is reviewable.
+
+### Implementation map — lifecycle continuation
+
+- Platform: `eng/helm-qualification/qualify.py`, new `campaign_lifecycle.py` and `campaign_environment.py`, existing `campaign_capacity.py`, `chart/templates/application.yaml`, `chart/templates/_helpers.tpl`, focused lifecycle/qualifier/chart tests and README. Existing `toolchain.json` and owning architecture remain authoritative and unchanged.
+- Builds: `src/libraries/Hexalith.Builds.Module.Cli/ModuleCommandApplication.cs` exposes the existing `TestEnvironmentContractReader` through `validate --environment`; README documents the command. The existing descriptor schema and runtime contracts remain unchanged.
+- Memories: existing `tools/access_telemetry_campaign_profile.py`, `tools/verify_access_telemetry_lifecycle.py` and qualification/authority consumers; `docs/operations/access-telemetry-full-qualification.md`; this Spec 14; single report `_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md`.
+- Read the required Hexalith baseline and relevant tracked owner guidance/configuration/tests before editing each owner. The workspace baseline is `references/Hexalith.AI.Tools/hexalith-llm-instructions.md` (declared root dependency); never discover/load/execute a skill inside `references/`. Work from each owning repository. Initial Memories, Platform and Builds working trees were clean on `main`.
+
+### Tasks & Acceptance — lifecycle continuation
+
+- [x] Supply the real full-campaign PostgreSQL/OpenBao/Dapr topology with Placement, Scheduler/reminders and application/reporter configuration through Platform's existing environment/runner contracts. Given missing operational credentials, immutable runtime inputs, independent clock/authority or capacity prerequisites, preparing/launching must fail closed before infrastructure mutation; offline fixtures are never live evidence. Preserve the real chart and dependency pins.
+- [x] Implement persistent exact-run ownership, bounded monitoring, cancellation/failure capture and supported stop/disposal. Given restart, timeout, cancellation, partial creation or drift, the runner retains durable original ownership and applies original cumulative budgets; exact stop/removal verification must distinguish foreign/retained resources and never claim success with owned remnants. Use supported Platform/Builds lifecycle commands, including inspectable preparation and explicit launch, monitoring, stop and removal paths.
+- [x] Integrate existing finite capacity admission and Memories qualification consumers so launch inputs/descriptor/readback bind the exact profile, source/configuration and physical target. Preserve all 25 gates, renewal/C3 origin, security, workload and cleanup invariants; no shortcut to full qualification or A41.
+- [x] Complete focused offline failure/cancellation/isolation/cleanup checks and affected capacity/consumer regressions without infrastructure or cluster contact. Record exact commands/results and any actual blocked checks. Complete one ordinary review of only this new continuation after implementation/tests, resolve substantive findings, and do not repeat earlier completed reviews or use an adversarial multi-review loop. Implementation agent returns before review; coordinator owns that one review.
+- [x] Continue this Spec 14 and the single retention report; update the existing campaign register with the supported lifecycle commands, concrete conditional disposal plan and remaining operational inputs. Keep all unexecuted campaign work, Story 27.4 and A41 open. Do not create another spec or retention report.
+
+Implementation may adjust API/file details to match the actual existing owner contracts while preserving these requirements. Record such choices and verification in this section/report. The active continuation is bounded to implementation/offline checks and one ordinary review; previous sections remain historical evidence and do not authorize live execution or repeated review.
+
+### Review triage — lifecycle continuation (one ordinary review)
+
+This review covers only the new lifecycle delta from the clean session heads:
+Memories `7b0c8b5692600e293346eea7a84652eb87e4c346`, Platform
+`fbac4610309c6f9f9df334cfd5b029dcb3a9e354`, Builds
+`e171c5a788eab183b32683431b084198c9b8d373`. The original spec baseline is preserved.
+The requested single ordinary coordinator review replaces the skill's adversarial
+review layers and loopbacks for this continuation. Earlier reviews were not repeated.
+The reviewed diff includes untracked implementation/tests and is retained at
+`/tmp/spec14-lifecycle-review-byod03ka/changes.diff`; no Git staging occurred.
+
+| ID | Verdict and verified behavior | Resolution |
+| :--- | :--- | :--- |
+| R1 | high: one-shot readiness races scale-to-zero; completed reporter Pods are rejected; expected-fault resources are reported ready. The ephemeral-Job subclaim is false: the producer unsuspends/reuses its fixed Job (producer_common.py:651–659,2436–2503), so undeclared extra Jobs must remain rejected. | Resolved: original-budget startup/reporter settling, fixed Job and successful Pod lineage, truthful expected-fault readiness; undeclared Jobs still refuse. |
+| R2 | high: Docker stop/removal omits verified gate/Lease/workload quiescence; volume names alone cannot distinguish recreated foreign volumes. | Resolved: exact gate/Lease/workload quiescence, volume creation and primary-directory identity, retained backup/evidence, explicit unverified disposition. Stop/reopen/remove preserves the original deadline and requires the unchanged stopped-node lifecycle receipt. |
+| R3 | high: generated Dapr install inputs can change after preparation; same-UID workload image/configuration drift escapes observation. | Resolved: prepared artifacts are held/revalidated before mutation; live admitted image/configuration/resource/security drift refuses. Only the exact source-authorized C4 settings and resource deltas are allowed in their bounded intervals, with strict restoration. |
+| R4 | high: a leader can exit while its descendant retains output files; cancellation then skips the surviving process group. | Resolved: bounded pipe draining, process-group termination and descendant reaping cover timeout, cancellation and early leader exit; safe outcome metadata survives. |
+| R5 | high: failures retain a generic code and omitted command logs but no sanitized resource failure snapshot before stop. | Resolved: bounded sanitized resource/event/termination capture precedes containment; capture failures cannot replace the original terminal cause. |
+| R6 | high: whole-filesystem headroom and six PG counters do not enforce component reservations or complete required aggregate monitoring. | Resolved: authenticated complete allocation/PG/runtime receipts bind source, exact target and original ownership; stale/missing/excess data refuses. Expected-error allowances require exact rule/resource/window attribution and retain one cumulative budget across receipts. |
+| R7 | medium: polling replaces descriptor/readback files that consumers pin by raw hash; readers can receive a replaced or mixed pair. | Resolved: immutable descriptor/readback pairs remain available for their full freshness interval; atomic latest reference and lock-free inspection support coherent pinned Memories consumption. |
+
+Coordinator acceptance of these fixes also exercised stop/reopen/remove, the
+unchanged C4 environment/resource faults and restoration in
+`access_telemetry_producer_common.py:1038–1110`, and continuity/observability at
+lines1162–1195. The corrections retain exact stopped-node identity, bounded
+source-authorized fault deltas, cumulative metric allowances and declared
+`monitoring` namespace ownership/readiness/resource budgets. All seven substantive
+findings are resolved; none is deferred. No second ordinary/adversarial review,
+new spec, historical review or planning loop was launched.
+
+Final coordinator verification passed **37/37 lifecycle tests**, **3/3 affected
+process cancellation/timeout tests**, and **18/18 Memories handoff/profile/cleanup
+tests**. The existing capacity lane passed18/18, actual application Helm rendering
+2/2, pinned Dapr rendering passed, and the Builds Debug CLI build passed with zero
+warnings/errors. Exact commands, intermediate failures and two broader-suite
+limitations are retained in the single report. These are offline results, not
+live topology, capacity or qualification evidence.
+
+Implementation choice: Platform extends its existing `Qualification` runner through
+`CampaignQualification`; Builds' two-module Redis persisted-profile executor is not
+a Kubernetes environment provider. The existing Builds reader is exposed through
+`validate --environment`, and Memories only validates the handoff. No Memories
+environment runner or alternate qualification authority was introduced.
+
+The implementation/offline continuation is complete. The [campaign register](../../docs/operations/access-telemetry-full-qualification.md#supported-platform-lifecycle-commands--2026-10-25)
+contains all six supported commands and the remaining real measurements,
+reservations, immutable artifacts/configuration, credentials, trusted sources and
+authority inputs. Story27.4, full qualification, Production and A41 remain open.
+No infrastructure/cluster operation, dependency update, staging, commit or push
+occurred; no operational authorization is requested for the incomplete inputs.
+
 ## Smaller full campaign profile — 2026-10-25 (current implementation scope)
 
 This owner-authorized continuation controls the present work. Continue this Spec 14 and the single report; preserve the completed WINDOW local functional evidence, all implemented authority/continuation work, historical profile constructors/identities and original baseline frontmatter. Implement a smaller full qualification profile across the owning repositories; do not create another planning-only handoff or a Memories environment runner. Platform owns sizing/configuration/infrastructure/lifecycle; Memories owns assertions and profile-bound evidence semantics. Read the workspace baseline, relevant tracked guidance/configuration and owning architecture before edits. Do not launch infrastructure, contact clusters, change dependencies, initialize submodules, stage, commit, push or change sprint state. Overall Story 27.4/A41 stay open, dates provisional. Operational authorization is requested only when actual launch inputs and disposal plan are complete and reviewable; missing measurements are blockers, never invented evidence.

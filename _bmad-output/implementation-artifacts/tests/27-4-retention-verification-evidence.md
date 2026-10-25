@@ -1,5 +1,118 @@
 # Story 27.4 — current retention results
 
+## Supported full-campaign lifecycle implementation — 2026-10-25
+
+The lifecycle continuation implements Platform's full-campaign mode on its existing
+kind qualifier, with Builds descriptor validation and a Memories admission consumer.
+This is offline implementation evidence. No infrastructure was launched, cluster
+contacted, real credential issued, reservation made, or campaign gate passed. Story
+27.4 remains in progress, A41 remains open, and historical profiles/WINDOW evidence
+below remain unchanged. Dependency pins, HEADs and staged content are unchanged
+in all three owning repositories.
+
+The implementation supplies real TLS PostgreSQL/OpenBao configuration,
+replicated persistent Placement/Scheduler, application/reporter bindings, private
+run ownership and supported `prepare`, `inspect`, `launch`, `monitor`, `stop`, and
+`remove` commands. The exact operational plan, provider/reporter/CNI inputs,
+credentials, independent clock/authority/monitoring sources and measured reserved
+capacity remain prerequisites. The single ordinary review is complete and all
+seven substantive findings are resolved; none is deferred.
+The [Spec 14 triage](../spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md#review-triage--lifecycle-continuation-one-ordinary-review)
+records each finding. Earlier reviews were not repeated.
+
+### Focused pre-review checks
+
+All commands were run from the owning repository. Local .NET and Helm processes
+validated artifacts; tests used temporary files and process/resource doubles.
+
+| Check | Command / result |
+| :--- | :--- |
+| Builds descriptor reader CLI | `dotnet build src/libraries/Hexalith.Builds.Module.Cli/Hexalith.Builds.Module.Cli.csproj --no-restore -c Debug -m:1 -p:NuGetAudit=false -p:MinVerVersionOverride=1.0.0 -p:RunAnalyzers=false` — passed, zero warnings/errors. `/tmp/story274-builds-validator-build-final.log`. |
+| Platform lifecycle | `PYTHONPATH=eng/helm-qualification python3 -B -m unittest test_campaign_lifecycle -v` — 17/17, 2.016s. `/tmp/story274-lifecycle-final.log`. |
+| Platform capacity/configuration | `python3 -B -m unittest discover -s eng/helm-qualification -p test_campaign_capacity.py -v` — 18/18, 1.051s. `/tmp/story274-capacity-chart-tests.log`. |
+| Affected lifecycle/qualifier subset | 20/20 before the final additional allocation case; exact selection/output in `/tmp/story274-focused-final.log`. |
+| Application chart | `HELM_BIN=/tmp/story27-pinned-helm-w8usbu5u/helm PYTHONPATH=eng/helm-qualification python3 -B -m unittest test_chart.ChartTests.test_finite_campaign_resources_replicas_and_sidecars_are_explicit test_chart.ChartTests.test_identity_readiness_and_shared_dapr_security -v` — 2/2. `/tmp/story274-chart-render-corrected.log`. |
+| Pinned Dapr chart | Local template render of the SHA256-verified 1.18.7 archive passed with three persistent Placement and Scheduler members, finite 256Mi/1Gi claims and immutable image references. `/tmp/story274-dapr-render-first.log`. No chart install occurred. |
+| Memories handoff/capacity/cleanup | The selected command below passed 17/17, 5.937s. `/tmp/story274-consumer-focused-final.log`. |
+
+```bash
+PYTHONPATH=tests/tooling/access_telemetry_lifecycle python3 -B -m unittest   test_campaign_environment test_campaign_profile   test_campaign_review_fixes.CampaignReviewFixTests.test_c3_requires_original_before_dispatch_and_authenticated_three_day_selection_keeps_origin   test_campaign_review_fixes.CampaignReviewFixTests.test_parent_fallback_and_failure_packet_survive_drift   test_campaign_review_fixes.CampaignReviewFixTests.test_actual_disable_only_survives_component_and_measurement_drift_but_denies_foreign_scope -v
+```
+
+Failed/intermediate checks are preserved: the initial Builds `--no-restore` build
+reported `NETSDK1004` (missing assets); an unchanged-pin Debug restore followed by
+the build above passed. The first generated descriptor was rejected by the actual
+reader with `HXT104`; corrected artifact/suite shapes pass. The initial lifecycle
+fixture lacked a Helm tool binding and was corrected. An introduced qualifier
+timeout-message regression was corrected and its focused case passes. A broad
+qualifier run remains blocked by absent
+`references/Hexalith.Platform/references/Hexalith.Builds/Props/Directory.Packages.props`;
+no nested submodule was initialized. Broad consumer discovery returned 19/20:
+the historical-closure fixture selects current HEAD while assuming that it predates
+the campaign import; the affected selected cases above pass. A first application
+chart invocation ran from the wrong cwd and failed imports; the corrected owning
+cwd invocation passed. Discovery using `test_finite*.py` found zero tests and earns
+no verification credit. These results do not imply a broad-suite pass.
+
+### Final review-fix verification
+
+All results below are offline; repeated runs are not added together as independent
+coverage. The one ordinary review resolved readiness/Job handling, exact
+quiescence/disposal, prepared/live input drift, descendant cancellation, safe
+failure capture, complete authenticated monitoring and immutable paired handoff.
+Acceptance corrections within those findings cover stop/reopen/remove, the exact
+existing C4 fault/restoration path, cumulative expected-error allowances and
+`monitoring` provider namespace ownership. The proposed ephemeral reporter-Job
+finding was withdrawn after tracing the fixed existing producer Job; undeclared
+Jobs continue to refuse. No second review was performed.
+
+| Owner / final check | Exact command / result |
+| :--- | :--- |
+| Platform lifecycle | `PYTHONPATH=eng/helm-qualification python3 -B -m unittest test_campaign_lifecycle -v` — **37/37**, 3.848s, exit0. `/tmp/spec14-lifecycle-coordinator-final.log`. |
+| Platform process cancellation/timeout | `PYTHONPATH=eng/helm-qualification python3 -B -m unittest test_qualify.QualifierFailureTests.test_early_leader_exit_and_cancellation_reap_descendant_writer test_qualify.QualifierFailureTests.test_timeout_terminates_spawned_process_group_and_disables_node_reuse test_qualify.QualifierFailureTests.test_sigterm_during_command_is_recorded_and_cleans_private_files_and_children -v` — **3/3**, exit0. `/tmp/story274-review-process-final.log`; also passed in the coordinator's 32-case lifecycle/process selection, `/tmp/spec14-lifecycle-coordinator-tests.log`. |
+| Memories handoff/profile/cleanup | The selected Memories command above — **18/18**, 7.345s, exit0. `/tmp/spec14-lifecycle-coordinator-consumers.log`. Includes actual Builds contract-reader acceptance and coherent immutable observation consumption. |
+
+The earlier18/18 capacity,2/2 application rendering, pinned Dapr rendering and
+Builds Debug build remain applicable; no dependency/input changes required reruns.
+The intermediate review-fix lifecycle lane first passed26/27 before a test fixture's
+observation sequence reset was corrected. The C4/provider lane first passed36/37
+before disabled-writer readiness/restoration expectations were corrected; the
+final37-case coordinator run above includes both fixes. These failures were not
+live environment runs.
+
+The two broader checks were not repeated or claimed green:
+
+- Platform: `python3 -B -m unittest discover -s eng/helm-qualification -p test_qualify.py -v`
+  remains blocked by the absent nested Builds package catalog noted above;
+  `/tmp/story274-qualifier-regression.log` retains the result. No nested dependency
+  was initialized to bypass that boundary.
+- Memories: `python3 -B -m unittest discover -s tests/tooling/access_telemetry_lifecycle -p 'test_campaign*.py' -v`
+  returned19/20 because the historical-source fixture's HEAD assumption is stale;
+  `/tmp/story274-consumer-regression-second.log`. The affected18-case selection
+  passes; this does not imply historical fixture repair.
+
+Final preservation checks compare all three session HEADs, staged content and26
+protected build/package/toolchain/sprint/deferred-work files. They are unchanged.
+An initial byte-for-byte index-file assertion detected Git status's stat-cache
+refresh; the corrected check verifies staged content against the initially clean
+HEAD instead of treating index metadata as staged changes. No staging occurred.
+The original report from `Smaller finite campaign implementation` onward and
+original Spec14 from `Smaller full campaign profile` onward are unchanged after
+newline normalization; completed WINDOW evidence remains intact. Every existing
+campaign gate row, including all25 C1 gates, is unchanged. `git diff --check`
+passes in each owner. Historical profiles, workload/timing/security/cleanup
+requirements and dependency pins retain their existing identities.
+
+### Operational handoff
+
+Supported lifecycle commands and the incomplete operational input list are in the
+[current campaign register](../../../docs/operations/access-telemetry-full-qualification.md#supported-platform-lifecycle-commands--2026-10-25).
+Actual rollout, credential compatibility, trusted-source renewal, reservations,
+backup recovery and physical disposal remain unexecuted. No launch authorization
+is requested while those inputs are absent. The implementation and focused offline
+verification are complete; actual campaign execution and qualification remain open.
+
+
 ## Smaller finite campaign implementation — 2026-10-25
 
 **Implementation, focused verification and one ordinary review complete.** No full
