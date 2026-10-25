@@ -539,6 +539,9 @@ internal static class MemoriesServerServiceCollectionExtensions
         var status = new AccessTelemetryLifecycleStatus(options.Enabled);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton(status);
+
+        // Diagnostic-only bootstrap progress is always registered so the qualification runner can report it.
+        builder.Services.AddSingleton<AccessTelemetryLifecycleBootstrapProgress>();
         builder.Services.AddSingleton<AccessTelemetryQualificationAccounting>();
         builder.Services.AddSingleton<AccessTelemetryQualificationGate>();
         builder.Services.AddSingleton<AccessTelemetryQualificationWorkloadRunner>();

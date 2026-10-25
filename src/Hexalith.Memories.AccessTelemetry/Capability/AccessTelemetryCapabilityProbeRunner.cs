@@ -41,6 +41,7 @@ internal sealed class AccessTelemetryCapabilityProbeRunner
     private readonly AccessTelemetryRuntimeGate _runtimeGate;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _runGate = new(1, 1);
+    private readonly AccessTelemetryCapabilityDiagnostics _diagnostics = new();
     private AccessTelemetryCapabilityProbeContext? _localAttemptContext;
     private AccessTelemetryCapabilityGateResult? _localAttemptDecision;
 
@@ -59,6 +60,9 @@ internal sealed class AccessTelemetryCapabilityProbeRunner
     /// <summary>Gets the exact behavioral evidence names required for a passing profile.</summary>
     public static IReadOnlyList<string> RequiredCapabilities => CapabilityNames;
 
+    /// <summary>Gets bounded immutable observations, independent of admission.</summary>
+    public AccessTelemetryCapabilityDiagnosticSnapshot CurrentDiagnostic => _diagnostics.Current;
+
     /// <summary>Runs probes and publishes the decision; selected local startup proof is attempted once per immutable process binding.</summary>
     public async Task<AccessTelemetryCapabilityGateResult> RunAsync(
         AccessTelemetryCapabilityProbeContext context,
@@ -73,11 +77,18 @@ internal sealed class AccessTelemetryCapabilityProbeRunner
                 bool changed = _localAttemptContext is not null && context != _localAttemptContext;
                 bool attempted = _localAttemptContext is not null;
                 _localAttemptContext ??= context;
-                if (changed || !context.LocalFunctional || context.Production || !context.ExactVersionPinned || !context.DaprOnlyBoundary ||
-                    context.ValidUntilUtc <= _timeProvider.GetUtcNow() ||
-                    !AccessTelemetryOptionsValidator.IsLocalFunctionalProfileValid(context.LocalFunctionalProfileJson, context.ComponentProfileHash, context.CurrentRunId, context.CurrentSourceMappingHash))
+                string? refusal = changed ? "ContextChanged"
+                    : !context.LocalFunctional ? "LocalModeRequired"
+                    : context.Production ? "Production"
+                    : !context.ExactVersionPinned ? "VersionUnpinned"
+                    : !context.DaprOnlyBoundary ? "BoundaryInvalid"
+                    : context.ValidUntilUtc <= _timeProvider.GetUtcNow() ? "Expired"
+                    : !AccessTelemetryOptionsValidator.IsLocalFunctionalProfileValid(context.LocalFunctionalProfileJson, context.ComponentProfileHash, context.CurrentRunId, context.CurrentSourceMappingHash) ? "LocalProfileInvalid"
+                    : null;
+                if (refusal is not null)
                 {
                     _localAttemptDecision = FailedDecision();
+                    _diagnostics.Refuse(refusal);
                 }
 
                 if (attempted || _localAttemptDecision is not null)
@@ -94,17 +105,20 @@ internal sealed class AccessTelemetryCapabilityProbeRunner
             using CancellationTokenSource? localCancellation = localTimeout is null ? null : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, localTimeout.Token);
             CancellationToken probeToken = localCancellation?.Token ?? cancellationToken;
             AccessTelemetryCapabilityGateResult decision;
+            long attempt = _diagnostics.Begin();
             try
             {
                 Task<AccessTelemetryCapabilityProbeResult[]> probes = Task.WhenAll(
-                    _probes.Select(probe => probe.ProbeAsync(probeToken)));
+                    _probes.Select(probe => ObserveProbeAsync(probe, attempt, probeToken)));
                 AccessTelemetryCapabilityProbeResult[] results = context.LocalFunctional
                     ? await probes.WaitAsync(probeToken).ConfigureAwait(false)
                     : await probes.ConfigureAwait(false);
                 decision = Evaluate(context, results);
+                _diagnostics.Complete(attempt, decision.AllowsWrites ? "Passed" : "Failed");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                _diagnostics.Complete(attempt, "Canceled");
                 if (_localAttemptContext is not null)
                 {
                     _localAttemptDecision = FailedDecision();
@@ -116,6 +130,7 @@ internal sealed class AccessTelemetryCapabilityProbeRunner
             catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
             {
                 decision = FailedDecision();
+                _diagnostics.Complete(attempt, localTimeout?.IsCancellationRequested == true ? "Timeout" : "Failed");
             }
 
             if (context.LocalFunctional)
@@ -129,6 +144,29 @@ internal sealed class AccessTelemetryCapabilityProbeRunner
         finally
         {
             _ = _runGate.Release();
+        }
+    }
+
+    private async Task<AccessTelemetryCapabilityProbeResult> ObserveProbeAsync(
+        IAccessTelemetryCapabilityProbe probe, long attempt, CancellationToken cancellationToken)
+    {
+        _diagnostics.Observe(attempt, probe.Capability, "Running");
+        try
+        {
+            AccessTelemetryCapabilityProbeResult result = await probe.ProbeAsync(cancellationToken).ConfigureAwait(false);
+            if (result is not null && string.Equals(probe.Capability, result.Capability, StringComparison.Ordinal))
+            {
+                _diagnostics.Observe(attempt, result.Capability,
+                    result.DiagnosticOutcome ?? (result.Passed ? "Passed" : "ReturnedFalse"), result.FailureCategory);
+            }
+
+            return result!;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException and not StackOverflowException)
+        {
+            _diagnostics.Observe(attempt, probe.Capability, exception is OperationCanceledException ? "Canceled" : "Exception",
+                AccessTelemetryCapabilityFailureClassifier.Classify(exception));
+            throw;
         }
     }
 

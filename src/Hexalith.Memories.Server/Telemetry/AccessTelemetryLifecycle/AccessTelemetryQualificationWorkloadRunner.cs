@@ -48,9 +48,11 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         "\\A[a-z0-9][a-z0-9-]{0,63}\\z",
         RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     private readonly AccessTelemetryQualificationAccounting _accounting;
+    private readonly AccessTelemetryLifecycleBootstrapProgress? _bootstrap;
     private readonly AccessTelemetryQualificationGate _gate;
     private readonly ILogger<AccessTelemetryCategory> _logger;
     private readonly int _recordsPerSecond;
+    private readonly AccessTelemetryLifecycleStatus? _status;
     private readonly int _steadyStateSeconds;
     private readonly TimeProvider _timeProvider;
     private readonly ConcurrentDictionary<string, SegmentWork> _segments =
@@ -63,7 +65,28 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         AccessTelemetryQualificationAccounting accounting,
         AccessTelemetryQualificationGate gate,
         TimeProvider timeProvider)
-        : this(logger, accounting, gate, timeProvider, RecordsPerSecond, SegmentSeconds)
+        : this(logger, accounting, gate, timeProvider, RecordsPerSecond, SegmentSeconds, status: null, bootstrap: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes the exact Production-shaped fixed workload with lifecycle status and bootstrap attribution. Dependency
+    /// injection selects this constructor because the status and bootstrap progress are always registered.
+    /// </summary>
+    /// <param name="logger">The typed access-telemetry logger feeding the lifecycle provider.</param>
+    /// <param name="accounting">The process-local fixed-workload accounting.</param>
+    /// <param name="gate">The current qualification gate.</param>
+    /// <param name="timeProvider">The clock used for emission and acknowledgement timing.</param>
+    /// <param name="status">The lifecycle status reported, without secrets, in each rejection breakdown.</param>
+    /// <param name="bootstrap">The bootstrap progress reported, without secrets, in each rejection breakdown.</param>
+    public AccessTelemetryQualificationWorkloadRunner(
+        ILogger<AccessTelemetryCategory> logger,
+        AccessTelemetryQualificationAccounting accounting,
+        AccessTelemetryQualificationGate gate,
+        TimeProvider timeProvider,
+        AccessTelemetryLifecycleStatus status,
+        AccessTelemetryLifecycleBootstrapProgress bootstrap)
+        : this(logger, accounting, gate, timeProvider, RecordsPerSecond, SegmentSeconds, status, bootstrap)
     {
     }
 
@@ -75,6 +98,28 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         TimeProvider timeProvider,
         int recordsPerSecond,
         int steadyStateSeconds)
+        : this(logger, accounting, gate, timeProvider, recordsPerSecond, steadyStateSeconds, status: null, bootstrap: null)
+    {
+    }
+
+    /// <summary>Initializes a bounded test seam with optional lifecycle status and bootstrap attribution.</summary>
+    /// <param name="logger">The typed access-telemetry logger feeding the lifecycle provider.</param>
+    /// <param name="accounting">The process-local fixed-workload accounting.</param>
+    /// <param name="gate">The current qualification gate.</param>
+    /// <param name="timeProvider">The clock used for emission and acknowledgement timing.</param>
+    /// <param name="recordsPerSecond">The records emitted per one-second interval.</param>
+    /// <param name="steadyStateSeconds">The number of one-second intervals emitted per segment.</param>
+    /// <param name="status">The lifecycle status reported in each rejection breakdown, or <see langword="null"/>.</param>
+    /// <param name="bootstrap">The bootstrap progress reported in each rejection breakdown, or <see langword="null"/>.</param>
+    internal AccessTelemetryQualificationWorkloadRunner(
+        ILogger<AccessTelemetryCategory> logger,
+        AccessTelemetryQualificationAccounting accounting,
+        AccessTelemetryQualificationGate gate,
+        TimeProvider timeProvider,
+        int recordsPerSecond,
+        int steadyStateSeconds,
+        AccessTelemetryLifecycleStatus? status,
+        AccessTelemetryLifecycleBootstrapProgress? bootstrap)
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(accounting);
@@ -88,6 +133,8 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         _timeProvider = timeProvider;
         _recordsPerSecond = recordsPerSecond;
         _steadyStateSeconds = steadyStateSeconds;
+        _status = status;
+        _bootstrap = bootstrap;
     }
 
     /// <summary>Runs one fixed one-second segment and waits for its bounded lifecycle accounting.</summary>
@@ -235,6 +282,7 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
             long expected = checked((long)_recordsPerSecond * _steadyStateSeconds);
             string correlation = QualificationCorrelation(runId, segmentId);
             AccessTelemetryQualificationAccountingSnapshot before = _accounting.ForCorrelation($"qualification-{correlation}");
+            AccessTelemetryQualificationRejectionBreakdown rejectionsBefore = _accounting.RejectionsForCorrelation($"qualification-{correlation}");
             int eventOrdinal = 0;
             List<string> recordIds = new(checked(_recordsPerSecond * _steadyStateSeconds));
             for (int second = 0; second < _steadyStateSeconds; second++)
@@ -295,7 +343,8 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
                 emitFinishedUtcMs,
                 acknowledgedUtcMs: 0,
                 emitDelta,
-                recordIds);
+                recordIds,
+                Rejections(correlation, rejectionsBefore));
             _ = work.Emit.TrySetResult(emitted);
 
             DateTimeOffset acknowledgementDeadline = _timeProvider.GetUtcNow().AddMinutes(5);
@@ -327,7 +376,8 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
                 emitFinishedUtcMs,
                 acknowledgedUtcMs,
                 delta,
-                recordIds);
+                recordIds,
+                Rejections(correlation, rejectionsBefore));
         }
         catch (Exception exception)
         {
@@ -344,7 +394,8 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
         long emitFinishedUtcMs,
         long acknowledgedUtcMs,
         AccessTelemetryQualificationAccountingSnapshot delta,
-        IReadOnlyList<string> recordIds)
+        IReadOnlyList<string> recordIds,
+        AccessTelemetryQualificationRejectionBreakdown rejections)
         => new(
             runId,
             segmentId,
@@ -362,7 +413,8 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
             delta.Dropped,
             Math.Max(0, delta.Rejected - delta.Conflicted),
             recordIds,
-            Math.Max(1, delta.Attempted + delta.Enqueued + delta.Persisted + delta.Rejected + delta.Dropped));
+            Math.Max(1, delta.Attempted + delta.Enqueued + delta.Persisted + delta.Rejected + delta.Dropped),
+            rejections);
 
     /// <summary>Derives the bounded SHA-256 correlation shared with the Python producer.</summary>
     /// <param name="runId">The host-assigned qualification run identity.</param>
@@ -407,6 +459,14 @@ internal sealed class AccessTelemetryQualificationWorkloadRunner
             throw new InvalidOperationException("qualification_segment_timestamp_invalid");
         }
     }
+
+    private AccessTelemetryQualificationRejectionBreakdown Rejections(
+        string correlation,
+        AccessTelemetryQualificationRejectionBreakdown before)
+        => _accounting.RejectionsForCorrelation($"qualification-{correlation}")
+            .Since(before)
+            .WithLifecycle(_status?.Current)
+            .WithBootstrap(_bootstrap?.Current);
 
     private sealed class SegmentWork
     {

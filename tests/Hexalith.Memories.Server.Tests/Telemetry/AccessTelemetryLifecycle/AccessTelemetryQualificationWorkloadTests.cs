@@ -815,7 +815,8 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             status,
             time,
             new MonotonicRecordIdGenerator(),
-            environment);
+            environment,
+            new AccessTelemetryLifecycleBootstrapProgress());
 
         await bootstrap.StartAsync(CancellationToken.None);
         try

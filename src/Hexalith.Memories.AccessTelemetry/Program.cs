@@ -109,7 +109,8 @@ app.MapPost("/v1/access-telemetry/heartbeat", async (
 app.MapPost("/v1/access-telemetry/validate", (
     AccessTelemetryRuntimeValidationRequest request,
     IAccessTelemetryRuntimeGate gate,
-    AccessTelemetryRuntimeOptionsProvider optionsProvider) =>
+    AccessTelemetryRuntimeOptionsProvider optionsProvider,
+    AccessTelemetryCapabilityProbeRunner probeRunner) =>
 {
     AccessTelemetryOptions current = optionsProvider.Current;
     AccessTelemetryCapabilityGateResult decision = gate.Current;
@@ -118,7 +119,10 @@ app.MapPost("/v1/access-telemetry/validate", (
         string.Equals(request.ComponentProfileHash, current.ComponentProfileHash, StringComparison.Ordinal);
     var response = new AccessTelemetryRuntimeValidationResponse(
         exact && decision.AllowsWrites,
-        exact ? decision.Reason : AccessTelemetryReason.ConfigurationInvalid);
+        exact ? decision.Reason : AccessTelemetryReason.ConfigurationInvalid)
+    {
+        CapabilityDiagnostic = exact ? probeRunner.CurrentDiagnostic : null,
+    };
     return Results.Ok(response);
 }).AllowAnonymous();
 

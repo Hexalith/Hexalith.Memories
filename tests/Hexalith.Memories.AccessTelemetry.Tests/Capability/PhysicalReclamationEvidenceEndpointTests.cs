@@ -32,6 +32,41 @@ public sealed class PhysicalReclamationEvidenceEndpointTests
 {
     private const string AppToken = "physical-evidence-test-app-token";
 
+    [Theory]
+    [InlineData("exact")]
+    [InlineData("epoch")]
+    [InlineData("profile")]
+    [InlineData("unready")]
+    public async Task ValidationDiagnostic_IsDisclosedOnlyForTheReadyExactEpochAndProfile(string variant)
+    {
+        string? previous = Environment.GetEnvironmentVariable(DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable);
+        Environment.SetEnvironmentVariable(DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable, AppToken);
+        try
+        {
+            await using var factory = new AccessTelemetryWebAppFactory(Substitute.For<IActorProxyFactory>());
+            using HttpClient client = factory.CreateClient();
+            client.DefaultRequestHeaders.Add(DaprApplicationTokenMiddleware.DaprApiTokenHeader, AppToken);
+            var options = new AccessTelemetryOptions { ConfigurationEpoch = "diagnostic-test-epoch", ComponentProfileHash = new string('b', 64) };
+            AccessTelemetryRuntimeOptionsProvider provider = factory.Services.GetRequiredService<AccessTelemetryRuntimeOptionsProvider>();
+            if (variant != "unready") provider.Publish(options);
+            using HttpResponseMessage response = await client.PostAsJsonAsync("/v1/access-telemetry/validate",
+                new AccessTelemetryRuntimeValidationRequest(variant == "epoch" ? "foreign-secret-epoch" : options.ConfigurationEpoch,
+                    variant == "profile" ? "foreign-secret-profile" : options.ComponentProfileHash), TestContext.Current.CancellationToken);
+            response.StatusCode.ShouldBe(HttpStatusCode.OK);
+            string json = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            using JsonDocument receipt = JsonDocument.Parse(json);
+            receipt.RootElement.TryGetProperty("capabilityDiagnostic", out JsonElement diagnostic).ShouldBe(variant == "exact");
+            if (variant == "exact") diagnostic.GetProperty("capabilities").EnumerateObject().Count().ShouldBe(10);
+            json.ShouldNotContain("foreign-secret");
+            // No capability proof was supplied by this diagnostic-only test.
+            receipt.RootElement.GetProperty("allowsWrites").GetBoolean().ShouldBeFalse();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(DaprApplicationTokenMiddleware.AppApiTokenEnvironmentVariable, previous);
+        }
+    }
+
     [Fact]
     public async Task PhysicalEvidence_WithAuthenticatedDaprRequest_ReachesGlobalLifecycleActor()
     {

@@ -85,6 +85,28 @@ _FIELDS = {
 }
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 _IDENTITY = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
+# Server enum names only: the bounded pre-queue breakdown never carries response text.
+_REJECTION_REASONS = frozenset({"None", "ConfigurationInvalid", "RemoteValidationPending", "QueueFull", "SchemaMismatch", "Expired",
+                                "RecordIdConflict", "ClockUntrusted", "DependencyUnavailable", "CapabilityUnproven", "Unobserved"})
+_LIFECYCLE_HEALTH = frozenset({"NoData", "Healthy", "Degraded", "Unhealthy", "Unobserved"})
+# Server bootstrap-progress names only (AccessTelemetryLifecycleBootstrapStage / ...FailureKind); never exception text.
+_BOOTSTRAP_STAGES = frozenset({"NotStarted", "Configuration", "Secret", "RemoteValidation", "Published", "Unobserved"})
+# A failed attempt always fails at a stage in flight after BeginAttempt and before publication.
+_BOOTSTRAP_FAILURE_STAGES = frozenset({"Configuration", "Secret", "RemoteValidation"})
+_BOOTSTRAP_FAILURE_KINDS = frozenset({"ConfigurationInvalid", "SecretMissing", "RemoteDenied", "Timeout", "Canceled", "Transport", "DaprApi", "Format", "Other"})
+_BOOTSTRAP_FIELDS = frozenset({"attempts", "stage", "failureStage", "failureKind", "firstPublishedUtcMs"})
+# Generous shape bounds only: they reject booleans, text and absurd values, never a plausible bootstrap history.
+_CAPABILITY_NAMES = frozenset({"StrongCrudAndEtags", "MultiKeyTransactionsAndConflicts", "ActorReactivationFailoverAndReminders",
+                              "EffectivePerRecordTtl", "RecordAndRequestBounds", "TwoWriterThroughputDuringPurge",
+                              "DeclaredDurabilityAndFailureBehavior", "TenantIsolationAndEncryption", "PhysicalCapacityEvidence", "ReclamationEvidenceHooks"})
+_CAPABILITY_DISPOSITIONS = frozenset({"NotStarted", "PreflightRefused", "Running", "Passed", "Failed", "Timeout", "Canceled"})
+_CAPABILITY_PREFLIGHT_REASONS = frozenset({"None", "ContextChanged", "LocalModeRequired", "Production", "VersionUnpinned", "BoundaryInvalid", "Expired", "LocalProfileInvalid"})
+_CAPABILITY_OUTCOMES = frozenset({"NotStarted", "Running", "Passed", "ReturnedFalse", "Exception", "Canceled"})
+_CAPABILITY_FAILURE_CATEGORIES = frozenset({"None", "Timeout", "Canceled", "RemoteDenied", "Transport", "DaprApi", "Format", "Other"})
+_BOOTSTRAP_ATTEMPTS_MAX = 2**31 - 1
+_BOOTSTRAP_UTC_MS_MAX = 2**53
+_REJECTION_BREAKDOWN_FIELDS = frozenset({"sanitizerUnavailable", "sanitationFailed", "sanitizerUnavailableLifecycleReasons",
+                                         "sanitizerUnavailableBootstrapStages", "lifecycleHealth", "lifecycleReason", "bootstrap"})
 
 
 def artifact_catalog() -> dict:
@@ -794,13 +816,141 @@ def validate_cohort(observation: dict, *, run_id: str, segment: str, emitted_ms:
     return normalized
 
 
+def bounded_capability_diagnostic(value) -> dict:
+    """Project only finite vocabulary and ten named outcomes; no arbitrary text can survive."""
+    retained = {}
+    if type(value) is not dict:
+        return retained
+    for name, allowed in (("disposition", _CAPABILITY_DISPOSITIONS), ("preflightReason", _CAPABILITY_PREFLIGHT_REASONS)):
+        if type(value.get(name)) is str and value[name] in allowed:
+            retained[name] = value[name]
+    capabilities = value.get("capabilities")
+    if type(capabilities) is dict and len(capabilities) <= len(_CAPABILITY_NAMES):
+        retained["capabilities"] = {}
+        for name in _CAPABILITY_NAMES:
+            outcome = capabilities.get(name)
+            if type(outcome) is dict:
+                retained["capabilities"][name] = {
+                    field: outcome[field] for field, allowed in (("outcome", _CAPABILITY_OUTCOMES), ("failureCategory", _CAPABILITY_FAILURE_CATEGORIES))
+                    if type(outcome.get(field)) is str and outcome[field] in allowed}
+    return retained
+
+
+def capability_diagnostic_complete(value) -> bool:
+    """Diagnostic completeness only; never controls admission or the retention verdict."""
+    bounded = bounded_capability_diagnostic(value)
+    return (type(value) is dict and set(value) == {"disposition", "preflightReason", "capabilities"}
+            and bounded == value and set(bounded.get("capabilities", {})) == _CAPABILITY_NAMES
+            and all(set(outcome) == {"outcome", "failureCategory"} for outcome in bounded["capabilities"].values()))
+
+
+def decode_selected_response(raw):
+    """Keep ordinary response semantics, but disclose duplicate diagnostic objects as incomplete."""
+    # Tuples are an intermediate marker for JSON objects; JSON arrays remain lists.
+    parsed = json.loads(raw, object_pairs_hook=lambda pairs: (pairs,))
+
+    def convert(node):
+        if type(node) is tuple:
+            pairs = node[0]
+            names = [key for key, _ in pairs]
+            duplicate = len(names) != len(set(names))
+            result = {}
+            for key, item in pairs:
+                value, child_duplicate = convert(item)
+                if key == "capabilityDiagnostic" and (child_duplicate or names.count(key) > 1):
+                    value = {}
+                result[key] = value
+                duplicate = duplicate or child_duplicate
+            return result, duplicate
+        if type(node) is list:
+            children = [convert(item) for item in node]
+            return [item for item, _ in children], any(duplicate for _, duplicate in children)
+        return node, False
+
+    return convert(parsed)[0]
+
+
+def bounded_bootstrap_progress(value) -> dict:
+    """Copy only the allow-listed, bounded bootstrap-progress fields; drop everything else."""
+    retained = {}
+    if type(value) is not dict:
+        return retained
+    attempts = value.get("attempts")
+    if type(attempts) is int and 0 <= attempts <= _BOOTSTRAP_ATTEMPTS_MAX:
+        retained["attempts"] = attempts
+    if type(value.get("stage")) is str and value["stage"] in _BOOTSTRAP_STAGES:
+        retained["stage"] = value["stage"]
+    for name, allowed in (("failureStage", _BOOTSTRAP_FAILURE_STAGES), ("failureKind", _BOOTSTRAP_FAILURE_KINDS)):
+        if name in value and (value[name] is None or type(value[name]) is str and value[name] in allowed):
+            retained[name] = value[name]
+    published = value.get("firstPublishedUtcMs", False)
+    if published is None or type(published) is int and 0 < published <= _BOOTSTRAP_UTC_MS_MAX:
+        retained["firstPublishedUtcMs"] = published
+    if "capabilityDiagnostic" in value:
+        retained["capabilityDiagnostic"] = bounded_capability_diagnostic(value["capabilityDiagnostic"])
+    return retained
+
+
+def bounded_rejection_breakdown(value) -> dict:
+    """Copy only allow-listed bounded pre-queue rejection counts and enum names; drop everything else."""
+    retained = {}
+    if type(value) is not dict:
+        return retained
+    for name in ("sanitizerUnavailable", "sanitationFailed"):
+        count = value.get(name)
+        if type(count) is int and 0 <= count <= FUNCTIONAL["recordsPerCohort"]:
+            retained[name] = count
+    for name, allowed in (("sanitizerUnavailableLifecycleReasons", _REJECTION_REASONS), ("sanitizerUnavailableBootstrapStages", _BOOTSTRAP_STAGES)):
+        counts = value.get(name)
+        if type(counts) is dict:
+            retained[name] = {
+                key: count for key, count in counts.items()
+                if type(key) is str and key in allowed and type(count) is int and 0 < count <= FUNCTIONAL["recordsPerCohort"]}
+    for name, allowed in (("lifecycleHealth", _LIFECYCLE_HEALTH), ("lifecycleReason", _REJECTION_REASONS)):
+        if type(value.get(name)) is str and value[name] in allowed:
+            retained[name] = value[name]
+    if type(value.get("bootstrap")) is dict:
+        retained["bootstrap"] = bounded_bootstrap_progress(value["bootstrap"])
+    return retained
+
+
+def rejection_breakdown_complete(raw, counters: dict) -> bool:
+    """Diagnostic only: true when nothing was dropped and the retained counts are internally consistent."""
+    breakdown = bounded_rejection_breakdown(raw)
+    return (type(raw) is dict and set(raw) == _REJECTION_BREAKDOWN_FIELDS and breakdown == raw
+            and set(raw["bootstrap"]) in (_BOOTSTRAP_FIELDS, _BOOTSTRAP_FIELDS | {"capabilityDiagnostic"})
+            and ("capabilityDiagnostic" not in raw["bootstrap"] or capability_diagnostic_complete(raw["bootstrap"]["capabilityDiagnostic"]))
+            and type(counters.get("rejected")) is int
+            and sum(breakdown["sanitizerUnavailableLifecycleReasons"].values()) == breakdown["sanitizerUnavailable"]
+            and sum(breakdown["sanitizerUnavailableBootstrapStages"].values()) == breakdown["sanitizerUnavailable"]
+            and breakdown["sanitizerUnavailable"] + breakdown["sanitationFailed"] <= counters["rejected"]
+            and bootstrap_progress_consistent(breakdown["bootstrap"]))
+
+
+def bootstrap_progress_consistent(bootstrap: dict) -> bool:
+    """Diagnostic only, never a pass condition: the retained bootstrap fields agree with each other."""
+    return ((bootstrap["failureStage"] is None) == (bootstrap["failureKind"] is None)
+            and (bootstrap["attempts"] > 0 or (bootstrap["failureStage"] is None and bootstrap["firstPublishedUtcMs"] is None))
+            and (bootstrap["stage"] != "Published" or bootstrap["firstPublishedUtcMs"] is not None))
+
+
 def validate_accounting(result: dict, run_id: str, segment: str, emitted_ms: int) -> str:
     from access_telemetry_producer_common import _qualification_record_ids
-    _require(type(result) is dict and set(result) == {"runId", "segmentId", "writer", "startedUtcMs", "finishedUtcMs", "emitFinishedUtcMs", "acknowledgedUtcMs", "attempted", "enqueued", "acknowledged", "persisted", "conflicted", "transactionAcknowledgements", "rejected", "dropped", "recordIds", "resultCount"}, "accounting-schema")
+    _require(type(result) is dict and set(result) == {"runId", "segmentId", "writer", "startedUtcMs", "finishedUtcMs", "emitFinishedUtcMs", "acknowledgedUtcMs", "attempted", "enqueued", "acknowledged", "persisted", "conflicted", "transactionAcknowledgements", "rejected", "dropped", "recordIds", "resultCount", "rejectionBreakdown"}, "accounting-schema")
     _require(result["runId"] == run_id and result["segmentId"] == segment and result["recordIds"] == _qualification_record_ids(run_id, segment), "accounting-identity")
     writer = result["writer"]
     _require(isinstance(writer, str) and re.fullmatch(r"[a-z0-9][a-z0-9-]{0,252}", writer) is not None, "writer-identity")
     _require(all(type(result[name]) is int and result[name] == count for name, count in (("attempted", 125), ("enqueued", 125), ("acknowledged", 125), ("persisted", 125), ("transactionAcknowledgements", 125), ("conflicted", 0), ("rejected", 0), ("dropped", 0))), "accounting-loss")
+    # Any rejection already failed above; a passing segment must report an exact, empty, allow-listed breakdown.
+    # Bootstrap progress is checked for shape and allow-list validity only, never for a particular stage or time.
+    breakdown = result["rejectionBreakdown"]
+    # The additive diagnostic is observational. Validate the original accounting contract exactly as before.
+    if type(breakdown) is dict and type(breakdown.get("bootstrap")) is dict:
+        breakdown = {**breakdown, "bootstrap": {key: value for key, value in breakdown["bootstrap"].items() if key != "capabilityDiagnostic"}}
+    _require(type(breakdown) is dict and set(breakdown) == _REJECTION_BREAKDOWN_FIELDS and bounded_rejection_breakdown(breakdown) == breakdown
+             and set(breakdown["bootstrap"]) == _BOOTSTRAP_FIELDS
+             and breakdown["sanitizerUnavailable"] == breakdown["sanitationFailed"] == 0
+             and breakdown["sanitizerUnavailableLifecycleReasons"] == {} and breakdown["sanitizerUnavailableBootstrapStages"] == {}, "accounting-rejection-breakdown")
     _require(all(type(result[name]) is int for name in ("startedUtcMs", "finishedUtcMs", "emitFinishedUtcMs", "acknowledgedUtcMs", "resultCount")), "accounting-time-type")
     _require(emitted_ms - 1000 <= result["startedUtcMs"] <= result["emitFinishedUtcMs"] == result["finishedUtcMs"] <= result["acknowledgedUtcMs"] <= emitted_ms + 300000 and result["resultCount"] > 0, "accounting-time-mismatch")
     return writer
@@ -1411,7 +1561,7 @@ class _PlatformRetentionConsumer:
                 phase = "body"
                 raw = response.read(1048577)
                 _require(len(raw) <= 1048576, "selected-output-limit")
-                return (response.status, raw) if raw_response else json.loads(raw) if raw else None
+                return (response.status, raw) if raw_response else decode_selected_response(raw) if raw else None
         except urllib.error.HTTPError as error:
             if missing and error.code in {204, 404}:
                 return None
@@ -1530,14 +1680,21 @@ class _PlatformRetentionConsumer:
         self.check()
         run_id = self.plan["runId"]
         _require(_IDENTITY.fullmatch(run_id) is not None and segment in {"cohort-a", "cohort-b"}, "selected-accounting-observation-scope")
-        counters = {}
+        counters, breakdown, complete = {}, {}, False
         if type(accounting) is dict and accounting.get("runId") == run_id and accounting.get("segmentId") == segment:
             for name in ("attempted", "enqueued", "acknowledged", "persisted", "transactionAcknowledgements", "conflicted", "rejected", "dropped"):
                 value = accounting.get(name)
                 if type(value) is int and 0 <= value <= FUNCTIONAL["recordsPerCohort"]:
                     counters[name] = value
+            # Bounded, secret-free cause of pre-queue rejection: unavailable sanitizer by lifecycle reason and bootstrap
+            # stage versus sanitizer refusal, plus the bootstrap progress observed when the response was built.
+            raw = accounting.get("rejectionBreakdown")
+            breakdown = bounded_rejection_breakdown(raw)
+            # Diagnostic only: false when anything was dropped or the retained counts are internally inconsistent.
+            complete = rejection_breakdown_complete(raw, counters)
         _exclusive_json(self.root / "native-tests" / (segment + "-accounting.json"),
-                        {"runId": run_id, "segmentId": segment, "observedUtcMs": int(time.time() * 1000), "counters": counters})
+                        {"runId": run_id, "segmentId": segment, "observedUtcMs": int(time.time() * 1000), "counters": counters,
+                         "rejectionBreakdown": breakdown, "rejectionBreakdownComplete": complete})
 
     def execute(self):
         run_id = self.plan["runId"]

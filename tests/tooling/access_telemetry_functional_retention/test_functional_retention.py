@@ -61,7 +61,7 @@ class OfflineTarget:
                 if self.emit_failure:
                     self.emit_failure -= 1
                     raise functional.TransportUncertain("offline-emit-transport-uncertainty")
-                return {"runId": run, "segmentId": segment, "writer": "memories-offline-only", "startedUtcMs": timestamp, "finishedUtcMs": timestamp + 1000, "emitFinishedUtcMs": timestamp + 1000, "acknowledgedUtcMs": timestamp + 2000, "attempted": 125, "enqueued": 125, "acknowledged": 125, "persisted": 125, "transactionAcknowledgements": 125, "conflicted": 0, "rejected": 0, "dropped": 0, "recordIds": _qualification_record_ids(run, segment), "resultCount": 375}
+                return {"runId": run, "segmentId": segment, "writer": "memories-offline-only", "startedUtcMs": timestamp, "finishedUtcMs": timestamp + 1000, "emitFinishedUtcMs": timestamp + 1000, "acknowledgedUtcMs": timestamp + 2000, "attempted": 125, "enqueued": 125, "acknowledged": 125, "persisted": 125, "transactionAcknowledgements": 125, "conflicted": 0, "rejected": 0, "dropped": 0, "recordIds": _qualification_record_ids(run, segment), "resultCount": 375, "rejectionBreakdown": {"sanitizerUnavailable": 0, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {}, "sanitizerUnavailableBootstrapStages": {}, "lifecycleHealth": "Healthy", "lifecycleReason": "None", "bootstrap": {"attempts": 1, "stage": "Published", "failureStage": None, "failureKind": None, "firstPublishedUtcMs": timestamp - 1000}}}
             if name == "read_cohort":
                 run, segment = arguments
                 _, timestamp = self.emitted[segment]
@@ -355,6 +355,168 @@ class FunctionalTests(unittest.TestCase):
             with self.subTest(key=key):
                 with self.assertRaises(functional.FunctionalRetentionError):
                     functional.validate_accounting({**response, key: value}, "functional-offline", "cohort-a", target.clock.utc())
+        rejected = {**response, "enqueued": 0, "acknowledged": 0, "persisted": 0, "transactionAcknowledgements": 0, "rejected": 125,
+                    "rejectionBreakdown": {**response["rejectionBreakdown"], "sanitizerUnavailable": 125, "sanitizerUnavailableLifecycleReasons": {"RemoteValidationPending": 125},
+                                           "sanitizerUnavailableBootstrapStages": {"NotStarted": 125}, "lifecycleHealth": "Degraded", "lifecycleReason": "RemoteValidationPending",
+                                           "bootstrap": {"attempts": 0, "stage": "NotStarted", "failureStage": None, "failureKind": None, "firstPublishedUtcMs": None}}}
+        with self.assertRaisesRegex(functional.FunctionalRetentionError, "functional-accounting-loss"):
+            functional.validate_accounting(rejected, "functional-offline", "cohort-a", target.clock.utc())
+        breakdown = response["rejectionBreakdown"]
+        bootstrap = breakdown["bootstrap"]
+        missing = object()
+        negatives = [("missing", missing, "functional-accounting-schema"), ("extra", {**breakdown, "rawResponse": "private"}, "functional-accounting-rejection-breakdown"),
+                     ("sanitationFailedOnPass", {**breakdown, "sanitationFailed": 1}, "functional-accounting-rejection-breakdown"),
+                     ("reasonOnPass", {**breakdown, "sanitizerUnavailableLifecycleReasons": {"RemoteValidationPending": 1}}, "functional-accounting-rejection-breakdown"),
+                     ("stageOnPass", {**breakdown, "sanitizerUnavailableBootstrapStages": {"NotStarted": 1}}, "functional-accounting-rejection-breakdown"),
+                     ("unknownReason", {**breakdown, "lifecycleReason": "Private"}, "functional-accounting-rejection-breakdown"),
+                     ("unknownHealth", {**breakdown, "lifecycleHealth": "Private"}, "functional-accounting-rejection-breakdown"),
+                     ("boolean", {**breakdown, "sanitizerUnavailable": False}, "functional-accounting-rejection-breakdown")]
+        # Non-dict breakdowns, each single missing field and out-of-range counts are refused.
+        negatives += [("nonDict-" + type(value).__name__, value, "functional-accounting-rejection-breakdown") for value in (None, [], "private", 0)]
+        negatives += [("missingField-" + field, {key: item for key, item in breakdown.items() if key != field}, "functional-accounting-rejection-breakdown") for field in sorted(breakdown)]
+        negatives += [("range-" + field + "-" + str(value), {**breakdown, field: value}, "functional-accounting-rejection-breakdown")
+                      for field in ("sanitizerUnavailable", "sanitationFailed") for value in (-1, 126, 10**100)]
+        negatives += [("range-" + field, {**breakdown, field: {name: count}}, "functional-accounting-rejection-breakdown")
+                      for field, name in (("sanitizerUnavailableLifecycleReasons", "RemoteValidationPending"), ("sanitizerUnavailableBootstrapStages", "Secret")) for count in (0, -1, 126)]
+        # Bootstrap progress: shape and allow-list validity only.
+        negatives += [("bootstrapNonDict-" + type(value).__name__, {**breakdown, "bootstrap": value}, "functional-accounting-rejection-breakdown") for value in (None, [], "Published")]
+        negatives += [("bootstrapMissing-" + field, {**breakdown, "bootstrap": {key: item for key, item in bootstrap.items() if key != field}}, "functional-accounting-rejection-breakdown") for field in sorted(bootstrap)]
+        negatives += [("bootstrap-" + field + "-" + repr(value), {**breakdown, "bootstrap": {**bootstrap, field: value}}, "functional-accounting-rejection-breakdown")
+                      for field, values in (("attempts", (-1, True, 2**31, 1.0, None, "1")), ("stage", ("Private", None, 1, "published")),
+                                            ("failureStage", ("Private", 1, "", "NotStarted", "Published", "Unobserved")), ("failureKind", ("Private", "None", 1)),
+                                            ("firstPublishedUtcMs", (0, -5, True, "1", 2**53 + 1, 1.5))) for value in values]
+        negatives += [("bootstrapExtra", {**breakdown, "bootstrap": {**bootstrap, "message": "private"}}, "functional-accounting-rejection-breakdown")]
+        for name, value, code in negatives:
+            with self.subTest(breakdown=name):
+                candidate = {key: item for key, item in response.items() if key != "rejectionBreakdown"} if value is missing else {**response, "rejectionBreakdown": value}
+                with self.assertRaisesRegex(functional.FunctionalRetentionError, "^" + code + "$"):
+                    functional.validate_accounting(candidate, "functional-offline", "cohort-a", target.clock.utc())
+        # Bootstrap fields never turn a correct 125/125 segment into a failure beyond shape and allow-list validity.
+        for name, variant in (("unobserved", {"attempts": 0, "stage": "Unobserved", "failureStage": None, "failureKind": None, "firstPublishedUtcMs": None}),
+                              ("failedEarlier", {"attempts": 7, "stage": "Published", "failureStage": "Secret", "failureKind": "DaprApi", "firstPublishedUtcMs": 1}),
+                              ("refreshInFlight", {"attempts": 2**31 - 1, "stage": "Secret", "failureStage": "Secret", "failureKind": "Other", "firstPublishedUtcMs": 2**53})):
+            with self.subTest(passingBootstrap=name):
+                self.assertEqual("memories-offline-only", functional.validate_accounting({**response, "rejectionBreakdown": {**breakdown, "bootstrap": variant}}, "functional-offline", "cohort-a", target.clock.utc()))
+
+    @staticmethod
+    def capability_diagnostic():
+        names = ("StrongCrudAndEtags", "MultiKeyTransactionsAndConflicts", "ActorReactivationFailoverAndReminders",
+                 "EffectivePerRecordTtl", "RecordAndRequestBounds", "TwoWriterThroughputDuringPurge",
+                 "DeclaredDurabilityAndFailureBehavior", "TenantIsolationAndEncryption", "PhysicalCapacityEvidence", "ReclamationEvidenceHooks")
+        return {"disposition": "PreflightRefused", "preflightReason": "LocalProfileInvalid",
+                "capabilities": {name: {"outcome": "NotStarted", "failureCategory": "None"} for name in names}}
+
+    def test_capability_diagnostic_is_retained_without_changing_accounting(self):
+        target = OfflineTarget(Clock())
+        response = target.emit("functional-offline", "cohort-a", target.clock.utc())
+        diagnostic = self.capability_diagnostic()
+        response["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"] = diagnostic
+        retained = functional.bounded_rejection_breakdown(response["rejectionBreakdown"])
+        self.assertEqual(diagnostic, retained["bootstrap"].get("capabilityDiagnostic"))
+        self.assertTrue(functional.rejection_breakdown_complete(response["rejectionBreakdown"], response))
+        self.assertEqual("memories-offline-only", functional.validate_accounting(response, "functional-offline", "cohort-a", target.clock.utc()))
+        response["rejected"] = 125
+        with self.assertRaisesRegex(functional.FunctionalRetentionError, "functional-accounting-loss"):
+            functional.validate_accounting(response, "functional-offline", "cohort-a", target.clock.utc())
+
+    def test_capability_diagnostic_rejects_unknown_missing_oversized_and_secret_fields(self):
+        from copy import deepcopy
+        valid = self.capability_diagnostic()
+        name = next(iter(valid["capabilities"]))
+        variants = [None, [], "fixture-secret", {**valid, "fixture-secret-key": "fixture-secret-value"},
+                    {**valid, "disposition": "fixture-secret"}, {**valid, "preflightReason": "fixture-secret"},
+                    {**valid, "capabilities": {}}, {**valid, "capabilities": ["fixture-secret"]},
+                    {**valid, "capabilities": {**valid["capabilities"], "fixture-secret-name": {"outcome": "Passed", "failureCategory": "None"}}},
+                    {**valid, "capabilities": {key: value for key, value in valid["capabilities"].items() if key != name}},
+                    {**valid, "capabilities": {"fixture-secret-" + str(index): {} for index in range(200)}}]
+        for field, value in (("outcome", "fixture-secret"), ("failureCategory", "fixture-secret"), ("raw", "fixture-secret")):
+            variant = deepcopy(valid)
+            variant["capabilities"][name][field] = value
+            variants.append(variant)
+        target = OfflineTarget(Clock())
+        response = target.emit("functional-offline", "cohort-a", target.clock.utc())
+        for value in variants:
+            with self.subTest(value=value):
+                response["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"] = value
+                retained = functional.bounded_rejection_breakdown(response["rejectionBreakdown"])
+                self.assertNotIn("fixture-secret", json.dumps(retained))
+                self.assertFalse(functional.rejection_breakdown_complete(response["rejectionBreakdown"], response))
+                # Optional diagnostics do not turn valid accounting into admission or failure.
+                self.assertEqual("memories-offline-only", functional.validate_accounting(response, "functional-offline", "cohort-a", target.clock.utc()))
+
+    def test_duplicate_capability_diagnostic_json_is_incomplete_without_altering_other_fields(self):
+        target = OfflineTarget(Clock())
+        response = target.emit("functional-offline", "cohort-a", target.clock.utc())
+        response["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"] = self.capability_diagnostic()
+        raw = json.dumps(response)
+        variants = [raw.replace('"StrongCrudAndEtags":', '"StrongCrudAndEtags": {}, "StrongCrudAndEtags":'),
+                    raw.replace('"outcome":', '"outcome": "fixture-secret", "outcome":', 1),
+                    raw.replace('"capabilityDiagnostic":', '"capabilityDiagnostic": {}, "capabilityDiagnostic":')]
+        for raw in variants:
+            decoded = functional.decode_selected_response(raw)
+            self.assertEqual({}, decoded["rejectionBreakdown"]["bootstrap"]["capabilityDiagnostic"])
+            self.assertFalse(functional.rejection_breakdown_complete(decoded["rejectionBreakdown"], decoded))
+            self.assertEqual("memories-offline-only", functional.validate_accounting(decoded, "functional-offline", "cohort-a", target.clock.utc()))
+        self.assertEqual({"ordinary": 2}, functional.decode_selected_response('{"ordinary":1,"ordinary":2}'))
+
+    def test_capability_diagnostic_vocabulary_matches_contract_and_runner(self):
+        import re
+        source = (ROOT / "src/Hexalith.Memories.AccessTelemetry.Contracts/AccessTelemetryCapabilityDiagnosticValues.cs").read_text()
+        for name, expected in (("Capabilities", functional._CAPABILITY_NAMES), ("Dispositions", functional._CAPABILITY_DISPOSITIONS),
+                               ("PreflightReasons", functional._CAPABILITY_PREFLIGHT_REASONS), ("Outcomes", functional._CAPABILITY_OUTCOMES),
+                               ("FailureCategories", functional._CAPABILITY_FAILURE_CATEGORIES)):
+            body = source.split(name + " { get; } = new[]", 1)[1].split(".ToFrozenSet", 1)[0]
+            self.assertEqual(set(re.findall(r'"([A-Za-z]+)"', body)), set(expected))
+        runner = (ROOT / "src/Hexalith.Memories.AccessTelemetry/Capability/AccessTelemetryCapabilityProbeRunner.cs").read_text()
+        body = runner.split("CapabilityNames =", 1)[1].split("]);", 1)[0]
+        self.assertEqual(set(re.findall(r'nameof\(AccessTelemetryCapabilityProfile\.(\w+)\)', body)), set(functional._CAPABILITY_NAMES))
+
+    def test_bounded_breakdown_drops_out_of_range_and_unknown_values(self):
+        raw = {"sanitizerUnavailable": 126, "sanitationFailed": -1, "sanitizerUnavailableLifecycleReasons": {"RemoteValidationPending": 0, "None": 126, "Private": 1, "Expired": 3},
+               "sanitizerUnavailableBootstrapStages": {"Secret": 0, "Published": 126, 1: 1, "RemoteValidation": True, "Configuration": 2}, "lifecycleHealth": "Private",
+               "lifecycleReason": None, "bootstrap": {"attempts": -1, "stage": "Secret", "failureStage": None, "failureKind": "Private", "firstPublishedUtcMs": 0, "extra": 1}, "extra": "private"}
+        self.assertEqual({"sanitizerUnavailableLifecycleReasons": {"Expired": 3}, "sanitizerUnavailableBootstrapStages": {"Configuration": 2},
+                          "bootstrap": {"stage": "Secret", "failureStage": None}}, functional.bounded_rejection_breakdown(raw))
+        self.assertFalse(functional.rejection_breakdown_complete(raw, {"rejected": 125}))
+        for value in (None, [], "private", 1):
+            self.assertEqual({}, functional.bounded_rejection_breakdown(value))
+            self.assertEqual({}, functional.bounded_bootstrap_progress(value))
+            self.assertFalse(functional.rejection_breakdown_complete(value, {"rejected": 125}))
+
+    def test_breakdown_completeness_requires_internally_consistent_bootstrap_progress(self):
+        consistent = {"sanitizerUnavailable": 125, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {"RemoteValidationPending": 125},
+                      "sanitizerUnavailableBootstrapStages": {"Secret": 125}, "lifecycleHealth": "Degraded", "lifecycleReason": "RemoteValidationPending",
+                      "bootstrap": {"attempts": 2, "stage": "Secret", "failureStage": "Secret", "failureKind": "Transport", "firstPublishedUtcMs": None}}
+        self.assertTrue(functional.rejection_breakdown_complete(consistent, {"rejected": 125}))
+        for name, bootstrap in (("kindWithoutStage", {"failureStage": None}), ("stageWithoutKind", {"failureKind": None}),
+                                ("noAttemptButFailure", {"attempts": 0}), ("noAttemptButPublished", {"attempts": 0, "failureStage": None, "failureKind": None, "firstPublishedUtcMs": 1}),
+                                ("publishedWithoutTime", {"stage": "Published"})):
+            with self.subTest(bootstrap=name):
+                candidate = {**consistent, "bootstrap": {**consistent["bootstrap"], **bootstrap}}
+                self.assertEqual(candidate, functional.bounded_rejection_breakdown(candidate))
+                self.assertFalse(functional.rejection_breakdown_complete(candidate, {"rejected": 125}))
+
+    def test_rejection_breakdown_allow_lists_match_the_server_enums(self):
+        import re
+        contracts = ROOT / "src" / "Hexalith.Memories.AccessTelemetry.Contracts"
+        server = ROOT / "src" / "Hexalith.Memories.Server" / "Telemetry" / "AccessTelemetryLifecycle"
+        def members(path):
+            body = path.read_text(encoding="utf-8").split("{", 1)[1].rsplit("}", 1)[0]
+            return {match for match in re.findall(r"^\s*([A-Z][A-Za-z0-9]*)\s*(?:=\s*\d+\s*)?,?\s*$", body, re.MULTILINE)}
+        def unobserved(path):
+            return set(re.findall(r'public const string Unobserved = "([A-Za-z]+)";', path.read_text(encoding="utf-8")))
+        # Read the Server's own marker instead of hard-coding it; both C# declarations must agree.
+        markers = unobserved(server / "AccessTelemetryQualificationRejectionBreakdown.cs") | unobserved(server / "AccessTelemetryLifecycleBootstrapSnapshot.cs")
+        self.assertEqual(1, len(markers))
+        marker = next(iter(markers))
+        reasons, health = members(contracts / "AccessTelemetryReason.cs"), members(contracts / "AccessTelemetryHealthState.cs")
+        stages, kinds = members(server / "AccessTelemetryLifecycleBootstrapStage.cs"), members(server / "AccessTelemetryLifecycleBootstrapFailureKind.cs")
+        self.assertTrue(reasons and health and stages and kinds)
+        self.assertEqual(reasons | {marker}, set(functional._REJECTION_REASONS))
+        self.assertEqual(health | {marker}, set(functional._LIFECYCLE_HEALTH))
+        self.assertEqual(stages | {marker}, set(functional._BOOTSTRAP_STAGES))
+        self.assertEqual(stages - {"NotStarted", "Published"}, set(functional._BOOTSTRAP_FAILURE_STAGES))
+        self.assertEqual(kinds, set(functional._BOOTSTRAP_FAILURE_KINDS))
 
     def test_budget_claim_is_exclusive_process_bound_and_survives_withdrawal(self):
         with patch.object(functional, "source_files", return_value={"fixture": "offline-only"}), patch.object(functional.FunctionalAuthority, "_metadata", return_value={}):

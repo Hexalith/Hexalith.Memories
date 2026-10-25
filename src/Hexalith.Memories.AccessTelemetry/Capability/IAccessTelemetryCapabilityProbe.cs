@@ -8,6 +8,9 @@ namespace Hexalith.Memories.AccessTelemetry.Capability;
 /// <summary>Behavioral probe against the exact configured Dapr component profile.</summary>
 internal interface IAccessTelemetryCapabilityProbe
 {
+    /// <summary>Gets the registered diagnostic name; unknown names never enter a snapshot.</summary>
+    string Capability { get; }
+
     /// <summary>Runs one bounded behavior check.</summary>
     Task<AccessTelemetryCapabilityProbeResult> ProbeAsync(CancellationToken cancellationToken);
 }
