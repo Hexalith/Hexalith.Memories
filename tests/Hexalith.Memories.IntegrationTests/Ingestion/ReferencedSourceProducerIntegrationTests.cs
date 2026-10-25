@@ -39,7 +39,7 @@ public sealed class ReferencedSourceProducerIntegrationTests(RedisStackFixture r
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "reference-copy-" + Guid.NewGuid().ToString("N");
-        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "retry-unit");
+        if (!failBeforeScheduling) await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "retry-unit");
         const string source = "urn:synthetic:referenced";
         string sourceOwner = DedupKeyBuilder.BuildKey(tenant, "case", source);
         redis.Connection.GetDatabase().FT().Create(IndexSchemaDefinitions.GetSemanticIndexName(tenant),

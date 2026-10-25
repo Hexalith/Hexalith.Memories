@@ -44,12 +44,12 @@ public class DeleteMemoryUnitProjectionActivityTests
         builder.Received(1).BuildDeleteMemoryUnitNode("mu-001");
         Received.InOrder(() =>
         {
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "ann-001"))), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => keys.Length == 2 && keys[0].ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "ann-001") && keys[1].ToString() == IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "ann-001")), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => keys.Length == 2 && keys[0].ToString() == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "mu-001") && keys[1].ToString() == IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
-            redisDb.KeyDeleteAsync(Arg.Is<RedisKey>(k => k!.ToString() == IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001")), Arg.Any<CommandFlags>());
+            redisDb.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "ann-001"))), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>());
+            redisDb.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Is<RedisKey[]>(keys => keys.Length == 2 && keys[0] == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "ann-001")), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "ann-001"), Arg.Any<CommandFlags>());
+            redisDb.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>());
+            redisDb.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Is<RedisKey[]>(keys => keys.Length == 2 && keys[0] == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-1", "mu-001")), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>());
+            redisDb.KeyDeleteAsync((RedisKey)IndexSchemaDefinitions.BuildSyntacticKey("tenant-1", "mu-001"), Arg.Any<CommandFlags>());
         });
     }
 
@@ -63,8 +63,8 @@ public class DeleteMemoryUnitProjectionActivityTests
         DeleteMemoryUnitProjectionActivity activity = new(redis, falkorDb, builder, workflowClient: Substitute.For<IDaprWorkflowClient>());
         MemoryUnitDeletionProjectionInput input = new("tenant-1", "case-001", "mu-001", []);
 
-        redisDb.KeyDeleteAsync(Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<CommandFlags>())
-            .Returns(Task.FromException<long>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Vector delete failed")));
+        redisDb.ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("scoped-semantic-hash-delete-v1", StringComparison.Ordinal)), Arg.Is<RedisKey[]>(keys => ContainsOnly(keys!, IndexSchemaDefinitions.BuildSemanticKey("tenant-1", "mu-001"))), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(Task.FromException<RedisResult>(new RedisConnectionException(ConnectionFailureType.UnableToConnect, StackExchange.Redis.CommandFlags.None, "Vector delete failed")));
 
         // Act / Assert — the failure surfaces for workflow retry and the syntactic hash survives,
         // so a replayed cleanup still finds the record and converges instead of diverging silently.
@@ -108,6 +108,7 @@ public class DeleteMemoryUnitProjectionActivityTests
     private static (IConnectionMultiplexer, IDatabase) CreateMockRedis()
     {
         IDatabase db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>()).Returns(RedisResult.Create(1L));
         db.StringGetAsync(Arg.Is<RedisKey>(key => key.ToString().StartsWith("publication-key-provenance:", StringComparison.Ordinal)), Arg.Any<CommandFlags>()).Returns((RedisValue)"modern");
         db.SetMembersAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>()).Returns(Array.Empty<RedisValue>());
         db.SortedSetScanAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<int>(), Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CommandFlags>()).Returns(EmptyQueue());

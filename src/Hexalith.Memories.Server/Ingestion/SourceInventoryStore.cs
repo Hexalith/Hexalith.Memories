@@ -144,6 +144,17 @@ internal sealed class SourceInventoryStore([FromKeyedServices("redis")] IConnect
         await RetainAliasAsync(tenantId, sourceUri, unitId, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Independently verifies persisted admission that never reached the scheduling boundary.</summary>
+    internal async Task<bool> IsNeverScheduledAsync(string tenant, string source, SourceInventoryEntry expected, CancellationToken token)
+    {
+        RedisValue raw = await redis.GetDatabase().StringGetAsync(BuildKey(tenant, source)).WaitAsync(token).ConfigureAwait(false);
+        SourceInventorySnapshot snapshot = Parse(raw, tenant, source);
+        return raw.HasValue && snapshot.AdmissionClosed && expected.SchedulingState == "Unscheduled"
+            && expected.State == "Admitted" && expected.MemoryUnitId is null && expected.CandidateMemoryUnitId is null
+            && expected.WorkflowInstanceId is not null
+            && (snapshot.Entries ?? []).Count(entry => entry == expected) == 1;
+    }
+
     /// <summary>Records canonical output before completion acknowledgement; publication cannot erase superseded provenance.</summary>
     internal async Task CompleteAsync(string tenantId, string sourceUri, string workflowId, string caseId, string unitId, CancellationToken cancellationToken)
     {

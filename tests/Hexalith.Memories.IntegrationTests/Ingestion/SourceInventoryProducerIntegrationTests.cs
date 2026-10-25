@@ -42,7 +42,6 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "producer-" + Guid.NewGuid().ToString("N");
-        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "producer");
         IngestionInput input = Input(tenant);
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "ProducerTests");
         var inventory = new SourceInventoryStore(redis.Connection, codec);
@@ -234,7 +233,6 @@ public sealed class SourceInventoryProducerIntegrationTests(RedisStackFixture re
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "annotation-proof-" + Guid.NewGuid().ToString("N");
-        await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "annotation");
         var codec = new QueryCursorCodec(new EphemeralDataProtectionProvider(), "AnnotationProofTests");
         var inventory = new SourceInventoryStore(redis.Connection, codec);
         var input = new Hexalith.Memories.Server.Activities.Cases.AnnotationProjectionInput(tenant, "case", "annotation", "target", "urn:annotation",

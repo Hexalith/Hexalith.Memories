@@ -72,8 +72,8 @@ internal sealed class DeleteMemoryUnitProjectionActivity(
             }
         }
         await Task.WhenAll(
-            db.KeyDeleteAsync(semanticKeys),
-            db.KeyDeleteAsync(new RedisKey[] { nlVecKey, IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenantId, memoryUnitId) }),
+            DeleteScopedHashesAsync(db, tenantId, memoryUnitId, semanticKeys),
+            DeleteScopedHashesAsync(db, tenantId, memoryUnitId, [(RedisKey)nlVecKey, (RedisKey)IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenantId, memoryUnitId)]),
             db.KeyDeleteAsync(sourceArtifactKey),
             falkor.SelectGraph(tenantId).QueryAsync(graphQuery, graphParams)).ConfigureAwait(false);
         await db.KeyDeleteAsync(muKey).ConfigureAwait(false);
@@ -81,6 +81,30 @@ internal sealed class DeleteMemoryUnitProjectionActivity(
         {
             await inventory.MarkDeletedAsync(tenantId, memoryUnitId, CancellationToken.None).ConfigureAwait(false);
         }
+    }
+
+    private static async Task DeleteScopedHashesAsync(IDatabase db, string tenant, string unit, RedisKey[] keys)
+    {
+        // Legacy NL names and raw-semantic names overlap in both ownership directions.
+        // Preflight every hash before deleting any; known foreign owners survive unchanged.
+        const string delete = """
+            -- scoped-semantic-hash-delete-v1
+            local owned={}
+            for _,key in ipairs(KEYS) do
+                local kind=redis.call('TYPE',key).ok
+                if kind~='none' then
+                    if kind~='hash' then return -1 end
+                    local owner=redis.call('HGET',key,'memoryUnitId')
+                    local tenant=redis.call('HGET',key,'tenantId')
+                    if not owner or owner=='' or (tenant and tenant~=ARGV[2]) then return -1 end
+                    if owner==ARGV[1] then table.insert(owned,key) end
+                end
+            end
+            for _,key in ipairs(owned) do redis.call('DEL',key) end
+            return 1
+            """;
+        long result = (long)await db.ScriptEvaluateAsync(delete, keys, [(RedisValue)unit, (RedisValue)tenant]).ConfigureAwait(false);
+        if (result != 1) throw new InvalidOperationException("semantic-namespace-owner-reconciliation-required");
     }
 
 }

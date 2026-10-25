@@ -29,6 +29,114 @@ using NRedisStack.RedisStackCommands;
 [Trait("Category", "Integration")]
 public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IClassFixture<FalkorDbFixture>
 {
+    [Fact]
+    public async Task OverflowMovesValidNoncanonicalJsonUsingItsActualObservedBytes()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "formatted-retry-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance,
+            Options.Create(new NaturalLanguageDescriptionOptions { LiveRetryQueueMaxEntries = 1, DeadRetryQueueMaxEntries = 1 }));
+        var victim = Record(tenant, "victim") with { QueuedAtTicks = 1 };
+        var survivor = Record(tenant, "survivor") with { QueuedAtTicks = 2 };
+        await registry.EnqueueAsync(victim, token);
+        string raw = System.Text.Json.JsonSerializer.Serialize(victim, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { WriteIndented = true });
+        raw.ShouldNotBe(FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(victim));
+        FailedNaturalLanguageEmbeddingRegistry.TryDeserialize(raw).ShouldBe(victim);
+        await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim", raw);
+        await registry.EnqueueAsync(survivor, token);
+        (await db.SortedSetLengthAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant))).ShouldBe(1);
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim")).HasValue.ShouldBeFalse();
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant), "victim")).ToString().ShouldBe(raw);
+        (await registry.DequeueBatchAsync(tenant, 1, token)).ShouldHaveSingleItem().ShouldBe(survivor);
+    }
+
+    [Theory]
+    [InlineData("enqueue")]
+    [InlineData("requeue")]
+    [InlineData("dead")]
+    [InlineData("overflow")]
+    public async Task WrongTypeDestinationCannotDeleteOrOverwriteAdmittedLivePayload(string mode)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "queue-wrongtype-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance,
+            Options.Create(new NaturalLanguageDescriptionOptions { LiveRetryQueueMaxEntries = 1 }));
+        var original = Record(tenant, "victim");
+        await registry.EnqueueAsync(original, token);
+        RedisValue bytes = await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim");
+        await db.StringSetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant), "malformed-destination");
+        await Should.ThrowAsync<RedisServerException>(async () =>
+        {
+            if (mode is "enqueue" or "overflow") await registry.EnqueueAsync(Record(tenant, mode == "overflow" ? "next" : "victim"), token);
+            else await registry.IncrementAttemptsAsync(original, mode == "dead" ? 1 : 10, token);
+        });
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim")).ShouldBe(bytes);
+        (await db.SortedSetScoreAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), "victim")).ShouldNotBeNull();
+        (await db.StringGetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant))).ToString().ShouldBe("malformed-destination");
+    }
+
+    [Fact]
+    public async Task MixedLegacyAliasRetiresWithoutReplacingModernPayloadAndBatchSizeOneMakesProgress()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "mixed-alias-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+        var modern = Record(tenant, "victim") with { QueuedAtTicks = 20, TruncatedRawJsonPayload = "modern-content" };
+        await registry.EnqueueAsync(modern, token);
+        string alias = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(modern with { QueuedAtTicks = 1, TruncatedRawJsonPayload = "old-content" });
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), alias, 1);
+        (await registry.DequeueBatchAsync(tenant, 1, token)).ShouldBeEmpty();
+        (await registry.DequeueBatchAsync(tenant, 1, token)).ShouldHaveSingleItem().ShouldBe(modern);
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim")).ToString()
+            .ShouldBe(FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(modern));
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), alias, 1);
+        await Task.WhenAll(registry.DequeueBatchAsync(tenant, 1, token), FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(db, tenant, "victim", token));
+        (await registry.DequeueBatchAsync(tenant, 1, token)).ShouldBeEmpty();
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim")).HasValue.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task UnitAndCaseDeletionPreserveForeignRawSemanticHashAtOverlappingLegacyName(bool caseDeletion, bool reverse)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "namespace-survivor-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        string erased = reverse ? "nl:victim" : "victim";
+        string survivor = reverse ? "victim" : "nl:victim";
+        await db.StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, erased), "modern");
+        string key = IndexSchemaDefinitions.BuildSemanticKey(tenant, "nl:victim");
+        key.ShouldBe(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim"));
+        await db.HashSetAsync(key, Fields(survivor, "unrelated-private-content"));
+        HashEntry[] before = await db.HashGetAllAsync(key);
+        if (caseDeletion) await new DeleteCaseProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), workflowClient: Substitute.For<IDaprWorkflowClient>())
+            .RunAsync(null!, new(tenant, "case", [erased]));
+        else await new DeleteMemoryUnitProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), workflowClient: Substitute.For<IDaprWorkflowClient>())
+            .RunAsync(null!, new(tenant, "case", erased, []));
+        (await db.HashGetAllAsync(key)).OrderBy(field => field.Name.ToString()).ShouldBe(before.OrderBy(field => field.Name.ToString()));
+    }
+
+    [Fact]
+    public async Task NamespaceMigrationInventoryCapacityRefusesExplicitlyAndPreservesLegacyBytes()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "namespace-capacity-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        string legacy = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim");
+        await db.HashSetAsync(legacy, Fields("victim", "retained-content"));
+        await db.SetAddAsync(SourcePublicationVisibility.Keys(tenant, "victim"), Enumerable.Range(0, 4096).Select(i => (RedisValue)("retained-" + i)).ToArray());
+        var failure = await Should.ThrowAsync<InvalidOperationException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, "victim", token));
+        failure.Message.ShouldBe("nl-namespace-inventory-capacity-owner-reconciliation-required");
+        (await db.HashGetAsync(legacy, "naturalLanguageDescription")).ToString().ShouldBe("retained-content");
+        (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "victim"))).ShouldBeFalse();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -286,6 +394,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         (await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input)).Indexed.ShouldBe(!removeDuringDescription);
         if (removeDuringDescription)
         {
+            _ = embedding.DidNotReceiveWithAnyArgs().GenerateAsync(default!, default!, default!, default);
             (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit))).ShouldBeFalse();
             (await db.HashGetAsync(unrelated, "naturalLanguageDescription")).ToString().ShouldBe("unrelated-content");
             return;

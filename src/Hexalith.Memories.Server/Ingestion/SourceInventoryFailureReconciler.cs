@@ -45,8 +45,36 @@ internal sealed class SourceInventoryFailureReconciler(
     {
         string candidate = entry.CandidateMemoryUnitId ?? entry.WorkflowInstanceId
             ?? throw new InvalidOperationException("source-inventory-failed-candidate-missing");
-        await new DeleteMemoryUnitProjectionActivity(redis, graph, queries, inventory, payloadStore: payloads, workflowClient: workflowClient, retryOptions: retryOptions).RunAsync(null!,
-            new(tenant, entry.CaseId, candidate, [])).WaitAsync(token).ConfigureAwait(false);
+        bool neverScheduled = await inventory.IsNeverScheduledAsync(tenant, source, entry, token).ConfigureAwait(false);
+        if (neverScheduled)
+        {
+            // This admission crossed no remote scheduling boundary. Preserve unknown/historical
+            // output obligations if any producer evidence contradicts that persisted proof.
+            IDatabase database = redis.GetDatabase();
+            RedisKey[] outputs = [Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenant, candidate),
+                Infrastructure.IndexSchemaDefinitions.BuildSemanticKey(tenant, candidate),
+                Infrastructure.IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, candidate),
+                Infrastructure.IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, candidate),
+                SourcePublicationVisibility.Keys(tenant, candidate), SourcePublicationVisibility.KeyProvenance(tenant, candidate)];
+            foreach (RedisKey key in outputs)
+                if (await database.KeyExistsAsync(key).WaitAsync(token).ConfigureAwait(false))
+                    throw new InvalidOperationException("source-inventory-unscheduled-output-reconciliation-required");
+            await database.StringSetAsync(SourcePublicationVisibility.Tombstone(tenant, candidate), "1").WaitAsync(token).ConfigureAwait(false);
+            await FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(database, tenant, candidate, token).ConfigureAwait(false);
+            await RetryWorkflowErasure.PurgeAsync(workflowClient, tenant, candidate, token,
+                retryOptions?.Value.LegacyRetrySchedulersDrainedForErasure == true).ConfigureAwait(false);
+            var falkor = new NFalkorDB.FalkorDB(graph.GetDatabase());
+            await falkor.SelectGraph(tenant).QueryAsync("MERGE (t:MemoryUnitTombstone {id:$id})",
+                new Dictionary<string, object> { ["id"] = candidate }).WaitAsync(token).ConfigureAwait(false);
+            var (query, parameters) = queries.BuildDeleteMemoryUnitNode(candidate);
+            await falkor.SelectGraph(tenant).QueryAsync(query, parameters).WaitAsync(token).ConfigureAwait(false);
+            await new WorkflowPayloadLedger(redis).PurgeAsync(tenant, candidate, payloads, token).ConfigureAwait(false);
+        }
+        else
+        {
+            await new DeleteMemoryUnitProjectionActivity(redis, graph, queries, inventory, payloadStore: payloads, workflowClient: workflowClient, retryOptions: retryOptions).RunAsync(null!,
+                new(tenant, entry.CaseId, candidate, [])).WaitAsync(token).ConfigureAwait(false);
+        }
         if (entry.WorkflowInstanceId is { } workflow && workflow != candidate)
         {
             await new WorkflowPayloadLedger(redis).PurgeAsync(tenant, workflow, payloads, token).ConfigureAwait(false);

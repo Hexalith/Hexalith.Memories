@@ -64,7 +64,7 @@ internal static class RedisNaturalLanguageNamespaceMigrator
             end
             if not valid(KEYS[1]) then return 0 end
             if redis.call('EXISTS',KEYS[2])==0 then
-                if redis.call('SCARD',KEYS[6])>=4096 and redis.call('SISMEMBER',KEYS[6],KEYS[2])==0 then return 0 end
+                if redis.call('SCARD',KEYS[6])>=4096 and redis.call('SISMEMBER',KEYS[6],KEYS[2])==0 then return -2 end
                 redis.call('HSET',KEYS[2],unpack(redis.call('HGETALL',KEYS[1])))
                 redis.call('SADD',KEYS[6],KEYS[2])
             end
@@ -79,6 +79,8 @@ internal static class RedisNaturalLanguageNamespaceMigrator
                 (RedisKey)(source.HasValue ? SourceInventoryStore.BuildKey(tenant, source.ToString()) : "__unused-source-inventory"),
                 (RedisKey)SourcePublicationVisibility.Keys(tenant, unit), (RedisKey)TenantIngestionOwnership.Fence(tenant)],
             [(RedisValue)unit, (RedisValue)tenant, source.HasValue ? source : RedisValue.EmptyString], ct).ConfigureAwait(false);
+        if ((long)result == -2)
+            throw new InvalidOperationException("nl-namespace-inventory-capacity-owner-reconciliation-required");
         if ((long)result == -1)
             throw new InvalidOperationException("nl-namespace-canonical-owner-reconciliation-required");
     }

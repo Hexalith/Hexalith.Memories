@@ -33,6 +33,10 @@ internal sealed class RetryNaturalLanguageEmbeddingActivity(
             var index = ActivatorUtilities.CreateInstance<IndexNaturalLanguageSemanticActivity>(services);
             NaturalLanguageDescriptionResult description = await describe.RunAsync(context,
                 new NaturalLanguageDescriptionInput(record.TenantId, record.MemoryUnitId, record.TruncatedRawJsonPayload, record.EventType, record.AggregateType)).ConfigureAwait(false);
+            if (await FailedNaturalLanguageEmbeddingRegistry.ReadCurrentAsync(redis.GetDatabase(), record.TenantId, record.MemoryUnitId).ConfigureAwait(false) != record)
+            {
+                return new(false, "retry-payload-retired");
+            }
             EmbeddingResult vector = await embed.RunAsync(context,
                 new EmbeddingInput(record.TenantId, description.Description, EmbeddingContentKind.NaturalLanguageDescription)).ConfigureAwait(false);
             if (await FailedNaturalLanguageEmbeddingRegistry.ReadCurrentAsync(redis.GetDatabase(), record.TenantId, record.MemoryUnitId).ConfigureAwait(false) != record)
