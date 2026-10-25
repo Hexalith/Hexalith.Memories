@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import tempfile
 from threading import Barrier
+import types
 import unittest
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
@@ -275,12 +276,150 @@ class SelectedReadRetryTests(unittest.TestCase):
 
     def test_diagnostic_phase_and_poll_scope_refuse_unbounded_or_untrusted_names(self):
         self.consumer.request = Mock()
-        for phase, observation in (("offline-secret", 1), ("initial", 0), ("initial", 33), ("initial", True)):
+        for phase, observation in (("offline-secret", 1), ("pre-expiry-3540", 1), ("pre-expiry-3590", 1), ("initial", 0), ("initial", 33), ("initial", True)):
             with self.subTest(phase=phase, observation=observation), self.assertRaisesRegex(
                     f.FunctionalRetentionError, "^functional-selected-read-observation-scope$"):
                 self.consumer.states("offline-run", "cohort-a", phase=phase, observation=observation)
         self.consumer.request.assert_not_called()
         self.assertEqual([], list((self.consumer.root / "native-tests").iterdir()))
+
+    def preexpiry(self, label, expiry=10):
+        self.consumer.root = self.consumer.root / label
+        (self.consumer.root / "native-tests").mkdir(parents=True, mode=0o700)
+        self.keys = self.keys[:1]
+        self.elapsed, self.sleeps, self.utc = 0.0, [], 0.0
+        self.consumer.validated_expiries = {"cohort-a": {1: int(expiry * 1000)}}
+        self.consumer.segment_monotonic = {"cohort-a": 0.0}
+        self.stack.enter_context(patch.object(f.time, "time", lambda: self.utc))
+
+    def test_preexpiry_response_boundary_checks_both_utc_and_monotonic(self):
+        for label, utc, monotonic, accepted in (("before", 9.999, 9.999, True),
+                                               ("utc-at", 10, 9.999, False), ("mono-at", 9.999, 10, False),
+                                               ("both-after", 10.001, 10.001, False)):
+            self.preexpiry(label)
+            def request(*args, **kwargs):
+                self.assertEqual(10, kwargs["read_deadline"])
+                self.utc, self.elapsed = utc, monotonic
+                return {}
+            self.consumer.request = Mock(side_effect=request)
+            with self.subTest(label=label):
+                if accepted:
+                    self.assertEqual({}, self.consumer.states("offline-run", "cohort-a", phase="pre-expiry-3450")[0]["value"])
+                else:
+                    with self.assertRaisesRegex(f.FunctionalRetentionError, "^functional-selected-preexpiry-window$"):
+                        self.consumer.states("offline-run", "cohort-a", phase="pre-expiry-3450")
+            packet = json.loads((self.consumer.root / "native-tests/state-read-pre-expiry-3450-cohort-a-record-01.json").read_text())
+            self.assertEqual("completed" if accepted else "failed", packet["status"])
+            self.assertEqual((int(utc * 1000), monotonic), (packet["reads"][0]["responseObservedUtcMs"], packet["reads"][0]["responseObservedMonotonicSeconds"]))
+            self.assertEqual("object", packet["reads"][0]["status"])
+
+    def test_preexpiry_late_dispatch_or_scheduler_delay_refuses_before_any_request(self):
+        for label, utc, monotonic, scheduler in (("utc", 10, 0, False), ("mono", 0, 10, False), ("scheduler", 0, 0, True)):
+            self.preexpiry(label)
+            self.utc, self.elapsed = utc, monotonic
+            self.consumer.request = Mock()
+            class DelayedReads(SequentialReads):
+                @staticmethod
+                def map(action, values):
+                    self.elapsed = 10
+                    return map(action, values)
+            with self.subTest(label=label), patch.object(f, "ThreadPoolExecutor", DelayedReads if scheduler else SequentialReads):
+                with self.assertRaisesRegex(f.FunctionalRetentionError, "^functional-selected-preexpiry-window$"):
+                    self.consumer.states("offline-run", "cohort-a", phase="pre-expiry-3450")
+            self.consumer.request.assert_not_called()
+            packet = json.loads((self.consumer.root / "native-tests/state-read-pre-expiry-3450-cohort-a-record-01.json").read_text())
+            self.assertEqual("failed", packet["status"])
+            self.assertEqual(0, packet["reads"][0]["attempts"])
+
+    def test_preexpiry_retries_share_the_clamped_expiry_and_backoff_cannot_cross_it(self):
+        self.preexpiry("retry", expiry=6)
+        def request(*args, **kwargs):
+            self.assertEqual(6, kwargs["read_deadline"])
+            self.elapsed += 4
+            self.utc = self.elapsed
+            raise f.TransportUncertain("private-response-secret")
+        self.consumer.request = Mock(side_effect=request)
+        with self.assertRaisesRegex(f.FunctionalRetentionError, "^functional-selected-preexpiry-window$"):
+            self.consumer.states("offline-run", "cohort-a", phase="pre-expiry-3450")
+        self.assertEqual(1, self.consumer.request.call_count)
+        self.assertEqual([], self.sleeps)
+        raw = (self.consumer.root / "native-tests/state-read-transport-failure.json").read_text()
+        self.assertNotIn("private-response-secret", raw)
+
+    def test_preexpiry_http_deadline_uses_the_smaller_utc_remaining_window(self):
+        self.preexpiry("utc-remaining")
+        self.utc = 9.75
+        self.consumer.request = Mock(return_value={})
+        self.consumer.states("offline-run", "cohort-a", phase="pre-expiry-3450")
+        self.assertEqual(0.25, self.consumer.request.call_args.kwargs["read_deadline"])
+
+    def test_preexpiry_sql_is_clamped_refuses_late_completion_and_retains_private_timing(self):
+        for label, utc, monotonic, dispatch, accepted in (("before", 9.999, 9.999, 9.75, True),
+                                                         ("utc-at", 10, 9.999, 9.75, False),
+                                                         ("mono-at", 9.999, 10, 9.75, False),
+                                                         ("dispatch-at", 10, 10, 10, False)):
+            self.preexpiry(label)
+            self.utc = self.elapsed = dispatch
+            self.consumer.observation["postgresqlContainerId"] = "d" * 64
+            def sql(*args, **kwargs):
+                self.assertEqual(0.25, kwargs["timeout"])
+                self.utc, self.elapsed = utc, monotonic
+                return types.SimpleNamespace(stdout=json.dumps({"serverVersionNum": "180006", "ssl": True, "tlsVersion": "TLSv1.3",
+                    "role": "telemetry_observer", "readOnly": "on", "observedUtcMs": int(utc * 1000), "rows": []}).encode(), stderr=b"")
+            with self.subTest(label=label), patch.object(f.subprocess, "run", side_effect=sql) as contact:
+                if accepted:
+                    self.assertEqual([], self.consumer.physical("offline-run", pre_expiry_segment="cohort-a")["rows"])
+                else:
+                    with self.assertRaisesRegex(f.FunctionalRetentionError, "^functional-selected-preexpiry-window$"):
+                        self.consumer.physical("offline-run", pre_expiry_segment="cohort-a")
+                self.assertEqual(0 if label == "dispatch-at" else 1, contact.call_count)
+            path = self.consumer.root / "native-tests/pre-expiry-physical-cohort-a.json"
+            packet = json.loads(path.read_text())
+            self.assertEqual("completed" if accepted else "failed", packet["status"])
+            self.assertEqual(0o600, path.stat().st_mode & 0o777)
+            self.assertEqual({"segmentId", "status", "startedUtcMs", "startedMonotonicSeconds", "completedUtcMs", "completedMonotonicSeconds",
+                              "expectedExpiryUtcMs", "expectedExpiryMonotonicSeconds"}, set(packet))
+            for private in ("offline-secret", "docker", "psql", "127.0.0.1", "telemetry_observer"):
+                self.assertNotIn(private, path.read_text())
+
+    def test_preexpiry_scope_refuses_other_segments_and_buckets_before_requests(self):
+        self.preexpiry("scope")
+        self.consumer.segments["cohort-b"] = 0
+        self.consumer.request = Mock()
+        for segment, buckets in (("cohort-b", False), ("cohort-a", True)):
+            with self.subTest(segment=segment, buckets=buckets), self.assertRaisesRegex(
+                    f.FunctionalRetentionError, "^functional-selected-read-observation-scope$"):
+                self.consumer.states("offline-run", segment, buckets=buckets, phase="pre-expiry-3450")
+        self.consumer.request.assert_not_called()
+        self.assertEqual([], list((self.consumer.root / "native-tests").iterdir()))
+
+    def test_preexpiry_early_response_survives_slow_guard_but_shared_budget_still_applies(self):
+        for label, value, guard_delay, reason in (("object", {}, 2, None), ("missing", None, 2, "record-missing"),
+                                                  ("aggregate", None, 121, "read-aggregate-deadline")):
+            self.preexpiry(label)
+            returned = False
+            def request(*args, **kwargs):
+                nonlocal returned
+                self.utc = self.elapsed = 9
+                returned = True
+                return value
+            def check():
+                nonlocal returned
+                if returned:
+                    returned = False
+                    self.elapsed += guard_delay
+                    self.utc = self.elapsed
+            self.consumer.check = check
+            self.consumer.request = Mock(side_effect=request)
+            with self.subTest(label=label):
+                if reason:
+                    with self.assertRaisesRegex(f.FunctionalRetentionError, "^functional-selected-" + reason + "$"):
+                        self.consumer.states("offline-run", "cohort-a", phase="pre-expiry-3450")
+                else:
+                    self.assertEqual({}, self.consumer.states("offline-run", "cohort-a", phase="pre-expiry-3450")[0]["value"])
+            packet = json.loads((self.consumer.root / "native-tests/state-read-pre-expiry-3450-cohort-a-record-01.json").read_text())
+            self.assertEqual(9000, packet["reads"][0]["responseObservedUtcMs"])
+            self.assertGreater(packet["reads"][0]["completedUtcMs"], 10000)
 
     def test_failure_artifact_is_exclusive_and_does_not_overwrite_previous_evidence(self):
         path = self.consumer.root / "native-tests/state-read-transport-failure.json"

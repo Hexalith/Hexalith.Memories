@@ -47,6 +47,7 @@ CONSISTENT_REJECTIONS = {
 
 class SelectedActiveSequenceTests(unittest.TestCase):
     def run_sequence(self, variant="pass"):
+        passing = {"pass", "sql-latency", "fresh-actor", "large-artifact", "delayed-purge", "batch-16", "batch-near-budget"}
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             root = base / "run"
@@ -103,12 +104,23 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 if variant == "deadline" and clock.monotonic > 1000:
                     clock.seconds += 14400
                     clock.monotonic += 14400
+                if "cohort-a" in emitted:
+                    age = clock.seconds - emitted["cohort-a"] / 1000
+                    if variant == "late-a" and 3450 <= age < 3590:
+                        clock.seconds += 3590 - age
+                        clock.monotonic += 3590 - age
+                    elif variant == "late-dispatch" and 3450 <= age < 3600:
+                        clock.seconds += 3600 - age
+                        clock.monotonic += 3600 - age
+                    elif variant == "early-a-slow-guard" and 3300 <= age < 3540:
+                        clock.seconds += 3540 - age
+                        clock.monotonic += 3540 - age
                 gate()
             records, emitted = {}, {}
             slow_guard_pending = False
             record_keys = {segment: f.fixed_record_keys("offline-run", segment) for segment in ("cohort-a", "cohort-b")}
             class TimedReads:
-                """Keep the final A boundary crossing deterministic at the unchanged batch size."""
+                """Advance actual batch latency at the unchanged sixteen-key batch size."""
                 def __init__(self, *, max_workers):
                     if max_workers != 16:
                         raise AssertionError("selected read concurrency changed")
@@ -121,9 +133,10 @@ class SelectedActiveSequenceTests(unittest.TestCase):
 
                 def map(self, action, values):
                     values = list(values)
-                    if (variant == "late-a" and values[0][1] in record_keys["cohort-a"]
-                            and clock.seconds * 1000 >= emitted["cohort-a"] + 3590000):
-                        sleep(2)
+                    if (variant in {"late-a", "batch-16", "batch-near-budget"} and values[0][1] in record_keys["cohort-a"]
+                            and clock.seconds * 1000 >= emitted["cohort-a"] + 3300000
+                            and clock.seconds * 1000 < emitted["cohort-a"] + 3600000):
+                        sleep(14.875 if variant == "batch-near-budget" else 2)
                     return map(action, values)
             def iso(milliseconds):
                 return datetime.fromtimestamp(milliseconds / 1000, timezone.utc).isoformat()
@@ -184,12 +197,14 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                     value = {"ReminderSequence": 2 if purged else 1, "LastPurgeUnixMilliseconds": int(clock.seconds * 1000) if purged else 0}
                 else:
                     key = path.split("/access-telemetry-store/", 1)[1]
+                    if variant == "late-a" and key == record_keys["cohort-a"][48] and clock.seconds * 1000 >= emitted["cohort-a"] + 3598000:
+                        sleep(2)
                     value = records.get(key)
                     a_expired = "cohort-a" in emitted and clock.seconds * 1000 >= emitted["cohort-a"] + 3600124
                     if key in record_keys["cohort-a"] and a_expired:
                         value = None
                     if key == record_keys["cohort-a"][6]:
-                        if variant == "early-a" or variant == "first-preexpiry-a" and clock.seconds * 1000 >= emitted["cohort-a"] + 3540000:
+                        if variant == "early-a" or variant == "first-preexpiry-a" and clock.seconds * 1000 >= emitted["cohort-a"] + 3300000:
                             value = None
                         if variant == "non-object-a":
                             value = "fixture-response-secret"
@@ -208,7 +223,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 self.assertEqual("127.0.0.1", argv[argv.index("-h") + 1])
                 self.assertIn("PGSSLMODE=verify-full", argv)
                 self.assertEqual(f.fixed_physical_bound_query("offline-run"), argv[-1])
-                if variant == "sql-latency":
+                if variant in {"sql-latency", "batch-16", "batch-near-budget"}:
                     clock.seconds += 10
                     clock.monotonic += 10
                 rows = []
@@ -247,7 +262,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 if slow_guard_pending:
                     slow_guard_pending = False
                     sleep(70)
-            executor = TimedReads if variant in {"late-a", "early-a-slow-guard"} else f.ThreadPoolExecutor
+            executor = TimedReads if variant in {"late-a", "late-dispatch", "early-a-slow-guard", "batch-16", "batch-near-budget"} else f.ThreadPoolExecutor
             with patch.dict(os.environ, env, clear=True), patch.object(f, "__file__", str(candidate / "tools/access_telemetry_functional_retention.py")), patch.object(f, "datetime", Utc), patch.object(f.time, "time", lambda: clock.seconds), patch.object(f.time, "monotonic", lambda: clock.monotonic), patch.object(f.time, "sleep", sleep), patch.object(f, "ThreadPoolExecutor", executor), patch("urllib.request.OpenerDirector.open", http), patch.object(f.subprocess, "run", sql), patch.object(f._PlatformRetentionConsumer, "execute", execute), patch.object(f._PlatformRetentionConsumer, "check", check), redirect_stdout(io.StringIO()) as output:
                 result = f.run_selected_platform_retention()
             self.assertNotIn("fixture-app-secret", output.getvalue())
@@ -316,10 +331,11 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                         self.assertEqual({"sanitizerUnavailable": 0, "sanitationFailed": 0, "sanitizerUnavailableLifecycleReasons": {}, "sanitizerUnavailableBootstrapStages": {},
                                           "lifecycleHealth": "Healthy", "lifecycleReason": "None", "bootstrap": pass_bootstrap(emitted[snapshot["segmentId"]])},
                                          snapshot["rejectionBreakdown"])
-            if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact", "delayed-purge"}:
+            if variant in passing:
                 self.assertEqual(0, result, status)
                 self.assertEqual("functional-observations-passed", status["status"])
                 detail = json.loads(report.with_name("functional-observations.json").read_text())
+                self.detail = detail
                 self.assertEqual(125, len(detail["ttlEvidence"]["preExpiry"]["rows"]))
                 self.assertEqual([], detail["ttlEvidence"]["lastObservation"]["rows"])
                 self.assertEqual([], detail["purge"]["actorDeletedRecordIds"])
@@ -338,14 +354,14 @@ class SelectedActiveSequenceTests(unittest.TestCase):
             else:
                 self.assertEqual(1, result, status)
                 self.assertEqual("rejected", status["status"])
-                reasons = {**{name: "functional-selected-record-missing" for name in ("late-a", "early-a", "first-preexpiry-a", "non-object-a", "early-a-slow-guard")}, "read-occupied": "functional-selected-input-refused", "accounting-loss": "functional-accounting-loss", "pre-enqueue-rejection": "functional-accounting-loss", **{name: "functional-accounting-loss" for name in CONSISTENT_REJECTIONS}, "breakdown-private": "functional-accounting-rejection-breakdown", "breakdown-bootstrap-private": "functional-accounting-rejection-breakdown", "breakdown-nonempty-on-pass": "functional-accounting-rejection-breakdown", "accounting-private": "functional-accounting-schema", "accounting-bounds": "functional-accounting-loss", "accounting-foreign": "functional-accounting-identity", "accounting-occupied": "functional-selected-input-refused", "large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
+                reasons = {**{name: "functional-selected-record-missing" for name in ("early-a", "first-preexpiry-a", "non-object-a", "early-a-slow-guard")}, **{name: "functional-selected-preexpiry-window" for name in ("late-a", "late-dispatch")}, "read-occupied": "functional-selected-input-refused", "accounting-loss": "functional-accounting-loss", "pre-enqueue-rejection": "functional-accounting-loss", **{name: "functional-accounting-loss" for name in CONSISTENT_REJECTIONS}, "breakdown-private": "functional-accounting-rejection-breakdown", "breakdown-bootstrap-private": "functional-accounting-rejection-breakdown", "breakdown-nonempty-on-pass": "functional-accounting-rejection-breakdown", "accounting-private": "functional-accounting-schema", "accounting-bounds": "functional-accounting-loss", "accounting-foreign": "functional-accounting-identity", "accounting-occupied": "functional-selected-input-refused", "large-tail-drift": "functional-selected-loaded-artifact-drift", "final-return-drift": "functional-selected-loaded-artifact-drift", "b-loss": "functional-selected-record-missing", "b-mutation": "functional-selected-canonical-cohort-changed", "missing-ttl": "functional-selected-ttl-bound-missing", "early-ttl": "functional-selected-ttl-bound-drift", "late-ttl": "functional-selected-ttl-bound-drift", "row-drift": "functional-selected-ttl-bound-drift", "non-tls": "functional-selected-postgres-session", "deadline": "functional-selected-expiry-or-clock-step", "withdrawal": "functional-selected-gate-withdrawn-or-expired", "persist-failure": "functional-selected-input-refused", "symlink-output": "functional-selected-native-output-refused"}
                 self.assertEqual(reasons[variant], status["reason"])
                 if variant not in {"persist-failure", "symlink-output"}:
                     self.assertFalse(report.with_name("functional-observations.json").exists())
             if variant == "symlink-output": self.assertEqual([], list(outside.iterdir()))
             else:
                 counters = xml.parse(report).find("{*}ResultSummary/{*}Counters")
-                self.assertEqual("1" if variant in {"pass", "sql-latency", "fresh-actor", "large-artifact", "delayed-purge"} else "0", counters.attrib["passed"])
+                self.assertEqual("1" if variant in passing else "0", counters.attrib["passed"])
                 if result:
                     self.assertEqual(status["reason"], xml.parse(report).find("{*}Results/{*}UnitTestResult/{*}Output/{*}ErrorInfo/{*}Message").text)
             return status
@@ -353,7 +369,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
     def test_read_diagnostics_cover_all_selected_phases_and_real_key_ordinals(self):
         self.run_sequence()
         expected = {("initial", "cohort-a", "record"), ("initial", "cohort-b", "record"),
-                    ("pre-expiry-3540", "cohort-a", "record"), ("pre-expiry-3590", "cohort-a", "record"),
+                    ("pre-expiry-3300", "cohort-a", "record"), ("pre-expiry-3450", "cohort-a", "record"),
                     ("post-expiry", "cohort-a", "record"), ("post-expiry", "cohort-a", "bucket"),
                     ("preservation", "cohort-b", "record")}
         snapshots = list(self.read_diagnostics.values())
@@ -382,15 +398,41 @@ class SelectedActiveSequenceTests(unittest.TestCase):
                 self.assertLessEqual(read["responseObservedMonotonicSeconds"], read["completedMonotonicSeconds"])
                 self.assertLessEqual(read["completedMonotonicSeconds"], item["completedMonotonicSeconds"])
 
-    def test_late_preexpiry_a_read_crossing_expiry_retains_phase_missing_ordinals_and_timing(self):
+    def test_complete_sixteen_second_observations_and_sql_finish_before_expiry(self):
+        self.assert_complete_observation_window("batch-16", 16)
+
+    def test_complete_near_budget_observations_and_ten_second_sql_finish_before_expiry(self):
+        self.assert_complete_observation_window("batch-near-budget", 119)
+
+    def assert_complete_observation_window(self, variant, duration):
+        self.run_sequence(variant)
+        emitted = self.detail["cohortClocks"]["cohort-a"]["utcMs"]
+        for age in (3300, 3450):
+            name = f"state-read-pre-expiry-{age}-cohort-a-record-01.json"
+            self.assertIn(name, self.read_diagnostics)
+            item = self.read_diagnostics[name]
+            self.assertEqual(age * 1000, item["startedUtcMs"] - emitted)
+            self.assertEqual(duration, item["completedMonotonicSeconds"] - item["startedMonotonicSeconds"])
+            self.assertEqual(("completed", 125, 0), (item["status"], item["keyCount"], item["missingCount"]))
+            self.assertTrue(all(read["status"] == "object" and read["responseObservedUtcMs"] < emitted + 3600000 for read in item["reads"]))
+        self.assertEqual((3300 + duration + 10) * 1000, self.detail["ttlEvidence"]["preExpiry"]["observedUtcMs"] - emitted)
+        self.assertLess(self.detail["ttlEvidence"]["preExpiry"]["observedUtcMs"], emitted + 3600000)
+
+    def test_late_preexpiry_response_is_refused_even_when_the_record_is_still_present(self):
         self.run_sequence("late-a")
-        self.assertIn("state-read-pre-expiry-3590-cohort-a-record-01.json", self.read_diagnostics)
-        item = self.read_diagnostics["state-read-pre-expiry-3590-cohort-a-record-01.json"]
-        self.assertEqual(("pre-expiry-3590", "cohort-a", 45), (item["phase"], item["segmentId"], item["missingCount"]))
-        self.assertEqual(16, item["completedMonotonicSeconds"] - item["startedMonotonicSeconds"])
-        absent = [read for read in item["reads"] if read["status"] == "absent"]
-        self.assertEqual(list(range(81, 126)), [read["ordinal"] for read in absent])
-        self.assertTrue(all(item["startedUtcMs"] < read["expectedExpiryUtcMs"] <= read["responseObservedUtcMs"] for read in absent))
+        item = self.read_diagnostics["state-read-pre-expiry-3450-cohort-a-record-01.json"]
+        self.assertEqual(("failed", "pre-expiry-3450", "cohort-a"), (item["status"], item["phase"], item["segmentId"]))
+        late = [read for read in item["reads"] if read["responseObservedUtcMs"] is not None and read["responseObservedUtcMs"] >= item["reads"][0]["expectedExpiryUtcMs"]]
+        self.assertTrue(late)
+        self.assertEqual("object", late[0]["status"])
+        self.assertLess(item["startedUtcMs"], late[0]["responseObservedUtcMs"])
+
+    def test_late_scheduling_is_refused_before_dispatch_and_retains_unobserved_ordinals(self):
+        self.run_sequence("late-dispatch")
+        item = self.read_diagnostics["state-read-pre-expiry-3450-cohort-a-record-01.json"]
+        self.assertEqual("failed", item["status"])
+        self.assertTrue(all(read["status"] == "unobserved" and read["attempts"] == 0 for read in item["reads"]))
+        self.assertGreaterEqual(item["startedUtcMs"], item["reads"][0]["expectedExpiryUtcMs"])
 
     def test_initial_a_absence_is_distinct_from_preexpiry_boundary_and_b_loss(self):
         self.run_sequence("early-a")
@@ -401,7 +443,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
 
     def test_first_preexpiry_a_absence_retains_read_well_before_known_expiry(self):
         self.run_sequence("first-preexpiry-a")
-        item = self.read_diagnostics["state-read-pre-expiry-3540-cohort-a-record-01.json"]
+        item = self.read_diagnostics["state-read-pre-expiry-3300-cohort-a-record-01.json"]
         missing = [read for read in item["reads"] if read["status"] == "absent"]
         self.assertEqual([7], [read["ordinal"] for read in missing])
         self.assertGreater(missing[0]["expectedExpiryUtcMs"] - missing[0]["completedUtcMs"], 59000)
@@ -425,7 +467,7 @@ class SelectedActiveSequenceTests(unittest.TestCase):
 
     def test_response_time_precedes_slow_guard_completion_without_implying_late_absence(self):
         self.run_sequence("early-a-slow-guard")
-        item = self.read_diagnostics["state-read-pre-expiry-3540-cohort-a-record-01.json"]
+        item = self.read_diagnostics["state-read-pre-expiry-3300-cohort-a-record-01.json"]
         read = item["reads"][6]
         self.assertEqual("absent", read["status"])
         self.assertLess(read["responseObservedUtcMs"], read["expectedExpiryUtcMs"])
