@@ -419,7 +419,13 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
                 local kind=redis.call('TYPE',KEYS[i]).ok
                 if kind~='none' and kind~=expected then return redis.error_reply('WRONGTYPE nl-retry-state') end
             end
-            redis.call('ZREM',KEYS[1],unpack(ARGV)); redis.call('HDEL',KEYS[2],unpack(ARGV)); return 1
+            -- Bounded expansion stays in this one atomic, preflighted mutation.
+            for start=1,#ARGV,256 do
+                local last=math.min(start+255,#ARGV)
+                redis.call('ZREM',KEYS[1],unpack(ARGV,start,last))
+                redis.call('HDEL',KEYS[2],unpack(ARGV,start,last))
+            end
+            return 1
             """;
         _ = await db.ScriptEvaluateAsync(trim, [queueKey, payloadKey], members).ConfigureAwait(false);
     }

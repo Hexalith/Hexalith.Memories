@@ -33,15 +33,26 @@ public sealed class ReferencedSourceProducerIntegrationTests(RedisStackFixture r
     : IClassFixture<DaprStateSidecarFixture>, IClassFixture<FalkorDbFixture>
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task FailedReingestionCopiesPriorSourceAndReconcilesOnlyTheNewOwnerAcrossRestart(bool failBeforeScheduling)
+    [InlineData(false, "foreign")]
+    [InlineData(true, "foreign")]
+    [InlineData(true, "unknown")]
+    [InlineData(true, "candidate")]
+    public async Task FailedReingestionCopiesPriorSourceAndReconcilesOnlyTheNewOwnerAcrossRestart(bool failBeforeScheduling, string storedOwner)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "reference-copy-" + Guid.NewGuid().ToString("N");
         if (!failBeforeScheduling) await OwnedSemanticInventory.ReconcileAsync(redis.Connection.GetDatabase(), tenant, "retry-unit");
         const string source = "urn:synthetic:referenced";
         string sourceOwner = DedupKeyBuilder.BuildKey(tenant, "case", source);
+        string foreignKey = IndexSchemaDefinitions.BuildSemanticKey(tenant, "nl:retry-unit");
+        byte[]? foreignBefore = null;
+        if (failBeforeScheduling)
+        {
+            foreignKey.ShouldBe(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "retry-unit"));
+            await redis.Connection.GetDatabase().HashSetAsync(foreignKey,
+                [new("tenantId", tenant), new("memoryUnitId", storedOwner == "foreign" ? "nl:retry-unit" : storedOwner == "unknown" ? "" : "retry-unit"), new("content", "foreign-private-content")]);
+            foreignBefore = (byte[])(await redis.Connection.GetDatabase().ExecuteAsync("DUMP", foreignKey))!;
+        }
         redis.Connection.GetDatabase().FT().Create(IndexSchemaDefinitions.GetSemanticIndexName(tenant),
             IndexSchemaDefinitions.CreateSemanticParams(tenant), IndexSchemaDefinitions.CreateSemanticSchema(3));
         // Production provisioning waits for the tenant's newly created index before deletion can certify completeness.
@@ -114,9 +125,20 @@ public sealed class ReferencedSourceProducerIntegrationTests(RedisStackFixture r
         app.MapSourceInventoryEndpoints(); await app.StartAsync(token);
         using var http = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using HttpResponseMessage response = await http.GetAsync("/api/v1/tenants/" + tenant + "/source-inventory?sourceUri=urn:synthetic:referenced", token);
+        if (failBeforeScheduling && storedOwner != "foreign")
+        {
+            response.StatusCode.ShouldBe(System.Net.HttpStatusCode.Conflict);
+            (await recreated.ReadAsync(tenant, source, null, 100, token)).Entries.ShouldHaveSingleItem().TerminalVerified.ShouldBeFalse();
+            ((byte[])(await restarted.GetDatabase().ExecuteAsync("DUMP", foreignKey))!).ShouldBe(foreignBefore);
+            (await recreatedPayloads.ReadAsync(admitted.SourcePayloadReference!, tenant, "retry-unit", WorkflowPayloadKind.SourceBytes, token)).ShouldBe([1, 2, 3]);
+            (await restarted.GetDatabase().KeyExistsAsync(SourcePublicationVisibility.Tombstone(tenant, "retry-unit"))).ShouldBeFalse();
+            return;
+        }
         response.StatusCode.ShouldBe(System.Net.HttpStatusCode.OK, await response.Content.ReadAsStringAsync(token));
         SourceInventoryEntry terminal = (await recreated.ReadAsync(tenant, "urn:synthetic:referenced", null, 100, token)).Entries.ShouldHaveSingleItem();
         terminal.State.ShouldBe("Deleted"); terminal.TerminalVerified.ShouldBeTrue();
+        if (failBeforeScheduling)
+            ((byte[])(await restarted.GetDatabase().ExecuteAsync("DUMP", foreignKey))!).ShouldBe(foreignBefore);
         (await Should.ThrowAsync<WorkflowPayloadException>(() => recreatedPayloads.ReadAsync(admitted.SourcePayloadReference!, tenant, "retry-unit", WorkflowPayloadKind.SourceBytes, token))).ErrorCode.ShouldBe("PAYLOAD_NOT_FOUND");
         (await recreatedPayloads.ReadAsync(original, tenant, sourceOwner, WorkflowPayloadKind.SourceBytes, token)).ShouldBe([1, 2, 3]);
         (await restarted.GetDatabase().SetLengthAsync(WorkflowPayloadLedger.Key(tenant, sourceOwner))).ShouldBe(1);

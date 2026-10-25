@@ -314,8 +314,10 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         finally { release.TrySetCanceled(); Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", string.IsNullOrEmpty(previous) ? null : previous); }
     }
 
-    [Fact]
-    public async Task WorkerSchedulesContentFreeDurableHistoryWhileAdmittedRegistryContentPersistsNaturalLanguageOutput()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WorkerSchedulesContentFreeDurableHistoryWhileAdmittedRegistryContentPersistsNaturalLanguageOutput(bool failAfterEmbedding)
     {
         string? previous = Environment.GetEnvironmentVariable("DAPR_GRPC_ENDPOINT");
         Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", _sidecar.DaprGrpcEndpoint);
@@ -327,6 +329,7 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         string tenant = "worker-content-free-" + Guid.NewGuid().ToString("N");
         const string unit = "victim";
         string sentinel = "raw-registry-sentinel-" + Guid.NewGuid().ToString("N");
+        string description = "Derived business action " + Guid.NewGuid().ToString("N") + ".";
         string id = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, unit);
         IDatabase db = redis.Connection.GetDatabase();
         var config = EmbeddingProviderDefaults.Google();
@@ -348,7 +351,10 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         owned.ListTenantsWithBacklogAsync(Arg.Any<CancellationToken>()).Returns(_ => OwnedTenantAsync(tenant));
         owned.GetBacklogCountAsync(tenant, Arg.Any<CancellationToken>()).Returns(call => registry.GetBacklogCountAsync(tenant, call.Arg<CancellationToken>()));
         owned.DequeueBatchAsync(tenant, Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(call => registry.DequeueBatchAsync(tenant, call.Arg<int>(), call.Arg<CancellationToken>()));
-        owned.CompleteAsync(record, Arg.Any<CancellationToken>()).Returns(call => registry.CompleteAsync(record, call.Arg<CancellationToken>()));
+        owned.CompleteAsync(Arg.Any<FailedNaturalLanguageEmbeddingRecord>(), Arg.Any<CancellationToken>())
+            .Returns(call => registry.CompleteAsync(call.Arg<FailedNaturalLanguageEmbeddingRecord>(), call.Arg<CancellationToken>()));
+        owned.IncrementAttemptsAsync(Arg.Any<FailedNaturalLanguageEmbeddingRecord>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call => registry.IncrementAttemptsAsync(call.Arg<FailedNaturalLanguageEmbeddingRecord>(), call.Arg<int>(), call.Arg<CancellationToken>()));
         using var http = new HttpClient();
         var conversation = Substitute.For<DaprConversationClient>(null!, http, null!);
         conversation.ConverseAsync(Arg.Any<IReadOnlyList<ConversationInput>>(), Arg.Any<ConversationOptions>(), Arg.Any<CancellationToken>())
@@ -357,8 +363,17 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         environment.EnvironmentName.Returns("Development");
         var embedding = Substitute.For<EmbeddingClient>(Substitute.For<IHttpClientFactory>(), Substitute.For<Dapr.Client.DaprClient>(), new ConfigurationBuilder().Build(), environment);
         embedding.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-        float[] vector = new float[config.Dimensions]; vector[0] = 1;
-        embedding.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>()).Returns(vector);
+        float[] vector = new float[config.Dimensions]; vector[0] = 13579.25f; vector[1] = -24680.5f;
+        byte[] vectorBytes = new byte[vector.Length * sizeof(float)]; Buffer.BlockCopy(vector, 0, vectorBytes, 0, vectorBytes.Length);
+        bool generated = false;
+        embedding.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            call.ArgAt<string>(0).ShouldBe(description);
+            generated = true;
+            // Fail after both derived intermediates exist, before canonical publication.
+            if (failAfterEmbedding) await db.ExecuteAsync("FT.DROPINDEX", IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenant));
+            return vector;
+        });
         var actors = Substitute.For<IActorProxyFactory>();
         var limiter = Substitute.For<IEmbeddingRateLimiterActor>();
         limiter.TryConsumeWithCeilingAsync(Arg.Any<int>()).Returns(true);
@@ -370,17 +385,7 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         monitor.CurrentValue.Returns(options);
         try
         {
-            using IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
-            {
-                services.AddKeyedSingleton<IConnectionMultiplexer>("redis", redis.Connection);
-                services.AddSingleton(conversation).AddSingleton(Options.Create(options)).AddSingleton(embedding)
-                    .AddSingleton(actors).AddSingleton(provider).AddSingleton(Substitute.For<IJitterSource>());
-                services.AddDaprWorkflow(workflows =>
-                {
-                    workflows.RegisterWorkflow<NaturalLanguageEmbeddingRetryWorkflow>();
-                    workflows.RegisterActivity<RetryNaturalLanguageEmbeddingActivity>();
-                });
-            }).Build();
+            using IHost host = BuildHost();
             await host.StartAsync(token);
             var client = host.Services.GetRequiredService<DaprWorkflowClient>();
             var worker = new NaturalLanguageEmbeddingRetryHostedService(owned, client, monitor, NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance);
@@ -390,20 +395,40 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
             running.ReadInputAs<NaturalLanguageEmbeddingRetryInput>().ShouldNotBeNull().RawJsonPayload.ShouldBeEmpty();
             (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).ToString().ShouldContain(sentinel);
             await AssertHistoryExcludesAsync();
-            release.SetResult(new ConversationResponse([new ConversationResponseResult([new ConversationResultChoice(null, 0, new ResultMessage("An admitted action occurred."))])], string.Empty));
+            release.SetResult(new ConversationResponse([new ConversationResponseResult([new ConversationResultChoice(null, 0, new ResultMessage(description))])], string.Empty));
             await tick.WaitAsync(token);
             WorkflowState completed = await client.GetWorkflowStateAsync(id, true, token);
-            completed.RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Completed);
-            completed.ReadOutputAs<NaturalLanguageEmbeddingRetryResult>().ShouldNotBeNull().Indexed.ShouldBeTrue();
+            completed.RuntimeStatus.ShouldBe(failAfterEmbedding ? WorkflowRuntimeStatus.Failed : WorkflowRuntimeStatus.Completed);
+            generated.ShouldBeTrue();
+            if (!failAfterEmbedding) completed.ReadOutputAs<NaturalLanguageEmbeddingRetryResult>().ShouldNotBeNull().Indexed.ShouldBeTrue();
             await AssertHistoryExcludesAsync();
             string output = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit);
-            (await db.HashGetAsync(output, "naturalLanguageDescription")).ToString().ShouldBe("An admitted action occurred.");
-            ((byte[]?)(await db.HashGetAsync(output, "embedding")))!.Length.ShouldBe(config.Dimensions * sizeof(float));
+            if (failAfterEmbedding) (await db.KeyExistsAsync(output)).ShouldBeFalse();
+            else
+            {
+                (await db.HashGetAsync(output, "naturalLanguageDescription")).ToString().ShouldBe(description);
+                ((byte[]?)(await db.HashGetAsync(output, "embedding")))!.ShouldBe(vectorBytes);
+            }
             (await db.HashGetAsync(survivor, "naturalLanguageDescription")).ToString().ShouldBe("unchanged");
             (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(foreignTenant), foreign.MemoryUnitId)).ShouldBe(foreignBefore);
-            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).HasValue.ShouldBeFalse();
-            await RetryWorkflowErasure.PurgeAsync(client, tenant, unit, token);
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).HasValue.ShouldBe(failAfterEmbedding);
             await host.StopAsync(token);
+            using IHost restarted = BuildHost();
+            await restarted.StartAsync(token);
+            var restartedClient = restarted.Services.GetRequiredService<DaprWorkflowClient>();
+            await new NaturalLanguageEmbeddingRetryHostedService(owned, restartedClient, monitor, NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance)
+                .TickAsync(options, token);
+            (await restartedClient.GetWorkflowStateAsync(id, true, token)).RuntimeStatus.ShouldBe(completed.RuntimeStatus);
+            await AssertHistoryExcludesAsync();
+            if (!failAfterEmbedding)
+            {
+                (await db.HashGetAsync(output, "naturalLanguageDescription")).ToString().ShouldBe(description);
+                ((byte[]?)(await db.HashGetAsync(output, "embedding")))!.ShouldBe(vectorBytes);
+            }
+            (await db.HashGetAsync(survivor, "naturalLanguageDescription")).ToString().ShouldBe("unchanged");
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(foreignTenant), foreign.MemoryUnitId)).ShouldBe(foreignBefore);
+            await RetryWorkflowErasure.PurgeAsync(restartedClient, tenant, unit, token);
+            await restarted.StopAsync(token);
         }
         finally
         {
@@ -419,7 +444,51 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
             {
                 (await db.KeyTypeAsync(key)).ShouldBe(RedisType.Hash);
                 foreach (HashEntry field in await db.HashGetAllAsync(key))
-                    field.Value.ToString().ShouldNotContain(sentinel);
+                    AssertPrivateBytesAbsent((byte[])field.Value!);
+            }
+        }
+
+        IHost BuildHost() => Host.CreateDefaultBuilder().ConfigureServices(services =>
+            {
+                services.AddKeyedSingleton<IConnectionMultiplexer>("redis", redis.Connection);
+                services.AddSingleton(conversation).AddSingleton(Options.Create(options)).AddSingleton(embedding)
+                    .AddSingleton(actors).AddSingleton(provider).AddSingleton(Substitute.For<IJitterSource>());
+                services.AddDaprWorkflow(workflows =>
+                {
+                    workflows.RegisterWorkflow<NaturalLanguageEmbeddingRetryWorkflow>();
+                    workflows.RegisterActivity<RetryNaturalLanguageEmbeddingActivity>();
+                });
+            }).Build();
+
+        void AssertPrivateBytesAbsent(byte[] bytes, int depth = 0)
+        {
+            string text = Encoding.UTF8.GetString(bytes);
+            text.ShouldNotContain(sentinel);
+            text.ShouldNotContain(description);
+            text.ShouldNotContain(vector[0].ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+            text.ShouldNotContain(vector[1].ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+            bytes.AsSpan().IndexOf(vectorBytes.AsSpan(0, 2 * sizeof(float))).ShouldBe(-1);
+            if (depth >= 6) return;
+            try
+            {
+                byte[] decoded = Convert.FromBase64String(text);
+                if (decoded.Length > 0) AssertPrivateBytesAbsent(decoded, depth + 1);
+            }
+            catch (FormatException) { }
+            try
+            {
+                using var json = JsonDocument.Parse(bytes);
+                Inspect(json.RootElement);
+            }
+            catch (JsonException) { }
+            void Inspect(JsonElement element)
+            {
+                if (element.ValueKind == JsonValueKind.String)
+                    AssertPrivateBytesAbsent(Encoding.UTF8.GetBytes(element.GetString()!), depth + 1);
+                else if (element.ValueKind == JsonValueKind.Object)
+                    foreach (var field in element.EnumerateObject()) Inspect(field.Value);
+                else if (element.ValueKind == JsonValueKind.Array)
+                    foreach (var item in element.EnumerateArray()) Inspect(item);
             }
         }
     }

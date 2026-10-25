@@ -30,6 +30,107 @@ using NRedisStack.RedisStackCommands;
 public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IClassFixture<FalkorDbFixture>
 {
     [Fact]
+    public async Task LargeAccumulatedDeadQueueTrimUsesBoundedLuaExpansionAndPreservesNewestPayloads()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "large-trim-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        const int count = 20_000;
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant),
+            Enumerable.Range(0, count).Select(i => new SortedSetEntry("old-" + i, i)).ToArray());
+        await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant),
+            Enumerable.Range(0, count).Select(i => new HashEntry("old-" + i, "old-payload-" + i)).ToArray());
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance,
+            Options.Create(new NaturalLanguageDescriptionOptions { DeadRetryQueueMaxEntries = 2 }));
+        var record = Record(tenant, "newest") with { QueuedAtTicks = count + 1 };
+        await registry.EnqueueAsync(record, token);
+        (await registry.IncrementAttemptsAsync(record, 1, token)).ShouldBeTrue();
+        (await db.SortedSetRangeByRankAsync(FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant))).Select(value => value.ToString())
+            .ShouldBe(new[] { "old-19999", "newest" });
+        (await db.HashLengthAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant))).ShouldBe(2);
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant), "old-19999")).ToString().ShouldBe("old-payload-19999");
+        FailedNaturalLanguageEmbeddingRegistry.TryDeserialize((await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant), "newest")).ToString())
+            .ShouldBe(record with { Attempts = 1 });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExactRetryAdmissionRejectsRecordReplacementDuringDescriptionOrEmbedding(bool duringEmbedding)
+    {
+        string tenant = "retry-replaced-" + Guid.NewGuid().ToString("N");
+        var token = TestContext.Current.CancellationToken;
+        IDatabase db = redis.Connection.GetDatabase();
+        const string unit = "victim";
+        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit), [new("memoryUnitId", unit), new("content", "canonical")]);
+        string output = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit);
+        await db.HashSetAsync(output, Fields(unit, "prior-canonical-description"));
+        byte[] before = (byte[])(await db.ExecuteAsync("DUMP", output))!;
+        var config = EmbeddingProviderDefaults.Google();
+        db.FT().Create(IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenant),
+            IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(tenant), IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(config.Dimensions));
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+        var record = Record(tenant, unit) with { EmbeddingDimensions = config.Dimensions, EmbeddingModel = config.Model };
+        var replacement = record with { TruncatedRawJsonPayload = "newer-raw-payload", QueuedAtTicks = 2 };
+        await registry.EnqueueAsync(record, token);
+        var conversation = Substitute.For<DaprConversationClient>(null!, new HttpClient(), null!);
+        conversation.ConverseAsync(Arg.Any<IReadOnlyList<ConversationInput>>(), Arg.Any<ConversationOptions>(), Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            if (!duringEmbedding) await registry.EnqueueAsync(replacement, token);
+            return new ConversationResponse([new ConversationResponseResult([new ConversationResultChoice(null, 0, new ResultMessage("A stale action occurred."))])], string.Empty);
+        });
+        var environment = Substitute.For<IHostEnvironment>(); environment.EnvironmentName.Returns("Development");
+        var embedding = Substitute.For<EmbeddingClient>(Substitute.For<IHttpClientFactory>(), Substitute.For<Dapr.Client.DaprClient>(), new ConfigurationBuilder().Build(), environment);
+        embedding.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        embedding.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            if (duringEmbedding) await registry.EnqueueAsync(replacement, token);
+            return new float[config.Dimensions];
+        });
+        var actors = Substitute.For<IActorProxyFactory>(); var limiter = Substitute.For<IEmbeddingRateLimiterActor>();
+        limiter.TryConsumeWithCeilingAsync(Arg.Any<int>()).Returns(true);
+        actors.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(limiter);
+        var provider = Substitute.For<ITenantEmbeddingConfigProvider>(); provider.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(config);
+        using var services = new ServiceCollection().AddLogging().AddKeyedSingleton<IConnectionMultiplexer>("redis", redis.Connection)
+            .AddSingleton(conversation).AddSingleton(Options.Create(new NaturalLanguageDescriptionOptions())).AddSingleton(embedding)
+            .AddSingleton(actors).AddSingleton(provider).AddSingleton(Substitute.For<IJitterSource>()).BuildServiceProvider();
+        var result = await new RetryNaturalLanguageEmbeddingActivity(redis.Connection, services).RunAsync(Substitute.For<WorkflowActivityContext>(),
+            new(tenant, unit, string.Empty, record.EventType, null, "case", config.Provider, config.Model, config.Dimensions));
+        result.Indexed.ShouldBeFalse(); result.Reason.ShouldBe("retry-payload-retired");
+        ((byte[])(await db.ExecuteAsync("DUMP", output))!).ShouldBe(before);
+        (await FailedNaturalLanguageEmbeddingRegistry.ReadCurrentAsync(db, tenant, unit)).ShouldBe(replacement);
+        if (!duringEmbedding) _ = embedding.DidNotReceiveWithAnyArgs().GenerateAsync(default!, default!, default!, default);
+    }
+
+    [Fact]
+    public void OwnedContainerConnectionStringUsesExplicitLoopbackIpAcceptedByWorkflowFixture()
+    {
+        string connection = RedisStackFixture.OwnedLoopbackConnectionString(16388);
+        var endpoint = ConfigurationOptions.Parse(connection).EndPoints.Single().ShouldBeOfType<System.Net.IPEndPoint>();
+        endpoint.Address.ShouldBe(System.Net.IPAddress.Loopback);
+        endpoint.Port.ShouldBe(16388);
+    }
+
+    [Fact]
+    public async Task RefusedUnknownLegacyDiscoveryNeverMutatesForeignRawHashOrInventory()
+    {
+        string tenant = "foreign-discovery-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        db.FT().Create(IndexSchemaDefinitions.GetSemanticIndexName(tenant),
+            IndexSchemaDefinitions.CreateSemanticParams(tenant), IndexSchemaDefinitions.CreateSemanticSchema(1));
+        string key = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim");
+        key.ShouldBe(IndexSchemaDefinitions.BuildSemanticKey(tenant, "nl:victim"));
+        await db.HashSetAsync(key, [.. Fields("nl:victim", "foreign-private-content"), new("tenantId", tenant)]);
+        byte[] before = (byte[])(await db.ExecuteAsync("DUMP", key))!;
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => SemanticKeyDiscovery.RegisterLegacyKeysAsync(db, tenant, "victim", TestContext.Current.CancellationToken));
+        error.Message.ShouldBe("source-publication-legacy-owner-reconciliation-required");
+        ((byte[])(await db.ExecuteAsync("DUMP", key))!).ShouldBe(before);
+        (await db.HashGetAsync(key, "publicationVisible")).HasValue.ShouldBeFalse();
+        (await db.SetContainsAsync(SourcePublicationVisibility.Keys(tenant, "victim"), key)).ShouldBeFalse();
+        (await db.StringGetAsync(SourcePublicationVisibility.KeyProvenance(tenant, "victim"))).HasValue.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task OverflowMovesValidNoncanonicalJsonUsingItsActualObservedBytes()
     {
         var token = TestContext.Current.CancellationToken;

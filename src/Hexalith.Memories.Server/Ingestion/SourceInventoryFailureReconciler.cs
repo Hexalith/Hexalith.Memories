@@ -54,12 +54,28 @@ internal sealed class SourceInventoryFailureReconciler(
             RedisKey[] outputs = [Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenant, candidate),
                 Infrastructure.IndexSchemaDefinitions.BuildSemanticKey(tenant, candidate),
                 Infrastructure.IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, candidate),
-                Infrastructure.IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, candidate),
                 SourcePublicationVisibility.Keys(tenant, candidate), SourcePublicationVisibility.KeyProvenance(tenant, candidate)];
-            foreach (RedisKey key in outputs)
-                if (await database.KeyExistsAsync(key).WaitAsync(token).ConfigureAwait(false))
-                    throw new InvalidOperationException("source-inventory-unscheduled-output-reconciliation-required");
-            await database.StringSetAsync(SourcePublicationVisibility.Tombstone(tenant, candidate), "1").WaitAsync(token).ConfigureAwait(false);
+            const string verifyOutputs = """
+                for i=1,#KEYS-2 do
+                    if redis.call('EXISTS',KEYS[i])==1 then return 0 end
+                end
+                local ambiguous=KEYS[#KEYS-1]
+                if redis.call('EXISTS',ambiguous)==1 then
+                    if redis.call('TYPE',ambiguous).ok~='hash' then return 0 end
+                    local owner=redis.call('HGET',ambiguous,'memoryUnitId')
+                    local tenant=redis.call('HGET',ambiguous,'tenantId')
+                    if not owner or owner=='' or owner==ARGV[2] or tenant and tenant~=ARGV[1] then return 0 end
+                end
+                redis.call('SET',KEYS[#KEYS],'1')
+                return 1
+                """;
+            // The legacy NL address overlaps the raw-semantic address of a colon-containing
+            // foreign unit. Only stored foreign ownership in this tenant discharges that alias.
+            RedisResult verified = await database.ScriptEvaluateAsync(verifyOutputs,
+                [.. outputs, Infrastructure.IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, candidate), SourcePublicationVisibility.Tombstone(tenant, candidate)],
+                [tenant, candidate]).WaitAsync(token).ConfigureAwait(false);
+            if ((int)verified != 1)
+                throw new InvalidOperationException("source-inventory-unscheduled-output-reconciliation-required");
             await FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(database, tenant, candidate, token).ConfigureAwait(false);
             await RetryWorkflowErasure.PurgeAsync(workflowClient, tenant, candidate, token,
                 retryOptions?.Value.LegacyRetrySchedulersDrainedForErasure == true).ConfigureAwait(false);

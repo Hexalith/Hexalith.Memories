@@ -138,7 +138,7 @@ internal static class SemanticKeyDiscovery
             local retained=redis.call('SMEMBERS',KEYS[1])
             local merged={}
             for _,key in ipairs(retained) do merged[key]=true end
-            for _,key in ipairs(ARGV) do merged[key]=true end
+            for i=3,#ARGV do merged[ARGV[i]]=true end
             local count=0
             for key,_ in pairs(merged) do
                 count=count+1
@@ -147,7 +147,8 @@ internal static class SemanticKeyDiscovery
                 if kind~='none' and kind~='hash' then return 0 end
             end
             for key,_ in pairs(merged) do
-                if redis.call('EXISTS',key)==1 then
+                if redis.call('EXISTS',key)==1 and redis.call('HGET',key,'tenantId')==ARGV[1]
+                    and redis.call('HGET',key,'memoryUnitId')==ARGV[2] then
                     redis.call('HSETNX',key,'publicationVisible','1')
                     redis.call('SADD',KEYS[1],key)
                 end
@@ -157,7 +158,7 @@ internal static class SemanticKeyDiscovery
             """;
         RedisResult registered = await TenantIngestionOwnership.WriteAsync(db, tenant, register,
             [(RedisKey)trackedKey, (RedisKey)SourcePublicationVisibility.KeyProvenance(tenant, unit)],
-            keys.Select(key => (RedisValue)key.ToString()).ToArray()).WaitAsync(cancellationToken).ConfigureAwait(false);
+            new RedisValue[] { tenant, unit }.Concat(keys.Select(key => (RedisValue)key.ToString())).ToArray()).WaitAsync(cancellationToken).ConfigureAwait(false);
         _ = registered;
         throw new InvalidOperationException("source-publication-legacy-owner-reconciliation-required");
     }

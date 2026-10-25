@@ -18,7 +18,9 @@ public sealed class RedisStackFixture : IAsyncLifetime
 
     public IConnectionMultiplexer Connection { get; private set; } = null!;
 
-    public string ConnectionString => _nativeConnectionString ?? $"localhost:{_container!.GetMappedPublicPort(6379)}";
+    public string ConnectionString => _nativeConnectionString ?? OwnedLoopbackConnectionString(_container!.GetMappedPublicPort(6379));
+
+    internal static string OwnedLoopbackConnectionString(ushort port) => $"127.0.0.1:{port}";
 
     public async ValueTask InitializeAsync()
     {

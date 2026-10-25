@@ -249,3 +249,13 @@ placement/scheduler and runs these assertions without optional endpoint skips.
 The class verifies actual content-bearing legacy description activity history,
 termination/purge, a late activity completion and worker/Redis-adapter recreation,
 in addition to scoped identity collisions and the retained timer controls.
+
+Semantic deletion also validates stored hash ownership atomically. Legacy NL
+names overlap valid raw-semantic names for colon-containing unit identifiers in
+both directions. Known foreign owners survive; missing ownership, incompatible
+types or conflicting tenant metadata require explicit reconciliation before
+cleanup can complete. A qualified owner must resolve stored ownership as well
+as complete the exact-key inventory; a key-shaped name alone is insufficient.
+Unit/case deletion qualification invokes the actual activities with retry queues
+and durable history present. Tenant-wide retry cleanup and malformed historical
+retry addressing remain separately tracked work.
