@@ -769,4 +769,4 @@ One measurable local retention outcome; full qualification remains separately tr
 
 ### Epic AC Verification
 
-See the compact command/verdict table in the [approved correction](../planning-artifacts/sprint-change-proposal-2026-10-21.md#verification). Live behavior is an acceptance target, not an established fact.
+The compact command/verdict table in the [approved correction](../planning-artifacts/sprint-change-proposal-2026-10-21.md#verification) records pre-run verification as of 2026-10-21. The [2026-10-25 WINDOW result](tests/27-4-retention-verification-evidence.md#corrected-window-execution--2026-10-25-local-functional-retention-passed-cleanup-verified) subsequently establishes local functional retention and verified disposal. Full-profile qualification, Production admission and A41 remain open under the separate campaign requirements above.

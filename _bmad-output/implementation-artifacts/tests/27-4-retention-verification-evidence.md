@@ -1585,7 +1585,9 @@ One ordinary review of changed behavior is complete. This execution did not stag
 
 ## Retained resources
 
-Current `CAPABILITY` run `55eb672cd9f30d006caa815eae60a867` completed supported down and verified exact private cleanup at 2026-10-24T23:19:57.016910Z; no current owned resources remain. Its native report retains the authentic pre-cleanup `retained`/`unverified` marker; separate actual disposition evidence is linked above. Earlier resources below were not queried or disposed by this run.
+Latest `WINDOW` run `0673d50339f4e1058c26e3a9b2d680a2` completed successfully with native **removed / empty / unverified:false** and verified exact private cleanup at **2026-10-25T07:26:23.784748Z**; no resources owned by that run remain. Its actual result and disposition are recorded in [the functional result](#corrected-window-execution--2026-10-25-local-functional-retention-passed-cleanup-verified). Earlier resources below were not queried or disposed by this run.
+
+Historical `CAPABILITY` run `55eb672cd9f30d006caa815eae60a867` completed supported down and verified exact private cleanup at 2026-10-24T23:19:57.016910Z. Its native report retains the authentic pre-cleanup `retained`/`unverified` marker alongside separate actual disposition evidence.
 
 Documentation removal does not dispose of resources. Prior failed runs `f482f16095f3027867cec221b0a35220` and `b399a0389f7a8383af4a30339761ade2` remain recorded as `retained`, `unverified: true`, `isEmpty: false`, with cleanup unauthorized. These are last-recorded dispositions, not a fresh census. Source: private `current-held-functional-retention-invocation.json` under `/home/administrator/.local/state/hexalith/memories/access-telemetry/resume-spec14-20261021-current-5clz3zwi` (`retainedFailedRuns`).
 
@@ -1593,9 +1595,9 @@ The [bootstrap recovery result](../27-4-bootstrap-recovery-result-2026-10-16.md)
 
 ## Evidence posture
 
-No target was queried during the earlier documentation simplification. The real local runs above did query their isolated Dapr/PostgreSQL resources; their failed native reports establish no passing retention evidence. The observed cohorts and pre-expiry activity above remain partial observations. Earlier runs with changed executable outputs retain their documented freeze limitations. The current `CAPABILITY` run passed source admission but failed its missing-record assertion; it supplies no passing retention result. Preparation checks and offline fixtures provide no live retention evidence. Production lifecycle writes remain disabled; `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward/open. Full qualification is separately scheduled and does not gate a local functional result.
+Latest `WINDOW` run `0673d50339f4e1058c26e3a9b2d680a2` supplies passing local functional evidence: native completed/Success, TRX 1/1, the real retention assertions and verified disposition recorded above. Its local profile is `f17bd8da9c6104df75c192d100bb9c42645307d5ce2f4f89dafc5135dadcd382`, assurance is `sole-owner/self-reviewed`, and `qualificationCredit:false` remains unchanged. Strong TTL absence and due-index cleanup do not establish physical tuple deletion or reclamation. Earlier failed runs, partial observations and changed-input limitations retain their historical outcomes; preparation and offline fixtures earn no live credit. Production lifecycle writes remain disabled; `20.5-A41-ACCESS-TELEMETRY-RETENTION` remains carried forward/open. Overall Story 27.4 stays in progress pending its separately scheduled full campaign.
 
-The identity and C0-C6 matrix below retain the full campaign's recorded status. Repository-validation labels are historical offline results, not revalidation in this change. The former PG-ONPREM-2 identity is preserved; a full Platform campaign needs its own adopted exact target/profile. Local Debug, development UTC and file-backed secrets earn only disclosed functional evidence.
+The identity and C0-C6 matrix below preserve the former PG-ONPREM-2 record. Repository-validation labels are historical offline results, not current-profile revalidation. The [current full campaign checklist](../../../docs/operations/access-telemetry-full-qualification.md) is the requirements/state register; its exact full Platform target/profile still needs adoption before scheduling. Local Debug, development UTC and file-backed secrets earn only the disclosed functional evidence.
 
 ## Immutable decision identity
 
