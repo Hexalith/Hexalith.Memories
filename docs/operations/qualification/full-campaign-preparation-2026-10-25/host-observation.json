@@ -1,0 +1,20 @@
+{
+  "backupPool": null,
+  "cgroup": {},
+  "cpuAffinitySlots": 14,
+  "cpuMilliShortfallBeforeCompetingDemand": 2250,
+  "engineIdentity": null,
+  "memory": {
+    "MemAvailable": 67167330304,
+    "MemTotal": 97021218816
+  },
+  "note": "Local /proc and statvfs observations only; no Docker daemon or cluster contacted.",
+  "observedLocalUtc": "2026-10-25T17:39:05.494985+00:00",
+  "reservation": false,
+  "trustedClock": false,
+  "workspaceFilesystem": {
+    "availableBytes": 357742424064,
+    "device": 2096,
+    "path": "/home/administrator/projects/hexalith/memories"
+  }
+}

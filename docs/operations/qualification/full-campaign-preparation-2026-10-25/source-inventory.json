@@ -1,0 +1,328 @@
+{
+  "chart": [
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/chart/Chart.yaml",
+      "sha256": "b5c7d2eb27d2ec237620088a13bd4c45a67a1ba424f0b9e0b01429aca9a8da7a"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/chart/reference-graph.json",
+      "sha256": "6d6e28d4b190540fbd82559dc39b484c758853897709c6ea4473345fd2de4d87"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/chart/templates/_helpers.tpl",
+      "sha256": "16f14c135bfd9c5529ad80e65922a139f6727a5358a93b4aec49703a3a185188"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/chart/templates/application.yaml",
+      "sha256": "5f921b32ffdfa7c760d87cc3374ae57be42bc597c04f443d0ed3757a17cdabd4"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/chart/templates/dapr.yaml",
+      "sha256": "739e42a61d6d921b12c3d5062cbc42e425e12a078bc3095f3ec5ba79c9ae2fd2"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/chart/values.yaml",
+      "sha256": "1d7873e046862d488f886e53a04a35a9c44291c1ac77514e3d18c9773b2c1e8f"
+    }
+  ],
+  "configurationTemplates": [
+    {
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/base/access-telemetry-postgresql.yaml",
+      "sha256": "b73b43cdb3683a5dbdc7de593c7e17caa300b857952f1ae592d13d496499a4f4"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml",
+      "sha256": "59651af0c528d065f0f8686a6802df0cbbf8edae4a4f31455a8bf58cae680711"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/base/dapr/access-telemetry-clock-config.yaml",
+      "sha256": "ee10d7831533ac0258829af1d82bf1b02e9b22d1d3c0f428ca6d67a41065de9e"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/base/dapr/access-telemetry-config-store.yaml",
+      "sha256": "b458851266b2559192caf84f6a5737837336a5470754f7e7f609eadf5efe6303"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/base/dapr/access-telemetry-lifecycle-config.yaml",
+      "sha256": "981eac21ad9b40980887c0fe907ca5c6c70a166cd9494f9b3476db5e590eecf5"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/base/dapr/access-telemetry-secrets.yaml",
+      "sha256": "5bd7c2f0caa741df4e3fe45adb408d40dac7b5b37acdf227ea8c88680abf88d7"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/base/dapr/access-telemetry-store.yaml",
+      "sha256": "457e440c74563d4c2323cef003c393edbd1c5d56c6ef4ad2c005e812bbbb0270"
+    }
+  ],
+  "sourceCommitPrerequisite": "Controlled producer requires clean worktree and committed source matching owner plan; current user changes are preserved.",
+  "sourceState": [
+    {
+      "headBlobSha256": "59651af0c528d065f0f8686a6802df0cbbf8edae4a4f31455a8bf58cae680711",
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml",
+      "rawBytesEqualHead": true,
+      "sha256": "59651af0c528d065f0f8686a6802df0cbbf8edae4a4f31455a8bf58cae680711"
+    },
+    {
+      "headBlobSha256": "f80e2a4862842bbe452e68e73e495920e624cf37f2f1276b36408ce22492036f",
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_capacity.py",
+      "rawBytesEqualHead": true,
+      "sha256": "f80e2a4862842bbe452e68e73e495920e624cf37f2f1276b36408ce22492036f"
+    },
+    {
+      "headBlobSha256": null,
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_environment.py",
+      "rawBytesEqualHead": false,
+      "sha256": "1ddf2ff173d358a348c9ca40c06ff1bde5a5c250d8028a39deb125cb4327d4a3"
+    },
+    {
+      "headBlobSha256": null,
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_lifecycle.py",
+      "rawBytesEqualHead": false,
+      "sha256": "03ea0c01f9f12df7c4668506ff53a05c859edf2164ba5024fe2d4779c98bfdd3"
+    },
+    {
+      "headBlobSha256": "a479d2657bb45c0d2ca763a957c6bf0490f7072243ecf4ee0ef3b7065caf729e",
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/qualify.py",
+      "rawBytesEqualHead": false,
+      "sha256": "903419293f7271c83f029c5a07d3f7f60ddf426135430ca14e1e69c4e37e9fc8"
+    },
+    {
+      "headBlobSha256": "26e9f1691f4b1ceb0c0d7c465f763ec3f7750ca7177859650754b314a7ae81de",
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/test_chart.py",
+      "rawBytesEqualHead": false,
+      "sha256": "e8ea77e1ef0fa9e44ca6262b336d4ba1048ba704bc9773e10fab526e57f79f5c"
+    },
+    {
+      "headBlobSha256": "1eb0dfb040a4a23cd3dc7f9f380eb9fd20b5478f5dfdf486596979c98793f14d",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access-telemetry-c1-component-backend.ps1",
+      "rawBytesEqualHead": false,
+      "sha256": "c5dfd28a7a7e8487c59457050011d0b9ffcdbe882dcedbb79b0c7cf335a3b905"
+    },
+    {
+      "headBlobSha256": "cdd142d87ff16ba4c62e943c9d74d68183ad668ca40ed5cd34543e201efc7552",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access-telemetry-c1-profile.ps1",
+      "rawBytesEqualHead": false,
+      "sha256": "1abf42d7f3e2738c9105a3bd8fec200531b694295db4ff1bcf71e6e05876a960"
+    },
+    {
+      "headBlobSha256": "10dccf33c4137d89176f4bd8380bc8534b5a425eb1d1fbbc04eee42d9904c1c5",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_approval_policy.py",
+      "rawBytesEqualHead": true,
+      "sha256": "10dccf33c4137d89176f4bd8380bc8534b5a425eb1d1fbbc04eee42d9904c1c5"
+    },
+    {
+      "headBlobSha256": "621b0e9cf08b16df8ed215ae73c1fd03f154036b61880233f9af38b1c61c195d",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_gate_semantics.py",
+      "rawBytesEqualHead": true,
+      "sha256": "621b0e9cf08b16df8ed215ae73c1fd03f154036b61880233f9af38b1c61c195d"
+    },
+    {
+      "headBlobSha256": "1ac1a117a23c326974b3dac9d61b9638c0bac9279d11c975d048931c57aec9de",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_interchange.py",
+      "rawBytesEqualHead": true,
+      "sha256": "1ac1a117a23c326974b3dac9d61b9638c0bac9279d11c975d048931c57aec9de"
+    },
+    {
+      "headBlobSha256": "b227883aaa58c86525a534620cbd6d9b7d91ae2a596eb9f6aea9fd99a0f0d88c",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_owner_authority.py",
+      "rawBytesEqualHead": true,
+      "sha256": "b227883aaa58c86525a534620cbd6d9b7d91ae2a596eb9f6aea9fd99a0f0d88c"
+    },
+    {
+      "headBlobSha256": "3e7aeb91dc4c5e568769d553fb1179bab55cd94af3aae77c9572c5388496d15f",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_owner_custody.py",
+      "rawBytesEqualHead": true,
+      "sha256": "3e7aeb91dc4c5e568769d553fb1179bab55cd94af3aae77c9572c5388496d15f"
+    },
+    {
+      "headBlobSha256": "de2ffd89a047da401f711b7c13f222d1a4956e1f543eeb67deba1c7ac6f81d9a",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_owner_dispatch.py",
+      "rawBytesEqualHead": true,
+      "sha256": "de2ffd89a047da401f711b7c13f222d1a4956e1f543eeb67deba1c7ac6f81d9a"
+    },
+    {
+      "headBlobSha256": "16aba7a9c07db8dfc7739b172e1f07267a34fe4377749e2244bec0e615ae177f",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_owner_run.py",
+      "rawBytesEqualHead": true,
+      "sha256": "16aba7a9c07db8dfc7739b172e1f07267a34fe4377749e2244bec0e615ae177f"
+    },
+    {
+      "headBlobSha256": "cbd9d558feeac06eaa245ce21a4a1a5914aded3ed5b219f52eed753bc3920f12",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c2_producer.py",
+      "rawBytesEqualHead": true,
+      "sha256": "cbd9d558feeac06eaa245ce21a4a1a5914aded3ed5b219f52eed753bc3920f12"
+    },
+    {
+      "headBlobSha256": "23723cd26a063b34b3f36ce3989699d9900ef10e20760ea6fde78384462b5816",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c3_producer.py",
+      "rawBytesEqualHead": true,
+      "sha256": "23723cd26a063b34b3f36ce3989699d9900ef10e20760ea6fde78384462b5816"
+    },
+    {
+      "headBlobSha256": "b1670f07950d9d709d69e753d23bda3e79565d3badc19fb2b4a9925f5eded126",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c4_producer.py",
+      "rawBytesEqualHead": true,
+      "sha256": "b1670f07950d9d709d69e753d23bda3e79565d3badc19fb2b4a9925f5eded126"
+    },
+    {
+      "headBlobSha256": "39fe862d48710d2b39b8e3dc9af7d6c6437c2fd9027790152746f17d04a62478",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_campaign_profile.py",
+      "rawBytesEqualHead": true,
+      "sha256": "39fe862d48710d2b39b8e3dc9af7d6c6437c2fd9027790152746f17d04a62478"
+    },
+    {
+      "headBlobSha256": "01c723778e1f50b432f3fe85804d63607c027371b789c07c0cbfd5bfcbdb5460",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_functional_retention.py",
+      "rawBytesEqualHead": true,
+      "sha256": "01c723778e1f50b432f3fe85804d63607c027371b789c07c0cbfd5bfcbdb5460"
+    },
+    {
+      "headBlobSha256": "ef5d8c77dad608da41ca7d4eaa06676ad0db2ebe65c01dc28f96f206fb1061ba",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_functional_target.py",
+      "rawBytesEqualHead": true,
+      "sha256": "ef5d8c77dad608da41ca7d4eaa06676ad0db2ebe65c01dc28f96f206fb1061ba"
+    },
+    {
+      "headBlobSha256": "09d322183c979698c52cfd8a4d35f1450acc23e0f8873b6c0b4f5d40c12dca09",
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_producer_common.py",
+      "rawBytesEqualHead": true,
+      "sha256": "09d322183c979698c52cfd8a4d35f1450acc23e0f8873b6c0b4f5d40c12dca09"
+    },
+    {
+      "headBlobSha256": "f6124c745a2349401a64003ff74ade189c6d7a3bcb0d42c4d4b67944e787b347",
+      "path": "/home/administrator/projects/hexalith/memories/tools/verify-access-telemetry-c1-linkage.ps1",
+      "rawBytesEqualHead": false,
+      "sha256": "b85045f8919a5af340175badd3770bf77475e8e08ccb8a5e24bb31eb3067b6d9"
+    },
+    {
+      "headBlobSha256": "4507894fff570f1bc6ba60abddf56f8cd6251c4ee64d5400348efff0138e18e6",
+      "path": "/home/administrator/projects/hexalith/memories/tools/verify-access-telemetry-c1.ps1",
+      "rawBytesEqualHead": false,
+      "sha256": "bf1836f228c0c9117cc6e4492fd93e8d606a7d65567e246f2f67b8fb634f12d1"
+    },
+    {
+      "headBlobSha256": "0c8b3e714cc83d638611079e9dbf401b0825ee9c7c1cb530a29e608939fcf612",
+      "path": "/home/administrator/projects/hexalith/memories/tools/verify-access-telemetry-lifecycle.py",
+      "rawBytesEqualHead": true,
+      "sha256": "0c8b3e714cc83d638611079e9dbf401b0825ee9c7c1cb530a29e608939fcf612"
+    },
+    {
+      "headBlobSha256": "632b75a6fe9b6b8c172d8c6aa9e20f48c64a0d33f96c68a3338d4efb6553846f",
+      "path": "/home/administrator/projects/hexalith/memories/tools/verify_access_telemetry_lifecycle.py",
+      "rawBytesEqualHead": true,
+      "sha256": "632b75a6fe9b6b8c172d8c6aa9e20f48c64a0d33f96c68a3338d4efb6553846f"
+    }
+  ],
+  "sources": [
+    {
+      "path": "/home/administrator/projects/hexalith/memories/deploy/kubernetes/overlays/qualification/physical-evidence-reporter-job.yaml",
+      "sha256": "59651af0c528d065f0f8686a6802df0cbbf8edae4a4f31455a8bf58cae680711"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_capacity.py",
+      "sha256": "f80e2a4862842bbe452e68e73e495920e624cf37f2f1276b36408ce22492036f"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_environment.py",
+      "sha256": "1ddf2ff173d358a348c9ca40c06ff1bde5a5c250d8028a39deb125cb4327d4a3"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_lifecycle.py",
+      "sha256": "03ea0c01f9f12df7c4668506ff53a05c859edf2164ba5024fe2d4779c98bfdd3"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/qualify.py",
+      "sha256": "903419293f7271c83f029c5a07d3f7f60ddf426135430ca14e1e69c4e37e9fc8"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/test_chart.py",
+      "sha256": "e8ea77e1ef0fa9e44ca6262b336d4ba1048ba704bc9773e10fab526e57f79f5c"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access-telemetry-c1-component-backend.ps1",
+      "sha256": "c5dfd28a7a7e8487c59457050011d0b9ffcdbe882dcedbb79b0c7cf335a3b905"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access-telemetry-c1-profile.ps1",
+      "sha256": "1abf42d7f3e2738c9105a3bd8fec200531b694295db4ff1bcf71e6e05876a960"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_approval_policy.py",
+      "sha256": "10dccf33c4137d89176f4bd8380bc8534b5a425eb1d1fbbc04eee42d9904c1c5"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_gate_semantics.py",
+      "sha256": "621b0e9cf08b16df8ed215ae73c1fd03f154036b61880233f9af38b1c61c195d"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_interchange.py",
+      "sha256": "1ac1a117a23c326974b3dac9d61b9638c0bac9279d11c975d048931c57aec9de"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_owner_authority.py",
+      "sha256": "b227883aaa58c86525a534620cbd6d9b7d91ae2a596eb9f6aea9fd99a0f0d88c"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_owner_custody.py",
+      "sha256": "3e7aeb91dc4c5e568769d553fb1179bab55cd94af3aae77c9572c5388496d15f"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_owner_dispatch.py",
+      "sha256": "de2ffd89a047da401f711b7c13f222d1a4956e1f543eeb67deba1c7ac6f81d9a"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c1_owner_run.py",
+      "sha256": "16aba7a9c07db8dfc7739b172e1f07267a34fe4377749e2244bec0e615ae177f"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c2_producer.py",
+      "sha256": "cbd9d558feeac06eaa245ce21a4a1a5914aded3ed5b219f52eed753bc3920f12"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c3_producer.py",
+      "sha256": "23723cd26a063b34b3f36ce3989699d9900ef10e20760ea6fde78384462b5816"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_c4_producer.py",
+      "sha256": "b1670f07950d9d709d69e753d23bda3e79565d3badc19fb2b4a9925f5eded126"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_campaign_profile.py",
+      "sha256": "39fe862d48710d2b39b8e3dc9af7d6c6437c2fd9027790152746f17d04a62478"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_functional_retention.py",
+      "sha256": "01c723778e1f50b432f3fe85804d63607c027371b789c07c0cbfd5bfcbdb5460"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_functional_target.py",
+      "sha256": "ef5d8c77dad608da41ca7d4eaa06676ad0db2ebe65c01dc28f96f206fb1061ba"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_producer_common.py",
+      "sha256": "09d322183c979698c52cfd8a4d35f1450acc23e0f8873b6c0b4f5d40c12dca09"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/verify-access-telemetry-c1-linkage.ps1",
+      "sha256": "b85045f8919a5af340175badd3770bf77475e8e08ccb8a5e24bb31eb3067b6d9"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/verify-access-telemetry-c1.ps1",
+      "sha256": "bf1836f228c0c9117cc6e4492fd93e8d606a7d65567e246f2f67b8fb634f12d1"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/verify-access-telemetry-lifecycle.py",
+      "sha256": "0c8b3e714cc83d638611079e9dbf401b0825ee9c7c1cb530a29e608939fcf612"
+    },
+    {
+      "path": "/home/administrator/projects/hexalith/memories/tools/verify_access_telemetry_lifecycle.py",
+      "sha256": "632b75a6fe9b6b8c172d8c6aa9e20f48c64a0d33f96c68a3338d4efb6553846f"
+    }
+  ],
+  "status": "observed-not-adopted",
+  "toolchain": {
+    "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/toolchain.json",
+    "sha256": "00748adc6377af60992319eeb1a9a6870ebbfc25bf29c0f2d16fa7ec64f4cee4"
+  }
+}

@@ -1,0 +1,437 @@
+{
+  "argumentsNormalization": "Only C1 target_sha256/session_id normalize to late-bound-target/late-bound-session. Other argument bytes remain exact.",
+  "c1ParentOrder": [
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.15",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": []
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.16",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.15"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.11",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.16"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.12",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.16"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.1",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.12",
+        "C1.16"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.2",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.1",
+        "C1.16"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.3",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.1",
+        "C1.16"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.4",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.1",
+        "C1.3"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.5",
+      "measurement": null,
+      "minimumCaptureSeconds": 3601,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.1"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.6",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.1",
+        "C1.4",
+        "C1.15"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.8",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.1"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.17",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.15",
+        "C1.16"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.18",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.17"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.20",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.17"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.7",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.6",
+        "C1.20"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": 450000,
+      "argumentsSha256": null,
+      "gate": "C1.9",
+      "measurement": null,
+      "minimumCaptureSeconds": 1800,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.7",
+        "C1.8",
+        "C1.18"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": 150000,
+      "argumentsSha256": null,
+      "gate": "C1.10",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.5",
+        "C1.7",
+        "C1.18"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.14",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.5",
+        "C1.10",
+        "C1.16"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.13",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.9",
+        "C1.14",
+        "C1.18"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.19",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.9",
+        "C1.16",
+        "C1.20"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.21",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.17",
+        "C1.20"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.22",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.20",
+        "C1.21"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.24",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.17",
+        "C1.18",
+        "C1.19",
+        "C1.21",
+        "C1.22"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.23",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.1",
+        "C1.2",
+        "C1.3",
+        "C1.4",
+        "C1.5",
+        "C1.6",
+        "C1.7",
+        "C1.8",
+        "C1.9",
+        "C1.10",
+        "C1.11",
+        "C1.12",
+        "C1.13",
+        "C1.14",
+        "C1.15",
+        "C1.16",
+        "C1.17",
+        "C1.18",
+        "C1.19",
+        "C1.20",
+        "C1.21",
+        "C1.22",
+        "C1.24"
+      ]
+    },
+    {
+      "acceptedRecordUpperBound": null,
+      "argumentsSha256": null,
+      "gate": "C1.25",
+      "measurement": null,
+      "minimumCaptureSeconds": 1,
+      "note": "All other C1 gates plus C0 share the existing per-collection 50000 envelope; assign from actual command inventory.",
+      "operationalCommand": null,
+      "parents": [
+        "C1.1",
+        "C1.2",
+        "C1.3",
+        "C1.4",
+        "C1.5",
+        "C1.6",
+        "C1.7",
+        "C1.8",
+        "C1.9",
+        "C1.10",
+        "C1.11",
+        "C1.12",
+        "C1.13",
+        "C1.14",
+        "C1.15",
+        "C1.16",
+        "C1.17",
+        "C1.18",
+        "C1.19",
+        "C1.20",
+        "C1.21",
+        "C1.22",
+        "C1.23",
+        "C1.24"
+      ]
+    }
+  ],
+  "campaignSeconds": 1209600,
+  "cumulativeRecordFormula": "650000*N+700500",
+  "feasibilityConstraints": [
+    "C2/C4 14h each; C3 216h original origin; total 336h",
+    "complete C1 recapture <=24h; collection <=72h; review/use <=24h; technical age <=96h",
+    "No round overlaps C2/C4 or protected C3 intervals; collection coverage continuous",
+    "168h control/report protected interval must be <24h, including seeds/purge/reclaim/report; 24h reclamation ceiling alone cannot establish fit",
+    "Per-round workload cleanup and source behavior must preserve C3 cohorts; no truncation, extra records or invented timings"
+  ],
+  "fixedInventory": {
+    "c2BacklogBound": 150000,
+    "c2OtherBound": 50000,
+    "c2Writers": 450000,
+    "c3NewerControls": 125,
+    "c3Seeds": 375,
+    "c4OtherBound": 50000
+  },
+  "limits": {
+    "acceptedRecordsPerSecond": 250,
+    "backlogRecords": 150000,
+    "c2Seconds": 50400,
+    "c3Seconds": 777600,
+    "c4Seconds": 50400,
+    "cohortHours": [
+      1,
+      24,
+      168
+    ],
+    "cohortRecords": 125,
+    "componentOperationsPerSecond": 500,
+    "purgeSeconds": 900,
+    "reclamationSeconds": 86400,
+    "retries": 0,
+    "stoppingSeconds": 900,
+    "workloadSeconds": 1800,
+    "writers": 2
+  },
+  "perCollectionInventory": {
+    "c1Backlog": 150000,
+    "c1OtherBound": 50000,
+    "c1Throughput": 450000
+  },
+  "producerSource": {
+    "path": "/home/administrator/projects/hexalith/memories/tools/access_telemetry_producer_common.py",
+    "sha256": "09d322183c979698c52cfd8a4d35f1450acc23e0f8873b6c0b4f5d40c12dca09"
+  },
+  "renewalMeasurementFields": [
+    "all 25 source/argument-bound per-gate elapsed bounds for every round",
+    "zero unrelated live/dead/support cleanup and equal before/after cohort digests",
+    "C2 drain before C3 empty boundary",
+    "C3 exact 125 newer controls, empty/foreign counts, due/reminder inventory, physical attribution and measured operation bounds"
+  ],
+  "renewalSchedule": null,
+  "requiredCommandIds": [
+    "C0",
+    "<round>/C1.1 through <round>/C1.25",
+    "C2.writers",
+    "C2.backlog",
+    "C2.other",
+    "C3.seeds",
+    "C3.controls",
+    "C4.other"
+  ],
+  "roundCount": null,
+  "status": "blocked-no-compatible-measured-schedule"
+}

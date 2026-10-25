@@ -1,0 +1,71 @@
+{
+  "helmArchive": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/helm.tar.gz",
+    "sha256": "97dbeb971be4ac4b27e3839976d9564c0fb35c6f3b1da89dd1e292d236af4096"
+  },
+  "helmArchiveMatchesPin": true,
+  "helmBinaryMatchesArchive": true,
+  "missingAssets": {
+    "dapr": {
+      "sha256": "bd540acd198dc8efa4314208325d8e7eaf89f54accdbd1fad62b484fcf9cabf2",
+      "url": "https://dapr.github.io/helm-charts/dapr-1.18.7.tgz",
+      "version": "1.18.7"
+    },
+    "gateway": {
+      "sha256": "751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8",
+      "url": "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml",
+      "version": "1.5.1"
+    },
+    "network": null
+  },
+  "originalTools": {
+    "docker": {
+      "path": "/mnt/wsl/docker-desktop/cli-tools/usr/bin/docker",
+      "sha256": "6f7a95d27f98fc8c5f6b220898988bf8f61dd9b040936797917cbdc72c6cabe6"
+    },
+    "helm": {
+      "path": "/tmp/story27-pinned-helm-w8usbu5u/helm",
+      "sha256": "bf1e2f933afaaab981b4dce6f0caea951635539336f463780ad479de5408f869"
+    },
+    "kind": {
+      "path": "/usr/local/bin/kind",
+      "sha256": "eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa"
+    },
+    "kubectl": {
+      "path": "/mnt/wsl/docker-desktop/cli-tools/usr/local/bin/kubectl",
+      "sha256": "629d3f410e09bf49b64ae7079f7f0bda1191efed311f7d37fdbab0ad5b0ec2b7"
+    }
+  },
+  "privateToolManifest": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tool-inputs.draft.json",
+    "sha256": "0b039ba177a9f3de9f37e2e57a1082c904e08929f597167f247c2b5c65aab01c"
+  },
+  "status": "partial-not-adopted",
+  "supportFileCount": 793,
+  "tools": {
+    "buildsCli": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/builds/Hexalith.Builds.Module.Cli.dll",
+      "sha256": "690f4cd11ec769040da125e5f6eca6b8ceabe47813664f3e596c49b774ee0e60"
+    },
+    "docker": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/docker",
+      "sha256": "6f7a95d27f98fc8c5f6b220898988bf8f61dd9b040936797917cbdc72c6cabe6"
+    },
+    "dotnet": {
+      "path": "/home/administrator/.dotnet/dotnet",
+      "sha256": "594657cba5f6f34b80e927951f144881ff875df269b6fb5eba1c595730267753"
+    },
+    "helm": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/helm",
+      "sha256": "bf1e2f933afaaab981b4dce6f0caea951635539336f463780ad479de5408f869"
+    },
+    "kind": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/kind",
+      "sha256": "eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa"
+    },
+    "kubectl": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/kubectl",
+      "sha256": "629d3f410e09bf49b64ae7079f7f0bda1191efed311f7d37fdbab0ad5b0ec2b7"
+    }
+  }
+}

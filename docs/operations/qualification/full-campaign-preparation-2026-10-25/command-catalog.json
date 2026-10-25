@@ -1,0 +1,133 @@
+{
+  "lifecycle": [
+    {
+      "action": "prepare",
+      "argv": [
+        "python3",
+        "-B",
+        "eng/helm-qualification/qualify.py",
+        "--campaign",
+        "prepare",
+        "--campaign-state",
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state",
+        "--campaign-plan",
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/lifecycle-plan.json",
+        "--approved-plan-sha256",
+        "${OUTSIDE_APPROVED_PLAN_SHA256}"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "executed": false,
+      "prerequisites": [
+        "complete-approved-plan-and-action-authority"
+      ]
+    },
+    {
+      "action": "inspect",
+      "argv": [
+        "python3",
+        "-B",
+        "eng/helm-qualification/qualify.py",
+        "--campaign",
+        "inspect",
+        "--campaign-state",
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "executed": false,
+      "prerequisites": [
+        "supported-prepare-produced-state"
+      ]
+    },
+    {
+      "action": "launch",
+      "argv": [
+        "python3",
+        "-B",
+        "eng/helm-qualification/qualify.py",
+        "--campaign",
+        "launch",
+        "--campaign-state",
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state",
+        "--approved-plan-sha256",
+        "${OUTSIDE_APPROVED_PLAN_SHA256}"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "executed": false,
+      "prerequisites": [
+        "complete-approved-plan-and-action-authority"
+      ]
+    },
+    {
+      "action": "monitor",
+      "argv": [
+        "python3",
+        "-B",
+        "eng/helm-qualification/qualify.py",
+        "--campaign",
+        "monitor",
+        "--campaign-state",
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state",
+        "--approved-plan-sha256",
+        "${OUTSIDE_APPROVED_PLAN_SHA256}"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "executed": false,
+      "prerequisites": [
+        "complete-approved-plan-and-action-authority"
+      ]
+    },
+    {
+      "action": "stop",
+      "argv": [
+        "python3",
+        "-B",
+        "eng/helm-qualification/qualify.py",
+        "--campaign",
+        "stop",
+        "--campaign-state",
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "executed": false,
+      "prerequisites": [
+        "actual-owned-state-and-original-stop-budget"
+      ]
+    },
+    {
+      "action": "remove",
+      "argv": [
+        "python3",
+        "-B",
+        "eng/helm-qualification/qualify.py",
+        "--campaign",
+        "remove",
+        "--campaign-state",
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "executed": false,
+      "prerequisites": [
+        "actual-owned-state-and-original-stop-budget"
+      ]
+    }
+  ],
+  "memoriesCommandRequires": [
+    "actual clean approved repository root",
+    "actual source-bound scenario-input",
+    "all 25 eligible owner-predecessor packets",
+    "owner plan/custody and outside approval",
+    "canonical profile and fresh capacity",
+    "fresh immutable observationPair from inspect",
+    "original C3 journal and admission anchors for continuation"
+  ],
+  "memoriesProducerCheckpoints": [
+    "c2-production-replacement",
+    "c3-retention-reclamation",
+    "c4-failure-privacy-observability"
+  ],
+  "planExists": false,
+  "planPath": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/lifecycle-plan.json",
+  "stateExists": false,
+  "status": "conditional-not-executable-until-prerequisites-bound",
+  "substitution": "OUTSIDE_APPROVED_PLAN_SHA256 must be supplied by the owner authority for final plan bytes; computing a digest is not approval."
+}

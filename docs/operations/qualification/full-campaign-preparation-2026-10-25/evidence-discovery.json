@@ -1,0 +1,43 @@
+{
+  "excluded": "No credential values or old signing keys read, copied or reused; no nested submodule initialization, registry lookup, Docker daemon or cluster access.",
+  "matches": [
+    {
+      "classification": "historical-only; no finite C1.13/C1.18 or complete renewal evidence",
+      "path": "/home/administrator/evidence/hexalith-memories/C1.16"
+    },
+    {
+      "classification": "actual pinned archive verified and copied privately",
+      "path": "/tmp/story27-pinned-helm-w8usbu5u/helm.tar.gz"
+    },
+    {
+      "classification": "provisional candidate, not operational measurement",
+      "path": "/tmp/story27-finite-candidate.json"
+    },
+    {
+      "classification": "explicit synthetic images; not operational images or asset custody",
+      "path": "/tmp/story274-dapr-render-first.log"
+    },
+    {
+      "classification": "historical daemon observations; old Dapr 1.18.1 cannot bind 1.18.7",
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/prepare-spec14-transport-20261023-6yl941ny/immutable-images.json"
+    },
+    {
+      "classification": "completed WINDOW remains preserved; no full campaign physical/independent-clock credit",
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-preexpiry-window-20261025-1gcua2ah/result-artifacts"
+    }
+  ],
+  "notFoundWithinInspectedScope": [
+    "compatible measured renewal schedule",
+    "current same-input capacity/reservation and independent backup receipts",
+    "Dapr 1.18.7 chart archive and Gateway 1.5.1 manifest matching pins",
+    "complete real Dapr 1.18.7/application/provider/reporter/CNI immutable image bindings",
+    "campaign-scoped credential references and independent UTC/status/monitoring sources"
+  ],
+  "scope": [
+    "current root-declared Platform implementation and toolchain",
+    "current Memories qualification templates and source registry",
+    "bounded local private access-telemetry artifacts",
+    "/home/administrator/evidence/hexalith-memories",
+    "local /tmp and cache artifact names"
+  ]
+}

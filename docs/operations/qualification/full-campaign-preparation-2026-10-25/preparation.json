@@ -1,0 +1,23 @@
+{
+  "A41": "open",
+  "baseline": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/preservation-before.json",
+    "sha256": "cb457c03f6538219c0441211870b7deac58e094ca3301fdc97755dff6f60add3"
+  },
+  "doNotSupplyDraftToPrepare": "Nulls are unresolved prerequisites. No outside approval hash or signed operational receipt has been invented.",
+  "draftIsExecutable": false,
+  "lifecyclePlanDraft": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/lifecycle-plan.draft.json",
+    "sha256": "6b45d10cb9764a7057f1688f32b3b465edd508263401414481984c04fdae968e"
+  },
+  "missingPlanFields": [
+    "runId",
+    "profile",
+    "profileSha256"
+  ],
+  "privateRoot": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg",
+  "qualificationCredit": false,
+  "statePathReservedButNotCreated": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state",
+  "status": "offline-partial-prepare-not-run",
+  "story27_4": "in-progress"
+}

@@ -1,0 +1,154 @@
+{
+  "commands": [
+    {
+      "argv": [
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/kind",
+        "version"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "exitCode": 0,
+      "name": "kind-version",
+      "stderr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/kind-version.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/kind-version.stdout",
+        "sha256": "4f20456ed346280834cc128a7048efa0f53a361cdbbba88c18b1f9124b018ba3"
+      }
+    },
+    {
+      "argv": [
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/kubectl",
+        "version",
+        "--client=true",
+        "-o",
+        "json"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "exitCode": 0,
+      "name": "kubectl-client-version",
+      "stderr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/kubectl-client-version.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/kubectl-client-version.stdout",
+        "sha256": "554d17a2af6df290e7fbad7a8c6643bc6b78f4b25691b2c4aef7d94b03773329"
+      }
+    },
+    {
+      "argv": [
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/helm",
+        "version",
+        "--short"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "exitCode": 0,
+      "name": "helm-version",
+      "stderr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/helm-version.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/helm-version.stdout",
+        "sha256": "020b1d6747838c6846e2f7d07e280141da653dd8ca9fdf428393d0b28d5a7a18"
+      }
+    },
+    {
+      "argv": [
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/docker",
+        "--version"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "exitCode": 0,
+      "name": "docker-client-version",
+      "stderr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/docker-client-version.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/docker-client-version.stdout",
+        "sha256": "9b8f0e1d15b46031ab7b93c2d07aeec29aaccc759f52ebdc0bdbeb160bd79737"
+      }
+    },
+    {
+      "argv": [
+        "/home/administrator/.dotnet/dotnet",
+        "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/builds/Hexalith.Builds.Module.Cli.dll",
+        "validate",
+        "--help"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "exitCode": 0,
+      "name": "builds-validator-help",
+      "stderr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/builds-validator-help.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/builds-validator-help.stdout",
+        "sha256": "10f888cc64d5cda39b40fc4616c7060e71e5db45906d6aa7a1d5b924f0b589c1"
+      }
+    },
+    {
+      "argv": [
+        "python3",
+        "-B",
+        "eng/helm-qualification/qualify.py",
+        "--help"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "exitCode": 0,
+      "name": "platform-help",
+      "stderr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-help.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-help.stdout",
+        "sha256": "d42ea30fa168b9937b7f3e232dd3181b40df2c67858f893f5f465a0ad756edca"
+      }
+    },
+    {
+      "argv": [
+        "python3",
+        "-B",
+        "eng/helm-qualification/qualify.py",
+        "--campaign-capacity"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "exitCode": 0,
+      "name": "platform-sizing",
+      "stderr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-sizing.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/platform-sizing.stdout",
+        "sha256": "85eb50126cd274cdf26eaecdc29948e81ce59202b2b42107c14cab0718d67d75"
+      }
+    },
+    {
+      "argv": [
+        "python3",
+        "-B",
+        "/home/administrator/projects/hexalith/memories/tools/verify-access-telemetry-lifecycle.py",
+        "--help"
+      ],
+      "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+      "exitCode": 0,
+      "name": "memories-help",
+      "stderr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/memories-help.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/memories-help.stdout",
+        "sha256": "127af627acc7a8bfe2dc21748629d6a8ad3117dfb6e2cef470e9c5a6862e2173"
+      }
+    }
+  ],
+  "note": "Versions/help/sizing only; no implementation tests or reviews repeated.",
+  "qualificationCredit": false
+}

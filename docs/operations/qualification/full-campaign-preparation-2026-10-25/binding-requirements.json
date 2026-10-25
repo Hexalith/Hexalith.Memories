@@ -1,0 +1,505 @@
+{
+  "backendImages": {
+    "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/backend-images.json",
+    "sha256": "61aa980331c8477fe801e16108798d922c316ef9a83dffee13d34d4a7cd11380"
+  },
+  "backupFailureDomainAndRestoreReceipt": null,
+  "capabilities": [
+    {
+      "consumers": [
+        "memories",
+        "memories-access-telemetry"
+      ],
+      "kind": "configuration",
+      "name": "access-telemetry-config",
+      "recovery": "authoritative-restore"
+    },
+    {
+      "consumers": [
+        "memories",
+        "memories-access-telemetry",
+        "memories-access-telemetry-clock"
+      ],
+      "kind": "secret",
+      "name": "access-telemetry-secrets",
+      "recovery": "live-authority-only"
+    },
+    {
+      "consumers": [
+        "memories-access-telemetry"
+      ],
+      "kind": "state",
+      "name": "access-telemetry-store",
+      "recovery": "authoritative-restore"
+    },
+    {
+      "consumers": [
+        "eventstore"
+      ],
+      "kind": "configuration",
+      "name": "configstore",
+      "recovery": "authoritative-restore"
+    },
+    {
+      "consumers": [
+        "memories"
+      ],
+      "kind": "conversation",
+      "name": "llm",
+      "recovery": "rebuild-only"
+    },
+    {
+      "consumers": [
+        "eventstore",
+        "memories",
+        "parties",
+        "tenants"
+      ],
+      "kind": "pubsub",
+      "name": "pubsub",
+      "recovery": "rebuild-only"
+    },
+    {
+      "consumers": [
+        "memories"
+      ],
+      "kind": "secret",
+      "name": "secretstore",
+      "recovery": "live-authority-only"
+    },
+    {
+      "consumers": [
+        "eventstore",
+        "memories",
+        "parties",
+        "tenants",
+        "tenants-api"
+      ],
+      "kind": "state",
+      "name": "statestore",
+      "recovery": "authoritative-restore"
+    }
+  ],
+  "credentials": {
+    "access-telemetry-postgresql-bootstrap": [
+      "admin-password",
+      "runtime-password"
+    ],
+    "access-telemetry-postgresql-tls": [
+      "tls.crt",
+      "tls.key",
+      "ca.crt"
+    ],
+    "campaign-openbao-tls": [
+      "tls.crt",
+      "tls.key",
+      "ca.crt"
+    ],
+    "openbaoSeed": {
+      "entries": null,
+      "policies": null,
+      "tokens": null
+    },
+    "perBindingAppAndApiTokens": null,
+    "registry": null
+  },
+  "daprImages": {
+    "daprd": null,
+    "injector": null,
+    "operator": null,
+    "placement": null,
+    "scheduler": null,
+    "sentry": null
+  },
+  "freshnessSeconds": {
+    "initialMeasurements": 86400,
+    "statusAndCurrentCapacity": 300,
+    "statusMaximumExpiry": 900,
+    "utcAndMonitor": 60
+  },
+  "monitorLimits": {
+    "autovacuumStallSeconds": null,
+    "checkpointAgeSeconds": null,
+    "connectionUtilizationPermille": null,
+    "connections": null,
+    "daprTransactionErrors": null,
+    "etagErrors": null,
+    "lockWaitMilliseconds": null,
+    "oldestDueAgeSeconds": null,
+    "physicalEvidenceAgeSeconds": null,
+    "recoveryUnhealthy": null,
+    "restartUnhealthy": null,
+    "tlsAuthErrors": null,
+    "transactionErrors": null,
+    "transactionLatencyP99Ms": null
+  },
+  "monitorSeries": [
+    "postgres.autovacuumStallSeconds",
+    "postgres.checkpointAgeSeconds",
+    "postgres.checkpointsRequested",
+    "postgres.checkpointsTimed",
+    "postgres.connectionUtilizationPermille",
+    "postgres.connections",
+    "postgres.deadRecords",
+    "postgres.liveRecords",
+    "postgres.lockWaitMilliseconds",
+    "postgres.oldestDueAgeSeconds",
+    "postgres.physicalEvidenceAgeSeconds",
+    "postgres.recoveryUnhealthy",
+    "postgres.relationBytes",
+    "postgres.supportBytes",
+    "postgres.tableCount",
+    "postgres.transactionErrors",
+    "postgres.transactionLatencyP99Ms",
+    "postgres.vacuumProgress",
+    "postgres.walBytes",
+    "runtime.daprTransactionErrors",
+    "runtime.etagErrors",
+    "runtime.restartUnhealthy",
+    "runtime.tlsAuthErrors"
+  ],
+  "nodeImage": "kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661",
+  "physicalTarget": null,
+  "providerNamespaces": [
+    "monitoring"
+  ],
+  "providerReporterCniResidualBudget": {
+    "cpuMilli": 300,
+    "memoryBytes": 1073741824
+  },
+  "runtimeImageVersion": "1.18.7",
+  "status": "missing-operational-bindings",
+  "storageReservations": null,
+  "trustInputs": {
+    "independentUtc": null,
+    "initialCapacityAdmissionIssuer": null,
+    "lifecycleStatusIssuer": null,
+    "memoriesOwnerAuthority": null,
+    "monitoringCollector": null
+  },
+  "workloads": [
+    {
+      "configuration": [
+        "EventStore:DaprConfigPath",
+        "EventStore:StateStoreComponentPath",
+        "EventStore:PubSubComponentPath",
+        "Authentication:JwtBearer:Authority",
+        "Authentication:JwtBearer:Issuer",
+        "Authentication:JwtBearer:Audience",
+        "Authentication:JwtBearer:ValidAudiences",
+        "Authentication:JwtBearer:AllowedAlgorithms",
+        "Authentication:JwtBearer:RequireHttpsMetadata",
+        "Authentication:JwtBearer:AllowInsecureSymmetricKey",
+        "Authentication:DaprInternal",
+        "Authentication:DaprInternal:Audience",
+        "Authentication:DaprInternal:AllowedCallers",
+        "Authentication:DaprInternal:MaximumLifetimeSeconds",
+        "EventStore:Projections",
+        "EventStore:Projections:WorkersEnabled",
+        "EventStore:Projections:CheckpointStateStoreName",
+        "EventStore:Projections:ReadModelStateStoreName",
+        "EventStore:Projections:DefaultRefreshIntervalMs",
+        "EventStore:Projections:Domains",
+        "EventStore:Projections:RebuildIndexCleanupCadenceSeconds",
+        "EventStore:Projections:RebuildPageSize",
+        "EventStore:Projections:RebuildMaxPrefixEventCount",
+        "EventStore:Projections:RebuildMaxPrefixBytes",
+        "EventStore:ProjectionDispatch",
+        "EventStore:ProjectionDispatch:MaxRetryAttempts",
+        "EventStore:ProjectionDispatch:RetryScanBatchSize",
+        "EventStore:ProjectionDispatch:RetryBaseDelay",
+        "EventStore:ProjectionDispatch:RetryMaxDelay",
+        "EventStore:ProjectionDispatch:RetryWorkerInterval",
+        "EventStore:ProjectionDispatch:RetryLeaseDuration",
+        "EventStore:ProjectionDeliveryIdempotency",
+        "EventStore:ProjectionDeliveryIdempotency:CompletedReceiptLimit",
+        "EventStore:ProjectionDeliveryIdempotency:ReservationLease",
+        "EventStore:ProjectionDeliveryIdempotency:MaxStateTransitionAttempts",
+        "Authentication:WorkloadIssuer",
+        "Authentication:WorkloadIssuer:Workload",
+        "Authentication:WorkloadIssuer:LifetimeSeconds",
+        "Authentication:WorkloadIssuer:AudienceScopePrefix",
+        "Authentication:WorkloadIssuer:OperationScopePrefix",
+        "Authentication:WorkloadIssuer:ClientId",
+        "Authentication:WorkloadIssuer:TokenEndpoint",
+        "EventStore:DomainServices:ConfigStoreName"
+      ],
+      "identity": "eventstore/gateway",
+      "image": null,
+      "resourceId": "eventstore",
+      "secretReferences": [
+        "Authentication:JwtBearer:SigningKey",
+        "EventStore:AppChannelToken",
+        "Authentication:WorkloadIssuer:ClientSecret"
+      ]
+    },
+    {
+      "configuration": [
+        "Tenants:DaprConfigPath",
+        "Oidc:Authority",
+        "Tenants:BootstrapGlobalAdminEnabled",
+        "Tenants:BootstrapGlobalAdminUserId",
+        "EventStore:Authentication:Authority",
+        "EventStore:Authentication:ClientId",
+        "EventStore:Authentication:Username",
+        "EventStore:Authentication:Issuer",
+        "EventStore:Authentication:Audience",
+        "EventStore:Authentication:RequireHttpsMetadata",
+        "Authentication:JwtBearer:Authority",
+        "Authentication:JwtBearer:Issuer",
+        "Authentication:JwtBearer:Audience",
+        "Authentication:JwtBearer:ValidAudiences",
+        "Authentication:JwtBearer:AllowedAlgorithms",
+        "Authentication:JwtBearer:RequireHttpsMetadata",
+        "Authentication:JwtBearer:AllowInsecureSymmetricKey",
+        "Authentication:Workload:Audience",
+        "Authentication:Workload:AllowedCallers",
+        "Authentication:Workload:MaximumLifetimeSeconds",
+        "EventStore:DataProtection:PersistToStateStore"
+      ],
+      "identity": "tenants/domain",
+      "image": null,
+      "resourceId": "tenants",
+      "secretReferences": [
+        "Jwt:SigningKey",
+        "EventStore:Authentication:Password",
+        "EventStore:Authentication:SigningKey",
+        "Authentication:JwtBearer:SigningKey",
+        "Tenants:AppChannelToken",
+        "Tenants:ApiDaprToken"
+      ]
+    },
+    {
+      "configuration": [
+        "Tenants:DaprConfigPath",
+        "Oidc:Authority",
+        "Tenants:BootstrapGlobalAdminEnabled",
+        "Tenants:BootstrapGlobalAdminUserId",
+        "EventStore:Authentication:Authority",
+        "EventStore:Authentication:ClientId",
+        "EventStore:Authentication:Username",
+        "EventStore:Authentication:Issuer",
+        "EventStore:Authentication:Audience",
+        "EventStore:Authentication:RequireHttpsMetadata",
+        "Authentication:JwtBearer:Authority",
+        "Authentication:JwtBearer:Issuer",
+        "Authentication:JwtBearer:Audience",
+        "Authentication:JwtBearer:ValidAudiences",
+        "Authentication:JwtBearer:AllowedAlgorithms",
+        "Authentication:JwtBearer:RequireHttpsMetadata",
+        "Authentication:JwtBearer:AllowInsecureSymmetricKey",
+        "Authentication:Workload:Audience",
+        "Authentication:Workload:AllowedCallers",
+        "Authentication:Workload:MaximumLifetimeSeconds",
+        "EventStore:DataProtection:PersistToStateStore"
+      ],
+      "identity": "tenants/api",
+      "image": null,
+      "resourceId": "tenants-api",
+      "secretReferences": [
+        "Jwt:SigningKey",
+        "EventStore:Authentication:Password",
+        "EventStore:Authentication:SigningKey",
+        "Authentication:JwtBearer:SigningKey",
+        "Tenants:AppChannelToken",
+        "Tenants:ApiDaprToken"
+      ]
+    },
+    {
+      "configuration": [
+        "Memories:LlmComponentPath",
+        "ConnectionStrings:redis",
+        "ConnectionStrings:falkordb",
+        "AccessTelemetryLifecycle:StateStoreComponentPath",
+        "AccessTelemetryLifecycle:ConfigurationStoreComponentPath",
+        "Clock:SecretStoreName",
+        "Clock:SigningKeySecretName",
+        "Clock:Sources",
+        "Clock:AllowDevelopmentSources",
+        "AccessTelemetryLifecycle:MarkerKeyReference",
+        "NaturalLanguage:RetryWorkerEnabled",
+        "Embedding:CredentialNamespace",
+        "OrphanSemanticIndex:Enabled",
+        "IsStubBackfill:Enabled",
+        "AccessTelemetryLifecycle:DeploymentId",
+        "AccessTelemetryLifecycle:ConfigurationEpoch",
+        "AccessTelemetryLifecycle:ComponentProfileHash",
+        "AccessTelemetryLifecycle:AttestationVerificationKey",
+        "AccessTelemetryLifecycle:MarkerKeyGeneration",
+        "AccessTelemetryLifecycle:CapacityEvidenceId",
+        "AccessTelemetryLifecycle:PhysicalReclamationEvidenceId",
+        "AccessTelemetryLifecycle:PhysicalReclamationReporterImageDigest",
+        "AccessTelemetryLifecycle:RetentionSource",
+        "retentionSeconds",
+        "AccessTelemetryLifecycle:Enabled",
+        "AccessTelemetryLifecycle:CapabilityEvidence",
+        "AccessTelemetryLifecycle:CapabilityEvidence:ExactVersionPinned",
+        "AccessTelemetryLifecycle:CapabilityEvidence:ValidUntilUtc",
+        "WorkflowReplaySafety:Enabled",
+        "AccessTelemetryLifecycle:ClockSignerKeyEpoch",
+        "Clock:SignerKeyEpoch",
+        "TenantEventRouting:AutoProvisionRoutedTenants",
+        "Authentication:JwtBearer:Authority",
+        "Authentication:JwtBearer:Issuer",
+        "Authentication:JwtBearer:Audience",
+        "Authentication:JwtBearer:RequireHttpsMetadata",
+        "Authentication:JwtBearer:TenantClaimName",
+        "Authentication:JwtBearer:ValidAlgorithms",
+        "EmbeddingProviders:Google:ApiBaseUrl",
+        "EmbeddingProviders:Ollama:BaseUrl",
+        "EmbeddingProviders:Ollama:OidcTokenEndpoint",
+        "EmbeddingProviders:Ollama:OidcClientId",
+        "EmbeddingProviders:Ollama:OidcScope"
+      ],
+      "identity": "memories/server",
+      "image": null,
+      "resourceId": "memories",
+      "secretReferences": [
+        "Conversation:ProviderApiKey",
+        "Authentication:JwtBearer:SigningKey",
+        "Memories:AppChannelToken",
+        "Memories:DaprApiToken"
+      ]
+    },
+    {
+      "configuration": [
+        "Memories:LlmComponentPath",
+        "ConnectionStrings:redis",
+        "ConnectionStrings:falkordb",
+        "AccessTelemetryLifecycle:StateStoreComponentPath",
+        "AccessTelemetryLifecycle:ConfigurationStoreComponentPath",
+        "Clock:SecretStoreName",
+        "Clock:SigningKeySecretName",
+        "Clock:Sources",
+        "Clock:AllowDevelopmentSources",
+        "AccessTelemetryLifecycle:MarkerKeyReference",
+        "NaturalLanguage:RetryWorkerEnabled",
+        "Embedding:CredentialNamespace",
+        "OrphanSemanticIndex:Enabled",
+        "IsStubBackfill:Enabled",
+        "AccessTelemetryLifecycle:DeploymentId",
+        "AccessTelemetryLifecycle:ConfigurationEpoch",
+        "AccessTelemetryLifecycle:ComponentProfileHash",
+        "AccessTelemetryLifecycle:AttestationVerificationKey",
+        "AccessTelemetryLifecycle:MarkerKeyGeneration",
+        "AccessTelemetryLifecycle:CapacityEvidenceId",
+        "AccessTelemetryLifecycle:PhysicalReclamationEvidenceId",
+        "AccessTelemetryLifecycle:PhysicalReclamationReporterImageDigest",
+        "AccessTelemetryLifecycle:RetentionSource",
+        "retentionSeconds",
+        "AccessTelemetryLifecycle:Enabled",
+        "AccessTelemetryLifecycle:CapabilityEvidence",
+        "AccessTelemetryLifecycle:CapabilityEvidence:ExactVersionPinned",
+        "AccessTelemetryLifecycle:CapabilityEvidence:ValidUntilUtc",
+        "WorkflowReplaySafety:Enabled",
+        "AccessTelemetryLifecycle:ClockSignerKeyEpoch",
+        "Clock:SignerKeyEpoch",
+        "TenantEventRouting:AutoProvisionRoutedTenants",
+        "Authentication:JwtBearer:Authority",
+        "Authentication:JwtBearer:Issuer",
+        "Authentication:JwtBearer:Audience",
+        "Authentication:JwtBearer:RequireHttpsMetadata",
+        "Authentication:JwtBearer:TenantClaimName",
+        "Authentication:JwtBearer:ValidAlgorithms",
+        "EmbeddingProviders:Google:ApiBaseUrl",
+        "EmbeddingProviders:Ollama:BaseUrl",
+        "EmbeddingProviders:Ollama:OidcTokenEndpoint",
+        "EmbeddingProviders:Ollama:OidcClientId",
+        "EmbeddingProviders:Ollama:OidcScope"
+      ],
+      "identity": "memories/clock",
+      "image": null,
+      "resourceId": "memories-access-telemetry-clock",
+      "secretReferences": [
+        "Conversation:ProviderApiKey",
+        "Authentication:JwtBearer:SigningKey",
+        "Memories:AppChannelToken",
+        "Memories:DaprApiToken"
+      ]
+    },
+    {
+      "configuration": [
+        "Memories:LlmComponentPath",
+        "ConnectionStrings:redis",
+        "ConnectionStrings:falkordb",
+        "AccessTelemetryLifecycle:StateStoreComponentPath",
+        "AccessTelemetryLifecycle:ConfigurationStoreComponentPath",
+        "Clock:SecretStoreName",
+        "Clock:SigningKeySecretName",
+        "Clock:Sources",
+        "Clock:AllowDevelopmentSources",
+        "AccessTelemetryLifecycle:MarkerKeyReference",
+        "NaturalLanguage:RetryWorkerEnabled",
+        "Embedding:CredentialNamespace",
+        "OrphanSemanticIndex:Enabled",
+        "IsStubBackfill:Enabled",
+        "AccessTelemetryLifecycle:DeploymentId",
+        "AccessTelemetryLifecycle:ConfigurationEpoch",
+        "AccessTelemetryLifecycle:ComponentProfileHash",
+        "AccessTelemetryLifecycle:AttestationVerificationKey",
+        "AccessTelemetryLifecycle:MarkerKeyGeneration",
+        "AccessTelemetryLifecycle:CapacityEvidenceId",
+        "AccessTelemetryLifecycle:PhysicalReclamationEvidenceId",
+        "AccessTelemetryLifecycle:PhysicalReclamationReporterImageDigest",
+        "AccessTelemetryLifecycle:RetentionSource",
+        "retentionSeconds",
+        "AccessTelemetryLifecycle:Enabled",
+        "AccessTelemetryLifecycle:CapabilityEvidence",
+        "AccessTelemetryLifecycle:CapabilityEvidence:ExactVersionPinned",
+        "AccessTelemetryLifecycle:CapabilityEvidence:ValidUntilUtc",
+        "WorkflowReplaySafety:Enabled",
+        "AccessTelemetryLifecycle:ClockSignerKeyEpoch",
+        "Clock:SignerKeyEpoch",
+        "TenantEventRouting:AutoProvisionRoutedTenants",
+        "Authentication:JwtBearer:Authority",
+        "Authentication:JwtBearer:Issuer",
+        "Authentication:JwtBearer:Audience",
+        "Authentication:JwtBearer:RequireHttpsMetadata",
+        "Authentication:JwtBearer:TenantClaimName",
+        "Authentication:JwtBearer:ValidAlgorithms",
+        "EmbeddingProviders:Google:ApiBaseUrl",
+        "EmbeddingProviders:Ollama:BaseUrl",
+        "EmbeddingProviders:Ollama:OidcTokenEndpoint",
+        "EmbeddingProviders:Ollama:OidcClientId",
+        "EmbeddingProviders:Ollama:OidcScope"
+      ],
+      "identity": "memories/telemetry",
+      "image": null,
+      "resourceId": "memories-access-telemetry",
+      "secretReferences": [
+        "Conversation:ProviderApiKey",
+        "Authentication:JwtBearer:SigningKey",
+        "Memories:AppChannelToken",
+        "Memories:DaprApiToken"
+      ]
+    },
+    {
+      "configuration": [
+        "EventStore:DomainService:AppId",
+        "Authentication:JwtBearer:Authority",
+        "Authentication:JwtBearer:Issuer",
+        "Authentication:JwtBearer:Audience",
+        "Authentication:JwtBearer:ValidAudiences",
+        "Authentication:JwtBearer:AllowedAlgorithms",
+        "Authentication:JwtBearer:RequireHttpsMetadata",
+        "Authentication:JwtBearer:AllowInsecureSymmetricKey",
+        "Authentication:Workload:Audience",
+        "Authentication:Workload:AllowedCallers",
+        "Authentication:Workload:MaximumLifetimeSeconds",
+        "EventStore:DataProtection:PersistToStateStore",
+        "Tenants:Enabled",
+        "Tenants:ServiceName",
+        "Tenants:CommandApiAppId",
+        "Tenants:TopicName",
+        "Parties:MemoriesSearch:Enabled"
+      ],
+      "identity": "parties/domain",
+      "image": null,
+      "resourceId": "parties",
+      "secretReferences": [
+        "Authentication:JwtBearer:SigningKey",
+        "EventStore:AppChannelToken"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "bounds": {
+    "applicationCpuMilli": 4500,
+    "applicationMemoryBytes": 7516192768,
+    "applicationSpillBytes": 4294967296,
+    "controlBytes": 8589934592,
+    "controlCpuMilli": 2000,
+    "controlMemoryBytes": 3221225472,
+    "databaseFixedBytes": 1073741824,
+    "heapBytesPerRecord": 2048,
+    "hostCpuMilli": 1000,
+    "hostMemoryBytes": 4294967296,
+    "hostWorkspaceBytes": 19327352832,
+    "indexAndStateBytesPerRecord": 2048,
+    "postgresCpuMilli": 8000,
+    "postgresMemoryBytes": 17179869184,
+    "schedulerCpuMilli": 750,
+    "schedulerMemberBytes": 1073741824,
+    "schedulerMemoryBytes": 1073741824,
+    "walPeakBytes": 4294967296
+  },
+  "compute": null,
+  "environmentConfiguration": {
+    "applicationPods": 9,
+    "applicationSpillBytes": 4294967296,
+    "backupBytes": null,
+    "backupFailureDomain": "independent-required",
+    "boundsRequireMonitoringAndStop": {
+      "perCollectionRecordUpperBounds": {
+        "c1Backlog": 150000,
+        "c1OtherBound": 50000,
+        "c1Throughput": 450000
+      },
+      "phaseRecordUpperBounds": null,
+      "walPeakBytes": 4294967296
+    },
+    "controlVolumes": {
+      "etcdBytes": 4294967296,
+      "logsAndOtherBytes": 3221225472,
+      "openbaoBytes": 1073741824
+    },
+    "dapr": {
+      "placementMembers": 3,
+      "schedulerCpuMilliPerMember": 250,
+      "schedulerEnabled": true,
+      "schedulerMembers": 3,
+      "schedulerMemoryBytesPerMember": 357913941,
+      "schedulerVolumeBytesPerMember": 1073741824
+    },
+    "hostWorkspaceBytes": 19327352832,
+    "postgresql": {
+      "cpuMilli": 8000,
+      "memoryBytes": 17179869184,
+      "sslMode": "verify-full",
+      "volumeBytes": null
+    }
+  },
+  "inputs": {},
+  "limits": {
+    "acceptedRecordsPerSecond": 250,
+    "backlogRecords": 150000,
+    "c2Seconds": 50400,
+    "c3Seconds": 777600,
+    "c4Seconds": 50400,
+    "cohortHours": [
+      1,
+      24,
+      168
+    ],
+    "cohortRecords": 125,
+    "componentOperationsPerSecond": 500,
+    "purgeSeconds": 900,
+    "reclamationSeconds": 86400,
+    "retries": 0,
+    "stoppingSeconds": 900,
+    "workloadSeconds": 1800,
+    "writers": 2
+  },
+  "measurements": null,
+  "profileId": "PG-FINITE-CAMPAIGN-1",
+  "renewalSchedule": null,
+  "schema": "hexalith.platform.memories-finite-campaign/v1",
+  "sizing": {
+    "cpuMilli": 16250,
+    "fixedPrimaryNonDataBytes": 35433480192,
+    "memoryBytes": 33285996544,
+    "reason": "compatible-finite-renewal-plan-required",
+    "singleCollectionLowerBound": {
+      "allocations": {
+        "application-spill": 4294967296,
+        "backup": 17179869184,
+        "control": 8589934592,
+        "host-workspace": 19327352832,
+        "postgres": 25769803776,
+        "scheduler-0": 1073741824,
+        "scheduler-1": 1073741824,
+        "scheduler-2": 1073741824
+      },
+      "backupBytes": 17179869184,
+      "c3PeakLiveRecords": 375,
+      "continuousSevenDayCredit": false,
+      "cpuMilli": 16250,
+      "cumulativeRecords": 1350500,
+      "historical400GiBCredit": false,
+      "inventory": {
+        "c1Backlog": 150000,
+        "c1OtherBound": 50000,
+        "c1Throughput": 450000,
+        "c2BacklogBound": 150000,
+        "c2OtherBound": 50000,
+        "c2Writers": 450000,
+        "c3NewerControls": 125,
+        "c3Seeds": 375,
+        "c4OtherBound": 50000
+      },
+      "memoryBytes": 33285996544,
+      "postgresPeakUsedBytes": 19197829120,
+      "primaryBytes": 61203283968,
+      "rawRelationBytes": 5531648000,
+      "reclamationWorkspaceBytes": 6914560000,
+      "relationWithMarginBytes": 6914560000
+    },
+    "status": "blocked"
+  },
+  "status": "provisional",
+  "storage": null,
+  "target": {
+    "clusterName": "memories-qualification-27-4-20261026",
+    "context": "kind-memories-qualification-27-4-20261026",
+    "namespace": "hexalith-memories-qualification",
+    "nodeHa": false
+  }
+}
