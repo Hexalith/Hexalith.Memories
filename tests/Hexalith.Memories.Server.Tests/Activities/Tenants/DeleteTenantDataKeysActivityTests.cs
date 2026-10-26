@@ -9,8 +9,11 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Activities.Tenants;
 using Hexalith.Memories.Server.Infrastructure;
+using Hexalith.Memories.Server.NaturalLanguage;
+using Hexalith.Memories.Server.Ingestion;
 
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -29,6 +32,7 @@ public class DeleteTenantDataKeysActivityTests
     {
         IDatabase db = Substitute.For<IDatabase>();
         db.Database.Returns(0);
+        db.StringGetAsync(Arg.Is<RedisKey>(key => key.ToString().StartsWith("nl-retry-history-coverage:", StringComparison.Ordinal)), Arg.Any<CommandFlags>()).Returns(RetryWorkflowHistory.ReconciledCoverage);
         db.KeyDeleteAsync(Arg.Any<RedisKey[]>(), Arg.Any<CommandFlags>())
             .Returns(callInfo => (long)((RedisKey[])callInfo[0]!).Length);
 
@@ -50,12 +54,12 @@ public class DeleteTenantDataKeysActivityTests
         ILogger<DeleteTenantDataKeysActivity> logger = Substitute.For<ILogger<DeleteTenantDataKeysActivity>>();
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
         DeleteTenantDataKeysActivity activity = new(
-            redis, mappingStore, observedStore, CreateLifetime(), logger);
+            redis, mappingStore, observedStore, CreateLifetime(), logger, null, Substitute.For<IDaprWorkflowClient>(), Options.Create(new NaturalLanguageDescriptionOptions()));
 
         bool result = await activity.RunAsync(context, new TenantDeletionInput("tenant-1"));
 
         result.ShouldBeTrue();
-        await db.Received(patterns.Count).KeyDeleteAsync(Arg.Any<RedisKey[]>(), Arg.Any<CommandFlags>());
+        await db.Received(patterns.Count + 1).KeyDeleteAsync(Arg.Any<RedisKey[]>(), Arg.Any<CommandFlags>());
         foreach (KeyValuePair<string, string> pattern in patterns)
         {
             _ = server.Received(1).KeysAsync(0, pattern.Key, 1000, Arg.Any<long>(), Arg.Any<int>(), Arg.Any<CommandFlags>());
@@ -73,6 +77,7 @@ public class DeleteTenantDataKeysActivityTests
     {
         IDatabase db = Substitute.For<IDatabase>();
         db.Database.Returns(0);
+        db.StringGetAsync(Arg.Is<RedisKey>(key => key.ToString().StartsWith("nl-retry-history-coverage:", StringComparison.Ordinal)), Arg.Any<CommandFlags>()).Returns(RetryWorkflowHistory.ReconciledCoverage);
 
         IServer disconnectedServer = Substitute.For<IServer>();
         disconnectedServer.IsConnected.Returns(false);
@@ -86,7 +91,7 @@ public class DeleteTenantDataKeysActivityTests
         ILogger<DeleteTenantDataKeysActivity> logger = Substitute.For<ILogger<DeleteTenantDataKeysActivity>>();
         WorkflowActivityContext context = Substitute.For<WorkflowActivityContext>();
         DeleteTenantDataKeysActivity activity = new(
-            redis, mappingStore, observedStore, CreateLifetime(), logger);
+            redis, mappingStore, observedStore, CreateLifetime(), logger, null, Substitute.For<IDaprWorkflowClient>(), Options.Create(new NaturalLanguageDescriptionOptions()));
 
         await Should.ThrowAsync<InvalidOperationException>(() => activity.RunAsync(context, new TenantDeletionInput("tenant-1")));
         await mappingStore.DidNotReceive().DeleteAllTenantDataAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
@@ -99,6 +104,7 @@ public class DeleteTenantDataKeysActivityTests
         // Tenant-isolation negative evidence (review D3): purge is keyed by the activity input tenant id.
         IDatabase db = Substitute.For<IDatabase>();
         db.Database.Returns(0);
+        db.StringGetAsync(Arg.Is<RedisKey>(key => key.ToString().StartsWith("nl-retry-history-coverage:", StringComparison.Ordinal)), Arg.Any<CommandFlags>()).Returns(RetryWorkflowHistory.ReconciledCoverage);
         db.KeyDeleteAsync(Arg.Any<RedisKey[]>(), Arg.Any<CommandFlags>()).Returns(0L);
 
         IServer server = Substitute.For<IServer>();
@@ -116,7 +122,7 @@ public class DeleteTenantDataKeysActivityTests
         IAggregateCaseMappingStore mappingStore = Substitute.For<IAggregateCaseMappingStore>();
         IObservedEventTypeStore observedStore = Substitute.For<IObservedEventTypeStore>();
         DeleteTenantDataKeysActivity activity = new(
-            redis, mappingStore, observedStore, CreateLifetime(), Substitute.For<ILogger<DeleteTenantDataKeysActivity>>());
+            redis, mappingStore, observedStore, CreateLifetime(), Substitute.For<ILogger<DeleteTenantDataKeysActivity>>(), null, Substitute.For<IDaprWorkflowClient>(), Options.Create(new NaturalLanguageDescriptionOptions()));
 
         _ = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), new TenantDeletionInput("tenant-a"));
 
@@ -149,6 +155,7 @@ public class DeleteTenantDataKeysActivityTests
 
         IDatabase db = Substitute.For<IDatabase>();
         db.Database.Returns(0);
+        db.StringGetAsync(Arg.Is<RedisKey>(key => key.ToString().StartsWith("nl-retry-history-coverage:", StringComparison.Ordinal)), Arg.Any<CommandFlags>()).Returns(RetryWorkflowHistory.ReconciledCoverage);
         db.KeyDeleteAsync(Arg.Any<RedisKey[]>(), Arg.Any<CommandFlags>()).Returns(0L);
         IServer server = Substitute.For<IServer>();
         server.IsConnected.Returns(true);
@@ -163,7 +170,7 @@ public class DeleteTenantDataKeysActivityTests
         redis.GetServers().Returns([server]);
 
         DeleteTenantDataKeysActivity activity = new(
-            redis, mappingStore, observedStore, CreateLifetime(), NullLogger<DeleteTenantDataKeysActivity>.Instance);
+            redis, mappingStore, observedStore, CreateLifetime(), NullLogger<DeleteTenantDataKeysActivity>.Instance, null, Substitute.For<IDaprWorkflowClient>(), Options.Create(new NaturalLanguageDescriptionOptions()));
 
         _ = await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), new TenantDeletionInput("tenant-a"));
 
@@ -175,6 +182,60 @@ public class DeleteTenantDataKeysActivityTests
             .Count.ShouldBe(1);
         fake.ContainsKey("tenant-a:eventstore:aggregate-case-map-index").ShouldBeFalse();
         fake.ContainsKey("tenant-b:eventstore:aggregate-case-map-index").ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Verifies compatible Constructor Refuses Unknown History Even When Queues Are Empty.
+    /// </summary>
+    [Fact]
+    public async Task CompatibleConstructorRefusesUnknownHistoryEvenWhenQueuesAreEmpty()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        var activity = new DeleteTenantDataKeysActivity(redis, Substitute.For<IAggregateCaseMappingStore>(),
+            Substitute.For<IObservedEventTypeStore>(), CreateLifetime(), NullLogger<DeleteTenantDataKeysActivity>.Instance);
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => activity.RunAsync(null!, new("tenant-a")));
+        error.Message.ShouldBe("nl-retry-history-owner-reconciliation-required");
+        await db.DidNotReceiveWithAnyArgs().KeyDeleteAsync(default(RedisKey[])!, default);
+    }
+
+    /// <summary>
+    /// Verifies missing Workflow Client Refuses Reconciled History.
+    /// </summary>
+    [Fact]
+    public async Task MissingWorkflowClientRefusesReconciledHistory()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.StringGetAsync(RetryWorkflowHistory.Coverage("tenant-a"), Arg.Any<CommandFlags>()).Returns(RetryWorkflowHistory.ReconciledCoverage);
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        var activity = new DeleteTenantDataKeysActivity(redis, Substitute.For<IAggregateCaseMappingStore>(),
+            Substitute.For<IObservedEventTypeStore>(), CreateLifetime(), NullLogger<DeleteTenantDataKeysActivity>.Instance);
+        (await Should.ThrowAsync<InvalidOperationException>(() => activity.RunAsync(null!, new("tenant-a")))).Message.ShouldBe("nl-retry-workflow-client-required");
+    }
+
+    /// <summary>
+    /// Verifies registered Composition Selects Workflow Aware Constructor.
+    /// </summary>
+    [Fact]
+    public async Task RegisteredCompositionSelectsWorkflowAwareConstructor()
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.StringGetAsync(RetryWorkflowHistory.Coverage("tenant-a"), Arg.Any<CommandFlags>()).Returns(RetryWorkflowHistory.ReconciledCoverage);
+        IConnectionMultiplexer redis = Substitute.For<IConnectionMultiplexer>();
+        redis.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(db);
+        IServer server = Substitute.For<IServer>();
+        server.IsConnected.Returns(true);
+        redis.GetServers().Returns([server]);
+        using var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection()
+            .AddLogging().AddKeyedSingleton<IConnectionMultiplexer>("redis", redis)
+            .AddSingleton(Substitute.For<IAggregateCaseMappingStore>()).AddSingleton(Substitute.For<IObservedEventTypeStore>())
+            .AddSingleton(CreateLifetime()).AddSingleton(Substitute.For<IDaprWorkflowClient>())
+            .AddSingleton(Options.Create(new NaturalLanguageDescriptionOptions())).AddSingleton(Substitute.For<IWorkflowPayloadStore>())
+            .BuildServiceProvider();
+        var activity = Microsoft.Extensions.DependencyInjection.ActivatorUtilities.CreateInstance<DeleteTenantDataKeysActivity>(services);
+        (await activity.RunAsync(null!, new("tenant-a"))).ShouldBeTrue();
     }
 
     private static IHostApplicationLifetime CreateLifetime()

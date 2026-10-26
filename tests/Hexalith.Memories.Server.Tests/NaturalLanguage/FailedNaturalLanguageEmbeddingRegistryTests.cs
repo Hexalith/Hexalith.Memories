@@ -147,7 +147,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         records[0].MemoryUnitId.ShouldBe("mu-2");
         await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("redis.call('HDEL',KEYS[2]", StringComparison.Ordinal)),
             Arg.Is<RedisKey[]>(keys => keys[0] == FailedNaturalLanguageEmbeddingRegistry.LiveKey("tenant-a")),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "mu-1" })), Arg.Any<CommandFlags>());
+            Arg.Is<RedisValue[]>(values => values[0] == "mu-1" && values[1] == "10" && values[2] == "1" && values[3] == "not json"), Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -267,10 +267,8 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
 
         tenants.ShouldBe(["tenant-a"]);
         redis.DidNotReceiveWithAnyArgs().GetEndPoints(default);
-        await db.Received(1).SetRemoveAsync(
-            FailedNaturalLanguageEmbeddingRegistry.TenantBacklogKey,
-            "tenant-empty",
-            Arg.Any<CommandFlags>());
+        await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("SREM", StringComparison.Ordinal)),
+            Arg.Any<RedisKey[]>(), Arg.Is<RedisValue[]>(values => values[0] == "tenant-empty"), Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -387,7 +385,7 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         await AssertMoveAsync(db, "dead", CreateRecord("mu-1", 10), 1);
         await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("redis.call('HDEL',KEYS[2]", StringComparison.Ordinal)),
             Arg.Is<RedisKey[]>(keys => keys[0] == FailedNaturalLanguageEmbeddingRegistry.DeadKey("tenant-a") && keys[1] == FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey("tenant-a")),
-            Arg.Is<RedisValue[]>(values => values.SequenceEqual(new RedisValue[] { "old-mu" })), Arg.Any<CommandFlags>());
+            Arg.Is<RedisValue[]>(values => values[0] == "old-mu" && values[1] == "10"), Arg.Any<CommandFlags>());
     }
 
     [Fact]
@@ -419,6 +417,37 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         bytes.ShouldBe(0);
     }
 
+    /// <summary>
+    /// Verifies dequeue Rejects Misaddressed Modern Payload Without Mutation.
+    /// </summary>
+    [Theory]
+    [InlineData("tenant-a", "other-unit")]
+    [InlineData("other-tenant", "selected-unit")]
+    public async Task DequeueRejectsMisaddressedModernPayloadWithoutMutation(string payloadTenant, string payloadUnit)
+    {
+        IDatabase db = CreateDatabase();
+        db.SortedSetRangeByRankAsync(Arg.Any<RedisKey>(), 0, 9, Order.Ascending, Arg.Any<CommandFlags>()).Returns(["selected-unit"]);
+        db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns([FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(CreateRecord(payloadUnit, 10) with { TenantId = payloadTenant })]);
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => CreateRegistry(db).DequeueBatchAsync("tenant-a", 10, TestContext.Current.CancellationToken));
+        error.Message.ShouldBe("nl-retry-payload-scope");
+        await db.DidNotReceive().ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("nl-retry-atomic-move-v3", StringComparison.Ordinal)
+            || script.Contains("nl-retry-observed-prune-v1", StringComparison.Ordinal)), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>());
+    }
+
+    /// <summary>
+    /// Verifies alias Lineage Requires All Immutable Admission Fields.
+    /// </summary>
+    [Fact]
+    public void AliasLineageRequiresAllImmutableAdmissionFields()
+    {
+        var record = CreateRecord("unit", 10);
+        FailedNaturalLanguageEmbeddingRegistry.SameLineage(record, record with { Attempts = 9 }).ShouldBeTrue();
+        FailedNaturalLanguageEmbeddingRegistry.SameLineage(record, record with { TruncatedRawJsonPayload = "different" }).ShouldBeFalse();
+        FailedNaturalLanguageEmbeddingRegistry.SameLineage(record, record with { QueuedAtTicks = 11 }).ShouldBeFalse();
+        FailedNaturalLanguageEmbeddingRegistry.SameLineage(record, record with { CaseId = "different" }).ShouldBeFalse();
+    }
+
     private static FailedNaturalLanguageEmbeddingRegistry CreateRegistry(
         IDatabase db,
         NaturalLanguageDescriptionOptions? options = null)
@@ -440,6 +469,8 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
         ITransaction tx = Substitute.For<ITransaction>();
         tx.ExecuteAsync(Arg.Any<CommandFlags>()).Returns(true);
         db.CreateTransaction(Arg.Any<object?>()).Returns(tx);
+        db.SortedSetScoreAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue>(), Arg.Any<CommandFlags>()).Returns(10d);
+        db.HashGetAsync(Arg.Any<RedisKey>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>()).Returns(call => new RedisValue[call.Arg<RedisValue[]>().Length]);
         db.SortedSetRangeByRankAsync(
             Arg.Any<RedisKey>(),
             Arg.Any<long>(),
@@ -447,6 +478,23 @@ public class FailedNaturalLanguageEmbeddingRegistryTests
             Arg.Any<Order>(),
             Arg.Any<CommandFlags>())
             .Returns([]);
+        // Existing unit fixtures describe the queue contents; return that state as one selected Redis snapshot.
+        db.ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("nl-retry-observed-selection-v1", StringComparison.Ordinal)),
+            Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>()).Returns(async call =>
+        {
+            RedisKey[] keys = call.Arg<RedisKey[]>();
+            RedisValue[] args = call.Arg<RedisValue[]>();
+            RedisValue[] members = await db.SortedSetRangeByRankAsync(keys[0], 0, (long)args[0] - 1, Order.Ascending);
+            RedisValue[] payloads = await db.HashGetAsync(keys[1], members);
+            List<RedisResult> snapshot = [];
+            for (int i = 0; i < members.Length; i++)
+            {
+                snapshot.Add(RedisResult.Create(members[i]));
+                snapshot.Add(RedisResult.Create((RedisValue)(await db.SortedSetScoreAsync(keys[0], members[i]) ?? 10)));
+                snapshot.Add(RedisResult.Create(payloads[i]));
+            }
+            return RedisResult.Create(snapshot.ToArray());
+        });
         return db;
     }
 

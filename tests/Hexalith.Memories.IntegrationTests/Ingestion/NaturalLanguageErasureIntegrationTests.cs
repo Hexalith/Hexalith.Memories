@@ -178,8 +178,11 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         (await db.StringGetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant))).ToString().ShouldBe("malformed-destination");
     }
 
+    /// <summary>
+    /// Verifies mixed Distinct Legacy Alias Preserves Modern Progress And Remains For Reconciliation.
+    /// </summary>
     [Fact]
-    public async Task MixedLegacyAliasRetiresWithoutReplacingModernPayloadAndBatchSizeOneMakesProgress()
+    public async Task MixedDistinctLegacyAliasPreservesModernProgressAndRemainsForReconciliation()
     {
         var token = TestContext.Current.CancellationToken;
         string tenant = "mixed-alias-" + Guid.NewGuid().ToString("N");
@@ -189,7 +192,8 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         await registry.EnqueueAsync(modern, token);
         string alias = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(modern with { QueuedAtTicks = 1, TruncatedRawJsonPayload = "old-content" });
         await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), alias, 1);
-        (await registry.DequeueBatchAsync(tenant, 1, token)).ShouldBeEmpty();
+        (await registry.DequeueBatchAsync(tenant, 1, token)).ShouldHaveSingleItem().ShouldBe(modern);
+        (await db.SortedSetScoreAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), alias)).ShouldBe(1);
         (await registry.DequeueBatchAsync(tenant, 1, token)).ShouldHaveSingleItem().ShouldBe(modern);
         (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim")).ToString()
             .ShouldBe(FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(modern));
@@ -448,11 +452,17 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         (await db.HashLengthAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant))).ShouldBe(2);
     }
 
+    /// <summary>
+    /// Verifies admitted Modern And Json Only Legacy Retries Persist Actual Natural Language Output.
+    /// </summary>
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public async Task AdmittedModernAndJsonOnlyLegacyRetriesPersistActualNaturalLanguageOutput(bool legacy, bool removeDuringDescription)
+    [InlineData(false, false, false, false, false)]
+    [InlineData(true, false, false, false, false)]
+    [InlineData(false, true, false, false, false)]
+    [InlineData(false, false, true, false, false)]
+    [InlineData(false, false, false, true, false)]
+    [InlineData(false, false, false, false, true)]
+    public async Task AdmittedModernAndJsonOnlyLegacyRetriesPersistActualNaturalLanguageOutput(bool legacy, bool removeDuringDescription, bool replaceAtReadiness, bool eraseAtReadiness, bool noncanonical)
     {
         string tenant = "nl-admitted-" + Guid.NewGuid().ToString("N");
         var token = TestContext.Current.CancellationToken;
@@ -469,6 +479,9 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         var record = Record(tenant, unit) with { EmbeddingDimensions = config.Dimensions, EmbeddingModel = config.Model };
         if (legacy) await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record), 1);
         else await registry.EnqueueAsync(record, token);
+        if (noncanonical)
+            await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit,
+                FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record).Replace(",", ",\n  ", StringComparison.Ordinal));
         (await registry.DequeueBatchAsync(tenant, 10, token)).ShouldHaveSingleItem().ShouldBe(record);
         (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).HasValue.ShouldBeTrue();
         var conversation = Substitute.For<DaprConversationClient>(null!, new HttpClient(), null!);
@@ -487,12 +500,36 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         actors.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(limiter);
         var provider = Substitute.For<ITenantEmbeddingConfigProvider>();
         provider.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(config);
+        var readiness = Substitute.For<ITenantIndexReadinessVerifier>();
+        readiness.EnsureReadyAsync(Arg.Any<IDatabase>(), tenant, TenantIndexFamily.NaturalLanguageSemantic, config.Dimensions, Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                await new TenantIndexReadinessVerifier(NullLogger<TenantIndexReadinessVerifier>.Instance).EnsureReadyAsync(db, tenant, TenantIndexFamily.NaturalLanguageSemantic, config.Dimensions, token);
+                if (replaceAtReadiness)
+                {
+                    await registry.EnqueueAsync(record with { TruncatedRawJsonPayload = "newer-payload", QueuedAtTicks = 2 }, token);
+                    await db.HashSetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit), "naturalLanguageDescription", "newer-output");
+                }
+                if (eraseAtReadiness) await FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(db, tenant, unit, token);
+            });
         using var services = new ServiceCollection().AddLogging().AddKeyedSingleton<IConnectionMultiplexer>("redis", redis.Connection)
+            .AddSingleton(readiness)
             .AddSingleton(conversation).AddSingleton(Options.Create(new NaturalLanguageDescriptionOptions()))
             .AddSingleton(embedding).AddSingleton(actors).AddSingleton(provider).AddSingleton(Substitute.For<IJitterSource>()).BuildServiceProvider();
         var activity = new RetryNaturalLanguageEmbeddingActivity(redis.Connection, services);
         var input = new NaturalLanguageEmbeddingRetryInput(tenant, unit, string.Empty, record.EventType, null, "case", config.Provider, config.Model, config.Dimensions);
-        (await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input)).Indexed.ShouldBe(!removeDuringDescription);
+        (await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input)).Indexed.ShouldBe(!removeDuringDescription && !replaceAtReadiness && !eraseAtReadiness);
+        if (replaceAtReadiness || eraseAtReadiness)
+        {
+            if (replaceAtReadiness)
+            {
+                (await db.HashGetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit), "naturalLanguageDescription")).ToString().ShouldBe("newer-output");
+                (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).ToString().ShouldContain("newer-payload");
+            }
+            else (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit))).ShouldBeFalse();
+            (await db.HashGetAsync(unrelated, "naturalLanguageDescription")).ToString().ShouldBe("unrelated-content");
+            return;
+        }
         if (removeDuringDescription)
         {
             _ = embedding.DidNotReceiveWithAnyArgs().GenerateAsync(default!, default!, default!, default);
@@ -504,8 +541,346 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
             .ToString().ShouldBe("A retained business action occurred.");
         ((byte[]?)(await db.HashGetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit), "embedding")))!.Length.ShouldBe(config.Dimensions * sizeof(float));
         (await db.HashGetAsync(unrelated, "naturalLanguageDescription")).ToString().ShouldBe("unrelated-content");
+        if (noncanonical)
+        {
+            await registry.CompleteAsync(record, token);
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).HasValue.ShouldBeFalse();
+        }
         await db.KeyDeleteAsync(syntactic);
         (await activity.RunAsync(Substitute.For<WorkflowActivityContext>(), input)).Indexed.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Verifies observed Pruning Preserves Concurrent Live And Dead Replacement.
+    /// </summary>
+    [Theory]
+    [InlineData(false, "payload")]
+    [InlineData(false, "score")]
+    [InlineData(false, "membership")]
+    [InlineData(true, "payload")]
+    [InlineData(true, "score")]
+    [InlineData(true, "membership")]
+    public async Task ObservedPruningPreservesConcurrentLiveAndDeadReplacement(bool dead, string changed)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "observed-prune-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        string queue = dead ? FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant) : FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant);
+        string payloads = dead ? FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant) : FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant);
+        var record = Record(tenant, "victim");
+        string observed = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record);
+        await db.SortedSetAddAsync(queue, "victim", 1);
+        await db.HashSetAsync(payloads, "victim", observed);
+        if (changed == "payload") await db.HashSetAsync(payloads, "victim", FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record with { TruncatedRawJsonPayload = "newer" }));
+        if (changed == "score") await db.SortedSetAddAsync(queue, "victim", 2);
+        if (changed == "membership") await db.SortedSetRemoveAsync(queue, "victim");
+        RedisValue before = await db.HashGetAsync(payloads, "victim");
+        (await FailedNaturalLanguageEmbeddingRegistry.RemoveObservedAsync(db, tenant, queue, payloads, "victim", observed, 1, token)).ShouldBeFalse();
+        using var restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        (await restarted.GetDatabase().HashGetAsync(payloads, "victim")).ShouldBe(before);
+        (await db.SortedSetScoreAsync(queue, "victim")).ShouldBe(changed == "membership" ? null : changed == "score" ? 2d : 1d);
+    }
+
+    /// <summary>
+    /// Verifies misaddressed Modern Payloads Cannot Retry Or Overflow Another Unit.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MisaddressedModernPayloadsCannotRetryOrOverflowAnotherUnit(bool foreignTenant)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "misaddressed-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        var payload = Record(foreignTenant ? tenant + "-foreign" : tenant, "other-unit");
+        string bytes = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(payload);
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), "selected-unit", 1);
+        await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "selected-unit", bytes);
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance,
+            Options.Create(new NaturalLanguageDescriptionOptions { LiveRetryQueueMaxEntries = 1 }));
+        (await Should.ThrowAsync<InvalidOperationException>(() => registry.DequeueBatchAsync(tenant, 10, token))).Message.ShouldBe("nl-retry-payload-scope");
+        (await Should.ThrowAsync<InvalidOperationException>(() => registry.EnqueueAsync(Record(tenant, "survivor") with { QueuedAtTicks = 2 }, token))).Message.ShouldBe("nl-retry-payload-scope");
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "selected-unit")).ToString().ShouldBe(bytes);
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant), "other-unit")).HasValue.ShouldBeFalse();
+        (await db.SortedSetScoreAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), "selected-unit")).ShouldBe(1);
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "survivor")).HasValue.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Verifies modern First Completion Retires Verified Aliases But Distinct Legacy Work Remains Blocked After Restart.
+    /// </summary>
+    [Fact]
+    public async Task ModernFirstCompletionRetiresVerifiedAliasesButDistinctLegacyWorkRemainsBlockedAfterRestart()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "modern-first-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        var record = Record(tenant, "0-victim");
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+        await registry.EnqueueAsync(record, token);
+        string alias = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record with { Attempts = 3 });
+        string distinct = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record with { TruncatedRawJsonPayload = "distinct-payload" });
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), [new(alias, 1), new(distinct, 1)]);
+        (await registry.DequeueBatchAsync(tenant, 1, token)).ShouldHaveSingleItem().ShouldBe(record);
+        await registry.CompleteAsync(record, token);
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), record.MemoryUnitId)).HasValue.ShouldBeFalse();
+        (await db.SortedSetScoreAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), alias)).ShouldBeNull();
+        (await db.SortedSetScoreAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), distinct)).ShouldBe(1);
+        using var restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        var restored = new FailedNaturalLanguageEmbeddingRegistry(restarted, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+        (await Should.ThrowAsync<RedisServerException>(() => restored.DequeueBatchAsync(tenant, 10, token))).Message.ShouldContain("nl-retry-legacy-lineage-reconciliation-required");
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), record.MemoryUnitId)).HasValue.ShouldBeFalse();
+        (await db.SortedSetScoreAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), distinct)).ShouldBe(1);
+        (await db.SetContainsAsync(RetryWorkflowHistory.Units(tenant), record.MemoryUnitId)).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Verifies same Unit Scheduler Lease Serializes Attempts And Stale Acknowledgement Cannot Clear New Authority.
+    /// </summary>
+    [Fact]
+    public async Task SameUnitSchedulerLeaseSerializesAttemptsAndStaleAcknowledgementCannotClearNewAuthority()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "schedule-lease-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        string first = (await RetryWorkflowHistory.BeginAsync(db, tenant, "victim", token)).ShouldNotBeNull();
+        (await RetryWorkflowHistory.BeginAsync(db, tenant, "victim", token)).ShouldBeNull();
+        (await db.HashLengthAsync(RetryWorkflowHistory.Scheduling(tenant))).ShouldBe(1);
+        using var restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        (await RetryWorkflowHistory.BeginAsync(restarted.GetDatabase(), tenant, "victim", token)).ShouldBeNull();
+        await RetryWorkflowHistory.AcknowledgeAsync(db, tenant, "victim", "foreign-authority", token);
+        (await db.HashGetAsync(RetryWorkflowHistory.Scheduling(tenant), first)).ToString().ShouldBe("victim");
+        await RetryWorkflowHistory.AcknowledgeAsync(db, tenant, "victim", first, token);
+        string second = (await RetryWorkflowHistory.BeginAsync(db, tenant, "victim", token)).ShouldNotBeNull();
+        second.ShouldNotBe(first);
+        await RetryWorkflowHistory.AcknowledgeAsync(db, tenant, "victim", first, token);
+        (await db.HashGetAsync(RetryWorkflowHistory.Scheduling(tenant), second)).ToString().ShouldBe("victim");
+        (await Should.ThrowAsync<InvalidOperationException>(() => FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(db, tenant, "victim", token)))
+            .Message.ShouldBe("nl-retry-scheduling-unresolved");
+        (await Should.ThrowAsync<InvalidOperationException>(() => RetryWorkflowHistory.PurgeTenantAsync(db, null, tenant, false, token)))
+            .Message.ShouldBe("nl-retry-scheduling-unresolved");
+        await RetryWorkflowHistory.AcknowledgeAsync(db, tenant, "victim", second, token);
+        await FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(db, tenant, "victim", token);
+        (await db.HashLengthAsync(RetryWorkflowHistory.Scheduling(tenant))).ShouldBe(0);
+        (await db.KeyExistsAsync(RetryWorkflowHistory.Lease(tenant, "victim"))).ShouldBeFalse();
+        (await RetryWorkflowHistory.BeginAsync(db, tenant, "victim", token)).ShouldBeNull();
+    }
+
+    /// <summary>
+    /// Verifies actual Queue Maintenance Preserves ASelection Changed At Its Final Redis Command.
+    /// </summary>
+    [Theory]
+    [InlineData("overflow", "payload")]
+    [InlineData("overflow", "score")]
+    [InlineData("overflow", "membership")]
+    [InlineData("corrupt", "payload")]
+    [InlineData("corrupt", "score")]
+    [InlineData("corrupt", "membership")]
+    [InlineData("dead", "payload")]
+    [InlineData("dead", "score")]
+    [InlineData("dead", "membership")]
+    public async Task ActualQueueMaintenancePreservesASelectionChangedAtItsFinalRedisCommand(string operation, string changed)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "maintenance-race-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        bool dead = operation == "dead";
+        string queue = dead ? FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant) : FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant);
+        string payloads = dead ? FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant) : FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant);
+        var old = Record(tenant, "old");
+        string bytes = operation == "corrupt" ? "malformed-json" : FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(old);
+        await db.SortedSetAddAsync(queue, "old", 1);
+        await db.HashSetAsync(payloads, "old", bytes);
+        bool entered = false;
+        RedisValue retained = RedisValue.Null;
+        IDatabase intercepted = RetryDatabaseInterception.Create(db,
+            (script, values) => !entered && (operation == "overflow" ? script.Contains("nl-retry-atomic-move-v3", StringComparison.Ordinal) && values[2] == "overflow"
+                : script.Contains("nl-retry-observed-prune-v1", StringComparison.Ordinal)),
+            async () =>
+            {
+                entered = true;
+                if (changed == "payload") await db.HashSetAsync(payloads, "old", FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(old with { TruncatedRawJsonPayload = "replacement" }));
+                if (changed == "score") await db.SortedSetAddAsync(queue, "old", 999);
+                if (changed == "membership") await db.SortedSetRemoveAsync(queue, "old");
+                retained = await db.HashGetAsync(payloads, "old");
+            });
+        var connection = Substitute.For<IConnectionMultiplexer>();
+        connection.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(intercepted);
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance,
+            Options.Create(new NaturalLanguageDescriptionOptions { LiveRetryQueueMaxEntries = 1, DeadRetryQueueMaxEntries = 1 }));
+        var fresh = Record(tenant, "fresh") with { QueuedAtTicks = 2 };
+        await registry.EnqueueAsync(fresh, token);
+        if (dead) await registry.IncrementAttemptsAsync(fresh, 1, token);
+        entered.ShouldBeTrue();
+        using var restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        (await restarted.GetDatabase().HashGetAsync(payloads, "old")).ShouldBe(retained);
+        (await db.SortedSetScoreAsync(queue, "old")).ShouldBe(changed == "membership" ? null : changed == "score" ? 999d : 1d);
+        if (!dead) (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant), "old")).HasValue.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Verifies malformed Legacy Pruning Retains Only AContent Free Reconciliation Obligation.
+    /// </summary>
+    [Fact]
+    public async Task MalformedLegacyPruningRetainsOnlyAContentFreeReconciliationObligation()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "malformed-legacy-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        string malformed = "{\"tenantId\":\"" + tenant + "\",\"truncatedRawJsonPayload\":\"synthetic-private-content\"}";
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), malformed, 1);
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+        (await registry.DequeueBatchAsync(tenant, 10, token)).ShouldBeEmpty();
+        (await db.SortedSetLengthAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant))).ShouldBe(0);
+        (await db.SetMembersAsync(RetryWorkflowHistory.Units(tenant))).ShouldBeEmpty();
+        (await db.StringGetAsync(RetryWorkflowHistory.Unresolved(tenant))).ToString().ShouldBe("1");
+        await db.StringSetAsync(RetryWorkflowHistory.Coverage(tenant), RetryWorkflowHistory.ReconciledCoverage);
+        (await Should.ThrowAsync<InvalidOperationException>(() => RetryWorkflowHistory.PurgeTenantAsync(db, null, tenant, false, token)))
+            .Message.ShouldBe("nl-retry-history-owner-reconciliation-required");
+    }
+
+    /// <summary>
+    /// Verifies atomic Selection Protects Refresh Before The Former Payload And Score Reads.
+    /// </summary>
+    [Theory]
+    [InlineData("overflow")]
+    [InlineData("corrupt")]
+    [InlineData("dead")]
+    public async Task AtomicSelectionProtectsRefreshBeforeTheFormerPayloadAndScoreReads(string operation)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "selection-race-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        bool dead = operation == "dead";
+        string queue = dead ? FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant) : FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant);
+        string payloads = dead ? FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant) : FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant);
+        var old = Record(tenant, "old");
+        await db.SortedSetAddAsync(queue, "old", 1);
+        await db.HashSetAsync(payloads, "old", operation == "corrupt" ? "invalid-json" : FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(old));
+        string replacement = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(old with { TruncatedRawJsonPayload = "newer", QueuedAtTicks = 999 });
+        bool refreshed = false;
+        IDatabase intercepted = RetryDatabaseInterception.Create(db,
+            (script, _) => !refreshed && script.Contains("nl-retry-observed-selection-v1", StringComparison.Ordinal),
+            () => Task.CompletedTask,
+            after: async () =>
+            {
+                refreshed = true;
+                await db.HashSetAsync(payloads, "old", replacement);
+                await db.SortedSetAddAsync(queue, "old", 999);
+            });
+        var connection = Substitute.For<IConnectionMultiplexer>();
+        connection.GetDatabase(Arg.Any<int>(), Arg.Any<object>()).Returns(intercepted);
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance,
+            Options.Create(new NaturalLanguageDescriptionOptions { LiveRetryQueueMaxEntries = 1, DeadRetryQueueMaxEntries = 1 }));
+        var fresh = Record(tenant, "fresh") with { QueuedAtTicks = 2 };
+        await registry.EnqueueAsync(fresh, token);
+        if (dead) await registry.IncrementAttemptsAsync(fresh, 1, token);
+        refreshed.ShouldBeTrue();
+        (await db.HashGetAsync(payloads, "old")).ToString().ShouldBe(replacement);
+        (await db.SortedSetScoreAsync(queue, "old")).ShouldBe(999);
+        (await db.KeyExistsAsync(RetryWorkflowHistory.Unresolved(tenant))).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Verifies rejected Corrupt Prune Does Not Install An Unresolved History Marker.
+    /// </summary>
+    [Fact]
+    public async Task RejectedCorruptPruneDoesNotInstallAnUnresolvedHistoryMarker()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "rejected-prune-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        var record = Record(tenant, "victim");
+        string replacement = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record);
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), "victim", 1);
+        await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim", replacement);
+        (await FailedNaturalLanguageEmbeddingRegistry.RemoveObservedAsync(db, tenant, FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant),
+            FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim", "old-corrupt-json", 1, token)).ShouldBeFalse();
+        (await db.KeyExistsAsync(RetryWorkflowHistory.Unresolved(tenant))).ShouldBeFalse();
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "victim")).ToString().ShouldBe(replacement);
+    }
+
+    /// <summary>
+    /// Verifies unit Purge Capacity Is Atomic And Existing Units Remain Idempotent Without Losing Fences.
+    /// </summary>
+    [Fact]
+    public async Task UnitPurgeCapacityIsAtomicAndExistingUnitsRemainIdempotentWithoutLosingFences()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "history-capacity-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        await db.SetAddAsync(RetryWorkflowHistory.Units(tenant), Enumerable.Range(0, TenantIngestionOwnership.Capacity - 1).Select(i => (RedisValue)("unit-" + i)).ToArray());
+        await FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(db, tenant, "boundary", token);
+        (await db.SetLengthAsync(RetryWorkflowHistory.Units(tenant))).ShouldBe(TenantIngestionOwnership.Capacity);
+        await FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(db, tenant, "boundary", token);
+        string bytes = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(Record(tenant, "excess"));
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), "excess", 1);
+        await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "excess", bytes);
+        (await Should.ThrowAsync<RedisServerException>(() => FailedNaturalLanguageEmbeddingRegistry.PurgeUnitAsync(db, tenant, "excess", token)))
+            .Message.ShouldContain("nl-retry-history-capacity");
+        (await db.KeyExistsAsync(SourcePublicationVisibility.Tombstone(tenant, "excess"))).ShouldBeTrue();
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), "excess")).ToString().ShouldBe(bytes);
+        (await db.SetLengthAsync(RetryWorkflowHistory.Units(tenant))).ShouldBe(TenantIngestionOwnership.Capacity);
+        (await db.SetContainsAsync(RetryWorkflowHistory.Units(tenant), "excess")).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Verifies tenant Purge Validates Many Units With Only One Scan Of Each Queue And Hash.
+    /// </summary>
+    [Fact]
+    public async Task TenantPurgeValidatesManyUnitsWithOnlyOneScanOfEachQueueAndHash()
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "linear-tenant-purge-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        await db.StringSetAsync(RetryWorkflowHistory.Coverage(tenant), RetryWorkflowHistory.ReconciledCoverage);
+        for (int i = 0; i < 128; i++)
+        {
+            string unit = "unit-" + i;
+            await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), unit, i);
+            await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit, FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(Record(tenant, unit)));
+        }
+        int queueScans = 0, hashScans = 0;
+        var intercepted = RetryDatabaseInterception.Create(db, (_, _) => false, () => Task.CompletedTask,
+            observe: method => { if (method == nameof(IDatabase.SortedSetScanAsync)) queueScans++; if (method == nameof(IDatabase.HashScanAsync)) hashScans++; });
+        await RetryWorkflowHistory.PurgeTenantAsync(intercepted, Substitute.For<IDaprWorkflowClient>(), tenant, false, token);
+        queueScans.ShouldBe(2);
+        hashScans.ShouldBe(2);
+        (await db.SetLengthAsync(RetryWorkflowHistory.Units(tenant))).ShouldBe(128);
+        (await db.KeyExistsAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant))).ShouldBeFalse();
+        (await db.KeyExistsAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant))).ShouldBeFalse();
+        (await db.KeyExistsAsync(SourcePublicationVisibility.Tombstone(tenant, "unit-127"))).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Verifies completion Preserves Historical Aliases With Unknown Or Duplicate Admission Metadata.
+    /// </summary>
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("duplicate")]
+    [InlineData("conflicting")]
+    public async Task CompletionPreservesHistoricalAliasesWithUnknownOrDuplicateAdmissionMetadata(string shape)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "ambiguous-alias-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        var record = Record(tenant, "0-victim");
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+        await registry.EnqueueAsync(record, token);
+        string alias = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record with { Attempts = 3 });
+        alias = shape switch
+        {
+            "unknown" => alias[..^1] + ",\"futureAdmissionVersion\":\"unrecognized\"}",
+            "duplicate" => alias[..^1] + ",\"memoryUnitId\":\"0-victim\"}",
+            _ => "{\"memoryUnitId\":\"other-unit\"," + alias[1..],
+        };
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), alias, 1);
+        await registry.CompleteAsync(record, token);
+        (await db.SortedSetScoreAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), alias)).ShouldBe(1);
+        (await db.SortedSetRangeByRankAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant))).ShouldContain((RedisValue)alias);
+        (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), record.MemoryUnitId)).HasValue.ShouldBeFalse();
+        await Should.ThrowAsync<InvalidOperationException>(() => registry.DequeueBatchAsync(tenant, 10, token));
+        (await db.SortedSetScoreAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), alias)).ShouldBe(1);
     }
 
     private static HashEntry[] Fields(string unit, string content) => [new("memoryUnitId", unit), new("caseId", "case"), new("embedding", new byte[] { 1, 0, 0, 0 }), new("naturalLanguageDescription", content)];

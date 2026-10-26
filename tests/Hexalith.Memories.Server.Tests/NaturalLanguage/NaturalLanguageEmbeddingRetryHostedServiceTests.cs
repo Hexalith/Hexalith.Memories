@@ -127,6 +127,28 @@ public class NaturalLanguageEmbeddingRetryHostedServiceTests
             records[1], Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// Verifies tenant Isolation Does Not Swallow Caller Cancellation.
+    /// </summary>
+    [Fact]
+    public async Task TenantIsolationDoesNotSwallowCallerCancellation()
+    {
+        using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var registry = Substitute.For<IFailedNaturalLanguageEmbeddingRegistry>();
+        registry.ListTenantsWithBacklogAsync(Arg.Any<CancellationToken>()).Returns(_ => OneTenant());
+        registry.GetBacklogCountAsync("tenant-a", Arg.Any<CancellationToken>()).Returns(1L);
+        registry.DequeueBatchAsync("tenant-a", Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            cancelled.Cancel();
+            return Task.FromCanceled<IReadOnlyList<FailedNaturalLanguageEmbeddingRecord>>(cancelled.Token);
+        });
+        var options = new NaturalLanguageDescriptionOptions { RetryWorkerEnabled = true };
+        var monitor = Substitute.For<IOptionsMonitor<NaturalLanguageDescriptionOptions>>(); monitor.CurrentValue.Returns(options);
+        var worker = new NaturalLanguageEmbeddingRetryHostedService(registry, Substitute.For<IDaprWorkflowClient>(), monitor,
+            NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance);
+        await Should.ThrowAsync<OperationCanceledException>(() => worker.TickAsync(options, cancelled.Token));
+    }
+
     private static FailedNaturalLanguageEmbeddingRecord Record(string memoryUnitId)
         => new("tenant-a", memoryUnitId, "{}", "event", null, "case-a", "provider", "model", 3, 1, 0);
 

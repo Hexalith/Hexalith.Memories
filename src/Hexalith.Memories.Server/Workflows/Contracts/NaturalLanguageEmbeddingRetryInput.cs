@@ -26,4 +26,8 @@ public sealed record NaturalLanguageEmbeddingRetryInput(
     string CaseId,
     string EmbeddingProvider,
     string EmbeddingModel,
-    int EmbeddingDimensions);
+    int EmbeddingDimensions)
+{
+    /// <summary>Gets the content-free digest binding a scheduled attempt to its exact persisted retry payload.</summary>
+    public string? PayloadVersion { get; init; }
+}

@@ -21,6 +21,29 @@ internal static class RetryWorkflowErasure
             tenant, unit, true, legacySchedulersDrained, token).ConfigureAwait(false);
     }
 
+    /// <summary>Retires a terminal scoped execution while the caller holds the durable scheduler lease.</summary>
+    internal static async Task PurgeScopedAsync(IDaprWorkflowClient client, string tenant, string unit, WorkflowState observed, CancellationToken token)
+    {
+        string id = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, unit);
+        if (!observed.Exists || !NaturalLanguageEmbeddingRetryHostedService.IsTerminalStatus(observed.RuntimeStatus))
+            throw new InvalidOperationException("nl-retry-workflow-instance-changed");
+        var expectedScope = ReadScope(observed);
+        if (expectedScope.Tenant != tenant || expectedScope.Unit != unit)
+            throw new InvalidOperationException("nl-retry-workflow-scope-mismatch");
+        WorkflowState? current = await client.GetWorkflowStateAsync(id, true, token).ConfigureAwait(false);
+        if (current is null || !current.Exists) return;
+        var actualScope = ReadScope(current);
+        if (current.CreatedAt != observed.CreatedAt || actualScope != expectedScope
+            || !NaturalLanguageEmbeddingRetryHostedService.IsTerminalStatus(current.RuntimeStatus)
+            || current.ReadInputAs<JsonElement>().GetRawText() != observed.ReadInputAs<JsonElement>().GetRawText())
+            throw new InvalidOperationException("nl-retry-workflow-instance-changed");
+        // Registered schedulers hold their durable lease through this operation. Dapr exposes no
+        // execution-conditional purge, so out-of-band mutations cannot join this cooperative guarantee.
+        await client.PurgeInstanceAsync(id, token).ConfigureAwait(false);
+        if (await client.GetWorkflowStateAsync(id, true, token).ConfigureAwait(false) is { Exists: true })
+            throw new InvalidOperationException("nl-retry-workflow-purge-unconfirmed");
+    }
+
     private static async Task PurgeAddressAsync(
         IDaprWorkflowClient client, string id, string tenant, string unit, bool legacy, bool legacySchedulersDrained, CancellationToken token)
     {
@@ -78,7 +101,7 @@ internal static class RetryWorkflowErasure
         }
     }
 
-    private static (string Tenant, string Unit) ReadScope(WorkflowState state)
+    internal static (string Tenant, string Unit) ReadScope(WorkflowState state)
     {
         try
         {

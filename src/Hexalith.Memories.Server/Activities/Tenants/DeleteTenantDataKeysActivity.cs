@@ -11,6 +11,8 @@ using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Infrastructure;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.NaturalLanguage;
+using Microsoft.Extensions.Options;
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -23,6 +25,8 @@ public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<Tena
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly IWorkflowPayloadStore? _payloadStore;
+    private readonly IDaprWorkflowClient? _workflowClient;
+    private readonly bool _legacySchedulersDrained;
     private readonly IAggregateCaseMappingStore _aggregateCaseMappingStore;
     private readonly IObservedEventTypeStore _observedEventTypeStore;
     private readonly IHostApplicationLifetime _hostApplicationLifetime;
@@ -56,7 +60,27 @@ public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<Tena
         IHostApplicationLifetime hostApplicationLifetime,
         ILogger<DeleteTenantDataKeysActivity> logger,
         IWorkflowPayloadStore? payloadStore)
+        : this(redis, aggregateCaseMappingStore, observedEventTypeStore, hostApplicationLifetime, logger, payloadStore, null, null)
     {
+    }
+
+    /// <summary>Initializes tenant cleanup with scoped workflow history reconciliation.</summary>
+    /// <param name="redis">The Redis connection.</param>
+    /// <param name="aggregateCaseMappingStore">The mapping store.</param>
+    /// <param name="observedEventTypeStore">The observation store.</param>
+    /// <param name="hostApplicationLifetime">The host cancellation source.</param>
+    /// <param name="logger">The activity logger.</param>
+    /// <param name="payloadStore">The claim-check adapter.</param>
+    /// <param name="workflowClient">The authoritative Dapr workflow client.</param>
+    /// <param name="retryOptions">Legacy scheduler drain evidence.</param>
+    [ActivatorUtilitiesConstructor]
+    public DeleteTenantDataKeysActivity([FromKeyedServices("redis")] IConnectionMultiplexer redis,
+        IAggregateCaseMappingStore aggregateCaseMappingStore, IObservedEventTypeStore observedEventTypeStore,
+        IHostApplicationLifetime hostApplicationLifetime, ILogger<DeleteTenantDataKeysActivity> logger,
+        IWorkflowPayloadStore? payloadStore, IDaprWorkflowClient? workflowClient, IOptions<NaturalLanguageDescriptionOptions>? retryOptions)
+    {
+        _workflowClient = workflowClient;
+        _legacySchedulersDrained = retryOptions?.Value.LegacyRetrySchedulersDrainedForErasure == true;
         _redis = redis;
         _payloadStore = payloadStore;
         _aggregateCaseMappingStore = aggregateCaseMappingStore;
@@ -70,6 +94,7 @@ public sealed partial class DeleteTenantDataKeysActivity : WorkflowActivity<Tena
     {
         ArgumentNullException.ThrowIfNull(input);
         CancellationToken cancellationToken = _hostApplicationLifetime.ApplicationStopping;
+        await RetryWorkflowHistory.PurgeTenantAsync(_redis.GetDatabase(), _workflowClient, input.TenantId, _legacySchedulersDrained, cancellationToken).ConfigureAwait(false);
         await TenantIngestionOwnership.PurgeAsync(_redis, input.TenantId, _payloadStore, cancellationToken).ConfigureAwait(false);
         IDatabase db = _redis.GetDatabase();
         IServer server = _redis.GetServers().FirstOrDefault(static s => s.IsConnected)

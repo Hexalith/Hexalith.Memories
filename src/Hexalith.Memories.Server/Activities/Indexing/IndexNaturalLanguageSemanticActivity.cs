@@ -48,6 +48,13 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowTraceLinkedAc
     protected override async Task<IndexResult> RunActivityAsync(
         WorkflowActivityContext context,
         NaturalLanguageIndexInput input)
+        => await IndexAsync(input, null).ConfigureAwait(false);
+
+    /// <summary>Publishes retry output only while its exact persisted payload remains current.</summary>
+    internal Task<IndexResult> RunRetryAsync(NaturalLanguageIndexInput input, string expectedPayload)
+        => RunLinkedAsync(input, () => IndexAsync(input, expectedPayload));
+
+    private async Task<IndexResult> IndexAsync(NaturalLanguageIndexInput input, string? expectedPayload)
     {
         ArgumentNullException.ThrowIfNull(input);
         TenantIdGuard.Validate(input.TenantId);
@@ -109,7 +116,7 @@ public sealed class IndexNaturalLanguageSemanticActivity : WorkflowTraceLinkedAc
             new HashEntry("embeddingDimensions", input.EmbeddingDimensions),
         ];
 
-        await SourcePublicationVisibility.WriteAsync(db, input.TenantId, input.MemoryUnitId, hashKey, [.. hashEntries], input.SourceInventoryTracked).ConfigureAwait(false);
+        await SourcePublicationVisibility.WriteAsync(db, input.TenantId, input.MemoryUnitId, hashKey, [.. hashEntries], input.SourceInventoryTracked, expectedRetryPayload: expectedPayload).ConfigureAwait(false);
 
         _logger.LogInformation(
             "Indexed memory unit {MemoryUnitId} in NL semantic index for tenant {TenantId}",

@@ -6,6 +6,8 @@
 namespace Hexalith.Memories.Server.Tests.Activities.Indexing;
 
 using Dapr.Workflow;
+using System.Diagnostics;
+using Hexalith.Memories.Telemetry;
 
 using Hexalith.Memories.Contracts.V1;
 using Hexalith.Memories.Server.Activities.Indexing;
@@ -181,6 +183,49 @@ public class IndexNaturalLanguageSemanticActivityTests
 
         ex.Message.ShouldContain("does not match the expected tenant schema");
         ex.Message.ShouldContain("expected 3 dimensions but found 99");
+    }
+
+    /// <summary>
+    /// Verifies retry Uses Linked Span And Preserves Success Or Error Tags.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RetryUsesLinkedSpanAndPreservesSuccessOrErrorTags(bool fail)
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        var redis = CreateMockMultiplexer(db);
+        var input = CreateInput() with
+        {
+            MemoryUnitId = "traced-retry-" + Guid.NewGuid().ToString("N"),
+            TraceContext = new WorkflowTraceContext { TraceParent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" },
+        };
+        if (fail)
+            db.ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("source-publication-write-v1", StringComparison.Ordinal)),
+                Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>()).Returns(RedisResult.Create(0L));
+        List<Activity> stopped = [];
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == MemoriesActivitySource.SourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.GetTagItem(MemoriesActivitySource.TagMemoryUnitId) as string == input.MemoryUnitId) stopped.Add(activity);
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+        var activity = new IndexNaturalLanguageSemanticActivity(redis, Substitute.For<ILogger<IndexNaturalLanguageSemanticActivity>>());
+        if (fail) await Should.ThrowAsync<Hexalith.Memories.Server.NaturalLanguage.RetryPublicationRejectedException>(() => activity.RunRetryAsync(input, "observed-payload"));
+        else await activity.RunRetryAsync(input, "observed-payload");
+        Activity emitted = stopped.ShouldHaveSingleItem();
+        emitted.GetTagItem(MemoriesActivitySource.TagOperation).ShouldBe(nameof(IndexNaturalLanguageSemanticActivity));
+        emitted.GetTagItem(MemoriesActivitySource.TagOutcome).ShouldBe(fail ? "error" : "ok");
+        emitted.Links.ShouldHaveSingleItem().Context.TraceId.ToString().ShouldBe("4bf92f3577b34da6a3ce929d0e0e4736");
+        if (fail)
+        {
+            emitted.GetTagItem(MemoriesActivitySource.TagErrorCode).ShouldBe(nameof(Hexalith.Memories.Server.NaturalLanguage.RetryPublicationRejectedException));
+            emitted.Status.ShouldBe(ActivityStatusCode.Error);
+        }
     }
 
     private static IConnectionMultiplexer CreateMockMultiplexer(IDatabase db)

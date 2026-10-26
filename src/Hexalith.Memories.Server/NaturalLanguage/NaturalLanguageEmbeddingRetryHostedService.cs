@@ -26,6 +26,7 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
     internal static readonly TimeSpan WorkflowCompletionWaitTimeout = TimeSpan.FromSeconds(30);
 
     private readonly IFailedNaturalLanguageEmbeddingRegistry _registry;
+    private readonly StackExchange.Redis.IDatabase? _history;
     private readonly IDaprWorkflowClient _workflowClient;
     private readonly IOptionsMonitor<NaturalLanguageDescriptionOptions> _options;
     private readonly ILogger<NaturalLanguageEmbeddingRetryHostedService> _logger;
@@ -35,12 +36,28 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
         IDaprWorkflowClient workflowClient,
         IOptionsMonitor<NaturalLanguageDescriptionOptions> options,
         ILogger<NaturalLanguageEmbeddingRetryHostedService> logger)
+        : this(registry, workflowClient, options, logger, null)
+    {
+    }
+
+    /// <summary>Initializes the worker with durable discovery for registered adapters.</summary>
+    /// <param name="registry">The retry registry.</param>
+    /// <param name="workflowClient">The Dapr workflow client.</param>
+    /// <param name="options">The retry configuration.</param>
+    /// <param name="logger">The worker logger.</param>
+    /// <param name="redis">The registered retry store.</param>
+    [ActivatorUtilitiesConstructor]
+    public NaturalLanguageEmbeddingRetryHostedService(IFailedNaturalLanguageEmbeddingRegistry registry,
+        IDaprWorkflowClient workflowClient, IOptionsMonitor<NaturalLanguageDescriptionOptions> options,
+        ILogger<NaturalLanguageEmbeddingRetryHostedService> logger,
+        [FromKeyedServices("redis")] StackExchange.Redis.IConnectionMultiplexer? redis)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(workflowClient);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
         _registry = registry;
+        _history = redis?.GetDatabase() ?? (registry as FailedNaturalLanguageEmbeddingRegistry)?.Database;
         _workflowClient = workflowClient;
         _options = options;
         _logger = logger;
@@ -88,42 +105,54 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
 
         await foreach (string tenantId in _registry.ListTenantsWithBacklogAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (!_options.CurrentValue.RetryWorkerEnabled)
-            {
-                return;
-            }
-
-            long backlog = await _registry.GetBacklogCountAsync(tenantId, cancellationToken).ConfigureAwait(false);
-            if (!_options.CurrentValue.RetryWorkerEnabled)
-            {
-                return;
-            }
-            if (backlog == 0)
-            {
-                continue;
-            }
-
-            if (backlog > 1000)
-            {
-                LogBacklogError(_logger, tenantId, backlog);
-            }
-            else if (backlog > 100)
-            {
-                LogBacklogWarning(_logger, tenantId, backlog);
-            }
-
-            IReadOnlyList<FailedNaturalLanguageEmbeddingRecord> batch = await _registry
-                .DequeueBatchAsync(tenantId, opts.BatchSize, cancellationToken)
-                .ConfigureAwait(false);
-
-            foreach (FailedNaturalLanguageEmbeddingRecord record in batch)
+            try
             {
                 if (!_options.CurrentValue.RetryWorkerEnabled)
                 {
                     return;
                 }
 
-                await ScheduleRetryAsync(record, opts, cancellationToken).ConfigureAwait(false);
+                long backlog = await _registry.GetBacklogCountAsync(tenantId, cancellationToken).ConfigureAwait(false);
+                if (!_options.CurrentValue.RetryWorkerEnabled)
+                {
+                    return;
+                }
+                if (backlog == 0)
+                {
+                    continue;
+                }
+
+                if (backlog > 1000)
+                {
+                    LogBacklogError(_logger, tenantId, backlog);
+                }
+                else if (backlog > 100)
+                {
+                    LogBacklogWarning(_logger, tenantId, backlog);
+                }
+
+                IReadOnlyList<FailedNaturalLanguageEmbeddingRecord> batch = await _registry
+                    .DequeueBatchAsync(tenantId, opts.BatchSize, cancellationToken)
+                    .ConfigureAwait(false);
+
+                foreach (FailedNaturalLanguageEmbeddingRecord record in batch)
+                {
+                    if (!_options.CurrentValue.RetryWorkerEnabled)
+                    {
+                        return;
+                    }
+
+                    await ScheduleRetryAsync(record, opts, cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception error) when (error is InvalidOperationException or StackExchange.Redis.RedisServerException
+                && error.Message.Contains("nl-retry-", StringComparison.Ordinal))
+            {
+                // The queue/lease remains intact; retain a content-free reconciliation obligation for this tenant.
+                if (_history is not null)
+                    await _history.StringSetAsync(RetryWorkflowHistory.Unresolved(tenantId), "1").WaitAsync(cancellationToken).ConfigureAwait(false);
+                LogTenantReconciliationFailed(_logger, error, tenantId);
             }
         }
     }
@@ -142,16 +171,55 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
             record.CaseId,
             record.EmbeddingProvider,
             record.EmbeddingModel,
-            record.EmbeddingDimensions);
+            record.EmbeddingDimensions) { PayloadVersion = FailedNaturalLanguageEmbeddingRegistry.PayloadVersion(record) };
 
         string instanceId = GetRetryWorkflowInstanceId(record.TenantId, record.MemoryUnitId);
 
+        StackExchange.Redis.IDatabase? history = _history;
+        string? authority = history is null ? null : await RetryWorkflowHistory.BeginAsync(history, record.TenantId, record.MemoryUnitId, cancellationToken).ConfigureAwait(false);
+        if (history is not null && authority is null) return;
         try
         {
+            if (history is not null && await FailedNaturalLanguageEmbeddingRegistry.ReadCurrentAsync(history, record.TenantId, record.MemoryUnitId).ConfigureAwait(false) != record)
+            {
+                await RetryWorkflowHistory.AcknowledgeAsync(history, record.TenantId, record.MemoryUnitId, authority!, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            WorkflowState? prior = await TryGetWorkflowStateAsync(instanceId, cancellationToken).ConfigureAwait(false);
+            if (prior is { Exists: true })
+            {
+                var scope = RetryWorkflowErasure.ReadScope(prior);
+                if (scope.Tenant != record.TenantId || scope.Unit != record.MemoryUnitId) throw new InvalidOperationException("nl-retry-workflow-scope-mismatch");
+                var priorInput = prior.ReadInputAs<NaturalLanguageEmbeddingRetryInput>();
+                if (priorInput?.PayloadVersion != input.PayloadVersion)
+                {
+                    if (!IsTerminalStatus(prior.RuntimeStatus))
+                    {
+                        if (history is not null) await RetryWorkflowHistory.AcknowledgeAsync(history, record.TenantId, record.MemoryUnitId, authority!, cancellationToken).ConfigureAwait(false);
+                        return;
+                    }
+                    // Registered schedulers serialize this address with a non-expiring per-attempt lease.
+                    if (history is null) return;
+                    if (await FailedNaturalLanguageEmbeddingRegistry.ReadCurrentAsync(history, record.TenantId, record.MemoryUnitId).ConfigureAwait(false) != record)
+                    {
+                        await RetryWorkflowHistory.AcknowledgeAsync(history, record.TenantId, record.MemoryUnitId, authority!, cancellationToken).ConfigureAwait(false);
+                        return;
+                    }
+                    await RetryWorkflowErasure.PurgeScopedAsync(_workflowClient, record.TenantId, record.MemoryUnitId, prior, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    if (history is not null) await RetryWorkflowHistory.AcknowledgeAsync(history, record.TenantId, record.MemoryUnitId, authority!, cancellationToken).ConfigureAwait(false);
+                    _ = await TryFinalizeRetryAsync(record, opts, prior, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+            }
             string scheduledId = await _workflowClient.ScheduleNewWorkflowAsync(
                 nameof(NaturalLanguageEmbeddingRetryWorkflow),
                 instanceId,
                 input).ConfigureAwait(false);
+            if (scheduledId != instanceId) throw new InvalidOperationException("nl-retry-workflow-address-mismatch");
+            if (history is not null) await RetryWorkflowHistory.AcknowledgeAsync(history, record.TenantId, record.MemoryUnitId, authority!, cancellationToken).ConfigureAwait(false);
 
             WorkflowState? state;
             try
@@ -172,6 +240,12 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
         catch (InvalidOperationException)
         {
             WorkflowState? existingState = await TryGetWorkflowStateAsync(instanceId, cancellationToken).ConfigureAwait(false);
+            if (existingState is { Exists: true })
+            {
+                var scope = RetryWorkflowErasure.ReadScope(existingState);
+                if (scope.Tenant != record.TenantId || scope.Unit != record.MemoryUnitId) throw new InvalidOperationException("nl-retry-workflow-scope-mismatch");
+                if (history is not null) await RetryWorkflowHistory.AcknowledgeAsync(history, record.TenantId, record.MemoryUnitId, authority!, cancellationToken).ConfigureAwait(false);
+            }
             _ = await TryFinalizeRetryAsync(record, opts, existingState, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -234,6 +308,11 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
             return false;
         }
 
+        var scope = RetryWorkflowErasure.ReadScope(state);
+        if (scope.Tenant != record.TenantId || scope.Unit != record.MemoryUnitId)
+            throw new InvalidOperationException("nl-retry-workflow-scope-mismatch");
+        NaturalLanguageEmbeddingRetryInput? scheduled = state.ReadInputAs<NaturalLanguageEmbeddingRetryInput>();
+        if (scheduled?.PayloadVersion != FailedNaturalLanguageEmbeddingRegistry.PayloadVersion(record)) return false;
         NaturalLanguageEmbeddingRetryResult? result = TryReadRetryResult(state);
         if (result is { Indexed: true })
         {
@@ -273,6 +352,9 @@ public sealed partial class NaturalLanguageEmbeddingRetryHostedService : Backgro
             return null;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "NL retry tenant {TenantId} requires reconciliation; other tenants remain eligible.")]
+    private static partial void LogTenantReconciliationFailed(ILogger logger, Exception exception, string tenantId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NaturalLanguageEmbeddingRetryHostedService started.")]
     private static partial void LogStarted(ILogger logger);

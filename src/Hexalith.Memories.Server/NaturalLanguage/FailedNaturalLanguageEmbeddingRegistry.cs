@@ -7,6 +7,9 @@ namespace Hexalith.Memories.Server.NaturalLanguage;
 
 using System.Net;
 using System.Runtime.CompilerServices;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 using Hexalith.Memories.Contracts.V1;
@@ -28,6 +31,9 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
     internal const string TenantBacklogKey = "nl-embedding-retry-tenants";
 
     private readonly IConnectionMultiplexer _redis;
+
+    /// <summary>Gets the registered retry database used for durable scheduling authority.</summary>
+    internal IDatabase Database => _redis.GetDatabase();
     private readonly ILogger<FailedNaturalLanguageEmbeddingRegistry> _logger;
     private readonly int _liveMaxEntries;
     private readonly int _deadMaxEntries;
@@ -54,7 +60,7 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
 
         IDatabase db = _redis.GetDatabase();
         if (!await MutateAsync(db, record, "enqueue", SerializeRecord(record)).ConfigureAwait(false)) return;
-        await TrimLiveQueueAsync(db, record.TenantId, _liveMaxEntries, _deadMaxEntries).ConfigureAwait(false);
+        await TrimLiveQueueAsync(db, record.TenantId, _liveMaxEntries, _deadMaxEntries, cancellationToken).ConfigureAwait(false);
         LogEnqueued(_logger, record.TenantId, record.MemoryUnitId, record.Attempts);
     }
 
@@ -69,40 +75,47 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
 
         int clamped = Math.Clamp(batchSize, 1, 100);
         IDatabase db = _redis.GetDatabase();
-        RedisValue[] memoryUnitIds = await db
-            .SortedSetRangeByRankAsync(LiveKey(tenantId), 0, clamped - 1, Order.Ascending)
-            .ConfigureAwait(false);
-
-        if (memoryUnitIds.Length == 0)
-        {
-            return [];
-        }
-
-        RedisValue[] payloads = await db.HashGetAsync(LivePayloadKey(tenantId), memoryUnitIds).ConfigureAwait(false);
+        var selected = await SelectAsync(db, LiveKey(tenantId), LivePayloadKey(tenantId), clamped, cancellationToken).ConfigureAwait(false);
+        RedisValue[] memoryUnitIds = selected.Select(entry => entry.Member).ToArray();
+        RedisValue[] payloads = selected.Select(entry => entry.Payload).ToArray();
         List<FailedNaturalLanguageEmbeddingRecord> records = new(memoryUnitIds.Length);
-        List<RedisValue> corruptMembers = [];
+
         for (int i = 0; i < memoryUnitIds.Length; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            double? score = selected[i].Score;
             FailedNaturalLanguageEmbeddingRecord? parsed = payloads[i].HasValue
                 ? TryDeserialize(payloads[i].ToString())
                 : TryDeserialize(memoryUnitIds[i].ToString());
+            if (parsed is not null && payloads[i].HasValue && !HasQualifiedShape(payloads[i].ToString()))
+                throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+            if (parsed is not null && (parsed.TenantId != tenantId || (payloads[i].HasValue && parsed.MemoryUnitId != memoryUnitIds[i])))
+                throw new InvalidOperationException("nl-retry-payload-scope");
             if (parsed is not null && parsed.TenantId == tenantId
                 && !await db.KeyExistsAsync(SourcePublicationVisibility.Tombstone(tenantId, parsed.MemoryUnitId)).ConfigureAwait(false)
                 && !await db.KeyExistsAsync(TenantIngestionOwnership.Fence(tenantId)).ConfigureAwait(false))
             {
-                if (!payloads[i].HasValue && !await PromoteLegacyAsync(db, parsed, memoryUnitIds[i]).ConfigureAwait(false))
-                    continue;
-                records.Add(parsed);
+                if (!payloads[i].HasValue && (!HasQualifiedShape(memoryUnitIds[i].ToString()) || !await PromoteLegacyAsync(db, parsed, memoryUnitIds[i], score).ConfigureAwait(false)))
+                {
+                    RedisValue modern = await db.HashGetAsync(LivePayloadKey(tenantId), parsed.MemoryUnitId).WaitAsync(cancellationToken).ConfigureAwait(false);
+                    var current = modern.HasValue ? TryDeserialize(modern.ToString()) : null;
+                    if (current is null)
+                    {
+                        if (!HasQualifiedShape(memoryUnitIds[i].ToString())) throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+                        continue;
+                    }
+                    if (current.TenantId != tenantId || current.MemoryUnitId != parsed.MemoryUnitId) throw new InvalidOperationException("nl-retry-payload-scope");
+                    parsed = current;
+                }
+                if (!records.Any(record => record.MemoryUnitId == parsed.MemoryUnitId)) records.Add(parsed);
                 continue;
             }
 
-            corruptMembers.Add(memoryUnitIds[i]);
+            if (parsed is not null && !HasQualifiedShape(payloads[i].HasValue ? payloads[i].ToString() : memoryUnitIds[i].ToString()))
+                throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+            await RemoveObservedAsync(db, tenantId, LiveKey(tenantId), LivePayloadKey(tenantId), memoryUnitIds[i], payloads[i], score, cancellationToken).ConfigureAwait(false);
         }
-
-        if (corruptMembers.Count > 0)
-        {
-            await RemoveLiveEntriesAsync(db, tenantId, [.. corruptMembers]).ConfigureAwait(false);
-        }
+        await RemoveTenantBacklogIfEmptyAsync(db, tenantId).ConfigureAwait(false);
 
         return records;
     }
@@ -117,13 +130,31 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         RedisKey payloadKey = LivePayloadKey(record.TenantId);
         string expectedPayload = SerializeRecord(record);
         RedisValue currentPayload = await db.HashGetAsync(payloadKey, record.MemoryUnitId).ConfigureAwait(false);
-        if (currentPayload.HasValue && currentPayload != expectedPayload)
+        if (currentPayload.HasValue && TryDeserialize(currentPayload.ToString()) != record)
         {
             LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "complete");
             return;
         }
 
-        if (!await MutateAsync(db, record, "complete", expectedPayload).ConfigureAwait(false))
+        if (currentPayload.HasValue)
+        {
+            if (!HasQualifiedShape(currentPayload.ToString())) throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+            expectedPayload = currentPayload.ToString();
+        }
+        List<RedisValue> aliases = [];
+        if (await db.SortedSetLengthAsync(LiveKey(record.TenantId)).WaitAsync(cancellationToken).ConfigureAwait(false) > 100_000)
+            throw new InvalidOperationException("nl-retry-legacy-owner-reconciliation-required");
+        await foreach (SortedSetEntry entry in db.SortedSetScanAsync(LiveKey(record.TenantId), pageSize: 100).WithCancellation(cancellationToken))
+        {
+            FailedNaturalLanguageEmbeddingRecord? alias = TryDeserialize(entry.Element.ToString());
+            if (alias is not null && HasQualifiedShape(entry.Element.ToString()) && SameLineage(record, alias))
+            {
+                RedisValue payload = await db.HashGetAsync(payloadKey, entry.Element).WaitAsync(cancellationToken).ConfigureAwait(false);
+                if (payload.HasValue) throw new InvalidOperationException("nl-retry-payload-scope");
+                aliases.AddRange([entry.Element, (RedisValue)entry.Score, payload.HasValue ? "1" : "0", payload.HasValue ? payload : RedisValue.EmptyString]);
+            }
+        }
+        if (!await MutateAsync(db, record, "complete", expectedPayload, aliases: [.. aliases], expectedPayload: expectedPayload).ConfigureAwait(false))
         {
             LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "complete");
             return;
@@ -144,7 +175,9 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         FailedNaturalLanguageEmbeddingRecord next = record with { Attempts = record.Attempts + 1 };
         IDatabase db = _redis.GetDatabase();
         bool dead = next.Attempts >= maxAttempts;
-        if (!await MutateAsync(db, record, dead ? "dead" : "requeue", SerializeRecord(next)).ConfigureAwait(false))
+        RedisValue current = await db.HashGetAsync(LivePayloadKey(record.TenantId), record.MemoryUnitId).WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (current.HasValue && (TryDeserialize(current.ToString()) != record || !HasQualifiedShape(current.ToString()))) return false;
+        if (!await MutateAsync(db, record, dead ? "dead" : "requeue", SerializeRecord(next), expectedPayload: current.HasValue ? current.ToString() : null).ConfigureAwait(false))
         {
             LogStaleRecordIgnored(_logger, record.TenantId, record.MemoryUnitId, "attempt-increment");
             return false;
@@ -153,11 +186,11 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         {
             LogDeadLettered(_logger, record.TenantId, record.MemoryUnitId, next.Attempts);
             await RemoveTenantBacklogIfEmptyAsync(db, record.TenantId).ConfigureAwait(false);
-            await TrimQueueAsync(db, DeadKey(record.TenantId), DeadPayloadKey(record.TenantId), _deadMaxEntries).ConfigureAwait(false);
+            await TrimQueueAsync(db, record.TenantId, DeadKey(record.TenantId), DeadPayloadKey(record.TenantId), _deadMaxEntries, cancellationToken).ConfigureAwait(false);
             return true;
         }
         LogAttemptIncremented(_logger, record.TenantId, record.MemoryUnitId, next.Attempts);
-        await TrimLiveQueueAsync(db, record.TenantId, _liveMaxEntries, _deadMaxEntries).ConfigureAwait(false);
+        await TrimLiveQueueAsync(db, record.TenantId, _liveMaxEntries, _deadMaxEntries, cancellationToken).ConfigureAwait(false);
         return false;
     }
 
@@ -232,7 +265,7 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
             string value = tenantId.ToString();
             if (await db.SortedSetLengthAsync(LiveKey(value)).ConfigureAwait(false) <= 0)
             {
-                _ = await db.SetRemoveAsync(TenantBacklogKey, tenantId).ConfigureAwait(false);
+                await RemoveTenantBacklogIfEmptyAsync(db, value).ConfigureAwait(false);
                 continue;
             }
 
@@ -277,20 +310,88 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         }
     }
 
+    /// <summary>Rejects unknown, duplicate and omitted admission properties before historical lineage authorizes mutation.</summary>
+    internal static bool HasQualifiedShape(string payload)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(payload);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return false;
+            HashSet<string> expected = new(StringComparer.OrdinalIgnoreCase)
+            {
+                "tenantId", "memoryUnitId", "truncatedRawJsonPayload", "eventType", "aggregateType", "caseId",
+                "embeddingProvider", "embeddingModel", "embeddingDimensions", "queuedAtTicks", "attempts",
+            };
+            foreach (JsonProperty property in document.RootElement.EnumerateObject())
+                if (!expected.Remove(property.Name)) return false;
+            return expected.Count == 0;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    /// <summary>Captures rank selection, exact payload bytes and scores in one Redis observation.</summary>
+    internal static async Task<(RedisValue Member, RedisValue Payload, double Score)[]> SelectAsync(
+        IDatabase db, RedisKey queue, RedisKey payloads, int count, CancellationToken token)
+    {
+        const string select = """
+            -- nl-retry-observed-selection-v1
+            local members=redis.call('ZRANGE',KEYS[1],0,tonumber(ARGV[1])-1,'WITHSCORES')
+            local observed={}
+            for i=1,#members,2 do
+                observed[#observed+1]=members[i]
+                observed[#observed+1]=members[i+1]
+                observed[#observed+1]=redis.call('HGET',KEYS[2],members[i]) or false
+            end
+            return observed
+            """;
+        RedisResult raw = await db.ScriptEvaluateAsync(select, [queue, payloads], [(RedisValue)Math.Clamp(count, 1, 100_000)]).WaitAsync(token).ConfigureAwait(false);
+        RedisResult[] values = (RedisResult[])raw!;
+        var result = new (RedisValue Member, RedisValue Payload, double Score)[values.Length / 3];
+        for (int i = 0; i < result.Length; i++)
+            result[i] = (values[3 * i].ToString(), values[3 * i + 2].IsNull ? RedisValue.Null : (RedisValue)values[3 * i + 2].ToString(),
+                double.Parse(values[3 * i + 1].ToString(), CultureInfo.InvariantCulture));
+        return result;
+    }
+
     internal static int ClampQueueMaxEntries(int value) => Math.Clamp(value, 1, 100_000);
 
-    private static RedisValue[] LiveMembers(FailedNaturalLanguageEmbeddingRecord record)
-        => [record.MemoryUnitId, SerializeRecord(record)];
+    /// <summary>Matches all immutable admission fields, allowing only attempt counters to differ.</summary>
+    internal static bool SameLineage(FailedNaturalLanguageEmbeddingRecord left, FailedNaturalLanguageEmbeddingRecord right)
+        => left with { Attempts = 0 } == right with { Attempts = 0 };
 
-    private static async Task RemoveLiveEntriesAsync(IDatabase db, string tenantId, RedisValue[] members)
+    /// <summary>Computes the content-free version of the complete retry record.</summary>
+    internal static string PayloadVersion(FailedNaturalLanguageEmbeddingRecord record)
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(SerializeRecord(record))));
+
+    /// <summary>Gets the exact-unit completed-lineage marker key.</summary>
+    internal static string LineageKey(string tenant, string unit) => "nl-retry-completed-lineage:" + tenant + ":" + unit;
+
+    /// <summary>Computes immutable admission lineage independently of retry attempts.</summary>
+    internal static string Lineage(FailedNaturalLanguageEmbeddingRecord record)
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(SerializeRecord(record with { Attempts = 0 }))));
+
+    /// <summary>Deletes only the selected member, payload bytes and score observed by the caller.</summary>
+    internal static async Task<bool> RemoveObservedAsync(IDatabase db, string tenant, RedisKey queue, RedisKey payloads,
+        RedisValue member, RedisValue payload, double? score, CancellationToken token)
     {
-        if (members.Length == 0)
-        {
-            return;
-        }
-
-        await RemoveQueueEntriesAsync(db, LiveKey(tenantId), LivePayloadKey(tenantId), members).ConfigureAwait(false);
-        await RemoveTenantBacklogIfEmptyAsync(db, tenantId).ConfigureAwait(false);
+        const string prune = """
+            -- nl-retry-observed-prune-v1
+            local score=redis.call('ZSCORE',KEYS[1],ARGV[1])
+            if (ARGV[2]=='' and score) or (ARGV[2]~='' and (not score or tonumber(score)~=tonumber(ARGV[2]))) then return 0 end
+            local payload=redis.call('HGET',KEYS[2],ARGV[1])
+            if (ARGV[3]=='1' and payload~=ARGV[4]) or (ARGV[3]=='0' and payload) then return 0 end
+            if ARGV[5]~='' then
+                if redis.call('SCARD',KEYS[3])>=65536 and redis.call('SISMEMBER',KEYS[3],ARGV[5])==0 then return redis.error_reply('nl-retry-history-capacity') end
+                redis.call('SADD',KEYS[3],ARGV[5])
+            end
+            if ARGV[5]=='' then redis.call('SET',KEYS[4],'1') end
+            redis.call('ZREM',KEYS[1],ARGV[1]); redis.call('HDEL',KEYS[2],ARGV[1]); return 1
+            """;
+        string obligation = TryDeserialize(payload.HasValue ? payload.ToString() : member.ToString())?.MemoryUnitId ?? string.Empty;
+        RedisResult result = await db.ScriptEvaluateAsync(prune, [queue, payloads, (RedisKey)RetryWorkflowHistory.Units(tenant), (RedisKey)RetryWorkflowHistory.Unresolved(tenant)],
+            [member, score.HasValue ? score.Value.ToString("R", CultureInfo.InvariantCulture) : "", payload.HasValue ? "1" : "0",
+                payload.HasValue ? payload : RedisValue.EmptyString, (RedisValue)obligation]).WaitAsync(token).ConfigureAwait(false);
+        return (long)result == 1;
     }
 
     private static async Task RemoveTenantBacklogIfEmptyAsync(IDatabase db, string tenantId)
@@ -344,7 +445,7 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
         return null;
     }
 
-    private static async Task TrimLiveQueueAsync(IDatabase db, string tenantId, int liveMaxEntries, int deadMaxEntries)
+    private static async Task TrimLiveQueueAsync(IDatabase db, string tenantId, int liveMaxEntries, int deadMaxEntries, CancellationToken token = default)
     {
         long length = await db.SortedSetLengthAsync(LiveKey(tenantId)).ConfigureAwait(false);
         long excess = length - liveMaxEntries;
@@ -353,96 +454,75 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
             return;
         }
 
-        RedisValue[] oldestMembers = await db
-            .SortedSetRangeByRankAsync(LiveKey(tenantId), 0, excess - 1, Order.Ascending)
-            .ConfigureAwait(false);
-
-        if (oldestMembers.Length == 0)
-        {
-            return;
-        }
-
-        RedisValue[] payloads = await db.HashGetAsync(LivePayloadKey(tenantId), oldestMembers).ConfigureAwait(false);
-        List<RedisValue> removableMembers = new(oldestMembers.Length);
+        var selected = await SelectAsync(db, LiveKey(tenantId), LivePayloadKey(tenantId), (int)Math.Min(excess, 100_000), token).ConfigureAwait(false);
+        RedisValue[] oldestMembers = selected.Select(entry => entry.Member).ToArray();
+        RedisValue[] payloads = selected.Select(entry => entry.Payload).ToArray();
         for (int i = 0; i < oldestMembers.Length; i++)
         {
+            token.ThrowIfCancellationRequested();
+            double? score = selected[i].Score;
             FailedNaturalLanguageEmbeddingRecord? record = payloads[i].HasValue
                 ? TryDeserialize(payloads[i].ToString())
                 : TryDeserialize(oldestMembers[i].ToString());
             if (record is null)
             {
-                removableMembers.Add(oldestMembers[i]);
+                await RemoveObservedAsync(db, tenantId, LiveKey(tenantId), LivePayloadKey(tenantId), oldestMembers[i], payloads[i], score, token).ConfigureAwait(false);
                 continue;
             }
 
-            if (record.TenantId != tenantId)
+            if (!HasQualifiedShape(payloads[i].HasValue ? payloads[i].ToString() : oldestMembers[i].ToString()))
+                throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+            if (record.TenantId != tenantId || (payloads[i].HasValue && record.MemoryUnitId != oldestMembers[i]))
             {
                 throw new InvalidOperationException("nl-retry-payload-scope");
             }
             _ = await MutateAsync(db, record, "overflow", payloads[i].HasValue ? payloads[i].ToString() : SerializeRecord(record),
-                oldestMembers[i]).ConfigureAwait(false);
+                oldestMembers[i], score, payloads[i]).ConfigureAwait(false);
         }
 
-        if (removableMembers.Count > 0)
-        {
-            await RemoveQueueEntriesAsync(db, LiveKey(tenantId), LivePayloadKey(tenantId), [.. removableMembers]).ConfigureAwait(false);
-        }
         await RemoveTenantBacklogIfEmptyAsync(db, tenantId).ConfigureAwait(false);
-        await TrimQueueAsync(db, DeadKey(tenantId), DeadPayloadKey(tenantId), deadMaxEntries).ConfigureAwait(false);
+        await TrimQueueAsync(db, tenantId, DeadKey(tenantId), DeadPayloadKey(tenantId), deadMaxEntries, token).ConfigureAwait(false);
     }
 
-    private static async Task TrimQueueAsync(IDatabase db, RedisKey queueKey, RedisKey payloadKey, int maxEntries)
+    private static async Task TrimQueueAsync(IDatabase db, string tenant, RedisKey queueKey, RedisKey payloadKey, int maxEntries, CancellationToken token)
     {
-        long length = await db.SortedSetLengthAsync(queueKey).ConfigureAwait(false);
-        long excess = length - maxEntries;
-        if (excess <= 0)
+        long excess = await db.SortedSetLengthAsync(queueKey).WaitAsync(token).ConfigureAwait(false) - maxEntries;
+        if (excess <= 0) return;
+        var selected = await SelectAsync(db, queueKey, payloadKey, (int)Math.Min(excess, 100_000), token).ConfigureAwait(false);
+        RedisValue[] members = selected.Select(entry => entry.Member).ToArray();
+        RedisValue[] payloads = selected.Select(entry => entry.Payload).ToArray();
+        for (int i = 0; i < members.Length; i++)
         {
-            return;
+            token.ThrowIfCancellationRequested();
+            FailedNaturalLanguageEmbeddingRecord? record = TryDeserialize(payloads[i].HasValue ? payloads[i].ToString() : members[i].ToString());
+            if (record is not null && !HasQualifiedShape(payloads[i].HasValue ? payloads[i].ToString() : members[i].ToString()))
+                throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+            if (record is not null && (record.TenantId != tenant || (payloads[i].HasValue && record.MemoryUnitId != members[i])))
+                throw new InvalidOperationException("nl-retry-payload-scope");
+            double? score = selected[i].Score;
+            await RemoveObservedAsync(db, tenant, queueKey, payloadKey, members[i], payloads[i], score, token).ConfigureAwait(false);
         }
-
-        RedisValue[] oldestMemoryUnitIds = await db
-            .SortedSetRangeByRankAsync(queueKey, 0, excess - 1, Order.Ascending)
-            .ConfigureAwait(false);
-
-        if (oldestMemoryUnitIds.Length == 0)
-        {
-            return;
-        }
-
-        await RemoveQueueEntriesAsync(db, queueKey, payloadKey, oldestMemoryUnitIds).ConfigureAwait(false);
     }
 
-    private static async Task RemoveQueueEntriesAsync(IDatabase db, RedisKey queueKey, RedisKey payloadKey, RedisValue[] members)
+    private static async Task<bool> PromoteLegacyAsync(IDatabase db, FailedNaturalLanguageEmbeddingRecord record, RedisValue member, double? score)
     {
-        const string trim = """
-            for i,expected in ipairs({'zset','hash'}) do
-                local kind=redis.call('TYPE',KEYS[i]).ok
-                if kind~='none' and kind~=expected then return redis.error_reply('WRONGTYPE nl-retry-state') end
-            end
-            -- Bounded expansion stays in this one atomic, preflighted mutation.
-            for start=1,#ARGV,256 do
-                local last=math.min(start+255,#ARGV)
-                redis.call('ZREM',KEYS[1],unpack(ARGV,start,last))
-                redis.call('HDEL',KEYS[2],unpack(ARGV,start,last))
-            end
-            return 1
-            """;
-        _ = await db.ScriptEvaluateAsync(trim, [queueKey, payloadKey], members).ConfigureAwait(false);
-    }
-
-    private static async Task<bool> PromoteLegacyAsync(IDatabase db, FailedNaturalLanguageEmbeddingRecord record, RedisValue member)
-    {
-        return await MutateAsync(db, record, "promote", SerializeRecord(record), member).ConfigureAwait(false);
+        return await MutateAsync(db, record, "promote", SerializeRecord(record), member, score).ConfigureAwait(false);
     }
 
     // One awaited Redis command owns preflight and mutation. EXEC itself does not roll back
     // successful sibling commands after WRONGTYPE; no source removal is queued separately.
     private static async Task<bool> MutateAsync(IDatabase db, FailedNaturalLanguageEmbeddingRecord record,
-        string mode, string nextPayload, RedisValue legacyMember = default)
+        string mode, string nextPayload, RedisValue legacyMember = default, double? observedScore = null, RedisValue observedPayload = default, RedisValue[]? aliases = null, string? expectedPayload = null)
     {
+        IngestionIdentityGuard.Scope(record.TenantId, record.MemoryUnitId);
+        IngestionIdentityGuard.Handle(record.MemoryUnitId);
         const string mutate = """
             -- nl-retry-atomic-move-v3
             for i,expected in ipairs({'zset','hash','zset','hash','set'}) do
+                local kind=redis.call('TYPE',KEYS[i]).ok
+                if kind~='none' and kind~=expected then return redis.error_reply('WRONGTYPE nl-retry-state') end
+            end
+            for i,expected in pairs({[8]='string',[9]='set'}) do
                 local kind=redis.call('TYPE',KEYS[i]).ok
                 if kind~='none' and kind~=expected then return redis.error_reply('WRONGTYPE nl-retry-state') end
             end
@@ -450,21 +530,43 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
             local unit,tenant,mode=ARGV[1],ARGV[2],ARGV[3]
             local current=redis.call('HGET',KEYS[2],unit)
             local legacy=ARGV[7]
+            if mode=='overflow' or mode=='promote' then
+                local score=redis.call('ZSCORE',KEYS[1],legacy)
+                local selected=redis.call('HGET',KEYS[2],legacy)
+                if not score or ARGV[8]=='' or tonumber(score)~=tonumber(ARGV[8]) then return 0 end
+                if (ARGV[9]=='1' and selected~=ARGV[10]) or (ARGV[9]=='0' and selected) then return 0 end
+            end
+            if mode=='overflow' and legacy~=unit and (current or redis.call('ZSCORE',KEYS[1],unit)) then return 0 end
             if mode=='promote' then
                 if not redis.call('ZSCORE',KEYS[1],legacy) then return 0 end
+                if not current and redis.call('ZSCORE',KEYS[1],unit) then return redis.error_reply('nl-retry-legacy-lineage-reconciliation-required') end
                 if current then
                     local ok,parsed=pcall(cjson.decode,current)
                     if not ok or parsed.tenantId~=tenant or parsed.memoryUnitId~=unit then return redis.error_reply('nl-retry-payload-scope') end
-                    -- Only this exact, scoped alias is redundant; modern content wins unchanged.
-                    if not redis.call('ZSCORE',KEYS[1],unit) then redis.call('ZADD',KEYS[1],parsed.queuedAtTicks,unit) end
-                    redis.call('ZREM',KEYS[1],legacy); return 0
+                    -- Completion alone may retire aliases after independent lineage verification.
+                    return 0
                 end
+                if redis.call('EXISTS',KEYS[8])==1 then return redis.error_reply('nl-retry-legacy-lineage-reconciliation-required') end
             elseif mode~='enqueue' then
                 if current and current~=ARGV[4] then return 0 end
                 if not current and not redis.call('ZSCORE',KEYS[1],ARGV[4]) and not redis.call('ZSCORE',KEYS[1],legacy) then return 0 end
             end
+            if mode=='dead' or mode=='overflow' then
+                local target=redis.call('HGET',KEYS[4],unit)
+                if target and target~=ARGV[4] and target~=ARGV[5] then return 0 end
+            end
+            if redis.call('SCARD',KEYS[9])>=65536 and redis.call('SISMEMBER',KEYS[9],unit)==0 then return redis.error_reply('nl-retry-history-capacity') end
+            redis.call('SADD',KEYS[9],unit)
             if mode=='complete' then
-                redis.call('ZREM',KEYS[1],unit,ARGV[4]); redis.call('HDEL',KEYS[2],unit)
+                redis.call('SET',KEYS[8],ARGV[11])
+                redis.call('ZREM',KEYS[1],unit); redis.call('HDEL',KEYS[2],unit)
+                for i=12,#ARGV,4 do
+                    local score=redis.call('ZSCORE',KEYS[1],ARGV[i])
+                    local payload=redis.call('HGET',KEYS[2],ARGV[i])
+                    if score and tonumber(score)==tonumber(ARGV[i+1]) and ((ARGV[i+2]=='0' and not payload) or (ARGV[i+2]=='1' and payload==ARGV[i+3])) then
+                        redis.call('ZREM',KEYS[1],ARGV[i]); redis.call('HDEL',KEYS[2],ARGV[i])
+                    end
+                end
             elseif mode=='dead' or mode=='overflow' then
                 redis.call('HSET',KEYS[4],unit,ARGV[5]); redis.call('ZADD',KEYS[3],ARGV[6],unit)
                 redis.call('ZREM',KEYS[1],unit,ARGV[4],legacy); redis.call('HDEL',KEYS[2],unit,legacy)
@@ -479,49 +581,80 @@ public sealed partial class FailedNaturalLanguageEmbeddingRegistry : IFailedNatu
             [(RedisKey)LiveKey(record.TenantId), (RedisKey)LivePayloadKey(record.TenantId),
                 (RedisKey)DeadKey(record.TenantId), (RedisKey)DeadPayloadKey(record.TenantId),
                 (RedisKey)TenantBacklogKey, (RedisKey)SourcePublicationVisibility.Tombstone(record.TenantId, record.MemoryUnitId),
-                (RedisKey)TenantIngestionOwnership.Fence(record.TenantId)],
+                (RedisKey)TenantIngestionOwnership.Fence(record.TenantId), (RedisKey)LineageKey(record.TenantId, record.MemoryUnitId),
+                (RedisKey)RetryWorkflowHistory.Units(record.TenantId)],
             [(RedisValue)record.MemoryUnitId, (RedisValue)record.TenantId, (RedisValue)mode,
-                (RedisValue)(mode == "overflow" ? nextPayload : SerializeRecord(record)), (RedisValue)nextPayload, (RedisValue)record.QueuedAtTicks,
-                legacyMember.HasValue ? legacyMember : RedisValue.EmptyString]).ConfigureAwait(false);
+                (RedisValue)(expectedPayload ?? (mode == "overflow" ? nextPayload : SerializeRecord(record))), (RedisValue)nextPayload, (RedisValue)record.QueuedAtTicks,
+                legacyMember.HasValue ? legacyMember : RedisValue.EmptyString,
+                observedScore.HasValue ? observedScore.Value.ToString("R", CultureInfo.InvariantCulture) : "",
+                observedPayload.HasValue ? "1" : "0", observedPayload.HasValue ? observedPayload : RedisValue.EmptyString,
+                (RedisValue)Lineage(record), .. aliases ?? []]).ConfigureAwait(false);
         return (long)result == 1;
     }
 
     /// <summary>Fences and physically removes exact-unit modern and legacy live/dead payloads.</summary>
     internal static async Task PurgeUnitAsync(IDatabase db, string tenant, string unit, CancellationToken token)
     {
-        await db.StringSetAsync(SourcePublicationVisibility.Tombstone(tenant, unit), "1").WaitAsync(token).ConfigureAwait(false);
+        await FenceUnitAsync(db, tenant, unit, token).ConfigureAwait(false);
         foreach ((string queue, string payloads) in new[] { (LiveKey(tenant), LivePayloadKey(tenant)), (DeadKey(tenant), DeadPayloadKey(tenant)) })
         {
             if (await db.SortedSetLengthAsync(queue).WaitAsync(token).ConfigureAwait(false) > 100_000)
             {
                 throw new InvalidOperationException("nl-retry-legacy-owner-reconciliation-required");
             }
-            await db.HashDeleteAsync(payloads, unit).WaitAsync(token).ConfigureAwait(false);
-            await db.SortedSetRemoveAsync(queue, unit).WaitAsync(token).ConfigureAwait(false);
+            RedisValue modern = await db.HashGetAsync(payloads, unit).WaitAsync(token).ConfigureAwait(false);
+            if (modern.HasValue)
+            {
+                var scoped = TryDeserialize(modern.ToString());
+                if (!HasQualifiedShape(modern.ToString())) throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+                if (scoped is null || scoped.TenantId != tenant || scoped.MemoryUnitId != unit)
+                    throw new InvalidOperationException("nl-retry-payload-scope");
+            }
+            double? modernScore = await db.SortedSetScoreAsync(queue, unit).WaitAsync(token).ConfigureAwait(false);
+            if ((modern.HasValue || modernScore.HasValue) && !await RemoveObservedAsync(db, tenant, queue, payloads, unit, modern, modernScore, token).ConfigureAwait(false))
+                throw new InvalidOperationException("nl-retry-payload-changed-during-erasure");
             await foreach (SortedSetEntry entry in db.SortedSetScanAsync(queue, pageSize: 100).WithCancellation(token))
             {
                 FailedNaturalLanguageEmbeddingRecord? legacy = TryDeserialize(entry.Element.ToString());
                 if (legacy is not null && legacy.TenantId == tenant && legacy.MemoryUnitId == unit)
                 {
-                    await db.SortedSetRemoveAsync(queue, entry.Element).WaitAsync(token).ConfigureAwait(false);
+                    if (!HasQualifiedShape(entry.Element.ToString())) throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+                    RedisValue payload = await db.HashGetAsync(payloads, entry.Element).WaitAsync(token).ConfigureAwait(false);
+                    if (payload.HasValue) throw new InvalidOperationException("nl-retry-payload-scope");
+                    if (!await RemoveObservedAsync(db, tenant, queue, payloads, entry.Element, payload, entry.Score, token).ConfigureAwait(false))
+                        throw new InvalidOperationException("nl-retry-payload-changed-during-erasure");
                 }
             }
         }
         await RemoveTenantBacklogIfEmptyAsync(db, tenant).ConfigureAwait(false);
     }
 
+    /// <summary>Installs permanent deletion evidence and retains bounded history authority without queue rediscovery.</summary>
+    internal static async Task FenceUnitAsync(IDatabase db, string tenant, string unit, CancellationToken token)
+    {
+        await db.StringSetAsync(SourcePublicationVisibility.Tombstone(tenant, unit), "1").WaitAsync(token).ConfigureAwait(false);
+        if (await db.KeyExistsAsync(RetryWorkflowHistory.Lease(tenant, unit)).WaitAsync(token).ConfigureAwait(false))
+            throw new InvalidOperationException("nl-retry-scheduling-unresolved");
+        await RetryWorkflowHistory.RetainUnitAsync(db, tenant, unit, token).ConfigureAwait(false);
+    }
+
     /// <summary>Reads current retry payload only while the exact unit remains admitted.</summary>
     internal static async Task<FailedNaturalLanguageEmbeddingRecord?> ReadCurrentAsync(IDatabase db, string tenant, string unit)
+        => (await ReadCurrentPayloadAsync(db, tenant, unit).ConfigureAwait(false)).Record;
+
+    /// <summary>Reads the admitted record together with its exact persisted bytes.</summary>
+    internal static async Task<(FailedNaturalLanguageEmbeddingRecord? Record, string? Payload)> ReadCurrentPayloadAsync(IDatabase db, string tenant, string unit)
     {
         const string read = "if redis.call('EXISTS',KEYS[1],KEYS[2])~=0 or redis.call('EXISTS',KEYS[4])~=1 then return false end return redis.call('HGET',KEYS[3],ARGV[1])";
         RedisResult raw = await db.ScriptEvaluateAsync(read,
             [(RedisKey)SourcePublicationVisibility.Tombstone(tenant, unit), (RedisKey)TenantIngestionOwnership.Fence(tenant), (RedisKey)LivePayloadKey(tenant), (RedisKey)Hexalith.Memories.Server.Infrastructure.IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit)], [(RedisValue)unit]).ConfigureAwait(false);
-        FailedNaturalLanguageEmbeddingRecord? record = raw.IsNull ? null : TryDeserialize(raw.ToString());
+        string? payload = raw.IsNull ? null : raw.ToString();
+        FailedNaturalLanguageEmbeddingRecord? record = payload is null ? null : TryDeserialize(payload);
         if (record is not null && (record.TenantId != tenant || record.MemoryUnitId != unit))
-        {
             throw new InvalidOperationException("nl-retry-payload-scope");
-        }
-        return record;
+        if (record is not null && !HasQualifiedShape(payload!))
+            throw new InvalidOperationException("nl-retry-legacy-lineage-reconciliation-required");
+        return (record, payload);
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "NL retry queue: enqueued {MemoryUnitId} for tenant {TenantId} (attempts={Attempts}).")]

@@ -20,14 +20,18 @@ public abstract class WorkflowTraceLinkedActivity<TInput, TOutput> : WorkflowAct
     where TInput : IWorkflowTraceContextCarrier
 {
     /// <inheritdoc />
-    public sealed override async Task<TOutput> RunAsync(WorkflowActivityContext context, TInput input)
+    public sealed override Task<TOutput> RunAsync(WorkflowActivityContext context, TInput input)
+        => RunLinkedAsync(input, () => RunActivityAsync(context, input));
+
+    /// <summary>Runs an internal attempt through the same linked span and outcome instrumentation.</summary>
+    internal async Task<TOutput> RunLinkedAsync(TInput input, Func<Task<TOutput>> execute)
     {
         ArgumentNullException.ThrowIfNull(input);
 
         using Activity? activity = StartLinkedActivity(input);
         try
         {
-            TOutput output = await RunActivityAsync(context, input).ConfigureAwait(false);
+            TOutput output = await execute().ConfigureAwait(false);
             activity?.SetTag(MemoriesActivitySource.TagOutcome, "ok");
             return output;
         }

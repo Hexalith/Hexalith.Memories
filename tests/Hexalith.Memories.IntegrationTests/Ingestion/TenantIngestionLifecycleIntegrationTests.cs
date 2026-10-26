@@ -15,6 +15,7 @@ using Hexalith.Memories.Server.Authentication;
 using Hexalith.Memories.Server.Endpoints;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Server.Ingestion;
+using Hexalith.Memories.Server.NaturalLanguage;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
@@ -48,6 +49,8 @@ public sealed class TenantIngestionLifecycleIntegrationTests(RedisStackFixture r
         WorkflowPayloadReference survivor = await payloads.SaveAsync(other, "unit", WorkflowPayloadKind.SourceBytes, new byte[] { 4, 5 }, cancellationToken: token);
         await inventory.AdmitAsync("other", Input(other), token);
         IDatabase db = redis.Connection.GetDatabase();
+        // This disposable fixture schedules no NL workflow; its history coverage is known by construction.
+        await db.StringSetAsync(RetryWorkflowHistory.Coverage(tenant), RetryWorkflowHistory.ReconciledCoverage);
         RedisValue[] owned = await db.SetMembersAsync(TenantIngestionOwnership.Key(tenant));
         owned.ShouldContain(value => value.ToString() == SourceInventoryStore.BuildKey(tenant, input.SourceUri));
         owned.ShouldContain(value => value.ToString().StartsWith("source-inventory-output:", StringComparison.Ordinal));
@@ -73,6 +76,7 @@ public sealed class TenantIngestionLifecycleIntegrationTests(RedisStackFixture r
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "tenant-paused-" + Guid.NewGuid().ToString("N");
+        await redis.Connection.GetDatabase().StringSetAsync(RetryWorkflowHistory.Coverage(tenant), RetryWorkflowHistory.ReconciledCoverage);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var paused = Substitute.For<DaprClient>();
@@ -108,6 +112,7 @@ public sealed class TenantIngestionLifecycleIntegrationTests(RedisStackFixture r
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string tenant = "tenant-overlap-" + Guid.NewGuid().ToString("N");
+        await redis.Connection.GetDatabase().StringSetAsync(RetryWorkflowHistory.Coverage(tenant), RetryWorkflowHistory.ReconciledCoverage);
         var input = Hexalith.Memories.TestHelpers.Factories.IndexInputFactory.Create(tenantId: tenant, memoryUnitId: "same-unit", caseId: "case",
             sourceUri: "urn:synthetic:overlap", content: "synthetic overlapping producer") with { CausationId = null, CorrelationId = null };
         var native = new GraphQueryBuilder();
@@ -222,5 +227,5 @@ public sealed class TenantIngestionLifecycleIntegrationTests(RedisStackFixture r
         => new(dapr, Options.Create(new WorkflowPayloadStoreOptions()), TimeProvider.System, connection);
     private static DeleteTenantDataKeysActivity Cleanup(IConnectionMultiplexer connection, IWorkflowPayloadStore? payloads)
         => new(connection, Substitute.For<IAggregateCaseMappingStore>(), Substitute.For<IObservedEventTypeStore>(),
-            Substitute.For<IHostApplicationLifetime>(), NullLogger<DeleteTenantDataKeysActivity>.Instance, payloads);
+            Substitute.For<IHostApplicationLifetime>(), NullLogger<DeleteTenantDataKeysActivity>.Instance, payloads, Substitute.For<IDaprWorkflowClient>(), Options.Create(new NaturalLanguageDescriptionOptions()));
 }

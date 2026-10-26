@@ -14,6 +14,8 @@ using NRedisStack.RedisStackCommands;
 using Dapr.AI.Conversation;
 using Hexalith.Memories.Server.Activities.Ingestion;
 using Hexalith.Memories.Server.Activities.Cases;
+using Hexalith.Memories.Server.Activities.Tenants;
+using Hexalith.Memories.EventStore;
 using Hexalith.Memories.Server.Graph;
 using Hexalith.Memories.Contracts.V1;
 using Microsoft.Extensions.Options;
@@ -34,10 +36,21 @@ using StackExchange.Redis;
 [Trait("Category", "IntegrationSlow")]
 public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis, FalkorDbFixture graph) : IAsyncLifetime, IClassFixture<FalkorDbFixture>
 {
-    private readonly DaprStateSidecarFixture _sidecar = DaprStateSidecarFixture.CreateWorkflow(redis.ConnectionString);
+    private readonly DaprStateSidecarFixture _sidecar = DaprStateSidecarFixture.CreateWorkflow(redis.ConnectionString, authenticate: true);
+    private string? _previousApiToken;
 
-    public ValueTask InitializeAsync() => _sidecar.InitializeAsync();
-    public ValueTask DisposeAsync() => _sidecar.DisposeAsync();
+    public async ValueTask InitializeAsync()
+    {
+        _previousApiToken = Environment.GetEnvironmentVariable("DAPR_API_TOKEN");
+        await _sidecar.InitializeAsync();
+        Environment.SetEnvironmentVariable("DAPR_API_TOKEN", _sidecar.ApiToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await _sidecar.DisposeAsync(); }
+        finally { Environment.SetEnvironmentVariable("DAPR_API_TOKEN", _previousApiToken); }
+    }
 
     [Fact]
     public async Task ExistingScheduledRawRetryHistoryIsPhysicallyAbsentAfterPurgeAndAdapterRestart()
@@ -345,16 +358,11 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         var foreign = record with { TenantId = foreignTenant, MemoryUnitId = "survivor", TruncatedRawJsonPayload = "foreign-raw" };
         await registry.EnqueueAsync(foreign, token);
         RedisValue foreignBefore = await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(foreignTenant), foreign.MemoryUnitId);
-        // This adapter limits the worker to the fixture-owned tenant; dequeue and finalization use the
-        // real persisted registry. Other integration tenants can share the collection's native Redis.
-        var owned = Substitute.For<IFailedNaturalLanguageEmbeddingRegistry>();
-        owned.ListTenantsWithBacklogAsync(Arg.Any<CancellationToken>()).Returns(_ => OwnedTenantAsync(tenant));
-        owned.GetBacklogCountAsync(tenant, Arg.Any<CancellationToken>()).Returns(call => registry.GetBacklogCountAsync(tenant, call.Arg<CancellationToken>()));
-        owned.DequeueBatchAsync(tenant, Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(call => registry.DequeueBatchAsync(tenant, call.Arg<int>(), call.Arg<CancellationToken>()));
-        owned.CompleteAsync(Arg.Any<FailedNaturalLanguageEmbeddingRecord>(), Arg.Any<CancellationToken>())
-            .Returns(call => registry.CompleteAsync(call.Arg<FailedNaturalLanguageEmbeddingRecord>(), call.Arg<CancellationToken>()));
-        owned.IncrementAttemptsAsync(Arg.Any<FailedNaturalLanguageEmbeddingRecord>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(call => registry.IncrementAttemptsAsync(call.Arg<FailedNaturalLanguageEmbeddingRecord>(), call.Arg<int>(), call.Arg<CancellationToken>()));
+        string malformedTenant = tenant + "-malformed";
+        string malformedBytes = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record with { TenantId = malformedTenant, MemoryUnitId = "other-unit" });
+        await db.SortedSetAddAsync(FailedNaturalLanguageEmbeddingRegistry.LiveKey(malformedTenant), "selected-unit", 1);
+        await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(malformedTenant), "selected-unit", malformedBytes);
+        var owned = CreateOwnedRegistry(registry, malformedTenant, tenant);
         using var http = new HttpClient();
         var conversation = Substitute.For<DaprConversationClient>(null!, http, null!);
         conversation.ConverseAsync(Arg.Any<IReadOnlyList<ConversationInput>>(), Arg.Any<ConversationOptions>(), Arg.Any<CancellationToken>())
@@ -388,7 +396,7 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
             using IHost host = BuildHost();
             await host.StartAsync(token);
             var client = host.Services.GetRequiredService<DaprWorkflowClient>();
-            var worker = new NaturalLanguageEmbeddingRetryHostedService(owned, client, monitor, NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance);
+            var worker = new NaturalLanguageEmbeddingRetryHostedService(owned, client, monitor, NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance, redis.Connection);
             Task tick = worker.TickAsync(options, token);
             await entered.Task.WaitAsync(token);
             WorkflowState running = await client.GetWorkflowStateAsync(id, true, token);
@@ -397,6 +405,8 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
             await AssertHistoryExcludesAsync();
             release.SetResult(new ConversationResponse([new ConversationResponseResult([new ConversationResultChoice(null, 0, new ResultMessage(description))])], string.Empty));
             await tick.WaitAsync(token);
+            (await db.StringGetAsync(RetryWorkflowHistory.Unresolved(malformedTenant))).ToString().ShouldBe("1");
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(malformedTenant), "selected-unit")).ToString().ShouldBe(malformedBytes);
             WorkflowState completed = await client.GetWorkflowStateAsync(id, true, token);
             completed.RuntimeStatus.ShouldBe(failAfterEmbedding ? WorkflowRuntimeStatus.Failed : WorkflowRuntimeStatus.Completed);
             generated.ShouldBeTrue();
@@ -412,11 +422,28 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
             (await db.HashGetAsync(survivor, "naturalLanguageDescription")).ToString().ShouldBe("unchanged");
             (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(foreignTenant), foreign.MemoryUnitId)).ShouldBe(foreignBefore);
             (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).HasValue.ShouldBe(failAfterEmbedding);
+            if (!failAfterEmbedding)
+            {
+                generated = false;
+                description = "A newer business action " + Guid.NewGuid().ToString("N") + ".";
+                release = new TaskCompletionSource<ConversationResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+                release.SetResult(new ConversationResponse([new ConversationResponseResult([new ConversationResultChoice(null, 0, new ResultMessage(description))])], string.Empty));
+                var replacement = record with { TruncatedRawJsonPayload = "replacement-raw", QueuedAtTicks = 2 };
+                await registry.EnqueueAsync(replacement, token);
+                await worker.TickAsync(options, token);
+                generated.ShouldBeTrue();
+                var replaced = await client.GetWorkflowStateAsync(id, true, token);
+                replaced.RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Completed);
+                replaced.ReadInputAs<NaturalLanguageEmbeddingRetryInput>().ShouldNotBeNull().PayloadVersion.ShouldBe(FailedNaturalLanguageEmbeddingRegistry.PayloadVersion(replacement));
+                (await db.HashGetAsync(output, "naturalLanguageDescription")).ToString().ShouldBe(description);
+                (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).HasValue.ShouldBeFalse();
+                (await db.SetContainsAsync(RetryWorkflowHistory.Units(tenant), unit)).ShouldBeTrue();
+            }
             await host.StopAsync(token);
             using IHost restarted = BuildHost();
             await restarted.StartAsync(token);
             var restartedClient = restarted.Services.GetRequiredService<DaprWorkflowClient>();
-            await new NaturalLanguageEmbeddingRetryHostedService(owned, restartedClient, monitor, NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance)
+            await new NaturalLanguageEmbeddingRetryHostedService(owned, restartedClient, monitor, NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance, redis.Connection)
                 .TickAsync(options, token);
             (await restartedClient.GetWorkflowStateAsync(id, true, token)).RuntimeStatus.ShouldBe(completed.RuntimeStatus);
             await AssertHistoryExcludesAsync();
@@ -493,6 +520,316 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         }
     }
 
+    /// <summary>
+    /// Verifies tenant Deletion Purges Live Dead And Completed Or Running History While Unknown Coverage And Scheduling Remain Blocked.
+    /// </summary>
+    [Fact]
+    public async Task TenantDeletionPurgesLiveDeadAndCompletedOrRunningHistoryWhileUnknownCoverageAndSchedulingRemainBlocked()
+    {
+        await WithClientAsync(async (client, token) =>
+        {
+            string tenant = "tenant-retry-erasure-" + Guid.NewGuid().ToString("N");
+            string foreign = tenant + "-foreign";
+            IDatabase db = redis.Connection.GetDatabase();
+            var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+            var live = new FailedNaturalLanguageEmbeddingRecord(tenant, "live", "synthetic-live", "Event", null, "case", "test", "test", 1, 1, 0);
+            var dead = live with { MemoryUnitId = "dead", TruncatedRawJsonPayload = "synthetic-dead" };
+            await registry.EnqueueAsync(live, token);
+            await registry.EnqueueAsync(dead, token);
+            await registry.IncrementAttemptsAsync(dead, 1, token);
+            await registry.EnqueueAsync(live with { TenantId = foreign }, token);
+            string running = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, "live");
+            string completed = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, "history-only");
+            string foreignId = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(foreign, "live");
+            await client.ScheduleNewWorkflowAsync(nameof(LegacyRetryErasureQualificationWorkflow), running, Input(tenant, "live", "synthetic-history"));
+            await client.ScheduleNewWorkflowAsync(nameof(LegacyRetryErasureQualificationWorkflow), foreignId, Input(foreign, "live", "foreign-history"));
+            await client.ScheduleNewWorkflowAsync(nameof(NaturalLanguageEmbeddingRetryWorkflow), completed,
+                new NaturalLanguageEmbeddingRetryInput(tenant, "history-only", string.Empty, "Event", null, "case", "test", "test", 1));
+            await client.WaitForWorkflowStartAsync(running, true, token);
+            await client.WaitForWorkflowStartAsync(foreignId, true, token);
+            (await client.WaitForWorkflowCompletionAsync(completed, true, token)).RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Completed);
+            await db.SetAddAsync(RetryWorkflowHistory.Units(tenant), "history-only");
+            (await FindWorkflowKeysAsync(running, token)).ShouldNotBeEmpty();
+            (await FindWorkflowKeysAsync(completed, token)).ShouldNotBeEmpty();
+            using var http = new HttpClient();
+            string metadata = _sidecar.DaprHttpEndpoint + "/v1.0/metadata";
+            (await http.GetAsync(metadata, token)).StatusCode.ShouldBe(System.Net.HttpStatusCode.Unauthorized);
+            http.DefaultRequestHeaders.Add("dapr-api-token", "incorrect-owned-token");
+            (await http.GetAsync(metadata, token)).StatusCode.ShouldBe(System.Net.HttpStatusCode.Unauthorized);
+            http.DefaultRequestHeaders.Remove("dapr-api-token");
+            http.DefaultRequestHeaders.Add("dapr-api-token", _sidecar.ApiToken);
+            (await http.GetAsync(metadata, token)).IsSuccessStatusCode.ShouldBeTrue();
+            var lifetime = Substitute.For<IHostApplicationLifetime>();
+            lifetime.ApplicationStopping.Returns(token);
+            var activity = new DeleteTenantDataKeysActivity(redis.Connection, Substitute.For<IAggregateCaseMappingStore>(),
+                Substitute.For<IObservedEventTypeStore>(), lifetime, NullLogger<DeleteTenantDataKeysActivity>.Instance,
+                null, client, Options.Create(new NaturalLanguageDescriptionOptions()));
+            (await Should.ThrowAsync<InvalidOperationException>(() => activity.RunAsync(null!, new(tenant)))).Message.ShouldBe("nl-retry-history-owner-reconciliation-required");
+            (await db.KeyExistsAsync(TenantIngestionOwnership.Fence(tenant))).ShouldBeTrue();
+            // Only this disposable fixture owner knows every history it created; no production coverage is attested.
+            await db.StringSetAsync(RetryWorkflowHistory.Coverage(tenant), RetryWorkflowHistory.ReconciledCoverage);
+            await db.HashSetAsync(RetryWorkflowHistory.Scheduling(tenant), "in-flight-attempt", "in-flight");
+            (await Should.ThrowAsync<InvalidOperationException>(() => activity.RunAsync(null!, new(tenant)))).Message.ShouldBe("nl-retry-scheduling-unresolved");
+            await db.HashDeleteAsync(RetryWorkflowHistory.Scheduling(tenant), "in-flight-attempt");
+            (await activity.RunAsync(null!, new(tenant))).ShouldBeTrue();
+            foreach (string key in new[] { FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant),
+                FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant), FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant) })
+                (await db.KeyExistsAsync(key)).ShouldBeFalse();
+            (await FindWorkflowKeysAsync(running, token)).ShouldBeEmpty();
+            (await FindWorkflowKeysAsync(completed, token)).ShouldBeEmpty();
+            (await client.GetWorkflowStateAsync(running, true, token)).Exists.ShouldBeFalse();
+            (await client.GetWorkflowStateAsync(completed, true, token)).Exists.ShouldBeFalse();
+            (await client.GetWorkflowStateAsync(foreignId, true, token)).Exists.ShouldBeTrue();
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(foreign), "live")).HasValue.ShouldBeTrue();
+            using var restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+            await new FailedNaturalLanguageEmbeddingRegistry(restarted, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance).EnqueueAsync(live, token);
+            (await db.KeyExistsAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant))).ShouldBeFalse();
+            await RetryWorkflowHistory.PurgeTenantAsync(restarted.GetDatabase(), client, tenant, false, token);
+            (await FindWorkflowKeysAsync(running, token)).ShouldBeEmpty();
+            (await FindWorkflowKeysAsync(completed, token)).ShouldBeEmpty();
+            await RetryWorkflowErasure.PurgeAsync(client, foreign, "live", token);
+        });
+    }
+
+    /// <summary>
+    /// Verifies scoped Terminal Retirement Rejects ANewer Execution Before Purge And Preserves Its Actual History.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScopedTerminalRetirementRejectsANewerExecutionBeforePurgeAndPreservesItsActualHistory(bool runningReplacement)
+    {
+        await WithClientAsync(async (client, token) =>
+        {
+            string tenant = "terminal-replaced-" + Guid.NewGuid().ToString("N");
+            const string unit = "victim";
+            string id = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, unit);
+            var old = new NaturalLanguageEmbeddingRetryInput(tenant, unit, string.Empty, "Event", null, "case", "test", "test", 1) { PayloadVersion = "old-version" };
+            await client.ScheduleNewWorkflowAsync(nameof(NaturalLanguageEmbeddingRetryWorkflow), id, old);
+            var observed = await client.WaitForWorkflowCompletionAsync(id, true, token);
+            // This fixture intentionally makes the out-of-band change before the explicit authoritative re-read.
+            await client.PurgeInstanceAsync(id, token);
+            if (runningReplacement)
+            {
+                await client.ScheduleNewWorkflowAsync(nameof(LegacyRetryErasureQualificationWorkflow), id, Input(tenant, unit, "synthetic-replacement"));
+                await client.WaitForWorkflowStartAsync(id, true, token);
+            }
+            else
+            {
+                await client.ScheduleNewWorkflowAsync(nameof(NaturalLanguageEmbeddingRetryWorkflow), id, old with { PayloadVersion = "new-version" });
+                await client.WaitForWorkflowCompletionAsync(id, true, token);
+            }
+            RedisKey[] replacementKeys = await FindWorkflowKeysAsync(id, token);
+            replacementKeys.ShouldNotBeEmpty();
+            (await Should.ThrowAsync<InvalidOperationException>(() => RetryWorkflowErasure.PurgeScopedAsync(client, tenant, unit, observed, token)))
+                .Message.ShouldBe("nl-retry-workflow-instance-changed");
+            var retained = await client.GetWorkflowStateAsync(id, true, token);
+            retained.Exists.ShouldBeTrue();
+            retained.RuntimeStatus.ShouldBe(runningReplacement ? WorkflowRuntimeStatus.Running : WorkflowRuntimeStatus.Completed);
+            foreach (RedisKey key in replacementKeys) (await redis.Connection.GetDatabase().KeyExistsAsync(key)).ShouldBeTrue();
+            await RetryWorkflowErasure.PurgeAsync(client, tenant, unit, token);
+        });
+    }
+
+    /// <summary>
+    /// Verifies stale Dequeued Record Cannot Retire Newer Terminal History After Taking The Lease.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StaleDequeuedRecordCannotRetireNewerTerminalHistoryAfterTakingTheLease(bool replaceDuringHistoryRead)
+    {
+        await WithClientAsync(async (client, token) =>
+        {
+            string tenant = "stale-dequeue-" + Guid.NewGuid().ToString("N");
+            const string unit = "victim";
+            IDatabase db = redis.Connection.GetDatabase();
+            var old = new FailedNaturalLanguageEmbeddingRecord(tenant, unit, "old", "Event", null, "case", "test", "test", 1, 1, 0);
+            var newer = old with { TruncatedRawJsonPayload = "newer", QueuedAtTicks = 2 };
+            string id = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, unit);
+            var input = new NaturalLanguageEmbeddingRetryInput(tenant, unit, string.Empty, "Event", null, "case", "test", "test", 1)
+                { PayloadVersion = FailedNaturalLanguageEmbeddingRegistry.PayloadVersion(newer) };
+            await client.ScheduleNewWorkflowAsync(nameof(NaturalLanguageEmbeddingRetryWorkflow), id, input);
+            WorkflowState original = await client.WaitForWorkflowCompletionAsync(id, true, token);
+            RedisKey[] before = await FindWorkflowKeysAsync(id, token);
+            before.ShouldNotBeEmpty();
+            await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit), "memoryUnitId", unit);
+            var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+            await registry.EnqueueAsync(old, token);
+            var owned = CreateOwnedRegistry(registry, tenant);
+            owned.DequeueBatchAsync(tenant, Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                var dequeued = await registry.DequeueBatchAsync(tenant, call.Arg<int>(), call.Arg<CancellationToken>());
+                if (!replaceDuringHistoryRead) await registry.EnqueueAsync(newer, token);
+                return dequeued;
+            });
+            var adapter = Substitute.For<IDaprWorkflowClient>();
+            adapter.GetWorkflowStateAsync(id, true, Arg.Any<CancellationToken>()).Returns(async call =>
+            {
+                if (replaceDuringHistoryRead) await registry.EnqueueAsync(newer, token);
+                return await client.GetWorkflowStateAsync(id, true, call.Arg<CancellationToken>());
+            });
+            var options = new NaturalLanguageDescriptionOptions { RetryWorkerEnabled = true };
+            var monitor = Substitute.For<IOptionsMonitor<NaturalLanguageDescriptionOptions>>(); monitor.CurrentValue.Returns(options);
+            await new NaturalLanguageEmbeddingRetryHostedService(owned, adapter, monitor,
+                NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance, redis.Connection).TickAsync(options, token);
+            await adapter.DidNotReceive().PurgeInstanceAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+            _ = await adapter.DidNotReceive().ScheduleNewWorkflowAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<NaturalLanguageEmbeddingRetryInput>());
+            var retained = await client.GetWorkflowStateAsync(id, true, token);
+            retained.CreatedAt.ShouldBe(original.CreatedAt);
+            retained.ReadInputAs<NaturalLanguageEmbeddingRetryInput>().ShouldNotBeNull().PayloadVersion.ShouldBe(input.PayloadVersion);
+            foreach (RedisKey key in before) (await db.KeyExistsAsync(key)).ShouldBeTrue();
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).ToString().ShouldBe(FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(newer));
+            (await db.KeyExistsAsync(RetryWorkflowHistory.Lease(tenant, unit))).ShouldBeFalse();
+            await RetryWorkflowErasure.PurgeAsync(client, tenant, unit, token);
+        });
+    }
+
+    /// <summary>
+    /// Verifies actual Worker Unacknowledged Submission Retains Authority Across Recreation And Blocks Tenant Cleanup.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ActualWorkerUnacknowledgedSubmissionRetainsAuthorityAcrossRecreationAndBlocksTenantCleanup(bool interruptCaller)
+    {
+        await WithClientAsync(async (client, token) =>
+        {
+            string tenant = "unacknowledged-retry-" + Guid.NewGuid().ToString("N");
+            const string unit = "victim";
+            IDatabase db = redis.Connection.GetDatabase();
+            await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit), "memoryUnitId", unit);
+            var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+            var record = new FailedNaturalLanguageEmbeddingRecord(tenant, unit, "synthetic", "Event", null, "case", "test", "test", 1, 1, 0);
+            await registry.EnqueueAsync(record, token);
+            var owned = CreateOwnedRegistry(registry, tenant);
+            using var interrupted = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var adapter = Substitute.For<IDaprWorkflowClient>();
+            adapter.GetWorkflowStateAsync(Arg.Any<string>(), true, Arg.Any<CancellationToken>())
+                .Returns(call => client.GetWorkflowStateAsync(call.Arg<string>(), true, call.Arg<CancellationToken>()));
+            string id = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, unit);
+            bool submitted = false;
+            Exception? submissionSetupFailure = null;
+            async Task<string> SubmitWithoutAcknowledgement(NSubstitute.Core.CallInfo call)
+            {
+                try
+                {
+                    await client.ScheduleNewWorkflowAsync(call.ArgAt<string>(0), id, call.ArgAt<NaturalLanguageEmbeddingRetryInput>(2));
+                    await client.WaitForWorkflowCompletionAsync(id, true, token);
+                    WorkflowState completed = await client.GetWorkflowStateAsync(id, true, token);
+                    RetryWorkflowErasure.ReadScope(completed).ShouldBe((tenant, unit));
+                    submitted = true;
+                }
+                catch (Exception error) { submissionSetupFailure = error; throw; }
+                if (interruptCaller)
+                {
+                    interrupted.Cancel();
+                    throw new OperationCanceledException(interrupted.Token);
+                }
+                throw new TimeoutException("synthetic-unacknowledged-submission");
+            }
+            adapter.ScheduleNewWorkflowAsync(Arg.Any<string>(), id, Arg.Any<NaturalLanguageEmbeddingRetryInput>()).Returns(SubmitWithoutAcknowledgement);
+            var options = new NaturalLanguageDescriptionOptions { RetryWorkerEnabled = true };
+            var monitor = Substitute.For<IOptionsMonitor<NaturalLanguageDescriptionOptions>>(); monitor.CurrentValue.Returns(options);
+            var logger = Substitute.For<Microsoft.Extensions.Logging.ILogger<NaturalLanguageEmbeddingRetryHostedService>>();
+            logger.IsEnabled(Arg.Any<Microsoft.Extensions.Logging.LogLevel>()).Returns(true);
+            var worker = new NaturalLanguageEmbeddingRetryHostedService(owned, adapter, monitor, logger, redis.Connection);
+            OperationCanceledException? cancellation = null;
+            try { await worker.TickAsync(options, interrupted.Token); }
+            catch (OperationCanceledException error) { cancellation = error; }
+            if (!submitted) throw new InvalidOperationException("controlled-scheduling-setup-failed: "
+                + string.Join(",", adapter.ReceivedCalls().Select(call => call.GetMethodInfo().Name))
+                + "; admitted=" + (await FailedNaturalLanguageEmbeddingRegistry.ReadCurrentAsync(db, tenant, unit) == record)
+                + "; backlog=" + await registry.GetBacklogCountAsync(tenant, token), submissionSetupFailure
+                ?? logger.ReceivedCalls().Select(call => call.GetArguments().OfType<Exception>().FirstOrDefault()).LastOrDefault(error => error is not null));
+            if (interruptCaller) cancellation.ShouldNotBeNull();
+            else cancellation.ShouldBeNull();
+            string authority = (await db.StringGetAsync(RetryWorkflowHistory.Lease(tenant, unit))).ToString();
+            authority.ShouldNotBeNullOrWhiteSpace();
+            (await db.HashGetAsync(RetryWorkflowHistory.Scheduling(tenant), authority)).ToString().ShouldBe(unit);
+            (await client.GetWorkflowStateAsync(id, true, token)).Exists.ShouldBeTrue();
+            using var restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+            var recreatedRegistry = new FailedNaturalLanguageEmbeddingRegistry(restarted, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+            var untouched = Substitute.For<IDaprWorkflowClient>();
+            await new NaturalLanguageEmbeddingRetryHostedService(CreateOwnedRegistry(recreatedRegistry, tenant), untouched, monitor,
+                NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance, restarted).TickAsync(options, token);
+            untouched.ReceivedCalls().ShouldBeEmpty();
+            (await restarted.GetDatabase().HashGetAsync(RetryWorkflowHistory.Scheduling(tenant), authority)).ToString().ShouldBe(unit);
+            (await Should.ThrowAsync<InvalidOperationException>(() => RetryWorkflowHistory.PurgeTenantAsync(restarted.GetDatabase(), client, tenant, false, token)))
+                .Message.ShouldBe("nl-retry-scheduling-unresolved");
+            (await db.KeyExistsAsync(RetryWorkflowHistory.Lease(tenant, unit))).ShouldBeTrue();
+            // Only this fixture owns and quiesces the failed submitter; settle its exact token for teardown.
+            await RetryWorkflowHistory.AcknowledgeAsync(db, tenant, unit, authority, token);
+            await RetryWorkflowErasure.PurgeAsync(client, tenant, unit, token);
+        });
+    }
+
+    /// <summary>
+    /// Verifies authenticated Tenant History Discovery Purges Queue Only And Orphan Hash Units Absent From The Ledger.
+    /// </summary>
+    [Fact]
+    public async Task AuthenticatedTenantHistoryDiscoveryPurgesQueueOnlyAndOrphanHashUnitsAbsentFromTheLedger()
+    {
+        await WithClientAsync(async (client, token) =>
+        {
+            string tenant = "queue-discovered-history-" + Guid.NewGuid().ToString("N");
+            string foreign = tenant + "-foreign";
+            IDatabase db = redis.Connection.GetDatabase();
+            string[] units = ["live-only", "dead-only", "hash-only", "dead-hash-only"];
+            foreach (string unit in units)
+            {
+                var record = new FailedNaturalLanguageEmbeddingRecord(tenant, unit, "synthetic", "Event", null, "case", "test", "test", 1, 1, 0);
+                bool dead = unit.StartsWith("dead", StringComparison.Ordinal);
+                string payloads = dead ? FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant) : FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant);
+                await db.HashSetAsync(payloads, unit, FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(record));
+                if (unit.EndsWith("only", StringComparison.Ordinal) && !unit.Contains("hash", StringComparison.Ordinal))
+                    await db.SortedSetAddAsync(dead ? FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant) : FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), unit, 1);
+                string id = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, unit);
+                await client.ScheduleNewWorkflowAsync(nameof(NaturalLanguageEmbeddingRetryWorkflow), id,
+                    new NaturalLanguageEmbeddingRetryInput(tenant, unit, string.Empty, "Event", null, "case", "test", "test", 1));
+                await client.WaitForWorkflowCompletionAsync(id, true, token);
+                (await FindWorkflowKeysAsync(id, token)).ShouldNotBeEmpty();
+            }
+            (await db.SetLengthAsync(RetryWorkflowHistory.Units(tenant))).ShouldBe(0);
+            string foreignId = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(foreign, "live-only");
+            await client.ScheduleNewWorkflowAsync(nameof(LegacyRetryErasureQualificationWorkflow), foreignId, Input(foreign, "live-only", "foreign-history"));
+            await client.WaitForWorkflowStartAsync(foreignId, true, token);
+            string survivor = FailedNaturalLanguageEmbeddingRegistry.SerializeRecord(new(foreign, "live-only", "foreign-content", "Event", null, "case", "test", "test", 1, 1, 0));
+            await db.HashSetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(foreign), "live-only", survivor);
+            await db.StringSetAsync(RetryWorkflowHistory.Coverage(tenant), RetryWorkflowHistory.ReconciledCoverage);
+            await RetryWorkflowHistory.PurgeTenantAsync(db, client, tenant, false, token);
+            foreach (string unit in units)
+            {
+                string id = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, unit);
+                (await client.GetWorkflowStateAsync(id, true, token)).Exists.ShouldBeFalse();
+                (await FindWorkflowKeysAsync(id, token)).ShouldBeEmpty();
+            }
+            foreach (string key in new[] { FailedNaturalLanguageEmbeddingRegistry.LiveKey(tenant), FailedNaturalLanguageEmbeddingRegistry.DeadKey(tenant),
+                FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), FailedNaturalLanguageEmbeddingRegistry.DeadPayloadKey(tenant) })
+                (await db.KeyExistsAsync(key)).ShouldBeFalse();
+            (await client.GetWorkflowStateAsync(foreignId, true, token)).Exists.ShouldBeTrue();
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(foreign), "live-only")).ToString().ShouldBe(survivor);
+            await RetryWorkflowErasure.PurgeAsync(client, foreign, "live-only", token);
+        });
+    }
+
+    private static IFailedNaturalLanguageEmbeddingRegistry CreateOwnedRegistry(FailedNaturalLanguageEmbeddingRegistry registry, params string[] tenants)
+    {
+        var owned = Substitute.For<IFailedNaturalLanguageEmbeddingRegistry>();
+        owned.ListTenantsWithBacklogAsync(Arg.Any<CancellationToken>()).Returns(_ => OwnedTenantsAsync(tenants));
+        owned.GetBacklogCountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(call => registry.GetBacklogCountAsync(call.Arg<string>(), call.Arg<CancellationToken>()));
+        owned.DequeueBatchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(call => registry.DequeueBatchAsync(call.Arg<string>(), call.Arg<int>(), call.Arg<CancellationToken>()));
+        owned.CompleteAsync(Arg.Any<FailedNaturalLanguageEmbeddingRecord>(), Arg.Any<CancellationToken>()).Returns(call => registry.CompleteAsync(call.Arg<FailedNaturalLanguageEmbeddingRecord>(), call.Arg<CancellationToken>()));
+        owned.IncrementAttemptsAsync(Arg.Any<FailedNaturalLanguageEmbeddingRecord>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(call => registry.IncrementAttemptsAsync(call.Arg<FailedNaturalLanguageEmbeddingRecord>(), call.Arg<int>(), call.Arg<CancellationToken>()));
+        return owned;
+    }
+
+    private static async IAsyncEnumerable<string> OwnedTenantsAsync(string[] tenants)
+    {
+        foreach (string tenant in tenants) yield return tenant;
+        await Task.CompletedTask;
+    }
+
     private static async IAsyncEnumerable<string> OwnedTenantAsync(string tenant)
     {
         yield return tenant;
@@ -518,13 +855,29 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
         Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", endpoint);
         try
         {
+            using var http = new HttpClient();
+            var conversation = Substitute.For<DaprConversationClient>(null!, http, null!);
+            conversation.ConverseAsync(Arg.Any<IReadOnlyList<ConversationInput>>(), Arg.Any<ConversationOptions>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<ConversationResponse>(new NaturalLanguageDescriptionUnavailableException("synthetic-unavailable", "owned-test")));
+            var environment = Substitute.For<IHostEnvironment>(); environment.EnvironmentName.Returns("Development");
+            var embedding = Substitute.For<EmbeddingClient>(Substitute.For<IHttpClientFactory>(), Substitute.For<Dapr.Client.DaprClient>(), new ConfigurationBuilder().Build(), environment);
             using IHost host = Host.CreateDefaultBuilder().ConfigureServices(services =>
-                services.AddDaprWorkflow(options => options.RegisterWorkflow<LegacyRetryErasureQualificationWorkflow>())).Build();
+                {
+                services.AddKeyedSingleton<IConnectionMultiplexer>("redis", redis.Connection);
+                services.AddSingleton(conversation).AddSingleton(Options.Create(new NaturalLanguageDescriptionOptions()))
+                    .AddSingleton(embedding).AddSingleton(Substitute.For<IActorProxyFactory>()).AddSingleton(Substitute.For<IJitterSource>());
+                services.AddDaprWorkflow(options =>
+                {
+                    options.RegisterWorkflow<LegacyRetryErasureQualificationWorkflow>();
+                    options.RegisterWorkflow<NaturalLanguageEmbeddingRetryWorkflow>();
+                    options.RegisterActivity<RetryNaturalLanguageEmbeddingActivity>();
+                });
+            }).Build();
             using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
             deadline.CancelAfter(TimeSpan.FromSeconds(60));
             await host.StartAsync(deadline.Token);
-            await action(host.Services.GetRequiredService<DaprWorkflowClient>(), deadline.Token);
-            await host.StopAsync(deadline.Token);
+            try { await action(host.Services.GetRequiredService<DaprWorkflowClient>(), deadline.Token); }
+            finally { await host.StopAsync(deadline.Token); }
         }
         finally
         {

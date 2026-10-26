@@ -38,11 +38,14 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
 
     public DaprClient DaprClient { get; private set; } = null!;
 
+    /// <summary>Gets the fixture-owned API credential when workflow authentication is selected.</summary>
+    public string? ApiToken { get; private set; }
+
     private bool _workflow;
     private string? _workflowRedisHost;
 
     /// <summary>Creates an owned workflow sidecar against the collection's owned Redis resource.</summary>
-    public static DaprStateSidecarFixture CreateWorkflow(string redisHost) => new() { _workflow = true, _workflowRedisHost = redisHost };
+    public static DaprStateSidecarFixture CreateWorkflow(string redisHost, bool authenticate = false) => new() { _workflow = true, _workflowRedisHost = redisHost, ApiToken = authenticate ? Guid.NewGuid().ToString("N") : null };
 
     public async ValueTask InitializeAsync()
     {
@@ -106,6 +109,7 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
                     "--dapr-http-port", httpPort.ToString(),
                     "--dapr-grpc-port", grpcPort.ToString(),
                     "--metrics-port", metricsPort.ToString(),
+                    "--dapr-internal-grpc-port", GetFreePort().ToString(),
                     "--resources-path", _componentsDir,
                     "--log-level", "info",
                     "--enable-app-health-check=false",
@@ -126,6 +130,7 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
             _daprd.StartInfo.ArgumentList.Add("--dapr-listen-addresses");
             _daprd.StartInfo.ArgumentList.Add("127.0.0.1");
         }
+        if (ApiToken is not null) _daprd.StartInfo.Environment["DAPR_API_TOKEN"] = ApiToken;
         _daprd.OutputDataReceived += (_, e) =>
         {
             if (e.Data is not null)
@@ -160,6 +165,7 @@ public sealed class DaprStateSidecarFixture : IAsyncLifetime
         DaprClient = new DaprClientBuilder()
             .UseHttpEndpoint(DaprHttpEndpoint)
             .UseGrpcEndpoint(DaprGrpcEndpoint)
+            .UseDaprApiToken(ApiToken)
             .Build();
 
         // Probe the state store once so a misconfigured component fails fixture init, not the first test.

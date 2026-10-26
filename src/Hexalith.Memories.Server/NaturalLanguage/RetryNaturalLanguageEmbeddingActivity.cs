@@ -21,7 +21,10 @@ internal sealed class RetryNaturalLanguageEmbeddingActivity(
         {
             throw new InvalidOperationException("nl-retry-input-must-be-content-free");
         }
-        FailedNaturalLanguageEmbeddingRecord? record = await FailedNaturalLanguageEmbeddingRegistry.ReadCurrentAsync(redis.GetDatabase(), input.TenantId, input.MemoryUnitId).ConfigureAwait(false);
+        var observed = await FailedNaturalLanguageEmbeddingRegistry.ReadCurrentPayloadAsync(redis.GetDatabase(), input.TenantId, input.MemoryUnitId).ConfigureAwait(false);
+        FailedNaturalLanguageEmbeddingRecord? record = observed.Record;
+        if (record is not null && input.PayloadVersion is not null && input.PayloadVersion != FailedNaturalLanguageEmbeddingRegistry.PayloadVersion(record))
+            return new(false, "retry-payload-retired");
         if (record is null)
         {
             return new(false, "memory-unit-deleted-during-retry");
@@ -43,7 +46,7 @@ internal sealed class RetryNaturalLanguageEmbeddingActivity(
             {
                 return new(false, "retry-payload-retired");
             }
-            await index.RunAsync(context, new NaturalLanguageIndexInput
+            await index.RunRetryAsync(new NaturalLanguageIndexInput
             {
                 TenantId = record.TenantId,
                 MemoryUnitId = record.MemoryUnitId,
@@ -55,9 +58,12 @@ internal sealed class RetryNaturalLanguageEmbeddingActivity(
                 NaturalLanguageDescription = description.Description,
                 DescriptionConfidence = description.EstimatedConfidence,
                 ConfidenceSource = description.ConfidenceSource,
-            }).ConfigureAwait(false);
+            }, observed.Payload!).ConfigureAwait(false);
             return new(true);
         }
+        catch (RetryPublicationRejectedException) { return new(false, "retry-payload-retired"); }
+        catch (InvalidOperationException error) when (error.Message.Contains("tenant-ingestion-erased", StringComparison.Ordinal))
+        { return new(false, "memory-unit-deleted-during-retry"); }
         catch (NaturalLanguageDescriptionUnavailableException) { return new(false, "llm-still-unavailable"); }
     }
 }

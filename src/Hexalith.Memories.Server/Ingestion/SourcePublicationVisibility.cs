@@ -38,7 +38,7 @@ internal static class SourcePublicationVisibility
     internal static string Tombstone(string tenant, string unit) => "publication-tombstone:" + tenant + ":" + unit;
 
     internal static async Task WriteAsync(IDatabase db, string tenant, string unit, string key, HashEntry[] entries, bool tracked,
-        string? caseId = null, string? sourceUri = null)
+        string? caseId = null, string? sourceUri = null, string? expectedRetryPayload = null)
     {
         IngestionIdentityGuard.Handle(unit);
         if (!tracked && (string.IsNullOrWhiteSpace(sourceUri) || string.IsNullOrWhiteSpace(caseId)))
@@ -49,13 +49,24 @@ internal static class SourcePublicationVisibility
         bool scoped = !string.IsNullOrWhiteSpace(caseId) && !string.IsNullOrWhiteSpace(sourceUri);
         if (scoped) { IngestionIdentityGuard.Scope(tenant, sourceUri!); IngestionIdentityGuard.Handle(caseId!); }
         RedisValue[] arguments = [(RedisValue)(tracked ? "1" : "0"), (RedisValue)unit, (RedisValue)(scoped ? "1" : "0"),
-            .. entries.Where(entry => entry.Name != Field).SelectMany(entry => new[] { entry.Name, entry.Value })];
-        RedisResult result = await TenantIngestionOwnership.WriteAsync(db, tenant, Stage,
+            .. entries.Where(entry => entry.Name != Field).SelectMany(entry => new[] { entry.Name, entry.Value }),
+            .. expectedRetryPayload is null ? Array.Empty<RedisValue>() : [(RedisValue)expectedRetryPayload]];
+        const string retryGuard = """
+            local expected=table.remove(ARGV)
+            if redis.call('HGET',KEYS[8],ARGV[2])~=expected or redis.call('EXISTS',KEYS[9])~=1 then return 0 end
+            """;
+        RedisResult result = await TenantIngestionOwnership.WriteAsync(db, tenant, expectedRetryPayload is null ? Stage : retryGuard + "\n" + Stage,
             [(RedisKey)key, (RedisKey)Keys(tenant, unit), (RedisKey)Tombstone(tenant, unit),
                 (RedisKey)(scoped ? SourceInventoryStore.BuildKey(tenant, sourceUri!) : "__unused-source-inventory"),
                 (RedisKey)(scoped ? RefreshPublicationStore.ManagedSourceKey(tenant, sourceUri!) : "__unused-managed-source"),
-                (RedisKey)(scoped ? Hexalith.Memories.Server.Activities.Ingestion.DedupKeyBuilder.BuildKey(tenant, caseId!, sourceUri!) : "__unused-source-pointer"), (RedisKey)KeyProvenance(tenant, unit)], arguments).ConfigureAwait(false);
-        if ((long)result != 1) { throw new InvalidOperationException("source-publication-write-fenced-or-full"); }
+                (RedisKey)(scoped ? Hexalith.Memories.Server.Activities.Ingestion.DedupKeyBuilder.BuildKey(tenant, caseId!, sourceUri!) : "__unused-source-pointer"), (RedisKey)KeyProvenance(tenant, unit),
+                (RedisKey)(expectedRetryPayload is null ? "__unused-retry-payload" : Hexalith.Memories.Server.NaturalLanguage.FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant)),
+                (RedisKey)(expectedRetryPayload is null ? "__unused-retry-unit" : IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit))], arguments).ConfigureAwait(false);
+        if ((long)result != 1)
+        {
+            if (expectedRetryPayload is not null) throw new Hexalith.Memories.Server.NaturalLanguage.RetryPublicationRejectedException();
+            throw new InvalidOperationException("source-publication-write-fenced-or-full");
+        }
     }
 
     /// <summary>Adds the optional capability field only to existing indexes, preserving the legacy base schema and rows.</summary>
