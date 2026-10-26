@@ -1,4 +1,14 @@
 {
+  "alternativeCandidate": {
+    "address": "192.168.1.30",
+    "admitted": false,
+    "evidence": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/resolved-inputs.json",
+      "sha256": "19332dfba073952162b9284d66bc54fd183ac7899e80e4c83e9922b4bda7bdf0"
+    },
+    "identity": "node1",
+    "reason": "Historical gross capacity only; no net reservation, exact primary/backup or isolated engine."
+  },
   "backupPool": null,
   "cgroup": {},
   "cpuAffinitySlots": 14,

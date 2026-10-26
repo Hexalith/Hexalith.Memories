@@ -1,4 +1,178 @@
 {
+  "calibrationAction": {
+    "admissionCaveat": "This command requires all existing predecessor/authority/profile/observation checks; it cannot bootstrap absent finite calibration measurements. Supply eligible prior same-input receipts or the separately admitted Platform prerequisite plan before execution. Placeholder argv is not executable approval.",
+    "argvTemplate": [
+      "python3",
+      "-B",
+      "tools/verify-access-telemetry-lifecycle.py",
+      "--checkpoint",
+      "c2-production-replacement",
+      "--repository-root",
+      "${ACTUAL_CLEAN_MEMORIES_ROOT}",
+      "--owner-plan",
+      "${ACTUAL_OWNER_PLAN}",
+      "--approved-owner-plan-sha256",
+      "${ACTUAL_OWNER_PLAN_SHA256}",
+      "--owner-custody-root",
+      "${ACTUAL_EVIDENCE_ROOT}",
+      "--campaign-profile",
+      "${ACTUAL_ADMITTED_PROFILE}",
+      "--approved-campaign-profile-sha256",
+      "${ACTUAL_PROFILE_SHA256}",
+      "--campaign-capacity-receipt",
+      "${ACTUAL_CURRENT_CAPACITY}",
+      "--approved-campaign-capacity-sha256",
+      "${ACTUAL_CAPACITY_SHA256}",
+      "--scenario-input",
+      "${ACTUAL_SCENARIO}",
+      "--predecessor",
+      "${ACTUAL_PREDECESSOR}",
+      "--evidence-root",
+      "${ACTUAL_EVIDENCE_ROOT}",
+      "--evidence",
+      "${ACTUAL_C2_EVIDENCE}",
+      "--owner",
+      "J\u00e9r\u00f4me Piquot"
+    ],
+    "authority": "Fresh separate Platform calibration decision from github:user:6775094 with exact target/plan/source/argv/credential/issuer/absolute-window/stop authority. Existing WINDOW approvals and Story 4.0 grants do not transfer. Distinct Operations/Security records may be sole-owner/self-reviewed. No decision requested now.",
+    "cleanup": "On completion, first failure, stale monitoring, excess or deadline: use the bound native stop/remove, sharing the original 900s. Disable exact gate, clear exact owned Lease, quiesce writers/replicas, retain failure/native receipts and verify no exact-owned resource remains. Foreign resources are never removed; backup/evidence retained. Missing/uncertain proof stays unverified; no automatic retry.",
+    "commandBoundary": {
+      "bootstrapLaunchArgv": null,
+      "existingSupportedProducer": "tools/verify-access-telemetry-lifecycle.py --checkpoint c2-production-replacement (argvTemplate below)",
+      "missingCommandOwnerInput": "Platform must supply exact approved native provision/monitor/stop/remove argv, state and independently admitted target. Existing campaign lifecycle vectors in this catalogue apply only to a fully admitted campaign state. No --calibrate option or measurement-free admission exists; no use of fixtures or direct internal _c2 to bypass authority.",
+      "nativeMonitorArgv": null,
+      "nativeRemoveArgv": null,
+      "nativeStopArgv": null
+    },
+    "executed": false,
+    "laterProofStillRequired": "This one bounded rate/physical action cannot establish all25 parent-ordered renewal timings, cleanup/cohort invariance, C2 24h drain or real C3 1/24/168h observations. Those need same-input original receipts or separately bounded Platform actions with unchanged 777600s C3 and 86400s reclamation policies. Final control/report protection must fit <24h; no renewal count, schedule or measurement is fabricated.",
+    "launchAuthorized": false,
+    "limits": {
+      "attempts": 1,
+      "automaticRetries": 0,
+      "cpuMilli": 16250,
+      "memoryBytes": 33285996544,
+      "postgresCpuMilli": 8000,
+      "postgresMemoryBytes": 17179869184,
+      "producerSeconds": 50400,
+      "providerReporterCniResidualCpuMilli": 300,
+      "providerReporterCniResidualMemoryBytes": 1073741824,
+      "startupSeconds": 600,
+      "stopAndRemoveCumulativeSeconds": 900,
+      "storageAllocationBytes": null,
+      "storageRule": "Exact separately reserved calibration allocations required; no promotion of the single-collection diagnostic into a campaign allocation.",
+      "totalMaximumSeconds": 51900
+    },
+    "owner": "Platform",
+    "status": "bounded-proposal-blocked-on-actual-target-and-native-bootstrap-command-packet",
+    "target": {
+      "actualIsolatedTargetIdentity": null,
+      "actualNativeStatePath": null,
+      "actualPlanPathAndSha256": null,
+      "candidateHost": "node1 /192.168.1.30 only after net-capacity/isolation reservation, otherwise owner-selected viable host",
+      "forbiddenTarget": "jpiquot@local / existing node1 protected cluster; historical WINDOW/KVM resources",
+      "primaryAndIndependentBackupPaths": null
+    },
+    "workload": {
+      "acceptedRecordsPerSecondPerWriter": 125,
+      "backlogCommandContract": null,
+      "backlogCommandRequirement": "Retain actual approved C1.10 source/argv/receipt; ordinary C2 evidence alone is not a distinct 150000-record backlog measurement.",
+      "commonOverlapSeconds": 1800,
+      "maximumC2AcceptedRecordsIncludingOther": 650000,
+      "minimumAcceptedRecords": 450000,
+      "minimumComponentOperations": 900000,
+      "physicalReadbacks": [
+        "heap/TOAST <=2048 bytes per record",
+        "all index/actor/due/catalogue/cursor/reminder state <=2048 bytes per record",
+        "WAL <=4GiB, DB fixed <=1GiB",
+        "one full relation/index rewrite workspace; 25% relation margin; 20% free at modeled peak",
+        "per-allocation compute/storage/latency/error observations at the unchanged resource limits"
+      ],
+      "separateBacklogRecords": 150000,
+      "writers": 2
+    }
+  },
+  "hostReservationAction": {
+    "additionalRequiredRecords": [
+      "Actual signed reservation ID/issuer/owner/valid-from/valid-until/revocation and competing-demand ledger; observed load or free capacity is insufficient.",
+      "Net >=16250m CPU /33285996544 RAM bytes, exact allocations and independent failure domains.",
+      "Finite host/backup credential and provider references with scopes/audiences/not-before/expiry/revocation."
+    ],
+    "argvTemplates": [
+      [
+        "hostname"
+      ],
+      [
+        "cat",
+        "/etc/machine-id"
+      ],
+      [
+        "cat",
+        "/proc/sys/kernel/random/boot_id"
+      ],
+      [
+        "getconf",
+        "_NPROCESSORS_ONLN"
+      ],
+      [
+        "cat",
+        "/sys/fs/cgroup/cpu.max"
+      ],
+      [
+        "cat",
+        "/sys/fs/cgroup/memory.max"
+      ],
+      [
+        "cat",
+        "/proc/meminfo"
+      ],
+      [
+        "findmnt",
+        "--json",
+        "--target",
+        "${ACTUAL_PRIMARY_PATH}",
+        "--output",
+        "SOURCE,TARGET,FSTYPE,OPTIONS,UUID,MAJ:MIN"
+      ],
+      [
+        "df",
+        "--block-size=1",
+        "--output=source,fstype,size,used,avail,target",
+        "${ACTUAL_PRIMARY_PATH}"
+      ],
+      [
+        "findmnt",
+        "--json",
+        "--target",
+        "${ACTUAL_INDEPENDENT_BACKUP_PATH}",
+        "--output",
+        "SOURCE,TARGET,FSTYPE,OPTIONS,UUID,MAJ:MIN"
+      ],
+      [
+        "df",
+        "--block-size=1",
+        "--output=source,fstype,size,used,avail,target",
+        "${ACTUAL_INDEPENDENT_BACKUP_PATH}"
+      ],
+      [
+        "${PINNED_DOCKER_CLIENT}",
+        "--host",
+        "${ACTUAL_LOCAL_SOCKET}",
+        "info",
+        "--format",
+        "{\"ID\":{{json .ID}},\"NCPU\":{{.NCPU}},\"MemTotal\":{{.MemTotal}},\"DockerRootDir\":{{json .DockerRootDir}},\"Driver\":{{json .Driver}}}"
+      ]
+    ],
+    "attempts": 1,
+    "automaticRetries": 0,
+    "candidateTarget": "node1 / 192.168.1.30; independently trusted host identity and isolation required before any connection",
+    "cleanup": "Read-only process ends at 60s; retain sanitized stdout/exit/timing and signed owner reservation. No VM, storage, cluster or credential mutation; no cleanup of other workloads.",
+    "executionLocation": "Host owner runs locally on the actual chosen host; backup custodian runs storage observations on the actual independent backing host. This agent makes no connection.",
+    "maximumSeconds": 60,
+    "mutations": false,
+    "owner": "Platform host/storage custodians; J\u00e9r\u00f4me Piquot accepts the exact returned packet",
+    "status": "proposed-not-executed-not-authorized"
+  },
   "lifecycle": [
     {
       "action": "prepare",

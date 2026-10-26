@@ -4,6 +4,10 @@
     "sha256": "61aa980331c8477fe801e16108798d922c316ef9a83dffee13d34d4a7cd11380"
   },
   "backupFailureDomainAndRestoreReceipt": null,
+  "candidateHostBackupAndCredentialEvidence": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/resolved-inputs.json",
+    "sha256": "19332dfba073952162b9284d66bc54fd183ac7899e80e4c83e9922b4bda7bdf0"
+  },
   "capabilities": [
     {
       "consumers": [
@@ -104,12 +108,12 @@
     "registry": null
   },
   "daprImages": {
-    "daprd": null,
-    "injector": null,
-    "operator": null,
-    "placement": null,
-    "scheduler": null,
-    "sentry": null
+    "daprd": "ghcr.io/dapr/daprd:1.18.7@sha256:82f011cdfa718d99f68dc3d7fd714554ed33d59b43bd9f097920a0ba2f6c732e",
+    "injector": "ghcr.io/dapr/injector:1.18.7@sha256:a52916d095a1b9d6e4f9dd9eb71901e99c4bb6c5bd2f288c3bd56487eb0fb017",
+    "operator": "ghcr.io/dapr/operator:1.18.7@sha256:fc527643be0d0905bb521d38501a4044a5ea42697db83252ea704886ae6cd995",
+    "placement": "ghcr.io/dapr/placement:1.18.7@sha256:b01e7bb3c9c6c0079fc6f7be9c9c64d386c78a0ac66b6e9d9b87e84a7647e9cf",
+    "scheduler": "ghcr.io/dapr/scheduler:1.18.7@sha256:532085fa8c411e729a0789701dbb0bcac53d9108d95684b74ab9a8e620c57d23",
+    "sentry": "ghcr.io/dapr/sentry:1.18.7@sha256:a981652eaf937b3f9628a2d79ef8bbb3e5980b5f89cf6e6734997b94641386fc"
   },
   "freshnessSeconds": {
     "initialMeasurements": 86400,
@@ -166,6 +170,31 @@
   "providerReporterCniResidualBudget": {
     "cpuMilli": 300,
     "memoryBytes": 1073741824
+  },
+  "resolvedArtifactInputs": {
+    "assets": {
+      "dapr": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/dapr-1.18.7.tgz",
+        "sha256": "bd540acd198dc8efa4314208325d8e7eaf89f54accdbd1fad62b484fcf9cabf2"
+      },
+      "gateway": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/gateway-1.5.1.yaml",
+        "sha256": "751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8"
+      }
+    },
+    "daprRender": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/dapr-render.yaml",
+      "sha256": "8af5a63cc7f782a01a0d7d7be0db794cedbf3776dcd2fd9922acd1e36391ae7e"
+    },
+    "daprValues": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/dapr-values.json",
+      "sha256": "65f446d5634608dc11c20f985f1b0d243f568f1b69bc288cb5a1a1e1726f7f22"
+    },
+    "scope": "Content-addressed bytes, no lease expiry. Registry observations at 2026-10-25T21:04:15Z..21:04:16Z; no layer archive, publisher-signature, target availability or rollout claim. Retain the digest, not a mutable tag re-resolution.",
+    "verification": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/dapr-render-verification.json",
+      "sha256": "c3f8090ec3546ca9a9cd5b24653bf172cc5f59848152fe4e320091e017d0a4a6"
+    }
   },
   "runtimeImageVersion": "1.18.7",
   "status": "missing-operational-bindings",

@@ -1,5 +1,71 @@
 # Story 27.4 — current retention results
 
+## Operational prerequisites continued — 2026-10-25
+
+**Partial resolution: actual Dapr/Gateway inputs are bound; host reservation and
+calibration are still blocked.** The [current operational result](../../../docs/operations/access-telemetry-full-qualification.md#operational-prerequisite-resolution--2026-10-25-current)
+and [existing preparation index](../../../docs/operations/qualification/full-campaign-preparation-2026-10-25/preparation.json)
+record the exact inputs, owner action and blockers. This continuation adds no
+implementation, review, inventory rerun, qualification credit or Memories runner.
+
+New retained Platform evidence identifies `node1` / `192.168.1.30`, node UID
+`46d8d528-420d-4501-a6d8-12680d8a6ac6`. Its October 2 hardware observation
+has 32 threads and 134924496896 RAM bytes; raw SHA256
+`83e96612fc89364bf2f1ab4f23afbeee2cdb3a79e9c4e75423541b22f99911eb`
+matches the retained checksum. October 25 installation evidence confirms identity
+and protected workloads, without current available-minus-competing capacity or a
+reservation. No suitable host is admitted. The 14-slot host still fails 16250m.
+
+Actual off-node provider lead: Scaleway `hexalith-recovery-points`, project
+`bed84924-0e48-4275-8b7c-5d9a1f57a8dd`, `fr-par`. Existing writer/validator
+reference paths and distinct role/policy IDs are retained without credential
+values. They are Story 4.0 project-scoped/no-expiry references, with no current
+campaign grant or Linux-backed backup path. Its Redis/FalkorDB restore expired
+`2026-10-02T07:30:43Z`; no finite PostgreSQL restore/measurement credit transfers.
+
+New private `prerequisite-resolution/` under the existing custody root holds the
+evidence bindings and receipts. Bounded HTTPS asset retrievals both exit 0 and
+match the unchanged pinned SHA256. Six anonymous GHCR index/platform/config
+chains verify by digest/descriptor size and linux/amd64 configuration; no layers
+were pulled, no registry credential used and no publisher/rollout claim made.
+Actual image references and both asset Refs are bound into the existing drafts.
+Existing Platform `dapr_values` plus the retained Helm `template` command exits 0;
+`validate_dapr_render` passes for 44 objects. Exact argv, source/values/render
+hashes and timing are in `dapr-render-verification.json`. This is changed-input
+validation, not supported prepare or repeated implementation tests/review.
+
+No eligible same-input calibration or reservation appeared in the added evidence.
+The catalogue specifies the host custodian's <=60s read-only commands and one
+Platform calibration attempt: 2x125 records/s for 1800s overlap, >=450000 accepted,
+>=900000 component operations, separate 150000 backlog, actual physical/support/
+WAL/rewrite/compute readings; <=600s startup, <=50400s producer, <=900s cumulative
+stop/remove, no retry. Actual target/native bootstrap/monitor/cleanup and backlog
+command fields remain unfilled. Full campaign prepare and the admitted C2 producer
+cannot bootstrap missing measurements. Platform must return eligible prior
+receipts or its independently admitted prerequisite target and exact native plan.
+The action does not replace all25 renewal timings, C2 drain or real1/24/168h proof.
+
+Minimum next owner input is the path/hash of a Platform host/reservation packet
+with current net16250m/31GiB, exact Linux primary/independent backup and term,
+scoped provider/credential references, plus eligible calibration receipts or its
+native prerequisite packet. Application/provider/reporter/CNI closure, compatible
+renewals, independent UTC/status/monitoring, clean adopted source and authority
+remain required before prepare. No launch permission is requested. Story27.4 and
+A41 stay open; no infrastructure/cluster/daemon contact, staging, commit or push
+was performed by this continuation.
+
+Changed-input validation passed with 48 distinct referenced files checked,
+including artifact digest chains, draft-only substitutions, preserved original
+document bytes, unchanged sizing/workload/source inventory and private custody.
+The exact replay command is `python3 -B
+/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/verify-delta.py`;
+its receipt is `prerequisite-resolution/delta-verification.json`, linked from the
+preparation index. `git diff --check` exited 0. No implementation tests or ordinary
+review were repeated. Concurrent commit `bbb51b4b58882d032ed1f729c0c8d453d14eb5e7`
+consumed the turn's initially staged changes before this continuation edited
+files. HEAD, index and staged-diff hashes remained unchanged from the editing
+snapshot; original document content survives. No concurrent change was reversed.
+
 ## Actual operational input preparation — 2026-10-25
 
 **Offline preparation is recorded; supported prepare remains blocked.** Platform's

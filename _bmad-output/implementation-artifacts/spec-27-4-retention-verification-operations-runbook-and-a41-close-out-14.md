@@ -14,6 +14,40 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Operational prerequisite resolution — 2026-10-25 (active continuation)
+
+Continue the existing preparation; implementation/reviews and the original
+inventory are not repeated. The [current prerequisite result](../../docs/operations/access-telemetry-full-qualification.md#operational-prerequisite-resolution--2026-10-25-current)
+and existing [preparation index](../../docs/operations/qualification/full-campaign-preparation-2026-10-25/preparation.json)
+bind the new actual inputs and retained evidence.
+
+- [x] Identify the retained larger host candidate `node1` / `192.168.1.30`
+  (32 threads, 134924496896 total RAM bytes), its current retained node identity,
+  and actual Scaleway recovery destination/credential references. Record their
+  scope and validity limits; none establishes a campaign reservation or grant.
+- [x] Retrieve the unchanged pinned Dapr 1.18.7/Gateway 1.5.1 artifacts and verify
+  all six Dapr linux/amd64 manifest/config chains. Bind real paths/hashes/images
+  into the existing private drafts. Existing Platform Dapr rendering/validation
+  passes on these changed inputs; no supported prepare or rollout is claimed.
+- [x] Make the host custodian's read-only argv and one bounded Platform calibration
+  action concrete in the existing command catalogue. Explicitly retain missing
+  actual target, independent bootstrap command packet, backlog command, authority
+  and reservations; the full campaign cannot bootstrap its own missing measurements.
+- [ ] Obtain the actual net 16250m/31GiB host/engine and Linux primary/independent
+  backup reservation packet, scoped credentials/providers/trust, same-input
+  calibration/renewals, application/provider/reporter/CNI artifacts and clean
+  adopted source. Only then run supported prepare and present a complete prepared
+  plan before requesting launch authorization.
+
+The 14-slot host stays rejected. The larger host's October 2 gross capacity is
+not current net capacity; its existing protected cluster cannot be substituted.
+Story 4.0 backup/credential references are concrete leads, not this campaign's
+Linux-backed allocation or finite authority. The Redis/FalkorDB restore expired
+October 2. No measurement, renewal count, reservation term, run identity or grant
+was invented. All original workload, timing, security, cleanup and historical
+profile requirements remain unchanged. Results continue only in the single
+retention report. Story 27.4 remains in progress and A41 remains open.
+
 ## Actual operational inputs — 2026-10-25 (active continuation)
 
 The owner requests operational preparation only. Platform's full-campaign

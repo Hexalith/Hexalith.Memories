@@ -1,5 +1,19 @@
 {
-  "excluded": "No credential values or old signing keys read, copied or reused; no nested submodule initialization, registry lookup, Docker daemon or cluster access.",
+  "continuation": {
+    "remaining": "Missing actual reserved host/backup, measurements/renewals, runtime/provider/reporter/CNI/application closure, credentials/trust/authority and adopted clean source.",
+    "resolution": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/resolved-inputs.json",
+      "sha256": "19332dfba073952162b9284d66bc54fd183ac7899e80e4c83e9922b4bda7bdf0"
+    },
+    "scope": [
+      "retained Platform node1 host facts and 2026-10-25 installation observation",
+      "retained Story 4.0 Scaleway setup and expired restore summary",
+      "local configuration reference names only",
+      "pinned public Dapr/Gateway assets and anonymous Dapr 1.18.7 registry metadata"
+    ]
+  },
+  "excluded": "Initial inventory remains retained. This continuation reads additional retained host/provider records and retrieves pinned public artifact/manifest/config bytes only. No cluster, daemon, infrastructure or provider credential use.",
+  "initialInventoryExclusions": "No credential values or old signing keys read, copied or reused; no nested submodule initialization, registry lookup, Docker daemon or cluster access.",
   "matches": [
     {
       "classification": "historical-only; no finite C1.13/C1.18 or complete renewal evidence",
@@ -26,7 +40,7 @@
       "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/repair-spec14-preexpiry-window-20261025-1gcua2ah/result-artifacts"
     }
   ],
-  "notFoundWithinInspectedScope": [
+  "notFoundWithinInitialScope": [
     "compatible measured renewal schedule",
     "current same-input capacity/reservation and independent backup receipts",
     "Dapr 1.18.7 chart archive and Gateway 1.5.1 manifest matching pins",

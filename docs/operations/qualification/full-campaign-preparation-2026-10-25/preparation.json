@@ -7,19 +7,19 @@
     },
     "binding-requirements.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/binding-requirements.json",
-      "sha256": "b5e9ac4a7139131e6f96b8d9e02418b66af402d771c5518d3b5c7c2e76f643da"
+      "sha256": "413d969e23ff826b0f98390ee4f11524985767fef8bd93dd91279453b7d1a891"
     },
     "command-catalog.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/command-catalog.json",
-      "sha256": "5b7f8669b6b16f445a21705e2ce1df4a99404af8e7076d450478c203aa83f404"
+      "sha256": "6e01b2d359f646971993cd0e85800f69acda29845f0ce757078a39402654ed9d"
     },
     "evidence-discovery.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/evidence-discovery.json",
-      "sha256": "737f1621549125e81298217f421f589efc3ef9ccdf0e59106d63992930ea702f"
+      "sha256": "0677fd80c0484a52371fbe34a11d84b3affcd4a7d52608d98c81a41ad699f741"
     },
     "host-observation.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/host-observation.json",
-      "sha256": "842994ab4893020925e890171b728f9fd3e3eedd21a2797a6b21166a66d3b330"
+      "sha256": "ed97bf43dde151543143f3bcad117a45bb4a7ec5fde0e15b38538906e2e63556"
     },
     "local-tools.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/local-tools.json",
@@ -54,20 +54,34 @@
   "draftIsExecutable": false,
   "lifecyclePlanDraft": {
     "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/lifecycle-plan.draft.json",
-    "sha256": "92de039d1c4c779575d58e0671f3e3cce0582d5c0f5dd9ec75a9c0561e461cf7"
+    "sha256": "f9f113b71a71ea4c2bf08795c837d1c4bcf414625e41296fdeb9e753d5196158"
   },
   "missingPlanFields": [
     "runId",
     "profile",
     "profileSha256"
   ],
+  "missingPlanFieldsNote": "Existing missingPlanFields lists top-level identity omissions only; nested null host, storage, authority, assets and environment fields remain mandatory.",
+  "operationalPrerequisiteResolution": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/resolved-inputs.json",
+    "sha256": "19332dfba073952162b9284d66bc54fd183ac7899e80e4c83e9922b4bda7bdf0"
+  },
+  "operationalPrerequisiteVerification": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/delta-verification.json",
+    "sha256": "7d9eaa5320f2b812ce7cace4fd163d20dd70c59549c853d963016fcddcc7bd13"
+  },
   "privateRoot": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg",
   "qualificationCredit": false,
   "statePathReservedButNotCreated": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state",
-  "status": "offline-partial-prepare-not-run",
+  "status": "partial-artifact-resolution-host-reservations-and-calibration-blocked",
   "story27_4": "in-progress",
+  "toolInputsDraft": {
+    "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tool-inputs.draft.json",
+    "sha256": "81960006c5ee7ee01e6dbbee4019ad32a0783880735a8bcba88271d536c7f724"
+  },
   "verification": {
     "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/verification.json",
     "sha256": "fb10a137ffba2efea2cea780e9cb2c0386034a522fe78f4ce12f1c9f6eb476c8"
-  }
+  },
+  "verificationScope": "verification.json retains the initial inventory result; operationalPrerequisiteVerification records only this continuation and its changed inputs."
 }

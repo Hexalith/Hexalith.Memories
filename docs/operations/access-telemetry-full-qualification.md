@@ -6,6 +6,141 @@ Adopt one exact full Platform target/profile before scheduling this campaign. Pr
 
 C1.24 precedes C1.23/C1.25. Full C2 retains two writers, 30 minutes and 150,000 backlog records. Full C3 retains real 1/24/168-hour cohorts, 24-hour allocator proof and the 216-hour producer bound. No deadline extension is implicit. Use the existing [lifecycle runbook](access-telemetry-lifecycle.md) and [adapter contract](access-telemetry-adapter-production.md). Production activation/publication remain separate decisions.
 
+## Operational prerequisite resolution — 2026-10-25 (current)
+
+**Two pinned assets and six Dapr image identities are now bound; no host is
+admitted and supported prepare remains blocked.** Continue Spec 14 and the single
+retention report. The initial inventory below remains historical evidence; this
+continuation checks additional retained host/provider records and newly obtained
+artifact bytes only. Completed implementation, reviews, WINDOW evidence, all 25
+C1 gates, dependencies and resource requirements are unchanged.
+
+The [preparation index](qualification/full-campaign-preparation-2026-10-25/preparation.json)
+now references `prerequisite-resolution/resolved-inputs.json` in the existing
+private custody root. It retains actual source paths/SHA256, observed identities,
+validity limits and explicit non-admission reasons. Only the two asset references
+and six Dapr image values are filled in `lifecycle-plan.draft.json`;
+`tool-inputs.draft.json` has the matching assets. No null target, reservation,
+credential, authority, measurement or profile was replaced with an assumption.
+
+### Host, backup and credential findings
+
+| Evidence | Actual result | Admission consequence |
+| :--- | :--- | :--- |
+| Existing local host observation | 14 CPU slots; unchanged requirement 16250m CPU / 33285996544 RAM bytes (31GiB). | At least 2250m CPU short before competition. Rejected for the unchanged requirement. |
+| Platform `20261002t072401z-host-facts/host-observation.json` | `node1`, `192.168.1.30`, 32 CPU threads, 134924496896 total RAM bytes; historical available RAM 122236764160 and root free bytes 849498918912. Raw SHA256 `83e96612fc89364bf2f1ab4f23afbeee2cdb3a79e9c4e75423541b22f99911eb` matches its retained SHA256SUMS. | Identifiable larger candidate only. The record explicitly has `acceptedForVMAllocation:false` and `hostKeyIndependentlyTrusted:false`. No current net-capacity ledger, reservation term, private primary allocation, Docker engine or failure-domain proof. Historical Linux root storage is not an owned allocation. |
+| Platform installation observation, 2026-10-25 09:34Z | Confirms node UID `46d8d528-420d-4501-a6d8-12680d8a6ac6` and protected workloads on the same host; Kubernetes 1.34.9 and Dapr 1.18.1. | Identity evidence only. It contains no net-capacity reservation. This protected cluster is not the isolated Kubernetes 1.35.0 / Dapr 1.18.7 campaign target. No contact, adoption or upgrade occurred. |
+| Retained Story 4.0 backup setup | Scaleway project `bed84924-0e48-4275-8b7c-5d9a1f57a8dd`, bucket `hexalith-recovery-points`, `fr-par`, `https://s3.fr-par.scw.cloud`; historical versioning, COMPLIANCE 30-day default and separate writer/validator roles. | A concrete off-node provider lead, with no campaign reservation or current validation. The unchanged lifecycle requires canonical private primary/backup directories and Linux-backed pool receipts; an S3 URL cannot fill `paths.backup`. Platform must bind a supported independently backed path and its actual provider/capacity/restore evidence. |
+| Existing private credential references | `~/.config/hexalith-recovery/writer.env` and `validator.env` exist; setup names writer `9a7cff8d-cffc-4554-93fe-01ed8e0d0d04`, validator `406da2fa-5d02-4a49-bcbc-de0218c6460d`, project-scoped policies and no expiry. | Retained reference/key-name metadata only; values were not copied, published or used. Current validity, campaign scope, finite lifetime and revocation remain unproved. Cluster-admin/SSH access is not a campaign grant. |
+| Story 4.0 restore summary | Redis/FalkorDB recovery captured `2026-10-01T07:30:43Z`, expired `2026-10-02T07:30:43Z`; setup canary locked only until `2026-10-29T11:45:29Z`. | Different backend, stale proof and no coverage of the proposed full campaign. No PostgreSQL/C1.21/C1.22 credit, measurement renewal or permission transfers. |
+
+**No actual reservation record was found in this added scope.** The provisional
+2026-10-26T08:00Z–2026-11-09T08:00Z envelope is still unreserved. Fresh receipts
+must prove available minus competing commitments meets 16250m/31GiB and the
+schedule-derived primary/backup allocations. The 32-thread total and load averages
+cannot establish that subtraction. Exact pool identities, failure domains, owner,
+reservation ID, start/end and revocation are mandatory. Capacity/storage
+observations must be <=300s old at admission; initial physical measurements <=24h.
+
+### Newly bound artifacts and changed-input verification
+
+One bounded HTTPS retrieval per existing pin retained:
+
+- Dapr chart 1.18.7: SHA256 `bd540acd198dc8efa4314208325d8e7eaf89f54accdbd1fad62b484fcf9cabf2`.
+- Gateway API 1.5.1: SHA256 `751002b3b91a87f7ae3bd2517c79a47a8d7ed6702901808a1cf9bd97d284f9b8`.
+
+Anonymous registry metadata GETs retained each Dapr 1.18.7 index, its unique
+linux/amd64 manifest and configuration. Descriptor sizes/hashes, registry content
+digest and OS/architecture matched for `operator`, `placement`, `scheduler`,
+`sentry`, `injector` and `daprd`. Exact image references and receipt hashes are in
+[binding-requirements.json](qualification/full-campaign-preparation-2026-10-25/binding-requirements.json).
+These are registry bindings, without a layer download, publisher-signature,
+operational credential, target-availability or rollout claim. Local retrieval
+timestamps are not authenticated UTC. Immutable bytes have no lease validity term.
+
+The existing `campaign_environment.dapr_values` generated values from those real
+references. Retained Helm 4.2.0 `template dapr <pinned archive> --namespace
+dapr-system -f <actual values>` exited 0, and existing
+`validate_dapr_render` accepted all 44 rendered objects. Values SHA256 is
+`65f446d5634608dc11c20f985f1b0d243f568f1b69bc288cb5a1a1e1726f7f22`;
+render SHA256 is `8af5a63cc7f782a01a0d7d7be0db794cedbf3776dcd2fd9922acd1e36391ae7e`.
+The receipt retains exact argv, output hashes and five controller images plus the
+sidecar reference in values. This check covers newly available inputs only; it is
+not supported `prepare`, a repeated test suite or another review. The seven
+application images, actual provider/reporter/CNI assets, full values/render/source
+closure, scoped credentials and trust services remain missing.
+
+### Smallest Platform-owned next action
+
+First return one existing host/reservation packet, or have the host and backup
+custodians capture the named candidate once, locally, within 60 seconds. The
+[command catalogue](qualification/full-campaign-preparation-2026-10-25/command-catalog.json)
+now gives exact read-only argv templates for machine/boot/CPU/cgroup/RAM,
+`findmnt`/`df` on actual primary and independent backup paths, and selected Docker
+engine metadata. Substitute actual approved paths/socket/client; no SSH or cluster
+command is issued here. The custodian must also supply the signed reservation and
+competing-demand ledger: those cannot be manufactured by these observation
+commands. The read-only process ends without resource cleanup; retain sanitized
+results. Existing production resources are excluded.
+
+No eligible same-input calibration/renewal receipt was found. The smallest next
+measurement is **one Platform-owned, separately admitted isolated calibration**
+for two 125-record/s writers with 1800s common overlap, >=450000 accepted records,
+>=900000 component operations and a separate 150000-record backlog. Preserve the
+actual heap/TOAST, every index/support relation, WAL, rewrite, compute and latency
+readbacks at the unchanged limits. Reserve one attempt, zero retries, <=600s
+startup, <=50400s applicable producer execution and one cumulative <=900s
+stop/remove allowance (51900s total ceiling). Storage is an actual separately
+reserved calibration allocation; the 24/57/16GiB diagnostic is not adopted.
+
+Target: an owner-proven isolated environment on `node1` only if its net reservation
+and protection of existing workloads are established, otherwise another identified
+viable host. No target UID, namespace ownership, state path or grant exists yet.
+The catalogue includes the existing source-bound C2 verifier argv and explicit
+missing native bootstrap/monitor/stop/remove and backlog-command fields. **There
+is no supported measurement-free calibration command to run from this draft.**
+The C2 verifier requires admitted profile/authority/predecessor evidence; the full
+campaign `prepare` requires the missing calibration. Neither it, the fixture
+qualifier nor internal producer functions can bootstrap this prerequisite.
+Platform must supply the independent prerequisite target/plan and exact supported
+native command packet, or eligible same-input retained receipts. No Memories
+runner or new admission bypass was created.
+
+The separate calibration decision must bind operator `github:user:6775094`,
+source/argv hashes, credentials, monitoring limits, absolute window and cleanup
+authority. Stop at first failure, stale monitoring or bound violation; use only
+that target's bound native stop/remove, disable its gate, clear its owned Lease,
+quiesce writers/replicas and verify exact-owned removal within the original 900s.
+Preserve backups/evidence and authentic failures; foreign resources are excluded.
+No launch authorization is requested for this incomplete packet.
+
+The short action supplies no multi-day timing credit. All 25 parent-ordered gate
+commands/measurements (including C1.24 before C1.23/C1.25), zero unrelated
+live/dead/support state and unchanged C3 cohort inventories remain required per
+round. C2's 24h drain must precede C3's empty boundary. Real 1/24/168h cohorts,
+original 777600s C3, 900s purge and 24h reclamation policies remain unchanged; the
+final protected control/report interval must actually fit <24h. Until measured
+renewal timing fits, N and the PG/primary/backup sizes remain null.
+
+**Minimum owner input next:** the path and raw SHA256 of the Platform
+host/reservation packet naming a viable isolated host/engine, net 16250m/31GiB,
+Linux primary and independently backed backup, reservation issuer/ID/validity and
+scoped credential/provider references; include eligible calibration receipts or
+the separately admitted native calibration target/command packet. This is an
+input request, not a launch decision. Story 27.4 and A41 remain open.
+
+Changed-input validation passed with 48 distinct referenced files checked,
+including artifact digest chains, draft-only substitutions, preserved original
+document bytes, unchanged sizing/workload/source inventory and private custody.
+The exact replay command is `python3 -B
+/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/prerequisite-resolution/verify-delta.py`;
+its receipt is `prerequisite-resolution/delta-verification.json`, linked from the
+preparation index. `git diff --check` exited 0. No implementation tests or ordinary
+review were repeated. Concurrent commit `bbb51b4b58882d032ed1f729c0c8d453d14eb5e7`
+consumed the turn's initially staged changes before this continuation edited
+files. HEAD, index and staged-diff hashes remained unchanged from the editing
+snapshot; original document content survives. No concurrent change was reversed.
+
 ## Operational input preparation — 2026-10-25 (current)
 
 **Offline inputs are inventoried; supported `prepare` has not run.** Platform's
