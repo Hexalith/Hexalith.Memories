@@ -6,6 +6,97 @@ Adopt one exact full Platform target/profile before scheduling this campaign. Pr
 
 C1.24 precedes C1.23/C1.25. Full C2 retains two writers, 30 minutes and 150,000 backlog records. Full C3 retains real 1/24/168-hour cohorts, 24-hour allocator proof and the 216-hour producer bound. No deadline extension is implicit. Use the existing [lifecycle runbook](access-telemetry-lifecycle.md) and [adapter contract](access-telemetry-adapter-production.md). Production activation/publication remain separate decisions.
 
+## Approved metadata action — 2026-10-26
+
+The owner approved the single prepared <=60s automated node1 capture. It remains
+**approved, not dispatched, with its one attempt unused**: both authentication
+agents are unavailable, no SSH config/console tool is configured, and prior
+rejected credentials were not retried. A working existing trusted host-local
+access channel is required. The index/catalogue bind the exact script and approval
+receipt; no manually authored packet or second approval is needed. No current
+capacity, reservation, independent backup or calibration credit is inferred.
+Story27.4 is in progress and A41 open.
+
+## Independent calibration and host discovery — 2026-10-26 (current)
+
+**The independent Platform capability is implemented and offline verified; the
+candidate host and live inputs remain unadmitted.** Earlier dated sections retain
+their original findings and unsupported-command state as history. The existing
+[preparation index](qualification/full-campaign-preparation-2026-10-25/preparation.json)
+and [command catalogue](qualification/full-campaign-preparation-2026-10-25/command-catalog.json)
+now bind the distinct `--calibration` prepare/inspect/launch/monitor/stop/remove
+commands, native backlog/writer/physical/readback support and incomplete actual draft.
+No infrastructure, calibration, cluster operation or Git write was performed.
+
+Platform's `PG-INDEPENDENT-CALIBRATION-1` mode reuses its existing persistent
+Qualification lifecycle and exact ownership/disposal primitives. Its independent
+outside-approved authority and signed host/storage reservations do not depend on
+finite campaign measurements. The explicit chart/application gate binds its own
+run/plan/component identity and short mounted gate in Qualification only. It cannot
+open a campaign profile or grant Production/C1/C2/A41 credit. The existing finite
+campaign admission code and all 25 gate/renewal checks remain unchanged.
+
+The supported native sequence emits a separate150000-record lane through the real
+authenticated typed-logger endpoint, verifies its SQL occupancy, then runs two
+125-record/s writers for1801 one-second segments each. It requires >=1800s actual
+common overlap, >=450000 accepted records, >=900000 actual component operations
+with stable Pod counters, and complete physical heap/TOAST/all relation/index/
+support, WAL/rewrite, fresh per-container CPU/memory and target latency readbacks.
+No internal C2 or fixture route is used. Occupancy alone does not prove an expired
+backlog drain; this action supplies none of the full C1/C2 fault, C3 multi-day or
+renewal/isolation credit. Those requirements remain open.
+
+The preparation keeps one attempt, zero retries/restarts, <=600s startup, <=50400s
+execution including startup and <=900s cumulative stop/remove within the <=51900s
+outer window. PG remains8000m/16GiB; aggregate16250m/33285996544 bytes. Storage
+allocations are separately approved actual calibration operands: none was selected
+from old single-collection diagnostics. Failure captures precede exact owned
+removal; foreign/uncertain resources remain retained/unverified, and original
+stop/deadline/ownership survives reopened state. Backup/evidence stay retained.
+
+Search covered41 private-preparation JSON files,835 retained Memories evidence
+JSON files and159 Platform implementation JSON files, selecting eight relevant
+records. No authenticated current reservation or eligible same-input independent
+calibration was identified. The bound discovery receipt records actual scope and
+hashes. The two retained strict-host-key SSH attempts to node1 both exited255
+before any remote command. No failed credentials or guessed accounts were retried.
+Current node1 CPU/RAM/engine/primary/independent-backup observations therefore stay
+null. October2 gross hardware and the Scaleway lead confer no net reservation,
+independent Linux allocation, trust or grant. The14-slot host stays rejected.
+
+Remaining live dependencies are a valid trusted host-custodian access channel,
+exact physical engine/isolation, signed net compute and independently backed Linux
+primary/backup reservations with separate actual allocations, complete real
+application/provider/reporter/CNI/components and credentials, independent UTC/current
+status/allocation monitoring, adopted source, absolute window and outside-approved
+plan. The prepared draft has null target/run/authority/reservation/allocation fields
+and is not executable. Campaign allocation sizes and renewal count remain null.
+
+Exactly one practical next action is prepared for the coordinator's decision:
+one host-local metadata capture on node1, using the retained bounded Python script
+named in the catalogue. Its argv is `timeout --signal=TERM --kill-after=2s 58s
+python3 -B - --expected-hostname node1 --docker-host unix:///var/run/docker.sock`,
+with those exact retained script bytes on stdin. The script limits work to55s,
+outer termination to60s, bounded metadata output and read-only host/local-Docker
+commands. It automatically produces JSON; no manually authored packet is required.
+It calls no Kubernetes/provider API and mutates no infrastructure or credential.
+An unavailable socket/client is explicit. It leaves reservation/authority/allocation/
+independent backup null and has no infrastructure cleanup. This session lacks a
+working dispatch channel; approval cannot supply access, capacity or backup. No
+launch approval is requested. One ordinary coordinator inspection of this delta is
+pending; historical reviews are not repeated. Story27.4 stays in progress and A41 open.
+
+The one ordinary inspection is complete: five findings are fixed with none
+deferred. Final coordinator checks pass86/86 Platform and6/6 Memories gates;
+exact commands/results are in the single report. The launch command now supervises
+startup, measurement and removal in one foreground lifetime; monitor can resume
+only an original ready state with no consumed measurement. Reservation records
+require issuer/ID/owner/valid-from/end and active non-revoked status. Every allocation
+retains>=20% free; WAL stays<=4GiB. Measurement quiescence uses the original
+execution budget, preserves exact disabled controls and cannot reset cleanup time.
+The script's current hash/selected Docker metadata are in the catalogue. Current
+host capacity/reservations/backup/measurement/authority are still missing.
+
 ## Operational prerequisite resolution — 2026-10-25 (current)
 
 **Two pinned assets and six Dapr image identities are now bound; no host is

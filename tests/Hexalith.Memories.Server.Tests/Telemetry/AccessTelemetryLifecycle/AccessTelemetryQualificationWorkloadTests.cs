@@ -1101,8 +1101,10 @@ public sealed class AccessTelemetryQualificationWorkloadTests
         }
     }
 
-    [Fact]
-    public void Gate_FiniteCampaignRequiresExactApprovedComponentAndShortMountedGateInQualification()
+    [Theory]
+    [InlineData("PG-FINITE-CAMPAIGN-1")]
+    [InlineData("PG-INDEPENDENT-CALIBRATION-1")]
+    public void Gate_ExplicitProfileRequiresExactApprovedComponentAndShortMountedGateInQualification(string profileId)
     {
         string path = Path.GetTempFileName();
         string profileHash = new('a', 64);
@@ -1115,7 +1117,9 @@ public sealed class AccessTelemetryQualificationWorkloadTests
             IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AccessTelemetryQualification:GatePath"] = path,
-                ["AccessTelemetryQualification:ProfileId"] = "PG-FINITE-CAMPAIGN-1",
+                ["AccessTelemetryQualification:ProfileId"] = profileId,
+                ["AccessTelemetryQualification:IndependentCalibrationRunId"] = new string('c', 32),
+                ["AccessTelemetryQualification:IndependentCalibrationPlanHash"] = new string('d', 64),
                 ["AccessTelemetryQualification:ApprovedProfileHash"] = profileHash,
                 ["AccessTelemetryLifecycle:ComponentProfileHash"] = profileHash,
             }).Build();
@@ -1137,6 +1141,21 @@ public sealed class AccessTelemetryQualificationWorkloadTests
                 configuration[key] = replacement;
                 gate.TryValidate(out _).ShouldBeFalse();
                 configuration[key] = original;
+            }
+
+            if (profileId == "PG-INDEPENDENT-CALIBRATION-1")
+            {
+                foreach (string key in new[] { "AccessTelemetryQualification:IndependentCalibrationRunId", "AccessTelemetryQualification:IndependentCalibrationPlanHash" })
+                {
+                    string? original = configuration[key];
+                    foreach (string? invalid in new[] { null, "", "foreign", new string('A', original!.Length) })
+                    {
+                        configuration[key] = invalid;
+                        gate.TryValidate(out _).ShouldBeFalse();
+                    }
+
+                    configuration[key] = original;
+                }
             }
 
             environment.EnvironmentName.Returns(Environments.Production);

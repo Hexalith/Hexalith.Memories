@@ -1,95 +1,314 @@
 {
   "calibrationAction": {
-    "admissionCaveat": "This command requires all existing predecessor/authority/profile/observation checks; it cannot bootstrap absent finite calibration measurements. Supply eligible prior same-input receipts or the separately admitted Platform prerequisite plan before execution. Placeholder argv is not executable approval.",
-    "argvTemplate": [
-      "python3",
-      "-B",
-      "tools/verify-access-telemetry-lifecycle.py",
-      "--checkpoint",
-      "c2-production-replacement",
-      "--repository-root",
-      "${ACTUAL_CLEAN_MEMORIES_ROOT}",
-      "--owner-plan",
-      "${ACTUAL_OWNER_PLAN}",
-      "--approved-owner-plan-sha256",
-      "${ACTUAL_OWNER_PLAN_SHA256}",
-      "--owner-custody-root",
-      "${ACTUAL_EVIDENCE_ROOT}",
-      "--campaign-profile",
-      "${ACTUAL_ADMITTED_PROFILE}",
-      "--approved-campaign-profile-sha256",
-      "${ACTUAL_PROFILE_SHA256}",
-      "--campaign-capacity-receipt",
-      "${ACTUAL_CURRENT_CAPACITY}",
-      "--approved-campaign-capacity-sha256",
-      "${ACTUAL_CAPACITY_SHA256}",
-      "--scenario-input",
-      "${ACTUAL_SCENARIO}",
-      "--predecessor",
-      "${ACTUAL_PREDECESSOR}",
-      "--evidence-root",
-      "${ACTUAL_EVIDENCE_ROOT}",
-      "--evidence",
-      "${ACTUAL_C2_EVIDENCE}",
-      "--owner",
-      "J\u00e9r\u00f4me Piquot"
+    "cleanup": "Original inherited exact-run lifecycle. First failure captures sanitized resource status before owned removal; stop/remove share original <=900s and do not reopen changed authority or source. Foreign/unrecorded/uncertain remnants stay retained/unverified. Evidence and independent backup retained.",
+    "commands": [
+      {
+        "action": "prepare",
+        "argv": [
+          "python3",
+          "-B",
+          "eng/helm-qualification/qualify.py",
+          "--calibration",
+          "prepare",
+          "--calibration-state",
+          "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+          "--calibration-plan",
+          "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-plan.json",
+          "--approved-plan-sha256",
+          "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+        ],
+        "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+        "executed": false,
+        "operationallyReady": false,
+        "supported": true
+      },
+      {
+        "action": "inspect",
+        "argv": [
+          "python3",
+          "-B",
+          "eng/helm-qualification/qualify.py",
+          "--calibration",
+          "inspect",
+          "--calibration-state",
+          "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+        ],
+        "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+        "executed": false,
+        "operationallyReady": false,
+        "supported": true
+      },
+      {
+        "action": "launch",
+        "argv": [
+          "python3",
+          "-B",
+          "eng/helm-qualification/qualify.py",
+          "--calibration",
+          "launch",
+          "--calibration-state",
+          "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+          "--approved-plan-sha256",
+          "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+        ],
+        "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+        "executed": false,
+        "operationallyReady": false,
+        "supported": true
+      },
+      {
+        "action": "monitor",
+        "argv": [
+          "python3",
+          "-B",
+          "eng/helm-qualification/qualify.py",
+          "--calibration",
+          "monitor",
+          "--calibration-state",
+          "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state",
+          "--approved-plan-sha256",
+          "${OUTSIDE_APPROVED_INDEPENDENT_PLAN_SHA256}"
+        ],
+        "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+        "executed": false,
+        "operationallyReady": false,
+        "supported": true
+      },
+      {
+        "action": "stop",
+        "argv": [
+          "python3",
+          "-B",
+          "eng/helm-qualification/qualify.py",
+          "--calibration",
+          "stop",
+          "--calibration-state",
+          "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+        ],
+        "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+        "executed": false,
+        "operationallyReady": false,
+        "supported": true
+      },
+      {
+        "action": "remove",
+        "argv": [
+          "python3",
+          "-B",
+          "eng/helm-qualification/qualify.py",
+          "--calibration",
+          "remove",
+          "--calibration-state",
+          "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state"
+        ],
+        "cwd": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform",
+        "executed": false,
+        "operationallyReady": false,
+        "supported": true
+      }
     ],
-    "authority": "Fresh separate Platform calibration decision from github:user:6775094 with exact target/plan/source/argv/credential/issuer/absolute-window/stop authority. Existing WINDOW approvals and Story 4.0 grants do not transfer. Distinct Operations/Security records may be sole-owner/self-reviewed. No decision requested now.",
-    "cleanup": "On completion, first failure, stale monitoring, excess or deadline: use the bound native stop/remove, sharing the original 900s. Disable exact gate, clear exact owned Lease, quiesce writers/replicas, retain failure/native receipts and verify no exact-owned resource remains. Foreign resources are never removed; backup/evidence retained. Missing/uncertain proof stays unverified; no automatic retry.",
-    "commandBoundary": {
-      "bootstrapLaunchArgv": null,
-      "existingSupportedProducer": "tools/verify-access-telemetry-lifecycle.py --checkpoint c2-production-replacement (argvTemplate below)",
-      "missingCommandOwnerInput": "Platform must supply exact approved native provision/monitor/stop/remove argv, state and independently admitted target. Existing campaign lifecycle vectors in this catalogue apply only to a fully admitted campaign state. No --calibrate option or measurement-free admission exists; no use of fixtures or direct internal _c2 to bypass authority.",
-      "nativeMonitorArgv": null,
-      "nativeRemoveArgv": null,
-      "nativeStopArgv": null
+    "draft": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/calibration-plan.draft.json",
+      "sha256": "55316c3315095e26fb15668e77e97f1aeaad197a5b14a69d77f145d564a6aca1"
     },
+    "draftExecutable": false,
     "executed": false,
-    "laterProofStillRequired": "This one bounded rate/physical action cannot establish all25 parent-ordered renewal timings, cleanup/cohort invariance, C2 24h drain or real C3 1/24/168h observations. Those need same-input original receipts or separately bounded Platform actions with unchanged 777600s C3 and 86400s reclamation policies. Final control/report protection must fit <24h; no renewal count, schedule or measurement is fabricated.",
     "launchAuthorized": false,
     "limits": {
+      "acceptedRecords": 450000,
       "attempts": 1,
-      "automaticRetries": 0,
+      "backlogRecords": 150000,
+      "componentOperations": 900000,
       "cpuMilli": 16250,
+      "executionSeconds": 50400,
       "memoryBytes": 33285996544,
+      "overlapMilliseconds": 1800000,
       "postgresCpuMilli": 8000,
       "postgresMemoryBytes": 17179869184,
-      "producerSeconds": 50400,
-      "providerReporterCniResidualCpuMilli": 300,
-      "providerReporterCniResidualMemoryBytes": 1073741824,
+      "recordsPerWriterSecond": 125,
+      "restarts": 0,
+      "retries": 0,
       "startupSeconds": 600,
-      "stopAndRemoveCumulativeSeconds": 900,
-      "storageAllocationBytes": null,
-      "storageRule": "Exact separately reserved calibration allocations required; no promotion of the single-collection diagnostic into a campaign allocation.",
-      "totalMaximumSeconds": 51900
+      "stoppingSeconds": 900,
+      "totalSeconds": 51900,
+      "writers": 2
     },
+    "nativeSource": [
+      {
+        "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/qualify.py",
+        "sha256": "4db6903dd3d4f722bcbe6150e0fbf65f8da519208ead98256e08f26c5659dffe"
+      },
+      {
+        "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_capacity.py",
+        "sha256": "f80e2a4862842bbe452e68e73e495920e624cf37f2f1276b36408ce22492036f"
+      },
+      {
+        "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_lifecycle.py",
+        "sha256": "398ce0fdb351dafe800e021549acdfd212755a6417235f4317c756dbb7841766"
+      },
+      {
+        "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/campaign_environment.py",
+        "sha256": "3fdfce96793e8213725376baba106bfed490c94101d0d7ebb857f061a44174b9"
+      },
+      {
+        "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/independent_calibration.py",
+        "sha256": "2d1b8a82740e120258730da6f62e22cc458123dff2294fbb3289cf059abb8e5d"
+      },
+      {
+        "path": "/home/administrator/projects/hexalith/memories/references/Hexalith.Platform/eng/helm-qualification/calibration_workload.py",
+        "sha256": "c619612020f57f8be7c0453217ab1ba046fd52e7cd803d1cc0240cdadaf5e7cc"
+      },
+      {
+        "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationGate.cs",
+        "sha256": "35e789069949509cbd96af1e76667f4f7d3d987f203d4590b2a4dee46cc8ca30"
+      },
+      {
+        "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationEndpointExtensions.cs",
+        "sha256": "0a6f3e84e6b8307aef7679f620dd3ea57f2e90032ee940223c935e0dbfb0cfb4"
+      },
+      {
+        "path": "/home/administrator/projects/hexalith/memories/src/Hexalith.Memories.Server/Telemetry/AccessTelemetryLifecycle/AccessTelemetryQualificationWorkloadRunner.cs",
+        "sha256": "c750046f4e32944be22c3916280aa8963b989396adb77af98a19600856c65b76"
+      }
+    ],
     "owner": "Platform",
-    "status": "bounded-proposal-blocked-on-actual-target-and-native-bootstrap-command-packet",
+    "profileId": "PG-INDEPENDENT-CALIBRATION-1",
+    "qualified": false,
+    "remainingOperationalInputs": [
+      "current authorized/trusted node1 host access and physical engine",
+      "signed net CPU/RAM and separately approved primary/independent Linux backup reservation/allocation",
+      "actual complete application/provider/reporter/CNI/component/credential artifacts and adopted source",
+      "independently authenticated UTC/current action status and allocation/operational collector",
+      "complete absolute window and outside approval; no previous authorization transfers"
+    ],
+    "schema": "hexalith.platform.independent-calibration/v1",
+    "status": "implemented-offline-verified-operational-inputs-missing",
     "target": {
-      "actualIsolatedTargetIdentity": null,
-      "actualNativeStatePath": null,
-      "actualPlanPathAndSha256": null,
-      "candidateHost": "node1 /192.168.1.30 only after net-capacity/isolation reservation, otherwise owner-selected viable host",
-      "forbiddenTarget": "jpiquot@local / existing node1 protected cluster; historical WINDOW/KVM resources",
-      "primaryAndIndependentBackupPaths": null
+      "candidateHost": "node1 / 192.168.1.30",
+      "currentCapacity": null,
+      "independentLinuxBackup": null,
+      "physicalTarget": null,
+      "primary": null,
+      "reservation": null
     },
     "workload": {
-      "acceptedRecordsPerSecondPerWriter": 125,
-      "backlogCommandContract": null,
-      "backlogCommandRequirement": "Retain actual approved C1.10 source/argv/receipt; ordinary C2 evidence alone is not a distinct 150000-record backlog measurement.",
-      "commonOverlapSeconds": 1800,
-      "maximumC2AcceptedRecordsIncludingOther": 650000,
-      "minimumAcceptedRecords": 450000,
-      "minimumComponentOperations": 900000,
-      "physicalReadbacks": [
-        "heap/TOAST <=2048 bytes per record",
-        "all index/actor/due/catalogue/cursor/reminder state <=2048 bytes per record",
-        "WAL <=4GiB, DB fixed <=1GiB",
-        "one full relation/index rewrite workspace; 25% relation margin; 20% free at modeled peak",
-        "per-allocation compute/storage/latency/error observations at the unchanged resource limits"
+      "backlogCommandContract": "Supported --calibration launch executes the separate backlog lane before writers. There is no separate ungated backlog entry point.",
+      "measurementCommands": [
+        "existing authenticated bodyless fixed-workload HTTP route via exact kubectl exec",
+        "lifecycle /metrics state-operation counters with stable Pod UIDs",
+        "psql PHYSICAL_SQL: database, heap/TOAST, every access_telemetry/pg_toast relation/index, WAL and exact record count",
+        "Kubernetes metrics API: fresh complete Pod/container CPU/memory, missing provider refuses",
+        "quiesce exact gate/Lease/writers then bounded VACUUM (FULL, ANALYZE) and physical readback"
       ],
-      "separateBacklogRecords": 150000,
-      "writers": 2
+      "remainingProof": "Independent lane occupancy is not C1.10 expired-backlog drain, C2 replacement/fault, C3 real retention/24h physical reclamation, compatible renewals or full admission. Those checks remain mandatory.",
+      "separateBacklogLane": "1200 fixed 125-record segments through real typed-logger endpoint; require exact 150000-row SQL snapshot",
+      "writerLane": "two distinct Pod writers, 1801 one-second segments each; require >=1800000ms measured common overlap, >=450000 accepted and actual >=900000 component-operation counter delta"
+    },
+    "reservationFieldsRequired": [
+      "issuer",
+      "reservationId",
+      "owner",
+      "validFromUtcMs",
+      "validUntilUtcMs",
+      "disposition=active",
+      "revokedUtcMs=null",
+      "exact backing and available/competing/reserved operands"
+    ],
+    "monitoring": "Launch owns startup, native lanes, physical rewrite, monitoring and removal in one foreground supervision. Per-allocation >=20% free, WAL<=4GiB, actual resource/latency/error readbacks; original execution and cumulative cleanup budgets persist."
+  },
+  "history": {
+    "calibrationAction-2026-10-25": {
+      "admissionCaveat": "This command requires all existing predecessor/authority/profile/observation checks; it cannot bootstrap absent finite calibration measurements. Supply eligible prior same-input receipts or the separately admitted Platform prerequisite plan before execution. Placeholder argv is not executable approval.",
+      "argvTemplate": [
+        "python3",
+        "-B",
+        "tools/verify-access-telemetry-lifecycle.py",
+        "--checkpoint",
+        "c2-production-replacement",
+        "--repository-root",
+        "${ACTUAL_CLEAN_MEMORIES_ROOT}",
+        "--owner-plan",
+        "${ACTUAL_OWNER_PLAN}",
+        "--approved-owner-plan-sha256",
+        "${ACTUAL_OWNER_PLAN_SHA256}",
+        "--owner-custody-root",
+        "${ACTUAL_EVIDENCE_ROOT}",
+        "--campaign-profile",
+        "${ACTUAL_ADMITTED_PROFILE}",
+        "--approved-campaign-profile-sha256",
+        "${ACTUAL_PROFILE_SHA256}",
+        "--campaign-capacity-receipt",
+        "${ACTUAL_CURRENT_CAPACITY}",
+        "--approved-campaign-capacity-sha256",
+        "${ACTUAL_CAPACITY_SHA256}",
+        "--scenario-input",
+        "${ACTUAL_SCENARIO}",
+        "--predecessor",
+        "${ACTUAL_PREDECESSOR}",
+        "--evidence-root",
+        "${ACTUAL_EVIDENCE_ROOT}",
+        "--evidence",
+        "${ACTUAL_C2_EVIDENCE}",
+        "--owner",
+        "J\u00e9r\u00f4me Piquot"
+      ],
+      "authority": "Fresh separate Platform calibration decision from github:user:6775094 with exact target/plan/source/argv/credential/issuer/absolute-window/stop authority. Existing WINDOW approvals and Story 4.0 grants do not transfer. Distinct Operations/Security records may be sole-owner/self-reviewed. No decision requested now.",
+      "cleanup": "On completion, first failure, stale monitoring, excess or deadline: use the bound native stop/remove, sharing the original 900s. Disable exact gate, clear exact owned Lease, quiesce writers/replicas, retain failure/native receipts and verify no exact-owned resource remains. Foreign resources are never removed; backup/evidence retained. Missing/uncertain proof stays unverified; no automatic retry.",
+      "commandBoundary": {
+        "bootstrapLaunchArgv": null,
+        "existingSupportedProducer": "tools/verify-access-telemetry-lifecycle.py --checkpoint c2-production-replacement (argvTemplate below)",
+        "missingCommandOwnerInput": "Platform must supply exact approved native provision/monitor/stop/remove argv, state and independently admitted target. Existing campaign lifecycle vectors in this catalogue apply only to a fully admitted campaign state. No --calibrate option or measurement-free admission exists; no use of fixtures or direct internal _c2 to bypass authority.",
+        "nativeMonitorArgv": null,
+        "nativeRemoveArgv": null,
+        "nativeStopArgv": null
+      },
+      "executed": false,
+      "laterProofStillRequired": "This one bounded rate/physical action cannot establish all25 parent-ordered renewal timings, cleanup/cohort invariance, C2 24h drain or real C3 1/24/168h observations. Those need same-input original receipts or separately bounded Platform actions with unchanged 777600s C3 and 86400s reclamation policies. Final control/report protection must fit <24h; no renewal count, schedule or measurement is fabricated.",
+      "launchAuthorized": false,
+      "limits": {
+        "attempts": 1,
+        "automaticRetries": 0,
+        "cpuMilli": 16250,
+        "memoryBytes": 33285996544,
+        "postgresCpuMilli": 8000,
+        "postgresMemoryBytes": 17179869184,
+        "producerSeconds": 50400,
+        "providerReporterCniResidualCpuMilli": 300,
+        "providerReporterCniResidualMemoryBytes": 1073741824,
+        "startupSeconds": 600,
+        "stopAndRemoveCumulativeSeconds": 900,
+        "storageAllocationBytes": null,
+        "storageRule": "Exact separately reserved calibration allocations required; no promotion of the single-collection diagnostic into a campaign allocation.",
+        "totalMaximumSeconds": 51900
+      },
+      "owner": "Platform",
+      "status": "bounded-proposal-blocked-on-actual-target-and-native-bootstrap-command-packet",
+      "target": {
+        "actualIsolatedTargetIdentity": null,
+        "actualNativeStatePath": null,
+        "actualPlanPathAndSha256": null,
+        "candidateHost": "node1 /192.168.1.30 only after net-capacity/isolation reservation, otherwise owner-selected viable host",
+        "forbiddenTarget": "jpiquot@local / existing node1 protected cluster; historical WINDOW/KVM resources",
+        "primaryAndIndependentBackupPaths": null
+      },
+      "workload": {
+        "acceptedRecordsPerSecondPerWriter": 125,
+        "backlogCommandContract": null,
+        "backlogCommandRequirement": "Retain actual approved C1.10 source/argv/receipt; ordinary C2 evidence alone is not a distinct 150000-record backlog measurement.",
+        "commonOverlapSeconds": 1800,
+        "maximumC2AcceptedRecordsIncludingOther": 650000,
+        "minimumAcceptedRecords": 450000,
+        "minimumComponentOperations": 900000,
+        "physicalReadbacks": [
+          "heap/TOAST <=2048 bytes per record",
+          "all index/actor/due/catalogue/cursor/reminder state <=2048 bytes per record",
+          "WAL <=4GiB, DB fixed <=1GiB",
+          "one full relation/index rewrite workspace; 25% relation margin; 20% free at modeled peak",
+          "per-allocation compute/storage/latency/error observations at the unchanged resource limits"
+        ],
+        "separateBacklogRecords": 150000,
+        "writers": 2
+      }
     }
   },
   "hostReservationAction": {
@@ -167,11 +386,70 @@
     "automaticRetries": 0,
     "candidateTarget": "node1 / 192.168.1.30; independently trusted host identity and isolation required before any connection",
     "cleanup": "Read-only process ends at 60s; retain sanitized stdout/exit/timing and signed owner reservation. No VM, storage, cluster or credential mutation; no cleanup of other workloads.",
-    "executionLocation": "Host owner runs locally on the actual chosen host; backup custodian runs storage observations on the actual independent backing host. This agent makes no connection.",
+    "currentAccess": {
+      "LinuxSsh": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/transport.json",
+        "sha256": "94632c675267b613edcabe25557a1efca98f6c8f8a662f20f7e07a72e9225d3e"
+      },
+      "WindowsSsh": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/windows-transport.json",
+        "sha256": "42063e6871c448db7c21772c4068b57045487bf2843d8385fa0cbe4697147790"
+      },
+      "result": "Both exit255 before remote execution; no credential retry or account guessing. Current capacity null."
+    },
+    "executionLocation": "Prepared automated command runs locally on node1 through an existing trusted custodian channel. Both configured SSH transports failed before remote execution; this session cannot dispatch it.",
     "maximumSeconds": 60,
     "mutations": false,
+    "nextAction": {
+      "action": "One host-local bounded metadata capture on node1 by its authorized host custodian",
+      "approvalRequestedByImplementer": false,
+      "argv": [
+        "timeout",
+        "--signal=TERM",
+        "--kill-after=2s",
+        "58s",
+        "python3",
+        "-B",
+        "-",
+        "--expected-hostname",
+        "node1",
+        "--docker-host",
+        "unix:///var/run/docker.sock"
+      ],
+      "attempts": 1,
+      "automaticRetries": 0,
+      "cleanup": "Script <=55s with bounded read-only child groups; outer TERM at58s/KILL by60s. No infrastructure to dispose; retain generated JSON/exit. No cluster, credential, storage or workload mutation.",
+      "executionLocation": "node1 local shell, through a valid existing host-custodian access channel; this session has none",
+      "infrastructureMutations": false,
+      "maximumSeconds": 60,
+      "outputs": "Automatically generated bounded JSON observations only; reservation/authority/primary/backup remain null.",
+      "script": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-bounded.py",
+        "sha256": "d2410555614d483691f0c12876251cf9d840cd70ace854110ffba5e039eaed52"
+      },
+      "status": "approved-not-dispatched-access-blocked",
+      "stdin": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-bounded.py",
+        "sha256": "d2410555614d483691f0c12876251cf9d840cd70ace854110ffba5e039eaed52"
+      },
+      "approvalRequestedByCoordinator": true,
+      "launchIncluded": false,
+      "ownerApproved": true,
+      "approval": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-approval-20261026.json",
+        "sha256": "f06114f6f47bfddbc80d7901660e7e9bb0d026eabe5b15f78880997f2458f047"
+      },
+      "captureStarted": false,
+      "captureAttemptConsumed": false,
+      "captureAttemptsRemaining": 1,
+      "remoteCommandsExecuted": 0
+    },
     "owner": "Platform host/storage custodians; J\u00e9r\u00f4me Piquot accepts the exact returned packet",
-    "status": "proposed-not-executed-not-authorized"
+    "status": "approved-not-dispatched-access-blocked",
+    "approval": {
+      "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-approval-20261026.json",
+      "sha256": "f06114f6f47bfddbc80d7901660e7e9bb0d026eabe5b15f78880997f2458f047"
+    }
   },
   "lifecycle": [
     {

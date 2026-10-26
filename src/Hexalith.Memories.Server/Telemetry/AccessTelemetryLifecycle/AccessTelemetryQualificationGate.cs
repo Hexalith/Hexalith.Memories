@@ -74,14 +74,29 @@ internal sealed class AccessTelemetryQualificationGate(
             // Platform binds these values through an immutable named ConfigMap
             // reference. C0 and every producer authenticate its observed data
             // against outside-approved canonical profile/authority before work.
+            // Independent calibration uses its own Platform authority and earns
+            // no C1/C2, finite campaign or Production credit.
             // The runtime keeps the exact mounted short gate and component fence.
-            if (finiteProfileId != "PG-FINITE-CAMPAIGN-1" || finiteProfileHash is null ||
+            if (finiteProfileId is not ("PG-FINITE-CAMPAIGN-1" or "PG-INDEPENDENT-CALIBRATION-1") || finiteProfileHash is null ||
                 finiteProfileHash.Length != 64 || finiteProfileHash == ApprovedProfileSha256 ||
                 finiteProfileHash.Any(character => character is not (>= '0' and <= '9') and not (>= 'a' and <= 'f')) ||
                 finiteProfileHash != configuration["AccessTelemetryLifecycle:ComponentProfileHash"])
             {
                 reason = "qualification_profile_binding_invalid";
                 return false;
+            }
+
+            if (finiteProfileId == "PG-INDEPENDENT-CALIBRATION-1")
+            {
+                string? calibrationRunId = configuration["AccessTelemetryQualification:IndependentCalibrationRunId"];
+                string? calibrationPlanHash = configuration["AccessTelemetryQualification:IndependentCalibrationPlanHash"];
+                if (calibrationRunId is null || calibrationRunId.Length != 32 ||
+                    calibrationPlanHash is null || calibrationPlanHash.Length != 64 ||
+                    calibrationRunId.Concat(calibrationPlanHash).Any(character => character is not (>= '0' and <= '9') and not (>= 'a' and <= 'f')))
+                {
+                    reason = "qualification_profile_binding_invalid";
+                    return false;
+                }
             }
 
             expectedProfileHash = finiteProfileHash;

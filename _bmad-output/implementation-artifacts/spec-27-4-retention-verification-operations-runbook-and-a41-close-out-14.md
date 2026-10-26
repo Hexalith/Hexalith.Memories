@@ -14,6 +14,154 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Host reservation and independent calibration capability — 2026-10-26 (active continuation)
+
+This is the current owner-authorized scope; earlier implementation/reviews and
+historical approvals below stay intact. Complete available preparation using this
+Spec 14 and the single retention report. Do not launch infrastructure, execute
+calibration, contact Kubernetes clusters, change dependencies/submodules, stage,
+commit or push. Configured access permits bounded read-only host/Docker metadata
+only. Story 27.4 remains in progress and A41 open. No previous live permission is
+revived. Do not ask the owner to manufacture a missing prerequisite packet.
+
+### Approved observation: access remains blocked
+
+The owner replied **“approve”** for the exact prepared <=60s node1 metadata
+capture. This scope remains authorized; no capture attempt has started or been
+consumed. Local and Windows agent checks show no available authentication agent;
+no console tool or SSH config is available. Do not repeat rejected credentials,
+guess accounts, mutate credentials or contact Kubernetes to bypass that blocker.
+The [single report](tests/27-4-retention-verification-evidence.md#approved-host-observation--2026-10-26)
+and existing index bind the approval receipt. Resume the unchanged capture when a
+working existing trusted host-local access channel is available. No reservation,
+calibration, infrastructure or broader action is authorized by this reply.
+
+### Tasks & Acceptance — current continuation
+
+- [x] Locate existing reservations and eligible same-input calibration evidence.
+  Given retained host/provider records, distinguish actual signed authority from
+  observations. Search allowed local evidence/owner repositories, excluding skills
+  inside references. Record exact scope, actual nulls and evidence hashes.
+- [x] Establish current observable candidate capacity using only bounded read-only
+  configured access. Start node1 / 192.168.1.30; protect all existing workloads.
+  Unchanged requirement is net 16250m CPU / 33285996544 bytes (31GiB), Linux primary
+  and independently backed backup. Gross totals/load/free bytes confer neither
+  competing commitments nor a reservation. Report blocked access truthfully.
+- [x] Resolve the missing independent calibration command boundary in owning
+  Platform `eng/helm-qualification`, reusing existing Qualification bounded
+  process/lifecycle/ownership primitives rather than creating a Memories runner.
+  Provide supported independent prepare/inspect/launch/monitor/stop/remove or
+  equivalent commands with separate plan/authority/reservation admission. No
+  finite campaign profile, synthetic fixture or internal C2 call may substitute
+  for this independent bootstrap. Full campaign admission must remain unchanged
+  and must reject calibration results unless its actual existing checks pass.
+  A complete independently approved plan must bind exact isolated target,
+  physical engine/host/source/tool/image/value/credential inputs, actual separate
+  storage allocation, independently authenticated time/status, original budgets,
+  measurement commands and exact resource cleanup authority. Missing operational
+  data refuses before mutation; do not fabricate complete inputs or receipts.
+- [x] Prepare the concrete independent measurement target and native command plan
+  from actual supported sources, including a separate 150000-record backlog lane,
+  two 125-record/s writers for >=1800s common overlap, >=450000 accepted records,
+  >=900000 component operations, physical heap/TOAST/all support/index state,
+  WAL/rewrite, CPU/memory/latency readbacks. Preserve same-input requirements and
+  all campaign security gates; calibration output earns no C1/C2/A41 credit.
+  Reserve one attempt, zero retries/restarts, <=600s startup, <=50400s execution,
+  <=900s cumulative stop/remove (51900s total). PG caps remain 8000m/16GiB;
+  aggregate 16250m/31GiB unchanged. No calibration storage allocation is invented
+  from campaign single-collection diagnostics. Missing capability or inputs must
+  remain explicit instead of describing unsupported commands as executable.
+- [x] Run focused offline capability/failure/cleanup checks and unchanged campaign
+  admission regressions, with no daemon/cluster access. Coordinator performs one
+  ordinary inspection of this delta only; do not repeat completed reviews or
+  launch adversarial review loops. Record exact checks/limits in the single report.
+- [x] Update the existing preparation index/catalogue and campaign register with
+  actual results, concrete command support, monitoring/failure/verified cleanup
+  plan and remaining authority/reservation/measurement gaps. Preserve original
+  contents as history. Present exactly one concrete bounded next action for
+  approval only after all possible preparation. Do not imply approval can replace
+  missing capacity or independent backup. Leave campaign sizes/renewal count null
+  until compatible real measurements exist.
+
+### Implementation return — 2026-10-26
+
+Available implementation/preparation is complete. Platform's independent
+`PG-INDEPENDENT-CALIBRATION-1` mode supplies the six lifecycle commands and native
+separate150000-record lane, two125/s writers, actual component-counter, physical
+heap/TOAST/all support/index/WAL/rewrite and fresh CPU/memory/latency readbacks.
+It reuses Qualification's bounded process, original budgets, persistent ownership,
+failure capture and verified disposal; the application gate has its own explicit
+run/plan/component binding. Finite campaign admission remains unchanged and rejects
+the independent schema. Actual missing operational inputs still refuse.
+
+The [single report](tests/27-4-retention-verification-evidence.md#independent-calibration-capability-and-blocked-host-access--2026-10-26)
+retains exact commands, initial/final failures and limits: existing campaign55/55,
+focused20/20, final independent19/19, source Debug build0 warnings/errors after
+pinned restore and direct C# gates6/6. Offline doubles confer no measurements.
+One ordinary coordinator inspection of this delta is complete; five findings are fixed, none deferred.
+
+The existing preparation index/catalogue retains earlier contents as history and
+binds actual hashes/nulls. Both known node1 SSH paths failed before remote
+execution; no credentials were retried. Current capacity, signed net reservations,
+separate actual allocations and independent Linux backup remain unavailable.
+A concrete automated host-local <=60s metadata capture is prepared as the single
+next action for coordinator presentation, with no manually authored packet or
+infrastructure mutation. This session lacks a working trusted dispatch channel.
+No launch is authorized; approval cannot replace access, capacity or backup.
+Campaign sizes/renewal count stay null, Story27.4 in progress and A41 open.
+
+### Coordinator verification — 2026-10-26
+
+The one ordinary inspection is complete. R1 fixed cumulative emit transport drift
+and acknowledgement latency; R2 fixed the inherited suspended reporter phase;
+R3 fixed unsettled measurement quiescence and rewrite monitoring under the original
+execution budget; R4 added signed reservation identity/owner/validity/revocation
+and retained 20% allocation-headroom failures; R5 made launch supervise measurement
+and removal in the foreground, corrected CLI exit status and enforced the unchanged
+4GiB WAL ceiling. All five are resolved; none deferred. Final combined Platform
+verification passes **86/86**, and Memories gate verification passes **6/6**.
+Exact argv/logs and intermediate results are in the single report/current index.
+No historical review was repeated. Original baseline/frontmatter and prior text
+remain intact; Story27.4 stays in progress and A41 open. Current net capacity,
+reservations, independent Linux backup, measurements and authority remain missing.
+
+### Investigation available at dispatch
+
+Memories HEAD is `092191bc` (use canonical `git rev-parse HEAD` in evidence);
+Platform HEAD is `935d74b` (likewise canonicalize). Both source trees were clean;
+Platform is ahead 1 / behind 16 relative to its already cached origin/main. No
+fetch or reconciliation is authorized/needed. Platform has no root AGENTS.md or
+.editorconfig; workspace baseline and owner architecture/README/configuration
+were inspected. Its declared root location is an allowed dependency; no nested
+submodule is initialized. Builds is not a planned code owner for this change.
+
+Existing private preparation root remains
+`/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg`.
+New `host-discovery-20261026/` contains source-preservation.json, original document
+copies, remote-observation.py and transport.json/windows-transport.json. Both
+strict-host-key SSH attempts to the historically verified account quentindv failed
+exit 255 `Permission denied (publickey,password)` before any remote script ran.
+First used configured Linux hexalith-kube-c1; second the two configured Windows
+keys through native OpenSSH. Both known_hosts pins match the historical
+`SHA256:cC09u9n08cO/+GKfx4TL6xMuFHQUiQXm3UFaF3TWFGw`; independent trust remains
+unproved. No current CPU/available-memory/engine/storage measurement exists.
+Readback keys under `.config/hexalith*` are age decryption identities, not an SSH
+host grant. Do not probe those as host keys or use Kubernetes for discovery.
+Do not repeat failed credentials or guess accounts. Existing 32-thread/134924496896
+RAM/849498918912 free-root records are October 2 historical observations only.
+The existing Scaleway backup lead is not the required independent Linux path.
+
+The circularity is real: campaign_lifecycle.admit requires capacity.read_bound,
+its same-input measurements and measured renewals before prepare. Keep that path
+intact. qualify.py main currently exposes --campaign and --campaign-capacity only;
+command-catalog.json explicitly has null independent bootstrap/monitor/stop/remove
+and backlog commands. Resolve that missing supported capability in Platform, with
+honest non-admission for unresolved physical inputs. The runbook and original
+source-bound producer commands remain authoritative; no direct internal `_c2` or
+fixture route is permitted. Missing live inputs cannot be solved by code/test
+fixtures; this turn supplies implementation and a concrete bounded preparation
+result, not measurements or a launch grant.
+
 ## Operational prerequisite resolution — 2026-10-25 (active continuation)
 
 Continue the existing preparation; implementation/reviews and the original

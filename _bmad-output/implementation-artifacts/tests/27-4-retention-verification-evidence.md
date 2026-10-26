@@ -1,5 +1,167 @@
 # Story 27.4 — current retention results
 
+## Approved host observation — 2026-10-26
+
+The owner's reply **“approve”** authorizes exactly the prepared automated node1
+metadata capture: one attempt, <=60s, zero retries or workload changes. The exact
+script SHA256 is `d2410555614d483691f0c12876251cf9d840cd70ace854110ffba5e039eaed52`.
+Approval is recorded in the existing preparation index/catalogue and private
+`host-discovery-20261026/host-observation-approval-20261026.json`.
+
+**Approved; not dispatched.** Local `ssh-add -l` reports no authentication agent;
+Windows `ssh-add.exe -l` reports no agent connection. Neither SSH configuration
+file exists and no host-console tool is available. The prior strict-host-key
+transports remain exit255 authentication failures; rejected credentials/accounts
+were not retried or guessed. No remote command ran. The single capture attempt
+is unused and remains authorized for this unchanged scope once a working existing
+trusted host-local channel is available; no repeat permission is needed.
+
+Current capacity, signed net16250m/31GiB reservation, Linux primary and independent
+Linux backup remain unverified. This approval grants no reservation or calibration
+launch. No infrastructure, cluster, credential, dependency/submodule or Git write
+occurred. Story27.4 remains in progress and A41 open.
+
+## Independent calibration capability and blocked host access — 2026-10-26
+
+**Implementation/offline preparation is complete; no live target is admitted.**
+Platform exposes distinct `--calibration prepare|inspect|launch|monitor|stop|remove`
+commands through its existing Qualification process/lifecycle/ownership boundary.
+The native workload, measurement plan, bounded host observation next action and
+actual null prerequisites are in the [current campaign register](../../../docs/operations/access-telemetry-full-qualification.md#independent-calibration-and-host-discovery--2026-10-26-current)
+and [existing preparation index](../../../docs/operations/qualification/full-campaign-preparation-2026-10-25/preparation.json).
+One ordinary coordinator inspection is complete; all five findings are resolved. No live/Production/full-gate/A41
+credit follows; local WINDOW evidence and original baseline remain intact.
+
+The changed Platform sources are `qualify.py`, `campaign_lifecycle.py`,
+`campaign_environment.py`, chart templates, new `independent_calibration.py`,
+`calibration_workload.py`, focused tests and README. Memories adds explicit
+`PG-INDEPENDENT-CALIBRATION-1` gate/run/plan binding and refusal cases. Campaign
+`campaign_capacity.py` admission is unchanged. The shared lifecycle now exposes
+schema/file/composition/budget/admission hooks; original campaign defaults remain.
+The native child rechecks independent original authority and budget before writes,
+uses the real fixed endpoint, and inherits the supervised process group. No new
+Memories runner, dependency/version/submodule/index/ref mutation or remote action
+was introduced.
+
+The separate lane accounts for150000 real accepted records and requires an exact
+SQL snapshot; the two-writer lane uses1801 one-second125-record segments per
+writer, >=1800s common measured overlap and >=900000 actual state-operation counter
+delta. Physical SQL includes heap/TOAST, every access-telemetry/support/index and
+TOAST relation, database size and WAL. Fresh complete metrics-API CPU/memory,
+target-side receipt latency and quiesced full-table rewrite readbacks are required.
+Missing providers/readbacks stop the attempt. Configured bounds and unit receipts
+never become measurements. This lane's occupancy/rewrite is not expired-backlog
+drain, C2 replacement/fault, C3 real1/24/168h/24h reclamation or compatible renewal
+proof. Existing campaign admission must independently accept actual future evidence;
+the independent schema itself refuses there.
+
+Offline evidence is retained under `HOST_DISCOVERY/offline-verification/`, where
+`HOST_DISCOVERY` is the existing private preparation root's `host-discovery-20261026`.
+Exact commands and hashed logs are in its `verification.json` (also indexed).
+
+| Cwd / exact command | Executed result |
+| :--- | :--- |
+| Platform `eng/helm-qualification`: `python3 -B -m unittest -v test_campaign_capacity test_campaign_lifecycle` | 55/55 passed,5.028s; unchanged campaign sizing/admission/lifecycle. |
+| Same cwd: `HELM_BIN=/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/helm python3 -B -m unittest -v test_independent_calibration test_chart.ChartTests.test_finite_campaign_resources_replicas_and_sidecars_are_explicit test_qualify.QualifierFailureTests.test_timeout_terminates_spawned_process_group_and_disables_node_reuse test_qualify.QualifierFailureTests.test_early_leader_exit_and_cancellation_reap_descendant_writer` | 20/20 passed,10.565s; this selection preceded two additional native cases. |
+| Same cwd: `HELM_BIN=/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/helm python3 -B -m unittest -v test_independent_calibration` | Final19/19 passed,7.958s; actual local process tree, private files, signed controlled receipts, native writer/orchestration doubles and real Helm rendering. |
+| Memories: `dotnet build tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj --configuration Debug --no-restore -m:1 -p:UseHexalithProjectReferences=true` | Initial NETSDK1004 for missing EventStore Contracts/Client/DomainService assets. After the focused pinned restore below, passed with zero warnings/errors,24.73s. |
+| Memories: `dotnet restore tests/Hexalith.Memories.Server.Tests/Hexalith.Memories.Server.Tests.csproj -p:UseHexalithProjectReferences=true` | Passed; no version changes. |
+| Memories: `dotnet tests/Hexalith.Memories.Server.Tests/bin/Debug/net10.0/Hexalith.Memories.Server.Tests.dll -method '*Gate_ExplicitProfileRequiresExactApprovedComponentAndShortMountedGateInQualification' -method '*Gate_AcceptsOnlyCurrentExactProfileInQualification' -method '*Gate_RejectsPg2OutsideQualification'` | 6/6 passed,0.155s; zero errors/failures/skips/not-run. |
+
+An intermediate19-case run exposed an unsupported `Path.open(opener=...)` call
+in native segment proof persistence (18 passed,1 error). Built-in `open` now uses
+0600 and `O_NOFOLLOW`; the same19-case command passes. The earlier16-case and20-case
+passing selections remain separate snapshots, without a single all-final-suite
+claim. New authority/backing/measurement cases were not all executed red before
+implementation; they establish final offline behavior only. No broad suite or
+historical review was repeated.
+
+Discovery inspected41 private,835 Memories evidence and159 Platform implementation
+JSON files, selecting eight relevant records and retaining hashes in
+`HOST_DISCOVERY/discovery-results.json`. No eligible signed current reservation or
+same-input calibration was found in that stated scope. The retained Linux and
+Windows strict-host-key transports both exit255 before remote execution. Their
+exact argv/result hashes remain bound; credentials were not retried. Node1's current
+CPU/RAM/engine/storage/net commitments and independent Linux backup remain null;
+October2 gross32-thread/134924496896-byte hardware is historical only. Known-host
+pins do not establish independent trust. No container/Kubernetes/provider call ran.
+
+The incomplete private `calibration-plan.draft.json` binds actual retained tools,
+pinned Dapr/Gateway/backend inputs and changed source/chart hashes. It preserves
+null actual run/target/engine, independent storage allocation/reservation, runtime/
+provider/reporter/CNI/credential, UTC/status/monitoring, adopted clean source and
+outside-approval inputs. It was never supplied to prepare. No state/run identity,
+measurement, renewal count, reservation term or grant was invented.
+
+The only prepared next external action is the catalogue's host-local metadata
+capture on node1: `timeout --signal=TERM --kill-after=2s 58s python3 -B -
+--expected-hostname node1 --docker-host unix:///var/run/docker.sock`, with the
+retained `host-observation-bounded.py` on stdin (SHA256
+`4fdd0ef9f78257755f510cc1ce65cc2aa19c36b96db88578ef0d71715dbe88cb`).
+It produces bounded JSON observations automatically, performs no infrastructure/
+credential/cluster mutation, and leaves authority/reservations/independent-backup
+null. Read-only children end within individual/55s script/60s outer bounds; there
+is no infrastructure to dispose. It needs the host custodian's working trusted
+local access channel, which this session does not have. Approval cannot replace
+that access, actual capacity or independent backup; no launch decision is requested.
+
+Session source heads remain Memories `092191bc67e0439f8d79ce60109c98e594b81734`
+and Platform `935d74b89e1710abebdba2267b280814f8dc6b08`. Initial dirty Spec14
+edits are preserved. Story27.4 stays in progress; full qualification, Production and
+A41 remain open. Coordinator owns the one ordinary inspection of this delta and
+its final bounded-action presentation.
+
+### Final ordinary inspection and coordinator checks — 2026-10-26
+
+Five findings were resolved within this delta; none deferred. R1 corrected native
+transport cadence and uses acknowledgedUtcMs for durable acknowledgement latency.
+R2 gives the suspended reporter an explicit zero-width window. R3 keeps measurement
+quiescence inside original execution, waits for actual settled zero replicas,
+checks original identities and monitors the disabled target throughout rewrite
+without starting/resetting stop time. R4 retains observed operands before refusing
+negative/less-than-20% allocation headroom and requires signed reservation ID,
+owner, valid-from/end and active/non-revoked disposition. R5 supervises startup,
+measurement and removal in one foreground launch, returns truthful CLI status,
+and enforces the unchanged4GiB WAL ceiling. The native separate backlog lane still
+proves occupancy only; no drain/renewal/campaign evidence is inferred.
+
+The final exact command, cwd, HELM_BIN and SHA256-bound log are in
+`HOST_DISCOVERY/offline-verification/coordinator-final-platform-v2.json`:
+`python3 -B -m unittest -v test_independent_calibration test_campaign_capacity
+test_campaign_lifecycle test_chart.ChartTests.test_finite_campaign_resources_replicas_and_sidecars_are_explicit
+test_qualify.QualifierFailureTests.test_timeout_terminates_spawned_process_group_and_disables_node_reuse
+test_qualify.QualifierFailureTests.test_early_leader_exit_and_cancellation_reap_descendant_writer`.
+It passes **86/86**. This covers28 independent,55 existing capacity/lifecycle,
+one existing chart and two existing process cases. The earlier final84-case
+snapshot remains retained as a prior source snapshot. The direct Memories command
+above was rerun after inspection: **6/6**,0.144s, zero errors/failures/skips/not-run.
+The source Debug build result above remains applicable; no C# code changed after it.
+Focused review-fix selections pass9/9 and7/7; their exact logs are retained beside
+the final receipt. A coordinator edit first used the wrong working-directory path
+and raised FileNotFoundError before mutation; the corrected absolute-path edit
+and subsequent final check are the applicable result. No failure is live evidence.
+
+The bounded host-local script now additionally captures selected existing Docker
+CPU/memory limits and instantaneous stats without environment/credential payloads.
+Its current raw SHA256 is bound in the catalogue/index; the earlier script hash
+above is its historical preparation snapshot. The exact next action remains one
+<=60s automated host-local observation, no retries, on node1 through an existing
+trusted custodian channel. This session has no working dispatch access. It creates
+no infrastructure, changes no workload and generates observations automatically;
+no owner-authored packet is requested. Approval cannot supply the missing access,
+net reservations, independent backup or operational authority. No calibration
+launch is requested. The one ordinary inspection is complete; Story27.4 remains
+in progress and A41 open.
+
+Final preservation check: Memories/Platform/Builds HEAD and index hashes are
+unchanged; dependency/configuration pins and root gitlinks are unchanged. Original
+Spec14, runbook and single-report historical sections compare byte-for-byte.
+The current continuation's14 references matched their actual bytes; no operational
+state directory exists. Exact results are retained in
+`HOST_DISCOVERY/coordinator-preservation.json`. Both owning `git diff --check`
+commands exit0. Final86-case elapsed time is19.850s. The requested single bounded
+action is now presented for approval; it does not include calibration or launch.
+
 ## Operational prerequisites continued — 2026-10-25
 
 **Partial resolution: actual Dapr/Gateway inputs are bound; host reservation and
