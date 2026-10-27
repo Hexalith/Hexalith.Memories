@@ -45,6 +45,13 @@ class AdapterProfileTests(unittest.TestCase):
 
         self.assertEqual("owner@memories-qualification-27-4", adapter_profile.DEFAULT_REVIEWED_KUBE_CONTEXT)
 
+        # Reload rebinds classes on the shared module. Other fixtures imported the
+        # original exception types, so put those objects back after the env check.
+        preserved_types = {
+            name: value
+            for name, value in vars(adapter_profile).items()
+            if isinstance(value, type)
+        }
         previous = os.environ.get("REVIEWED_KUBE_CONTEXT")
         os.environ["REVIEWED_KUBE_CONTEXT"] = "another-operator@local"
         try:
@@ -56,6 +63,8 @@ class AdapterProfileTests(unittest.TestCase):
             else:
                 os.environ["REVIEWED_KUBE_CONTEXT"] = previous
             importlib.reload(adapter_profile)
+            for name, value in preserved_types.items():
+                setattr(adapter_profile, name, value)
 
         self.assertEqual(
             adapter_profile.DEFAULT_REVIEWED_KUBE_CONTEXT,

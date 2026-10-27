@@ -202,16 +202,28 @@ class CampaignReviewFixTests(unittest.TestCase):
 
     def test_authenticated_historical_closure_and_current_import_requirements(self):
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-        for checkpoint in ("C0", *lifecycle.STORY_27_4_CHECKPOINTS):
-            payload = common(checkpoint)
-            payload["source_commit"] = commit
-            paths = lifecycle._expected_source_paths(checkpoint, closure_version="historical/v1")
-            payload["source_hashes"] = {path: lifecycle._hash_git_blob(ROOT, commit, path) for path in paths}
-            payload["producer"]["source_sha256"] = payload["source_hashes"][payload["producer"]["path"]]
-            lifecycle._validate_source_identity(payload, ROOT)
-            payload["profile_sha256"] = self.sha
-            with self.assertRaisesRegex(lifecycle.EvidenceValidationError, "historical"):
+        original_read = lifecycle._read_git_blob
+
+        def historical_source(root, commit_id, relative):
+            raw = original_read(root, commit_id, relative)
+            if relative == "tools/verify_access_telemetry_lifecycle.py":
+                raw = raw.replace(
+                    b"from access_telemetry_campaign_profile import (",
+                    b"from access_telemetry_campaign_profile_absent import (",
+                )
+            return raw
+
+        with patch.object(lifecycle, "_read_git_blob", historical_source):
+            for checkpoint in ("C0", *lifecycle.STORY_27_4_CHECKPOINTS):
+                payload = common(checkpoint)
+                payload["source_commit"] = commit
+                paths = lifecycle._expected_source_paths(checkpoint, closure_version="historical/v1")
+                payload["source_hashes"] = {path: lifecycle._hash_git_blob(ROOT, commit, path) for path in paths}
+                payload["producer"]["source_sha256"] = payload["source_hashes"][payload["producer"]["path"]]
                 lifecycle._validate_source_identity(payload, ROOT)
+                payload["profile_sha256"] = self.sha
+                with self.assertRaisesRegex(lifecycle.EvidenceValidationError, "historical"):
+                    lifecycle._validate_source_identity(payload, ROOT)
         payload = common("c2-production-replacement"); payload["source_commit"] = commit
         payload["source_hashes"] = {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
                                     for path in lifecycle._expected_source_paths(payload["checkpoint"])}
