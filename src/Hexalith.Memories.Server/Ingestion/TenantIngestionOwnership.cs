@@ -16,7 +16,7 @@ internal static class TenantIngestionOwnership
 
     /// <summary>Retains exact key ownership and checks the deletion fence in the same atomic operation as each write.</summary>
     internal static async Task<RedisResult> WriteAsync(IDatabase db, string tenant, string script, RedisKey[] keys,
-        RedisValue[] arguments, CancellationToken token = default)
+        RedisValue[] arguments, CancellationToken token = default, string? precondition = null)
     {
         IngestionIdentityGuard.Handle(tenant, 128);
         int registry = keys.Length + 1, fence = keys.Length + 2;
@@ -33,7 +33,7 @@ internal static class TenantIngestionOwnership
             """;
         try
         {
-            return await db.ScriptEvaluateAsync(retain + "\n" + script,
+            return await db.ScriptEvaluateAsync((precondition is null ? string.Empty : precondition + "\n") + retain + "\n" + script,
                 [.. keys, (RedisKey)Key(tenant), (RedisKey)Fence(tenant)], arguments).WaitAsync(token).ConfigureAwait(false);
         }
         catch (RedisServerException error) when (error.Message.Contains("tenant-ingestion-", StringComparison.Ordinal))

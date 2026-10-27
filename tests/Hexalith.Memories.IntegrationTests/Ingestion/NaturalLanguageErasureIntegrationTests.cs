@@ -227,6 +227,131 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         (await db.HashGetAllAsync(key)).OrderBy(field => field.Name.ToString()).ShouldBe(before.OrderBy(field => field.Name.ToString()));
     }
 
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("foreign-unit")]
+    [InlineData("foreign-tenant")]
+    [InlineData("foreign-case")]
+    [InlineData("removed-after-read")]
+    [InlineData("source-changed-after-read")]
+    [InlineData("missing-source")]
+    [InlineData("empty-source")]
+    public async Task NamespaceMigrationRefusesUnprovenLiveOwnershipAtomicallyAcrossRestart(string defect)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "namespace-orphan-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        string syntactic = IndexSchemaDefinitions.BuildSyntacticKey(tenant, "victim");
+        string legacy = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim");
+        string canonical = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "victim");
+        await db.HashSetAsync(legacy, Fields("victim", "retained-orphan"));
+        if (defect != "missing") await db.HashSetAsync(syntactic, MigrationOwner(tenant, "victim"));
+        if (defect == "foreign-unit") await db.HashSetAsync(syntactic, "id", "foreign");
+        if (defect == "foreign-tenant") await db.HashSetAsync(syntactic, "tenantId", "foreign");
+        if (defect == "foreign-case") await db.HashSetAsync(syntactic, "caseId", "foreign");
+        if (defect == "missing-source") await db.HashDeleteAsync(syntactic, "sourceUri");
+        if (defect == "empty-source") await db.HashSetAsync(syntactic, "sourceUri", string.Empty);
+        string survivor = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "survivor");
+        await db.HashSetAsync(survivor, Fields("survivor", "unrelated-live-content"));
+        var retained = await db.HashGetAllAsync(legacy);
+        var survivorBytes = await db.HashGetAllAsync(survivor);
+        IDatabase migrationDb = db;
+        if (defect.EndsWith("after-read", StringComparison.Ordinal))
+        {
+            migrationDb = Substitute.For<IDatabase>();
+            migrationDb.HashGetAsync((RedisKey)syntactic, (RedisValue)"sourceUri", Arg.Any<CommandFlags>()).Returns(async _ =>
+            {
+                var observed = await db.HashGetAsync(syntactic, "sourceUri");
+                if (defect == "removed-after-read") await db.KeyDeleteAsync(syntactic);
+                else
+                {
+                    await db.HashSetAsync(syntactic, "sourceUri", "urn:replacement");
+                    await db.StringSetAsync(SourceInventoryStore.BuildKey(tenant, "urn:replacement"), """{"admissionClosed":true}""");
+                }
+                return observed;
+            });
+            migrationDb.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+                .Returns(call => db.ScriptEvaluateAsync(call.Arg<string>(), call.Arg<RedisKey[]>(), call.Arg<RedisValue[]>()));
+        }
+        (await Should.ThrowAsync<InvalidOperationException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(migrationDb, tenant, "victim", token)))
+            .Message.ShouldBe("nl-namespace-live-owner-reconciliation-required");
+        (await db.HashGetAllAsync(legacy)).ShouldBe(retained, ignoreOrder: true);
+        (await db.KeyExistsAsync(canonical)).ShouldBeFalse();
+        (await db.HashGetAllAsync(survivor)).ShouldBe(survivorBytes, ignoreOrder: true);
+        (await db.SetMembersAsync(TenantIngestionOwnership.Key(tenant))).ShouldBeEmpty();
+        (await db.SetMembersAsync(SourcePublicationVisibility.Keys(tenant, "victim"))).ShouldBeEmpty();
+        using var restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        if (defect == "source-changed-after-read")
+        {
+            // A fresh observation sees the replacement source. Its own closed admission,
+            // rather than the stale source URI, must now prevent activation without enrollment.
+            await RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(restarted.GetDatabase(), tenant, "victim", token);
+            (await db.HashGetAsync(syntactic, "sourceUri")).ToString().ShouldBe("urn:replacement");
+            (await db.StringGetAsync(SourceInventoryStore.BuildKey(tenant, "urn:replacement"))).ToString().ShouldBe("""{"admissionClosed":true}""");
+        }
+        else
+        {
+            (await Should.ThrowAsync<InvalidOperationException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(restarted.GetDatabase(), tenant, "victim", token)))
+                .Message.ShouldBe("nl-namespace-live-owner-reconciliation-required");
+        }
+        (await db.HashGetAllAsync(legacy)).ShouldBe(retained, ignoreOrder: true);
+        (await db.KeyExistsAsync(canonical)).ShouldBeFalse();
+        (await db.HashGetAllAsync(survivor)).ShouldBe(survivorBytes, ignoreOrder: true);
+        (await db.SetMembersAsync(TenantIngestionOwnership.Key(tenant))).ShouldBeEmpty();
+        (await db.SetMembersAsync(SourcePublicationVisibility.Keys(tenant, "victim"))).ShouldBeEmpty();
+        // Only this fixture can reconcile its missing ownership or reopen its known source.
+        if (defect == "source-changed-after-read")
+            await db.StringSetAsync(SourceInventoryStore.BuildKey(tenant, "urn:replacement"), """{"admissionClosed":false}""");
+        else await db.HashSetAsync(syntactic, MigrationOwner(tenant, "victim"));
+        await RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(restarted.GetDatabase(), tenant, "victim", token);
+        (await db.KeyExistsAsync(legacy)).ShouldBeFalse();
+        (await db.HashGetAllAsync(canonical)).ShouldBe(retained, ignoreOrder: true);
+        (await db.HashGetAllAsync(survivor)).ShouldBe(survivorBytes, ignoreOrder: true);
+    }
+
+    [Theory]
+    [InlineData("legacy-unit")]
+    [InlineData("legacy-tenant")]
+    [InlineData("legacy-fields")]
+    [InlineData("canonical-unit")]
+    [InlineData("canonical-tenant")]
+    [InlineData("canonical-case")]
+    [InlineData("canonical-fields")]
+    public async Task NamespaceMigrationNeverEnrollsForeignOrMalformedLegacyOrCanonicalKeys(string defect)
+    {
+        var token = TestContext.Current.CancellationToken;
+        string tenant = "namespace-unproven-hash-" + Guid.NewGuid().ToString("N");
+        IDatabase db = redis.Connection.GetDatabase();
+        string source = IndexSchemaDefinitions.BuildSyntacticKey(tenant, "victim");
+        string legacy = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim");
+        string canonical = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "victim");
+        string survivor = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "survivor");
+        await db.HashSetAsync(source, MigrationOwner(tenant, "victim"));
+        await db.HashSetAsync(legacy, Fields("victim", "retained-legacy-content"));
+        await db.HashSetAsync(canonical, Fields("victim", "retained-canonical-content"));
+        await db.HashSetAsync(survivor, Fields("survivor", "unrelated-content"));
+        bool legacyDefect = defect.StartsWith("legacy", StringComparison.Ordinal);
+        string changed = legacyDefect ? legacy : canonical;
+        if (defect.EndsWith("unit", StringComparison.Ordinal)) await db.HashSetAsync(changed, "memoryUnitId", "foreign-unit");
+        if (defect.EndsWith("tenant", StringComparison.Ordinal)) await db.HashSetAsync(changed, "tenantId", "foreign-tenant");
+        if (defect.EndsWith("case", StringComparison.Ordinal)) await db.HashSetAsync(changed, "caseId", "foreign-case");
+        if (defect.EndsWith("fields", StringComparison.Ordinal)) await db.HashDeleteAsync(changed, "embedding");
+        var before = new Dictionary<string, HashEntry[]>();
+        foreach (string key in new[] { source, legacy, canonical, survivor }) before[key] = await db.HashGetAllAsync(key);
+        string reason = legacyDefect ? "nl-namespace-legacy-owner-reconciliation-required" : "nl-namespace-canonical-owner-reconciliation-required";
+        (await Should.ThrowAsync<InvalidOperationException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, "victim", token)))
+            .Message.ShouldBe(reason);
+        using var restarted = await ConnectionMultiplexer.ConnectAsync(redis.ConnectionString);
+        (await Should.ThrowAsync<InvalidOperationException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(restarted.GetDatabase(), tenant, "victim", token)))
+            .Message.ShouldBe(reason);
+        foreach (var row in before) (await db.HashGetAllAsync(row.Key)).ShouldBe(row.Value, ignoreOrder: true);
+        (await db.SetMembersAsync(TenantIngestionOwnership.Key(tenant))).ShouldBeEmpty();
+        (await db.SetMembersAsync(SourcePublicationVisibility.Keys(tenant, "victim"))).ShouldBeEmpty();
+    }
+
+    private static HashEntry[] MigrationOwner(string tenant, string unit) =>
+        [new("id", unit), new("tenantId", tenant), new("caseId", "case"), new("sourceUri", "urn:synthetic:" + unit)];
+
     [Fact]
     public async Task NamespaceMigrationInventoryCapacityRefusesExplicitlyAndPreservesLegacyBytes()
     {
@@ -234,6 +359,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         string tenant = "namespace-capacity-" + Guid.NewGuid().ToString("N");
         IDatabase db = redis.Connection.GetDatabase();
         string legacy = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim");
+        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, "victim"), MigrationOwner(tenant, "victim"));
         await db.HashSetAsync(legacy, Fields("victim", "retained-content"));
         await db.SetAddAsync(SourcePublicationVisibility.Keys(tenant, "victim"), Enumerable.Range(0, 4096).Select(i => (RedisValue)("retained-" + i)).ToArray());
         var failure = await Should.ThrowAsync<InvalidOperationException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, "victim", token));
@@ -253,6 +379,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         for (int index = 0; index < 24; index++)
         {
             string unit = "unit-" + index;
+            await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit), MigrationOwner(tenant, unit));
             await db.HashSetAsync(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, unit), Fields(unit, "private-content"));
             await db.StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, unit), "modern");
             Task migration = RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, unit, token);
@@ -268,6 +395,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
             (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit))).ShouldBeFalse();
         }
         string survivor = IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "survivor");
+        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, "survivor"), MigrationOwner(tenant, "survivor"));
         await db.HashSetAsync(survivor, Fields("survivor", "unrelated"));
         await RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, "survivor", token);
         (await db.HashGetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "survivor"), "naturalLanguageDescription")).ToString().ShouldBe("unrelated");
@@ -279,12 +407,14 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
         var token = TestContext.Current.CancellationToken;
         string tenant = "nl-source-fence-" + Guid.NewGuid().ToString("N");
         IDatabase db = redis.Connection.GetDatabase();
+        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, "newer"), MigrationOwner(tenant, "newer"));
         await db.HashSetAsync(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "newer"), Fields("newer", "older-content"));
         await db.HashSetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "newer"), Fields("newer", "newer-content"));
         await RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, "newer", token);
         (await db.HashGetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "newer"), "naturalLanguageDescription")).ToString().ShouldBe("newer-content");
         (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "newer"))).ShouldBeFalse();
-        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, "fenced"), [new("sourceUri", "urn:synthetic:closed")]);
+        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, "fenced"), MigrationOwner(tenant, "fenced"));
+        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, "fenced"), "sourceUri", "urn:synthetic:closed");
         await db.StringSetAsync(SourceInventoryStore.BuildKey(tenant, "urn:synthetic:closed"), """{"admissionClosed":true}""");
         await db.HashSetAsync(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "fenced"), Fields("fenced", "closed-content"));
         await RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, "fenced", token);
@@ -431,6 +561,7 @@ public sealed class NaturalLanguageErasureIntegrationTests(RedisStackFixture red
     {
         string tenant = "nl-incomplete-" + Guid.NewGuid().ToString("N");
         IDatabase db = redis.Connection.GetDatabase();
+        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, "victim"), MigrationOwner(tenant, "victim"));
         await db.HashSetAsync(IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey(tenant, "victim"), Fields("victim", "valid-legacy"));
         await db.HashSetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "victim"), "memoryUnitId", "victim");
         (await Should.ThrowAsync<InvalidOperationException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateOneAsync(db, tenant, "victim", TestContext.Current.CancellationToken)))

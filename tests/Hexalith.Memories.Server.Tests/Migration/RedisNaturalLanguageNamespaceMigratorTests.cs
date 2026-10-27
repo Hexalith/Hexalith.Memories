@@ -26,12 +26,29 @@ public class RedisNaturalLanguageNamespaceMigratorTests
             .Returns(RedisResult.Create(1L));
         IServer server = CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]);
         await RedisNaturalLanguageNamespaceMigrator.MigrateAsync(db, server, "tenant-a", CancellationToken.None);
-        await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("nl-namespace-migration-fenced-v2", StringComparison.Ordinal)),
+        await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("nl-namespace-migration-fenced-v3", StringComparison.Ordinal)),
             Arg.Is<RedisKey[]>(keys => keys[0] == IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")
                 && keys[1] == IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey("tenant-a", "mu-1")),
             Arg.Is<RedisValue[]>(values => values[0] == "mu-1" && values[1] == "tenant-a"), Arg.Any<CommandFlags>());
+        await db.Received(1).ScriptEvaluateAsync(Arg.Is<string>(script =>
+            script.IndexOf("'id'", StringComparison.Ordinal) < script.IndexOf("local missing=0", StringComparison.Ordinal)
+            && script.Contains("return -3", StringComparison.Ordinal)), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>());
         await db.DidNotReceiveWithAnyArgs().HashSetAsync(default, default(HashEntry[])!, default);
         await db.DidNotReceiveWithAnyArgs().KeyDeleteAsync(default(RedisKey), default);
+    }
+
+    [Theory]
+    [InlineData(-3, "nl-namespace-live-owner-reconciliation-required")]
+    [InlineData(-4, "nl-namespace-legacy-owner-reconciliation-required")]
+    [InlineData(-1, "nl-namespace-canonical-owner-reconciliation-required")]
+    public async Task MigrateAsync_UnprovenLiveOwnerReturnsBoundedReconciliationRefusal(long result, string reason)
+    {
+        IDatabase db = Substitute.For<IDatabase>();
+        db.ScriptEvaluateAsync(Arg.Any<string>(), Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>())
+            .Returns(RedisResult.Create(result));
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => RedisNaturalLanguageNamespaceMigrator.MigrateAsync(db,
+            CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]), "tenant-a", TestContext.Current.CancellationToken));
+        error.Message.ShouldBe(reason);
     }
 
     [Fact]

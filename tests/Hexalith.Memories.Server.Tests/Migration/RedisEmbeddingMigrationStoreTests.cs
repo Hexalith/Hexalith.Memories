@@ -31,7 +31,7 @@ public class RedisEmbeddingMigrationStoreTests
         IServer server = CreateServer([IndexSchemaDefinitions.BuildLegacyNaturalLanguageSemanticKey("tenant-a", "mu-1")]);
         IConnectionMultiplexer redis = CreateRedis(db, server);
         HashEntry[] legacyEntries = CreateNaturalLanguageHashEntries();
-        db.ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("nl-namespace-migration-fenced-v2", StringComparison.Ordinal)),
+        db.ScriptEvaluateAsync(Arg.Is<string>(script => script.Contains("nl-namespace-migration-fenced-v3", StringComparison.Ordinal)),
             Arg.Any<RedisKey[]>(), Arg.Any<RedisValue[]>(), Arg.Any<CommandFlags>()).Returns(call =>
             { operations.Add("migrate:fenced-copy-delete"); return RedisResult.Create((RedisValue)1); });
 

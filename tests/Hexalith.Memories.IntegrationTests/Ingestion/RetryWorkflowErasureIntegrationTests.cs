@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NRedisStack.RedisStackCommands;
 using Dapr.AI.Conversation;
 using Hexalith.Memories.Server.Activities.Ingestion;
+using Hexalith.Memories.Server.Activities.Indexing;
 using Hexalith.Memories.Server.Activities.Cases;
 using Hexalith.Memories.Server.Activities.Tenants;
 using Hexalith.Memories.EventStore;
@@ -50,6 +51,174 @@ public sealed class RetryWorkflowErasureIntegrationTests(RedisStackFixture redis
     {
         try { await _sidecar.DisposeAsync(); }
         finally { Environment.SetEnvironmentVariable("DAPR_API_TOKEN", _previousApiToken); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OriginalSameNameRawRetrySuspendedInEachContentActivityTerminatesAfterWorkerUpgradeAndPurgesHistory(bool embeddingPhase)
+    {
+        string? previous = Environment.GetEnvironmentVariable("DAPR_GRPC_ENDPOINT");
+        Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", _sidecar.DaprGrpcEndpoint);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(90));
+        var token = deadline.Token;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var activityReturned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        string tenant = "same-name-upgrade-" + Guid.NewGuid().ToString("N");
+        const string unit = "victim";
+        string raw = "historical-raw-sentinel-" + Guid.NewGuid().ToString("N");
+        string description = "historical-derived-sentinel-" + Guid.NewGuid().ToString("N");
+        string id = NaturalLanguageEmbeddingRetryHostedService.GetLegacyRetryWorkflowInstanceId(tenant, unit);
+        IDatabase db = redis.Connection.GetDatabase();
+        string survivor = IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, "survivor");
+        await db.HashSetAsync(survivor, "naturalLanguageDescription", "unrelated-content");
+        await db.HashSetAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit),
+            [new("id", unit), new("tenantId", tenant), new("caseId", "case"), new("sourceUri", "urn:original")]);
+        int contentCallsAfterUpgrade = 0;
+        var config = EmbeddingProviderDefaults.Google();
+        const string modernDescription = "Modern replacement succeeded.";
+        var registry = new FailedNaturalLanguageEmbeddingRegistry(redis.Connection, NullLogger<FailedNaturalLanguageEmbeddingRegistry>.Instance);
+        var retainedAdmission = new FailedNaturalLanguageEmbeddingRecord(tenant, unit, raw, "TestEvent", null, "case", config.Provider, config.Model, config.Dimensions, 1, 0);
+        await registry.EnqueueAsync(retainedAdmission, token);
+        string admittedBytes = (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).ToString();
+        var options = new NaturalLanguageDescriptionOptions { RetryWorkerEnabled = true };
+        var monitor = Substitute.For<IOptionsMonitor<NaturalLanguageDescriptionOptions>>(); monitor.CurrentValue.Returns(options);
+        using var http = new HttpClient();
+        var conversation = Substitute.For<DaprConversationClient>(null!, http, null!);
+        conversation.ConverseAsync(Arg.Any<IReadOnlyList<ConversationInput>>(), Arg.Any<ConversationOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new ConversationResponse([new ConversationResponseResult([new ConversationResultChoice(null, 0, new ResultMessage(modernDescription))])], string.Empty));
+        var environment = Substitute.For<IHostEnvironment>(); environment.EnvironmentName.Returns("Development");
+        var embedding = Substitute.For<EmbeddingClient>(Substitute.For<IHttpClientFactory>(), Substitute.For<Dapr.Client.DaprClient>(), new ConfigurationBuilder().Build(), environment);
+        embedding.PrimeApiKeyAsync(Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        float[] vector = new float[config.Dimensions]; vector[0] = 1;
+        embedding.GenerateAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<TenantEmbeddingConfig>(), Arg.Any<CancellationToken>()).Returns(vector);
+        var actors = Substitute.For<IActorProxyFactory>();
+        var limiter = Substitute.For<IEmbeddingRateLimiterActor>(); limiter.TryConsumeWithCeilingAsync(Arg.Any<int>()).Returns(true);
+        actors.CreateActorProxy<IEmbeddingRateLimiterActor>(Arg.Any<ActorId>(), Arg.Any<string>()).Returns(limiter);
+        var provider = Substitute.For<ITenantEmbeddingConfigProvider>(); provider.GetAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(config);
+        try
+        {
+            using IHost original = Host.CreateDefaultBuilder().ConfigureServices(services =>
+            {
+                services.AddKeyedSingleton<IConnectionMultiplexer>("redis", redis.Connection);
+                services.AddDaprWorkflow(options =>
+                {
+                    // The registered wire name and original activity order are the deployed protocol.
+                    options.RegisterWorkflow<HistoricalNaturalLanguageEmbeddingRetryWorkflow>(nameof(NaturalLanguageEmbeddingRetryWorkflow));
+                    options.RegisterActivity<CheckMemoryUnitExistsActivity>();
+                    options.RegisterActivity<NaturalLanguageDescriptionInput, NaturalLanguageDescriptionResult>(nameof(GenerateNaturalLanguageDescriptionActivity), async (_, input) =>
+                    {
+                        input.RawJsonPayload.ShouldBe(raw);
+                        if (!embeddingPhase) { entered.TrySetResult(); await release.Task; activityReturned.TrySetResult(); }
+                        return new(description, null, ConfidenceSource.Constant, "test", "test");
+                    });
+                    options.RegisterActivity<EmbeddingInput, EmbeddingResult>(nameof(GenerateEmbeddingActivity), async (_, _) =>
+                    {
+                        if (embeddingPhase) { entered.TrySetResult(); await release.Task; activityReturned.TrySetResult(); }
+                        return new([1f, 0f, 0f], "test", 3) { Model = "test" };
+                    });
+                });
+            }).Build();
+            await original.StartAsync(token);
+            var oldClient = original.Services.GetRequiredService<DaprWorkflowClient>();
+            // Persist the original nine-field input shape, without the later PayloadVersion member.
+            var historicalInput = JsonSerializer.SerializeToElement(new
+            {
+                retainedAdmission.TenantId, retainedAdmission.MemoryUnitId, RawJsonPayload = retainedAdmission.TruncatedRawJsonPayload,
+                retainedAdmission.EventType, retainedAdmission.AggregateType, retainedAdmission.CaseId,
+                retainedAdmission.EmbeddingProvider, retainedAdmission.EmbeddingModel, retainedAdmission.EmbeddingDimensions,
+            });
+            await oldClient.ScheduleNewWorkflowAsync(typeof(NaturalLanguageEmbeddingRetryWorkflow).Name, id, historicalInput);
+            await entered.Task.WaitAsync(token);
+            await oldClient.SuspendWorkflowAsync(id, "owned-upgrade-boundary", token);
+            while ((await oldClient.GetWorkflowStateAsync(id, true, token)).RuntimeStatus != WorkflowRuntimeStatus.Suspended)
+                await Task.Delay(25, token);
+            RedisKey[] historicalKeys = await FindWorkflowKeysAsync(id, token);
+            historicalKeys.ShouldNotBeEmpty();
+            var suspended = await oldClient.GetWorkflowStateAsync(id, true, token);
+            suspended.ReadInputAs<NaturalLanguageEmbeddingRetryInput>()!.RawJsonPayload.ShouldBe(raw);
+            suspended.ReadInputAs<JsonElement>().EnumerateObject().Count().ShouldBe(9);
+            suspended.ReadInputAs<JsonElement>().TryGetProperty("PayloadVersion", out _).ShouldBeFalse();
+            await original.StopAsync(token);
+
+            using IHost upgraded = BuildUpgradedHost();
+            await upgraded.StartAsync(token);
+            var client = upgraded.Services.GetRequiredService<DaprWorkflowClient>();
+            (await client.GetWorkflowStateAsync(id, true, token)).RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Suspended);
+            await client.ResumeWorkflowAsync(id, "owned-upgraded-worker", token);
+            WorkflowState terminal = await client.WaitForWorkflowCompletionAsync(id, true, token);
+            terminal.RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Completed);
+            var result = terminal.ReadOutputAs<NaturalLanguageEmbeddingRetryResult>().ShouldNotBeNull();
+            result.Indexed.ShouldBeFalse();
+            result.Reason.ShouldBe("legacy-retry-input-requires-restart");
+            contentCallsAfterUpgrade.ShouldBe(0);
+            release.Task.IsCompleted.ShouldBeFalse();
+            activityReturned.Task.IsCompleted.ShouldBeFalse();
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).ToString().ShouldBe(admittedBytes);
+            // The upgraded scheduler must progress the admission retained from before the old worker.
+
+            db.FT().Create(IndexSchemaDefinitions.GetNaturalLanguageSemanticIndexName(tenant),
+                IndexSchemaDefinitions.CreateNaturalLanguageSemanticParams(tenant), IndexSchemaDefinitions.CreateNaturalLanguageSemanticSchema(config.Dimensions));
+            await new NaturalLanguageEmbeddingRetryHostedService(CreateOwnedRegistry(registry, tenant), client, monitor,
+                NullLogger<NaturalLanguageEmbeddingRetryHostedService>.Instance, redis.Connection).TickAsync(options, token);
+            string modernId = NaturalLanguageEmbeddingRetryHostedService.GetRetryWorkflowInstanceId(tenant, unit);
+            WorkflowState modern = await client.GetWorkflowStateAsync(modernId, true, token);
+            modern.RuntimeStatus.ShouldBe(WorkflowRuntimeStatus.Completed);
+            modern.ReadInputAs<NaturalLanguageEmbeddingRetryInput>()!.RawJsonPayload.ShouldBeEmpty();
+            modern.ReadInputAs<NaturalLanguageEmbeddingRetryInput>()!.PayloadVersion.ShouldBe(FailedNaturalLanguageEmbeddingRegistry.PayloadVersion(retainedAdmission));
+            modern.ReadOutputAs<NaturalLanguageEmbeddingRetryResult>()!.Indexed.ShouldBeTrue();
+            (await db.HashGetAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit), "naturalLanguageDescription")).ToString().ShouldBe(modernDescription);
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).HasValue.ShouldBeFalse();
+            release.Task.IsCompleted.ShouldBeFalse();
+            activityReturned.Task.IsCompleted.ShouldBeFalse();
+            // This fixture owns every unit artifact and quiesced its sole legacy scheduler.
+            await db.StringSetAsync(SourcePublicationVisibility.KeyProvenance(tenant, unit), "modern");
+            await new DeleteMemoryUnitProjectionActivity(redis.Connection, graph.Connection, new GraphQueryBuilder(), workflowClient: client,
+                retryOptions: Options.Create(new NaturalLanguageDescriptionOptions { LegacyRetrySchedulersDrainedForErasure = true }))
+                .RunAsync(null!, new(tenant, "case", unit, []));
+            (await FindWorkflowKeysAsync(id, token)).ShouldBeEmpty();
+            foreach (var key in historicalKeys) (await db.KeyExistsAsync(key)).ShouldBeFalse();
+            (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit))).ShouldBeFalse();
+            (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit))).ShouldBeFalse();
+            (await client.GetWorkflowStateAsync(modernId, true, token)).Exists.ShouldBeFalse();
+            activityReturned.Task.IsCompleted.ShouldBeFalse();
+            release.TrySetResult();
+            await activityReturned.Task.WaitAsync(token);
+            (await db.HashGetAsync(survivor, "naturalLanguageDescription")).ToString().ShouldBe("unrelated-content");
+            await upgraded.StopAsync(token);
+            using IHost restarted = BuildUpgradedHost();
+            await restarted.StartAsync(token);
+            var restartedClient = restarted.Services.GetRequiredService<DaprWorkflowClient>();
+            (await restartedClient.GetWorkflowStateAsync(id, true, token)).Exists.ShouldBeFalse();
+            (await FindWorkflowKeysAsync(id, token)).ShouldBeEmpty();
+            contentCallsAfterUpgrade.ShouldBe(0);
+            (await db.HashGetAsync(survivor, "naturalLanguageDescription")).ToString().ShouldBe("unrelated-content");
+            (await restartedClient.GetWorkflowStateAsync(modernId, true, token)).Exists.ShouldBeFalse();
+            (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit))).ShouldBeFalse();
+            (await db.KeyExistsAsync(IndexSchemaDefinitions.BuildNaturalLanguageSemanticKey(tenant, unit))).ShouldBeFalse();
+            (await db.HashGetAsync(FailedNaturalLanguageEmbeddingRegistry.LivePayloadKey(tenant), unit)).HasValue.ShouldBeFalse();
+            await restarted.StopAsync(token);
+        }
+        finally { release.TrySetResult(); Environment.SetEnvironmentVariable("DAPR_GRPC_ENDPOINT", previous); }
+
+        IHost BuildUpgradedHost() => Host.CreateDefaultBuilder().ConfigureServices(services =>
+        {
+            services.AddKeyedSingleton<IConnectionMultiplexer>("redis", redis.Connection);
+            services.AddSingleton(conversation).AddSingleton(Options.Create(options)).AddSingleton(embedding)
+                .AddSingleton(actors).AddSingleton(provider).AddSingleton(Substitute.For<IJitterSource>());
+            services.AddLogging();
+            services.AddDaprWorkflow(options =>
+            {
+                options.RegisterWorkflow<NaturalLanguageEmbeddingRetryWorkflow>();
+                options.RegisterActivity<RetryNaturalLanguageEmbeddingActivity>();
+                options.RegisterActivity<NaturalLanguageDescriptionInput, NaturalLanguageDescriptionResult>(nameof(GenerateNaturalLanguageDescriptionActivity), (_, _) =>
+                { contentCallsAfterUpgrade++; throw new InvalidOperationException("legacy-description-must-not-reexecute"); });
+                options.RegisterActivity<EmbeddingInput, EmbeddingResult>(nameof(GenerateEmbeddingActivity), (_, _) =>
+                { contentCallsAfterUpgrade++; throw new InvalidOperationException("legacy-embedding-must-not-reexecute"); });
+            });
+        }).Build();
     }
 
     [Fact]

@@ -46,12 +46,13 @@ internal static class RedisNaturalLanguageNamespaceMigrator
     {
         RedisKey sourceKey = IndexSchemaDefinitions.BuildSyntacticKey(tenant, unit);
         RedisValue source = await db.HashGetAsync(sourceKey, "sourceUri").WaitAsync(ct).ConfigureAwait(false);
-        const string migrate = """
-            -- nl-namespace-migration-fenced-v2
-            if redis.call('EXISTS',KEYS[3],KEYS[7])~=0 then return 0 end
-            if (redis.call('HGET',KEYS[4],'sourceUri') or '')~=ARGV[3] then return 0 end
-            local inventory=redis.call('GET',KEYS[5])
-            if inventory and cjson.decode(inventory).admissionClosed then return 0 end
+        const string ownership = """
+            -- nl-namespace-migration-fenced-v3
+            if redis.call('EXISTS',KEYS[3],KEYS[7])~=0 or redis.call('EXISTS',KEYS[1])==0 then return 0 end
+            if redis.call('HGET',KEYS[4],'id')~=ARGV[1]
+                or redis.call('HGET',KEYS[4],'tenantId')~=ARGV[2]
+                or ARGV[3]=='' or redis.call('HGET',KEYS[4],'sourceUri')~=ARGV[3]
+                or redis.call('HGET',KEYS[4],'caseId')~=redis.call('HGET',KEYS[1],'caseId') then return -3 end
             local function valid(key)
                 if redis.call('HGET',key,'memoryUnitId')~=ARGV[1] then return false end
                 local tenant=redis.call('HGET',key,'tenantId')
@@ -60,15 +61,20 @@ internal static class RedisNaturalLanguageNamespaceMigrator
                     local value=redis.call('HGET',key,field)
                     if not value or value=='' then return false end
                 end
-                return true
+                return redis.call('HGET',key,'caseId')==redis.call('HGET',KEYS[4],'caseId')
             end
-            if not valid(KEYS[1]) then return 0 end
+            if not valid(KEYS[1]) then return -4 end
+            if redis.call('EXISTS',KEYS[2])~=0 and not valid(KEYS[2]) then return -1 end
+            local inventory=redis.call('GET',KEYS[5])
+            if inventory and cjson.decode(inventory).admissionClosed then return 0 end
+            if redis.call('EXISTS',KEYS[2])==0 and redis.call('SCARD',KEYS[6])>=4096
+                and redis.call('SISMEMBER',KEYS[6],KEYS[2])==0 then return -2 end
+            """;
+        const string migrate = """
             if redis.call('EXISTS',KEYS[2])==0 then
-                if redis.call('SCARD',KEYS[6])>=4096 and redis.call('SISMEMBER',KEYS[6],KEYS[2])==0 then return -2 end
                 redis.call('HSET',KEYS[2],unpack(redis.call('HGETALL',KEYS[1])))
                 redis.call('SADD',KEYS[6],KEYS[2])
             end
-            if not valid(KEYS[2]) then return -1 end
             redis.call('DEL',KEYS[1])
             return 1
             """;
@@ -78,7 +84,11 @@ internal static class RedisNaturalLanguageNamespaceMigrator
                 (RedisKey)SourcePublicationVisibility.Tombstone(tenant, unit), sourceKey,
                 (RedisKey)(source.HasValue ? SourceInventoryStore.BuildKey(tenant, source.ToString()) : "__unused-source-inventory"),
                 (RedisKey)SourcePublicationVisibility.Keys(tenant, unit), (RedisKey)TenantIngestionOwnership.Fence(tenant)],
-            [(RedisValue)unit, (RedisValue)tenant, source.HasValue ? source : RedisValue.EmptyString], ct).ConfigureAwait(false);
+            [(RedisValue)unit, (RedisValue)tenant, source.HasValue ? source : RedisValue.EmptyString], ct, precondition: ownership).ConfigureAwait(false);
+        if ((long)result == -4)
+            throw new InvalidOperationException("nl-namespace-legacy-owner-reconciliation-required");
+        if ((long)result == -3)
+            throw new InvalidOperationException("nl-namespace-live-owner-reconciliation-required");
         if ((long)result == -2)
             throw new InvalidOperationException("nl-namespace-inventory-capacity-owner-reconciliation-required");
         if ((long)result == -1)
