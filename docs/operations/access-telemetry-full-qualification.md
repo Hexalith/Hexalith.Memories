@@ -1,5 +1,24 @@
 # Access-telemetry full qualification — pending campaign
 
+## Smaller independent calibration candidate — 2026-10-27 (current)
+
+The owner approved reducing the configured calibration budget before requesting
+more hardware. The supported explicit small choice uses PostgreSQL **2CPU/4GiB**
+and aggregate **10.25CPU/19GiB**; all other service allocations and the workload
+are unchanged. PostgreSQL requests/limits and1GB/3GB shared_buffers/cache settings
+are selected together through the immutable signed plan. Legacy independent plans
+and the full campaign retain16.25CPU/31GiB. These budgets are unmeasured candidates.
+The single report retains exact offline test results, source/log hashes, the three
+resolved ordinary-inspection findings and the final affected checks.
+
+The existing index/catalogue bind a new incomplete small draft and preserve the
+old draft/approval as history. All31 missing operational inputs, null full campaign
+allocations/renewals, unbound runtime authority and the unused attempt remain.
+No live measurement, new capacity reservation, infrastructure launch or full-profile
+adoption occurred. Smaller measurements cannot qualify the larger profile.
+Actual engine, reservations, independent Linux backup and runtime/time inputs
+still precede execution. Story27.4 stays in progress and A41 open.
+
 This is the current requirements register for the separately scheduled full campaign. The [local functional contract](../../_bmad-output/implementation-artifacts/spec-27-4-retention-verification-operations-runbook-and-a41-close-out-14.md) has its own finish line. Functional success cannot discharge these gates or close A41. The [current report](../../_bmad-output/implementation-artifacts/tests/27-4-retention-verification-evidence.md) records results.
 
 Adopt one exact full Platform target/profile before scheduling this campaign. Prior KVM/PG captures do not transfer. Each gate needs eligible same-session evidence, its own review and completion state; no additional story-file registration is required. Jérôme Piquot owns the gates with Platform/Builds environment support and Memories assertions. The approved sole-owner policy permits distinct Operations/Security records labelled `sole-owner/self-reviewed` without independent-review claims.

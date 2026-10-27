@@ -1,5 +1,63 @@
 # Story 27.4 — current retention results
 
+## Smaller calibration candidate — 2026-10-27 (current)
+
+The owner's **“ok”** approves revising and measuring a smaller calibration profile
+before requesting more hardware. Platform now accepts an explicit small independent
+plan while retaining the legacy independent plan and unchanged full campaign.
+Configured budgets are not measured minima: PostgreSQL is **2 CPU / 4GiB**, aggregate
+**10.25 CPU / 19GiB**. Other services retain **8.25 CPU / 15GiB**. PostgreSQL requests
+and limits agree; shared_buffers is1GB and effective_cache_size3GB. Applications,
+sidecars, replicated Dapr, security, durability, probes and storage are unchanged.
+
+The complete plan limits bind signed reservations, resource preparation/immutable
+readback, runtime CPU/memory checks, inspection and results. Mixed, mutated,
+insufficient, unsigned and stale inputs refuse. Legacy readback continuation and
+terminal inspection after allocation-path removal remain supported. The one
+ordinary inspection of this delta resolved three issues: legacy readback provenance,
+terminal inspection's external dependencies and nested resource-key preservation.
+No finding is deferred. No earlier review campaign was repeated.
+
+Private evidence is `small-calibration-20261027-a14muq6_` under the existing
+preparation root. `implementation-verification.json` records every exact command,
+cwd, log/hash, source identity and result. The index binds this receipt and the
+actual-template check. All commands ran from the Platform root, using pinned
+`HELM_BIN=/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tools/helm`.
+
+| Executed check | Actual result |
+| :--- | :--- |
+| `python3 -B -m unittest discover -s eng/helm-qualification -p 'test_independent_calibration.py' -v` | Initial36/36 passed,15.668s,exit0, before final focused refinements. |
+| `PYTHONPATH=eng/helm-qualification python3 -B -m unittest -v test_campaign_capacity test_campaign_lifecycle test_chart` | Unchanged campaign/capacity/chart74/74 passed,107.262s,exit0. |
+| Strengthened `test_small_prepared_resources_inspection_and_prelaunch_drift_use_original_selection` | Initial1-case fixture error,0.180s,exit1: its tool path was a symlink. Fixture path canonicalized; no admission check weakened. Exact rerun1/1 passed,0.357s,exit0. |
+| Above preparation test plus `test_small_postgres_specialization_preserves_all_other_objects_fields_and_legacy_resources` | Final affected2/2 passed,0.482s,exit0, including preservation of extra resource requests. |
+| Coordinator actual PostgreSQL template specialization and unchanged campaign/workload-source hashes |4/4 passed; actual small resources/tuning and legacy object equality, no live PostgreSQL execution. |
+| Platform `git diff --check` | Exit0. |
+
+Negative profile/attribution evidence includes
+`test_small_selection_cannot_reuse_legacy_approval_reservations_or_mutate_prepared_plan`,
+`test_small_reservation_still_requires_signed_fresh_and_sufficient_net_capacity`,
+`test_mixed_modified_and_noninteger_limits_refuse_even_with_a_fresh_plan_digest`,
+and `test_selected_metrics_caps_enforce_postgres_aggregate_freshness_and_completeness`.
+The initial36-case lane executed these tests and passed. The small-plan test also
+proves finite-campaign admission rejects its schema. No product tenant/case routing,
+authentication or persisted data changes. No C# source or package changed.
+
+The code was not first exercised red for all new cases. The earlier full lane and
+final affected focus are separate snapshots; no single all-final110-case suite is
+claimed. Tools/provider/topology/render/monitor doubles in focused preparation
+supply no actual capacity, latency, throughput, credential or signed run evidence.
+
+The existing immutable legacy draft/approval remain intact. A new clearly incomplete
+`calibration-plan-small.draft.json` updates selected limits and actual source hashes
+while retaining31 null operational inputs and all empty runtime groups. Its profile
+identity is still null. The index/catalogue select this candidate without feeding it
+to prepare, inventing authority or consuming an attempt. Full campaign allocations/
+renewals and live measurements stay null. Actual isolated engine, net reservations,
+independent Linux backup, runtime/monitoring/time/authority and execution window
+remain missing. No additional hardware requirement is established by these tests.
+No calibration, infrastructure or remote action occurred; Story27.4 is in progress,
+full qualification/Production unproved and A41 open.
+
 ## Owner approval and launch readiness — 2026-10-27 (current)
 
 The owner's **“I approve”** is recorded and accepted for the proposed isolated

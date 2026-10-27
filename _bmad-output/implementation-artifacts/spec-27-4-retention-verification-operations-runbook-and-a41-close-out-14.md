@@ -14,6 +14,104 @@ context:
 
 # Story 27.4 — active functional retention contract
 
+## Smaller calibration resource profile — owner-approved continuation, 2026-10-27
+
+The owner asked why calibration reserves 16.25 CPU / 31GiB. Those are configured
+budgets, not measured minima. The owner replied **“ok”** to revising and measuring
+a smaller calibration profile before requesting more hardware. This supersedes
+only the earlier requirement that independent calibration keep those compute caps.
+It authorizes the necessary Platform runner and focused offline test changes.
+Preserve prior scope/approvals as history; no Git write, dependency change or
+infrastructure launch is part of this implementation. Actual prerequisites still
+precede a live attempt. Story 27.4 stays in progress and A41 open.
+
+### Intent and decisions
+
+Provide an explicit smaller independent calibration candidate: PostgreSQL
+**2000m CPU / 4GiB RAM**, aggregate **10250m CPU / 19GiB RAM**. All other existing
+application, sidecar, control, Scheduler and host allocations stay unchanged.
+These are initial configured ceilings pending real measurement; report no proven
+minimum, performance result or qualified capacity. Keep the legacy independent
+16250m/31GiB plan supported and full campaign defaults/admission byte-stable.
+
+Plan-bound limits select the candidate, including PostgreSQL requests/limits and
+memory tuning (1GB shared_buffers, 3GB effective_cache_size for the small choice).
+The original template's 4GB/12GB tuning must not survive in the 4GiB candidate.
+Keep TLS, SCRAM, durability, probes, credentials, identities and all other object
+fields unchanged. Reuse the existing maintained topology; create no new runner.
+
+The exact signed plan/profile identity already includes limits. Bind admission,
+net reservations, persisted/rendered resources, metrics checks, inspect and result
+to the same selected limits. Reject mixed, modified or insufficient limits and
+missing/stale readbacks. Preserve the existing schema/application identity and
+fail-closed finite-campaign rejection; a small calibration grants no campaign,
+C1/C2/Production/A41 credit and cannot supply same-input proof for a larger target.
+
+Workload is unchanged: separate150000-record backlog; two125/s writers;
+>=1800s common overlap; >=450000 accepted records; >=900000 component operations.
+Keep topology/replicas, original startup/execution/cleanup/one-attempt budgets,
+latency/errors, complete physical/WAL/rewrite checks, 20% storage headroom and
+independent backup/security requirements. Do not silently increase caps on failure.
+
+### Code map and tasks
+
+- [x] `references/Hexalith.Platform/eng/helm-qualification/independent_calibration.py`:
+  preserve legacy limits, expose the explicit small candidate, validate exact
+  selection and use selected caps throughout reservation/admission/topology/sample
+  and result/inspection paths. Prefer specializing only the independently admitted
+  PostgreSQL object; leave shared campaign sizing/environment code unchanged when
+  possible. The original signed plan remains immutable after preparation.
+- [x] `references/Hexalith.Platform/eng/helm-qualification/test_independent_calibration.py`:
+  add meaningful tests for small+legacy admission, complete PostgreSQL sizing and
+  memory tuning/security preservation, selected metrics bounds, insufficient/mixed/
+  mutated reservations and identity, unchanged workload and campaign refusal.
+  Cover actual persisted prepared resources where feasible using existing doubles;
+  no daemon/cluster or fixture-as-measurement credit.
+- [x] `references/Hexalith.Platform/eng/helm-qualification/README.md`:
+  document the candidate selection, compute breakdown and pending live measurement;
+  retain the existing full campaign budget and all technical prerequisites.
+- [x] Coordinator: update this spec, the single retention evidence report,
+  `docs/operations/access-telemetry-full-qualification.md` and the existing
+  preparation index/catalogue after verification. Preserve all old receipt/draft
+  bytes; retain the old draft and create a clearly incomplete small candidate copy
+  with updated actual source references. Preserve unresolved inputs as null and
+  the original unused attempt. Refresh affected hashes without inventing authority.
+
+The implementation subagent owns Platform code/tests/README only. The coordinator
+owns Memories records, verification receipts and this section's task completion.
+
+### Acceptance and verification
+
+- Given a complete small plan and current exact signed reservations, when admitted,
+  then compute10250m/19GiB and PostgreSQL2CPU/4GiB with1GB/3GB tuning are used in
+  actual prepared resources and enforced by native readbacks.
+- Given a legacy independent plan or full campaign, when validated/rendered,
+  then its former caps/tuning/acceptance remain unchanged; the small schema is
+  rejected by campaign qualification and earns no live qualification credit.
+- Given insufficient, mixed, drifted, unsigned or stale inputs, when checked,
+  then admission/monitoring refuses and no budget, retry or acceptance is relaxed.
+- Given the completed offline change, when reported, then exact focused commands,
+  results and limits distinguish code verification from pending live measurements.
+
+Run relevant independent calibration and unchanged campaign capacity/lifecycle/
+chart regressions using the existing private pinned Helm binary. Perform one
+ordinary inspection of this delta; do not repeat older completed review campaigns.
+Retain exact source revisions from Git in the single report. The supported live
+run remains pending actual engine/storage/reservation/runtime/time inputs.
+
+
+### Result of this continuation
+
+Implementation and offline verification are complete. Initial independent36/36,
+unchanged campaign/capacity/chart74/74 and final affected2/2 pass; one intermediate
+strengthened-fixture failure and corrected1/1 rerun are retained in the single
+report and exact command manifest. Coordinator actual-template checks pass4/4.
+Three ordinary-inspection issues are fixed, none deferred. The new incomplete
+small draft retains31 nulls; old approval/draft bytes and unused attempt are intact.
+Configured10.25CPU/19GiB is not measured capacity. Live measurements remain pending
+actual engine, reserved capacity, independent Linux backup and runtime/time inputs;
+Story27.4 stays in progress, full qualification/Production unproved and A41 open.
+
 ## Host reservation and independent calibration capability — 2026-10-26 (active continuation)
 
 This is the current owner-authorized scope; earlier implementation/reviews and
