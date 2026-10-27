@@ -427,9 +427,10 @@ earlier run's pod, because `backoffLimit: 0` and the reaped prior Job mean each 
 
 ## 4. Security reviewer evaluation (Task 6, checkpoint C7)
 
-**No reviewer signature was obtained. Closed 2026-07-28 by an approved, time-bounded waiver — not by an
-evaluation.** The distinction is load-bearing: nothing below asserts that a security authority reviewed
-this platform.
+**No reviewer signature was obtained.** The 2026-07-28 waiver closed C7 only until 2026-10-26. That
+date has passed without a dated, named evaluation, so checkpoint C7 is `pending` / `not complete`
+again. The historical waiver remains recorded below. Nothing in this section asserts that a security
+authority reviewed this platform.
 
 | Field | Record |
 | :---- | :----- |
@@ -446,7 +447,7 @@ this platform.
 | Compensating controls | Restricted Pod Security enforced on the namespace; RBAC scoped to the platform ServiceAccounts; all Services `ClusterIP` with no ingress; persistent JSON audit device; `OpenBaoPlatformDocumentationTests` executing over both published records on every CI run so the accepted-limitation text cannot silently soften |
 | Waiver expiry | **2026-10-26** (90 days). On that date checkpoint C7 reopens automatically as `pending` / `not complete` unless a dated, named evaluation has been recorded |
 | Reopen trigger | Whichever comes first: the 2026-10-26 expiry; a dated, named evaluation by `murat-tea-for-jpiquot` covering the platform as measured, both accepted limitations and the amended AC2 qualifier, appended to this artifact as its own row; any change to the seal configuration, the NetworkPolicy ingress, or the voter count; or Story 31.2 activation |
-| Checkpoint C7 state | `waived` until 2026-10-26 — closed by approved time-bounded waiver, **not** by evaluation |
+| Checkpoint C7 state | `pending` / `not complete` — the 2026-10-26 waiver expired and no dated, named evaluation has been recorded |
 
 The Task 1 measurements (section 1), the Task 2 reconciliation (section 2), and the executed smoke test
 (section 3) are the handover package for that evaluation. Recording a recommendation to seek review
