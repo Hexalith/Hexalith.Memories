@@ -348,6 +348,52 @@ public class SyntacticSearchIntegrationTests
         actualIds.ShouldBe(expectedIds);
     }
 
+    [Theory]
+    [InlineData("sourceUri")]
+    [InlineData("sourceType")]
+    public async Task SearchAsync_InvalidDocuments_ShouldConsumeRawPagePositionsAndPreserveTotal(string missingField)
+    {
+        string tenantId = $"tenant-{Guid.NewGuid():N}";
+        const int documentCount = 6;
+        const int pageSize = 2;
+        for (int i = 0; i < documentCount; i++)
+        {
+            // Distinct BM25 scores keep the boundary order stable across the raw windows.
+            IEnumerable<string> rankedTerms = Enumerable.Repeat("rawpagingrank", i + 1);
+            IEnumerable<string> fillers = Enumerable.Range(0, documentCount - i - 1).Select(j => $"filler{i}x{j}");
+            await SeedDocumentAsync(tenantId, $"mu-{i}", string.Join(' ', rankedTerms.Concat(fillers)));
+        }
+
+        SyntacticSearchService service = CreateService();
+        var query = new SearchQuery { TenantId = tenantId, Query = "rawpagingrank", MaxResults = documentCount };
+        SearchResult baseline = await service.SearchAsync(query);
+        baseline.Results.Count.ShouldBe(documentCount);
+        baseline.Results.Select(result => result.Score).Distinct().Count().ShouldBe(documentCount);
+
+        IDatabase database = _redis.Connection.GetDatabase();
+        foreach (ScoredResult invalidDocument in baseline.Results.Take(pageSize))
+        {
+            RedisKey key = IndexSchemaDefinitions.BuildSyntacticKey(tenantId, invalidDocument.MemoryUnitId);
+            (await database.HashDeleteAsync(key, missingField)).ShouldBeTrue();
+            (await database.HashExistsAsync(key, missingField)).ShouldBeFalse();
+            (await database.HashExistsAsync(key, "content")).ShouldBeTrue();
+        }
+
+        SearchResult first = await service.SearchAsync(query with { MaxResults = pageSize });
+        SearchResult second = await service.SearchAsync(query with { MaxResults = pageSize, Offset = pageSize });
+        SearchResult third = await service.SearchAsync(query with { MaxResults = pageSize, Offset = pageSize * 2 });
+        SearchResult exhausted = await service.SearchAsync(query with { MaxResults = pageSize, Offset = documentCount });
+
+        first.Results.ShouldBeEmpty();
+        second.Results.Select(result => result.MemoryUnitId).ShouldBe(
+            baseline.Results.Skip(pageSize).Take(pageSize).Select(result => result.MemoryUnitId));
+        third.Results.Select(result => result.MemoryUnitId).ShouldBe(
+            baseline.Results.Skip(pageSize * 2).Select(result => result.MemoryUnitId));
+        exhausted.Results.ShouldBeEmpty();
+        new[] { first, second, third, exhausted }.ShouldAllBe(result => result.TotalCount == documentCount);
+        new[] { first, second, third, exhausted }.ShouldAllBe(result => result.HasIndexedMemoryUnits);
+    }
+
     [Fact]
     public async Task SearchAsync_BroadMatch_ShouldRespectMaxResultsCap()
     {

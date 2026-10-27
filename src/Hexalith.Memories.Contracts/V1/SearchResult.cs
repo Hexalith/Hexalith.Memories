@@ -14,6 +14,14 @@ public sealed record SearchResult
     public required IReadOnlyList<ScoredResult> Results { get; init; }
 
     /// <summary>Gets the total number of matching documents (may exceed returned results).</summary>
+    /// <remarks>
+    /// Syntactic search reports the raw Redis match count, before paging and required-field validation.
+    /// Invalid indexed documents consume their raw page positions but are omitted from <see cref="Results"/>.
+    /// Advance the offset by the effective normalized raw window size, including when a page is empty.
+    /// HTTP search normalizes the requested size to 1..100; direct syntactic service calls normalize it
+    /// to 1..1000. Use that effective size rather than the unnormalized request or returned result count.
+    /// This total does not describe a compacted sequence of valid documents.
+    /// </remarks>
     public required long TotalCount { get; init; }
 
     /// <summary>Gets a value indicating whether the tenant currently has indexed memory units.</summary>
