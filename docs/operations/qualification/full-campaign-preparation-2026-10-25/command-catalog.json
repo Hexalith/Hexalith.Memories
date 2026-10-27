@@ -113,7 +113,7 @@
     },
     "draftExecutable": false,
     "executed": false,
-    "launchAuthorized": false,
+    "launchAuthorized": true,
     "limits": {
       "acceptedRecords": 450000,
       "attempts": 1,
@@ -175,7 +175,7 @@
     "profileId": "PG-INDEPENDENT-CALIBRATION-1",
     "qualified": false,
     "remainingOperationalInputs": [
-      "current authorized/trusted node1 host access and physical engine",
+      "actual isolated physical engine/host-local metadata; read-only node1 Kubernetes metadata is now available",
       "signed net CPU/RAM and separately approved primary/independent Linux backup reservation/allocation",
       "actual complete application/provider/reporter/CNI/component/credential artifacts and adopted source",
       "independently authenticated UTC/current action status and allocation/operational collector",
@@ -214,7 +214,22 @@
       "revokedUtcMs=null",
       "exact backing and available/competing/reserved operands"
     ],
-    "monitoring": "Launch owns startup, native lanes, physical rewrite, monitoring and removal in one foreground supervision. Per-allocation >=20% free, WAL<=4GiB, actual resource/latency/error readbacks; original execution and cumulative cleanup budgets persist."
+    "monitoring": "Launch owns startup, native lanes, physical rewrite, monitoring and removal in one foreground supervision. Per-allocation >=20% free, WAL<=4GiB, actual resource/latency/error readbacks; original execution and cumulative cleanup budgets persist.",
+    "ownerRunApproval": {
+      "approved": true,
+      "receipt": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/run-approval-20261027-c8x3x7cg/approval-and-readiness.json",
+        "sha256": "44d8ef3d1c600dbc3c705c91492c292028120d25cd9cc6e189c654ff2aceaefb"
+      },
+      "scope": "one existing bounded PG-INDEPENDENT-CALIBRATION-1 run, conditional on successful technical admission",
+      "repeatApprovalRequiredForUnchangedScope": false,
+      "exactExecutablePlanBound": false,
+      "runtimeAuthorizationMinted": false,
+      "launchAttemptStarted": false,
+      "launchAttemptConsumed": false
+    },
+    "launchReady": false,
+    "launchAuthorizationNote": "Owner approval accepted; exact executable plan and operational authority/reservations remain unbound. No launch is ready or attempted."
   },
   "history": {
     "calibrationAction-2026-10-25": {
@@ -395,7 +410,8 @@
         "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/windows-transport.json",
         "sha256": "42063e6871c448db7c21772c4068b57045487bf2843d8385fa0cbe4697147790"
       },
-      "result": "Both exit255 before remote execution; no credential retry or account guessing. Current capacity null."
+      "result": "Existing kubectl context reaches Ready node1; read-only Kubernetes metadata collected. Historical SSH transports remain unavailable. Signed net reservations, isolated engine and independent Linux backup remain missing.",
+      "historicalSshResultBeforeKubectl": "Both exit255 before remote execution; no credential retry or account guessing. Current capacity null."
     },
     "executionLocation": "Prepared automated command runs locally on node1 through an existing trusted custodian channel. Both configured SSH transports failed before remote execution; this session cannot dispatch it.",
     "maximumSeconds": 60,
@@ -442,13 +458,47 @@
       "captureStarted": false,
       "captureAttemptConsumed": false,
       "captureAttemptsRemaining": 1,
-      "remoteCommandsExecuted": 0
+      "remoteCommandsExecuted": 0,
+      "latestAccessCheck": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/access-resumption-20261027-4txekp_v/access-checks.json",
+        "sha256": "01535db7962488f96109cf93a4a4fbae6063cb07c3a3d030585e135e9f2a30e5"
+      }
     },
     "owner": "Platform host/storage custodians; J\u00e9r\u00f4me Piquot accepts the exact returned packet",
-    "status": "approved-not-dispatched-access-blocked",
+    "status": "kubectl-metadata-observed-reservation-and-backup-pending",
     "approval": {
       "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-approval-20261026.json",
       "sha256": "f06114f6f47bfddbc80d7901660e7e9bb0d026eabe5b15f78880997f2458f047"
+    },
+    "kubectlObservation": {
+      "status": "read-only-kubernetes-metadata-collected",
+      "context": "jpiquot@local",
+      "apiServer": "https://192.168.1.30:6443",
+      "node": "node1",
+      "receipt": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-observation-20261027-9dm9nx59/receipt.json",
+        "sha256": "ab0607174398bf190c0e77b30511bb9fc4f3afb020f67e3e6fe64ac492a6f57a"
+      },
+      "capacityObservation": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-observation-20261027-9dm9nx59/capacity-observation.json",
+        "sha256": "41640770b8153082fa9fdd45d9c2a446f37d0ae63460da8a83aa8bb3628925b2"
+      },
+      "qualificationCredit": false,
+      "originalHostCaptureUnchanged": true
+    },
+    "offNodeBackupObservation": {
+      "receipt": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/backup-observation-20261027-_ggxjwrg/receipt.json",
+        "sha256": "4078d5d9d4c759a3ad015dd7e1630c866c9b9bc7cdd7376e7a137ab0b5a64fb5"
+      },
+      "status": "existing-off-node-service-observed-supported-linux-backup-path-unresolved",
+      "candidateLocation": "velero/scaleway-kube-green",
+      "candidateBucket": "hexalith-velero-backups",
+      "endpoint": "https://s3.fr-par.scw.cloud",
+      "existingBackupScope": "forgejo",
+      "campaignAllocation": null,
+      "campaignRestoreEvidence": null,
+      "qualificationCredit": false
     }
   },
   "lifecycle": [

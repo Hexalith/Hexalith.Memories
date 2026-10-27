@@ -11,7 +11,7 @@
     },
     "command-catalog.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/command-catalog.json",
-      "sha256": "5d3bcc3bdf1475d8b4778daed42e6b974a083af8ee5d48d8810b7d72545ac6fb"
+      "sha256": "c80f70dc4cc5b122f9ac217e26e5bbdfd63b8358cabb828469eca43c3bc7c1dc"
     },
     "evidence-discovery.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/evidence-discovery.json",
@@ -53,7 +53,9 @@
   "doNotSupplyDraftToPrepare": "Nulls are unresolved prerequisites. No outside approval hash or signed operational receipt has been invented.",
   "draftIsExecutable": false,
   "history": {
-    "status-before-independent-calibration-2026-10-26": "partial-artifact-resolution-host-reservations-and-calibration-blocked"
+    "status-before-independent-calibration-2026-10-26": "partial-artifact-resolution-host-reservations-and-calibration-blocked",
+    "status-before-kubectl-observation-2026-10-27": "independent-calibration-capability-implemented-current-host-and-operational-inputs-blocked",
+    "status-before-run-approval-2026-10-27": "independent-calibration-capability-implemented-kubectl-observed-operational-inputs-blocked"
   },
   "independentCalibration": {
     "campaignAllocationBytes": null,
@@ -234,7 +236,7 @@
       "profileId": "PG-INDEPENDENT-CALIBRATION-1",
       "qualified": false,
       "remainingOperationalInputs": [
-        "current authorized/trusted node1 host access and physical engine",
+        "actual isolated physical engine/host-local metadata; read-only node1 Kubernetes metadata is now available",
         "signed net CPU/RAM and separately approved primary/independent Linux backup reservation/allocation",
         "actual complete application/provider/reporter/CNI/component/credential artifacts and adopted source",
         "independently authenticated UTC/current action status and allocation/operational collector",
@@ -321,7 +323,11 @@
       "captureStarted": false,
       "captureAttemptConsumed": false,
       "captureAttemptsRemaining": 1,
-      "remoteCommandsExecuted": 0
+      "remoteCommandsExecuted": 0,
+      "latestAccessCheck": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/access-resumption-20261027-4txekp_v/access-checks.json",
+        "sha256": "01535db7962488f96109cf93a4a4fbae6063cb07c3a3d030585e135e9f2a30e5"
+      }
     },
     "observationsNotReservations": true,
     "ordinaryInspection": "complete-five-findings-fixed-none-deferred",
@@ -336,6 +342,49 @@
     "hostMetadataApproval": {
       "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/host-observation-approval-20261026.json",
       "sha256": "f06114f6f47bfddbc80d7901660e7e9bb0d026eabe5b15f78880997f2458f047"
+    },
+    "kubectlObservation": {
+      "status": "read-only-kubernetes-metadata-collected",
+      "context": "jpiquot@local",
+      "apiServer": "https://192.168.1.30:6443",
+      "node": "node1",
+      "receipt": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-observation-20261027-9dm9nx59/receipt.json",
+        "sha256": "ab0607174398bf190c0e77b30511bb9fc4f3afb020f67e3e6fe64ac492a6f57a"
+      },
+      "capacityObservation": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/kubectl-observation-20261027-9dm9nx59/capacity-observation.json",
+        "sha256": "41640770b8153082fa9fdd45d9c2a446f37d0ae63460da8a83aa8bb3628925b2"
+      },
+      "qualificationCredit": false,
+      "originalHostCaptureUnchanged": true
+    },
+    "offNodeBackupObservation": {
+      "receipt": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/backup-observation-20261027-_ggxjwrg/receipt.json",
+        "sha256": "4078d5d9d4c759a3ad015dd7e1630c866c9b9bc7cdd7376e7a137ab0b5a64fb5"
+      },
+      "status": "existing-off-node-service-observed-supported-linux-backup-path-unresolved",
+      "candidateLocation": "velero/scaleway-kube-green",
+      "candidateBucket": "hexalith-velero-backups",
+      "endpoint": "https://s3.fr-par.scw.cloud",
+      "existingBackupScope": "forgejo",
+      "campaignAllocation": null,
+      "campaignRestoreEvidence": null,
+      "qualificationCredit": false
+    },
+    "ownerRunApproval": {
+      "approved": true,
+      "receipt": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/run-approval-20261027-c8x3x7cg/approval-and-readiness.json",
+        "sha256": "44d8ef3d1c600dbc3c705c91492c292028120d25cd9cc6e189c654ff2aceaefb"
+      },
+      "scope": "one existing bounded PG-INDEPENDENT-CALIBRATION-1 run, conditional on successful technical admission",
+      "repeatApprovalRequiredForUnchangedScope": false,
+      "exactExecutablePlanBound": false,
+      "runtimeAuthorizationMinted": false,
+      "launchAttemptStarted": false,
+      "launchAttemptConsumed": false
     }
   },
   "lifecyclePlanDraft": {
@@ -359,7 +408,7 @@
   "privateRoot": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg",
   "qualificationCredit": false,
   "statePathReservedButNotCreated": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/campaign-state",
-  "status": "independent-calibration-capability-implemented-current-host-and-operational-inputs-blocked",
+  "status": "owner-run-approved-technical-inputs-blocked",
   "story27_4": "in-progress",
   "toolInputsDraft": {
     "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/tool-inputs.draft.json",

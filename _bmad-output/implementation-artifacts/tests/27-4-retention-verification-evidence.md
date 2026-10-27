@@ -1,5 +1,103 @@
 # Story 27.4 — current retention results
 
+## Owner approval and launch readiness — 2026-10-27 (current)
+
+The owner's **“I approve”** is recorded and accepted for the proposed isolated
+non-Production calibration run within the existing one-attempt/zero-retry,
+16250m/31GiB,600s startup,50400s execution and900s cumulative stop/remove limits
+(total51900s). No repeat approval is required for unchanged scope. Approval was
+raised before preparation was complete; missing technical inputs remain explicit.
+
+The source-bound calibration draft still has31 null entries: actual target/run/
+profile identity, isolated Unix Docker engine, primary and different-host Linux
+backup paths, allocation basis/amounts, compute/storage reservations, CNI, runtime
+secrets/components/providers/reporters/monitoring, independent clock/current
+authority and absolute execution window. The verified Kubernetes capacity and
+Scaleway object-store observations remain valid historical observations, but they
+do not fill those supported-path inputs. No fabricated identity, measurement,
+reservation, key/signature or executable plan digest was created.
+
+Exact supported command, cwd `references/Hexalith.Platform`:
+`python3 -B eng/helm-qualification/qualify.py --calibration inspect --calibration-state /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/independent-calibration-state`.
+It returned **exit1**, `{"status":"refused","qualified":false,"causeCode":"invalid-operational-input"}`,
+in0.544744s. The state directory was absent before and after. This is an inspection
+refusal, not an attempted calibration or a consumed launch. No prepare, workload,
+cluster, storage or credential mutation occurred. A complete supported plan still
+precedes prepare/launch; owner permission is no longer the outstanding input.
+
+Private `run-approval-20261027-c8x3x7cg/approval-and-readiness.json` under the
+existing preparation root binds the literal reply, original limits, actual nulls
+and command result. SHA256:
+`44d8ef3d1c600dbc3c705c91492c292028120d25cd9cc6e189c654ff2aceaefb`.
+The preparation index/catalogue retain this receipt and distinguish accepted
+owner approval from missing operational bindings. Story27.4 stays in progress;
+full qualification/Production unproved and A41 open.
+
+## Kubernetes metadata capture — 2026-10-27 (current)
+
+The owner's **“you can access to kubectl”** authorizes bounded read-only metadata
+through the configured `jpiquot@local` context, superseding the previous
+Kubernetes-contact restriction for this scope. The API at `https://192.168.1.30:6443`
+returns Ready node1, UID `46d8d528-420d-4501-a6d8-12680d8a6ac6`. Seven exact
+commands, each with `--context=jpiquot@local --request-timeout=6s`, passed in
+**1.735262s**, zero retries: `get node node1 -o json`, `describe node node1`,
+`get --raw /apis/metrics.k8s.io/v1beta1/nodes/node1`,
+`get --raw /api/v1/nodes/node1/proxy/stats/summary`, `get storageclasses -o json`,
+`get persistentvolumes -o json`, and `get persistentvolumeclaims --all-namespaces -o json`.
+Sanitized projections exclude workload environment and credential payloads.
+
+Node1 reports 32 CPUs / 134924496896 RAM bytes; allocatable 31600m CPU /
+127653983951 RAM bytes. Existing 72 nonterminated Pods request 13800m / 
+23653777408 bytes, leaving 17800m / 104000206543 bytes against requests only.
+The unchanged 16250m campaign would leave 1550m CPU by that arithmetic; existing
+CPU limits total 61700m and zero-request workloads exist, so this is no guaranteed
+net reservation. At 17:21:41Z, kubelet reports 116593053696 available memory bytes
+and 846266871808 filesystem bytes available. All 30 observed PVs use node-local
+storage; 29 PVCs and the existing protected 400GiB telemetry claim establish no
+separate calibration allocation or independent Linux backup. Runtime is
+containerd 2.3.3; the planned isolated Docker engine remains unobserved.
+
+Private `HOST_DISCOVERY/kubectl-observation-20261027-9dm9nx59/receipt.json` SHA256
+`ab0607174398bf190c0e77b30511bb9fc4f3afb020f67e3e6fe64ac492a6f57a` binds the
+seven commands/artifacts. `capacity-observation.json` SHA256
+`41640770b8153082fa9fdd45d9c2a446f37d0ae63460da8a83aa8bb3628925b2` records the
+arithmetic and explicit missing inputs; the existing index/catalogue bind both.
+SSH is not needed for these observations. The exact earlier host-local script was
+not dispatched; its single approved attempt remains unused. No exec, pod creation,
+workload/credential/storage mutation, calibration or launch occurred. Local/API
+UTC observations are not independent campaign time. The missed October 26
+provisional start cannot be reused; schedule follows actual prerequisites.
+Story27.4 remains in progress; full qualification/Production unproved and A41 open.
+
+Validation passed: seven successful bounded commands, artifact SHA256 chains,
+index/catalogue consistency, private 0700/0600 permissions, unchanged earlier
+Markdown bytes and original host-script approval/unused attempt, null campaign
+allocations/renewals, absent operational state and `git diff --check`. Product
+source is unchanged; no implementation test suite or completed review was repeated.
+
+### Existing off-node backup service — 2026-10-27
+
+Five bounded read-only Kubernetes queries succeeded in 1.671784s: Velero backup
+locations, repositories and backups; CNPG ObjectStores; KubeSphere clusters. The
+available Velero location `scaleway-kube-green` uses bucket
+`hexalith-velero-backups` at `https://s3.fr-par.scw.cloud`, with current Available
+status and a Ready Kopia repository. Retained Completed backups cover Forgejo,
+not access telemetry; their latest completion is 2026-10-27T17:00:39Z. The CNPG
+ObjectStore points to `s3://hexalith-recovery-points/keycloak/`. These are concrete
+existing off-node service leads, not campaign allocation, credential, restore or
+Linux-path proof. The registered cluster inventory contains one single-node
+cluster. No secret value was read and no backup/restore/cluster change occurred.
+
+`HOST_DISCOVERY/backup-observation-20261027-_ggxjwrg/receipt.json`, SHA256
+`4078d5d9d4c759a3ad015dd7e1630c866c9b9bc7cdd7376e7a137ab0b5a64fb5`, binds
+all five commands and sanitized artifacts. Platform's existing
+`independent_calibration.py` requires canonical primary/backup directories and
+separate host/pool/filesystem/failure-domain identities; its S3 URLs cannot fill
+`paths.backup`. That supported-path gap remains preparation work, not a request
+for the owner to supply credentials or manufacture evidence. Exact resource/run
+approval follows a complete supported plan; no launch approval is requested now.
+Artifact hashes, five exit0 results and private 0700/0600 permissions passed.
+
 ## Approved host observation — 2026-10-26
 
 The owner's reply **“approve”** authorizes exactly the prepared automated node1
@@ -20,6 +118,37 @@ Current capacity, signed net16250m/31GiB reservation, Linux primary and independ
 Linux backup remain unverified. This approval grants no reservation or calibration
 launch. No infrastructure, cluster, credential, dependency/submodule or Git write
 occurred. Story27.4 remains in progress and A41 open.
+
+### Access resumption — 2026-10-27
+
+The approved capture remains **not dispatched, one attempt unused**. Bounded
+local-only checks at **2026-10-27T17:12:46Z** returned:
+
+| Exact command / check | Result |
+| :--- | :--- |
+| `ssh-add -l` | Exit2; authentication agent unavailable (0.003473s). |
+| `/mnt/c/Windows/System32/OpenSSH/ssh-add.exe -l` | Exit2; authentication agent unavailable (0.055089s). |
+| Local SSH config presence | `/home/administrator/.ssh/config` and `/mnt/c/Users/JeromePiquot/.ssh/config` absent; `SSH_AUTH_SOCK` unset. |
+| Existing host-local/console channel | This shell is not node1; exposed tools provide no host-console/SSH dispatch capability. |
+
+The private receipt is
+`HOST_DISCOVERY/access-resumption-20261027-4txekp_v/access-checks.json`, SHA256
+`01535db7962488f96109cf93a4a4fbae6063cb07c3a3d030585e135e9f2a30e5`,
+where `HOST_DISCOVERY` is the existing preparation root's `host-discovery-20261026`.
+The index/catalogue bind this new check without changing the approved argv,
+script, approval, original transports or unused-attempt state. Local UTC is an
+observation, not an independently authenticated campaign clock.
+
+Verification checks the bound files/hashes, JSON consistency, retained historical
+bytes, private0700/0600 receipt permissions and `git diff --check`. No product
+source changed, so completed capability tests and the one ordinary inspection
+were not repeated. No remote command, SSH authentication retry, Kubernetes,
+Docker query, calibration, infrastructure launch, credential or dependency change
+occurred. Current capacity, signed net16250m/31GiB reservation, separate actual
+allocations and independent Linux backup remain null. The existing approval is
+still sufficient for its exact capture once a working trusted channel is
+available; no second approval or manually authored prerequisite packet is needed.
+Story27.4 remains in progress, full qualification/Production unproved and A41 open.
 
 ## Independent calibration capability and blocked host access — 2026-10-26
 

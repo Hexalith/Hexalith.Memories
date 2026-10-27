@@ -24,6 +24,34 @@ commit or push. Configured access permits bounded read-only host/Docker metadata
 only. Story 27.4 remains in progress and A41 open. No previous live permission is
 revived. Do not ask the owner to manufacture a missing prerequisite packet.
 
+### Owner run approval — 2026-10-27 (current)
+
+The owner's **“I approve”** is accepted for the proposed one isolated
+non-Production calibration run within the existing limits and exact owned
+cleanup. No repeat approval is needed for unchanged scope. This supersedes the
+earlier preparation-only launch hold; it does not waive actual technical inputs
+or mint an operational signature/profile identity. The existing draft has31 null
+inputs, including the isolated Unix Docker engine, primary/independent Linux
+backup paths, reservations, monitoring, authority/clock and window. Supported
+`--calibration inspect` returns exit1 / `invalid-operational-input` because no
+prepared state exists. No prepare/launch or attempt consumption occurred.
+The single report and existing preparation index/catalogue bind the approval and
+readiness receipt. Story27.4 remains in progress; A41 open.
+
+### Kubernetes metadata access — 2026-10-27 (current steering)
+
+The owner said **“you can access to kubectl”**. This supersedes the earlier
+Kubernetes-contact restriction for bounded read-only metadata through the existing
+`jpiquot@local` context. Seven reads succeeded in 1.735s against node1 / 192.168.1.30;
+node identity, allocatable resources, existing requests, metrics, filesystem and
+storage inventory are now observed. The single report and preparation index bind
+the exact commands, sanitized artifacts and hashes. Earlier SSH-only blocker notes
+remain history of the host-script transport; SSH is not required for these reads.
+Keep the original host-local capture's approval and unused attempt unchanged.
+No exec, pod creation, workload change, reservation, calibration or launch occurred.
+Signed net reservations, isolated engine and separate primary/independent Linux
+backup remain missing; observations grant no campaign/Production/A41 credit.
+
 ### Approved observation: access remains blocked
 
 The owner replied **“approve”** for the exact prepared <=60s node1 metadata
@@ -35,6 +63,21 @@ The [single report](tests/27-4-retention-verification-evidence.md#approved-host-
 and existing index bind the approval receipt. Resume the unchanged capture when a
 working existing trusted host-local access channel is available. No reservation,
 calibration, infrastructure or broader action is authorized by this reply.
+
+### Access resumption — 2026-10-27
+
+Local-only checks at **17:12:46Z** confirm the existing dispatch blocker:
+Linux `ssh-add -l` and Windows
+`/mnt/c/Windows/System32/OpenSSH/ssh-add.exe -l` each returned **exit 2,
+authentication agent unavailable**. Neither configured SSH file exists, this
+shell is not node1, and no host-console tool is exposed. No rejected credential
+was retried, no SSH transport or remote command ran, and no capture attempt was
+consumed. The exact approved script and approval receipt still match their
+indexed hashes. The existing index/catalogue now bind the private
+`access-resumption-20261027-4txekp_v/access-checks.json` receipt; the single report
+records its exact scope and verification. No implementation or completed review
+was repeated. Resume the unchanged approved capture when a working existing
+trusted host-local channel is available; Story27.4 stays in progress and A41 open.
 
 ### Tasks & Acceptance — current continuation
 

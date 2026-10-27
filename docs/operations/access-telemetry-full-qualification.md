@@ -6,6 +6,33 @@ Adopt one exact full Platform target/profile before scheduling this campaign. Pr
 
 C1.24 precedes C1.23/C1.25. Full C2 retains two writers, 30 minutes and 150,000 backlog records. Full C3 retains real 1/24/168-hour cohorts, 24-hour allocator proof and the 216-hour producer bound. No deadline extension is implicit. Use the existing [lifecycle runbook](access-telemetry-lifecycle.md) and [adapter contract](access-telemetry-adapter-production.md). Production activation/publication remain separate decisions.
 
+## Run approval accepted; technical readiness pending — 2026-10-27
+
+The owner replied **“I approve”** to the proposed isolated calibration run.
+That approval persists for unchanged existing limits and owned cleanup; do not
+ask for it again. The earlier preparation-only hold is superseded for this scope.
+No executable plan/state exists: actual isolated Docker engine, independent Linux
+backup path and other original operational inputs remain missing. Supported
+inspection refuses before mutation; its exact result and retained approval are
+in the single report and preparation index/catalogue. Approval supplies no runtime
+signature, reservation, measurement, gate pass or A41 credit. Story27.4 remains
+in progress; a launch still requires successful technical admission.
+
+## Kubernetes metadata observed — 2026-10-27 (current)
+
+The owner authorized existing kubectl access. Seven bounded read-only commands
+succeeded against Ready node1 using `jpiquot@local`; the single report and existing
+preparation index/catalogue retain exact commands and hashed private evidence.
+Node1 has 31600m allocatable CPU and 13800m existing requests; 17800m remains by
+request arithmetic, with 61700m existing limits and unrequested demand preventing
+a guaranteed reservation. Available filesystem space is 846266871808 bytes; all
+observed PVs are local to node1. Signed net reservations, actual isolated engine,
+separate primary allocation and independent Linux backup remain unresolved.
+The earlier SSH-only blocker notes describe the host-script transport; kubectl
+metadata access is working. Its use changes no workload or original host-script
+attempt. No calibration/launch/adoption/gate pass follows. The missed provisional
+October 26 start is expired. Story27.4 stays in progress and A41 open.
+
 ## Approved metadata action — 2026-10-26
 
 The owner approved the single prepared <=60s automated node1 capture. It remains
@@ -16,6 +43,19 @@ access channel is required. The index/catalogue bind the exact script and approv
 receipt; no manually authored packet or second approval is needed. No current
 capacity, reservation, independent backup or calibration credit is inferred.
 Story27.4 is in progress and A41 open.
+
+### Access resumption — 2026-10-27
+
+Fresh local-only Linux/Windows `ssh-add -l` checks both returned exit2 with no
+available authentication agent; both configured SSH files remain absent, this
+shell is not node1, and no host-console tool is exposed. No remote connection or
+capture was attempted. The existing preparation index/catalogue bind the private
+access-check receipt recorded in the single report. The exact approved script,
+argv and unused single attempt remain unchanged. Current capacity, signed net
+reservations, separate storage allocations and independent Linux backup stay
+unverified; no calibration or infrastructure operation is authorized. Resume the
+approved capture through an existing trusted channel when available, with no
+repeat permission request. Story27.4 stays in progress and A41 open.
 
 ## Independent calibration and host discovery — 2026-10-26 (current)
 
