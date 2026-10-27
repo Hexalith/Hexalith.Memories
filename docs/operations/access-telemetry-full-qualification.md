@@ -18,6 +18,14 @@ in the single report and preparation index/catalogue. Approval supplies no runti
 signature, reservation, measurement, gate pass or A41 credit. Story27.4 remains
 in progress; a launch still requires successful technical admission.
 
+The preparation index/catalogue reconcile the accepted permission as
+`launchAuthorized:true` with `launchReady:false`; previous fields are retained in
+`history`. Outstanding inputs name the absolute window, exact executable plan and
+operational authority bindings rather than another owner approval. Original limits,
+null technical inputs, retained receipts and unused attempts remain unchanged. The
+single report records the documentary checks; no completed review or product suite
+is repeated and no launch occurred.
+
 ## Kubernetes metadata observed — 2026-10-27 (current)
 
 The owner authorized existing kubectl access. Seven bounded read-only commands

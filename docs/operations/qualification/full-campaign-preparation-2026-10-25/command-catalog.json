@@ -179,7 +179,7 @@
       "signed net CPU/RAM and separately approved primary/independent Linux backup reservation/allocation",
       "actual complete application/provider/reporter/CNI/component/credential artifacts and adopted source",
       "independently authenticated UTC/current action status and allocation/operational collector",
-      "complete absolute window and outside approval; no previous authorization transfers"
+      "complete absolute window and exact executable plan/operational authority bindings; unchanged one-run owner approval already accepted"
     ],
     "schema": "hexalith.platform.independent-calibration/v1",
     "status": "implemented-offline-verified-operational-inputs-missing",
@@ -229,7 +229,7 @@
       "launchAttemptConsumed": false
     },
     "launchReady": false,
-    "launchAuthorizationNote": "Owner approval accepted; exact executable plan and operational authority/reservations remain unbound. No launch is ready or attempted."
+    "launchAuthorizationNote": "Owner approval accepted for one unchanged bounded run; launch remains blocked on exact executable plan and operational authority/reservations. No launch is ready or attempted."
   },
   "history": {
     "calibrationAction-2026-10-25": {
@@ -324,6 +324,18 @@
         "separateBacklogRecords": 150000,
         "writers": 2
       }
+    },
+    "calibrationActionAuthorizationBeforeReconciliation-2026-10-27": {
+      "launchAuthorized": true,
+      "remainingOperationalInputs": [
+        "actual isolated physical engine/host-local metadata; read-only node1 Kubernetes metadata is now available",
+        "signed net CPU/RAM and separately approved primary/independent Linux backup reservation/allocation",
+        "actual complete application/provider/reporter/CNI/component/credential artifacts and adopted source",
+        "independently authenticated UTC/current action status and allocation/operational collector",
+        "complete absolute window and outside approval; no previous authorization transfers"
+      ],
+      "launchReady": false,
+      "launchAuthorizationNote": "Owner approval accepted; exact executable plan and operational authority/reservations remain unbound. No launch is ready or attempted."
     }
   },
   "hostReservationAction": {

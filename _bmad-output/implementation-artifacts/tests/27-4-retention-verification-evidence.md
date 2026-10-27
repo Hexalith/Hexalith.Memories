@@ -33,6 +33,27 @@ The preparation index/catalogue retain this receipt and distinguish accepted
 owner approval from missing operational bindings. Story27.4 stays in progress;
 full qualification/Production unproved and A41 open.
 
+### Approval record reconciliation — 2026-10-27
+
+The preparation index's stale `launchAuthorized:false` is corrected to match the
+catalogue and the accepted one-run approval. Both current capability records now
+state `launchAuthorized:true` and `launchReady:false`; the old flags and missing-input
+wording are retained under `history`. The outstanding list now names the absolute
+window, exact executable plan and operational authority bindings. Unchanged owner
+permission is already accepted and is not requested again. The catalogue hash in
+the index is refreshed; original approval/draft bytes, limits, technical nulls and
+unused launch/host-capture attempts are unchanged.
+
+Validation command: `python3 -B /home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/approval-record-reconciliation-20261027-qg3xz3uz/verify-preparation-records.py`.
+Result: **exit0, 19/19 checks passed**; `git diff --check` also passed.
+The existing preparation index binds the checker and its retained verification receipt.
+It checks JSON parity, catalogue and retained approval/draft hashes, unchanged
+technical prerequisites and historical Markdown preservation. Product source and
+runtime admission are unchanged; completed implementation suites, inspections and
+absent-state inspection are not repeated. No infrastructure or remote action is
+performed. Story27.4 remains in progress; full qualification/Production unproved
+and A41 open.
+
 ## Kubernetes metadata capture — 2026-10-27 (current)
 
 The owner's **“you can access to kubectl”** authorizes bounded read-only metadata

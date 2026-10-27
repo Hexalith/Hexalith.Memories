@@ -11,7 +11,7 @@
     },
     "command-catalog.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/command-catalog.json",
-      "sha256": "c80f70dc4cc5b122f9ac217e26e5bbdfd63b8358cabb828469eca43c3bc7c1dc"
+      "sha256": "df7b65d3cedff5f15e26788295c259a2fc832fafc69dbab2db5ad2fce4c2ef4d"
     },
     "evidence-discovery.json": {
       "path": "/home/administrator/projects/hexalith/memories/docs/operations/qualification/full-campaign-preparation-2026-10-25/evidence-discovery.json",
@@ -55,7 +55,17 @@
   "history": {
     "status-before-independent-calibration-2026-10-26": "partial-artifact-resolution-host-reservations-and-calibration-blocked",
     "status-before-kubectl-observation-2026-10-27": "independent-calibration-capability-implemented-current-host-and-operational-inputs-blocked",
-    "status-before-run-approval-2026-10-27": "independent-calibration-capability-implemented-kubectl-observed-operational-inputs-blocked"
+    "status-before-run-approval-2026-10-27": "independent-calibration-capability-implemented-kubectl-observed-operational-inputs-blocked",
+    "independentCalibrationAuthorizationBeforeReconciliation-2026-10-27": {
+      "launchAuthorized": false,
+      "remainingOperationalInputs": [
+        "actual isolated physical engine/host-local metadata; read-only node1 Kubernetes metadata is now available",
+        "signed net CPU/RAM and separately approved primary/independent Linux backup reservation/allocation",
+        "actual complete application/provider/reporter/CNI/component/credential artifacts and adopted source",
+        "independently authenticated UTC/current action status and allocation/operational collector",
+        "complete absolute window and outside approval; no previous authorization transfers"
+      ]
+    }
   },
   "independentCalibration": {
     "campaignAllocationBytes": null,
@@ -174,7 +184,7 @@
       },
       "draftExecutable": false,
       "executed": false,
-      "launchAuthorized": false,
+      "launchAuthorized": true,
       "limits": {
         "acceptedRecords": 450000,
         "attempts": 1,
@@ -240,7 +250,7 @@
         "signed net CPU/RAM and separately approved primary/independent Linux backup reservation/allocation",
         "actual complete application/provider/reporter/CNI/component/credential artifacts and adopted source",
         "independently authenticated UTC/current action status and allocation/operational collector",
-        "complete absolute window and outside approval; no previous authorization transfers"
+        "complete absolute window and exact executable plan/operational authority bindings; unchanged one-run owner approval already accepted"
       ],
       "schema": "hexalith.platform.independent-calibration/v1",
       "status": "implemented-offline-verified-operational-inputs-missing",
@@ -275,7 +285,9 @@
         "revokedUtcMs=null",
         "exact backing and available/competing/reserved operands"
       ],
-      "monitoring": "Launch owns startup, native lanes, physical rewrite, monitoring and removal in one foreground supervision. Per-allocation >=20% free, WAL<=4GiB, actual resource/latency/error readbacks; original execution and cumulative cleanup budgets persist."
+      "monitoring": "Launch owns startup, native lanes, physical rewrite, monitoring and removal in one foreground supervision. Per-allocation >=20% free, WAL<=4GiB, actual resource/latency/error readbacks; original execution and cumulative cleanup budgets persist.",
+      "launchReady": false,
+      "launchAuthorizationNote": "Owner approval accepted for one unchanged bounded run; launch remains blocked on exact executable plan and operational authority/reservations. No launch is ready or attempted."
     },
     "discovery": {
       "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/host-discovery-20261026/discovery-results.json",
@@ -385,6 +397,18 @@
       "runtimeAuthorizationMinted": false,
       "launchAttemptStarted": false,
       "launchAttemptConsumed": false
+    },
+    "approvalRecordReconciliation": {
+      "status": "passed",
+      "checkCount": 19,
+      "verifier": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/approval-record-reconciliation-20261027-qg3xz3uz/verify-preparation-records.py",
+        "sha256": "5d937bd196f2f3720707e2089b8edf51d330757faa80491a9ccc4c537677ad95"
+      },
+      "verification": {
+        "path": "/home/administrator/.local/state/hexalith/memories/access-telemetry/full-campaign-offline-20261025-buc4thfg/approval-record-reconciliation-20261027-qg3xz3uz/verification.json",
+        "sha256": "d80aa5e23cecf2b51759cc20d9646374f10ede459acb9af143cece62311dd279"
+      }
     }
   },
   "lifecyclePlanDraft": {

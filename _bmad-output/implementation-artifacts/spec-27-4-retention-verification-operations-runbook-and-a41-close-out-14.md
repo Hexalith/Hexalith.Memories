@@ -38,6 +38,17 @@ prepared state exists. No prepare/launch or attempt consumption occurred.
 The single report and existing preparation index/catalogue bind the approval and
 readiness receipt. Story27.4 remains in progress; A41 open.
 
+### Approval record reconciliation — 2026-10-27
+
+The existing preparation index/catalogue now consistently record accepted
+`launchAuthorized:true` with `launchReady:false`. Their prior flags and prerequisite
+wording remain under `history`; the catalogue hash is refreshed. Missing absolute
+window, exact executable plan and operational authority bindings remain technical
+prerequisites. No repeat owner approval, completed review or implementation suite
+is required; original approval/draft bytes, limits and unused attempts are preserved.
+The single report records focused documentary verification. No launch occurred;
+Story27.4 remains in progress and A41 open.
+
 ### Kubernetes metadata access — 2026-10-27 (current steering)
 
 The owner said **“you can access to kubectl”**. This supersedes the earlier
